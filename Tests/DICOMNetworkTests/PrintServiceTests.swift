@@ -902,7 +902,8 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertEqual(layout.rows, 2)
         XCTAssertEqual(layout.columns, 3)
         XCTAssertEqual(layout.imageCount, 6)
-        XCTAssertEqual(layout.imageDisplayFormat, "STANDARD\\2,3")
+        // PS3.3 C.13.3: STANDARD\\C,R — columns first.
+        XCTAssertEqual(layout.imageDisplayFormat, "STANDARD\\3,2")
     }
     
     func testPrintLayoutMinimumValues() {
@@ -1134,12 +1135,12 @@ final class PrintServiceTests: XCTestCase {
         let template = ComparisonTemplate()
         
         XCTAssertEqual(template.name, "Comparison")
-        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\1,2")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\2,1")
         XCTAssertEqual(template.imageCount, 2)
         XCTAssertEqual(template.filmOrientation, .landscape)
         
         let filmBox = template.createFilmBox()
-        XCTAssertEqual(filmBox.imageDisplayFormat, "STANDARD\\1,2")
+        XCTAssertEqual(filmBox.imageDisplayFormat, "STANDARD\\2,1")
     }
     
     func testGridTemplate2x2() {
@@ -1157,7 +1158,7 @@ final class PrintServiceTests: XCTestCase {
         let template = GridTemplate(rows: 3, columns: 4, filmSize: .size11InX17In)
         
         XCTAssertEqual(template.name, "3x4 Grid")
-        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\3,4")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\4,3")
         XCTAssertEqual(template.imageCount, 12)
         XCTAssertEqual(template.filmSize, .size11InX17In)
     }
@@ -1173,7 +1174,7 @@ final class PrintServiceTests: XCTestCase {
         let template = MultiPhaseTemplate(rows: 2, columns: 3)
         
         XCTAssertEqual(template.name, "Multi-Phase 2x3")
-        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\2,3")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\3,2")
         XCTAssertEqual(template.imageCount, 6)
     }
     
@@ -1181,7 +1182,7 @@ final class PrintServiceTests: XCTestCase {
         let template = MultiPhaseTemplate(rows: 3, columns: 4)
         
         XCTAssertEqual(template.name, "Multi-Phase 3x4")
-        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\3,4")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\4,3")
         XCTAssertEqual(template.imageCount, 12)
     }
     
@@ -1347,10 +1348,15 @@ final class PrintServiceTests: XCTestCase {
     }
     
     func testPreprocessMONOCHROME1ImageInversion() async throws {
+        // Decided behavior (enhancement plan P0-1): MONOCHROME1 is normalized via
+        // window/level (auto-computed from the data range when no window is in the
+        // data set), inverted exactly once, and emitted as 8-bit MONOCHROME2. The
+        // darkest stored value therefore prints white (255) and the brightest
+        // prints black (0), with a monotonically non-increasing ramp between.
         let width = 4
         let height = 4
         let pixelCount = width * height
-        
+
         // Create pixel data with known values
         var pixelData = Data(count: pixelCount)
         for i in 0..<pixelCount {
@@ -1375,19 +1381,27 @@ final class PrintServiceTests: XCTestCase {
         )
         
         XCTAssertEqual(result.photometricInterpretation, "MONOCHROME2")
+        XCTAssertEqual(result.bitsAllocated, 8)
         XCTAssertEqual(result.pixelData.count, pixelCount)
-        
-        // Verify inversion: pixel 0 was 0, should now be 255
+
+        // Inverted exactly once: darkest stored value (0) prints white,
+        // brightest (240) prints black, ramp is monotonically non-increasing.
         XCTAssertEqual(result.pixelData[0], 255)
-        // Pixel 1 was 16, should now be 239
-        XCTAssertEqual(result.pixelData[1], 239)
+        XCTAssertEqual(result.pixelData[pixelCount - 1], 0)
+        for i in 1..<pixelCount {
+            XCTAssertLessThanOrEqual(result.pixelData[i], result.pixelData[i - 1],
+                                     "inverted ramp must not increase at index \(i)")
+        }
     }
     
     func testPreprocessMONOCHROME1Image16BitInversion() async throws {
+        // Decided behavior (enhancement plan P0-1): 16-bit MONOCHROME1 sources are
+        // window/level-normalized and down-converted to 8-bit MONOCHROME2 for
+        // print (Basic Grayscale Image Box P-Values), inverted exactly once.
         let width = 4
         let height = 4
         let pixelCount = width * height
-        
+
         // Create 16-bit pixel data
         var pixelData = Data(count: pixelCount * 2)
         pixelData.withUnsafeMutableBytes { ptr in
@@ -1416,16 +1430,16 @@ final class PrintServiceTests: XCTestCase {
         )
         
         XCTAssertEqual(result.photometricInterpretation, "MONOCHROME2")
-        XCTAssertEqual(result.bitsAllocated, 16)
-        
-        // Verify 16-bit inversion
-        result.pixelData.withUnsafeBytes { ptr in
-            guard let baseAddress = ptr.baseAddress else { return }
-            let buffer = baseAddress.assumingMemoryBound(to: UInt16.self)
-            // First pixel was 0, should now be 65535
-            XCTAssertEqual(buffer[0], 65535)
-            // Second pixel was 4096, should now be 61439
-            XCTAssertEqual(buffer[1], 61439)
+        XCTAssertEqual(result.bitsAllocated, 8)
+        XCTAssertEqual(result.pixelData.count, pixelCount)
+
+        // 16-bit source, 8-bit windowed output, inverted exactly once:
+        // darkest stored value prints white, brightest prints black.
+        XCTAssertEqual(result.pixelData[0], 255)
+        XCTAssertEqual(result.pixelData[pixelCount - 1], 0)
+        for i in 1..<pixelCount {
+            XCTAssertLessThanOrEqual(result.pixelData[i], result.pixelData[i - 1],
+                                     "inverted ramp must not increase at index \(i)")
         }
     }
     
@@ -2333,9 +2347,622 @@ final class PrintServiceTests: XCTestCase {
         let error1 = PrinterRegistryError.printerAlreadyExists(id: id)
         let error2 = PrinterRegistryError.printerAlreadyExists(id: id)
         let error3 = PrinterRegistryError.printerNotFound(id: id)
-        
+
         XCTAssertEqual(error1, error2)
         XCTAssertNotEqual(error1, error3)
+    }
+
+    // MARK: - Print Event (N-EVENT-REPORT) Tests
+
+    func testPrinterEventTypeRawValues() {
+        XCTAssertEqual(PrinterEventType.normal.rawValue, 1)
+        XCTAssertEqual(PrinterEventType.warning.rawValue, 2)
+        XCTAssertEqual(PrinterEventType.failure.rawValue, 3)
+    }
+
+    func testPrintJobEventTypeRawValues() {
+        XCTAssertEqual(PrintJobEventType.pending.rawValue, 1)
+        XCTAssertEqual(PrintJobEventType.printing.rawValue, 2)
+        XCTAssertEqual(PrintJobEventType.done.rawValue, 3)
+        XCTAssertEqual(PrintJobEventType.failure.rawValue, 4)
+    }
+
+    func testPrintEventInterpretsPrinterSOPClass() {
+        let event = PrintEvent(
+            sopClassUID: printerSOPClassUID,
+            sopInstanceUID: "1.2.3",
+            eventTypeID: 3,
+            printerStatusInfo: "OUT OF SUPPLY"
+        )
+        XCTAssertEqual(event.printerEvent, .failure)
+        XCTAssertNil(event.printJobEvent)
+        XCTAssertTrue(event.isFault)
+        XCTAssertEqual(event.summary, "Printer Failure: OUT OF SUPPLY")
+    }
+
+    func testPrintEventInterpretsPrintJobSOPClass() {
+        let event = PrintEvent(
+            sopClassUID: printJobSOPClassUID,
+            sopInstanceUID: "1.2.3",
+            eventTypeID: 2,
+            executionStatusInfo: "QUEUED"
+        )
+        XCTAssertEqual(event.printJobEvent, .printing)
+        XCTAssertNil(event.printerEvent)
+        XCTAssertFalse(event.isFault)
+        XCTAssertEqual(event.summary, "Print Job Printing: QUEUED")
+    }
+
+    func testPrintEventPrintJobFailureIsFault() {
+        let event = PrintEvent(
+            sopClassUID: printJobSOPClassUID,
+            sopInstanceUID: "1.2.3",
+            eventTypeID: 4
+        )
+        XCTAssertEqual(event.printJobEvent, .failure)
+        XCTAssertTrue(event.isFault)
+        XCTAssertEqual(event.summary, "Print Job Failure")
+    }
+
+    func testPrintEventPrinterNormalIsNotFault() {
+        let event = PrintEvent(
+            sopClassUID: printerSOPClassUID,
+            sopInstanceUID: "1.2.3",
+            eventTypeID: 1
+        )
+        XCTAssertEqual(event.printerEvent, .normal)
+        XCTAssertFalse(event.isFault)
+        XCTAssertEqual(event.summary, "Printer Normal")
+    }
+
+    func testPrintEventUnknownSOPClassFallsBack() {
+        let event = PrintEvent(
+            sopClassUID: "1.2.840.10008.1.1", // Verification SOP Class, not print
+            sopInstanceUID: "1.2.3",
+            eventTypeID: 7
+        )
+        XCTAssertNil(event.printerEvent)
+        XCTAssertNil(event.printJobEvent)
+        XCTAssertFalse(event.isFault)
+        XCTAssertEqual(event.summary, "Print Event 7")
+    }
+
+    // MARK: - Presentation LUT / Annotation Tests
+
+    func testPresentationLUTShapeRawValues() {
+        XCTAssertEqual(PresentationLUTShape.identity.rawValue, "IDENTITY")
+        XCTAssertEqual(PresentationLUTShape.inverse.rawValue, "INVERSE")
+        XCTAssertEqual(PresentationLUTShape.linearOpticalDensity.rawValue, "LIN OD")
+        XCTAssertEqual(PresentationLUTShape.allCases.count, 3)
+    }
+
+    func testPresentationLUTSOPClassUID() {
+        XCTAssertEqual(presentationLUTSOPClassUID, "1.2.840.10008.5.1.1.23")
+    }
+
+    func testAnnotationBoxSOPClassUID() {
+        XCTAssertEqual(basicAnnotationBoxSOPClassUID, "1.2.840.10008.5.1.1.15")
+    }
+
+    func testPrintAnnotationClampsPosition() {
+        XCTAssertEqual(PrintAnnotation(position: 0, text: "x").position, 1)
+        XCTAssertEqual(PrintAnnotation(position: 3, text: "x").position, 3)
+        XCTAssertEqual(PrintAnnotation(position: 2, text: "PATIENT NAME").text, "PATIENT NAME")
+    }
+
+    func testPrintOptionsCarriesPresentationLUTAndAnnotations() {
+        let options = PrintOptions(
+            presentationLUTShape: .identity,
+            annotations: [PrintAnnotation(position: 1, text: "Hello")],
+            annotationDisplayFormatID: "STANDARD"
+        )
+        XCTAssertEqual(options.presentationLUTShape, .identity)
+        XCTAssertEqual(options.annotations.count, 1)
+        XCTAssertEqual(options.annotationDisplayFormatID, "STANDARD")
+    }
+
+    func testPrintOptionsDefaultsHaveNoLUTOrAnnotations() {
+        let options = PrintOptions()
+        XCTAssertNil(options.presentationLUTShape)
+        XCTAssertTrue(options.annotations.isEmpty)
+        XCTAssertNil(options.annotationDisplayFormatID)
+    }
+
+    func testParseReferencedSOPInstanceUIDsScopedToSequence() {
+        func le16(_ v: UInt16) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        func le32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+
+        // Explicit VR LE Referenced SOP Instance UID (0008,1155) UI element.
+        func uiElement(_ value: String) -> Data {
+            var v = value.data(using: .ascii)!
+            if v.count % 2 != 0 { v.append(0x00) }
+            var d = le16(0x0008) + le16(0x1155)
+            d.append(contentsOf: [0x55, 0x49]) // "UI"
+            d += le16(UInt16(v.count)) + v
+            return d
+        }
+        // Explicit VR LE sequence with a single item wrapping `content`.
+        func sequence(_ group: UInt16, _ element: UInt16, content: Data) -> Data {
+            var item = le16(0xFFFE) + le16(0xE000) + le32(UInt32(content.count)) + content
+            var d = le16(group) + le16(element)
+            d.append(contentsOf: [0x53, 0x51]) // "SQ"
+            d += le16(0) // reserved
+            d += le32(UInt32(item.count)) + item
+            return d
+        }
+
+        let imageSeq = sequence(0x2010, 0x0510, content: uiElement("1.2.10"))
+        let annSeq = sequence(0x2010, 0x0520, content: uiElement("1.2.20") + uiElement("1.2.21"))
+        let data = imageSeq + annSeq
+
+        let annUIDs = DICOMPrintService.parseReferencedSOPInstanceUIDs(
+            from: data, withinSequence: .referencedBasicAnnotationBoxSequence)
+        XCTAssertEqual(annUIDs, ["1.2.20", "1.2.21"])
+
+        let imgUIDs = DICOMPrintService.parseReferencedSOPInstanceUIDs(
+            from: data, withinSequence: .referencedImageBoxSequence)
+        XCTAssertEqual(imgUIDs, ["1.2.10"])
+
+        // A sequence that is not present yields no UIDs.
+        let none = DICOMPrintService.parseReferencedSOPInstanceUIDs(
+            from: data, withinSequence: .referencedPresentationLUTSequence)
+        XCTAssertTrue(none.isEmpty)
+    }
+
+    // MARK: - parsePrinterStatus (P0-3)
+
+    /// Builds an Explicit VR LE short-form string element (CS/LO), space-padded to even length.
+    private func stringElement(_ group: UInt16, _ element: UInt16, vr: String, _ value: String) -> Data {
+        func le16(_ v: UInt16) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        var v = value.data(using: .ascii)!
+        if v.count % 2 != 0 { v.append(0x20) }
+        var d = le16(group) + le16(element)
+        d.append(contentsOf: Array(vr.utf8))
+        d += le16(UInt16(v.count)) + v
+        return d
+    }
+
+    func testParsePrinterStatusNormal() {
+        let data = stringElement(0x2110, 0x0010, vr: "CS", "NORMAL")
+            + stringElement(0x2110, 0x0030, vr: "LO", "LASER1")
+        let status = DICOMPrintService.parsePrinterStatus(from: data)
+        XCTAssertEqual(status.status, "NORMAL")
+        XCTAssertTrue(status.isNormal)
+        XCTAssertEqual(status.printerName, "LASER1")
+        XCTAssertNil(status.statusInfo)
+    }
+
+    func testParsePrinterStatusWarningWithInfo() {
+        let data = stringElement(0x2110, 0x0010, vr: "CS", "WARNING")
+            + stringElement(0x2110, 0x0020, vr: "CS", "SUPPLY LOW")
+            + stringElement(0x2110, 0x0030, vr: "LO", "LASER1")
+            + stringElement(0x0008, 0x0070, vr: "LO", "ACME")
+            + stringElement(0x0008, 0x1090, vr: "LO", "FILMPRINTER 2000")
+        let status = DICOMPrintService.parsePrinterStatus(from: data)
+        XCTAssertEqual(status.status, "WARNING")
+        XCTAssertFalse(status.isNormal)
+        XCTAssertEqual(status.statusInfo, "SUPPLY LOW")
+        XCTAssertEqual(status.printerName, "LASER1")
+        XCTAssertEqual(status.manufacturer, "ACME")
+        XCTAssertEqual(status.manufacturerModelName, "FILMPRINTER 2000")
+    }
+
+    func testParsePrinterStatusFailure() {
+        let data = stringElement(0x2110, 0x0010, vr: "CS", "FAILURE")
+            + stringElement(0x2110, 0x0020, vr: "CS", "OUT OF FILM")
+        let status = DICOMPrintService.parsePrinterStatus(from: data)
+        XCTAssertEqual(status.status, "FAILURE")
+        XCTAssertFalse(status.isNormal)
+        XCTAssertEqual(status.statusInfo, "OUT OF FILM")
+    }
+
+    func testParsePrinterStatusMissingStatusIsUnknown() {
+        let data = stringElement(0x2110, 0x0030, vr: "LO", "LASER1")
+        let status = DICOMPrintService.parsePrinterStatus(from: data)
+        XCTAssertEqual(status.status, "UNKNOWN")
+        XCTAssertFalse(status.isNormal)
+    }
+
+    /// Builds an Implicit VR LE element: [tag(4)][length(4)][value].
+    private func implicitElement(_ group: UInt16, _ element: UInt16, _ value: String) -> Data {
+        func le16(_ v: UInt16) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        func le32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        var v = value.data(using: .ascii)!
+        if v.count % 2 != 0 { v.append(0x20) }
+        return le16(group) + le16(element) + le32(UInt32(v.count)) + v
+    }
+
+    func testParsePrinterStatusImplicitVR() {
+        let data = implicitElement(0x2110, 0x0010, "WARNING")
+            + implicitElement(0x2110, 0x0020, "SUPPLY LOW")
+            + implicitElement(0x2110, 0x0030, "LASER1")
+        let status = DICOMPrintService.parsePrinterStatus(from: data, explicitVR: false)
+        XCTAssertEqual(status.status, "WARNING")
+        XCTAssertEqual(status.statusInfo, "SUPPLY LOW")
+        XCTAssertEqual(status.printerName, "LASER1")
+    }
+
+    func testParseReferencedSOPInstanceUIDsImplicitVR() {
+        func le16(_ v: UInt16) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        func le32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        // Implicit VR: UI element is [tag][len32][value]; SQ is [tag][len32][items].
+        let ui = le16(0x0008) + le16(0x1155) + le32(6) + "1.2.10".data(using: .ascii)!
+        let item = le16(0xFFFE) + le16(0xE000) + le32(UInt32(ui.count)) + ui
+        let seq = le16(0x2010) + le16(0x0510) + le32(UInt32(item.count)) + item
+
+        let uids = DICOMPrintService.parseReferencedSOPInstanceUIDs(
+            from: seq, withinSequence: .referencedImageBoxSequence, explicitVR: false)
+        XCTAssertEqual(uids, ["1.2.10"])
+    }
+
+    func testParsePrinterStatusEmptyData() {
+        let status = DICOMPrintService.parsePrinterStatus(from: Data())
+        XCTAssertEqual(status.status, "UNKNOWN")
+        XCTAssertNil(status.printerName)
+    }
+
+    // MARK: - DIMSE error detail (P0-5)
+
+    func testCommandSetErrorAccessors() {
+        var commandSet = CommandSet()
+        commandSet.setErrorComment("OUT OF FILM")
+        commandSet.setErrorID(0x0042)
+        XCTAssertEqual(commandSet.errorComment, "OUT OF FILM")
+        XCTAssertEqual(commandSet.errorID, 0x0042)
+        XCTAssertNil(commandSet.offendingElements)
+    }
+
+    func testCommandSetOffendingElements() {
+        // AT VM 2: (2010,0010) and (2020,0020) as LE group/element pairs.
+        let at = Data([0x10, 0x20, 0x10, 0x00, 0x20, 0x20, 0x20, 0x00])
+        let commandSet = CommandSet(elements: [.offendingElement: at])
+        XCTAssertEqual(commandSet.offendingElements, [
+            Tag(group: 0x2010, element: 0x0010),
+            Tag(group: 0x2020, element: 0x0020)
+        ])
+    }
+
+    func testErrorDetailFromCommandSet() {
+        var commandSet = CommandSet()
+        XCTAssertNil(DICOMPrintService.errorDetail(from: commandSet))
+
+        commandSet.setErrorComment("OUT OF FILM")
+        XCTAssertEqual(DICOMPrintService.errorDetail(from: commandSet), "OUT OF FILM")
+
+        commandSet.setErrorID(7)
+        XCTAssertEqual(DICOMPrintService.errorDetail(from: commandSet), "OUT OF FILM (Error ID 7)")
+
+        var idOnly = CommandSet()
+        idOnly.setErrorID(7)
+        XCTAssertEqual(DICOMPrintService.errorDetail(from: idOnly), "(Error ID 7)")
+    }
+
+    func testPrintOperationFailedCarriesDetail() {
+        let error = DICOMNetworkError.printOperationFailed(.failedUnableToProcess, detail: "OUT OF FILM")
+        XCTAssertTrue(error.description.contains("OUT OF FILM"))
+        XCTAssertTrue((error.errorDescription ?? "").contains("OUT OF FILM"))
+
+        let plain = DICOMNetworkError.printOperationFailed(.failedUnableToProcess)
+        XCTAssertFalse(plain.description.contains("—"))
+    }
+
+    // MARK: - Per-frame preprocessing + YBR conversion (Milestone B)
+
+    func testPrepareForPrintSelectsRequestedFrame() async throws {
+        // Two-frame 2x2 8-bit MONOCHROME2: frame 0 is an ascending ramp,
+        // frame 1 a descending ramp — the first output pixel tells the frames apart.
+        let descriptor = PixelDataDescriptor(
+            rows: 2, columns: 2, numberOfFrames: 2,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2,
+            planarConfiguration: 0
+        )
+        let frame0: [UInt8] = [0, 80, 160, 240]
+        let frame1: [UInt8] = [240, 160, 80, 0]
+        let pixelData = PixelData(data: Data(frame0 + frame1), descriptor: descriptor)
+
+        let preprocessor = ImagePreprocessor()
+        let first = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0, colorMode: .grayscale)
+        let second = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 1, colorMode: .grayscale)
+
+        XCTAssertEqual(first.pixelData.count, 4)
+        XCTAssertEqual(second.pixelData.count, 4)
+        XCTAssertEqual(first.pixelData[0], 0)     // darkest source pixel
+        XCTAssertEqual(second.pixelData[0], 255)  // brightest source pixel
+    }
+
+    func testPrepareForPrintRejectsOutOfRangeFrame() async throws {
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 1, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        do {
+            _ = try await preprocessor.prepareForPrint(
+                pixelData: pixelData, dataSet: DataSet(), frameIndex: 1, colorMode: .grayscale)
+            XCTFail("Expected out-of-range frame to throw")
+        } catch {
+            // expected
+        }
+    }
+
+    func testPrepareForPrintConvertsYBRFullToRGB() async throws {
+        // One YBR_FULL pixel encoding pure red: Y=76, Cb=85, Cr=255 → ~(254, 0, 0).
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 1, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 3,
+            photometricInterpretation: .ybrFull,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([76, 85, 255]), descriptor: descriptor)
+
+        let preprocessor = ImagePreprocessor()
+        let prepared = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0, colorMode: .color)
+
+        XCTAssertEqual(prepared.photometricInterpretation, "RGB")
+        XCTAssertEqual(prepared.samplesPerPixel, 3)
+        XCTAssertEqual(prepared.pixelData.count, 3)
+        XCTAssertGreaterThanOrEqual(prepared.pixelData[0], 252) // red channel
+        XCTAssertLessThanOrEqual(prepared.pixelData[1], 2)      // green channel
+        XCTAssertLessThanOrEqual(prepared.pixelData[2], 2)      // blue channel
+    }
+
+    // MARK: - Milestone C (interop)
+
+    func testLayoutFromImageDisplayFormat() {
+        // PS3.3 C.13.3: "STANDARD\\C,R" — 2 columns, 3 rows.
+        let l1 = DICOMPrintService.layout(fromImageDisplayFormat: "STANDARD\\2,3")
+        XCTAssertEqual(l1.rows, 3)
+        XCTAssertEqual(l1.columns, 2)
+
+        let l2 = DICOMPrintService.layout(fromImageDisplayFormat: "STANDARD\\1,1")
+        XCTAssertEqual(l2.rows, 1)
+        XCTAssertEqual(l2.columns, 1)
+
+        // Malformed strings fall back to 1x1 rather than crashing.
+        for bad in ["", "STANDARD", "CUSTOM\\2,3", "STANDARD\\0,3", "STANDARD\\a,b"] {
+            let l = DICOMPrintService.layout(fromImageDisplayFormat: bad)
+            XCTAssertEqual(l.rows, 1, "fallback for \(bad)")
+            XCTAssertEqual(l.columns, 1, "fallback for \(bad)")
+        }
+    }
+
+    func testPrintImagesRequiresDescriptors() async {
+        // P1-1: the workflow must refuse to build image boxes without the
+        // mandatory pixel-module attributes — and it must fail before any
+        // network activity (the config below points nowhere).
+        let config = PrintConfiguration(
+            host: "127.0.0.1", port: 1,
+            callingAETitle: "TEST", calledAETitle: "TEST"
+        )
+        do {
+            _ = try await DICOMPrintService.printImages(
+                configuration: config,
+                images: [Data([0x00])],
+                imageDescriptors: []
+            )
+            XCTFail("Expected encodingFailed for missing descriptors")
+        } catch let error as DICOMNetworkError {
+            guard case .encodingFailed(let message) = error else {
+                return XCTFail("Expected encodingFailed, got \(error)")
+            }
+            XCTAssertTrue(message.contains("descriptor"))
+        } catch {
+            XCTFail("Expected DICOMNetworkError, got \(error)")
+        }
+    }
+
+    func testSetImageBoxRequiresDescriptor() async {
+        let config = PrintConfiguration(
+            host: "127.0.0.1", port: 1,
+            callingAETitle: "TEST", calledAETitle: "TEST"
+        )
+        let imageBox = ImageBoxContent(sopInstanceUID: "1.2.3", imagePosition: 1)
+        do {
+            try await DICOMPrintService.setImageBox(
+                configuration: config,
+                imageBoxUID: "1.2.3",
+                imageBox: imageBox,
+                pixelData: Data([0x00])
+            )
+            XCTFail("Expected encodingFailed for missing descriptor")
+        } catch let error as DICOMNetworkError {
+            guard case .encodingFailed = error else {
+                return XCTFail("Expected encodingFailed, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected DICOMNetworkError, got \(error)")
+        }
+    }
+
+    func testPrepareForPrintConvertsYBRFull422ToRGB() async throws {
+        // Packed 4:2:2 (Y1 Y2 Cb Cr): both pixels encode pure red at full range.
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 2, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 3,
+            photometricInterpretation: .ybrFull422,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([76, 76, 85, 255]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        let prepared = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0, colorMode: .color)
+
+        XCTAssertEqual(prepared.photometricInterpretation, "RGB")
+        XCTAssertEqual(prepared.pixelData.count, 6) // 2 pixels × RGB
+        for pixel in 0..<2 {
+            XCTAssertGreaterThanOrEqual(prepared.pixelData[pixel * 3], 252, "red channel")
+            XCTAssertLessThanOrEqual(prepared.pixelData[pixel * 3 + 1], 2, "green channel")
+            XCTAssertLessThanOrEqual(prepared.pixelData[pixel * 3 + 2], 2, "blue channel")
+        }
+    }
+
+    func testPrepareForPrintConvertsYBRPartial422StudioRange() async throws {
+        // BT.601 studio range: Y=16 is black, Y=235 is white (neutral chroma).
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 2, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 3,
+            photometricInterpretation: .ybrPartial422,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([16, 235, 128, 128]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        let prepared = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0, colorMode: .color)
+
+        XCTAssertLessThanOrEqual(prepared.pixelData[0], 1)   // black pixel
+        XCTAssertGreaterThanOrEqual(prepared.pixelData[3], 254) // white pixel
+    }
+
+    // MARK: - Bit depth, explicit window, palette color
+
+    func testPrepareForPrint12BitOutput() async throws {
+        let descriptor = PixelDataDescriptor(
+            rows: 2, columns: 2, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0, 80, 160, 240]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        let prepared = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0,
+            colorMode: .grayscale, outputBitDepth: 12)
+
+        XCTAssertEqual(prepared.bitsAllocated, 16)
+        XCTAssertEqual(prepared.bitsStored, 12)
+        XCTAssertEqual(prepared.pixelData.count, 8) // 4 px × 2 bytes
+
+        // Little-endian samples; darkest → 0, brightest → 4095.
+        func sample(_ i: Int) -> UInt16 {
+            UInt16(prepared.pixelData[i * 2]) | (UInt16(prepared.pixelData[i * 2 + 1]) << 8)
+        }
+        XCTAssertEqual(sample(0), 0)
+        XCTAssertEqual(sample(3), 4095)
+        XCTAssertTrue((1...2).allSatisfy { sample($0) > 0 && sample($0) < 4095 })
+    }
+
+    func testPrepareForPrintRejectsInvalidBitDepth() async throws {
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 1, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        do {
+            _ = try await preprocessor.prepareForPrint(
+                pixelData: pixelData, dataSet: DataSet(), frameIndex: 0,
+                colorMode: .grayscale, outputBitDepth: 24)
+            XCTFail("Expected unsupportedBitsAllocated")
+        } catch {
+            // expected
+        }
+    }
+
+    func testPrepareForPrintHonorsExplicitWindow() async throws {
+        // Window [100 ± 10]: values ≤90 → black, ≥110 → white.
+        let descriptor = PixelDataDescriptor(
+            rows: 2, columns: 2, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0, 90, 110, 255]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        let prepared = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0,
+            colorMode: .grayscale,
+            windowSettings: WindowSettings(center: 100, width: 20))
+
+        XCTAssertEqual(prepared.pixelData[0], 0)
+        XCTAssertLessThanOrEqual(prepared.pixelData[1], 5)
+        XCTAssertGreaterThanOrEqual(prepared.pixelData[2], 250)
+        XCTAssertEqual(prepared.pixelData[3], 255)
+    }
+
+    func testPrepareForPrintPaletteColor() async throws {
+        // 2-entry palette: index 0 → red, index 1 → blue. LUT entries carry
+        // their significant byte in the high byte (PS3.3 C.7.6.3.1.5).
+        var dataSet = DataSet()
+        func descriptorData(entries: UInt16) -> Data {
+            var d = Data()
+            for v in [entries, 0, 16] as [UInt16] {
+                d.append(UInt8(v & 0xFF)); d.append(UInt8(v >> 8))
+            }
+            return d
+        }
+        func lutData(_ values: [UInt16]) -> Data {
+            var d = Data()
+            for v in values { d.append(UInt8(v & 0xFF)); d.append(UInt8(v >> 8)) }
+            return d
+        }
+        dataSet[.redPaletteColorLookupTableDescriptor] = DataElement.data(
+            tag: .redPaletteColorLookupTableDescriptor, vr: .US, data: descriptorData(entries: 2))
+        dataSet[.greenPaletteColorLookupTableDescriptor] = DataElement.data(
+            tag: .greenPaletteColorLookupTableDescriptor, vr: .US, data: descriptorData(entries: 2))
+        dataSet[.bluePaletteColorLookupTableDescriptor] = DataElement.data(
+            tag: .bluePaletteColorLookupTableDescriptor, vr: .US, data: descriptorData(entries: 2))
+        dataSet[.redPaletteColorLookupTableData] = DataElement.data(
+            tag: .redPaletteColorLookupTableData, vr: .OW, data: lutData([0xFF00, 0x0000]))
+        dataSet[.greenPaletteColorLookupTableData] = DataElement.data(
+            tag: .greenPaletteColorLookupTableData, vr: .OW, data: lutData([0x0000, 0x0000]))
+        dataSet[.bluePaletteColorLookupTableData] = DataElement.data(
+            tag: .bluePaletteColorLookupTableData, vr: .OW, data: lutData([0x0000, 0xFF00]))
+
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 2, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .paletteColor,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0, 1]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+
+        let color = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: dataSet, frameIndex: 0, colorMode: .color)
+        XCTAssertEqual(color.photometricInterpretation, "RGB")
+        XCTAssertEqual([UInt8](color.pixelData), [255, 0, 0, 0, 0, 255])
+
+        let gray = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: dataSet, frameIndex: 0, colorMode: .grayscale)
+        XCTAssertEqual(gray.photometricInterpretation, "MONOCHROME2")
+        XCTAssertEqual(gray.pixelData.count, 2)
+    }
+
+    func testPrepareForPrintPaletteColorMissingLUTThrows() async throws {
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 1, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .paletteColor,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        do {
+            _ = try await preprocessor.prepareForPrint(
+                pixelData: pixelData, dataSet: DataSet(), frameIndex: 0, colorMode: .color)
+            XCTFail("Expected missingPaletteLUT")
+        } catch {
+            // expected
+        }
     }
 }
 

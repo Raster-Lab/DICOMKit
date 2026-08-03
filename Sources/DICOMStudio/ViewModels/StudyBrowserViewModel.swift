@@ -65,6 +65,12 @@ public final class StudyBrowserViewModel {
     /// When set, this takes priority over `onOpenInViewer` for study/series opens.
     public var onOpenSeriesInViewer: (([String], Int) -> Void)?
 
+    /// Callback invoked when the user requests to print a study or series.
+    ///
+    /// The parameter is the ordered file paths to mark for print. Printing a
+    /// whole study or series from here skips the mark-in-the-viewer step.
+    public var onPrintFiles: (([String]) -> Void)?
+
     /// Creates a study browser ViewModel.
     public init(
         library: LibraryModel = LibraryModel(),
@@ -86,12 +92,22 @@ public final class StudyBrowserViewModel {
         self.isFileImporterPresented = false
         self.onOpenInViewer = nil
         self.onOpenSeriesInViewer = nil
+        self.onPrintFiles = nil
     }
 
     /// Returns the filtered and sorted studies for display.
+    ///
+    /// Studies with no instances under them are left out: they cannot be opened,
+    /// printed or exported, and a row reading "0 series · 0 images" for a patient
+    /// the library cannot show is worse than no row. Reading rather than deleting
+    /// keeps a stored index intact — a library whose files are on a volume that
+    /// is not mounted today is not a library to start throwing away.
     public var displayStudies: [StudyModel] {
+        let withContent = library.sortedStudies.filter {
+            library.instanceCount(forStudy: $0.studyInstanceUID) > 0
+        }
         let filtered = StudyBrowserHelpers.filter(
-            studies: library.sortedStudies,
+            studies: withContent,
             with: filter
         )
         return StudyBrowserHelpers.sort(
@@ -159,6 +175,10 @@ public final class StudyBrowserViewModel {
             }
         }
 
+        // A file that produced a study but no instances leaves a row that can
+        // never be opened; it is not worth showing.
+        updatedLibrary.pruneEmptyStudies()
+
         // Single atomic assignment — triggers one @Observable change.
         library = updatedLibrary
         isImporting = false
@@ -194,6 +214,22 @@ public final class StudyBrowserViewModel {
             selectedStudyUID = nil
             selectedSeriesUID = nil
         }
+        do {
+            try libraryStorageService.save(library)
+        } catch {
+            lastError = "Failed to save library: \(error.localizedDescription)"
+        }
+    }
+
+    /// Removes every imported study from the library.
+    ///
+    /// Only the library index is discarded — the imported files themselves stay
+    /// where they are on disk, exactly as `removeStudy(_:)` leaves them.
+    public func removeAllStudies() {
+        logger.info("removeAllStudies: clearing \(self.library.studyCount) study/studies from library")
+        library.clear()
+        selectedStudyUID = nil
+        selectedSeriesUID = nil
         do {
             try libraryStorageService.save(library)
         } catch {
@@ -246,23 +282,27 @@ public final class StudyBrowserViewModel {
         isFileImporterPresented = true
     }
 
-    /// Opens all instances of a study in the image viewer as a navigable series.
+    /// Opens a study in the image viewer, on the first image of its first series.
     ///
-    /// Instances are gathered across all series in the study and presented to
-    /// `onOpenSeriesInViewer` (preferred) or `onOpenInViewer` (fallback).
+    /// The viewer is handed *one series* rather than every instance of the study
+    /// flattened into a single list. The flat list made the arrow keys walk out
+    /// of one series and into the next, and put the study's whole object count
+    /// behind a scroll wheel; the series pane is what moves between series.
+    /// Which series comes first, and which image within it, is decided by Series
+    /// Number and Instance Number — the order the study itself asserts.
     /// - Parameter studyUID: The Study Instance UID to open.
     public func openStudyInViewer(_ studyUID: String) {
         let seriesList = library.seriesForStudy(studyUID)
-        var allPaths: [String] = []
-        for series in seriesList {
-            let instances = library.instancesForSeries(series.seriesInstanceUID)
-            allPaths.append(contentsOf: instances.map(\.filePath))
-        }
-        guard !allPaths.isEmpty else { return }
+            .sorted { ($0.seriesNumber ?? Int.max) < ($1.seriesNumber ?? Int.max) }
+        guard let first = seriesList.first(where: {
+            !library.instancesForSeries($0.seriesInstanceUID).isEmpty
+        }) else { return }
+
+        let paths = library.instancesForSeries(first.seriesInstanceUID).map(\.filePath)
         if let callback = onOpenSeriesInViewer {
-            callback(allPaths, 0)
+            callback(paths, 0)
         } else {
-            onOpenInViewer?(allPaths[0])
+            onOpenInViewer?(paths[0])
         }
     }
 
@@ -281,6 +321,27 @@ public final class StudyBrowserViewModel {
         } else {
             onOpenInViewer?(paths[idx])
         }
+    }
+
+    /// Marks every instance of a study for printing and opens the print sheet.
+    ///
+    /// - Parameter studyUID: The Study Instance UID to print.
+    public func printStudy(_ studyUID: String) {
+        var allPaths: [String] = []
+        for series in library.seriesForStudy(studyUID) {
+            allPaths.append(contentsOf: library.instancesForSeries(series.seriesInstanceUID).map(\.filePath))
+        }
+        guard !allPaths.isEmpty else { return }
+        onPrintFiles?(allPaths)
+    }
+
+    /// Marks every instance of a series for printing and opens the print sheet.
+    ///
+    /// - Parameter seriesUID: The Series Instance UID to print.
+    public func printSeries(_ seriesUID: String) {
+        let paths = library.instancesForSeries(seriesUID).map(\.filePath)
+        guard !paths.isEmpty else { return }
+        onPrintFiles?(paths)
     }
 
     /// Handles file URLs selected via the file importer or drag-and-drop.

@@ -23,14 +23,6 @@ struct ViewerCommands: Commands {
     private var isMonochrome: Bool { viewModel?.isMonochrome == true }
 
     var body: some Commands {
-        // File menu — Open DICOM File
-        CommandGroup(after: .newItem) {
-            Button("Open DICOM File…") {
-                viewModel?.isFileImporterPresented = true
-            }
-            .keyboardShortcut("o", modifiers: .command)
-        }
-
         // View menu additions (zoom, fit, overlays)
         CommandGroup(after: .toolbar) {
             Divider()

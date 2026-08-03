@@ -46,6 +46,21 @@ This document provides a quick reference for DICOM Print Management implementati
   - `add-printer` / `remove-printer` - Manage printer configurations
 - **Local configuration**: Printer configs stored in `~/.config/dicomkit/printers.json`
 
+**Presentation LUT & Annotations**
+- **Presentation LUT**: `PresentationLUTShape` + `PrintOptions.presentationLUTShape`
+  — N-CREATEs a Presentation LUT and references it from each film box (2050,0500)
+- **Annotation boxes**: `PrintAnnotation` + `PrintOptions.annotations` /
+  `annotationDisplayFormatID` — N-SETs Basic Annotation Boxes (position + text)
+- **CLI**: `--presentation-lut`, `--annotate`/`--annotation-format`, `--template`, `--retries`
+
+**Printer Notifications (N-EVENT-REPORT)**
+- **Event reception**: the Print SCU receives, decodes, and acknowledges async
+  N-EVENT-REPORT notifications the SCP pushes during a print association
+- **Event models**: `PrintEvent`, `PrinterEventType` (normal/warning/failure),
+  `PrintJobEventType` (pending/printing/done/failure), with `summary`/`isFault`
+- **Callback**: `PrintEventHandler` wired through `printImage()` / `printImages()`
+- **CLI**: `dicom-print send` prints faults always and progress in `--verbose`
+
 ### ❌ What's Remaining
 
 - **Documentation**: DocC API documentation, user guides and tutorials
@@ -83,6 +98,28 @@ let result = try await DICOMPrintService.printImages(
         filmOrientation: .landscape,
         numberOfCopies: 2
     )
+)
+```
+
+### Receiving Printer Notifications (N-EVENT-REPORT)
+
+```swift
+// Observe printer/print-job events pushed by the SCP during printing.
+// The handler is @Sendable — keep it lightweight (log or forward to an actor).
+let result = try await DICOMPrintService.printImages(
+    configuration: printConfig,
+    images: [image1, image2],
+    options: .highQuality,
+    eventHandler: { event in
+        if event.isFault {
+            print("⚠️", event.summary)   // e.g. "Printer Failure: OUT OF SUPPLY"
+        } else {
+            print("ℹ️", event.summary)   // e.g. "Print Job Printing"
+        }
+        // Inspect typed variants when needed:
+        // event.printerEvent  -> .normal / .warning / .failure
+        // event.printJobEvent -> .pending / .printing / .done / .failure
+    }
 )
 ```
 
@@ -311,6 +348,13 @@ dicom-print send *.dcm --layout 2x3 --film-size 11x17 --orientation landscape
 
 # Print with template
 dicom-print send series/*.dcm --template multi-phase --annotate
+
+# Print a specific frame of a multi-frame file (cine US), or all frames
+dicom-print send cine.dcm --frame 12
+dicom-print send cine.dcm --all-frames --layout 4x4
+
+# Bypass print preprocessing (send stored pixel values)
+dicom-print send image.dcm --raw
 
 # Monitor print job
 dicom-print status --job-id 1.2.840.113619.2.55.3.2024...

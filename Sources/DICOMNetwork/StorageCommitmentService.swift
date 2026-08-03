@@ -1180,8 +1180,14 @@ public actor CommitmentNotificationListener {
         
         if let listener = listener {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                if case .cancelled = listener.state {
+                    // Already cancelled — no further state callbacks will fire.
+                    continuation.resume()
+                    return
+                }
                 listener.stateUpdateHandler = { state in
                     if case .cancelled = state {
+                        listener.stateUpdateHandler = nil
                         continuation.resume()
                     }
                 }
@@ -1225,45 +1231,30 @@ public actor CommitmentNotificationListener {
         if let result = pendingResults.removeValue(forKey: transactionUID) {
             return result
         }
-        
-        // Wait for the result with timeout
-        return try await withThrowingTaskGroup(of: CommitmentResult.self) { group in
-            group.addTask {
-                try await withCheckedThrowingContinuation { continuation in
-                    Task {
-                        await self.registerWaiter(transactionUID: transactionUID, continuation: continuation)
-                    }
-                }
-            }
-            
-            group.addTask {
-                try await Task.sleep(for: timeout)
-                throw DICOMNetworkError.timeout
-            }
-            
-            guard let result = try await group.next() else {
-                throw DICOMNetworkError.timeout
-            }
-            
-            group.cancelAll()
-            return result
+
+        // The continuation is registered synchronously while still on the
+        // actor, so it is guaranteed to be in `pendingWaiters` before either
+        // the timeout task or an incoming result can try to resume it.
+        // Exactly one of receiveResult / timeoutWaiter / stop resumes it.
+        let timeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled else { return }
+            await self?.timeoutWaiter(transactionUID: transactionUID)
+        }
+        defer { timeoutTask.cancel() }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            pendingWaiters[transactionUID] = continuation
         }
     }
-    
+
     // MARK: - Internal Methods
-    
-    /// Registers a waiter for a commitment result
-    private func registerWaiter(
-        transactionUID: String,
-        continuation: CheckedContinuation<CommitmentResult, Error>
-    ) {
-        // Check if result already arrived
-        if let result = pendingResults.removeValue(forKey: transactionUID) {
-            continuation.resume(returning: result)
-            return
+
+    /// Fails a pending waiter with `.timeout` if it is still waiting
+    private func timeoutWaiter(transactionUID: String) {
+        if let continuation = pendingWaiters.removeValue(forKey: transactionUID) {
+            continuation.resume(throwing: DICOMNetworkError.timeout)
         }
-        
-        pendingWaiters[transactionUID] = continuation
     }
     
     /// Called when a commitment result is received

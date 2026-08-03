@@ -64,15 +64,52 @@ extension DICOMFile {
             }
         }
         
-        // The registry's pure-Swift codecs (JLISwift for JPEG, J2KSwiftCodec for
-        // JPEG 2000 / HTJ2K, plus JPEG-LS / RLE) decode to the *source* photometric
-        // interpretation — they do NOT implicitly convert YBR→RGB the way the retired
-        // ImageIO codecs did. So the decoded bytes still match the data set's
-        // Photometric Interpretation, and the renderer performs any YBR→RGB conversion
-        // itself (see PixelDataRenderer.convertYBRToRGB). Relabelling YBR as RGB here
-        // would suppress that conversion and wash out colour previews.
-        // Reference: DICOM PS3.3 C.7.6.3.1.2
-        return PixelData(data: decompressedData, descriptor: descriptor)
+        // Most registry codecs (J2KSwiftCodec for JPEG 2000 / HTJ2K, plus JPEG-LS /
+        // RLE, and SOF3 lossless JPEG) decode to the *source* photometric
+        // interpretation, so their bytes still match the data set's Photometric
+        // Interpretation and the renderer performs any YBR→RGB conversion itself.
+        // JPEG Baseline/Extended (SOF0/SOF1) are the exception — JLIDecoder converts
+        // YCbCr→RGB internally — so the tag is corrected to RGB below to avoid a
+        // double conversion. Reference: DICOM PS3.3 C.7.6.3.1.2
+        return PixelData(
+            data: decompressedData,
+            descriptor: Self.correctedDescriptorForDecodedBytes(descriptor, transferSyntaxUID: tsUID)
+        )
+    }
+
+    /// Returns a descriptor whose Photometric Interpretation matches the *decoded*
+    /// bytes for JPEG Baseline/Extended sources.
+    ///
+    /// JLIDecoder converts YCbCr→RGB internally when decoding SOF0/SOF1 lossy JPEG
+    /// (PS3.5 Table 8.2.1-1 permits YBR_FULL_422 or RGB going in), so a source tagged
+    /// YBR_FULL_422 yields RGB samples. Left uncorrected, `PixelDataRenderer` would
+    /// apply a second YBR→RGB conversion — turning black backgrounds green and
+    /// foregrounds magenta (the symptom seen on colour US cine loops). This mirrors
+    /// the correction in `CompressionManager.decodePixelDataInPlace`. SOF3 lossless
+    /// (.57/.70) never applies a colour transform, so its tag already matches and is
+    /// left untouched. Reference: DICOM PS3.3 C.7.6.3.1.2
+    static func correctedDescriptorForDecodedBytes(
+        _ descriptor: PixelDataDescriptor,
+        transferSyntaxUID: String
+    ) -> PixelDataDescriptor {
+        guard (transferSyntaxUID == TransferSyntax.jpegBaseline.uid
+                || transferSyntaxUID == TransferSyntax.jpegExtended.uid),
+              descriptor.samplesPerPixel == 3,
+              descriptor.photometricInterpretation.isYBR else {
+            return descriptor
+        }
+        return PixelDataDescriptor(
+            rows: descriptor.rows,
+            columns: descriptor.columns,
+            numberOfFrames: descriptor.numberOfFrames,
+            bitsAllocated: descriptor.bitsAllocated,
+            bitsStored: descriptor.bitsStored,
+            highBit: descriptor.highBit,
+            isSigned: descriptor.isSigned,
+            samplesPerPixel: descriptor.samplesPerPixel,
+            photometricInterpretation: .rgb,
+            planarConfiguration: descriptor.planarConfiguration
+        )
     }
 
     /// Extracts pixel data from the DICOM file, throwing detailed errors on failure
@@ -173,12 +210,15 @@ extension DICOMFile {
             }
         }
         
-        // The registry's pure-Swift codecs decode to the *source* photometric
-        // interpretation (no implicit YBR→RGB like the retired ImageIO codecs), so
-        // the decoded bytes still match the data set's Photometric Interpretation and
-        // the renderer performs any YBR→RGB conversion itself. See the matching note
-        // in `pixelData()`. Reference: DICOM PS3.3 C.7.6.3.1.2
-        return PixelData(data: decompressedData, descriptor: descriptor)
+        // JPEG Baseline/Extended decode yields RGB even from a YBR-tagged source
+        // (JLIDecoder converts internally); correct the descriptor so the renderer
+        // does not double-convert. Other codecs decode to the source photometric
+        // interpretation and are left unchanged. See the matching note and helper in
+        // `pixelData()`. Reference: DICOM PS3.3 C.7.6.3.1.2
+        return PixelData(
+            data: decompressedData,
+            descriptor: Self.correctedDescriptorForDecodedBytes(descriptor, transferSyntaxUID: tsUID)
+        )
     }
 
     /// Creates a PixelDataDescriptor from the file's image pixel attributes

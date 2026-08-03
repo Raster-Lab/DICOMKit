@@ -1,0 +1,239 @@
+// FrameRenderer.swift
+// DICOMStudio
+//
+// DICOM Studio — rendering one frame of a file on disk, arranged.
+//
+// Shared by the film preview and the viewer's unfocused tiles: both need "this
+// frame, windowed and arranged the way the user left it, at a size that suits
+// the box it goes in", and both must agree with what the printer will produce.
+
+import Foundation
+import DICOMKit
+import DICOMCore
+import DICOMPrintKit
+
+#if canImport(CoreGraphics)
+import CoreGraphics
+
+enum FrameRenderer {
+
+    /// Identity of a rendered frame: everything that changes its pixels.
+    ///
+    /// Caches must key on this rather than on file and frame alone. Two marks of
+    /// the same frame at different zooms are different pictures, and keying on
+    /// identity alone silently serves the first one for both — which is exactly
+    /// how a film preview ends up disagreeing with the viewer.
+    static func cacheKey(
+        path: String,
+        frameIndex: Int,
+        windowCenter: Double?,
+        windowWidth: Double?,
+        windowSpace: PrintWindowSpace = .storedValues,
+        presentation: ViewerPresentation?
+    ) -> String {
+        var parts: [String] = [path, String(frameIndex)]
+        parts.append(windowCenter.map { String($0) } ?? "-")
+        parts.append(windowWidth.map { String($0) } ?? "-")
+        // The same pair of numbers is two different pictures depending on the
+        // space, so it belongs in the key.
+        if windowCenter != nil { parts.append(windowSpace.rawValue) }
+        if let presentation {
+            parts.append(contentsOf: [
+                String(presentation.zoom),
+                String(presentation.panX), String(presentation.panY),
+                String(presentation.viewportWidth), String(presentation.viewportHeight),
+                String(presentation.quarterTurns),
+                presentation.flipHorizontal ? "H" : "",
+                presentation.flipVertical ? "V" : "",
+                presentation.invert ? "I" : ""
+            ])
+        }
+        return parts.joined(separator: "|")
+    }
+
+    /// Decodes, windows, arranges and scales one frame, off the main actor.
+    ///
+    /// A supplied window is normally already in stored-value space — it comes
+    /// from the live viewer, which divides the header VOI through the rescale
+    /// pair — so it is used as given. A window declared in output units (the
+    /// print sheet's job-wide window, which a user types in HU) is converted
+    /// first, through the same shared policy. Without a window at all, the
+    /// image's own is resolved through
+    /// the shared export policy: the header VOI *rescale-adjusted*, then the
+    /// frame's pixel range. That is the same resolution the focused viewport
+    /// performs on load, so an un-windowed tile matches the image beside it.
+    ///
+    /// Note what must NOT be used here: ``DICOMFile/renderFrameWithStoredWindow``
+    /// hands the raw Window Center straight to the renderer, which reads *stored*
+    /// pixels. On a CT with a large Rescale Intercept (−1024, −8192) a −615 HU
+    /// centre then sits far below every stored value and the frame washes out to
+    /// white.
+    ///
+    /// Arranging happens on the full-resolution frame and scaling last, so a
+    /// zoomed tile shows the detail it will print rather than a blow-up of a
+    /// thumbnail.
+    static func render(
+        path: String,
+        frameIndex: Int,
+        windowCenter: Double?,
+        windowWidth: Double?,
+        windowSpace: PrintWindowSpace = .storedValues,
+        presentation: ViewerPresentation?,
+        maxDimension: Int
+    ) async -> CGImage? {
+        // Decoded pixels are shared and reused: re-windowing or re-cropping the
+        // same frame must not re-read and re-decode the file, or a window/level
+        // drag renders at the speed of the codec.
+        guard let source = await FrameSourceCache.shared.source(forPath: path) else {
+            return nil
+        }
+
+        return await Task.detached(priority: .userInitiated) { () -> CGImage? in
+            let file = source.file
+            let renderer = PixelDataRenderer(
+                pixelData: source.pixelData, paletteColorLUT: source.paletteLUT)
+            let isMonochrome = source.pixelData.descriptor
+                .photometricInterpretation.isMonochrome
+
+            var image: CGImage?
+            if isMonochrome {
+                let window: WindowSettings
+                if let windowCenter, let windowWidth, windowWidth >= 1 {
+                    switch windowSpace {
+                    case .storedValues:
+                        window = WindowSettings(center: windowCenter, width: windowWidth)
+                    case .outputUnits:
+                        // The shared policy's explicit rung: output units in,
+                        // stored values out, through this file's rescale pair.
+                        window = DICOMImageExporter.determineWindowSettings(
+                            from: file, pixelData: source.pixelData, frameIndex: frameIndex,
+                            windowCenter: windowCenter, windowWidth: windowWidth)
+                    }
+                } else {
+                    window = DICOMImageExporter.determineWindowSettings(
+                        from: file, pixelData: source.pixelData, frameIndex: frameIndex,
+                        windowCenter: nil, windowWidth: nil)
+                }
+                image = renderer.renderMonochromeFrame(frameIndex, window: window)
+            } else if source.pixelData.descriptor.photometricInterpretation.isPaletteColor {
+                image = renderer.renderPaletteColorFrame(frameIndex)
+            } else {
+                image = renderer.renderColorFrame(frameIndex)
+            }
+            guard var image else { return nil }
+
+            // Overlay planes go on before the frame is cropped, turned or
+            // scaled: they are defined against the image's own pixel matrix, so
+            // burning them here means they travel with the picture instead of
+            // having to be re-registered against every arrangement.
+            image = OverlayPlaneRenderer.burningOverlays(
+                of: file.dataSet, onto: image, frameIndex: frameIndex)
+
+            if let presentation, !presentation.isIdentity {
+                image = applying(presentation, to: image) ?? image
+            }
+            return downscaled(image, maxDimension: maxDimension) ?? image
+        }.value
+    }
+
+    /// The window a frame would be rendered with if none is supplied.
+    ///
+    /// Needed to seed an edit: a mark made without ever opening the file carries
+    /// no window, and a window/level drag has to start from the values the cell
+    /// is actually showing rather than from zero. Resolved by the same export
+    /// policy ``render(path:frameIndex:windowCenter:windowWidth:presentation:maxDimension:)``
+    /// falls back to, so seeding changes nothing on screen until the user drags.
+    static func resolvedWindow(path: String, frameIndex: Int) async -> WindowSettings? {
+        guard let source = await FrameSourceCache.shared.source(forPath: path) else { return nil }
+        return DICOMImageExporter.determineWindowSettings(
+            from: source.file, pixelData: source.pixelData, frameIndex: frameIndex,
+            windowCenter: nil, windowWidth: nil)
+    }
+
+    // MARK: - Arrangement
+
+    /// Applies a presentation to a rendered frame: crop, rotate, flip, invert.
+    ///
+    /// The same `ViewerPresentation` the print path consumes, so what a preview
+    /// or tile shows is what the film gets.
+    static func applying(
+        _ presentation: ViewerPresentation,
+        to image: CGImage
+    ) -> CGImage? {
+        var result = image
+        if let region = presentation.visibleRegion(
+            imageWidth: image.width, imageHeight: image.height),
+           let cropped = image.cropping(to: CGRect(
+            x: region.x, y: region.y, width: region.width, height: region.height)) {
+            result = cropped
+        }
+
+        let quarterTurns = presentation.quarterTurns
+        let flipH = presentation.flipHorizontal
+        let flipV = presentation.flipVertical
+
+        if quarterTurns != 0 || flipH || flipV {
+            let swapsAxes = quarterTurns % 2 == 1
+            let outWidth = swapsAxes ? result.height : result.width
+            let outHeight = swapsAxes ? result.width : result.height
+            guard let context = CGContext(
+                data: nil,
+                width: outWidth,
+                height: outHeight,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            ) else { return result }
+
+            // CoreGraphics' origin is bottom-left while the viewer rotates in
+            // screen space, so the clockwise turn is negated here.
+            context.translateBy(x: Double(outWidth) / 2, y: Double(outHeight) / 2)
+            context.scaleBy(x: flipH ? -1 : 1, y: flipV ? -1 : 1)
+            context.rotate(by: Double(quarterTurns) * .pi / 2)
+            context.draw(result, in: CGRect(
+                x: -Double(result.width) / 2,
+                y: -Double(result.height) / 2,
+                width: Double(result.width),
+                height: Double(result.height)))
+            result = context.makeImage() ?? result
+        }
+
+        if presentation.invert {
+            result = ImageInversion.inverted(result) ?? result
+        }
+        return result
+    }
+
+    // MARK: - Scaling
+
+    /// Scales an image down so its longest edge is at most `maxDimension`.
+    ///
+    /// Only ever downscales: enlarging here would waste memory and add nothing,
+    /// since the view scales to its own box anyway.
+    static func downscaled(_ image: CGImage, maxDimension: Int) -> CGImage? {
+        let longest = max(image.width, image.height)
+        guard longest > maxDimension, maxDimension > 0 else { return image }
+
+        let scale = Double(maxDimension) / Double(longest)
+        let targetWidth = max(1, Int((Double(image.width) * scale).rounded()))
+        let targetHeight = max(1, Int((Double(image.height) * scale).rounded()))
+
+        // An 8-bit RGBA context: the source may be 16-bit grayscale or indexed,
+        // and matching that exactly buys nothing for a scaled-down copy.
+        guard let context = CGContext(
+            data: nil,
+            width: targetWidth,
+            height: targetHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+        return context.makeImage()
+    }
+}
+#endif

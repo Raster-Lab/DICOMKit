@@ -199,10 +199,48 @@ public struct CommandSet: Sendable, Hashable {
     public var moveDestination: String? {
         getString(.moveDestination)
     }
-    
+
     /// Sets the move destination AE title
     public mutating func setMoveDestination(_ destination: String) {
         setString(destination, for: .moveDestination)
+    }
+
+    // MARK: - Error Detail (PS3.7 Annex C)
+
+    /// Error Comment (0000,0902) — textual description of the error, when the
+    /// peer included one in a failure response.
+    public var errorComment: String? {
+        getString(.errorComment)
+    }
+
+    /// Sets the Error Comment
+    public mutating func setErrorComment(_ comment: String) {
+        setString(comment, for: .errorComment)
+    }
+
+    /// Error ID (0000,0903) — implementation-specific error identifier.
+    public var errorID: UInt16? {
+        getUInt16(.errorID)
+    }
+
+    /// Sets the Error ID
+    public mutating func setErrorID(_ id: UInt16) {
+        setUInt16(id, for: .errorID)
+    }
+
+    /// Offending Element (0000,0901) — tags of the elements that caused the
+    /// error (VR AT, VM 1-n): pairs of little-endian group/element numbers.
+    public var offendingElements: [Tag]? {
+        guard let data = getData(.offendingElement), data.count >= 4 else { return nil }
+        var tags: [Tag] = []
+        var offset = data.startIndex
+        while offset + 4 <= data.endIndex {
+            let group = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+            let element = UInt16(data[offset + 2]) | (UInt16(data[offset + 3]) << 8)
+            tags.append(Tag(group: group, element: element))
+            offset += 4
+        }
+        return tags.isEmpty ? nil : tags
     }
     
     // MARK: - Sub-operation Counts

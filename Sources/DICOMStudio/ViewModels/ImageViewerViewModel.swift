@@ -46,6 +46,20 @@ public final class ImageViewerViewModel {
     /// with no displayable pixel data.
     public var isWaveform: Bool { waveform != nil }
 
+    /// Parsed content when the loaded file is not a picture: a structured
+    /// report, an encapsulated document, a key object selection, a presentation
+    /// state. Non-nil disables the pixel path and drives the document display.
+    public var nonImageContent: ViewerNonImageContent?
+
+    /// Whether the loaded file holds something other than pixels or a waveform.
+    public var isNonImageContent: Bool { nonImageContent != nil }
+
+    /// What kind of content the viewer is currently showing.
+    public var contentKind: ViewerContentKind {
+        if let nonImageContent { return nonImageContent.kind }
+        return isWaveform ? .waveform : .image
+    }
+
     /// Whether an image is currently loading.
     public var isLoading: Bool = false
 
@@ -159,11 +173,15 @@ public final class ImageViewerViewModel {
     /// Whether the performance overlay is visible.
     public var showPerformanceOverlay: Bool = false
 
+    /// Whether the patient identification overlay is burned over the image.
+    ///
+    /// On by default: identifying the patient on the picture is the reading-room
+    /// expectation, and it is what reaches film when these images are printed.
+    /// See `ImageViewerViewModel+PatientOverlay.swift`.
+    public var showPatientOverlay: Bool = true
+
     /// Whether the DICOM tag inspector sheet is visible.
     public var showDICOMInspector: Bool = false
-
-    /// Whether the file importer dialog is presented.
-    public var isFileImporterPresented: Bool = false
 
     // MARK: - Series / Multi-File Navigation
 
@@ -200,6 +218,65 @@ public final class ImageViewerViewModel {
 
     /// Last render time in seconds.
     public var lastRenderTime: Double = 0.0
+
+    // MARK: - DICOM Print
+
+    /// Frames marked for printing, in film-cell order.
+    ///
+    /// Marking happens here in the viewer; the print sheet consumes this list.
+    /// See `ImageViewerViewModel+Print.swift` for the marking API.
+    public var printSelection = PrintSelectionModel()
+
+    /// Whether the print settings sheet is showing.
+    public var isPrintSheetPresented: Bool = false
+
+    /// Whether the tray of selected images is showing on the right.
+    public var isPrintTrayVisible: Bool = true
+
+    // MARK: - Tile Layout
+
+    /// The viewer's tile grid. 1×1 by default — one image, as before.
+    ///
+    /// The grid mirrors the film: tile order is film-cell order. See
+    /// `ImageViewerViewModel+Layout.swift`.
+    public internal(set) var layout: ViewerTileLayout = .single
+
+    /// Per-tile state. Empty at 1×1, where the view model itself is the tile.
+    public internal(set) var cells: [ViewerCellState] = []
+
+    /// The tile currently receiving gestures and window/level.
+    public internal(set) var focusedCellIndex: Int = 0
+
+    // MARK: - Study Series
+
+    /// Every series of the open study, for the viewer's series pane.
+    ///
+    /// Populated by the shell from the library. Empty when the viewer was given
+    /// loose files rather than a study, in which case the pane stays hidden.
+    /// See `ImageViewerViewModel+Series.swift`.
+    public internal(set) var studySeries: [ViewerSeriesEntry] = []
+
+    /// Study Instance UID of the series in ``studySeries``.
+    public internal(set) var studyInstanceUID: String?
+
+    /// Series the focused tile is showing, for the pane's "Current series" mark.
+    public internal(set) var currentSeriesUID: String?
+
+    /// Series shown in a tile at some point this session.
+    ///
+    /// Tracked so the pane can distinguish what has been looked at from what has
+    /// not — the reading-completeness cue a "Not yet visited" card carries.
+    public internal(set) var visitedSeriesUIDs: Set<String> = []
+
+    /// Whether the series pane is showing.
+    public var isSeriesPaneVisible: Bool = true
+
+    /// Whether stepping past either end of the series wraps round to the other.
+    ///
+    /// On by default: a tile is scrolled through with the wheel, and stopping
+    /// dead at the last image reads as a stuck viewer rather than as the end of
+    /// the series. See `ImageViewerViewModel+ImageNavigation.swift`.
+    public var isRepeatNavigationEnabled: Bool = true
 
     // MARK: - Codec Inspector (Phase 8)
 
@@ -257,29 +334,6 @@ public final class ImageViewerViewModel {
     }
 
     // MARK: - File Loading
-
-    /// Loads a DICOM file from a security-scoped URL.
-    ///
-    /// Use this overload when opening files from a file importer or drag-and-drop,
-    /// where the URL carries sandbox access rights.
-    ///
-    /// - Parameter url: A security-scoped URL to the DICOM file.
-    public func loadFile(from url: URL) {
-        clearSeriesState()
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let data = try Data(contentsOf: url)
-            try loadDICOMData(data, path: url.path)
-        } catch {
-            errorMessage = "Failed to load file: \(error.localizedDescription)"
-            isLoading = false
-        }
-    }
 
     /// Loads a DICOM file for viewing.
     ///
@@ -344,7 +398,12 @@ public final class ImageViewerViewModel {
     /// Internal file loader that does NOT reset series state.
     /// Used by both the public loadFile methods (after they clear series state)
     /// and by series navigation methods.
-    private func loadFileInternal(at path: String, securityScopedParent: URL?) {
+    /// Loads a file *without* touching series state.
+    ///
+    /// Internal rather than private so tile focus can move between files of the
+    /// loaded series: `loadFile(at:)` clears the series, which would throw away
+    /// navigation the moment the user clicked a second tile.
+    func loadFileInternal(at path: String, securityScopedParent: URL?) {
         if let scopedURL = securityScopedParent {
             isLoading = true
             errorMessage = nil
@@ -388,8 +447,9 @@ public final class ImageViewerViewModel {
     /// Shared implementation for loading parsed DICOM data.
     private func loadDICOMData(_ data: Data, path: String) throws {
         // Clear any prior waveform so a failed/non-waveform load can't leave a stale
-        // tracing on screen.
+        // tracing on screen. The same holds for a report or document.
         self.waveform = nil
+        self.nonImageContent = nil
 
         let file: DICOMFile
         do {
@@ -422,6 +482,21 @@ public final class ImageViewerViewModel {
            let parsed = try? WaveformParser.parse(from: ds),
            !parsed.multiplexGroups.isEmpty {
             self.waveform = parsed
+            self.currentImage = nil
+            self.numberOfFrames = 1
+            self.currentFrameIndex = 0
+            self.errorMessage = nil
+            self.isLoading = false
+            return
+        }
+
+        // Reports, encapsulated documents, key object selections and
+        // presentation states carry no Pixel Data. They are classified by SOP
+        // Class before the pixel path runs: falling through would report a
+        // perfectly valid SR as an image that failed to decode.
+        if let content = ViewerNonImageContentReader.content(
+            of: ds, sopClassUID: ds.string(for: .sopClassUID)) {
+            self.nonImageContent = content
             self.currentImage = nil
             self.numberOfFrames = 1
             self.currentFrameIndex = 0
@@ -473,26 +548,7 @@ public final class ImageViewerViewModel {
         self.rescaleIntercept = intercept
 
         // Extract window settings from header
-        headerWindowSettings = file.allWindowSettings()
-        if let firstWindow = headerWindowSettings.first {
-            // Header window settings are in output units (post-rescale).
-            // Convert to stored-value space since the renderer operates on raw stored values.
-            if slope != 0 {
-                windowCenter = (firstWindow.center - intercept) / slope
-                windowWidth = firstWindow.width / abs(slope)
-            } else {
-                windowCenter = firstWindow.center
-                windowWidth = firstWindow.width
-            }
-            voiLUTFunction = firstWindow.function.rawValue
-        } else {
-            // No header window settings — auto-calculate from actual pixel data range
-            if let pixData = file.pixelData(),
-               let range = pixData.pixelRange(forFrame: 0) {
-                windowCenter = Double(range.min + range.max) / 2.0
-                windowWidth = max(1.0, Double(range.max - range.min))
-            }
-        }
+        applyDefaultWindow(for: file, slope: slope, intercept: intercept)
 
         // Load modality presets
         let modality = file.dataSet.string(for: .modality) ?? ""
@@ -573,6 +629,23 @@ public final class ImageViewerViewModel {
             }
         }
 
+        // Anything the modality drew *over* the image rather than into it.
+        // Some Secondary Captures — Siemens' Patient Protocol is the standing
+        // example — carry pixel data that is entirely zero and put their whole
+        // content in a 1-bit overlay plane, so a viewer that renders only Pixel
+        // Data shows a black square where a page of text should be.
+        if let rendered = image {
+            image = OverlayPlaneRenderer.burningOverlays(
+                of: file.dataSet, onto: rendered, frameIndex: currentFrameIndex)
+        }
+
+        // Inversion is applied to the rendered frame rather than the window: the
+        // renderer has no invert option, and negating the window would clip
+        // differently for signed and rescaled modalities.
+        if isInverted, let rendered = image {
+            image = ImageInversion.inverted(rendered) ?? rendered
+        }
+
         lastRenderTime = Date().timeIntervalSince(start)
         currentImage = image
 
@@ -600,6 +673,47 @@ public final class ImageViewerViewModel {
     }
 
     // MARK: - Window/Level
+
+    /// Adopts a file's own presentation: its header VOI, or the pixel range when
+    /// it declares none.
+    ///
+    /// The renderer works in stored-value space, so header values (which are in
+    /// output units) are converted through the rescale pair.
+    /// The numbers come from ``DICOMImageExporter/determineWindowSettings`` — the
+    /// one window-resolution policy shared with export, the tile cache and the
+    /// film — so a tile and the viewport showing the same image cannot disagree.
+    func applyDefaultWindow(for file: DICOMFile, slope: Double, intercept: Double) {
+        headerWindowSettings = file.allWindowSettings()
+        if let firstWindow = headerWindowSettings.first {
+            voiLUTFunction = firstWindow.function.rawValue
+        }
+        guard let pixData = file.pixelData() else {
+            // No pixels to measure: the header VOI is all there is to go on.
+            guard let firstWindow = headerWindowSettings.first else { return }
+            if slope != 0 {
+                windowCenter = (firstWindow.center - intercept) / slope
+                windowWidth = firstWindow.width / abs(slope)
+            } else {
+                windowCenter = firstWindow.center
+                windowWidth = firstWindow.width
+            }
+            return
+        }
+        let window = DICOMImageExporter.determineWindowSettings(
+            from: file, pixelData: pixData, frameIndex: 0,
+            windowCenter: nil, windowWidth: nil)
+        windowCenter = window.center
+        windowWidth = window.width
+    }
+
+    /// Re-adopts the loaded file's default window, discarding any adjustment.
+    ///
+    /// Used when a tile has no window of its own — a freshly hung series must
+    /// read at its own VOI, not at whatever the previous image was set to.
+    func resetWindowToFileDefault() {
+        guard let file = dicomFile else { return }
+        applyDefaultWindow(for: file, slope: rescaleSlope, intercept: rescaleIntercept)
+    }
 
     /// Applies a window/level preset.
     ///
@@ -746,9 +860,13 @@ public final class ImageViewerViewModel {
         updateROIOnZoom()
     }
 
-    /// Resets zoom, pan, and rotation to defaults.
+    /// Resets the image back to how it looked when it was first opened: zoom,
+    /// pan, rotation, flip, window/level, and inversion all undone.
     public func resetView() {
         resetTransformations()
+        autoWindowLevel()
+        isInverted = false
+        renderCurrentFrame()
     }
 
     /// Resets all image transforms: zoom, pan, rotation, and flip.

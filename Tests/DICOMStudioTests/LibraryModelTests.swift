@@ -199,14 +199,20 @@ struct LibraryModelTests {
         #expect(library.seriesForStudy("study2").count == 1)
     }
 
-    @Test("Add duplicate study replaces existing")
+    @Test("Adding the same study again merges into it rather than replacing it")
     func testAddDuplicateStudy() {
         var library = LibraryModel()
-        library.addStudy(StudyModel(studyInstanceUID: "1.2.3", patientName: "Old Name"))
+        library.addStudy(StudyModel(
+            studyInstanceUID: "1.2.3", studyDescription: "CT ABDOMEN",
+            patientName: "Old Name"))
+        // A second file of the same study, with a different reading of the
+        // patient name and nothing else. A study is imported one file at a time,
+        // and what is already known must not be thrown away by a thinner header.
         library.addStudy(StudyModel(studyInstanceUID: "1.2.3", patientName: "New Name"))
 
         #expect(library.studyCount == 1)
-        #expect(library.studies["1.2.3"]?.patientName == "New Name")
+        #expect(library.studies["1.2.3"]?.patientName == "Old Name")
+        #expect(library.studies["1.2.3"]?.studyDescription == "CT ABDOMEN")
     }
 
     @Test("Toggle favorite on existing study")

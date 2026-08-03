@@ -1,7 +1,11 @@
 import Foundation
 import ArgumentParser
 import DICOMCore
+import DICOMKit
 import DICOMNetwork
+// Shared print core: image preparation, job options, workflow orchestration,
+// and console formatting — the same code paths DICOMStudio's print screen uses.
+import DICOMPrintKit
 
 // MARK: - Constants
 
@@ -167,44 +171,23 @@ struct StatusCommand: ParsableCommand {
         }
         
         let status = try runAsync {
-            try await DICOMPrintService.getPrinterStatus(configuration: config)
+            try await PrintWorkflow.printerStatus(configuration: config)
         }
-        
+
+        // Output is rendered by the shared formatter so the terminal and the
+        // DICOMStudio print console stay identical.
         switch format {
         case .text:
-            printStatusText(status)
+            PrintConsoleFormatter.printerStatusText(status).forEach(fprintln)
         case .json:
-            printStatusJSON(status)
+            if let json = PrintConsoleFormatter.printerStatusJSON(status) {
+                print(json)
+            }
         }
-        
+
         #else
         throw ValidationError("Network functionality is not available on this platform")
         #endif
-    }
-    
-    func printStatusText(_ status: PrinterStatus) {
-        fprintln("Printer Status")
-        fprintln("==============")
-        fprintln("Name: \(status.printerName ?? "Unknown")")
-        fprintln("Status: \(status.status)")
-        if let info = status.statusInfo {
-            fprintln("Status Info: \(info)")
-        }
-        fprintln("Is Normal: \(status.isNormal ? "Yes" : "No")")
-    }
-    
-    func printStatusJSON(_ status: PrinterStatus) {
-        var dict: [String: Any] = [
-            "status": status.status,
-            "isNormal": status.isNormal
-        ]
-        if let name = status.printerName { dict["name"] = name }
-        if let info = status.statusInfo { dict["statusInfo"] = info }
-        
-        if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
-           let json = String(data: data, encoding: .utf8) {
-            print(json)
-        }
     }
 }
 
@@ -260,10 +243,58 @@ struct SendCommand: ParsableCommand {
     
     @Option(name: .long, help: "Image layout: 1x1, 1x2, 2x1, 2x2, 2x3, 3x3, 3x4, 4x4, 4x5 (auto if not specified)")
     var layout: LayoutOption?
-    
+
+    @Option(name: .long, help: "Layout preset: single, comparison, grid, multi-phase (sets layout + film size + orientation; conflicts with --layout)")
+    var template: TemplateOption?
+
     @Option(name: .long, help: "Medium type: paper, clear-film, blue-film (default: paper)")
     var medium: MediumOption = .paper
-    
+
+    @Option(name: .long, help: "Magnification type: replicate, bilinear, cubic, none (default: replicate)")
+    var magnification: MagnificationOption = .replicate
+
+    @Option(name: .long, help: "Film destination: magazine, processor, bin-1, bin-2 (default: processor)")
+    var filmDestination: FilmDestinationOption = .processor
+
+    @Flag(name: .long, help: "Query printer status before printing; abort on FAILURE, warn on WARNING")
+    var checkStatus: Bool = false
+
+    @Flag(name: .customLong("verify"), help: "Perform a C-ECHO connectivity check against the printer before printing")
+    var verifyFirst: Bool = false
+
+    @Option(name: .long, help: "Output format: text, json (json writes the result object to stdout; diagnostics stay on stderr)")
+    var format: OutputFormat = .text
+
+    @Option(name: .long, help: "Color mode: grayscale, color (default: grayscale)")
+    var color: ColorModeOption = .grayscale
+
+    @Option(name: .long, help: "1-based frame to print from multi-frame files (default: 1)")
+    var frame: Int = 1
+
+    @Flag(name: .long, help: "Print every frame of multi-frame files (one image box per frame)")
+    var allFrames: Bool = false
+
+    @Flag(name: .long, help: "Send stored pixel values without preprocessing (no rescale/window/inversion). Compressed sources are still decoded.")
+    var raw: Bool = false
+
+    @Option(name: .long, help: "Explicit VOI window center (requires --window-width; overrides the data set's window)")
+    var windowCenter: Double?
+
+    @Option(name: .long, help: "Explicit VOI window width (requires --window-center)")
+    var windowWidth: Double?
+
+    @Option(name: .long, help: "Grayscale output bit depth: 8, 12, or 16 (default: 8; >8 sends 16-bit-allocated P-Values)")
+    var bitDepth: Int = 8
+
+    @Option(name: .long, help: "Presentation LUT shape: identity, inverse, lin-od (default: none)")
+    var presentationLut: PresentationLUTOption?
+
+    @Option(name: .long, help: "Annotation text to place on the film (repeatable; position is order given). Requires --annotation-format.")
+    var annotate: [String] = []
+
+    @Option(name: .long, help: "Printer-configured Annotation Display Format ID (required with --annotate)")
+    var annotationFormat: String?
+
     @Flag(name: .shortAndLong, help: "Recursively scan directories for DICOM files")
     var recursive: Bool = false
     
@@ -275,19 +306,81 @@ struct SendCommand: ParsableCommand {
     
     @Option(name: .long, help: "Connection timeout in seconds (default: 60)")
     var timeout: Int = 60
-    
+
+    @Option(name: .long, help: "Retry the print on connection/setup failure, up to N times with exponential backoff (default: 0)")
+    var retries: Int = 0
+
     mutating func run() throws {
         #if canImport(Network)
         let serverInfo = try parseServerURL(url)
-        
+
+        // Argument-surface checks (they name flags that only exist here);
+        // everything expressible on the request itself is validated by the
+        // shared PrintJobRequest.validate() below, with identical wording.
+        if template != nil && layout != nil {
+            throw ValidationError("--template and --layout are mutually exclusive; --template sets the layout")
+        }
+        if allFrames && frame != 1 {
+            throw ValidationError("--frame and --all-frames are mutually exclusive")
+        }
+        if (windowCenter == nil) != (windowWidth == nil) {
+            throw ValidationError("--window-center and --window-width must be given together")
+        }
+
+        // Build annotations (position follows the order given on the command line).
+        let printAnnotations = annotate.enumerated().map { index, text in
+            PrintAnnotation(position: UInt16(index + 1), text: text)
+        }
+
+        // One shared description of the job — the same value type the
+        // DICOMStudio print sheet builds from its controls.
+        let request = PrintJobRequest(
+            copies: copies,
+            priority: priority.printPriority,
+            mediumType: medium.mediumType,
+            filmDestination: filmDestination.filmDestination,
+            layoutSelection: {
+                if let template { return .template(template.preset) }
+                if let layout { return .explicit(layout.option) }
+                return .automatic
+            }(),
+            filmSize: filmSize.filmSize,
+            filmOrientation: orientation.orientation,
+            magnificationType: magnification.magnificationType,
+            presentationLUTShape: presentationLut?.shape,
+            annotations: printAnnotations,
+            annotationDisplayFormatID: annotationFormat,
+            colorMode: color.printColorMode,
+            frameSelection: allFrames ? .all : .single(frame),
+            raw: raw,
+            windowSettings: {
+                guard let center = windowCenter, let width = windowWidth else { return nil }
+                return WindowSettings(center: center, width: width)
+            }(),
+            bitDepth: bitDepth,
+            verifyFirst: verifyFirst,
+            checkStatus: checkStatus,
+            retries: retries,
+            dryRun: dryRun
+        )
+        do {
+            try request.validate()
+        } catch let error as PrintRequestError {
+            throw ValidationError(error.message)
+        }
+
+        let effectiveFilmSize = request.effectiveFilmSize
+        let effectiveOrientation = request.effectiveFilmOrientation
+
         let config = PrintConfiguration(
             host: serverInfo.host,
             port: serverInfo.port,
             callingAETitle: aet,
             calledAETitle: calledAet,
-            timeout: TimeInterval(timeout)
+            timeout: TimeInterval(timeout),
+            colorMode: color.printColorMode
         )
-        
+
         if verbose {
             fprintln("DICOM Print Tool v\(toolVersion)")
             fprintln("=======================")
@@ -295,12 +388,25 @@ struct SendCommand: ParsableCommand {
             fprintln("Calling AE: \(aet)")
             fprintln("Called AE: \(calledAet)")
             fprintln("Copies: \(copies)")
-            fprintln("Film Size: \(filmSize.filmSize.rawValue)")
-            fprintln("Orientation: \(orientation.orientation.rawValue)")
+            fprintln("Film Size: \(effectiveFilmSize.rawValue)")
+            fprintln("Orientation: \(effectiveOrientation.rawValue)")
             fprintln("Priority: \(priority.printPriority.rawValue)")
             fprintln("Medium: \(medium.mediumType.rawValue)")
+            fprintln("Color Mode: \(color.printColorMode.rawValue)")
+            if let presentationLut = presentationLut {
+                fprintln("Presentation LUT: \(presentationLut.shape.rawValue)")
+            }
+            if !printAnnotations.isEmpty, let fmt = annotationFormat {
+                fprintln("Annotations: \(printAnnotations.count) (format \(fmt))")
+            }
+            if let template = template {
+                fprintln("Template: \(template.rawValue)")
+            }
             if let layout = layout {
                 fprintln("Layout: \(layout.rawValue)")
+            }
+            if retries > 0 {
+                fprintln("Retries: \(retries)")
             }
             if dryRun {
                 fprintln("Mode: DRY RUN (no files will be printed)")
@@ -330,89 +436,116 @@ struct SendCommand: ParsableCommand {
             return
         }
         
-        // Create print options
-        let options = PrintOptions(
-            numberOfCopies: copies,
-            priority: priority.printPriority,
-            filmSize: filmSize.filmSize,
-            filmOrientation: orientation.orientation,
-            mediumType: medium.mediumType
-        )
-        
-        // Read and print files
-        let parser = DICOMParser()
-        var imageDataList: [Data] = []
-        for path in filesToPrint {
-            guard let data = FileManager.default.contents(atPath: path) else {
-                throw ValidationError("Cannot read file: \(path)")
+        // Pre-flight checks, image preparation, and the print itself all run
+        // through the shared print core (DICOMPrintKit) — the same code the
+        // DICOMStudio print screen calls.
+        let printRequest = request
+        let printConfig = config
+        let beVerbose = verbose
+
+        // Diagnostics: verbose-only detail is gated here; notices, warnings,
+        // and printer events (N-EVENT-REPORT) are always shown.
+        let diagnostics: PrintWorkflow.DiagnosticHandler = { diagnostic in
+            switch diagnostic {
+            case .info(let message):
+                if beVerbose { fprintln(message) }
+            case .notice(let message):
+                fprintln(message)
+            case .warning(let message):
+                fprintln(message)
+            case .event(let event):
+                if event.isFault {
+                    fprintln("⚠ \(event.summary)")
+                } else if beVerbose {
+                    fprintln("• \(event.summary)")
+                }
             }
-            
-            // Parse DICOM and extract pixel data
-            let dataSet = try parser.parse(data: data)
-            
-            // Get pixel data from the dataset
-            guard let pixelData = dataSet.data(for: .pixelData) else {
-                throw ValidationError("No pixel data found in: \(path)")
-            }
-            
-            imageDataList.append(pixelData)
         }
-        
-        // Print based on number of images
-        if imageDataList.count == 1 {
-            // Single image print
-            if verbose {
-                fprintln("Printing single image...")
-            }
-            
-            let result = try runAsync {
-                try await DICOMPrintService.printImage(
-                    configuration: config,
-                    imageData: imageDataList[0],
-                    options: options
+
+        do {
+            try runAsync {
+                try await PrintWorkflow.preflight(
+                    configuration: printConfig,
+                    request: printRequest,
+                    diagnostics: diagnostics
                 )
             }
-            
-            printResult(result, verbose: verbose)
-        } else {
-            // Multi-image print
-            if verbose {
-                fprintln("Printing \(imageDataList.count) images...")
-            }
-            
-            let result = try runAsync {
-                try await DICOMPrintService.printImages(
-                    configuration: config,
-                    images: imageDataList,
-                    options: options
+        } catch let error as PrintRequestError {
+            throw ValidationError(error.message)
+        } catch is PrintWorkflowError {
+            // The explanatory line was already emitted by the diagnostics hook.
+            throw ExitCode.failure
+        }
+
+        // Read, decode, and prepare files for printing.
+        //
+        // - Encapsulated sources (JPEG/J2K/JPEG-LS/RLE) are decoded to native
+        //   frames — Basic Grayscale/Color Image Boxes require uncompressed
+        //   pixel data (PS3.3 C.13.5).
+        // - --frame / --all-frames select frames from multi-frame files; each
+        //   selected frame becomes one image box.
+        // - Unless --raw, each frame runs through ImagePreprocessor (rescale →
+        //   VOI window → MONOCHROME1 inversion → 8-bit MONOCHROME2, or 8-bit
+        //   RGB/grayscale for color sources) so the print matches clinical
+        //   presentation instead of raw stored values.
+        let inputFiles = filesToPrint
+        let images: [PreparedPrintImage]
+        do {
+            images = try runAsync {
+                try await PrintImagePreparer().prepare(
+                    paths: inputFiles,
+                    request: printRequest,
+                    onProgress: { line in if beVerbose { fprintln(line) } }
                 )
             }
-            
-            printResult(result, verbose: verbose)
+        } catch let error as PrintRequestError {
+            throw ValidationError(error.message)
         }
-        
+
+        if verbose {
+            fprintln("Printing \(images.count) image(s)...")
+            let plan = printRequest.plan(forImageCount: images.count)
+            if plan.filmCount > 1 {
+                fprintln(PrintConsoleFormatter.planSummary(plan))
+            }
+        }
+
+        let result: PrintResult
+        do {
+            result = try runAsync {
+                try await PrintWorkflow.execute(
+                    configuration: printConfig,
+                    request: printRequest,
+                    images: images,
+                    diagnostics: diagnostics
+                )
+            }
+        } catch let error as PrintRequestError {
+            throw ValidationError(error.message)
+        }
+
+        // Output contract (P3-2): machine-readable result on stdout in JSON
+        // mode; human-readable text and diagnostics always on stderr.
+        switch format {
+        case .text:
+            PrintConsoleFormatter.printResultText(result).forEach(fprintln)
+        case .json:
+            if let json = PrintConsoleFormatter.printResultJSON(result) {
+                print(json)
+            }
+        }
+
+        // Automation contract: a failed print must exit non-zero. The message
+        // was already emitted above, so exit silently with failure.
+        if !result.success {
+            throw ExitCode.failure
+        }
+
         #else
         throw ValidationError("Network functionality is not available on this platform")
         #endif
     }
-    
-    func printResult(_ result: PrintResult, verbose: Bool) {
-        if result.success {
-            fprintln("✓ Print job submitted successfully")
-            if let jobUID = result.printJobUID {
-                fprintln("  Print Job UID: \(jobUID)")
-            }
-            if let sessionUID = result.filmSessionUID {
-                fprintln("  Film Session UID: \(sessionUID)")
-            }
-        } else {
-            fprintln("✗ Print failed")
-            if let error = result.errorMessage {
-                fprintln("  Error: \(error)")
-            }
-        }
-    }
-    
+
     func gatherFiles(from paths: [String], recursive: Bool) throws -> [String] {
         var files: [String] = []
         let fileManager = FileManager.default
@@ -597,55 +730,26 @@ struct JobCommand: ParsableCommand {
             fprintln("")
         }
         
+        let printJobUID = jobId
         let status = try runAsync {
-            try await DICOMPrintService.getPrintJobStatus(
+            try await PrintWorkflow.jobStatus(
                 configuration: config,
-                printJobUID: jobId
+                printJobUID: printJobUID
             )
         }
-        
+
         switch format {
         case .text:
-            printJobStatusText(status)
+            PrintConsoleFormatter.jobStatusText(status).forEach(fprintln)
         case .json:
-            printJobStatusJSON(status)
+            if let json = PrintConsoleFormatter.jobStatusJSON(status) {
+                print(json)
+            }
         }
-        
+
         #else
         throw ValidationError("Network functionality is not available on this platform")
         #endif
-    }
-    
-    func printJobStatusText(_ status: PrintJobStatus) {
-        fprintln("Print Job Status")
-        fprintln("================")
-        fprintln("Job UID: \(status.printJobUID)")
-        fprintln("Status: \(status.executionStatus)")
-        if let info = status.executionStatusInfo {
-            fprintln("Status Info: \(info)")
-        }
-        if let creationDate = status.creationDate {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .medium
-            fprintln("Created: \(formatter.string(from: creationDate))")
-        }
-    }
-    
-    func printJobStatusJSON(_ status: PrintJobStatus) {
-        var dict: [String: Any] = [
-            "jobUID": status.printJobUID,
-            "status": status.executionStatus
-        ]
-        if let info = status.executionStatusInfo { dict["statusInfo"] = info }
-        if let creationDate = status.creationDate {
-            dict["creationDate"] = ISO8601DateFormatter().string(from: creationDate)
-        }
-        
-        if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
-           let json = String(data: data, encoding: .utf8) {
-            print(json)
-        }
     }
 }
 
@@ -836,26 +940,64 @@ enum OutputFormat: String, ExpressibleByArgument {
 
 enum FilmSizeOption: String, ExpressibleByArgument {
     case size8x10 = "8x10"
+    case size8_5x11 = "8.5x11"
     case size10x12 = "10x12"
     case size10x14 = "10x14"
     case size11x14 = "11x14"
     case size11x17 = "11x17"
     case size14x14 = "14x14"
     case size14x17 = "14x17"
+    case size24x24cm = "24x24cm"
+    case size24x30cm = "24x30cm"
     case a4
     case a3
-    
+
     var filmSize: FilmSize {
         switch self {
         case .size8x10: return .size8InX10In
+        case .size8_5x11: return .size8_5InX11In
         case .size10x12: return .size10InX12In
         case .size10x14: return .size10InX14In
         case .size11x14: return .size11InX14In
         case .size11x17: return .size11InX17In
         case .size14x14: return .size14InX14In
         case .size14x17: return .size14InX17In
+        case .size24x24cm: return .size24CmX24Cm
+        case .size24x30cm: return .size24CmX30Cm
         case .a4: return .a4
         case .a3: return .a3
+        }
+    }
+}
+
+enum MagnificationOption: String, ExpressibleByArgument {
+    case replicate
+    case bilinear
+    case cubic
+    case none
+
+    var magnificationType: MagnificationType {
+        switch self {
+        case .replicate: return .replicate
+        case .bilinear: return .bilinear
+        case .cubic: return .cubic
+        case .none: return MagnificationType.none
+        }
+    }
+}
+
+enum FilmDestinationOption: String, ExpressibleByArgument {
+    case magazine
+    case processor
+    case bin1 = "bin-1"
+    case bin2 = "bin-2"
+
+    var filmDestination: FilmDestination {
+        switch self {
+        case .magazine: return .magazine
+        case .processor: return .processor
+        case .bin1: return .bin1
+        case .bin2: return .bin2
         }
     }
 }
@@ -897,19 +1039,47 @@ enum LayoutOption: String, ExpressibleByArgument {
     case layout4x4 = "4x4"
     case layout4x5 = "4x5"
     
-    var imageDisplayFormat: String {
+    /// The shared layout option this argument maps to (same raw values).
+    var option: PrintLayoutOption {
+        // Raw values are identical by construction; the force-unwrap is
+        // covered by LayoutOptionMappingTests-style parity on the token table.
+        PrintLayoutOption(rawValue: rawValue) ?? .layout1x1
+    }
+
+    /// Rows and columns for this layout (RxC).
+    var printLayout: PrintLayout { option.layout }
+}
+
+enum PresentationLUTOption: String, ExpressibleByArgument {
+    case identity
+    case inverse
+    case linOD = "lin-od"
+
+    var shape: PresentationLUTShape {
         switch self {
-        case .layout1x1: return "STANDARD\\1,1"
-        case .layout1x2: return "STANDARD\\1,2"
-        case .layout2x1: return "STANDARD\\2,1"
-        case .layout2x2: return "STANDARD\\2,2"
-        case .layout2x3: return "STANDARD\\2,3"
-        case .layout3x3: return "STANDARD\\3,3"
-        case .layout3x4: return "STANDARD\\3,4"
-        case .layout4x4: return "STANDARD\\4,4"
-        case .layout4x5: return "STANDARD\\4,5"
+        case .identity: return .identity
+        case .inverse: return .inverse
+        case .linOD: return .linearOpticalDensity
         }
     }
+}
+
+enum TemplateOption: String, ExpressibleByArgument {
+    case single
+    case comparison
+    case grid
+    case multiPhase = "multi-phase"
+
+    /// The shared preset this argument maps to (same raw values).
+    var preset: PrintTemplatePreset {
+        PrintTemplatePreset(rawValue: rawValue) ?? .single
+    }
+
+    /// The built-in `PrintTemplate` this option maps to.
+    var template: PrintTemplate { preset.template }
+
+    /// The image layout (rows × columns) for this template.
+    var printLayout: PrintLayout { preset.layout }
 }
 
 enum MediumOption: String, ExpressibleByArgument {
@@ -929,6 +1099,22 @@ enum MediumOption: String, ExpressibleByArgument {
 enum ColorModeOption: String, ExpressibleByArgument {
     case grayscale
     case color
+
+    var printColorMode: DICOMNetwork.PrintColorMode {
+        switch self {
+        case .grayscale: return .grayscale
+        case .color: return .color
+        }
+    }
+
+    /// The DICOMKit-side color mode used by ImagePreprocessor (a distinct type
+    /// from DICOMNetwork.PrintColorMode, resolved here to avoid ambiguity).
+    var preprocessColorMode: DICOMKit.PrintColorMode {
+        switch self {
+        case .grayscale: return .grayscale
+        case .color: return .color
+        }
+    }
 }
 
 // MARK: - Printer Configuration Manager
@@ -1030,7 +1216,11 @@ func parseServerURL(_ urlString: String) throws -> (scheme: String, host: String
     
     let port: UInt16
     if let urlPort = url.port {
-        port = UInt16(urlPort)
+        // UInt16(urlPort) would trap on out-of-range values (P2-5).
+        guard let validPort = UInt16(exactly: urlPort), validPort > 0 else {
+            throw ValidationError("Port \(urlPort) is out of range (1-65535)")
+        }
+        port = validPort
     } else {
         port = 11112 // Default DICOM print port
     }

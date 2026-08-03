@@ -129,6 +129,17 @@ number of committed Tier‑2 parity scenarios that machine‑verify byte‑exact
 | `dicom-mwl` | query · create | `DICOMModalityWorklistService` | `DICOMNetwork` | 0 |
 | `dicom-mpps` | create · update | `DICOMMPPSService` | `DICOMNetwork` | 0 |
 | `dicom-wado` | WADO‑RS · WADO‑URI · QIDO‑RS · STOW‑RS · UPS‑RS | `DICOMwebClient` / `WADOURIClient` | `DICOMWeb` | 0 |
+| `dicom-print` | status · send · job · list‑printers · add‑printer · remove‑printer | `PrintImagePreparer` / `PrintJobRequest` / `PrintWorkflow` / `PrintConsoleFormatter` | `DICOMPrintKit` | — |
+| `dicom-printscp` | serve · simulate · status · queues | `PrintSCPSettings` / `PrintSCPService` / `PrintSCPConsole` / `PrintSCPSimulator` | `DICOMPrintKit` | — |
+
+The two print tools are the clearest instance of the pattern in both directions: the SCU's
+engines are shared with Studio's print sheet, and the SCP's with Studio's Print SCP screen. On
+the SCP side the app surface came first, so the sharing was done by **moving** the settings
+type, the assembly and the wording out of `DICOMStudio` into `DICOMPrintKit` — the view model
+now owns only what a window owns (retained films, selection, button state). Neither print tool
+is in the CLI‑parity harness (`CLIContracts.json` covers the 36 file‑processing tools); their
+equivalence is covered by tests instead — `Tests/DICOMPrintKitTests/PrintSCPSharedCoreTests.swift`
+runs a real SCU into a listener assembled exactly as both surfaces assemble one.
 
 Two helper engines are reused across several tools: `UIDGenerator` (DICOMCore) and
 `UIDDictionary` (DICOMDictionary) back both `dicom-uid` and `dicom-image`;

@@ -399,12 +399,22 @@ public enum DICOMNetworkError: Error, Sendable {
     /// Print operation failed with a DIMSE status
     ///
     /// Used for Print Management Service failures (Film Session, Film Box, Print Job operations).
-    case printOperationFailed(DIMSEStatus)
-    
+    /// `detail` carries peer-supplied diagnostic text — Error Comment (0000,0902) and,
+    /// when present, Error ID (0000,0903) — so users see e.g. "OUT OF FILM" instead of
+    /// only a numeric status.
+    case printOperationFailed(DIMSEStatus, detail: String?)
+
     /// Unexpected response received
     ///
     /// The response received did not match the expected format or content.
     case unexpectedResponse
+}
+
+extension DICOMNetworkError {
+    /// Backward-compatible factory for ``printOperationFailed(_:detail:)`` without detail text.
+    public static func printOperationFailed(_ status: DIMSEStatus) -> DICOMNetworkError {
+        .printOperationFailed(status, detail: nil)
+    }
 }
 
 // MARK: - CustomStringConvertible
@@ -461,7 +471,10 @@ extension DICOMNetworkError: CustomStringConvertible {
                 message += ". \(details)"
             }
             return message
-        case .printOperationFailed(let status):
+        case .printOperationFailed(let status, let detail):
+            if let detail = detail, !detail.isEmpty {
+                return "Print operation failed: \(status) — \(detail)"
+            }
             return "Print operation failed: \(status)"
         case .unexpectedResponse:
             return "Unexpected response received"
@@ -687,7 +700,10 @@ extension DICOMNetworkError {
                 return .retry
             }
             return .noRecovery(reason: "Partial operation completed with failures")
-        case .printOperationFailed(let status):
+        case .printOperationFailed(let status, let detail):
+            if let detail = detail, !detail.isEmpty {
+                return .noRecovery(reason: "Print operation failed with status: \(status) — \(detail)")
+            }
             return .noRecovery(reason: "Print operation failed with status: \(status)")
         case .unexpectedResponse:
             return .checkConfiguration(details: "Verify server compatibility and presentation context negotiation")
@@ -750,7 +766,10 @@ extension DICOMNetworkError {
                 base += ". \(d)"
             }
             return base + "."
-        case .printOperationFailed(let status):
+        case .printOperationFailed(let status, let detail):
+            if let detail = detail, !detail.isEmpty {
+                return "The print operation failed with DIMSE status: \(status). Printer reported: \(detail)."
+            }
             return "The print operation failed with DIMSE status: \(status)."
         case .unexpectedResponse:
             return "The server sent an unexpected response. Verify server compatibility and protocol version."

@@ -2596,7 +2596,44 @@ let annotatedData = try await annotator.addAnnotations(
 )
 ```
 
+#### Print SCP — Printer Emulator (2026-07)
+
+DICOMKit also implements the **SCP** half of Print Management: `DICOMPrintServer`
+(`DICOMNetwork`) accepts print jobs from any Print SCU — modality, workstation or third-party
+tool — and `FilmComposer` (`DICOMPrintKit`) composes the finished film, which is delivered to
+one or more output sinks.
+
+```swift
+import DICOMNetwork
+import DICOMPrintKit
+
+let screen = ScreenSink()                       // live films, for on-screen display
+let handler = FilmComposingPrintHandler(
+    sink: CompositePrintSink([screen, PDFSink(directory: filmsURL)])
+)
+
+let server = DICOMPrintServer(
+    configuration: PrintSCPConfiguration(aeTitle: "DCMPRINT", port: 11112),
+    delegate: handler
+)
+try await server.start()
+
+for await film in await screen.filmStream() {
+    let info = film.info
+    print("\(info.filledImageBoxCount) images on \(info.filmSize) from \(info.callingAETitle)")
+}
+```
+
+- Full N-service support (N-CREATE / N-SET / N-GET / N-ACTION / N-DELETE / N-EVENT-REPORT)
+  across Film Session, Film Box, Grayscale/Color Image Box, Printer, Print Job, Presentation
+  LUT and Basic Annotation Box, with the PS3.4 H.4 lifecycle.
+- Explicit **and** Implicit VR Little Endian, including sequences and image-box `PixelData`.
+- Sinks: `ScreenSink`, `PDFSink`, `ImageSink` (PNG/TIFF), `PaperPrinterSink` (CUPS, opt-in),
+  composable via `CompositePrintSink`.
+- Verified against **DCMTK 3.7.0** in both directions.
+
 **Print Management Resources:**
+- 📄 [PRINT_CONFORMANCE.md](PRINT_CONFORMANCE.md) - Print conformance statement (SCU **and** SCP)
 - 📖 [Print Management Guide](Sources/DICOMNetwork/DICOMNetwork.docc/PrintManagementGuide.md) - Complete API reference
 - 📚 [Getting Started with Printing](Documentation/GettingStartedWithPrinting.md) - Beginner-friendly tutorial
 - 🔧 [Print Best Practices](Documentation/PrintWorkflowBestPractices.md) - Production patterns

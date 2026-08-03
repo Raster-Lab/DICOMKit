@@ -120,11 +120,18 @@ let package = Package(
             name: "dicom-echo",
             targets: ["dicom-echo"]
         ),
-        // Phase 1 scope: exclude dicom-print because it is outside JPEG 2000 validation.
-        // .executable(
-        //     name: "dicom-print",
-        //     targets: ["dicom-print"]
-        // ),
+        // Re-enabled 2026-07-22 (owner approved) after the print enhancement plan
+        // Milestones A–C/E brought the tool to production-grade; previously excluded
+        // under Phase-1 (JPEG 2000 validation) scope.
+        .executable(
+            name: "dicom-print",
+            targets: ["dicom-print"]
+        ),
+        // The receiving half of dicom-print: the printer emulator, headless.
+        .executable(
+            name: "dicom-printscp",
+            targets: ["dicom-printscp"]
+        ),
         .executable(
             name: "dicom-mwl",
             targets: ["dicom-mwl"]
@@ -200,6 +207,10 @@ let package = Package(
         //     name: "dicom-server",
         //     targets: ["dicom-server"]
         // ),
+        .library(
+            name: "DICOMPrintKit",
+            targets: ["DICOMPrintKit"]
+        ),
         .library(
             name: "DICOMStudio",
             targets: ["DICOMStudio"]
@@ -286,6 +297,20 @@ let package = Package(
         .target(
             name: "DICOMToolbox"
         ),
+        // Shared DICOM Print core: image preparation, job options, workflow
+        // orchestration, and console formatting used by BOTH the dicom-print CLI
+        // and DICOMStudio. It sits above DICOMKit (pixel decode/preprocess) and
+        // DICOMNetwork (Print SCU DIMSE), which is why it is its own target —
+        // DICOMKit itself must not gain a networking dependency.
+        .target(
+            name: "DICOMPrintKit",
+            dependencies: [
+                "DICOMCore",
+                "DICOMDictionary",
+                "DICOMKit",
+                "DICOMNetwork"
+            ]
+        ),
         .testTarget(
             name: "DICOMCoreTests",
             dependencies: [
@@ -340,6 +365,7 @@ let package = Package(
                 "CompressionManagerMetricsTests.swift",
                 "CompressionManagerJPEGEngineTests.swift",
                 "CompressionManagerPhotometricInterpretationTests.swift",
+                "DICOMFilePixelDataYBRDecodeTests.swift",
                 "LossyImageCompressionAttributesTests.swift",
                 "CompressedPreviewRenderParityTests.swift",
                 "CompressionConsoleTests.swift",
@@ -350,10 +376,14 @@ let package = Package(
                 "PerformanceTests/SIMDImageProcessorTests.swift"
             ]
         ),
-        // .testTarget(
-        //     name: "DICOMNetworkTests",
-        //     dependencies: ["DICOMNetwork"]
-        // ),
+        .testTarget(
+            name: "DICOMNetworkTests",
+            dependencies: ["DICOMNetwork", "DICOMCore", "DICOMKit"],
+            // PACSIntegrationTests requires a live PACS and has drifted from the
+            // current DICOMCore API (Tag(group:element:) labels, DataSet, audit
+            // logger types). Quarantined from the unit-test target until ported.
+            exclude: ["PACSIntegrationTests.swift"]
+        ),
         // Security-critical, no-network regression coverage stays enabled even
         // while the broader legacy DICOMNetworkTests target remains out of scope.
         .testTarget(
@@ -363,6 +393,12 @@ let package = Package(
         .testTarget(
             name: "DICOMWebTests",
             dependencies: ["DICOMWeb", "DICOMKit"]
+        ),
+        // Film composition and output sinks (Print SCP Milestones C/D), plus
+        // the emulator end-to-end: SCU → Print SCP → composer → sink.
+        .testTarget(
+            name: "DICOMPrintKitTests",
+            dependencies: ["DICOMPrintKit", "DICOMNetwork", "DICOMCore"]
         ),
         .testTarget(
             name: "DICOMToolboxTests",
@@ -643,18 +679,33 @@ let package = Package(
             path: "Sources/dicom-echo",
             exclude: ["README.md"]
         ),
-        // Phase 1 scope: exclude dicom-print because it is outside JPEG 2000 validation.
-        // .executableTarget(
-        //     name: "dicom-print",
-        //     dependencies: [
-        //         "DICOMKit",
-        //         "DICOMCore",
-        //         "DICOMNetwork",
-        //         .product(name: "ArgumentParser", package: "swift-argument-parser")
-        //     ],
-        //     path: "Sources/dicom-print",
-        //     exclude: ["README.md"]
-        // ),
+        // Re-enabled 2026-07-22 (owner approved) — see the matching product entry above.
+        .executableTarget(
+            name: "dicom-print",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMNetwork",
+                "DICOMPrintKit",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-print",
+            exclude: ["README.md"]
+        ),
+        // Milestone F of DICOM_PRINT_SCP_PLAN.md — a thin shell over the same
+        // DICOMPrintKit types DICOM Studio's Print SCP screen runs.
+        .executableTarget(
+            name: "dicom-printscp",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMNetwork",
+                "DICOMPrintKit",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-printscp",
+            exclude: ["README.md"]
+        ),
         .executableTarget(
             name: "dicom-mwl",
             dependencies: [
@@ -863,6 +914,7 @@ let package = Package(
                 "DICOMCore",
                 "DICOMDictionary",
                 "DICOMNetwork",
+                "DICOMPrintKit",
                 "DICOMWeb"
             ],
             path: "Sources/DICOMStudio",
@@ -900,7 +952,9 @@ let package = Package(
         ),
         .testTarget(
             name: "DICOMStudioTests",
-            dependencies: ["DICOMStudio", "DICOMWeb"]
+            // DICOMPrintKit: the viewer-presentation geometry and film-pixel
+            // transform the print path bakes into marks.
+            dependencies: ["DICOMStudio", "DICOMWeb", "DICOMPrintKit", "DICOMNetwork"]
         ),
         // Tier-2 output-parity harness: drives the in-app Studio reimplementations
         // (CLIWorkshopViewModel.executeCommand) headlessly against the bundled

@@ -104,13 +104,109 @@ dicom-print remove-printer --name radiology-printer
 | Option | Description |
 |--------|-------------|
 | `--copies` | Number of copies (default: 1) |
-| `--film-size` | Film size: 8x10, 10x12, 10x14, 11x14, 11x17, 14x14, 14x17, a4, a3 |
+| `--film-size` | Film size: 8x10, 8.5x11, 10x12, 10x14, 11x14, 11x17, 14x14, 14x17, 24x24cm, 24x30cm, a4, a3 |
+| `--magnification` | Magnification type: replicate, bilinear, cubic, none (default: replicate) |
+| `--film-destination` | Film destination: magazine, processor, bin-1, bin-2 (default: processor) |
+| `--check-status` | Query printer status first; abort on FAILURE, warn on WARNING |
+| `--verify` | C-ECHO connectivity check against the printer before printing |
 | `--orientation` | Film orientation: portrait, landscape |
 | `--priority` | Print priority: low, medium, high |
-| `--layout` | Image layout: 1x1, 1x2, 2x1, 2x2, 2x3, 3x3, 3x4, 4x4, 4x5 |
+| `--layout` | Image layout: 1x1, 1x2, 2x1, 2x2, 2x3, 3x3, 3x4, 4x4, 4x5 (auto if omitted) |
+| `--template` | Layout preset: single, comparison, grid, multi-phase (sets layout + film size + orientation; conflicts with `--layout`) |
 | `--medium` | Medium type: paper, clear-film, blue-film |
+| `--color` | Color mode: grayscale, color (default: grayscale) |
+| `--frame` | 1-based frame to print from multi-frame files (default: 1) |
+| `--all-frames` | Print every frame of multi-frame files (one image box per frame) |
+| `--raw` | Send stored pixel values without preprocessing (compressed sources are still decoded) |
+| `--window-center` / `--window-width` | Explicit VOI window (paired; overrides the data set's window) |
+| `--bit-depth` | Grayscale output depth: 8, 12, or 16 (default: 8) |
+| `--presentation-lut` | Presentation LUT shape: identity, inverse, lin-od (default: none) |
+| `--annotate` | Annotation text on the film (repeatable; requires `--annotation-format`) |
+| `--annotation-format` | Printer-configured Annotation Display Format ID |
+| `--retries` | Retry on connection/setup failure, up to N times with backoff (default: 0) |
 | `--recursive` / `-r` | Recursively scan directories |
 | `--dry-run` | Show what would be printed without printing |
+
+### Pixel preprocessing
+
+By default `send` prepares each frame for film output: encapsulated transfer
+syntaxes (JPEG, JPEG 2000, JPEG-LS, RLE) are decoded to native pixels, then the
+frame is passed through the print pipeline — Rescale Slope/Intercept, VOI
+window (from the data set, or auto-calculated), MONOCHROME1 inversion — and
+emitted as 8-bit MONOCHROME2 (grayscale mode) or 8-bit RGB (color mode). This
+matches what a viewer shows clinically. Use `--raw` to bypass the pipeline and
+send stored values unchanged (compressed sources are still decoded first, since
+Basic Image Boxes require uncompressed pixel data).
+
+A failed print exits with a non-zero status code, so scripts can detect
+failures reliably.
+
+### Output contract
+
+Scripts can rely on this split across all subcommands:
+
+- **stdout** carries machine-readable output only: the JSON object produced by
+  `--format json` (`status`, `job`, and `send` all support it). In text mode,
+  stdout stays empty.
+- **stderr** carries all human-readable text: progress, diagnostics, event
+  notifications, and text-mode results.
+- **Exit code** is `0` on success and non-zero on any failure (validation
+  error, connection error, printer FAILURE via `--check-status`, or an
+  unsuccessful print result).
+
+`send --format json` emits `{"success": bool, "printJobUID"?, "filmSessionUID"?,
+"filmBoxUID"?, "error"?}`.
+
+### Presentation LUT
+
+`--presentation-lut` creates a Presentation LUT SOP Instance and references it
+from each film box, controlling how stored pixel values map to display values:
+
+```bash
+# Print with an identity presentation LUT (no transformation)
+dicom-print send pacs://server:11112 scan.dcm --aet APP --presentation-lut identity
+```
+
+### Film Annotations
+
+`--annotate` places text on the film using Basic Annotation Boxes. Because
+annotation box positions are defined by a printer-specific Annotation Display
+Format, you must supply the format ID configured on your printer:
+
+```bash
+dicom-print send pacs://server:11112 scan.dcm --aet APP \
+    --annotation-format STANDARD \
+    --annotate "PATIENT: DOE^JOHN" \
+    --annotate "STUDY: CHEST CT"
+```
+
+Annotations are placed in the order given (first `--annotate` → position 1, etc.).
+
+### Retry on Failure
+
+`--retries N` retries the print on connection/setup failures with exponential
+backoff. A job that has been submitted to the printer is never retried, so this
+cannot cause duplicate prints:
+
+```bash
+dicom-print send pacs://server:11112 scan.dcm --aet APP --retries 3
+```
+
+> **Note:** `--layout` selects the film's image display format (rows × columns).
+> When omitted, an optimal layout is chosen automatically from the number of
+> images. `--color color` negotiates the Basic Color Print Management Meta SOP
+> Class and sends color image boxes; the default is grayscale.
+
+### Printer Notifications (N-EVENT-REPORT)
+
+While a print job runs, the printer (SCP) may push asynchronous status
+notifications over the association — printer faults (out of film, jam) and
+print-job progress (pending → printing → done/failure). `dicom-print send`
+receives and acknowledges these automatically:
+
+- **Faults** (printer warning/failure, print-job failure) are always printed,
+  e.g. `⚠ Printer Failure: OUT OF SUPPLY`.
+- **Routine progress** events are shown with `--verbose`, e.g. `• Print Job Printing`.
 
 ## Configuration File
 
@@ -208,9 +304,25 @@ dicom-print send pacs://mammo-printer:11112 mammo_*.dcm \
 | 66 | Cannot open input file |
 | 74 | I/O error |
 
+## Implementation
+
+The command-line surface here is a thin ArgumentParser shell. Image preparation, the job
+model, workflow orchestration and all console/JSON output live in the shared
+**`DICOMPrintKit`** target (`PrintImagePreparer`, `PrintJobRequest`, `PrintOptionCatalog`,
+`PrintWorkflow`, `PrintConsoleFormatter`), which DICOMStudio's print screens use as well, so
+both surfaces run one pipeline and print identical output. The DIMSE sequence itself remains
+`DICOMPrintService` in `DICOMNetwork`.
+
+The printer registry read by `list-printers` / `add-printer` / `remove-printer`
+(`~/.config/dicomkit/printers.json`) is the CLI's own; DICOMStudio keeps a separate,
+sandbox-reachable store. That separation is by design, not a parity defect.
+
 ## See Also
 
 - [DICOM_PRINTER_PLAN.md](../../DICOM_PRINTER_PLAN.md) - Full implementation plan
+- [DICOM_PRINT_STUDIO_PLAN.md](../../DICOM_PRINT_STUDIO_PLAN.md) - The same capability in DICOMStudio
+- [DICOM_PRINT_SCP_PLAN.md](../../DICOM_PRINT_SCP_PLAN.md) - The printer emulator (Print SCP) side
+- [PRINT_CONFORMANCE.md](../../PRINT_CONFORMANCE.md) - Print conformance statement (SCU and SCP)
 - [DICOM_PRINTER_QUICK_REFERENCE.md](../../DICOM_PRINTER_QUICK_REFERENCE.md) - Quick reference
 - DICOM PS3.4 Annex H - Print Management Service Class specification
 

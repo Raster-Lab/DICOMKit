@@ -31,6 +31,8 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
     case cloudIntegration = "Cloud"
     case gateway          = "DICOM Gateway"
     case reporting        = "Reporting"
+    case printing         = "Print"
+    case printSCP         = "Printer Emulator"
     case tools            = "Tools"
     case validation        = "Validation"
     case archiveManagement = "Archive"
@@ -60,6 +62,8 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .cloudIntegration:   return "icloud"
         case .gateway:            return "arrow.left.arrow.right.circle"
         case .reporting:          return "doc.text"
+        case .printing:           return "printer"
+        case .printSCP:           return "printer.dotmatrix"
         case .tools:              return "wrench.and.screwdriver"
         case .validation:         return "checkmark.shield"
         case .archiveManagement:  return "archivebox"
@@ -89,6 +93,8 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .cloudIntegration:   return "Cloud Storage Integration"
         case .gateway:            return "DICOM Gateway – HL7 / FHIR"
         case .reporting:          return "Structured Reporting"
+        case .printing:           return "DICOM Print – Printers and Job History"
+        case .printSCP:           return "Printer Emulator – Receives Print Jobs from any Print SCU"
         case .tools:              return "Data Exchange and Developer Tools"
         case .validation:         return "DICOM Conformance Validation"
         case .archiveManagement:  return "DICOM Archive Management"
@@ -112,7 +118,8 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
             return .imaging
         case .networking, .dicomWeb, .cloudIntegration, .gateway:
             return .network
-        case .reporting, .tools, .validation, .archiveManagement, .cliWorkshop, .cliParity, .networkUtility:
+        case .reporting, .printing, .printSCP, .tools, .validation, .archiveManagement,
+             .cliWorkshop, .cliParity, .networkUtility:
             return .dataTools
         case .security, .performanceTools, .macOSEnhancements,
              .polishRelease, .integrationTesting, .j2kTestBench, .settings:
