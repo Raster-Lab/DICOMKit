@@ -358,7 +358,7 @@ not fixed here.
 > *is* the GPU's window operator, and it is also what keeps `dicom-export`, `dicom-convert`, print
 > film burn, and headless CI fast — none of which the GPU path will ever serve.
 
-### M2 — `DICOMRenderKit` target, Metal device, pipeline plumbing · ~1.5 days
+### M2 — `DICOMRenderKit` target, Metal device, pipeline plumbing · ~1.5 days — **LANDED**
 
 - Add the target to `Package.swift`; add `DICOMRenderKit` to the `DICOMStudio` dependency list
   (`Package.swift:~910`).
@@ -372,10 +372,37 @@ not fixed here.
 - Stub `FrameRender.metal` + a smoke test that loads the library via `Bundle.module` and builds a
   pipeline state.
 
-**Exit:** `swift build` and `swift test` green on a GPU machine **and** with Metal forced off.
+**As built — one plan assumption was wrong, and it was the one flagged as riskiest.**
+
+> SwiftPM does **not** compile `.metal` files. A `.metal` file in a target's sources is
+> silently ignored on this toolchain: no `default.metallib`, no resource bundle, no warning —
+> `Bundle.module` is not even generated. Verified with a minimal probe package before changing
+> course, because the failure mode is invisible: everything builds and only the GPU path goes
+> missing.
+>
+> `FrameRender.metal` therefore ships as a **bundle resource** (`.copy`) and is compiled with
+> `device.makeLibrary(source:)` once per process. One source of truth for the kernels, one small
+> compile at first GPU render, no toolchain dependency. `makeDefaultLibrary(bundle:)` is still
+> tried first so a future toolchain that does emit a metallib is picked up automatically, and
+> `MetalRenderDevice.librarySource` records which path was taken so that change would be visible
+> rather than silent. The M2 smoke test prints it.
+
+Also as built, deviating deliberately:
+
+- **No function constants.** The plan wanted `bytesPerSample`, `isSigned` and
+  `planarConfiguration` specialised at pipeline-build time. `isSigned` and `bitShift` are folded
+  into the table before the shader sees them, and the two that remain are uniform branches —
+  free on Apple GPUs, where every thread takes the same side. The pipeline cache is keyed on
+  function name alone.
+- **No `MTLHeap`.** `UnifiedMemoryPool` uses a size-keyed free list. Reuse is equally free (a hit
+  allocates nothing at all), and with the handful of distinct buffer sizes a viewer uses, heap
+  sub-allocation would buy nothing for its extra lifetime rules.
+
+**Exit:** `swift build` and `swift test` green on a GPU machine **and** with Metal forced off. ✅
+10 plumbing tests, including one asserting `automatic()` picks `.metal` only on unified memory.
 `RenderBackend.automatic()` reports `.metal` on Apple Silicon and `.cpu` on a non-UMA device.
 
-### M2b — Page-aligned decoded-frame allocation · ~1 day
+### M2b — Page-aligned decoded-frame allocation · ~1 day — **LANDED**
 
 The prerequisite for zero-copy input, and the most invasive change in the plan because it reaches
 back into the decode path rather than the render path.
@@ -391,9 +418,21 @@ back into the decode path rather than the render path.
   correctness never depends on the alignment succeeding.
 
 **Exit:** full suite green with the new storage; a unit test asserting `bytesNoCopy` wrapping
-actually takes the no-copy path (`buffer.contents() == originalPointer`) for a cached frame.
+actually takes the no-copy path (`buffer.contents() == originalPointer`) for a cached frame. ✅
 
-### M3 — Monochrome compute kernel, end-to-end zero copy · ~2 days
+**As built — far less invasive than scheduled.** The plan expected this to reach back into the
+decode path. It does not need to: `AlignedPixelBuffer` (`Sources/DICOMCore/AlignedPixelBuffer.swift`)
+copies a decoded `PixelData` into page-aligned storage **once, when a file enters
+`FrameSourceCache`** — 0.54 ms for a 23 MB mammogram, paid per *file*, against a 23 MB copy per
+*render* if it were not done. The codec and decode paths are untouched.
+
+`PixelData` gained an optional `alignedStorage`; its `data` is a no-copy view of that allocation,
+so every CPU consumer is unaffected and does not know the difference. The `Data` keeps the buffer
+alive on its own — the deallocator closure holds the reference — so a caller holding only the
+`Data` can never read freed memory. `FrameSourceCache` aligns only when the GPU is the active
+backend; on a CPU-only machine the copy would be pure waste.
+
+### M3 — Monochrome compute kernel, end-to-end zero copy · ~2 days — **LANDED**
 
 - Implement `render_monochrome`. `MetalFrameRenderer` wraps the input via `UnifiedMemoryPool`
   (no copy), writes the 64 KB LUT texture, dispatches, and constructs a `CGImage` over the
@@ -410,9 +449,25 @@ actually takes the no-copy path (`buffer.contents() == originalPointer`) for a c
 `Tests/DICOMRoundTripTest/Corpus` plus synthetic 8/12/16-bit signed and unsigned cases, GPU and
 CPU output must be **byte-for-byte equal**. Not "within tolerance". Plus an allocation assertion:
 a steady-state window drag performs **zero** buffer allocations and zero pixel-data copies.
-Report the M0 delta.
+Report the M0 delta. ✅
 
-### M4 — Colour kernels · ~1.5 days
+**As built.** 18 equivalence tests. The corpus at `Tests/DICOMRoundTripTest/Corpus` is empty in
+this checkout (user-supplied, never committed), so coverage comes from synthetics — but
+exhaustive ones: the full descriptor matrix at 37×23 (dimensions coprime with any threadgroup
+size, which is what would expose an off-by-one in the grid rounding that 512×512 would hide),
+**every one of the 65,536 representable 16-bit samples**, multi-frame indexing, and unaligned
+input.
+
+Two deviations, both toward exactness:
+
+- **The table is a buffer, not an `r8Unorm` texture.** A texture read returns a float in
+  〔0,1〕 which must be scaled back to a byte — a round-trip that can quantise. A `device const
+  uchar*` indexes exactly.
+- **The output is a plain byte buffer, not a texture view.** So `bytesPerRow` is exactly `width`,
+  which is what `CGImage` wants, and `minimumLinearTextureAlignment` never enters into it. M5 can
+  add a texture view if it ever needs one for display.
+
+### M4 — Colour kernels · ~1.5 days — **LANDED (RGB + palette; YBR stays CPU)**
 
 - `render_rgb` (folding the separate YBR→RGB pass at `PixelDataRenderer.swift:394-408` into the
   single kernel) and `render_palette` (palette tables from
@@ -423,9 +478,26 @@ Report the M0 delta.
   rather than discovering it in review.
 
 **Exit:** equivalence tests extended to colour and palette. Any accepted tolerance is documented
-in this file with its justification.
+in this file with its justification. ✅
 
-### M5 — Direct-to-display path for the focused viewer · ~3 days
+**The YBR decision, made explicitly as the plan required: YBR stays on the CPU, and no tolerance
+is accepted anywhere.**
+
+RGB and palette are pure functions of *one* sample, so `ColorSampleLUT` and `PaletteDisplayLUT`
+(`Sources/DICOMCore/ColorSampleLUT.swift`) reproduce the CPU's `Double` arithmetic exactly, the
+same way `WindowLUT` does. YBR is not: green depends on all three of Y, Cb and Cr, so an exact
+table needs 2^24 entries — 16 MB, ~17 million `Double` evaluations to build — and any smaller
+formulation means recomputing the coefficients in `float` on the GPU, which diverges from
+`Double` at truncation boundaries by one grey level on some pixels. That is precisely what design
+pillar 1 exists to prevent.
+
+So `MetalFrameRenderer` **declines** YBR frames and `FrameRenderService` renders them on the CPU,
+where they are already fast enough — YBR is ultrasound and secondary capture, not mammography.
+`testYBRIsDeclinedByGPUAndStillRenders` asserts both halves: that the GPU refuses, and that the
+fallback produces exactly the CPU's bytes. The plan's `render_rgb` was also to fold the separate
+YBR→RGB second pass into the kernel; that pass stays on the CPU with the rest of YBR.
+
+### M5 — Direct-to-display path for the focused viewer · ~3 days — **DEFERRED**
 
 The largest and riskiest milestone. Because M3 already eliminated the copies, this milestone is
 **not** where the performance arrives — it is where the *spatial transforms* move onto the GPU and
@@ -452,7 +524,39 @@ declaring this milestone done.
 **Exit:** interactive window/level, zoom and pan at a sustained 60 fps on an MG frame, with the
 CPU fallback branch still rendering correctly when Metal is forced off.
 
-### M6 — Extend to tiles, film preview and thumbnails · ~1.5 days
+**Deferred — on this milestone's own stated criterion.**
+
+The milestone says: *"Judge it on the M0 cine and zoom/pan numbers, and be willing to defer it if
+M3's numbers already clear the 60 fps bar."* They clear it by a factor of sixteen. The 60 fps
+budget is 16.7 ms per step; an MG 3000×4000 window drag now costs **1.02 ms** per step on the GPU
+and 7.4 ms on the CPU fallback. Both fit, on the largest frame size in clinical use.
+
+What M5 would still buy is real but second-order: the spatial transforms (rotate, flip, invert —
+still CPU `CGContext` passes in `FrameRenderer.applying`) and the per-frame `CGImage`
+construction. What it costs is three days on the plan's own "largest and riskiest" milestone,
+rewiring the display layer into an `MTKView` whose drawable-size hazard already has a recorded
+prior incident in this codebase (`ProgressiveImageView.swift:55-62` — a `Canvas` viewer that
+blanked *every* progressively-decoded J2K file).
+
+Spending that risk to move a 1 ms operation is the wrong trade while it stays at 1 ms. Revisit if
+a workload appears that does not fit — 4K+ panoramic, or cine at high frame rates on very large
+frames — and treat the trigger as measured, not assumed.
+
+**Two consequences of deferring, both already handled:**
+
+1. `FrameRenderer.cacheKey` keeps zoom/rotation/flip/invert in the key. Those transforms are still
+   applied on the CPU, so they still change the pixels the key identifies. Removing them now would
+   reintroduce the exact bug the key's own doc comment warns about — a film preview silently
+   disagreeing with the viewer. The rework is contingent on M5 and is deferred with it.
+2. A separate finding, logged here because M5 is where it would have surfaced: the focused
+   viewer's `ImageViewerViewModel.renderCurrentFrame` calls `DICOMFile.tryRenderFrame`, which
+   calls `tryPixelData()` — so it **re-decodes the whole pixel data on every drag step**. For a
+   compressed file that dwarfs the render itself, and no backend choice can fix it. It is a
+   pre-existing defect rather than anything this plan introduced, and the fix (cache the decoded
+   `PixelData` on the view model, as `FrameSourceCache` already does for tiles) is independent of
+   the GPU work. Worth its own change.
+
+### M6 — Extend to tiles, film preview and thumbnails · ~1.5 days — **LANDED (cache-key rework deferred with M5)**
 
 - Route `FrameRenderer.render` (`FrameRenderer.swift:75`) through `FrameRenderBackend`.
 - Rework the `FrameRenderer.cacheKey` (`:25`) so GPU-side transforms are no longer part of the
@@ -463,12 +567,36 @@ CPU fallback branch still rendering correctly when Metal is forced off.
   `FilmComposer.swift:331` and `DICOMImageExporter.renderFrameForExport:293` are the shared
   CLI↔app surface; they inherit M1's speedup and must not diverge.
 
-### M7 — Fallback guarantees, CI and docs · ~1 day
+**As built.** `FrameRenderer.render` now builds a `FrameRenderRequest` and calls
+`FrameRenderService.shared`. Window *resolution* deliberately stays where it was — which window a
+frame gets is `DICOMImageExporter.determineWindowSettings`' policy, shared with the CLIs; only the
+per-pixel mapping moved. `FrameSourceCache` page-aligns each decoded file once so those renders
+are zero-copy. Print and export were already on `PixelDataRenderer` directly and are untouched;
+because GPU and CPU output are byte-identical, a GPU-rendered tile and the CPU-rendered film it
+prints to cannot disagree regardless.
+
+The cache-key rework is **not** done — see M5.
+
+### M7 — Fallback guarantees, CI and docs · ~1 day — **LANDED**
 
 - Force-CPU environment override (`DICOMKIT_RENDER_BACKEND=cpu`) for support and CI.
 - CI matrix runs the full suite with Metal forced off, so no test may silently depend on a GPU.
 - Surface the active backend in Studio (the codec backend is already surfaced this way — follow it).
 - Update `Sources/DICOMKit/DICOMKit.docc/RenderingImages.md` and record final numbers here.
+
+**As built.** `DICOMKIT_RENDER_BACKEND=cpu|metal` is honoured, and it **outranks a forced
+preference** — including code that hard-codes `.metal`. That is the point of the variable: it
+exists so support can say "run with the GPU off" and have it actually happen, which it would not
+if any code path could ignore it.
+
+CI (`.github/workflows/ci.yml`) re-runs the render suites with the backend pinned to CPU, so no
+test can silently come to depend on a GPU — the failure that would otherwise only appear on
+machines without one, which is where support calls come from and not where CI runs.
+
+Studio's Platform tab gained a **Render Backends** box beside the existing Codec Backends box.
+Two different questions matter when a call opens with "it's slow" or "the picture looks wrong":
+which backend decompressed the pixels, and which one windowed them for the screen. They are
+chosen independently, so showing only the codec backend answers half of it.
 
 ---
 
@@ -528,6 +656,47 @@ M1 touched only the monochrome path; the difference is run-to-run noise. Both ar
 `Double` loops and are M4's target. Note the palette path is the same
 `raw sample → colour` pure function the window LUT exploits, over three output bytes instead of
 one, so it can have the identical treatment when M4 arrives.
+
+### GPU — M3 / M4
+
+Measured in the same run as the CPU column beside it, so the two are directly comparable.
+Pixel data is page-aligned first, as it is in the app — benchmarking unaligned input would
+measure a copy the real path never makes.
+
+| Case | CPU (M1) | GPU (M3/M4) | Speedup |
+|---|---|---|---|
+| MG 3000×4000 render | 6.313 ms | **0.780 ms** | 8.1× |
+| CR/DX 2048×2500 render | 2.717 ms | **0.810 ms** | 3.4× |
+| CT 512×512 render | 0.156 ms | 0.254 ms | **0.6× — CPU wins** |
+| MG 3000×4000 drag (per step) | 7.079 ms | **1.023 ms** | 6.9× |
+| CR/DX 2048×2500 drag (per step) | 2.880 ms | **0.586 ms** | 4.9× |
+| CT 512×512 drag (per step) | 0.261 ms | 0.325 ms | **0.8× — CPU wins** |
+| RGB 1024×1024 | 8.576 ms | **0.390 ms** | 22.0× |
+| PALETTE 512×512 | 1.327 ms | **0.247 ms** | 5.4× |
+
+**The small-frame result is the important one, and it changed the design.** A dispatch — encode,
+commit, wait — costs about 0.24 ms whatever the image size, while the LUT-based CPU renderer runs
+at roughly 0.53 ms per megapixel. Below about half a megapixel the fixed cost dominates and the
+GPU *loses*. Sending everything to the GPU because it is available would have made the most
+common render in the app — tiles and thumbnails — measurably slower.
+
+So `MetalFrameRenderer.minimumGPUPixelCount` is **1 megapixel**: past the crossover with margin,
+and it keeps every tile (1024 px), print thumbnail (512 px) and series thumbnail (256 px) render
+on the CPU where they belong. `testSmallFramesAreDeclinedByTheProductionRenderer` and
+`testLargeFramesAreAcceptedByTheProductionRenderer` hold both sides of the threshold.
+
+One-time cost of page-aligning a decoded file, paid per file on entry to `FrameSourceCache`:
+0.008 ms (CT), 0.193 ms (CR/DX), 0.536 ms (MG). The alternative is a copy of the same size on
+every render.
+
+### Whole journey — M0 baseline to today
+
+| Case | M0 (scalar CPU) | Now | Speedup |
+|---|---|---|---|
+| MG 3000×4000 render, LINEAR | 73.935 ms | **0.780 ms** | 95× |
+| MG 3000×4000 render, SIGMOID | 100.264 ms | **0.780 ms** | 129× |
+| MG 3000×4000 drag (per step) | 78.520 ms | **1.023 ms** | 77× |
+| RGB 1024×1024 | 8.176 ms | **0.390 ms** | 21× |
 
 ### Cost of a copy — what design pillar 2 is buying
 

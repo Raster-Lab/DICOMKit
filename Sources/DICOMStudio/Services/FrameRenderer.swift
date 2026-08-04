@@ -11,6 +11,7 @@ import Foundation
 import DICOMKit
 import DICOMCore
 import DICOMPrintKit
+import DICOMRenderKit
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -23,6 +24,13 @@ enum FrameRenderer {
     /// the same frame at different zooms are different pictures, and keying on
     /// identity alone silently serves the first one for both — which is exactly
     /// how a film preview ends up disagreeing with the viewer.
+    ///
+    /// `GPU_RENDERING_PLAN.md` M6 proposed dropping zoom, rotation, flip and invert
+    /// from this key once those moved onto the GPU. They have **not** moved: they
+    /// are still applied on the CPU by ``applying(_:to:)`` below, so they still
+    /// change the pixels this key identifies and must stay in it. Removing them
+    /// now would reintroduce exactly the bug the paragraph above describes. That
+    /// rework is contingent on M5's display path, and is deferred with it.
     static func cacheKey(
         path: String,
         frameIndex: Int,
@@ -90,14 +98,15 @@ enum FrameRenderer {
 
         return await Task.detached(priority: .userInitiated) { () -> CGImage? in
             let file = source.file
-            let renderer = PixelDataRenderer(
-                pixelData: source.pixelData, paletteColorLUT: source.paletteLUT)
             let isMonochrome = source.pixelData.descriptor
                 .photometricInterpretation.isMonochrome
 
-            var image: CGImage?
+            // Window *resolution* stays here and stays shared — which window a
+            // frame gets is the policy `DICOMImageExporter` owns, and both the CLI
+            // and the app must reach the same answer. Only the per-pixel mapping
+            // moves; the backend is handed a resolved window and applies it.
+            var window: WindowSettings?
             if isMonochrome {
-                let window: WindowSettings
                 if let windowCenter, let windowWidth, windowWidth >= 1 {
                     switch windowSpace {
                     case .storedValues:
@@ -114,12 +123,18 @@ enum FrameRenderer {
                         from: file, pixelData: source.pixelData, frameIndex: frameIndex,
                         windowCenter: nil, windowWidth: nil)
                 }
-                image = renderer.renderMonochromeFrame(frameIndex, window: window)
-            } else if source.pixelData.descriptor.photometricInterpretation.isPaletteColor {
-                image = renderer.renderPaletteColorFrame(frameIndex)
-            } else {
-                image = renderer.renderColorFrame(frameIndex)
             }
+
+            // GPU when it is available, exact and worth it; CPU otherwise. The
+            // service decides, and its output is byte-identical either way, so a
+            // tile rendered on the GPU and the film it is printed on — which stays
+            // on the CPU — cannot disagree.
+            var image = FrameRenderService.shared.renderFrame(FrameRenderRequest(
+                pixelData: source.pixelData,
+                frameIndex: frameIndex,
+                window: window,
+                paletteLUT: source.paletteLUT
+            ))
             guard var image else { return nil }
 
             // Overlay planes go on before the frame is cropped, turned or

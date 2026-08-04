@@ -1,5 +1,6 @@
 import XCTest
-@testable import DICOMKit
+@testable import DICOMRenderKit
+import DICOMKit
 import DICOMCore
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -234,6 +235,102 @@ final class RenderBenchmarks: XCTestCase {
             report(testCase.name + " (\(byteCount / (1024 * 1024)) MB)", milliseconds)
         }
     }
+
+    // MARK: - GPU (M3 / M4)
+
+    #if canImport(CoreGraphics) && canImport(Metal)
+    /// The milestone the plan calls the natural first release: rendering on the
+    /// GPU, no copies in either direction, output bit-exact with the CPU.
+    ///
+    /// Pixel data is page-aligned first, because that is how it reaches the
+    /// renderer in the app — `FrameSourceCache` aligns each file once, when it is
+    /// decoded. Benchmarking unaligned input would measure a copy the real path
+    /// does not make.
+    func testMonochromeGPURender() throws {
+        guard let metal = MetalFrameRenderer() else {
+            throw XCTSkip("No Metal device on this machine")
+        }
+        print("\n[bench] monochrome, Metal (zero-copy, LINEAR window)")
+        let window = WindowSettings(center: 2048, width: 4096)
+        for testCase in monochromeCases {
+            let pixelData = monochromePixelData(rows: testCase.rows, columns: testCase.columns)
+                .pageAligned()
+            let request = FrameRenderRequest(pixelData: pixelData, frameIndex: 0, window: window)
+            // Warm the pipeline state, the shader compile and the buffer pool.
+            autoreleasepool { _ = metal.renderFrame(request) }
+
+            let milliseconds = bestMilliseconds {
+                autoreleasepool { _ = metal.renderFrame(request) }
+            }
+            report(testCase.name, milliseconds, pixels: testCase.rows * testCase.columns)
+        }
+    }
+
+    /// The interactive case, on the GPU: a new window every step, so the 64 KB
+    /// table is rewritten each time and nothing else moves.
+    func testWindowDragGPU() throws {
+        guard let metal = MetalFrameRenderer() else {
+            throw XCTSkip("No Metal device on this machine")
+        }
+        print("\n[bench] window drag, Metal — 60 deltas, per-step cost")
+        let steps = 60
+        for testCase in monochromeCases {
+            let pixelData = monochromePixelData(rows: testCase.rows, columns: testCase.columns)
+                .pageAligned()
+            autoreleasepool {
+                _ = metal.renderFrame(FrameRenderRequest(
+                    pixelData: pixelData, frameIndex: 0,
+                    window: WindowSettings(center: 2048, width: 4096)))
+            }
+
+            let milliseconds = bestMilliseconds(iterations: 3) {
+                for step in 0..<steps {
+                    autoreleasepool {
+                        let window = WindowSettings(center: 2048 + Double(step) * 8, width: 4096)
+                        _ = metal.renderFrame(FrameRenderRequest(
+                            pixelData: pixelData, frameIndex: 0, window: window))
+                    }
+                }
+            }
+            report(testCase.name + " (per step)", milliseconds / Double(steps),
+                   pixels: testCase.rows * testCase.columns)
+        }
+    }
+
+    func testColorGPURender() throws {
+        guard let metal = MetalFrameRenderer() else {
+            throw XCTSkip("No Metal device on this machine")
+        }
+        print("\n[bench] colour paths, Metal")
+        let rgb = rgbPixelData(rows: 1024, columns: 1024).pageAligned()
+        let rgbRequest = FrameRenderRequest(pixelData: rgb)
+        autoreleasepool { _ = metal.renderFrame(rgbRequest) }
+        report("RGB 1024×1024 8-bit",
+               bestMilliseconds { autoreleasepool { _ = metal.renderFrame(rgbRequest) } },
+               pixels: 1024 * 1024)
+
+        let (palettePixels, lut) = palettePixelData(rows: 512, columns: 512)
+        let paletteRequest = FrameRenderRequest(
+            pixelData: palettePixels.pageAligned(), paletteLUT: lut)
+        autoreleasepool { _ = metal.renderFrame(paletteRequest) }
+        report("PALETTE 512×512 8-bit",
+               bestMilliseconds { autoreleasepool { _ = metal.renderFrame(paletteRequest) } },
+               pixels: 512 * 512)
+    }
+
+    /// What page-aligning a decoded file costs, paid once when it enters the frame
+    /// cache. The alternative is paying a copy of the same size on *every* render.
+    func testPageAlignmentCost() {
+        print("\n[bench] one-time page-align of a decoded file (paid once per file)")
+        for testCase in monochromeCases {
+            let pixelData = monochromePixelData(rows: testCase.rows, columns: testCase.columns)
+            let milliseconds = bestMilliseconds(iterations: 5) {
+                _ = pixelData.pageAligned()
+            }
+            report(testCase.name, milliseconds)
+        }
+    }
+    #endif
 
     /// Records the machine the numbers above were taken on, and whether it is the
     /// unified-memory hardware `RenderBackend.automatic()` will select Metal for.

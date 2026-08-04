@@ -208,6 +208,10 @@ let package = Package(
         //     targets: ["dicom-server"]
         // ),
         .library(
+            name: "DICOMRenderKit",
+            targets: ["DICOMRenderKit"]
+        ),
+        .library(
             name: "DICOMPrintKit",
             targets: ["DICOMPrintKit"]
         ),
@@ -297,6 +301,21 @@ let package = Package(
         .target(
             name: "DICOMToolbox"
         ),
+        // GPU frame rendering (GPU_RENDERING_PLAN.md). A separate target so the
+        // headless dicom-* executables never link Metal and CI without a GPU is
+        // unaffected — only DICOMStudio depends on it. Sits above DICOMKit
+        // because the CPU fallback IS PixelDataRenderer.
+        .target(
+            name: "DICOMRenderKit",
+            dependencies: ["DICOMCore", "DICOMKit"],
+            // The shader ships as a resource and is compiled once per process,
+            // NOT as a source file. This toolchain's SwiftPM silently ignores
+            // `.metal` in a target's sources: it emits no `default.metallib` and
+            // no resource bundle at all (verified with a minimal probe package).
+            // Declaring it here is what creates `Bundle.module`, and it keeps one
+            // source of truth for the kernels. See MetalRenderDevice.loadLibrary.
+            resources: [.copy("Metal/FrameRender.metal")]
+        ),
         // Shared DICOM Print core: image preparation, job options, workflow
         // orchestration, and console formatting used by BOTH the dicom-print CLI
         // and DICOMStudio. It sits above DICOMKit (pixel decode/preprocess) and
@@ -370,9 +389,9 @@ let package = Package(
                 "CompressedPreviewRenderParityTests.swift",
                 "CompressionConsoleTests.swift",
                 "ExportWindowParityTests.swift",
-                // GPU_RENDERING_PLAN.md M0/M1: the render baseline harness and the
-                // WindowLUT ⇄ scalar-chain equality gate.
-                "RenderBenchmarks.swift",
+                // GPU_RENDERING_PLAN.md M1: the WindowLUT ⇄ scalar-chain equality
+                // gate. (The benchmark harness lives in DICOMRenderKitTests, which
+                // can reach both backends.)
                 "WindowLUTParityTests.swift",
                 "EncapsulatedPixelDataWriteTests.swift",
                 "WaveformParseRegressionTests.swift",
@@ -919,10 +938,16 @@ let package = Package(
                 "DICOMDictionary",
                 "DICOMNetwork",
                 "DICOMPrintKit",
+                // GPU frame rendering, with the CPU renderer as the fallback.
+                "DICOMRenderKit",
                 "DICOMWeb"
             ],
             path: "Sources/DICOMStudio",
             exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"]
+        ),
+        .testTarget(
+            name: "DICOMRenderKitTests",
+            dependencies: ["DICOMRenderKit", "DICOMCore", "DICOMKit"]
         ),
         .testTarget(
             name: "DICOMStudioTests",

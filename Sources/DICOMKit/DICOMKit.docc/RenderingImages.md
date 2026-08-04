@@ -240,6 +240,63 @@ if let ts = TransferSyntax(uid: transferSyntax ?? "") {
 }
 ```
 
+## How a frame becomes a picture
+
+Every value-mapping decision — bit shift, stored-bit mask, sign extension, the VOI
+window, MONOCHROME1 inversion, the colour normalise, the palette lookup — depends on
+exactly one variable: the raw sample assembled from the frame bytes. Nothing else in
+the chain varies per pixel.
+
+So none of it is evaluated per pixel. `WindowLUT` (and its colour siblings
+`ColorSampleLUT` and `PaletteDisplayLUT`, all in `DICOMCore`) evaluate the whole
+chain once per *possible* sample — 256 or 65,536 values — and the render becomes a
+table lookup. A 3000×4000 mammogram goes from 12 million window evaluations to
+65,536, and `SIGMOID` stops costing more than `LINEAR` because `exp()` is called
+65,536 times regardless of image size.
+
+The tables are built by calling `WindowSettings.apply` — the same code the scalar
+loop called — so the bytes they produce are identical to what the renderer produced
+before them, by construction rather than by testing.
+
+## GPU rendering
+
+`DICOMRenderKit` adds a Metal backend for on-screen rendering. It is a separate
+target: the headless `dicom-*` executables never link Metal, and CI without a GPU is
+unaffected.
+
+The shader does **no floating-point work at all**. It reads the byte tables above,
+so GPU output is bit-identical to CPU output — which is what lets the app render on
+the GPU while `dicom-export`, `dicom-convert` and the print film burn stay on the
+CPU without the two ever disagreeing.
+
+```swift
+import DICOMRenderKit
+
+let image = FrameRenderService.shared.renderFrame(
+    FrameRenderRequest(pixelData: pixelData, frameIndex: 0, window: window)
+)
+```
+
+`FrameRenderService` picks a backend and always falls back to the CPU. The GPU is
+used only when it is both available and worth it; these cases stay on the CPU by
+design, not by omission:
+
+| Case | Why |
+|---|---|
+| Frames under 1 megapixel | A dispatch costs ~0.24 ms whatever the size; below ~0.5 MP the CPU is measurably faster. Covers tiles and thumbnails. |
+| YBR colour | Green depends on all three of Y, Cb and Cr, so no table smaller than 2^24 entries reproduces the CPU's `Double` arithmetic exactly. Float would diverge by a grey level. |
+| Auto-windowed frames (no explicit window) | Choosing the window is a policy decision, and there must be exactly one implementation of it. |
+| Non-unified-memory GPUs | The copies across a bus cost more than they save. `RenderBackend.automatic()` returns `.cpu`. |
+| Export, convert, print film | The shared CLI↔app surface. They inherit the table speedup and must not diverge. |
+
+On Apple Silicon nothing is copied: decoded frames are page-aligned once when they
+enter the cache and wrapped in place with `makeBuffer(bytesNoCopy:)`, and the
+`CGImage` is backed by the very buffer the shader wrote. A steady-state window drag
+allocates nothing and copies no pixel data — asserted by test, not by convention.
+
+Set `DICOMKIT_RENDER_BACKEND=cpu` to force the CPU renderer. It outranks every
+in-code preference, including a hard-coded `.metal`.
+
 ## See Also
 
 - ``PixelDataRenderer``

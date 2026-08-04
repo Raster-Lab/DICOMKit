@@ -50,10 +50,20 @@ jobs:
       
     - name: Run tests
       run: swift test -v --parallel
-      
+
+    # GPU_RENDERING_PLAN.md M7. The Metal render backend must never become load
+    # bearing: `.cpu` is the guaranteed fallback, and a test that silently depends
+    # on a GPU would only fail on machines without one — which is where support
+    # calls come from, not where CI runs. Re-running the render suites with the
+    # backend pinned to CPU is what keeps that honest.
+    - name: Run render tests with Metal forced off
+      env:
+        DICOMKIT_RENDER_BACKEND: cpu
+      run: swift test --parallel --filter 'DICOMRenderKitTests|WindowLUTParityTests|ExportWindowParityTests'
+
     - name: Build in release mode
       run: swift build -c release
-      
+
   test-linux:
     name: Test on Linux (Ubuntu 22.04)
     runs-on: ubuntu-22.04

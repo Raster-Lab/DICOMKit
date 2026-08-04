@@ -13,6 +13,7 @@
 import Foundation
 import DICOMCore
 import DICOMKit
+import DICOMRenderKit
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -40,6 +41,12 @@ actor FrameSourceCache {
 
     private var entries: [(path: String, source: FrameSource)] = []
 
+    /// Whether decoded frames are worth page-aligning on this machine.
+    ///
+    /// Resolved once: the backend cannot change during a run, and asking per file
+    /// would probe the Metal device on the decode path.
+    private static let alignsForGPU = FrameRenderService.shared.activeBackend == .metal
+
     /// The decoded source for a file, reading and decoding it if needed.
     ///
     /// Returns `nil` for anything that cannot be read or has no pixels — a
@@ -56,7 +63,16 @@ actor FrameSourceCache {
 
         guard let data = FileManager.default.contents(atPath: path),
               let file = try? DICOMFile.read(from: data, force: true),
-              let pixelData = file.pixelData() else { return nil }
+              let decoded = file.pixelData() else { return nil }
+
+        // Page-align once, here, so every subsequent render can hand these bytes
+        // straight to the GPU with `makeBuffer(bytesNoCopy:)` — no upload, ever.
+        // The cost is one copy per *file*; the alternative is a copy of the same
+        // size on every render, which for a mammogram is 23 MB per window delta.
+        //
+        // Only when the GPU is actually the active backend: on a CPU-only machine
+        // the alignment buys nothing and the copy would be pure waste.
+        let pixelData = Self.alignsForGPU ? decoded.pageAligned() : decoded
 
         let source = FrameSource(
             file: file,
