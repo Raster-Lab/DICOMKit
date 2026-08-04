@@ -25,16 +25,18 @@ public final class MetalRenderDevice: @unchecked Sendable {
     public let commandQueue: MTLCommandQueue
     public let library: MTLLibrary
 
-    /// How the shader library was obtained. Reported by the M2 smoke test.
-    public enum LibrarySource: String, Sendable {
-        /// A `default.metallib` found in `Bundle.module` — used if a future
-        /// toolchain starts producing one.
-        case bundledMetallib
-        /// Compiled from `FrameRender.metal`, shipped as a bundle resource. This
-        /// is the expected path today.
-        case runtimeCompiled
+    /// The shader resource, as named in `Package.swift`. See `loadLibrary` for why
+    /// it is not called `FrameRender.metal`.
+    static let shaderResourceName = "FrameRender.metal"
+    static let shaderResourceExtension = "txt"
+
+    /// Where the shader source actually lives. Resolved here rather than at the
+    /// call site because `Bundle.module` is per-target: from a test file it would
+    /// mean the *test* bundle, which has no resources.
+    static var shaderResourceURL: URL? {
+        Bundle.module.url(forResource: shaderResourceName,
+                          withExtension: shaderResourceExtension)
     }
-    public let librarySource: LibrarySource
 
     private let lock = NSLock()
     private var pipelineStates: [String: MTLComputePipelineState] = [:]
@@ -44,42 +46,45 @@ public final class MetalRenderDevice: @unchecked Sendable {
               let commandQueue = device.makeCommandQueue() else {
             return nil
         }
-        guard let (library, source) = Self.loadLibrary(device: device) else {
+        guard let library = Self.loadLibrary(device: device) else {
             return nil
         }
         self.device = device
         self.commandQueue = commandQueue
         self.library = library
-        self.librarySource = source
     }
 
-    /// Loads the shader library — once, at first use.
+    /// Loads the shader library — once, at first use, by compiling the shader
+    /// source shipped in `Bundle.module`.
     ///
     /// The plan assumed SwiftPM would compile the target's `.metal` file into a
     /// `default.metallib` in its resource bundle, to be loaded with
-    /// `makeDefaultLibrary(bundle:)`. **It does not.** On this toolchain a
-    /// `.metal` file in a target's sources is silently ignored: no metallib, no
+    /// `makeDefaultLibrary(bundle:)`. **It does not.** Command-line SwiftPM
+    /// silently ignores a `.metal` file in a target's sources: no metallib, no
     /// resource bundle, no warning. Verified with a minimal probe package before
     /// changing course, because the failure is invisible — everything builds and
     /// only the GPU path goes missing.
     ///
-    /// So `FrameRender.metal` ships as a bundle *resource* and is compiled here,
-    /// once per process. That keeps one source of truth for the kernels and costs
-    /// a single small compile at first GPU render. The `makeDefaultLibrary(bundle:)`
-    /// attempt is kept first so that a future toolchain which does emit a metallib
-    /// is picked up automatically, and `librarySource` records which path was
-    /// taken so the change would be visible rather than silent.
-    private static func loadLibrary(device: MTLDevice) -> (MTLLibrary, LibrarySource)? {
-        if let library = try? device.makeDefaultLibrary(bundle: Bundle.module),
-           library.functionNames.contains(MetalKernel.monochrome) {
-            return (library, .bundledMetallib)
-        }
-        guard let url = Bundle.module.url(forResource: "FrameRender", withExtension: "metal"),
+    /// Xcode's build system, by contrast, is *not* indifferent to the extension:
+    /// it matches its CompileMetalFile rule on `.metal` alone — even for a file
+    /// declared as a resource rather than a source — and hard-fails the build when
+    /// the optional Metal Toolchain component is not installed. So the shader
+    /// ships as `FrameRender.metal.txt`, which no build rule claims, and is
+    /// compiled here once per process.
+    ///
+    /// That is a deliberate choice of one path over two. Ahead-of-time compilation
+    /// would be marginally faster to first render, but only under Xcode and only
+    /// with an extra multi-gigabyte download — meaning the shipping app would run
+    /// a shader binary that `swift test` and CI never exercise. One runtime-compiled
+    /// library everywhere is worth more here than a first-render saving, since the
+    /// GPU output has to stay bit-identical to the CPU's.
+    private static func loadLibrary(device: MTLDevice) -> MTLLibrary? {
+        guard let url = shaderResourceURL,
               let source = try? String(contentsOf: url, encoding: .utf8),
               let library = try? device.makeLibrary(source: source, options: nil) else {
             return nil
         }
-        return (library, .runtimeCompiled)
+        return library
     }
 
     /// A compute pipeline state for a kernel, compiled once and reused.

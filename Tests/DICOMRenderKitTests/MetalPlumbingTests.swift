@@ -36,13 +36,24 @@ final class MetalPlumbingTests: XCTestCase {
         }
     }
 
-    /// Records which loading path is live. If a future toolchain starts emitting a
-    /// metallib this test is where that becomes visible instead of silent.
-    func testLibrarySourceIsKnown() throws {
-        let device = try requireDevice()
-        print("[M2] shader library source: \(device.librarySource.rawValue)")
-        XCTAssertTrue(
-            [.bundledMetallib, .runtimeCompiled].contains(device.librarySource))
+    /// The shader resource must be in the bundle under the exact name the loader
+    /// asks for — and that name must not end in `.metal`.
+    ///
+    /// Both halves are load-bearing. Lose the resource and the GPU path vanishes
+    /// silently into the CPU fallback; restore the `.metal` extension and Xcode
+    /// applies its CompileMetalFile rule and fails the whole app build on any
+    /// machine without the optional Metal Toolchain installed. Neither shows up in
+    /// `swift build`, so it is asserted here.
+    func testShaderResourceShipsUnderANonCompilingName() throws {
+        let url = try XCTUnwrap(
+            MetalRenderDevice.shaderResourceURL,
+            "shader source is missing from Bundle.module — check Package.swift resources")
+        XCTAssertNotEqual(url.pathExtension, "metal",
+                          "a .metal extension makes Xcode compile the resource and fail without the Metal Toolchain")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        for kernel in MetalKernel.allFunctions {
+            XCTAssertTrue(source.contains(kernel), "shader source is missing \(kernel)")
+        }
     }
 
     func testEveryKernelBuildsAPipelineState() throws {

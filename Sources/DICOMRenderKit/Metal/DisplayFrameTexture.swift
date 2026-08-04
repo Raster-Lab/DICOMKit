@@ -80,7 +80,7 @@ public struct DisplayPresentation: Equatable, Sendable {
 }
 
 /// The parameter block the display shader reads. Layout must match `DisplayParams`
-/// in `FrameRender.metal`.
+/// in the shader (`Metal/FrameRender.metal.txt`).
 struct DisplayShaderParams {
     var transform: simd_float4x4
     var invert: UInt32

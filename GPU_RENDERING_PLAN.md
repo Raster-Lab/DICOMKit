@@ -197,7 +197,7 @@ DICOMCore ──> DICOMRenderKit ──> DICOMStudio
    │              ├── Metal/MetalRenderDevice.swift
    │              ├── Metal/MetalFrameRenderer.swift
    │              ├── Metal/UnifiedMemoryPool.swift  (bytesNoCopy wrapping + MTLHeap reuse)
-   │              └── Metal/FrameRender.metal
+   │              └── Metal/FrameRender.metal.txt  (shader source, shipped as a resource)
    │
    └── WindowLUT.swift   (shared table builder — CPU and GPU both consume it)
 ```
@@ -369,7 +369,7 @@ not fixed here.
   **`device.hasUnifiedMemory`** — non-UMA hardware resolves to `.cpu`.
 - `FrameRenderBackend` protocol; `CPUFrameRenderer` conforming by delegating to
   `PixelDataRenderer`.
-- Stub `FrameRender.metal` + a smoke test that loads the library via `Bundle.module` and builds a
+- Stub shader + a smoke test that loads the library via `Bundle.module` and builds a
   pipeline state.
 
 **As built — one plan assumption was wrong, and it was the one flagged as riskiest.**
@@ -380,12 +380,25 @@ not fixed here.
 > course, because the failure mode is invisible: everything builds and only the GPU path goes
 > missing.
 >
-> `FrameRender.metal` therefore ships as a **bundle resource** (`.copy`) and is compiled with
+> The shader therefore ships as a **bundle resource** (`.copy`) and is compiled with
 > `device.makeLibrary(source:)` once per process. One source of truth for the kernels, one small
-> compile at first GPU render, no toolchain dependency. `makeDefaultLibrary(bundle:)` is still
-> tried first so a future toolchain that does emit a metallib is picked up automatically, and
-> `MetalRenderDevice.librarySource` records which path was taken so that change would be visible
-> rather than silent. The M2 smoke test prints it.
+> compile at first GPU render, no toolchain dependency.
+>
+> **Xcode is the mirror image of this, and it broke the app build.** Xcode's build system matches
+> its `CompileMetalFile` rule on the `.metal` extension alone — even for a file declared as a
+> *resource* rather than a source — and then hard-fails the entire build when the optional Metal
+> Toolchain component is not installed: `cannot execute tool 'metal' due to missing Metal
+> Toolchain`. Since Xcode 26 that component is a separate multi-gigabyte download, so a clean
+> machine could `swift build` fine and still not build DICOMStudio.
+>
+> The shader is consequently named **`FrameRender.metal.txt`** — no build rule claims it, so
+> `swift build`, `xcodebuild` and CI all take the identical runtime-compile path and none of them
+> needs the toolchain. Ahead-of-time compilation was the alternative, and was rejected: it would
+> apply only under Xcode and only with the extra download, which would leave the shipping app
+> running a shader binary that `swift test` and CI never exercise. For a renderer whose whole
+> correctness argument is bit-identical output with the CPU, one path everywhere is worth more
+> than a first-render saving. `MetalPlumbingTests` asserts the resource is present *and* that its
+> extension is not `.metal`, because neither failure is visible to `swift build`.
 
 Also as built, deviating deliberately:
 
@@ -547,7 +560,7 @@ redraw with a new transform (what it now costs):
 - `DisplayFrameTexture` + `DisplayPresentation` + `MetalImageRenderer` + `MetalImageView`
   (`NSViewRepresentable`/`UIViewRepresentable` over `MTKView`). Zoom, pan, rotation, flip and
   inversion are a 4×4 matrix in `display_vertex` and a `1 - x` in `display_fragment`.
-- `display_vertex`/`display_fragment` are the **only** floating-point code in `FrameRender.metal`,
+- `display_vertex`/`display_fragment` are the **only** floating-point code in the shader,
   and deliberately so: they are *geometry*, not pixel values. Nothing there can change what value
   a pixel has, only where it lands. Inversion is the one exception and is exact — `1 - x` on an
   8-bit unorm round-trips through the same 256 levels.

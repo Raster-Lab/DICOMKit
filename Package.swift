@@ -314,7 +314,16 @@ let package = Package(
             // no resource bundle at all (verified with a minimal probe package).
             // Declaring it here is what creates `Bundle.module`, and it keeps one
             // source of truth for the kernels. See MetalRenderDevice.loadLibrary.
-            resources: [.copy("Metal/FrameRender.metal")]
+            //
+            // The `.txt` suffix is load-bearing. Xcode's build system does NOT
+            // share command-line SwiftPM's indifference to `.metal`: it applies
+            // its CompileMetalFile rule on extension alone, even to a file
+            // declared here as a resource, and then fails the build outright when
+            // the separately-downloadable Metal Toolchain component is absent
+            // ("cannot execute tool 'metal'"). Naming the file so no build rule
+            // matches keeps `swift build`, `xcodebuild` and CI on the identical
+            // runtime-compile path and leaves the toolchain download optional.
+            resources: [.copy("Metal/FrameRender.metal.txt")]
         ),
         // Shared DICOM Print core: image preparation, job options, workflow
         // orchestration, and console formatting used by BOTH the dicom-print CLI

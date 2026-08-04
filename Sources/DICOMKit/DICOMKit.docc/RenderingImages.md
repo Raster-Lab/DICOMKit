@@ -311,7 +311,7 @@ in the fragment shader. Changing any of them redraws a textured quad — **0.008
 a 3000×4000 mammogram** — and re-renders nothing. Before this they were CPU
 `CGContext` passes over every pixel.
 
-The display shaders are the only floating-point code in `FrameRender.metal`, and
+The display shaders are the only floating-point code in the shader, and
 they handle *geometry* only: nothing there can change what value a pixel has, just
 where it lands. Inversion is exact — `1 - x` on an 8-bit unorm round-trips through
 the same 256 levels. The sampler is `nearest`, matching the `shouldInterpolate:
