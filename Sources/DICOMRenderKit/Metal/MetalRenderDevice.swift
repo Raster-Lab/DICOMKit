@@ -123,6 +123,17 @@ public enum MetalKernel {
     public static let color = "render_color"
     public static let palette = "render_palette"
 
+    /// Display pipeline (M5) — geometry only; these do not decide pixel values.
+    public static let displayVertex = "display_vertex"
+    public static let displayFragment = "display_fragment"
+
+    /// Compute kernels. `pipelineState(for:)` builds *compute* states, so the
+    /// display functions — which are vertex/fragment stages — are deliberately not
+    /// in this list.
     public static let all = [monochrome, color, palette]
+
+    /// Every function the library must contain, compute and display alike.
+    public static let allFunctions = [monochrome, color, palette,
+                                      displayVertex, displayFragment]
 }
 #endif

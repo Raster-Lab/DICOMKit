@@ -294,6 +294,34 @@ enter the cache and wrapped in place with `makeBuffer(bytesNoCopy:)`, and the
 `CGImage` is backed by the very buffer the shader wrote. A steady-state window drag
 allocates nothing and copies no pixel data — asserted by test, not by convention.
 
+### Keeping the frame on the GPU
+
+The viewport can draw straight from a texture rather than a `CGImage`:
+
+```swift
+if let rendered = FrameRenderService.shared.displayRenderer?.renderForDisplay(request) {
+    // rendered.texture — for MetalImageView
+    // rendered.image   — the same pixels, same memory, for everything else
+}
+```
+
+`MetalImageView` draws that texture with a `DisplayPresentation`: zoom, pan,
+rotation, flip and inversion become a 4×4 matrix in the vertex shader and a `1 - x`
+in the fragment shader. Changing any of them redraws a textured quad — **0.008 ms on
+a 3000×4000 mammogram** — and re-renders nothing. Before this they were CPU
+`CGContext` passes over every pixel.
+
+The display shaders are the only floating-point code in `FrameRender.metal`, and
+they handle *geometry* only: nothing there can change what value a pixel has, just
+where it lands. Inversion is exact — `1 - x` on an 8-bit unorm round-trips through
+the same 256 levels. The sampler is `nearest`, matching the `shouldInterpolate:
+false` the viewer has always built its images with, so zooming shows real pixels
+rather than a smoothed guess.
+
+Frames carrying overlay planes keep the `CGImage` path: overlays are burned into the
+image, and a Secondary Capture whose entire content lives in a 1-bit overlay would
+otherwise present as a blank square.
+
 Set `DICOMKIT_RENDER_BACKEND=cpu` to force the CPU renderer. It outranks every
 in-code preference, including a hard-coded `.metal`.
 

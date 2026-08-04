@@ -62,6 +62,17 @@ public final class FrameRenderService: @unchecked Sendable {
         activeBackend == .metal
     }
 
+    #if canImport(Metal)
+    /// The Metal renderer, when one is active — the only thing that can produce a
+    /// display texture.
+    ///
+    /// `nil` on a CPU-only machine, which is why every caller must keep an
+    /// `Image(decorative:)` path.
+    public var displayRenderer: MetalFrameRenderer? {
+        metal as? MetalFrameRenderer
+    }
+    #endif
+
     /// Renders a frame.
     ///
     /// - Returns: the image, or `nil` only when *neither* backend can render it —

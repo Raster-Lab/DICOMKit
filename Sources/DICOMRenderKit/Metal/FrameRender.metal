@@ -42,6 +42,9 @@ struct MonochromeParams {
     uint frameByteOffset;    // where this frame starts in the wrapped buffer
     uint bytesPerSample;     // 1 → one byte per sample, else two are assembled
     uint availablePixels;    // pixels actually backed by bytes; the rest stay 0
+    uint outputRowStride;    // bytes per output row; == width for the CGImage path,
+                             // padded to the device's linear-texture alignment when
+                             // the same buffer is also viewed as a display texture
 };
 
 struct ColorParams {
@@ -52,6 +55,7 @@ struct ColorParams {
     uint planarConfiguration; // 0 = R1G1B1R2G2B2…, 1 = R1R2…G1G2…B1B2…
     uint frameByteCount;      // bounds for this frame's bytes
     uint planeSizeBytes;      // pixels * bytesPerSample, for planar config 1
+    uint outputRowStride;     // bytes per output row (see MonochromeParams)
 };
 
 struct PaletteParams {
@@ -60,6 +64,7 @@ struct PaletteParams {
     uint frameByteOffset;
     uint bytesPerSample;
     uint availablePixels;
+    uint outputRowStride;     // bytes per output row (see MonochromeParams)
 };
 
 // MARK: - Sample assembly
@@ -90,17 +95,18 @@ kernel void render_monochrome(
 {
     if (gid.x >= p.width || gid.y >= p.height) { return; }
 
-    uint index = gid.y * p.width + gid.x;
+    uint index = gid.y * p.width + gid.x;          // pixel index, for bounds
+    uint outIndex = gid.y * p.outputRowStride + gid.x;   // byte index, honouring padding
 
     // Samples past the end of a short frame stay black, matching the bounds check
     // the CPU loop broke out on.
     if (index >= p.availablePixels) {
-        out[index] = 0;
+        out[outIndex] = 0;
         return;
     }
 
     uint offset = p.frameByteOffset + index * p.bytesPerSample;
-    out[index] = lut[assembleSample(frameBytes, offset, p.bytesPerSample)];
+    out[outIndex] = lut[assembleSample(frameBytes, offset, p.bytesPerSample)];
 }
 
 // MARK: - Colour (RGB)
@@ -171,7 +177,7 @@ kernel void render_color(
     // totalPixels is implied by width * height and the grid never exceeds it.
     (void)totalPixels;
 
-    uint o = index * 4;
+    uint o = gid.y * p.outputRowStride + gid.x * 4;
     out[o]     = lut[rawR];
     out[o + 1] = lut[rawG];
     out[o + 2] = lut[rawB];
@@ -192,7 +198,7 @@ kernel void render_palette(
     if (gid.x >= p.width || gid.y >= p.height) { return; }
 
     uint index = gid.y * p.width + gid.x;
-    uint o = index * 4;
+    uint o = gid.y * p.outputRowStride + gid.x * 4;
 
     // A short frame leaves the remaining pixels opaque black. The CPU loop broke
     // out with those bytes still at their initial 255, so alpha stays 255 and the
@@ -210,4 +216,65 @@ kernel void render_palette(
     out[o + 1] = greenLUT[raw];
     out[o + 2] = blueLUT[raw];
     out[o + 3] = 255;
+}
+
+// MARK: - Display (M5)
+//
+// Presenting a rendered frame on screen, with the spatial transforms applied by
+// the GPU instead of by CPU CGContext passes and SwiftUI modifiers.
+//
+// These two functions are what make tool actions cheap: once the frame is a
+// texture, zoom, pan, rotation, flip and inversion are a matrix multiply and a
+// subtraction. Changing any of them costs one redraw of a textured quad — no
+// re-render, no re-window, no new CGImage, and nothing re-read from the frame.
+//
+// Note this is the ONLY floating-point code in this file, and deliberately so: it
+// is *geometry*, not pixel values. The grey level a pixel gets was decided on the
+// CPU and baked into the byte tables the compute kernels above index. Nothing here
+// can change what value a pixel has — only where it lands on screen. Inversion is
+// the one exception, and it is exact: 1.0 − x on an 8-bit unorm round-trips
+// through the same 256 levels.
+
+struct DisplayParams {
+    float4x4 transform;    // image quad → normalised device coordinates
+    uint     invert;       // 1 → present inverted (white ↔ black)
+    uint     isGrayscale;  // 1 → splat .r across RGB; the texture is r8Unorm
+};
+
+struct DisplayVertex {
+    float4 position [[position]];
+    float2 texCoord;
+};
+
+vertex DisplayVertex display_vertex(uint vertexID [[vertex_id]],
+                                    constant DisplayParams& p [[buffer(0)]])
+{
+    // A unit quad, expanded here rather than supplied as a vertex buffer: four
+    // corners are not worth an allocation and a binding.
+    const float2 corners[4] = { float2(-1, -1), float2(1, -1), float2(-1, 1), float2(1, 1) };
+    // V is flipped because DICOM rows run top-to-bottom while NDC y runs upward.
+    const float2 uvs[4]     = { float2(0, 1),   float2(1, 1),  float2(0, 0),   float2(1, 0) };
+
+    DisplayVertex out;
+    out.position = p.transform * float4(corners[vertexID], 0.0, 1.0);
+    out.texCoord = uvs[vertexID];
+    return out;
+}
+
+fragment float4 display_fragment(DisplayVertex in [[stage_in]],
+                                 constant DisplayParams& p [[buffer(0)]],
+                                 texture2d<float> frame [[texture(0)]])
+{
+    // Nearest, not linear. The existing viewer builds its CGImage with
+    // `shouldInterpolate: false`, so a zoomed-in image shows its actual pixels
+    // rather than a smoothed guess — which is what reading pixel data calls for.
+    // Switching to linear here would silently change what is on screen.
+    constexpr sampler nearest(filter::nearest, mag_filter::nearest, address::clamp_to_edge);
+
+    float4 colour = frame.sample(nearest, in.texCoord);
+    float3 rgb = p.isGrayscale != 0 ? float3(colour.r) : colour.rgb;
+    if (p.invert != 0) {
+        rgb = 1.0 - rgb;
+    }
+    return float4(rgb, 1.0);
 }

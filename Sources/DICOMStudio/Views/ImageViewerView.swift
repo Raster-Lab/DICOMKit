@@ -8,6 +8,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import DICOMNetwork
 import DICOMPrintKit
+import DICOMRenderKit
 
 /// Main DICOM image viewer view.
 ///
@@ -428,6 +429,27 @@ public struct ImageViewerView: View {
 
     // MARK: - Image Content
 
+    #if canImport(Metal)
+    /// The GPU-resident frame, when the display path is in use.
+    private var metalDisplayFrame: DisplayFrameTexture? { viewModel.displayTexture }
+
+    /// The view model's tool state plus whatever the in-flight gesture is adding.
+    ///
+    /// Gestures are folded in here rather than applied as view modifiers, because on
+    /// this path the transform *is* the arrangement — a `.scaleEffect` on top would
+    /// scale the already-transformed quad and compound the zoom.
+    private var livePresentation: DisplayPresentation {
+        var presentation = viewModel.displayPresentation
+        presentation.zoom *= magnifyBy
+        presentation.panX += dragOffset.width
+        presentation.panY += dragOffset.height
+        return presentation
+    }
+    #else
+    private var metalDisplayFrame: Never? { nil }
+    private var livePresentation: Int { 0 }
+    #endif
+
     @ViewBuilder
     private var imageContent: some View {
         #if canImport(CoreGraphics)
@@ -439,6 +461,21 @@ public struct ImageViewerView: View {
             ProgressiveImageView(viewModel: viewModel)
                 .gesture(panGesture)
                 .gesture(magnificationGesture)
+                #if os(macOS)
+                .background(ScrollWheelHandler { scrollImages($0) })
+                #endif
+        } else if let texture = metalDisplayFrame {
+            // GPU display path (GPU_RENDERING_PLAN.md M5). Zoom, pan, rotation, flip
+            // and inversion are in the shader's transform, so none of the modifiers
+            // below this branch apply — and none of them re-render anything. A tool
+            // action costs one redraw of a textured quad.
+            MetalImageView(frame: texture, presentation: livePresentation)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .gesture(panGesture)
+                .gesture(magnificationGesture)
+                .accessibilityLabel("DICOM Image")
+                .accessibilityValue(viewModel.dimensionsText)
+                .accessibilityHint("Drag to pan, or use the windowing/zoom tools to drag-adjust; scroll to step through images")
                 #if os(macOS)
                 .background(ScrollWheelHandler { scrollImages($0) })
                 #endif

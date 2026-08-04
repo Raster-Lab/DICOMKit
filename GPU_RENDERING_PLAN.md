@@ -497,7 +497,7 @@ where they are already fast enough — YBR is ultrasound and secondary capture, 
 fallback produces exactly the CPU's bytes. The plan's `render_rgb` was also to fold the separate
 YBR→RGB second pass into the kernel; that pass stays on the CPU with the rest of YBR.
 
-### M5 — Direct-to-display path for the focused viewer · ~3 days — **DEFERRED**
+### M5 — Direct-to-display path for the focused viewer · ~3 days — **LANDED**
 
 The largest and riskiest milestone. Because M3 already eliminated the copies, this milestone is
 **not** where the performance arrives — it is where the *spatial transforms* move onto the GPU and
@@ -524,37 +524,72 @@ declaring this milestone done.
 **Exit:** interactive window/level, zoom and pan at a sustained 60 fps on an MG frame, with the
 CPU fallback branch still rendering correctly when Metal is forced off.
 
-**Deferred — on this milestone's own stated criterion.**
+**Built — and the justification is not the window drag.**
 
-The milestone says: *"Judge it on the M0 cine and zoom/pan numbers, and be willing to defer it if
-M3's numbers already clear the 60 fps bar."* They clear it by a factor of sixteen. The 60 fps
-budget is 16.7 ms per step; an MG 3000×4000 window drag now costs **1.02 ms** per step on the GPU
-and 7.4 ms on the CPU fallback. Both fit, on the largest frame size in clinical use.
+This milestone was first deferred on its own stated criterion (M3's numbers already clear the
+60 fps bar by 16×), then reinstated on a better argument from the project owner: the value of
+keeping the frame on the GPU is not drag latency, it is that **every tool action becomes free**.
+The size threshold M3 introduced is not a property of the GPU either — it is a property of
+round-tripping each render through a `CGImage`. Once the frame stays in a texture, the fixed
+dispatch cost is paid once per *displayed frame* rather than once per *operation*.
 
-What M5 would still buy is real but second-order: the spatial transforms (rotate, flip, invert —
-still CPU `CGContext` passes in `FrameRenderer.applying`) and the per-frame `CGImage`
-construction. What it costs is three days on the plan's own "largest and riskiest" milestone,
-rewiring the display layer into an `MTKView` whose drawable-size hazard already has a recorded
-prior incident in this codebase (`ProgressiveImageView.swift:55-62` — a `Canvas` viewer that
-blanked *every* progressively-decoded J2K file).
+Measured, Apple M4, release — one re-render (what a tool action used to imply) against one
+redraw with a new transform (what it now costs):
 
-Spending that risk to move a 1 ms operation is the wrong trade while it stays at 1 ms. Revisit if
-a workload appears that does not fit — 4K+ panoramic, or cine at high frame rates on very large
-frames — and treat the trigger as measured, not assumed.
+| Case | re-render | redraw per tool step | |
+|---|---|---|---|
+| MG 3000×4000 | 1.586 ms | **0.008 ms** | 198× |
+| CR/DX 2048×2500 | 0.777 ms | **0.008 ms** | 97× |
+| CT 512×512 | 0.229 ms | **0.054 ms** | 4× |
 
-**Two consequences of deferring, both already handled:**
+**As built:**
 
-1. `FrameRenderer.cacheKey` keeps zoom/rotation/flip/invert in the key. Those transforms are still
-   applied on the CPU, so they still change the pixels the key identifies. Removing them now would
-   reintroduce the exact bug the key's own doc comment warns about — a film preview silently
-   disagreeing with the viewer. The rework is contingent on M5 and is deferred with it.
-2. A separate finding, logged here because M5 is where it would have surfaced: the focused
-   viewer's `ImageViewerViewModel.renderCurrentFrame` calls `DICOMFile.tryRenderFrame`, which
-   calls `tryPixelData()` — so it **re-decodes the whole pixel data on every drag step**. For a
-   compressed file that dwarfs the render itself, and no backend choice can fix it. It is a
-   pre-existing defect rather than anything this plan introduced, and the fix (cache the decoded
-   `PixelData` on the view model, as `FrameSourceCache` already does for tiles) is independent of
-   the GPU work. Worth its own change.
+- `DisplayFrameTexture` + `DisplayPresentation` + `MetalImageRenderer` + `MetalImageView`
+  (`NSViewRepresentable`/`UIViewRepresentable` over `MTKView`). Zoom, pan, rotation, flip and
+  inversion are a 4×4 matrix in `display_vertex` and a `1 - x` in `display_fragment`.
+- `display_vertex`/`display_fragment` are the **only** floating-point code in `FrameRender.metal`,
+  and deliberately so: they are *geometry*, not pixel values. Nothing there can change what value
+  a pixel has, only where it lands. Inversion is the one exception and is exact — `1 - x` on an
+  8-bit unorm round-trips through the same 256 levels.
+- **One dispatch, two views of it.** `renderForDisplay` returns the texture *and* a `CGImage` over
+  the same output buffer, so having both costs nothing. The buffer returns to the pool only when
+  both are released — they share one owner (`OutputBufferBox`); recycling while either was still
+  reading would corrupt what is on screen.
+- The kernels gained an `outputRowStride` parameter. The `CGImage` path keeps a dense stride so
+  the equality tests can compare whole buffers; the display path pads to
+  `minimumLinearTextureAlignment`, which a texture view over a buffer requires.
+- **The sampler is `nearest`, not `linear`.** The existing viewer builds its `CGImage` with
+  `shouldInterpolate: false`, so zooming in shows actual pixels rather than a smoothed guess.
+  Switching to linear here would silently change what is on screen.
+- The display path deliberately ignores `minimumGPUPixelCount`: a frame already headed for a GPU
+  texture has no cheaper route, whatever its size.
+- `toggleInversion()` no longer re-renders when the display path is active.
+
+**Two frames deliberately keep the CPU path**, and the viewport falls back to
+`Image(decorative:)` for them:
+
+1. **Frames with overlay planes.** Overlays are burned into the `CGImage`; the display path does
+   not burn them. Some Secondary Captures — Siemens' Patient Protocol is the standing example —
+   carry all-zero pixel data with their entire content in a 1-bit overlay, so showing the texture
+   would present a blank square where a page of text belongs.
+   `testOverlayFrameDoesNotUseDisplayTexture` holds this.
+2. **Anything reaching the auto-window or stored-window fallback rungs**, which produce a
+   `CGImage` only.
+
+**The drawable-size hazard is tested, not trusted.** The plan's caution here is a real prior
+incident: a `Canvas`-based viewer blanked *every* progressively-decoded J2K file when the canvas
+resolved to zero size under `.aspectRatio`. `DisplayPresentation.transform` returns `nil` for a
+degenerate viewport rather than dividing by zero, `MetalImageRenderer` records
+`lastDrawHadZeroSizedDrawable`, and both halves are asserted — a zero-sized drawable must refuse
+to draw, and a sized one must draw. A renderer that never drew anything would otherwise pass the
+first half alone.
+
+**What M5 did *not* change:** `FrameRenderer.cacheKey` still carries zoom/rotation/flip/invert.
+The display path is the focused viewport only; tiles and the film preview still apply their
+transforms on the CPU in `FrameRenderer.applying`, so those transforms still change the pixels
+the key identifies. Removing them from the key would reintroduce the exact bug the key's own doc
+comment warns about. That rework belongs with moving the *tile* path onto the display renderer,
+which is a separate piece of work.
 
 ### M6 — Extend to tiles, film preview and thumbnails · ~1.5 days — **LANDED (cache-key rework deferred with M5)**
 
@@ -688,6 +723,40 @@ on the CPU where they belong. `testSmallFramesAreDeclinedByTheProductionRenderer
 One-time cost of page-aligning a decoded file, paid per file on entry to `FrameSourceCache`:
 0.008 ms (CT), 0.193 ms (CR/DX), 0.536 ms (MG). The alternative is a copy of the same size on
 every render.
+
+### Tool actions — M5
+
+One re-render (what zoom / rotate / invert used to imply) against one redraw with a new
+transform (what they now cost), once the frame lives in a GPU texture:
+
+| Case | re-render | redraw per tool step | |
+|---|---|---|---|
+| MG 3000×4000 | 1.586 ms | **0.008 ms** | 198× |
+| CR/DX 2048×2500 | 0.777 ms | **0.008 ms** | 97× |
+| CT 512×512 | 0.229 ms | **0.054 ms** | 4× |
+
+### The focused viewport's per-drag decode
+
+Found while wiring M5, fixed separately because it is a pre-existing defect rather than anything
+this plan introduced. `ImageViewerViewModel.renderCurrentFrame` reached its pixels through
+`DICOMFile.tryRenderFrame` → `tryPixelData()`, which decodes from scratch on every call — and
+`adjustWindowLevel` calls it once per mouse event. So a window drag ran the **codec** once per
+mouse-move. The tile and film path had solved this years earlier with `FrameSourceCache`; the
+focused viewport simply never got the same treatment.
+
+Per drag step, 2048×2500 CR:
+
+| Transfer syntax | decoding each step | cached pixels | |
+|---|---|---|---|
+| Uncompressed | 2.319 ms | **0.570 ms** | 4× |
+| JPEG 2000 lossless | 16.161 ms | **0.558 ms** | 29× |
+| JPEG-LS lossless | 74.120 ms | **0.589 ms** | 126× |
+| RLE lossless | 354.986 ms | **0.526 ms** | 675× |
+
+RLE was rendering at under three frames a second. Note the uncompressed row: its decode is
+0.001 ms, so the 1.7 ms it still saves is `PixelData.frameData(at:)` copying the frame out on
+every call — which is why the cache covers uncompressed sources too, not just the obviously
+expensive ones.
 
 ### Whole journey — M0 baseline to today
 

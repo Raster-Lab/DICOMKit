@@ -66,6 +66,53 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
     // MARK: - Entry point
 
     public func renderFrame(_ request: FrameRenderRequest) -> CGImage? {
+        render(request, as: .cgImage)?.image
+    }
+
+    /// Renders a frame to a texture for on-screen display (M5).
+    ///
+    /// Same kernels, same tables, same pixels as ``renderFrame(_:)`` — only the
+    /// destination differs. The texture is a view onto the shared buffer the shader
+    /// wrote, so this is no more copying than the `CGImage` path.
+    ///
+    /// This is what lets tool actions be cheap: once a frame is a texture, zoom,
+    /// pan, rotation, flip and inversion are a matrix multiply in the display
+    /// shader. Changing any of them redraws a quad and touches no pixel data.
+    ///
+    /// Unlike ``renderFrame(_:)`` this ignores ``minimumGPUPixelCount``: the
+    /// threshold exists because a dispatch that ends in a `CGImage` costs more than
+    /// a small CPU render. A frame already destined for a GPU texture has no cheaper
+    /// route.
+    public func renderDisplayTexture(_ request: FrameRenderRequest) -> DisplayFrameTexture? {
+        renderForDisplay(request)?.texture
+    }
+
+    /// Renders once and returns both a display texture and a `CGImage` over the
+    /// **same** output memory.
+    ///
+    /// The focused viewport needs both: the texture to draw, and the image for
+    /// everything that still expects one. Rendering twice would double the dispatch
+    /// for no reason — a texture view and a `CGImage` are both just interpretations
+    /// of the bytes the shader wrote, and `CGImage` accepts the padded row stride a
+    /// texture view requires.
+    ///
+    /// The output buffer returns to the pool only when **both** have been released;
+    /// they share one owner. Recycling while either was still reading would corrupt
+    /// whatever is on screen.
+    public func renderForDisplay(
+        _ request: FrameRenderRequest
+    ) -> (texture: DisplayFrameTexture, image: CGImage)? {
+        guard let output = render(request, as: .texture),
+              let texture = output.texture,
+              let image = output.image,
+              let box = output.box else { return nil }
+        return (DisplayFrameTexture(texture: texture,
+                                    isGrayscale: output.isGrayscale,
+                                    retaining: box),
+                image)
+    }
+
+    private func render(_ request: FrameRenderRequest, as destination: Destination) -> RenderOutput? {
         switch request.family {
         case .monochrome:
             // No window means "auto-window from this frame's pixel range", which
@@ -73,13 +120,31 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             // Reproducing that scan here would be a second implementation of a
             // policy decision, so the CPU keeps it.
             guard let window = request.window else { return nil }
-            return renderMonochrome(request, window: window)
+            return renderMonochrome(request, window: window, destination: destination)
         case .palette:
             guard let palette = request.paletteLUT else { return nil }
-            return renderPalette(request, palette: palette)
+            return renderPalette(request, palette: palette, destination: destination)
         case .color:
-            return renderColor(request)
+            return renderColor(request, destination: destination)
         }
+    }
+
+    /// Where a dispatch puts its result.
+    enum Destination {
+        /// A `CGImage` over the output buffer — the type ~12 existing call sites want.
+        /// Row stride is exactly the pixel width, so the equality tests can compare
+        /// whole buffers.
+        case cgImage
+        /// A texture view over the output buffer, for the display path. Row stride is
+        /// padded to `minimumLinearTextureAlignment`, which a texture view requires.
+        case texture
+    }
+
+    struct RenderOutput {
+        var image: CGImage?
+        var texture: MTLTexture?
+        var box: OutputBufferBox?
+        var isGrayscale: Bool
     }
 
     // MARK: - Monochrome
@@ -90,32 +155,40 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
         var frameByteOffset: UInt32
         var bytesPerSample: UInt32
         var availablePixels: UInt32
+        var outputRowStride: UInt32
     }
 
-    private func renderMonochrome(_ request: FrameRenderRequest, window: WindowSettings) -> CGImage? {
+    private func renderMonochrome(
+        _ request: FrameRenderRequest, window: WindowSettings, destination: Destination
+    ) -> RenderOutput? {
         let descriptor = request.pixelData.descriptor
-        guard let geometry = FrameGeometry(request, minimumPixelCount: minimumPixelCount) else { return nil }
+        guard let geometry = FrameGeometry(
+            request,
+            minimumPixelCount: destination == .texture ? 0 : minimumPixelCount
+        ) else { return nil }
 
         // The same table the CPU renderer uses — built by the same code, from the
         // same WindowSettings.apply. This is what makes GPU output bit-identical
         // rather than merely close.
         let lut = WindowLUT.grayscale(descriptor: descriptor, window: window)
+        let stride = rowStride(pixelWidth: geometry.width, bytesPerPixel: 1, destination: destination)
 
         var params = MonochromeParams(
             width: UInt32(geometry.width),
             height: UInt32(geometry.height),
             frameByteOffset: UInt32(geometry.frameOffset),
             bytesPerSample: UInt32(descriptor.bytesPerSample),
-            availablePixels: UInt32(geometry.availablePixels)
+            availablePixels: UInt32(geometry.availablePixels),
+            outputRowStride: UInt32(stride)
         )
 
         return dispatch(
             request: request,
             geometry: geometry,
             kernel: MetalKernel.monochrome,
-            outputByteCount: geometry.pixelCount,
-            bytesPerRow: geometry.width,
+            bytesPerRow: stride,
             isGrayscale: true,
+            destination: destination,
             configure: { encoder, input, output in
                 encoder.setBuffer(input, offset: 0, index: 0)
                 encoder.setBytes(&params, length: MemoryLayout<MonochromeParams>.stride, index: 1)
@@ -137,9 +210,12 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
         var planarConfiguration: UInt32
         var frameByteCount: UInt32
         var planeSizeBytes: UInt32
+        var outputRowStride: UInt32
     }
 
-    private func renderColor(_ request: FrameRenderRequest) -> CGImage? {
+    private func renderColor(
+        _ request: FrameRenderRequest, destination: Destination
+    ) -> RenderOutput? {
         let descriptor = request.pixelData.descriptor
         guard descriptor.samplesPerPixel == 3 else { return nil }
 
@@ -160,8 +236,12 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
         // mammograms), and remain bit-identical everywhere.
         guard !descriptor.photometricInterpretation.isYBR else { return nil }
 
-        guard let geometry = FrameGeometry(request, minimumPixelCount: minimumPixelCount) else { return nil }
+        guard let geometry = FrameGeometry(
+            request,
+            minimumPixelCount: destination == .texture ? 0 : minimumPixelCount
+        ) else { return nil }
         let lut = ColorSampleLUT.normalisation(for: descriptor)
+        let stride = rowStride(pixelWidth: geometry.width, bytesPerPixel: 4, destination: destination)
 
         var params = ColorParams(
             width: UInt32(geometry.width),
@@ -170,16 +250,17 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             bytesPerSample: UInt32(descriptor.bytesPerSample),
             planarConfiguration: UInt32(descriptor.planarConfiguration),
             frameByteCount: UInt32(geometry.frameByteCount),
-            planeSizeBytes: UInt32(geometry.pixelCount * descriptor.bytesPerSample)
+            planeSizeBytes: UInt32(geometry.pixelCount * descriptor.bytesPerSample),
+            outputRowStride: UInt32(stride)
         )
 
         return dispatch(
             request: request,
             geometry: geometry,
             kernel: MetalKernel.color,
-            outputByteCount: geometry.pixelCount * 4,
-            bytesPerRow: geometry.width * 4,
+            bytesPerRow: stride,
             isGrayscale: false,
+            destination: destination,
             configure: { encoder, input, output in
                 encoder.setBuffer(input, offset: 0, index: 0)
                 encoder.setBytes(&params, length: MemoryLayout<ColorParams>.stride, index: 1)
@@ -199,29 +280,37 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
         var frameByteOffset: UInt32
         var bytesPerSample: UInt32
         var availablePixels: UInt32
+        var outputRowStride: UInt32
     }
 
-    private func renderPalette(_ request: FrameRenderRequest, palette: PaletteColorLUT) -> CGImage? {
+    private func renderPalette(
+        _ request: FrameRenderRequest, palette: PaletteColorLUT, destination: Destination
+    ) -> RenderOutput? {
         let descriptor = request.pixelData.descriptor
-        guard let geometry = FrameGeometry(request, minimumPixelCount: minimumPixelCount) else { return nil }
+        guard let geometry = FrameGeometry(
+            request,
+            minimumPixelCount: destination == .texture ? 0 : minimumPixelCount
+        ) else { return nil }
 
         let lut = PaletteDisplayLUT.make(descriptor: descriptor, palette: palette)
+        let stride = rowStride(pixelWidth: geometry.width, bytesPerPixel: 4, destination: destination)
 
         var params = PaletteParams(
             width: UInt32(geometry.width),
             height: UInt32(geometry.height),
             frameByteOffset: UInt32(geometry.frameOffset),
             bytesPerSample: UInt32(descriptor.bytesPerSample),
-            availablePixels: UInt32(geometry.availablePixels)
+            availablePixels: UInt32(geometry.availablePixels),
+            outputRowStride: UInt32(stride)
         )
 
         return dispatch(
             request: request,
             geometry: geometry,
             kernel: MetalKernel.palette,
-            outputByteCount: geometry.pixelCount * 4,
-            bytesPerRow: geometry.width * 4,
+            bytesPerRow: stride,
             isGrayscale: false,
+            destination: destination,
             configure: { encoder, input, output in
                 encoder.setBuffer(input, offset: 0, index: 0)
                 encoder.setBytes(&params, length: MemoryLayout<PaletteParams>.stride, index: 1)
@@ -285,15 +374,30 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
         }
     }
 
+    /// Bytes per output row.
+    ///
+    /// The `CGImage` path uses exactly the pixel width, which keeps the output a
+    /// dense buffer that equality tests can compare whole. A texture view over a
+    /// buffer must honour `minimumLinearTextureAlignment`, so the display path pads
+    /// — and the kernels take the stride as a parameter rather than assuming either.
+    private func rowStride(pixelWidth: Int, bytesPerPixel: Int, destination: Destination) -> Int {
+        let dense = pixelWidth * bytesPerPixel
+        guard destination == .texture else { return dense }
+        let format: MTLPixelFormat = bytesPerPixel == 1 ? .r8Unorm : .rgba8Unorm
+        let alignment = max(1, renderDevice.device.minimumLinearTextureAlignment(for: format))
+        return ((dense + alignment - 1) / alignment) * alignment
+    }
+
     private func dispatch(
         request: FrameRenderRequest,
         geometry: FrameGeometry,
         kernel: String,
-        outputByteCount: Int,
         bytesPerRow: Int,
         isGrayscale: Bool,
+        destination: Destination,
         configure: (MTLComputeCommandEncoder, MTLBuffer, MTLBuffer) -> Bool
-    ) -> CGImage? {
+    ) -> RenderOutput? {
+        let outputByteCount = bytesPerRow * geometry.height
         guard let pipeline = renderDevice.pipelineState(for: kernel),
               let (input, _) = pool.inputBuffer(for: request.pixelData, frameIndex: request.frameIndex),
               let output = pool.outputBuffer(byteCount: outputByteCount),
@@ -332,11 +436,37 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             return nil
         }
 
-        return makeImage(
-            from: output, byteCount: outputByteCount,
+        // One owner for the output buffer, shared by every view onto it. The buffer
+        // returns to the pool when the last of them is released.
+        let box = OutputBufferBox(buffer: output, pool: pool)
+
+        guard let image = makeImage(
+            box: box, byteCount: outputByteCount,
             width: geometry.width, height: geometry.height,
             bytesPerRow: bytesPerRow, isGrayscale: isGrayscale
-        )
+        ) else {
+            return nil
+        }
+
+        guard destination == .texture else {
+            return RenderOutput(image: image, texture: nil, box: box,
+                                isGrayscale: isGrayscale)
+        }
+
+        // A view onto the buffer the shader just wrote — no copy, no upload.
+        let format: MTLPixelFormat = isGrayscale ? .r8Unorm : .rgba8Unorm
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: format, width: geometry.width, height: geometry.height,
+            mipmapped: false)
+        descriptor.usage = .shaderRead
+        descriptor.storageMode = .shared
+        guard let texture = output.makeTexture(
+            descriptor: descriptor, offset: 0, bytesPerRow: bytesPerRow
+        ) else {
+            return nil
+        }
+        return RenderOutput(image: image, texture: texture, box: box,
+                            isGrayscale: isGrayscale)
     }
 
     /// Builds a `CGImage` over the shader's own output memory.
@@ -346,15 +476,14 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
     /// buffer the GPU just wrote, and the buffer returns to the pool when the image
     /// is released — which is the only moment it is provably safe to reuse.
     private func makeImage(
-        from buffer: MTLBuffer, byteCount: Int,
+        box: OutputBufferBox, byteCount: Int,
         width: Int, height: Int, bytesPerRow: Int, isGrayscale: Bool
     ) -> CGImage? {
-        let box = OutputBufferBox(buffer: buffer, pool: pool)
         let info = Unmanaged.passRetained(box).toOpaque()
 
         guard let provider = CGDataProvider(
             dataInfo: info,
-            data: buffer.contents(),
+            data: box.buffer.contents(),
             size: byteCount,
             releaseData: { info, _, _ in
                 guard let info else { return }
@@ -422,7 +551,7 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
 
 /// Keeps an output buffer alive for exactly as long as the `CGImage` reading it,
 /// then returns it to the pool.
-private final class OutputBufferBox {
+final class OutputBufferBox {
     let buffer: MTLBuffer
     let pool: UnifiedMemoryPool
 

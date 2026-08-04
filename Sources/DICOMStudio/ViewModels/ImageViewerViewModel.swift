@@ -29,6 +29,21 @@ public final class ImageViewerViewModel {
     public var currentImage: CGImage?
     #endif
 
+    #if canImport(Metal)
+    /// The current frame as a GPU texture, when the display path can use one.
+    ///
+    /// Non-nil means zoom, pan, rotation, flip and inversion are applied by the
+    /// display shader instead of by CPU passes and SwiftUI modifiers — so changing
+    /// any of them redraws a textured quad and re-renders nothing. Nil means the
+    /// viewport falls back to `Image(decorative:)` over ``currentImage``, which is
+    /// what happens on a CPU-only machine and whenever a frame needs work the
+    /// display path does not do (see ``canUseDisplayTexture``).
+    ///
+    /// Produced by the same dispatch that produces ``currentImage``, over the same
+    /// output memory — having both costs nothing extra.
+    public var displayTexture: DisplayFrameTexture?
+    #endif
+
     /// File path of the currently loaded DICOM file.
     public var filePath: String?
 
@@ -657,6 +672,38 @@ public final class ImageViewerViewModel {
         }
     }
 
+    // MARK: - GPU display path
+
+    #if canImport(Metal)
+    /// Whether this frame can be shown straight from a GPU texture.
+    ///
+    /// The one thing the display path does not do is burn overlay planes. Those are
+    /// drawn *over* the image rather than into it, and some Secondary Captures —
+    /// Siemens' Patient Protocol is the standing example — carry all-zero pixel data
+    /// with their entire content in a 1-bit overlay. Showing the texture for one of
+    /// those would present a black square where a page of text belongs, so frames
+    /// with drawable overlays keep the CPU-burned `CGImage`.
+    private func canUseDisplayTexture(for file: DICOMFile) -> Bool {
+        !OverlayPlaneRenderer.hasOverlay(file.dataSet, forFrame: currentFrameIndex)
+    }
+
+    /// The tool state, as the display shader's geometry.
+    ///
+    /// Reading this rather than re-rendering is what makes zoom, pan, rotation, flip
+    /// and inversion cost a redraw instead of a pass over every pixel.
+    public var displayPresentation: DisplayPresentation {
+        DisplayPresentation(
+            zoom: zoomLevel,
+            panX: panOffsetX,
+            panY: panOffsetY,
+            rotationDegrees: rotationAngle,
+            flipHorizontal: isFlippedHorizontal,
+            flipVertical: isFlippedVertical,
+            invert: isInverted
+        )
+    }
+    #endif
+
     // MARK: - Rendering
 
     /// Renders the current frame with the current window/level settings.
@@ -671,13 +718,33 @@ public final class ImageViewerViewModel {
         var detailedError: String?
         var source: (pixelData: PixelData, palette: PaletteColorLUT?)?
 
+        #if canImport(Metal)
+        displayTexture = nil
+        #endif
+
         do {
             let decoded = try decodedPixelSource(for: file)
             source = (decoded.0, decoded.1)
             let window = WindowSettings(center: windowCenter, width: windowWidth)
-            image = FrameRenderService.shared.renderFrame(FrameRenderRequest(
+            let request = FrameRenderRequest(
                 pixelData: decoded.0, frameIndex: currentFrameIndex,
-                window: window, paletteLUT: decoded.1))
+                window: window, paletteLUT: decoded.1)
+
+            #if canImport(Metal)
+            // The GPU display path, when this frame qualifies: one dispatch yields
+            // both the texture the viewport draws and the image everything else
+            // expects, over the same output memory.
+            if canUseDisplayTexture(for: file),
+               let metal = FrameRenderService.shared.displayRenderer,
+               let rendered = metal.renderForDisplay(request) {
+                displayTexture = rendered.texture
+                image = rendered.image
+            } else {
+                image = FrameRenderService.shared.renderFrame(request)
+            }
+            #else
+            image = FrameRenderService.shared.renderFrame(request)
+            #endif
         } catch let e as PixelDataError {
             detailedError = e.description
         } catch {
@@ -722,7 +789,17 @@ public final class ImageViewerViewModel {
         // Inversion is applied to the rendered frame rather than the window: the
         // renderer has no invert option, and negating the window would clip
         // differently for signed and rescaled modalities.
-        if isInverted, let rendered = image {
+        //
+        // On the GPU display path this is skipped: inversion is a fragment-stage
+        // `1 - x` in the display shader, which is exact on 8-bit and free, and the
+        // texture is what the viewport actually draws. Toggling it then costs a
+        // redraw rather than a full-frame CPU pass.
+        #if canImport(Metal)
+        let invertOnGPU = displayTexture != nil
+        #else
+        let invertOnGPU = false
+        #endif
+        if isInverted, !invertOnGPU, let rendered = image {
             image = ImageInversion.inverted(rendered) ?? rendered
         }
 
@@ -853,6 +930,12 @@ public final class ImageViewerViewModel {
     /// Toggles grayscale inversion.
     public func toggleInversion() {
         isInverted.toggle()
+        #if canImport(Metal)
+        // On the GPU display path inversion is part of the presentation, so the
+        // view redraws with a different flag and nothing is re-rendered. The CPU
+        // path has no such option and must run its full-frame pass.
+        if displayTexture != nil { return }
+        #endif
         renderCurrentFrame()
     }
 

@@ -355,3 +355,73 @@ final class RenderBenchmarks: XCTestCase {
                        Double(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024 * 1024)))
     }
 }
+
+// MARK: - M5: tool actions on the display path
+
+#if canImport(CoreGraphics) && canImport(Metal)
+extension RenderBenchmarks {
+
+    /// What a tool action costs once the frame lives in a GPU texture.
+    ///
+    /// This is the number M5 exists for. Before it, a rotation or an invert was a
+    /// full CPU `CGContext` pass over every pixel and a zoom was a resample; now they
+    /// are a 4×4 matrix and a redraw of a textured quad, and the frame is not
+    /// re-rendered at all.
+    ///
+    /// The comparison is: one re-render (what a tool action used to imply) against
+    /// one redraw with a new transform (what it now costs).
+    func testToolActionCost() throws {
+        guard let metal = MetalFrameRenderer(minimumPixelCount: 0),
+              let device = MetalRenderDevice.shared,
+              let display = MetalImageRenderer() else {
+            throw XCTSkip("No Metal device on this machine")
+        }
+        print("\n[bench] tool actions (zoom / rotate / invert), Metal display path")
+
+        for testCase in monochromeCases {
+            let pixelData = monochromePixelData(rows: testCase.rows, columns: testCase.columns)
+                .pageAligned()
+            let request = FrameRenderRequest(
+                pixelData: pixelData, frameIndex: 0,
+                window: WindowSettings(center: 2048, width: 4096))
+
+            // A full re-render — what a tool action cost before the transforms moved
+            // onto the GPU (and still costs on the CPU fallback).
+            autoreleasepool { _ = metal.renderForDisplay(request) }
+            let rerender = bestMilliseconds {
+                autoreleasepool { _ = metal.renderForDisplay(request) }
+            }
+
+            guard let frame = metal.renderDisplayTexture(request) else { continue }
+            display.frame = frame
+
+            let target = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: MetalImageRenderer.colorPixelFormat,
+                width: 1024, height: 1024, mipmapped: false)
+            target.usage = [.renderTarget, .shaderRead]
+            guard let attachment = device.device.makeTexture(descriptor: target) else { continue }
+            let descriptor = MTLRenderPassDescriptor()
+            descriptor.colorAttachments[0].texture = attachment
+            descriptor.colorAttachments[0].loadAction = .clear
+            descriptor.colorAttachments[0].storeAction = .store
+
+            // 60 tool deltas — a zoom drag — each a new transform, no re-render.
+            let steps = 60
+            let redraw = bestMilliseconds(iterations: 3) {
+                for step in 0..<steps {
+                    display.presentation = DisplayPresentation(
+                        zoom: 1.0 + Double(step) * 0.05,
+                        rotationDegrees: Double(step),
+                        invert: step % 2 == 0)
+                    _ = display.render(size: CGSize(width: 1024, height: 1024),
+                                       descriptor: descriptor, drawable: nil)
+                }
+            }
+
+            report(testCase.name + " (re-render)", rerender,
+                   pixels: testCase.rows * testCase.columns)
+            report(testCase.name + " (redraw, per tool step)", redraw / Double(steps))
+        }
+    }
+}
+#endif
