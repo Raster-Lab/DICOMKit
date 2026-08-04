@@ -88,55 +88,42 @@ public struct PixelDataRenderer: Sendable {
         
         // Create grayscale output buffer
         var outputBytes = [UInt8](repeating: 0, count: totalPixels)
-        
-        // Extract pixel values and apply windowing
+
         let bytesPerSample = descriptor.bytesPerSample
-        let bitShift = descriptor.bitShift
-        let storedBitMask = descriptor.storedBitMask
-        let isSigned = descriptor.isSigned
-        let bitsStored = descriptor.bitsStored
-        let isMonochrome1 = descriptor.photometricInterpretation == .monochrome1
-        
-        for i in 0..<totalPixels {
-            let offset = i * bytesPerSample
-            guard offset + bytesPerSample <= frameData.count else {
-                break
-            }
-            
-            // Read raw value
-            let rawValue: Int
-            if bytesPerSample == 1 {
-                rawValue = Int(frameData[offset])
-            } else {
-                let low = Int(frameData[offset])
-                let high = Int(frameData[offset + 1])
-                rawValue = low | (high << 8)
-            }
-            
-            // Apply bit masking
-            let shiftedValue = rawValue >> bitShift
-            var maskedValue = shiftedValue & storedBitMask
-            
-            // Apply sign extension if needed
-            if isSigned {
-                let signBit = 1 << (bitsStored - 1)
-                if maskedValue & signBit != 0 {
-                    maskedValue = maskedValue - (1 << bitsStored)
+        guard bytesPerSample >= 1 else {
+            return createGrayscaleCGImage(from: outputBytes, width: width, height: height)
+        }
+
+        // The whole per-pixel chain — shift, stored-bit mask, sign extension, the VOI
+        // window, MONOCHROME1 inversion and the clamp to a byte — depends on nothing
+        // but the raw sample, so it is evaluated once per possible sample value rather
+        // than once per pixel. `WindowLUT` builds the table with the same
+        // `WindowSettings.apply` this loop used to call, so the output is byte-identical.
+        let lut = WindowLUT.grayscale(descriptor: descriptor, window: window)
+
+        // Samples that would read past the end of the frame are left at 0, matching
+        // the bounds check the scalar loop broke out on.
+        let availablePixels = min(totalPixels, frameData.count / bytesPerSample)
+
+        frameData.withUnsafeBytes { (source: UnsafeRawBufferPointer) in
+            lut.table.withUnsafeBufferPointer { table in
+                outputBytes.withUnsafeMutableBufferPointer { output in
+                    if bytesPerSample == 1 {
+                        for i in 0..<availablePixels {
+                            output[i] = table[Int(source[i])]
+                        }
+                    } else {
+                        for i in 0..<availablePixels {
+                            let offset = i * bytesPerSample
+                            let low = Int(source[offset])
+                            let high = Int(source[offset + 1])
+                            output[i] = table[low | (high << 8)]
+                        }
+                    }
                 }
             }
-            
-            // Apply window transform
-            var normalized = window.apply(to: Double(maskedValue))
-            
-            // For MONOCHROME1, invert the output (white = minimum)
-            if isMonochrome1 {
-                normalized = 1.0 - normalized
-            }
-            
-            // Clamp and convert to 8-bit
-            outputBytes[i] = UInt8(max(0, min(255, normalized * 255.0)))
         }
-        
+
         return createGrayscaleCGImage(from: outputBytes, width: width, height: height)
     }
     

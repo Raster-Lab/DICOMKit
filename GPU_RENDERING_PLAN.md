@@ -280,7 +280,7 @@ exactly it.
 
 ## Milestones
 
-### M0 — Benchmark harness and baseline · ~1 day
+### M0 — Benchmark harness and baseline · ~1 day — **LANDED**
 
 Nothing else in this plan can be judged without numbers.
 
@@ -295,9 +295,21 @@ Nothing else in this plan can be judged without numbers.
   around avoiding them.
 - Record baselines in this file so every later milestone reports a delta.
 
-**Exit:** a committed baseline table.
+**Exit:** a committed baseline table. ✅ See "Measured results" below.
 
-### M1 — `WindowLUT` and CPU adoption · ~1.5 days
+**As built:** `Tests/DICOMKitTests/RenderBenchmarks.swift` — DICOMKitTests rather than the
+not-yet-existing `DICOMRenderKitTests`; it moves when M2 creates that target. Skipped unless
+`DICOMKIT_RUN_RENDER_BENCH=1`, so it costs the normal test pass nothing:
+
+```
+DICOMKIT_RUN_RENDER_BENCH=1 swift test -c release --filter RenderBenchmarks
+```
+
+Release is mandatory — a debug build's bounds checking dominates the scalar loop and would
+flatter every later milestone. The synthetic drag stands in for `adjustWindowLevel`: 60 renders
+at 60 distinct windows, reported per step.
+
+### M1 — `WindowLUT` and CPU adoption · ~1.5 days — **LANDED**
 
 - New `Sources/DICOMCore/WindowLUT.swift`: builds `[UInt8]` (65,536 or 256 entries) from
   `WindowSettings` + `PixelDataDescriptor`, folding shift, mask, sign extension, window,
@@ -307,7 +319,40 @@ Nothing else in this plan can be judged without numbers.
 
 **Exit:** all existing tests green **with no golden regeneration** — the output is bit-identical
 by construction. `ExportWindowParityTests` must pass untouched; if it does not, the LUT is wrong.
-Report the M0 delta.
+Report the M0 delta. ✅
+
+**As built:**
+
+- `Sources/DICOMCore/WindowLUT.swift` — `WindowLUT.grayscale(descriptor:window:)` returns a
+  cached table; `makeGrayscale` builds one unconditionally. The build loop is a verbatim
+  transcription of the old per-pixel chain, hoisted over its single input.
+- The cache key (`WindowLUT.Parameters`) carries **only** what changes a table entry: entry
+  count, bit shift, stored-bit mask, signedness, bits stored, MONOCHROME1, and the window's
+  centre/width/function. Rows, columns and frame count are excluded, so every differently-sized
+  image in a study shares one table; `explanation` is excluded, so a labelled window
+  ("SOFT TISSUE") does not split the cache from an unlabelled one with the same numbers.
+- Capacity 4, MRU, `NSLock`-guarded, built outside the lock — a duplicate build under contention
+  is harmless because the tables are equal.
+- `PixelDataRenderer.renderMonochromeFrame` now iterates
+  `min(totalPixels, frameData.count / bytesPerSample)` and indexes the table through
+  `withUnsafeBytes`/`withUnsafeBufferPointer`. Samples past the end of a short frame stay 0, as
+  they did when the scalar loop broke out of its bounds check.
+- `Tests/DICOMKitTests/WindowLUTParityTests.swift` re-implements the *original* scalar chain as
+  an oracle and asserts byte equality over **every** table entry, for 20 descriptor shapes
+  (8/10/12/16-bit, signed and unsigned, non-zero bit shift, MONOCHROME1 and MONOCHROME2) × 8
+  windows (including width 1, negative centres, LINEAR_EXACT and SIGMOID) — then again end to
+  end through rendered frames.
+
+One deliberate behaviour change: a descriptor with `bitsAllocated == 0` now returns a black
+frame instead of reading past the end of the buffer. The old loop's `offset + 0 <= count` guard
+always passed and it then read two bytes anyway.
+
+`swift test` is green on the whole package apart from
+`CompressionConsoleTests.testCompressBackendReporting`, which **fails identically on a clean
+checkout of `main`** — it asserts a lossless J2K encode never reports "Metal (GPU)", but
+`CodecBackend.effectiveEncodeBackend` deliberately dispatches lossless to the GPU (the
+reversible path has been bit-exact since J2KSwift v11.0.1). Stale test, unrelated to this work,
+not fixed here.
 
 > This milestone is not optional preparation that GPU work later discards. The table it produces
 > *is* the GPU's window operator, and it is also what keeps `dicom-export`, `dicom-convert`, print
@@ -424,6 +469,79 @@ CPU fallback branch still rendering correctly when Metal is forced off.
 - CI matrix runs the full suite with Metal forced off, so no test may silently depend on a GPU.
 - Surface the active backend in Studio (the codec backend is already surfaced this way — follow it).
 - Update `Sources/DICOMKit/DICOMKit.docc/RenderingImages.md` and record final numbers here.
+
+---
+
+## Measured results
+
+Machine: **Apple M4**, 10 cores, 16 GB, `hasUnifiedMemory = true`,
+`recommendedMaxWorkingSetSize = 11.8 GB`, `maxThreadsPerThreadgroup = 1024×1024×1024`.
+Release build, best of 5 runs (best-of, not mean: we are measuring the cost of the work, and the
+fastest run is the least polluted by scheduling noise).
+
+The M4 reports unified memory, so `RenderBackend.automatic()` will resolve to `.metal` here and
+design pillar 2 applies in full.
+
+### Full-frame monochrome render — M0 baseline → M1
+
+| Case | VOI function | M0 (scalar) | M1 (LUT) | Speedup |
+|---|---|---|---|---|
+| CT 512×512 16-bit | LINEAR | 1.606 ms | **0.162 ms** | 9.9× |
+| CR/DX 2048×2500 16-bit | LINEAR | 30.627 ms | **2.161 ms** | 14.2× |
+| MG 3000×4000 16-bit | LINEAR | 73.935 ms | **7.226 ms** | 10.2× |
+| CT 512×512 16-bit | SIGMOID | 2.180 ms | **0.151 ms** | 14.4× |
+| CR/DX 2048×2500 16-bit | SIGMOID | 41.821 ms | **2.177 ms** | 19.2× |
+| MG 3000×4000 16-bit | SIGMOID | 100.264 ms | **7.303 ms** | 13.7× |
+
+The sigmoid penalty is gone outright. `applySigmoid` called `exp()` per pixel — 12 million times
+for an MG frame; under the table it is called 65,536 times whatever the image size, so SIGMOID
+now costs the same as LINEAR (7.303 vs 7.226 ms) instead of 36% more.
+
+### Interaction
+
+| Case | M0 baseline | M1 | Speedup |
+|---|---|---|---|
+| Window drag, CT 512×512 (per step) | 1.623 ms | **0.262 ms** | 6.2× |
+| Window drag, CR/DX 2048×2500 (per step) | 31.186 ms | **2.301 ms** | 13.6× |
+| Window drag, MG 3000×4000 (per step) | 78.520 ms | **7.448 ms** | 10.5× |
+| Cine, CT 512×512 (per frame) | 1.614 ms | **0.168 ms** | 9.6× |
+| Cine, CR/DX 2048×2500 (per frame) | 30.927 ms | **2.232 ms** | 13.9× |
+
+A drag rebuilds the table on every step (each mouse delta is a new window, so no cache hit);
+cine reuses one. The gap between the two — 7.448 vs ~7.2 ms on MG — is the whole cost of a table
+build, ≈0.2 ms, and it is flat in image size.
+
+**This bears directly on M5.** The 60 fps budget is 16.7 ms per step, and the MG drag now fits
+inside it at 7.4 ms with room to spare, on the largest frame size we care about, before any GPU
+work at all. M5's justification therefore has to come from the spatial transforms and the
+per-frame `CGImage` construction, not from the window maths — which is what the milestone
+already says, but the numbers now say it too.
+
+### Colour — unchanged, as expected
+
+| Case | M0 | M1 |
+|---|---|---|
+| RGB 1024×1024 8-bit | 8.176 ms | 8.437 ms |
+| PALETTE 512×512 8-bit | 1.314 ms | 1.319 ms |
+
+M1 touched only the monochrome path; the difference is run-to-run noise. Both are still scalar
+`Double` loops and are M4's target. Note the palette path is the same
+`raw sample → colour` pure function the window LUT exploits, over three output bytes instead of
+one, so it can have the identical treatment when M4 arrives.
+
+### Cost of a copy — what design pillar 2 is buying
+
+| Frame | Size | `memcpy` |
+|---|---|---|
+| CT 512×512 16-bit | 0.5 MB | 0.007 ms |
+| CR/DX 2048×2500 16-bit | 9.8 MB | 0.169 ms |
+| MG 3000×4000 16-bit | 22.9 MB | 0.481 ms |
+
+An upload plus a readback of an MG frame is ~0.48 ms in and ~0.25 ms out (the 8-bit output is
+half the size), so **≈0.7 ms of pure copying per render**. Against the *current, post-M1* CPU
+render of 7.2 ms that is 10% — but the point of the GPU path is to get the render itself well
+under a millisecond, and at that target the copies would be the dominant term and would cap the
+achievable speedup at roughly 10×. Pillar 2 stands.
 
 ---
 

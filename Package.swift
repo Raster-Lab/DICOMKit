@@ -370,6 +370,10 @@ let package = Package(
                 "CompressedPreviewRenderParityTests.swift",
                 "CompressionConsoleTests.swift",
                 "ExportWindowParityTests.swift",
+                // GPU_RENDERING_PLAN.md M0/M1: the render baseline harness and the
+                // WindowLUT ⇄ scalar-chain equality gate.
+                "RenderBenchmarks.swift",
+                "WindowLUTParityTests.swift",
                 "EncapsulatedPixelDataWriteTests.swift",
                 "WaveformParseRegressionTests.swift",
                 "OutputPathResolverTests.swift",
