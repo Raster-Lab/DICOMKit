@@ -5,12 +5,17 @@
 // ║  ⚠️  TESTING-ONLY — REMOVE BEFORE PRODUCTION  ⚠️                            ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 //
-// Builds the real `dicom-*` CLI products fresh (via `swift build`) so the CLI
-// Parity screen never compares against a STALE binary (a binary built before the
-// latest DICOMKit change — see project memory `rebuild-tool-after-dicomkit-change`).
+// Builds the real `dicom-*` CLI products fresh (via `swift build`) so a comparison
+// never runs against a STALE binary (one built before the latest DICOMKit change
+// — see project memory `rebuild-tool-after-dicomkit-change`).
 //
-// Like CLIToolTerminalCompare it spawns subprocesses and so requires the App
-// Sandbox to be DISABLED; it must be removed before production.
+// Kept for future testing after the CLI-parity harness was removed (2026-08-03);
+// its only caller is CLIToolTerminalCompare, which has no UI entry point now.
+//
+// ⚠️ Like CLIToolTerminalCompare it spawns subprocesses, which the App Sandbox
+// forbids — and the sandbox is now ENABLED (DICOMStudio.entitlements). So this
+// cannot run in a normal build: flip `com.apple.security.app-sandbox` to <false/>
+// temporarily for local testing, and never ship it that way.
 
 import Foundation
 

@@ -2481,33 +2481,19 @@ private func executeDicomSplit() async {
     let recursive = paramValue("recursive") == "true"
     let verbose = paramValue("verbose") == "true"
 
-    // Parse the --frames selection (0-based, matching the CLI's frame index semantics).
+    // Parse the --frames selection through the SHARED SplitConsole parser (0-based,
+    // the exact grammar and error text the dicom-split CLI uses).
     var frameIndices: Set<Int>? = nil
     if !framesSpec.isEmpty {
-        var parsed = Set<Int>()
-        var parseError: String? = nil
-        for rawPart in framesSpec.split(separator: ",") {
-            let part = rawPart.trimmingCharacters(in: .whitespaces)
-            if part.isEmpty { continue }
-            if part.contains("-") {
-                let bounds = part.split(separator: "-").map { $0.trimmingCharacters(in: .whitespaces) }
-                guard bounds.count == 2, let start = Int(bounds[0]), let end = Int(bounds[1]), start <= end else {
-                    parseError = "Invalid frame range: \(part)"; break
-                }
-                for i in start...end { parsed.insert(i) }
-            } else if let single = Int(part) {
-                parsed.insert(single)
-            } else {
-                parseError = "Invalid frame number: \(part)"; break
-            }
-        }
-        if let parseError = parseError {
+        do {
+            frameIndices = try SplitConsole.parseFrameSelection(framesSpec)
+        } catch {
+            let parseError = (error as? SplitConsole.FrameSelectionError)?.description ?? "\(error)"
             appendConsoleOutput("Error: \(parseError)\n")
             consoleStatus = .error; service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-split", command: commandPreview, exitCode: 1, output: parseError)
             return
         }
-        frameIndices = parsed
     }
 
     // Sandbox access.
@@ -2528,9 +2514,10 @@ private func executeDicomSplit() async {
     let fm = FileManager.default
     var isDir: ObjCBool = false
     guard fm.fileExists(atPath: inputURL.path, isDirectory: &isDir) else {
-        appendConsoleOutput("Error: Input path does not exist: \(inputURL.path)\n")
+        let msg = SplitConsole.inputNotFoundMessage(path: inputURL.path)
+        appendConsoleOutput("Error: \(msg)\n")
         consoleStatus = .error; service.setConsoleStatus(.error)
-        addToHistory(toolName: "dicom-split", command: commandPreview, exitCode: 1, output: "Input not found")
+        addToHistory(toolName: "dicom-split", command: commandPreview, exitCode: 1, output: msg)
         return
     }
 
@@ -2538,24 +2525,22 @@ private func executeDicomSplit() async {
     do {
         try fm.createDirectory(at: outputBaseURL, withIntermediateDirectories: true)
     } catch {
-        appendConsoleOutput("Error: Output path exists but is not a usable directory: \(outputBaseURL.path)\n")
+        appendConsoleOutput("Error: \(SplitConsole.outputNotDirectoryMessage(path: outputBaseURL.path))\n")
         consoleStatus = .error; service.setConsoleStatus(.error)
         addToHistory(toolName: "dicom-split", command: commandPreview, exitCode: 1, output: error.localizedDescription)
         return
     }
 
+    // Banner via the SHARED SplitConsole — byte-identical to the CLI's.
     if verbose {
-        appendConsoleOutput("DICOM Split Tool\n")
-        appendConsoleOutput("========================\n")
-        appendConsoleOutput("Input: \(inputURL.path)\n")
-        appendConsoleOutput("Output: \(outputBaseURL.path)\n")
-        appendConsoleOutput("Format: \(format)\n")
-        if !framesSpec.isEmpty { appendConsoleOutput("Frames: \(framesSpec)\n") }
-        if applyWindow {
-            appendConsoleOutput("Window Center: \(windowCenter ?? 0)\n")
-            appendConsoleOutput("Window Width: \(windowWidth ?? 0)\n")
+        for line in SplitConsole.headerLines(
+            input: inputURL.path, output: outputBaseURL.path,
+            format: SplitOutputFormat(rawValue: format) ?? .dicom,
+            frames: framesSpec, applyWindow: applyWindow,
+            windowCenter: windowCenter, windowWidth: windowWidth
+        ) {
+            appendConsoleOutput(line + "\n")
         }
-        appendConsoleOutput("\n")
     }
 
     // Capture immutable values for the detached worker.
@@ -2639,31 +2624,18 @@ private func executeDicomSplit() async {
         return
     }
 
-    // Summary.
-    if outcome.extracted == 0 {
-        let msg = outcome.processedFiles == 0
-            ? "No multi-frame DICOM files were found to split."
-            : "No frames were extracted."
-        appendConsoleOutput("\n\(msg)\n")
-        let exitCode = outcome.failed > 0 ? 1 : 0
-        consoleStatus = exitCode == 0 ? .success : .error
-        service.setConsoleStatus(exitCode == 0 ? .success : .error)
-        addToHistory(toolName: "dicom-split", command: commandPreview, exitCode: exitCode, output: msg)
-        return
+    // Summary via the SHARED SplitConsole — one stats line for every outcome
+    // (including "nothing to split"), exactly as the CLI reports it. The app used
+    // to substitute its own prose here, which diffed on every run.
+    var splitResult = SplitResult()
+    splitResult.processedFiles = outcome.processedFiles
+    splitResult.skippedFiles = outcome.skippedFiles
+    splitResult.extracted = outcome.extracted
+    splitResult.failed = outcome.failed
+    splitResult.writtenPaths = outcome.writtenPaths
+    for line in SplitConsole.completionLines(result: splitResult) {
+        appendConsoleOutput(line + "\n")
     }
-
-    appendConsoleOutput("\nExtracted \(outcome.extracted) frame(s) to \(outputBaseURL.path)\n")
-    let previewCount = min(outcome.writtenPaths.count, 10)
-    for path in outcome.writtenPaths.prefix(previewCount) {
-        appendConsoleOutput("  \(path)\n")
-    }
-    if outcome.writtenPaths.count > previewCount {
-        appendConsoleOutput("  ... and \(outcome.writtenPaths.count - previewCount) more\n")
-    }
-    if outcome.failed > 0 {
-        appendConsoleOutput("\(outcome.failed) frame(s) failed to extract.\n")
-    }
-    appendConsoleOutput("\nSplit complete!\n")
 
     let exitCode = outcome.failed > 0 ? 1 : 0
     let summary = "Extracted \(outcome.extracted) frame(s), \(outcome.failed) failed"
@@ -2729,14 +2701,23 @@ private func executeDicomSplit() async {
             forPath: outputPath, scopedURL: outputScopedURL, subfolder: "Merge", isDirectory: level != "file")
         if let note = outRedirectNote { appendConsoleOutput(note + "\n") }
 
+        // The CLI's <inputs> is a variadic positional list; the field may hold several
+        // semicolon-separated roots (the preview expands the same split into positional
+        // tokens). The browsed (security-scoped) URL stands in when only one path is given.
+        let mergeRoots = CommandBuilderHelpers.splitMultiValue(inputPath)
+        let mergeRootPaths = mergeRoots.count > 1 ? mergeRoots : [inputURL.path]
+
+        // Banner via the SHARED MergeConsole — byte-identical to the CLI's.
         if verbose {
-            appendConsoleOutput("DICOM Merge Tool\n")
-            appendConsoleOutput("========================\n")
-            appendConsoleOutput("Input:  \(inputURL.path)\n")
-            appendConsoleOutput("Output: \(outputURL.path)\n")
-            appendConsoleOutput("Format: \(format)\n")
-            appendConsoleOutput("Level:  \(level)\n")
-            appendConsoleOutput("Sort:   \(sortBy) (\(order))\n\n")
+            for line in MergeConsole.headerLines(
+                inputCount: mergeRootPaths.count, output: outputURL.path,
+                format: MergeFormat(rawValue: format) ?? .standard,
+                level: MergeLevel(rawValue: level) ?? .file,
+                sortBy: MergeSortCriteria(rawValue: sortBy) ?? .instanceNumber,
+                order: MergeSortOrder(rawValue: order) ?? .ascending
+            ) {
+                appendConsoleOutput(line + "\n")
+            }
         }
 
         let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
@@ -2744,18 +2725,15 @@ private func executeDicomSplit() async {
             let fm = FileManager.default
 
             do {
-                // The CLI's <inputs> is a variadic positional list — the field may hold
-                // several semicolon-separated roots (the preview expands the same split
-                // into positional tokens). Discovery runs through the shared, sorted
-                // FrameMerger gatherer — the exact walk the dicom-merge CLI uses; the
-                // browsed (security-scoped) URL stands in when only one path is given.
-                let roots = CommandBuilderHelpers.splitMultiValue(inputPath)
-                let rootPaths = roots.count > 1 ? roots : [inputURL.path]
-                let files = try FrameMerger.gatherInputFiles(from: rootPaths, recursive: recursive)
+                // Discovery runs through the shared, sorted FrameMerger gatherer — the
+                // exact walk the dicom-merge CLI uses.
+                let files = try FrameMerger.gatherInputFiles(from: mergeRootPaths, recursive: recursive)
                 guard !files.isEmpty else {
-                    return ("Error: No DICOM files found in input path\n", 1)
+                    return ("Error: \(MergeConsole.noDICOMFilesFoundMessage)\n", 1)
                 }
-                if verbose { log += "Found \(files.count) DICOM files to process\n\n" }
+                if verbose {
+                    log += MergeConsole.foundFilesLines(count: files.count).map { $0 + "\n" }.joined()
+                }
 
                 // Delegate the merge to the shared DICOMKit engine — the exact same
                 // FrameMerger the `dicom-merge` CLI uses. Verbose progress flows
@@ -2782,7 +2760,7 @@ private func executeDicomSplit() async {
                     try await merger.mergeByStudy(files: files, outputDirectory: outputURL.path)
                 }
 
-                log += "\nMerge complete!\n"
+                log += MergeConsole.completionLines().map { $0 + "\n" }.joined()
                 return (log, 0)
             } catch let e as MergeError {
                 return (log + "Error: \(e.description)\n", 1)
@@ -4215,9 +4193,12 @@ private func executeDicomStudy() async {
                 consoleStatus = .success; service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-script", command: commandPreview, exitCode: 0, output: template)
             } catch {
-                appendConsoleOutput("Error: Unknown template '\(name)'.\n")
+                // Shared ScriptError text ("Invalid template name: …") — the app used
+                // to invent its own wording here.
+                let msg = error.localizedDescription
+                appendConsoleOutput("Error: \(msg)\n")
                 consoleStatus = .error; service.setConsoleStatus(.error)
-                addToHistory(toolName: "dicom-script", command: commandPreview, exitCode: 1, output: "Invalid template")
+                addToHistory(toolName: "dicom-script", command: commandPreview, exitCode: 1, output: msg)
             }
             return
         }
@@ -4254,27 +4235,21 @@ private func executeDicomStudy() async {
                 if operation == "validate" {
                     let validator = ScriptValidator(log: { log += $0 + "\n" })
                     let issues = try validator.validate(scriptPath: url.path, verbose: verbose)
-                    if issues.isEmpty {
-                        log += "\u{2713} Script is valid\n"
-                        return (log, 0)
-                    }
-                    log += "\u{2717} Script has \(issues.count) issue(s):\n"
-                    for issue in issues { log += "  - \(issue)\n" }
-                    return (log, 1)
+                    // Verdict block via the SHARED ScriptConsole.
+                    log += ScriptConsole.validationLines(issues: issues).map { $0 + "\n" }.joined()
+                    return (log, issues.isEmpty ? 0 : 1)
                 }
                 // --variables is a repeatable array option in the CLI (one
                 // KEY=VALUE per flag occurrence); split with the shared helper
-                // so values containing spaces or commas survive intact. The CLI
-                // rejects '='-less entries (ScriptError.invalidVariable) — throw
-                // the same error instead of silently dropping them.
-                var vars: [String: String] = [:]
-                for pair in CommandBuilderHelpers.splitMultiValue(variablesParam) {
-                    let kv = pair.split(separator: "=", maxSplits: 1)
-                    guard kv.count == 2 else { throw ScriptError.invalidVariable(pair) }
-                    vars[String(kv[0])] = String(kv[1])
-                }
+                // so values containing spaces or commas survive intact, then
+                // parse through the shared parser (which rejects '='-less
+                // entries with the CLI's ScriptError.invalidVariable).
+                let vars = try ScriptConsole.parseVariables(
+                    CommandBuilderHelpers.splitMultiValue(variablesParam))
                 let executor = ScriptExecutor(
-                    runCommand: { tool, _ in throw ScriptError.executionError("Command execution is not supported in-app: \(tool)") },
+                    runCommand: { tool, _ in
+                        throw ScriptError.executionError(ScriptConsole.unsupportedRunnerMessage(tool: tool))
+                    },
                     log: { log += $0 + "\n" })
                 try executor.execute(scriptPath: url.path, variables: vars, parallel: parallel,
                                      verbose: verbose, dryRun: dryRun, logPath: resolvedLog)
@@ -4291,9 +4266,10 @@ private func executeDicomStudy() async {
     }
 
     /// Ensures the directories referenced by any output-path parameters exist,
-    /// so writing output files succeeds (e.g. the default DICOM_Output folder).
-    /// Combined with the sandbox temporary-exception entitlement, this fixes
-    /// read/write permission for the configured input/output folders.
+    /// so writing output files succeeds. Only ever acts on a path the USER chose
+    /// (fields start empty and are filled via Browse) — the sandbox grants write
+    /// access through that selection; there is no longer any absolute-path
+    /// entitlement backing a pre-seeded folder.
     private func ensureOutputDirectories() {
         for def in parameterDefinitions where def.parameterType == .outputPath {
             let value = paramValue(def.id)
@@ -5178,11 +5154,11 @@ case "dicom-study":
             // Pin the binary to the freshly-built dir so a stale binary elsewhere on
             // disk (or a more-recently-built debug build) can never shadow it.
             let oc = CLIToolTerminalCompare.run(tool: executable, arguments: arguments, binDir: freshBinDir)
-            let appLines  = CLIParityEngine.normalize(appOutput, fixtureBasename: basename)
+            let appLines  = CLIToolTerminalCompare.normalize(appOutput, fixtureBasename: basename)
             // Compare against the FULL terminal output (stdout + stderr). Some tools
             // (e.g. `dicom-echo --count`) emit their data to stderr, so a stdout-only
             // comparison would silently drop it and disagree with the terminal.
-            let termLines = CLIParityEngine.normalize(oc.combined, fixtureBasename: basename)
+            let termLines = CLIToolTerminalCompare.normalize(oc.combined, fixtureBasename: basename)
             var diffCount = abs(appLines.count - termLines.count)
             for (a, b) in zip(appLines, termLines) where a != b { diffCount += 1 }
             return (oc, diffCount)

@@ -67,26 +67,26 @@ struct DICOMMerge: AsyncParsableCommand {
     mutating func run() async throws {
         // Validate inputs
         guard !inputs.isEmpty else {
-            throw ValidationError("No input files specified")
+            throw ValidationError(MergeConsole.noInputFilesMessage)
         }
-        
+
         for input in inputs {
             guard FileManager.default.fileExists(atPath: input) else {
-                throw ValidationError("Input path does not exist: \(input)")
+                throw ValidationError(MergeConsole.inputNotFoundMessage(path: input))
             }
         }
-        
+
+        // Banner via the shared MergeConsole — the exact lines DICOMStudio's
+        // Workshop emits (see Sources/DICOMKit/Merging/MergeConsole.swift).
         if verbose {
-            fprintln("DICOM Merge Tool v1.1.2")
-            fprintln("========================")
-            fprintln("Inputs: \(inputs.count) path(s)")
-            fprintln("Output: \(output)")
-            fprintln("Format: \(format)")
-            fprintln("Level: \(level)")
-            fprintln("Sort: \(sortBy) (\(order))")
-            fprintln("")
+            for line in MergeConsole.headerLines(
+                inputCount: inputs.count, output: output, format: format,
+                level: level, sortBy: sortBy, order: order
+            ) {
+                fprintln(line)
+            }
         }
-        
+
         // Create merger (shared DICOMKit engine; verbose output routed to stderr)
         let merger = FrameMerger(
             format: format,
@@ -102,12 +102,11 @@ struct DICOMMerge: AsyncParsableCommand {
         let files = try gatherInputFiles(from: inputs, recursive: recursive)
         
         if verbose {
-            fprintln("Found \(files.count) DICOM files to process")
-            fprintln("")
+            for line in MergeConsole.foundFilesLines(count: files.count) { fprintln(line) }
         }
-        
+
         guard !files.isEmpty else {
-            throw ValidationError("No DICOM files found in input paths")
+            throw ValidationError(MergeConsole.noDICOMFilesFoundMessage)
         }
         
         // Process based on merge level
@@ -120,7 +119,7 @@ struct DICOMMerge: AsyncParsableCommand {
             try await merger.mergeByStudy(files: files, outputDirectory: output)
         }
         
-        fprintln("\nMerge complete!")
+        for line in MergeConsole.completionLines() { fprintln(line) }
     }
     
     func gatherInputFiles(from paths: [String], recursive: Bool) throws -> [String] {

@@ -99,8 +99,6 @@ public struct MainView: View {
                 .onAppear {
                     viewModel.cliWorkshopViewModel.savedServerProfiles = viewModel.networkingViewModel.serverProfiles
                 }
-        case .cliParity:
-            CLIParityRunnerView(viewModel: viewModel.cliParityRunnerViewModel)
         case .networkUtility:
             NetworkUtilityView(viewModel: viewModel.networkUtilityViewModel)
         case .security:

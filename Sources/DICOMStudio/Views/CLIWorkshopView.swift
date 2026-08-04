@@ -309,37 +309,6 @@ public struct CLIWorkshopView: View {
                                 .foregroundStyle(.green)
                         }
                         Spacer()
-                        // ⚠️ TESTING-ONLY: run the real dicom-* binary for this tool and
-                        // compare side-by-side (pinned at the top of the right panel).
-                        // Requires the App Sandbox to be disabled. Remove before
-                        // production (see CLIToolTerminalCompare.swift).
-                        #if os(macOS)
-                        Button {
-                            Task { await viewModel.runTerminalCompare() }
-                        } label: {
-                            HStack(spacing: 6) {
-                                if viewModel.isRunningTerminalCompare {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                    Text("Comparing…")
-                                } else {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                    Text("Compare CLI")
-                                    Text("TEST")
-                                        .font(.caption2.weight(.heavy))
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 1)
-                                        .background(Capsule().fill(Color.white.opacity(0.25)))
-                                }
-                            }
-                            .font(.callout.weight(.semibold))
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.orange)
-                        .disabled(!viewModel.isCommandValid || viewModel.isRunningTerminalCompare || viewModel.consoleStatus == .running)
-                        .help("TESTING ONLY: runs the real CLI binary for this tool and shows its output side-by-side. Requires the sandbox to be disabled.")
-                        .accessibilityLabel("Compare with terminal CLI (testing only)")
-                        #endif
                     }
 
                     HStack {
@@ -433,10 +402,7 @@ public struct CLIWorkshopView: View {
             Divider()
 
             // Console body (scrollable, fills remaining space)
-            if let compare = viewModel.terminalCompareResult {
-                // ⚠️ TESTING-ONLY side-by-side terminal-vs-app parity view.
-                terminalCompareView(compare)
-            } else if viewModel.consoleOutput.isEmpty {
+            if viewModel.consoleOutput.isEmpty {
                 HStack(spacing: 8) {
                     Image(systemName: "terminal")
                         .font(.title2)
@@ -488,91 +454,6 @@ public struct CLIWorkshopView: View {
                 }
             }
         }
-    }
-
-    // MARK: - ⚠️ TESTING-ONLY: terminal parity side-by-side (all tools)
-    //
-    // Shows the real `dicom-*` CLI output next to the app's in-process output.
-    // Remove before production (see CLIToolTerminalCompare.swift).
-
-    @ViewBuilder
-    private func terminalCompareView(_ result: CLIToolCompareResult) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Label("TESTING — Terminal Parity", systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout.bold())
-                    .foregroundStyle(.orange)
-                if result.matched {
-                    Label("Match", systemImage: "checkmark.circle.fill")
-                        .font(.caption.bold()).foregroundStyle(.green)
-                } else {
-                    Label("\(result.differingLineCount) differ", systemImage: "exclamationmark.circle.fill")
-                        .font(.caption.bold()).foregroundStyle(.orange)
-                }
-                Spacer()
-                Button("Close") { viewModel.clearTerminalCompare() }
-                    .font(.callout)
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 6)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(result.note)
-                    .font(.caption)
-                    .foregroundStyle(result.matched ? .green : .orange)
-                if let path = result.binaryPath {
-                    Text("binary: \(path)")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
-            .padding(.bottom, 4)
-
-            Divider()
-
-            HStack(spacing: 0) {
-                compareColumn(title: "App (in-process)", systemImage: "app.badge", text: result.appOutput, accent: .blue)
-                Divider()
-                compareColumn(title: "Terminal (\(result.toolName) CLI)", systemImage: "terminal", text: result.terminalOutput, accent: .orange)
-            }
-        }
-        // Fill the available console height and scroll internally, like the empty /
-        // plain-output branches. Without this the side-by-side view grows the right
-        // panel past the window; HSplitView then matches its tallest pane and the
-        // left panel's pinned Run button gets pushed off-screen.
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func compareColumn(title: String, systemImage: String, text: String, accent: Color) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Highlighted, color-coded column label.
-            Label(title, systemImage: systemImage)
-                .font(.callout.bold())
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(accent)
-            // A single-axis VERTICAL ScrollView clamps its height to the offered
-            // space and scrolls (like the plain console). A *bidirectional*
-            // ScrollView instead sizes to its content, which inside HSplitView grows
-            // the pane past the window and pushes the bottom (the Run button) off —
-            // so nest a horizontal scroll for wide CLI lines rather than using both
-            // axes on one ScrollView.
-            ScrollView(.vertical) {
-                ScrollView(.horizontal) {
-                    Text(text.isEmpty ? "(no output)" : text)
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
-                        .padding(10)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black.opacity(0.05))
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Tool Purpose Header

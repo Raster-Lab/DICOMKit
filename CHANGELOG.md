@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — CLI-parity test harness (2026-08-03)
+
+Deleted the whole Tier-2 CLI-parity subsystem: the "CLI Parity" Studio screen and its
+engine/comparators, the orphaned CLI Automation Testing screen, bundled synthetic
+fixtures and goldens, the `cli-parity-gen`/`cli-parity-docs`/`studio-cli-introspect`
+dev targets, all `CLIParity*Tests` suites plus the `StudioParityTests` target, the
+"Tier-2 Output Parity Gate" CI job, and every `APP_CLI_*PARITY*`/`docs/cli-parity/`
+doc — 103 files, ~14,400 lines of code, ~5,100 lines of docs, 1.1 MB of fixtures.
+
+- Kept deliberately: `CLIToolTerminalCompare` + `CLIToolBuilder` (reachable only from
+  code now that the Workshop's comparator panel is gone) and the `syn-ct.dcm` fixture
+  the print tests depend on, now `Tests/DICOMStudioTests/Fixtures/syn-ct.dcm` via a
+  new `StudioTestFixtures` helper.
+- `APP_CLI_SHARED_API.md` updated to describe verification as it stands today: the
+  oracle-based round-trip suite (`DICOMRoundTripTests`) plus, per tool, an optional
+  shared `*Console` type.
+
+### Added — shared consoles for dicom-split/merge/script (2026-08-03)
+
+`dicom-split`, `dicom-merge` and `dicom-script` were the last three tools whose
+Workshop executors shared only the engine while duplicating console text and input
+parsing. Text and parsing now live once in DICOMKit — `SplitConsole`, `MergeConsole`,
+`ScriptConsole` — pinned by `Tests/DICOMRoundTripTest/SharedConsoleParityTests.swift`.
+Fixed real drift found in the process: the app's banners had dropped the CLI version
+string, `dicom-merge` relabelled its input-count line and echoed `--format` values as
+enum case names instead of the CLI's raw text, and `dicom-split`'s frame parser
+silently accepted whitespace-only components the CLI rejected.
+
 ### Fixed — Print SCP honors SCU-supplied SOP Instance UIDs (2026-08-03)
 
 A dcm4che-based Print SCU failed at N-ACTION with `0x0112` "Unknown Film Session" and
