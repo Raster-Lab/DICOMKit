@@ -129,13 +129,13 @@ enum FrameRenderer {
             // service decides, and its output is byte-identical either way, so a
             // tile rendered on the GPU and the film it is printed on — which stays
             // on the CPU — cannot disagree.
-            var image = FrameRenderService.shared.renderFrame(FrameRenderRequest(
+            let rendered = FrameRenderService.shared.renderFrame(FrameRenderRequest(
                 pixelData: source.pixelData,
                 frameIndex: frameIndex,
                 window: window,
                 paletteLUT: source.paletteLUT
             ))
-            guard var image else { return nil }
+            guard var image = rendered else { return nil }
 
             // Overlay planes go on before the frame is cropped, turned or
             // scaled: they are defined against the image's own pixel matrix, so

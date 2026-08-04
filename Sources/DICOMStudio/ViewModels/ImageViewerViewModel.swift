@@ -7,6 +7,7 @@ import Foundation
 import Observation
 import DICOMKit
 import DICOMCore
+import DICOMRenderKit
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -460,6 +461,11 @@ public final class ImageViewerViewModel {
         }
 
         self.dicomFile = file
+        // The decoded pixels belong to the *previous* file. Anything that assigns
+        // `dicomFile` must clear them, or the viewport shows the last image's pixels
+        // under the new one's window. This is the only assignment site; keep it that
+        // way, or move the call next to the new one.
+        invalidateDecodedPixels()
         self.filePath = path
         self.sopInstanceUID = file.dataSet.string(for: .sopInstanceUID)
 
@@ -586,6 +592,71 @@ public final class ImageViewerViewModel {
         startProgressiveDecode()
     }
 
+    // MARK: - Decoded pixel cache
+
+    /// The decoded pixels behind the focused viewport, held across re-windows.
+    ///
+    /// ``renderCurrentFrame()`` runs on **every** window/level delta, and it used to
+    /// reach the pixels through `DICOMFile.tryRenderFrame` → `tryPixelData()`, which
+    /// decodes from scratch each call. So a drag re-ran the codec once per mouse
+    /// event. Measured on a 2048×2500 CR (Apple M4, release), per drag step:
+    ///
+    /// | Transfer syntax | decoding each step | cached |
+    /// |---|---|---|
+    /// | Uncompressed | 2.319 ms | 0.570 ms |
+    /// | JPEG 2000 lossless | 16.161 ms | 0.558 ms |
+    /// | JPEG-LS lossless | 74.120 ms | 0.589 ms |
+    /// | RLE lossless | 354.986 ms | 0.526 ms |
+    ///
+    /// RLE was under three frames a second. Note the uncompressed row: its decode is
+    /// 0.001 ms, so the 1.7 ms it still saves is `PixelData.frameData(at:)` copying
+    /// the frame out on every call. That is why this caches **both** compressed and
+    /// uncompressed sources rather than only the expensive-looking case.
+    ///
+    /// The tile and film path has done this since `FrameSourceCache` was written;
+    /// the focused viewport simply never got the same treatment.
+    @ObservationIgnored private var decodedPixels: PixelData?
+    @ObservationIgnored private var decodedPalette: PaletteColorLUT?
+    @ObservationIgnored private var decodeFailure: (any Error)?
+    @ObservationIgnored private var decodeAttempted = false
+
+    /// Whether to page-align cached pixels so the GPU can read them in place.
+    /// Resolved once — the backend cannot change during a run.
+    @ObservationIgnored
+    private static let alignsForGPU = FrameRenderService.shared.prefersAlignedPixelData
+
+    /// Forgets the decoded pixels. **Must** be called whenever `dicomFile` changes,
+    /// or the viewport would keep showing the previous image's pixels.
+    private func invalidateDecodedPixels() {
+        decodedPixels = nil
+        decodedPalette = nil
+        decodeFailure = nil
+        decodeAttempted = false
+    }
+
+    /// The decoded pixels for the loaded file, decoding on first use.
+    ///
+    /// A failed decode is cached too: without that, a file with no usable pixel data
+    /// would re-attempt — and re-fail — the full decode on every render, which is the
+    /// same per-event cost this cache exists to remove.
+    private func decodedPixelSource(for file: DICOMFile) throws -> (PixelData, PaletteColorLUT?) {
+        if let decodedPixels { return (decodedPixels, decodedPalette) }
+        if decodeAttempted, let decodeFailure { throw decodeFailure }
+
+        decodeAttempted = true
+        do {
+            let decoded = try file.tryPixelData()
+            // Aligned once, here — never per render.
+            let prepared = Self.alignsForGPU ? decoded.pageAligned() : decoded
+            decodedPixels = prepared
+            decodedPalette = file.dataSet.paletteColorLUT()
+            return (prepared, decodedPalette)
+        } catch {
+            decodeFailure = error
+            throw error
+        }
+    }
+
     // MARK: - Rendering
 
     /// Renders the current frame with the current window/level settings.
@@ -598,10 +669,15 @@ public final class ImageViewerViewModel {
         let start = Date()
         var image: CGImage?
         var detailedError: String?
+        var source: (pixelData: PixelData, palette: PaletteColorLUT?)?
 
         do {
+            let decoded = try decodedPixelSource(for: file)
+            source = (decoded.0, decoded.1)
             let window = WindowSettings(center: windowCenter, width: windowWidth)
-            image = try file.tryRenderFrame(currentFrameIndex, window: window)
+            image = FrameRenderService.shared.renderFrame(FrameRenderRequest(
+                pixelData: decoded.0, frameIndex: currentFrameIndex,
+                window: window, paletteLUT: decoded.1))
         } catch let e as PixelDataError {
             detailedError = e.description
         } catch {
@@ -612,20 +688,24 @@ public final class ImageViewerViewModel {
         // This recovers from a degenerate explicit window far more usefully than the
         // raw stored window, which — for modalities with a large Rescale Intercept
         // (e.g. CT) — clips almost everything to black and looks like a blank image.
-        if image == nil, let auto = try? file.tryRenderFrame(currentFrameIndex) {
+        //
+        // A nil window means "auto-window", which the CPU renderer resolves from the
+        // frame's pixel range — the same thing `tryRenderFrame(_:)` did here before.
+        if image == nil, let source,
+           let auto = FrameRenderService.shared.renderFrame(FrameRenderRequest(
+               pixelData: source.pixelData, frameIndex: currentFrameIndex,
+               window: nil, paletteLUT: source.palette)) {
             image = auto
             detailedError = nil
         }
 
         // Fallback 2: the header's stored window, as a last resort.
-        if image == nil {
-            do {
-                image = try file.tryRenderFrameWithStoredWindow(currentFrameIndex)
+        if image == nil, let source {
+            if let stored = FrameRenderService.shared.renderFrame(FrameRenderRequest(
+                pixelData: source.pixelData, frameIndex: currentFrameIndex,
+                window: file.windowSettings(), paletteLUT: source.palette)) {
+                image = stored
                 detailedError = nil
-            } catch let e as PixelDataError {
-                if detailedError == nil { detailedError = e.description }
-            } catch {
-                if detailedError == nil { detailedError = error.localizedDescription }
             }
         }
 

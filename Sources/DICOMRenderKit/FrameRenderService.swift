@@ -50,6 +50,18 @@ public final class FrameRenderService: @unchecked Sendable {
         activeBackend.displayName
     }
 
+    /// Whether decoded pixel data is worth page-aligning before it is cached.
+    ///
+    /// True only when the GPU is active, where alignment is what lets the shader
+    /// read the bytes in place. On a CPU-only machine the alignment copy would buy
+    /// nothing, so callers skip it.
+    ///
+    /// Align **once, when the pixels enter a cache** — never per render. Doing it
+    /// per render pays exactly the copy alignment exists to avoid.
+    public var prefersAlignedPixelData: Bool {
+        activeBackend == .metal
+    }
+
     /// Renders a frame.
     ///
     /// - Returns: the image, or `nil` only when *neither* backend can render it —

@@ -45,7 +45,7 @@ actor FrameSourceCache {
     ///
     /// Resolved once: the backend cannot change during a run, and asking per file
     /// would probe the Metal device on the decode path.
-    private static let alignsForGPU = FrameRenderService.shared.activeBackend == .metal
+    private static let alignsForGPU = FrameRenderService.shared.prefersAlignedPixelData
 
     /// The decoded source for a file, reading and decoding it if needed.
     ///
