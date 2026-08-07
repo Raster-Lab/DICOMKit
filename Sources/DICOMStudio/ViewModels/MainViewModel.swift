@@ -22,9 +22,6 @@ public final class MainViewModel {
     /// the others collapse so the app presents as an imaging tool first.
     public var expandedCategories: Set<NavigationCategory> = [.imaging]
 
-    /// Whether the inspector panel is visible.
-    public var isInspectorVisible: Bool
-
     /// Whether the welcome sheet is shown.
     public var showWelcomeSheet: Bool
 
@@ -134,7 +131,6 @@ public final class MainViewModel {
         self.thumbnailService = thumbnailService ?? ThumbnailService(storageService: storageService)
         self.libraryStorageService = libraryStorageService
         self.selectedDestination = NavigationService.defaultDestination
-        self.isInspectorVisible = false
         self.showWelcomeSheet = settingsService.showWelcomeOnLaunch
         self.searchText = ""
         self.statusMessage = "Ready"
@@ -235,6 +231,7 @@ public final class MainViewModel {
             guard let self, !files.isEmpty else { return }
             self.imageViewerViewModel.printSelection.add(
                 contentsOf: files.map { PrintSelectionItem(filePath: $0) })
+            self.imageViewerViewModel.revealPrintTray()
             self.imageViewerViewModel.loadSeries(files: files, startIndex: 0)
             self.selectedDestination = .viewer
             self.imageViewerViewModel.isPrintSheetPresented = true
@@ -298,11 +295,6 @@ public final class MainViewModel {
                 return
             }
         }
-    }
-
-    /// Toggles the inspector panel.
-    public func toggleInspector() {
-        isInspectorVisible.toggle()
     }
 
     /// Returns the primary navigation destinations.

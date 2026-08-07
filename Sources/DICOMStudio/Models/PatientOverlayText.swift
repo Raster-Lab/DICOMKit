@@ -21,13 +21,28 @@ public struct PatientOverlayText: Sendable, Equatable, Hashable {
     /// Study description, on its own line.
     public let secondaryLine: String
 
-    public init(primaryLine: String, secondaryLine: String) {
+    /// Study Instance UID (0020,000D), or empty when the file had none.
+    ///
+    /// Not drawn — it is what tells a film whether its images belong together,
+    /// which decides whether the identification is stated once at the foot of
+    /// the sheet or under every picture (see `FilmIdentificationPlanner`). The
+    /// UID rather than the text: two studies of one patient on the same day
+    /// produce identical lines and are still two studies.
+    public let studyInstanceUID: String
+
+    public init(primaryLine: String, secondaryLine: String, studyInstanceUID: String = "") {
         self.primaryLine = primaryLine
         self.secondaryLine = secondaryLine
+        self.studyInstanceUID = studyInstanceUID
     }
 
     /// Whether there is anything to draw.
     public var isEmpty: Bool { primaryLine.isEmpty && secondaryLine.isEmpty }
+
+    /// The lines to draw, blank ones dropped.
+    public var lines: [String] {
+        [primaryLine, secondaryLine].filter { !$0.isEmpty }
+    }
 
     /// Reads the overlay text from a data set.
     ///
@@ -47,6 +62,7 @@ public struct PatientOverlayText: Sendable, Equatable, Hashable {
 
         return PatientOverlayText(
             primaryLine: [name, patientID, studyDate].compactMap { $0 }.joined(separator: ", "),
-            secondaryLine: string(0x0008, 0x1030) ?? "")
+            secondaryLine: string(0x0008, 0x1030) ?? "",
+            studyInstanceUID: string(0x0020, 0x000D) ?? "")
     }
 }

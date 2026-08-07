@@ -24,14 +24,14 @@ final class MetalCPUEquivalenceTests: XCTestCase {
 
     #if canImport(Metal) && canImport(CoreGraphics)
 
-    /// A renderer with the size threshold disabled.
+    /// A renderer with the size threshold disabled — which is now also the
+    /// production configuration.
     ///
-    /// In production the GPU declines frames under a megapixel because a dispatch
-    /// costs more than the CPU render does (see
-    /// `MetalFrameRenderer.minimumGPUPixelCount`). That is a performance policy and
-    /// has nothing to do with whether the kernels are *correct*, so these tests
-    /// switch it off and exercise the shaders on small frames they can enumerate
-    /// exhaustively. The threshold has its own test below.
+    /// The GPU used to decline frames under a megapixel, because a dispatch costs
+    /// more than a small CPU render does. It no longer does: the CPU is the
+    /// fallback for having no GPU, not a faster path selected by size. These tests
+    /// pass 0 explicitly regardless, so they keep exercising the shaders on small
+    /// frames they can enumerate exhaustively even if a threshold ever returns.
     private func requireMetal() throws -> MetalFrameRenderer {
         guard let renderer = MetalFrameRenderer(minimumPixelCount: 0) else {
             throw XCTSkip("No Metal device on this machine")
@@ -259,6 +259,60 @@ final class MetalCPUEquivalenceTests: XCTestCase {
         }
     }
 
+    /// Concurrent renders at *different* windows must not window each other's frame.
+    ///
+    /// The regression this pins: the window table lived in one buffer shared by every
+    /// render, written under a lock that was released before the dispatch that read
+    /// it. A series pane renders a dozen thumbnails at once, so the last table
+    /// written won for all of them — a CT topogram came out windowed with an MR's
+    /// LUT, black background and a blown-white body, while the focused viewport
+    /// (rendering alone) was correct. Each dispatch now owns its tables.
+    func testConcurrentRendersAtDifferentWindowsDoNotShareTables() throws {
+        let metal = try requireMetal()
+        let descriptor = monochromeDescriptor(
+            rows: 64, columns: 64, bitsAllocated: 16, bitsStored: 16, highBit: 15,
+            isSigned: false)
+        let pixelData = PixelData(data: scatteredBytes(count: descriptor.bytesPerFrame),
+                                  descriptor: descriptor).pageAligned()
+
+        // Windows far enough apart that one standing in for another is unmistakable.
+        var cases: [(window: WindowSettings, expected: [UInt8], index: Int)] = []
+        for (index, window) in windows.enumerated() {
+            let reference = try XCTUnwrap(cpu.renderFrame(FrameRenderRequest(
+                pixelData: pixelData, frameIndex: 0, window: window)))
+            cases.append((window, try bytes(of: reference), index))
+        }
+
+        let failureLock = NSLock()
+        var failures: [String] = []
+        func record(_ message: String) {
+            failureLock.lock()
+            failures.append(message)
+            failureLock.unlock()
+        }
+
+        let group = DispatchGroup()
+        for _ in 0..<8 {
+            for testCase in cases {
+                DispatchQueue.global().async(group: group) {
+                    guard let image = metal.renderFrame(FrameRenderRequest(
+                            pixelData: pixelData, frameIndex: 0, window: testCase.window)),
+                          let actual = try? self.bytes(of: image) else {
+                        record("window \(testCase.index): GPU declined")
+                        return
+                    }
+                    if actual != testCase.expected {
+                        record("window \(testCase.index) (c=\(testCase.window.center) "
+                               + "w=\(testCase.window.width)): GPU output differs from CPU "
+                               + "under concurrency")
+                    }
+                }
+            }
+        }
+        group.wait()
+        XCTAssertEqual(failures.count, 0, "\(Set(failures).sorted())")
+    }
+
     func testPaletteEquivalence() throws {
         let metal = try requireMetal()
         for (bitsAllocated, bitsStored, highBit, entries) in
@@ -332,37 +386,48 @@ final class MetalCPUEquivalenceTests: XCTestCase {
 
     // MARK: - Size threshold
 
-    /// The production renderer must decline small frames, and the service must
-    /// still return the right picture for them.
+    /// The production renderer must accept small frames too, and must still return
+    /// exactly the picture the CPU would have.
     ///
-    /// This is the measured finding from M3: a dispatch costs ~0.24 ms regardless
-    /// of size, so on an M4 a 512×512 CT is *faster* on the CPU (0.156 ms) than on
-    /// the GPU (0.254 ms). Sending small renders to the GPU anyway would make the
-    /// most common render in the app — tiles and thumbnails — slower.
-    func testSmallFramesAreDeclinedByTheProductionRenderer() throws {
+    /// This is a policy the measurement argues against and the project accepts
+    /// anyway: a dispatch costs ~0.24 ms regardless of size, so a 512×512 CT is
+    /// faster on the CPU (0.156 ms) than on the GPU (0.254 ms). The GPU takes it
+    /// regardless, because the CPU is the fallback for having no GPU rather than a
+    /// faster path to be selected into. What must NOT change is the picture — so
+    /// this test is now about equality, not refusal.
+    func testSmallFramesAreAcceptedByTheProductionRenderer() throws {
         guard let production = MetalFrameRenderer() else {
             throw XCTSkip("No Metal device on this machine")
         }
         let descriptor = monochromeDescriptor(
             rows: 512, columns: 512, bitsAllocated: 16, bitsStored: 12, highBit: 11,
             isSigned: false)
-        XCTAssertLessThan(descriptor.pixelsPerFrame, MetalFrameRenderer.minimumGPUPixelCount)
+        // Well under the megapixel that used to be the cutoff.
+        XCTAssertLessThan(descriptor.pixelsPerFrame, 1_000_000)
 
         let pixelData = PixelData(data: scatteredBytes(count: descriptor.bytesPerFrame),
                                   descriptor: descriptor).pageAligned()
         let request = FrameRenderRequest(pixelData: pixelData, frameIndex: 0,
                                          window: WindowSettings(center: 2048, width: 4096))
 
-        XCTAssertNil(production.renderFrame(request),
-                     "a sub-megapixel frame must not be dispatched to the GPU")
+        let gpu = try XCTUnwrap(production.renderFrame(request),
+                                "a sub-megapixel frame must still reach the GPU")
+        let viaCPU = try XCTUnwrap(cpu.renderFrame(request))
+        XCTAssertEqual(try bytes(of: gpu), try bytes(of: viaCPU),
+                       "the GPU produced a different picture than the CPU on a small frame")
 
         let viaService = try XCTUnwrap(FrameRenderService(preference: .metal).renderFrame(request))
-        let viaCPU = try XCTUnwrap(cpu.renderFrame(request))
         XCTAssertEqual(try bytes(of: viaService), try bytes(of: viaCPU))
     }
 
-    /// …and must accept a frame above the threshold, so the constant is not
-    /// accidentally set somewhere nothing reaches.
+    /// No frame size is declined, so the threshold cannot creep back in unnoticed.
+    func testThereIsNoSizeThreshold() {
+        XCTAssertEqual(MetalFrameRenderer.minimumGPUPixelCount, 0,
+                       "the GPU must not decline frames for being small — CPU is the "
+                       + "no-GPU fallback, not a size-selected alternative")
+    }
+
+    /// …and must accept a frame above the old threshold too.
     func testLargeFramesAreAcceptedByTheProductionRenderer() throws {
         guard let production = MetalFrameRenderer() else {
             throw XCTSkip("No Metal device on this machine")
@@ -370,8 +435,7 @@ final class MetalCPUEquivalenceTests: XCTestCase {
         let descriptor = monochromeDescriptor(
             rows: 1024, columns: 1024, bitsAllocated: 16, bitsStored: 12, highBit: 11,
             isSigned: false)
-        XCTAssertGreaterThanOrEqual(descriptor.pixelsPerFrame,
-                                    MetalFrameRenderer.minimumGPUPixelCount)
+        XCTAssertGreaterThanOrEqual(descriptor.pixelsPerFrame, 1_000_000)
 
         let pixelData = PixelData(data: scatteredBytes(count: descriptor.bytesPerFrame),
                                   descriptor: descriptor).pageAligned()

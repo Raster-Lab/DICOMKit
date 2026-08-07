@@ -27,15 +27,18 @@ struct ViewerSeriesPaneView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            patientBanner
+            ViewerPaneHeader("Series",
+                             systemImage: "rectangle.stack",
+                             count: viewModel.studySeries.count)
 
-            Divider().overlay(Color.white.opacity(0.15))
+            patientBanner
 
             seriesList
         }
-        // Chrome grey, not near-black: the image beside it is the pure black on
-        // screen, and a pane at the same tone would read as a third viewport.
-        .background(StudioColors.viewerChrome)
+        // The pane surface, a step lighter than the gutter and seamed against
+        // it on the right: the picture beside it is the pure black on screen,
+        // and a pane at the gutter's tone would read as part of the mount.
+        .viewerPaneSurface(imageEdge: .trailing)
     }
 
     // MARK: - Who this is
@@ -88,15 +91,18 @@ struct ViewerSeriesPaneView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            // The identification is lit, not just written: a tinted plate under
-            // it separates whose study this is from the list of series below it
-            // at a glance, without a rule that would read as another divider.
+            // A plate under the identification separates whose study this is
+            // from the list of series below it at a glance, without a rule that
+            // would read as another divider. Neutral, not accented: in the
+            // viewer the accent means "this is what prints", and a blue block
+            // in the corner of the left-hand pane was the loudest thing on a
+            // screen whose subject is the images in the middle.
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.accentColor.opacity(0.22))
+                    .fill(Color.white.opacity(0.10))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1)
+                            .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
                     )
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
@@ -127,6 +133,17 @@ struct ViewerSeriesPaneView: View {
 
     // MARK: - One series
 
+    /// Ring around the card of the series on screen.
+    ///
+    /// White, not accent. In the viewer the accent means "this is what prints" —
+    /// it is on the marked tiles, the film chip and the tray — and spending it
+    /// on "this is what you are looking at" as well left the reader with one
+    /// colour answering two questions. Which series is up is already obvious
+    /// from the images in the middle of the screen; the pane only has to confirm
+    /// it, which a neutral ring does without lighting up the corner of the
+    /// screen furthest from the picture.
+    private static let currentCardRingWidth: CGFloat = 1.5
+
     @ViewBuilder
     private func card(_ entry: ViewerSeriesEntry) -> some View {
         let isCurrent = viewModel.isCurrentSeries(entry.seriesInstanceUID)
@@ -137,6 +154,10 @@ struct ViewerSeriesPaneView: View {
                 .frame(maxWidth: .infinity)
                 .background(Color.black)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
+                // Nothing is drawn on the picture. A ring around the thumbnail
+                // framed the letterboxing rather than the image — most series
+                // sit in a black box wider than they are — so it read as a frame
+                // around empty black. The card carries the selection instead.
                 .overlay(alignment: .topLeading) {
                     // The series number, which is how the pane is ordered and how
                     // a reader refers to a series aloud.
@@ -174,11 +195,15 @@ struct ViewerSeriesPaneView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity)
-        .background(isCurrent ? Color.accentColor.opacity(0.18) : Color.white.opacity(0.04),
+        // One cue, on the card: a neutral ring and a surface lifted off the pane.
+        // The card is what the ring belongs on — it is the whole entry, picture
+        // and description together, and it is the thing being chosen.
+        .background(isCurrent ? Color.white.opacity(0.12) : Color.white.opacity(0.04),
                     in: RoundedRectangle(cornerRadius: 6))
         .overlay {
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(isCurrent ? Color.accentColor : .clear, lineWidth: 2)
+                .strokeBorder(isCurrent ? Color.white.opacity(0.85) : .clear,
+                              lineWidth: Self.currentCardRingWidth)
         }
         .contentShape(Rectangle())
         // A click shows the series, from its first image. Reading is a matter of

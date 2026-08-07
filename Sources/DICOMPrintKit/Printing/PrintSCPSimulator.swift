@@ -116,7 +116,9 @@ public struct PrintSCPSimulator: Sendable {
                 imageBoxes: boxes,
                 presentationLUTShape: request.presentationLUTShape,
                 annotationDisplayFormatID: request.annotationDisplayFormatID,
-                annotations: request.annotations,
+                // Per film: a job spilling onto a second sheet can be a second
+                // study, and each sheet has to name the patient it carries.
+                annotations: request.printOptions.annotations(forFilm: filmIndex),
                 callingAETitle: callingAETitle)
 
             films.append(try composer.compose(received))

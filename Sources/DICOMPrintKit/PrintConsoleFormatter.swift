@@ -123,8 +123,13 @@ public enum PrintConsoleFormatter {
     // MARK: - Film plan
 
     /// One-line film plan summary: "12 image(s) → 3 film(s) (2×2, 14INX17IN, PORTRAIT)".
+    ///
+    /// A band layout is named by its format string rather than by a grid —
+    /// `ROW\2,1,2` is not 3×2, and reporting it as one would misstate the film.
     public static func planSummary(_ plan: PrintPlan) -> String {
-        let grid = "\(plan.layout.rows)×\(plan.layout.columns)"
+        let grid = plan.displayFormat.isUniformGrid
+            ? "\(plan.layout.rows)×\(plan.layout.columns)"
+            : plan.displayFormat.raw
         var line = "\(plan.imageCount) image(s) → \(plan.filmCount) film(s) "
             + "(\(grid), \(plan.filmSize.rawValue), \(plan.filmOrientation.rawValue))"
         if plan.copies > 1 {

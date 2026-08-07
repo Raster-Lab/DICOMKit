@@ -556,8 +556,30 @@ public struct PrintImageDisplayFormat: Sendable, Equatable {
     /// The bounding grid, for callers that only understand rows × columns.
     public let layout: PrintLayout
 
+    /// The Image Display Format a uniform grid is written as.
+    public init(layout: PrintLayout) {
+        self.raw = layout.imageDisplayFormat
+        self.kind = .standard(rows: layout.rows, columns: layout.columns)
+        self.imageBoxCount = layout.rows * layout.columns
+        self.layout = layout
+    }
+
+    private init(raw: String, kind: Kind, imageBoxCount: Int, layout: PrintLayout) {
+        self.raw = raw
+        self.kind = kind
+        self.imageBoxCount = imageBoxCount
+        self.layout = layout
+    }
+
     /// Parses an Image Display Format value; unrecognized values fall back to 1×1.
     public static func parse(_ raw: String) -> PrintImageDisplayFormat {
+        validated(raw) ?? fallback(raw: raw.trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")))
+    }
+
+    /// Parses an Image Display Format value, returning `nil` when the text is not
+    /// one — the answer a UI or a command line needs, where "it fell back to 1×1"
+    /// is indistinguishable from "the user asked for 1×1".
+    public static func validated(_ raw: String) -> PrintImageDisplayFormat? {
         let trimmed = raw.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
         let parts = trimmed.split(separator: "\\", omittingEmptySubsequences: false)
         let head = parts.first.map(String.init)?.uppercased() ?? ""
@@ -573,7 +595,7 @@ public struct PrintImageDisplayFormat: Sendable, Equatable {
         case "STANDARD":
             // PS3.3 C.13.3: "STANDARD\C,R" — columns first, then rows.
             let dims = numbers(argument)
-            guard dims.count == 2 else { return .fallback(raw: trimmed) }
+            guard dims.count == 2 else { return nil }
             let columns = dims[0], rows = dims[1]
             return PrintImageDisplayFormat(
                 raw: trimmed,
@@ -583,7 +605,7 @@ public struct PrintImageDisplayFormat: Sendable, Equatable {
 
         case "ROW":
             let counts = numbers(argument)
-            guard !counts.isEmpty else { return .fallback(raw: trimmed) }
+            guard !counts.isEmpty else { return nil }
             return PrintImageDisplayFormat(
                 raw: trimmed,
                 kind: .row(counts: counts),
@@ -592,7 +614,7 @@ public struct PrintImageDisplayFormat: Sendable, Equatable {
 
         case "COL":
             let counts = numbers(argument)
-            guard !counts.isEmpty else { return .fallback(raw: trimmed) }
+            guard !counts.isEmpty else { return nil }
             return PrintImageDisplayFormat(
                 raw: trimmed,
                 kind: .column(counts: counts),
@@ -615,7 +637,7 @@ public struct PrintImageDisplayFormat: Sendable, Equatable {
                 layout: PrintLayout(rows: 1, columns: 1))
 
         default:
-            return .fallback(raw: trimmed)
+            return nil
         }
     }
 
@@ -623,5 +645,36 @@ public struct PrintImageDisplayFormat: Sendable, Equatable {
         PrintImageDisplayFormat(
             raw: raw, kind: .standard(rows: 1, columns: 1), imageBoxCount: 1,
             layout: PrintLayout(rows: 1, columns: 1))
+    }
+
+    /// Whether every cell on the film is the same size — true only of `STANDARD`.
+    ///
+    /// The bands of `ROW\` and `COL\` are not a grid: a caller that describes a
+    /// film by ``layout`` alone is describing the bounding box, not the film.
+    public var isUniformGrid: Bool {
+        if case .standard = kind { return true }
+        return false
+    }
+
+    /// What the format lays out, in words: "2 × 3 grid, 6 images",
+    /// "rows of 2, 1, 2 — 5 images".
+    public var summary: String {
+        func images(_ count: Int) -> String {
+            "\(count) image\(count == 1 ? "" : "s")"
+        }
+        switch kind {
+        case .standard(let rows, let columns):
+            return "\(rows) × \(columns) grid, \(images(rows * columns))"
+        case .row(let counts):
+            return "rows of \(counts.map(String.init).joined(separator: ", ")) — \(images(imageBoxCount))"
+        case .column(let counts):
+            return "columns of \(counts.map(String.init).joined(separator: ", ")) — \(images(imageBoxCount))"
+        case .slide:
+            return "35 mm slide, 1 image"
+        case .superslide:
+            return "superslide, 1 image"
+        case .custom(let id):
+            return "printer-defined layout \(id.isEmpty ? "—" : id), 1 image"
+        }
     }
 }

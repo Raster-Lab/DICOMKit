@@ -16,6 +16,14 @@ import SwiftUI
 public enum StudioWindowID: Sendable {
     /// The printer emulator window.
     public static let printerEmulator = "printer-emulator"
+
+    /// The print preview window.
+    ///
+    /// The film is judged against what is on screen in the viewer — the layout
+    /// it mirrors, the window/level a cell was captured with — and a sheet
+    /// covers exactly that. So the preview is a window: it can sit beside the
+    /// viewer, be moved to a second display, or be zoomed to fill one.
+    public static let printPreview = "print-preview"
 }
 
 /// What the Printer Emulator navigation entry shows in the main window: a card

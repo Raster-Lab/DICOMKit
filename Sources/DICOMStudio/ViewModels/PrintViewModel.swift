@@ -38,6 +38,13 @@ public final class PrintViewModel {
     /// `PrintViewModel+CellEditing.swift`.
     public var focusedItemID: String?
 
+    /// Which cell edits are carried to the other cells as they are made.
+    /// See `PrintViewModel+CellSync.swift`.
+    public var cellSync: PrintCellSyncOptions = []
+
+    /// How far a synchronised edit reaches.
+    public var cellSyncScope: PrintCellSyncScope = .sameSeries
+
     /// What a drag on a film cell does.
     public enum CellTool: String, CaseIterable, Sendable, Identifiable {
         case window
@@ -106,6 +113,14 @@ public final class PrintViewModel {
     /// On by default: film that cannot be tied to a patient is not useful film.
     public var showPatientIdentification: Bool = true
 
+    /// Whether identification is stated once per film or under every image.
+    ///
+    /// Automatic by default, which is the rule a reader would apply by hand: a
+    /// sheet whose images all come from one study says whose it is once, along
+    /// the bottom; a sheet mixing studies captions each image, because one
+    /// footer under two patients is a statement the film cannot support.
+    public var identificationPlacement: PrintIdentificationPlacement = .automatic
+
     // MARK: - Printers
 
     /// Configured printers.
@@ -140,6 +155,14 @@ public final class PrintViewModel {
     public var viewerLayout: PrintLayout?
     public var layoutOption: PrintLayoutOption = .layout2x2
     public var templatePreset: PrintTemplatePreset = .grid
+
+    /// An Image Display Format (2010,0010) typed by hand, for the films a grid
+    /// cannot describe: `ROW\2,1,2` puts two images over one over two.
+    ///
+    /// Held as text, not as a parsed value, because it is edited a character at a
+    /// time and "ROW\2," is not a layout yet — the film keeps the last one that
+    /// was while the rest is typed.
+    public var customLayoutText: String = "ROW\\1,2"
     public var filmSize: FilmSize = .size14InX17In
     public var filmOrientation: FilmOrientation = .portrait
 
@@ -182,6 +205,8 @@ public final class PrintViewModel {
         case automatic
         case explicit
         case template
+        /// A hand-written Image Display Format — see ``customLayoutText``.
+        case custom
 
         public var id: String { rawValue }
 
@@ -191,8 +216,18 @@ public final class PrintViewModel {
             case .automatic:   return "Automatic"
             case .explicit:    return "Layout"
             case .template:    return "Preset"
+            case .custom:      return "Custom"
             }
         }
+    }
+
+    /// The typed format, if what is in the field is one.
+    ///
+    /// `nil` while the text is not a valid Image Display Format, which is what
+    /// the field shows as a warning and what makes the film fall back to the
+    /// automatic grid rather than silently printing 1×1.
+    public var customLayoutFormat: PrintImageDisplayFormat? {
+        PrintImageDisplayFormat.validated(customLayoutText)
     }
 
     // MARK: - Run state
@@ -372,6 +407,10 @@ public final class PrintViewModel {
         case .automatic: layoutSelection = .automatic
         case .explicit:  layoutSelection = .explicit(layoutOption)
         case .template:  layoutSelection = .template(templatePreset)
+        case .custom:
+            // Half-typed text is not a layout; the film waits rather than
+            // printing the 1×1 a lenient parse would have made of it.
+            layoutSelection = customLayoutFormat.map { .displayFormat($0) } ?? .automatic
         }
 
         let trimmedFormatID = annotationDisplayFormatID.trimmingCharacters(in: .whitespaces)
@@ -498,8 +537,50 @@ public final class PrintViewModel {
 
                 // Read from the files themselves, so what is burned in does not
                 // depend on the preview having been opened.
-                let annotationLines = burnIdentification
-                    ? await self.identificationLines(for: items) : [:]
+                let texts = burnIdentification
+                    ? await self.identificationTexts(for: items) : [:]
+                let identifications = self.filmIdentifications(
+                    for: items, texts: texts, plan: plan)
+
+                // A footer is film-level text, and the printer composes the
+                // sheet: on the wire the only place film-level text can go is a
+                // Basic Annotation Box. Whether this printer has one is a
+                // question about the association, not about the settings sheet
+                // — so it is *asked*, before the frames are prepared, because
+                // the answer decides whether they are captioned. A printer that
+                // has none, or cannot be reached, gets the caption burned under
+                // each image, which is what still puts a name on the film.
+                var jobRequest = jobRequest
+                let footered = identifications.contains { !$0.footerLines.isEmpty }
+                var footersDelivered = false
+                if footered {
+                    footersDelivered = await service.supportsAnnotationBoxes(profile: printer)
+                }
+                if footered, footersDelivered {
+                    // The format ID is printer-defined and a film box cannot
+                    // carry annotation boxes without one, so a job that wants a
+                    // footer sends the configured value or a plain default.
+                    if jobRequest.annotationDisplayFormatID == nil {
+                        jobRequest.annotationDisplayFormatID =
+                            FilmIdentificationFooter.defaultAnnotationDisplayFormatID
+                    }
+                    jobRequest.filmAnnotations = identifications.map {
+                        FilmIdentificationFooter.annotations(for: $0.footerLines)
+                    }
+                    let count = identifications.filter { !$0.footerLines.isEmpty }.count
+                    self.append(.info,
+                                "Patient identification goes on \(count) film(s) as an annotation "
+                                + "box at the foot of the sheet (format ID "
+                                + "'\(jobRequest.annotationDisplayFormatID ?? "")')")
+                } else if footered {
+                    self.append(.notice,
+                                "This printer takes no annotation boxes, so the identification is "
+                                + "burned under each image instead of once per film.")
+                }
+
+                let annotationLines = self.identificationBurns(
+                    for: items, texts: texts, identifications: identifications,
+                    plan: plan, footersDelivered: footersDelivered)
                 if !annotationLines.isEmpty {
                     self.append(.info, "Burning patient identification into \(annotationLines.count) image(s)")
                 }
@@ -549,6 +630,131 @@ public final class PrintViewModel {
             } catch {
                 self.fail(error.localizedDescription, printer: printer, plan: plan)
             }
+        }
+    }
+
+    // MARK: - Saving the film
+
+    /// Whether a film is being composed for a file right now.
+    ///
+    /// Composing re-reads and re-renders every marked frame, so it is not
+    /// instant on a full sheet — the button says so rather than looking dead.
+    public private(set) var isSavingFilm = false
+
+    /// A file name for the composed film, taken from what is on it.
+    public var suggestedFilmFileName: String {
+        let label = selection.items.first?.displayLabel ?? "film"
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let cleaned = String(label.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
+            .split(separator: "-", omittingEmptySubsequences: true)
+            .joined(separator: "-")
+        return cleaned.isEmpty ? "film" : cleaned
+    }
+
+    /// Composes the marked images into film sheets and writes them to `url`.
+    ///
+    /// Not a picture of the preview: the images go through the same
+    /// ``PrintService/prepare(items:request:useViewerWindow:applyViewerPresentation:annotations:drawnAnnotations:onProgress:)``
+    /// an actual print sends them through, and the sheet comes out of the same
+    /// ``FilmComposer`` the printer emulator composes a received film with. What
+    /// lands on disk is therefore the film the printer would have laid down,
+    /// identification band, annotations, spillover and all.
+    ///
+    /// A PDF holds every film of the job as one page each; PNG and TIFF hold one
+    /// sheet apiece, so a job spilling onto a second film writes two files.
+    ///
+    /// - Returns: `nil` on success, or the reason it failed.
+    @discardableResult
+    public func saveFilm(to url: URL) async -> String? {
+        guard !selection.isEmpty else { return "Nothing is marked." }
+        guard !isSavingFilm else { return nil }
+
+        isSavingFilm = true
+        defer { isSavingFilm = false }
+
+        let items = selection.items
+        var jobRequest = request
+        let plan = jobRequest.plan(forImageCount: items.count)
+        append(.info, "Composing \(items.count) image(s) into "
+               + "\(plan.filmCount) film(s) for \(url.lastPathComponent)…")
+
+        do {
+            let texts = showPatientIdentification
+                ? await identificationTexts(for: items) : [:]
+            let identifications = filmIdentifications(for: items, texts: texts, plan: plan)
+            // The sheet is composed here, so a footer always lands: it is drawn
+            // into the strip `FilmComposer` keeps clear along the bottom.
+            jobRequest.filmAnnotations = identifications.map {
+                FilmIdentificationFooter.annotations(for: $0.footerLines)
+            }
+            let annotationLines = identificationBurns(
+                for: items, texts: texts, identifications: identifications,
+                plan: plan, footersDelivered: true)
+            let images = try await service.prepare(
+                items: items,
+                request: jobRequest,
+                useViewerWindow: useViewerWindow,
+                applyViewerPresentation: useViewerPresentation,
+                annotations: annotationLines,
+                drawnAnnotations: annotationsForPrinting)
+
+            // Rasterizing a 14×17 sheet at 300 dpi is tens of megapixels of
+            // drawing; done on the main actor it stalls the film it is drawing.
+            let composeRequest = jobRequest
+            let written = try await Task.detached(priority: .userInitiated) {
+                let films = try PrintSCPSimulator().composeFilms(
+                    images: images,
+                    request: composeRequest,
+                    settings: PrintSCPSettings(),
+                    callingAETitle: "DICOMSTUDIO")
+                return try Self.writeFilms(films, to: url)
+            }.value
+
+            for name in written { append(.success, "Saved film to \(name)") }
+            return nil
+        } catch {
+            let message: String
+            switch error {
+            case let error as PrintRequestError:      message = error.message
+            case let error as FilmCompositionError:   message = error.description
+            case let error as PrintSinkError:         message = error.description
+            default:                                  message = error.localizedDescription
+            }
+            append(.failure, "Failed to save the film: \(message)")
+            return message
+        }
+    }
+
+    /// Writes composed sheets to `url`, in the format its extension names.
+    ///
+    /// - Returns: the names of the files written.
+    nonisolated private static func writeFilms(
+        _ films: [ComposedFilm], to url: URL
+    ) throws -> [String] {
+        guard !films.isEmpty else { return [] }
+
+        // A PDF is a document, so every sheet of the job is a page of it.
+        if url.pathExtension.lowercased() == "pdf" {
+            try PDFSink.write(films: films, to: url)
+            return [url.lastPathComponent]
+        }
+
+        let format: ImageSink.Format =
+            ["tif", "tiff"].contains(url.pathExtension.lowercased()) ? .tiff : .png
+        guard films.count > 1 else {
+            try ImageSink.write(film: films[0], to: url, format: format)
+            return [url.lastPathComponent]
+        }
+
+        // An image file holds one picture and a film is one sheet, so a job that
+        // spilled writes one file per sheet, numbered as the films are.
+        let base = url.deletingPathExtension()
+        let ext = url.pathExtension
+        return try films.enumerated().map { index, film in
+            let target = URL(fileURLWithPath: "\(base.path)-\(index + 1)")
+                .appendingPathExtension(ext)
+            try ImageSink.write(film: film, to: target, format: format)
+            return target.lastPathComponent
         }
     }
 
@@ -627,7 +833,11 @@ public final class PrintViewModel {
             imageCount: imageCount,
             filmCount: plan.filmCount,
             copies: plan.copies,
-            layout: "\(plan.layout.rows)×\(plan.layout.columns)",
+            // A band layout is recorded as the format it was sent as: there is
+            // no grid that names it, and the history is a record of what left.
+            layout: plan.displayFormat.isUniformGrid
+                ? "\(plan.layout.rows)×\(plan.layout.columns)"
+                : plan.displayFormat.raw,
             success: success,
             printJobUIDs: printJobUIDs,
             filmSessionUID: filmSessionUID,

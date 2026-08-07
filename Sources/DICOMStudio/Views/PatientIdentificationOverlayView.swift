@@ -1,16 +1,18 @@
 // PatientIdentificationOverlayView.swift
 // DICOMStudio
 //
-// DICOM Studio — patient identification under (or over) an image.
+// DICOM Studio — patient identification under a film cell.
 //
-// Two lines, centred: "name, ID, study date" over the study description. The
-// type scales with the cell it sits in, so a 4×4 tile carries the same overlay
-// as a full-screen image without either drowning the picture or becoming
+// Two lines, centred: "name, ID, study date" over the study description, in a
+// reserved strip below the picture so text and anatomy never share pixels. The
+// type scales with the cell it sits in, so a 4×5 film sheet carries the same
+// strip as a single-image film without either drowning the picture or becoming
 // unreadable.
 //
-// The viewer draws it as a *band*: a reserved strip below the picture, so text
-// and anatomy never share pixels. The film preview draws it as an overlay,
-// because there the cell is the film and nothing may take space from it.
+// Film only. The viewer annotates in the corners instead
+// (``ViewerAnnotationOverlayView``): on screen the reader can move the picture
+// out from under the text, and paper cannot — a name printed over anatomy is a
+// name that can hide a finding on the one copy that leaves the department.
 
 #if canImport(SwiftUI)
 import SwiftUI
@@ -26,16 +28,6 @@ struct PatientIdentificationOverlayView: View {
 
     /// Size of the cell the overlay is drawn in — the type scales against it.
     let cellSize: CGSize
-
-    /// Where the text sits relative to the picture.
-    enum Style {
-        /// A reserved strip below the image; text and image never overlap.
-        case band
-        /// Drawn over the image, for cells that cannot give up any height.
-        case overlay
-    }
-
-    var style: Style = .overlay
 
     var body: some View {
         if primaryLine.isEmpty && secondaryLine.isEmpty {
@@ -61,10 +53,9 @@ struct PatientIdentificationOverlayView: View {
             .shadow(color: .black.opacity(0.9), radius: 1.5)
             .padding(.horizontal, fontSize * 0.5)
             .padding(.vertical, fontSize * 0.3)
-            .frame(maxWidth: style == .band ? .infinity : cellSize.width * 0.94)
-            .frame(height: style == .band
-                   ? Self.bandHeight(for: cellSize, lines: lineCount) : nil)
-            .background(style == .band ? Color.black : Color.clear)
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.bandHeight(for: cellSize, lines: lineCount))
+            .background(Color.black)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Patient identification: \(primaryLine). \(secondaryLine)")
         }

@@ -51,6 +51,9 @@ dicom-print send pacs://server:11112 scan.dcm --aet APP \
 # Print multiple images with layout
 dicom-print send pacs://server:11112 *.dcm --aet APP --layout 2x3
 
+# A scout over its slices — one image in the top row, three beneath it
+dicom-print send pacs://server:11112 *.dcm --aet APP --layout 'ROW\1,3'
+
 # Print directory recursively
 dicom-print send pacs://server:11112 studies/ --aet APP --recursive
 
@@ -111,7 +114,7 @@ dicom-print remove-printer --name radiology-printer
 | `--verify` | C-ECHO connectivity check against the printer before printing |
 | `--orientation` | Film orientation: portrait, landscape |
 | `--priority` | Print priority: low, medium, high |
-| `--layout` | Image layout: 1x1, 1x2, 2x1, 2x2, 2x3, 3x3, 3x4, 4x4, 4x5 (auto if omitted) |
+| `--layout` | Image layout: a grid (1x1 … 4x5) or an Image Display Format (`'ROW\2,1,2'`, `'COL\1,2'`) (auto if omitted) |
 | `--template` | Layout preset: single, comparison, grid, multi-phase (sets layout + film size + orientation; conflicts with `--layout`) |
 | `--medium` | Medium type: paper, clear-film, blue-film |
 | `--color` | Color mode: grayscale, color (default: grayscale) |
@@ -192,9 +195,14 @@ cannot cause duplicate prints:
 dicom-print send pacs://server:11112 scan.dcm --aet APP --retries 3
 ```
 
-> **Note:** `--layout` selects the film's image display format (rows × columns).
-> When omitted, an optimal layout is chosen automatically from the number of
-> images. `--color color` negotiates the Basic Color Print Management Meta SOP
+> **Note:** `--layout` selects the film's Image Display Format (2010,0010). A
+> grid token is written `RxC`; the band forms of PS3.3 C.13.3 are given as the
+> standard writes them — `'ROW\1,2'` puts one image over two, `'COL\1,4,4'` puts
+> one beside two columns of four — and must be quoted so the shell keeps the
+> backslash. Any valid format is accepted; the named ones the DICOMStudio print
+> sheet also offers are `ROW\1,2`, `ROW\2,3`, `COL\1,2`, `COL\1,3`, `COL\1,4`,
+> `COL\1,4,4` and `COL\2,4,4`. When omitted, an optimal grid is chosen
+> automatically from the number of images. `--color color` negotiates the Basic Color Print Management Meta SOP
 > Class and sends color image boxes; the default is grayscale.
 
 ### Printer Notifications (N-EVENT-REPORT)

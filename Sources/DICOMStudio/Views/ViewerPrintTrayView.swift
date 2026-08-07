@@ -26,8 +26,6 @@ struct ViewerPrintTrayView: View {
         VStack(spacing: 0) {
             header
 
-            Divider()
-
             if viewModel.printSelection.isEmpty {
                 empty
             } else {
@@ -42,9 +40,10 @@ struct ViewerPrintTrayView: View {
                 }
             }
         }
-        // Chrome grey, matching the series pane: the framed image between them is
-        // the only pure black, so the eye lands there and not on the tray.
-        .background(StudioColors.viewerChrome)
+        // The pane surface, matching the series pane and seamed against the
+        // gutter on the left: the framed images between the two panes are the
+        // only pure black, so the eye lands there and not on the tray.
+        .viewerPaneSurface(imageEdge: .leading)
         #if canImport(CoreGraphics)
         .onAppear { thumbnails.refresh(for: viewModel.printSelection.items) }
         .onChange(of: viewModel.printSelection.items) { _, items in
@@ -55,23 +54,19 @@ struct ViewerPrintTrayView: View {
 
     // MARK: - Chrome
 
+    /// "On film", not "Selected": the tray is the film's running order, and the
+    /// word says what the count means without the reader having to ask what a
+    /// selection in this particular column selects.
     private var header: some View {
-        HStack(spacing: 6) {
-            Text("Selected")
-                .font(.caption.bold())
-                .foregroundStyle(.white)
-            Text("\(viewModel.printSelection.count)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.white.opacity(0.7))
-            Spacer()
+        ViewerPaneHeader("On film",
+                         systemImage: "printer",
+                         count: viewModel.printSelection.count) {
             if !viewModel.printSelection.isEmpty {
                 Button("Clear") { viewModel.clearAllPrintMarks() }
                     .controlSize(.mini)
                     .help("Unmark every image")
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
     }
 
     private var empty: some View {

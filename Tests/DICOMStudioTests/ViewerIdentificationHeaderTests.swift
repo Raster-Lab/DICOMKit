@@ -103,4 +103,20 @@ struct ViewerIdentificationHeaderTests {
         #expect(viewModel.studySeries.isEmpty)
         #expect(viewModel.studyInstanceUID == nil)
     }
+
+    @Test("Each study opened asks for the print screen to be taken down")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    @MainActor
+    func testPrepareForNewStudyRequestsPrintScreenDismissal() {
+        let viewModel = studyViewModel()
+        #expect(viewModel.printScreenDismissRequests == 0)
+
+        viewModel.prepareForNewStudy()
+        #expect(viewModel.printScreenDismissRequests == 1)
+
+        // A counter, not a flag: the print window can be re-opened between two
+        // studies, and the second one has to take it down again.
+        viewModel.prepareForNewStudy()
+        #expect(viewModel.printScreenDismissRequests == 2)
+    }
 }

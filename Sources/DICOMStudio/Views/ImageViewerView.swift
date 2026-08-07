@@ -26,10 +26,23 @@ public struct ImageViewerView: View {
     /// Anchor for a zoom-tool drag, so the gesture applies deltas not absolutes.
     @State private var zoomDragStart: CGSize = .zero
 
+    /// The pointer's bearing around the picture's centre at the previous step of a
+    /// rotate-tool drag, or `nil` before the drag has left the dead zone at the
+    /// centre. Held so each step turns the image by the arc just swept.
+    @State private var rotateDragBearing: Double?
+
+    /// Size of the view the drag tools are attached to — the whole reading area at
+    /// 1×1, one tile in a grid. Its centre is the pivot a rotate drag turns about,
+    /// which is why this is measured separately from ``viewSize``.
+    @State private var toolSpaceSize: CGSize = .zero
+
+    /// Where the pointer is over the image area, or `nil` when it has left.
+    @State private var hoverPoint: CGPoint?
+
     /// The click-and-drag tool currently armed, or `nil` for plain pan.
     ///
-    /// Windowing and zoom are mutually exclusive: picking one arms it and
-    /// disarms the other, and the toolbar highlights whichever is active.
+    /// Windowing, zoom and rotate are mutually exclusive: picking one arms it and
+    /// disarms the others, and the toolbar highlights whichever is active.
     @State private var activeTool: ImageViewerDragTool?
 
     /// Turns scroll events into whole image steps — one per wheel notch.
@@ -54,11 +67,12 @@ public struct ImageViewerView: View {
 
     /// Series pane, reading area, selection tray.
     ///
-    /// The reading area is the only pure black on screen and the only thing that
-    /// is framed: the panes and the gutter between them are chrome grey, so the
-    /// image reads as a light box set into the station rather than as a third
-    /// panel of equal weight. That is the habit a reporting station trains — the
-    /// darkest, quietest rectangle is the one being read.
+    /// Three columns on three planes, not three panels of equal weight. The panes
+    /// are the lightest surface and each is titled; the gutter between them is
+    /// the darkest chrome; and the reading area is pure black, framed, titled and
+    /// lifted off its mount by a shadow. That is the habit a reporting station
+    /// trains — the darkest, quietest rectangle is the one being read, and here
+    /// it is also the one whose title strip says how much of it prints.
     public var body: some View {
         HStack(spacing: 0) {
             // The study's series, when the viewer was opened from a study. Loose
@@ -76,36 +90,114 @@ public struct ImageViewerView: View {
                     .frame(width: Self.printTrayWidth)
             }
         }
-        // No dividers: the gutter and the change in tone already separate the
-        // panes from the image, and a hairline beside a framed light box only
-        // adds a second edge to read.
+        // No dividers of their own: each pane carries a seam on the side facing
+        // the picture, which is one edge rather than the two a shared hairline
+        // and a framed light box would put next to each other.
         .background(StudioColors.viewerChrome)
     }
 
-    /// The image, framed and inset into the chrome.
+    /// The image, titled, framed and inset into the chrome.
+    ///
+    /// The title strip is what makes this column the reading area rather than a
+    /// third panel of the same weight: it names the surface, says how it is laid
+    /// out, and reports how much of what is on it is going to print — the one
+    /// question the three identical dark columns could not answer between them.
     private var readingArea: some View {
-        imageArea
-            .background(Color.black)
-            .clipShape(RoundedRectangle(cornerRadius: Self.readingAreaCornerRadius))
-            .overlay {
-                RoundedRectangle(cornerRadius: Self.readingAreaCornerRadius)
-                    .strokeBorder(readingAreaBorderColor, lineWidth: 1)
-            }
-            .padding(Self.readingAreaGutter)
+        VStack(spacing: 0) {
+            readingAreaHeader
+
+            imageArea
+                .background(Color.black)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Self.readingAreaCornerRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: Self.readingAreaCornerRadius)
+                .strokeBorder(readingAreaBorderColor, lineWidth: Self.readingAreaBorderWidth)
+        }
+        // A cast shadow lifts the reading area off its mount, so the middle
+        // column reads as the thing in front and the panes as what flanks it.
+        .shadow(color: .black.opacity(0.55), radius: 6, y: 1)
+        .padding(Self.readingAreaGutter)
     }
 
-    /// The frame around the image.
+    /// Names the reading area and reports what of it is on the film.
+    private var readingAreaHeader: some View {
+        let marked = viewModel.layoutMarkedForPrintCount
+        let total = viewModel.layoutImageCount
+        return HStack(spacing: 8) {
+            Image(systemName: "viewfinder")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.75))
+
+            Text("READING AREA")
+                .font(.caption2.weight(.semibold))
+                .tracking(0.8)
+                .foregroundStyle(.white.opacity(0.85))
+
+            if viewModel.hasImage {
+                Text(viewModel.layout.displayName)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+
+            Spacer(minLength: 4)
+
+            // The count is the point of the strip, so it is a lit chip rather
+            // than another line of grey: at a glance, this column prints.
+            if viewModel.hasImage {
+                HStack(spacing: 4) {
+                    Image(systemName: marked > 0 ? "printer.fill" : "printer")
+                        .font(.caption2)
+                    Text(marked > 0 ? "\(marked) of \(total) on film" : "none on film")
+                        .font(.caption2.monospacedDigit().weight(.medium))
+                }
+                .foregroundStyle(marked > 0 ? Color.accentColor : .white.opacity(0.5))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(
+                    marked > 0 ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.06),
+                    in: Capsule())
+                .accessibilityLabel(marked > 0
+                                    ? "\(marked) of \(total) images on screen are marked for print"
+                                    : "No images on screen are marked for print")
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: ViewerPaneMetrics.headerHeight)
+        .background(readingAreaHeaderFill)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.black.opacity(0.5))
+                .frame(height: 1)
+        }
+    }
+
+    /// The strip's own surface — accent-washed while the keyboard is here, so
+    /// the column that the arrow keys and the tools will act on is lit at the
+    /// top as well as ringed at the edge.
+    private var readingAreaHeaderFill: Color {
+        isImageAreaFocused && viewModel.hasImage
+            ? Color.accentColor.opacity(0.28)
+            : StudioColors.viewerPanelHeader
+    }
+
+    /// The frame around the reading area.
     ///
     /// Neutral while the viewer is idle; picking up the accent once the image
     /// area holds the keyboard, which is what says the arrow keys will walk this
-    /// stack. In a grid the focused tile carries its own ring, so the outer frame
-    /// stays neutral there rather than drawing a second one around it.
+    /// stack. It stays on in a grid too — the ring says which *column* is live,
+    /// the tile's own ring says which tile inside it is, and losing the outer one
+    /// was what left the three columns looking alike.
     private var readingAreaBorderColor: Color {
-        guard isImageAreaFocused, viewModel.hasImage, !viewModel.isMultiCellLayout else {
+        guard isImageAreaFocused, viewModel.hasImage else {
             return StudioColors.readingAreaBorder
         }
-        return Color.accentColor.opacity(0.45)
+        return Color.accentColor.opacity(0.55)
     }
+
+    /// Thicker than a hairline: this is the edge of the working surface, and at
+    /// one point it disappeared against the mount from a normal seating distance.
+    private static let readingAreaBorderWidth: CGFloat = 1.5
 
     /// Width of the selection tray — a legible thumbnail and two lines of label.
     private static let printTrayWidth: CGFloat = 180
@@ -113,6 +205,10 @@ public struct ImageViewerView: View {
     /// Width of the series pane — enough for a legible thumbnail and two lines
     /// of series description.
     private static let seriesPaneWidth: CGFloat = 190
+
+    /// Room the print checkbox takes in the top-right corner, which the
+    /// identification block starts below.
+    private static let printCheckboxInset: CGFloat = 34
 
     /// Chrome left visible around the image. Small on purpose: enough to read as
     /// a separate surface, not enough to cost the picture real room.
@@ -176,9 +272,9 @@ public struct ImageViewerView: View {
                         Button("Flip Horizontal") { viewModel.flipHorizontal() }
                         Button("Flip Vertical") { viewModel.flipVertical() }
                         Divider()
-                        Button(viewModel.showPatientOverlay
-                               ? "Hide Patient Overlay" : "Show Patient Overlay") {
-                            viewModel.showPatientOverlay.toggle()
+                        Button(viewModel.showImageAnnotations
+                               ? "Hide Image Annotations" : "Show Image Annotations") {
+                            viewModel.showImageAnnotations.toggle()
                         }
                         if viewModel.isMonochrome {
                             Divider()
@@ -197,10 +293,14 @@ public struct ImageViewerView: View {
                             viewModel.markLayoutForPrint()
                         }
                         .disabled(viewModel.isLayoutFullyMarkedForPrint)
+                        // "Unselect all" takes every mark off, not only the ones
+                        // the layout happens to be showing: marks are made while
+                        // scrolling a series, so a screen-scoped unselect leaves
+                        // most of the film behind and reads as doing nothing.
                         Button("Unselect All for Print") {
-                            viewModel.unmarkLayoutForPrint()
+                            viewModel.clearAllPrintMarks()
                         }
-                        .disabled(!viewModel.isAnyLayoutImageMarkedForPrint)
+                        .disabled(viewModel.printSelection.isEmpty)
                         if viewModel.isMultiFrame {
                             Button("Mark All Frames for Print") {
                                 viewModel.markAllFramesOfCurrentFileForPrint()
@@ -209,11 +309,6 @@ public struct ImageViewerView: View {
                         if viewModel.isInSeries {
                             Button("Mark Whole Series for Print") {
                                 viewModel.markWholeSeriesForPrint()
-                            }
-                        }
-                        if !viewModel.printSelection.isEmpty {
-                            Button("Clear Print Marks", role: .destructive) {
-                                viewModel.clearAllPrintMarks()
                             }
                         }
                     }
@@ -284,24 +379,34 @@ public struct ImageViewerView: View {
                     .padding(8)
             }
         }
-        // Patient identification in a reserved band under the picture, so text
-        // and anatomy never share pixels. `safeAreaInset` takes the height from
-        // the image area rather than covering it. In a grid each tile reserves
-        // its own band, so this one is the 1×1 case only.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            // Images only: a report or a document is not a picture with a
-            // caption, and the band would sit under a page of text.
-            if viewModel.showPatientOverlay && viewModel.hasImage
+        // Reading annotations in the four corners, over the picture. In a grid
+        // each tile draws its own, so this one is the 1×1 case only.
+        .overlay {
+            // Images only: a report or a document is not a picture, and a block
+            // of corner annotation over a page of text obscures the text.
+            if viewModel.showImageAnnotations && viewModel.hasImage
                 && !viewModel.isWaveform && !viewModel.isNonImageContent
-                && !viewModel.isMultiCellLayout
-                && viewModel.hasPatientOverlayText {
-                PatientIdentificationOverlayView(
-                    primaryLine: viewModel.patientOverlayPrimaryLine,
-                    secondaryLine: viewModel.patientOverlaySecondaryLine,
+                && !viewModel.isMultiCellLayout {
+                ViewerAnnotationOverlayView(
+                    text: viewModel.annotationText,
+                    state: viewModel.annotationViewportState(
+                        viewSize: viewSize, cursor: cursorReadout),
                     cellSize: viewSize,
-                    style: .band
+                    // Clears the print checkbox in the same corner.
+                    topTrailingInset: Self.printCheckboxInset
                 )
-                .allowsHitTesting(false)
+            }
+        }
+        // The pointer's position over the picture, for the pixel and patient
+        // coordinates in the top-left block. Tracked on the image area rather
+        // than on the image itself: the image is transformed by zoom, pan and
+        // rotation, so a point in *its* space is already past the mapping the
+        // readout exists to perform, whereas the image area is the viewport the
+        // transforms are defined against.
+        .onContinuousHover(coordinateSpace: .local) { phase in
+            switch phase {
+            case .active(let point): hoverPoint = point
+            case .ended: hoverPoint = nil
             }
         }
         .overlay(alignment: .bottom) {
@@ -323,16 +428,21 @@ public struct ImageViewerView: View {
         .toolbar {
             viewerToolbar
         }
-        .sheet(isPresented: $viewModel.isPrintSheetPresented) {
-            // Hosted rather than inlined: the sheet can also be raised from the
-            // library ("Print…"), which may happen before this view has ever
-            // appeared, so the print state must be created by the sheet itself.
-            PrintSheetHost(
-                selection: viewModel.printSelection,
-                printViewModel: $printViewModel,
-                parentSize: parentWindowSize
-            )
-        }
+        // On macOS this opens the print window; elsewhere it raises the sheet.
+        // Either way `isPrintSheetPresented` is the request, and the preparation
+        // below runs first — the request also arrives from the library
+        // ("Print…"), which fires before this view has ever appeared.
+        .modifier(
+            PrintScreenPresenter(isRequested: $viewModel.isPrintSheetPresented,
+                                 prepare: preparePrintScreen) {
+                // Hosted rather than inlined: the print state has to be created
+                // by the sheet itself when the request came from the library.
+                PrintSheetHost(
+                    selection: viewModel.printSelection,
+                    printViewModel: $printViewModel,
+                    parentSize: parentWindowSize
+                )
+            })
         .sheet(isPresented: $viewModel.showDICOMInspector) {
             if let file = viewModel.dicomFile {
                 DICOMInspectorView(dicomFile: file)
@@ -385,9 +495,17 @@ public struct ImageViewerView: View {
         viewModel.viewContentHeight = size.height
     }
 
-    /// Opens the print sheet, creating its state on first use.
+    /// Asks for the print screen. What that raises — a window on macOS, a sheet
+    /// elsewhere — is `PrintScreenPresenter`'s business, and so is preparing the
+    /// print state, since the same request also comes from the library.
     private func openPrintSheet() {
-        // The sheet is about to read the marks, so bring them up to date with
+        viewModel.isPrintSheetPresented = true
+    }
+
+    /// Brings the print state in line with the viewer, just before the print
+    /// screen reads it. Idempotent: the request can arrive more than once.
+    private func preparePrintScreen() {
+        // The screen is about to read the marks, so bring them up to date with
         // what is actually on screen — the user has usually kept arranging since
         // ticking the boxes.
         viewModel.refreshMarksFromViewer()
@@ -396,7 +514,8 @@ public struct ImageViewerView: View {
         viewModel.syncPrintOrderToViewer()
 
         // Captured before the sheet exists, while the key window is still the
-        // viewer's: the sheet opens at the size of the screen it came from.
+        // viewer's: the sheet opens at the size of the screen it came from. The
+        // window sizes itself, so this only matters off macOS.
         #if canImport(AppKit)
         parentWindowSize = NSApplication.shared.keyWindow?.frame.size
         #endif
@@ -404,7 +523,7 @@ public struct ImageViewerView: View {
         if printViewModel == nil {
             printViewModel = PrintViewModel(selection: viewModel.printSelection)
         } else {
-            // Printers may have been added since the sheet was last open.
+            // Printers may have been added since it was last open.
             printViewModel?.loadPrinters()
         }
 
@@ -421,10 +540,26 @@ public struct ImageViewerView: View {
         }
 
         // The console reads like a fresh log each time the preview is opened,
-        // not a running transcript of every past visit to this sheet.
+        // not a running transcript of every past visit to it.
         printViewModel?.resetConsole()
+    }
 
-        viewModel.isPrintSheetPresented = true
+    // MARK: - Cursor readout
+
+    /// The pixel under the pointer, with the in-flight gesture folded in.
+    ///
+    /// A pan drag moves the picture continuously and only commits on release, so
+    /// the readout has to be mapped through the arrangement *on screen* — the
+    /// committed one would name the pixel that was under the cursor before the
+    /// drag began, which is the one place a stale number would look plausible.
+    private var cursorReadout: ViewerCursorReadout? {
+        guard let hoverPoint else { return nil }
+        return viewModel.cursorReadout(
+            atViewPoint: hoverPoint,
+            viewSize: viewSize,
+            zoom: viewModel.zoomLevel * Double(magnifyBy),
+            panX: viewModel.panOffsetX + Double(dragOffset.width),
+            panY: viewModel.panOffsetY + Double(dragOffset.height))
     }
 
     // MARK: - Image Content
@@ -459,6 +594,7 @@ public struct ImageViewerView: View {
            viewModel.progressiveDecodeState != .idle,
            viewModel.progressiveImage != nil || viewModel.currentImage != nil {
             ProgressiveImageView(viewModel: viewModel)
+                .background(toolSpaceReader)
                 .gesture(panGesture)
                 .gesture(magnificationGesture)
                 #if os(macOS)
@@ -471,37 +607,51 @@ public struct ImageViewerView: View {
             // action costs one redraw of a textured quad.
             MetalImageView(frame: texture, presentation: livePresentation)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(toolSpaceReader)
                 .gesture(panGesture)
                 .gesture(magnificationGesture)
                 .accessibilityLabel("DICOM Image")
                 .accessibilityValue(viewModel.dimensionsText)
-                .accessibilityHint("Drag to pan, or use the windowing/zoom tools to drag-adjust; scroll to step through images")
+                .accessibilityHint("Drag to pan, or use the windowing, zoom and rotate tools to drag-adjust; scroll to step through images")
                 #if os(macOS)
                 .background(ScrollWheelHandler { scrollImages($0) })
                 #endif
         } else if let cgImage = viewModel.currentImage {
-            Image(decorative: cgImage, scale: 1.0)
-                .resizable()
-                // Uses the whole viewport, aspect ratio intact: `.fit` grows the
-                // image until one edge meets the cell, so nothing is stretched
-                // and nothing is left unnecessarily small.
-                .aspectRatio(contentMode: .fit)
+            // CPU fallback path. The transforms go on the picture and the gestures
+            // on the container around it — a `DragGesture` reports its locations in
+            // the space of the view it is attached to, so hanging it off the rotated,
+            // flipped image would have the rotate tool measuring the pointer in a
+            // frame that turns with the drag (half speed, and backwards under a flip).
+            // The container never moves, so its space is the screen's.
+            ZStack {
+                Image(decorative: cgImage, scale: 1.0)
+                    .resizable()
+                    // Uses the whole viewport, aspect ratio intact: `.fit` grows the
+                    // image until one edge meets the cell, so nothing is stretched
+                    // and nothing is left unnecessarily small.
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .scaleEffect(viewModel.zoomLevel * magnifyBy)
+                    .offset(
+                        x: viewModel.panOffsetX + dragOffset.width,
+                        y: viewModel.panOffsetY + dragOffset.height
+                    )
+                    .rotationEffect(.degrees(viewModel.rotationAngle))
+                    .scaleEffect(
+                        x: viewModel.isFlippedHorizontal ? -1 : 1,
+                        y: viewModel.isFlippedVertical   ? -1 : 1
+                    )
+            }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .scaleEffect(viewModel.zoomLevel * magnifyBy)
-                .offset(
-                    x: viewModel.panOffsetX + dragOffset.width,
-                    y: viewModel.panOffsetY + dragOffset.height
-                )
-                .rotationEffect(.degrees(viewModel.rotationAngle))
-                .scaleEffect(
-                    x: viewModel.isFlippedHorizontal ? -1 : 1,
-                    y: viewModel.isFlippedVertical   ? -1 : 1
-                )
+                // Keeps the whole viewport draggable, letterbox included, as the
+                // image's own frame did before it was wrapped.
+                .contentShape(Rectangle())
+                .background(toolSpaceReader)
                 .gesture(panGesture)
                 .gesture(magnificationGesture)
                 .accessibilityLabel("DICOM Image")
                 .accessibilityValue(viewModel.dimensionsText)
-                .accessibilityHint("Drag to pan, or use the windowing/zoom tools to drag-adjust; scroll to step through images")
+                .accessibilityHint("Drag to pan, or use the windowing, zoom and rotate tools to drag-adjust; scroll to step through images")
                 #if os(macOS)
                 .background(ScrollWheelHandler { scrollImages($0) })
                 #endif
@@ -566,6 +716,8 @@ public struct ImageViewerView: View {
                     viewModel.zoomLevel = GestureHelpers.clampZoom(
                         viewModel.zoomLevel * (1.0 - dy * Self.dragZoomSensitivity))
                     zoomDragStart = value.translation
+                case .rotate:
+                    rotateByDrag(to: value.location)
                 case nil:
                     dragOffset = value.translation
                 }
@@ -576,6 +728,9 @@ public struct ImageViewerView: View {
                     wlDragStart = .zero
                 case .zoom:
                     zoomDragStart = .zero
+                case .rotate:
+                    rotateByDrag(to: value.location)
+                    rotateDragBearing = nil
                 case nil:
                     viewModel.panOffsetX += value.translation.width
                     viewModel.panOffsetY += value.translation.height
@@ -586,6 +741,43 @@ public struct ImageViewerView: View {
 
     /// Zoom fraction per point dragged.
     private static let dragZoomSensitivity: Double = 0.005
+
+    /// Measures the space a drag reports its locations in, so the rotate tool knows
+    /// where the centre of the picture it is turning actually is.
+    private var toolSpaceReader: some View {
+        GeometryReader { geo in
+            Color.clear
+                .onAppear { toolSpaceSize = geo.size }
+                .onChange(of: geo.size) { _, newSize in toolSpaceSize = newSize }
+        }
+    }
+
+    /// Turns the image by the arc the pointer just swept around the picture's centre.
+    ///
+    /// The pointer is a handle on the picture: drag round clockwise and it follows
+    /// clockwise, drag back and it unwinds, all the way through the full circle in
+    /// either direction with no quarter-turn snapping. Deltas rather than absolutes,
+    /// so the picture keeps whatever angle it already had and the drag can start
+    /// anywhere on the image.
+    ///
+    /// Near the centre the bearing is noise — a pixel of jitter there swings it
+    /// wildly — so ``GestureHelpers/dragBearing(x:y:pivotX:pivotY:minimumRadius:)``
+    /// stays silent until the pointer is far enough out, and the first bearing after
+    /// that only anchors the drag.
+    private func rotateByDrag(to location: CGPoint) {
+        let space = toolSpaceSize == .zero ? viewSize : toolSpaceSize
+        guard space.width > 0, space.height > 0 else { return }
+        guard let bearing = GestureHelpers.dragBearing(
+            x: Double(location.x),
+            y: Double(location.y),
+            pivotX: Double(space.width) / 2,
+            pivotY: Double(space.height) / 2
+        ) else { return }
+        defer { rotateDragBearing = bearing }
+        guard let previous = rotateDragBearing else { return }
+        viewModel.rotate(byDegrees: GestureHelpers.shortestAngleDelta(
+            from: previous, to: bearing))
+    }
 
     // MARK: - Toolbar tool buttons
 
@@ -628,6 +820,17 @@ public struct ImageViewerView: View {
     }
 
     // MARK: - Toolbar
+
+    /// Everything the print menu's items read, rolled into one identity.
+    ///
+    /// The two flags are the ones that grey an item out; the other two decide
+    /// whether an item is in the menu at all. Any of them changing has to give
+    /// the toolbar a menu it has not built before — see the `.id` that uses it.
+    private var printMenuIdentity: String {
+        let marked = viewModel.printSelection.count
+        let full = viewModel.isLayoutFullyMarkedForPrint
+        return "\(marked)|\(full)|\(viewModel.isInSeries)|\(viewModel.isMultiFrame)"
+    }
 
     @ToolbarContentBuilder
     private var viewerToolbar: some ToolbarContent {
@@ -713,10 +916,12 @@ public struct ImageViewerView: View {
                     viewModel.markLayoutForPrint()
                 }
                 .disabled(viewModel.isLayoutFullyMarkedForPrint)
+                // Every mark comes off, wherever it was made — see the same item
+                // in the image's context menu.
                 Button("Unselect All for Print") {
-                    viewModel.unmarkLayoutForPrint()
+                    viewModel.clearAllPrintMarks()
                 }
-                .disabled(!viewModel.isAnyLayoutImageMarkedForPrint)
+                .disabled(viewModel.printSelection.isEmpty)
                 if viewModel.isInSeries {
                     Button("Mark Whole Series for Print") {
                         viewModel.markWholeSeriesForPrint()
@@ -727,12 +932,6 @@ public struct ImageViewerView: View {
                         viewModel.markAllFramesOfCurrentFileForPrint()
                     }
                 }
-                if !viewModel.printSelection.isEmpty {
-                    Divider()
-                    Button("Clear Print Marks", role: .destructive) {
-                        viewModel.clearAllPrintMarks()
-                    }
-                }
             } label: {
                 Image(systemName: viewModel.isCurrentFrameMarkedForPrint
                       ? "checkmark.rectangle.stack.fill"
@@ -740,6 +939,18 @@ public struct ImageViewerView: View {
             } primaryAction: {
                 viewModel.togglePrintMarkForCurrentFrame()
             }
+            // A new menu whenever anything the items above read has changed.
+            //
+            // Not decoration: a toolbar `Menu` with a `primaryAction` is bridged
+            // to an AppKit menu that is built once and then re-used, so the
+            // items keep the enabled state they were *born* with. The menu is
+            // first built with an empty film, and "Unselect All for Print" then
+            // stayed greyed out with four images on the film — while the printer
+            // button beside it, reading the same `printSelection.isEmpty` from
+            // the same body, was correctly live. Changing the identity is what
+            // makes SwiftUI build a fresh menu rather than hand back the stale
+            // one; it also covers the two items that come and go below.
+            .id(printMenuIdentity)
             .disabled(!viewModel.hasImage)
             .accessibilityLabel(viewModel.isCurrentFrameMarkedForPrint
                                 ? "Unmark image for print" : "Mark image for print")
@@ -778,14 +989,19 @@ public struct ImageViewerView: View {
             .keyboardShortcut("p", modifiers: .command)
         }
 
-        // Tools — windowing and zoom are click-and-drag tools, exclusive of
-        // each other and highlighted while armed; invert, rotate, flip, fit
-        // and reset are one-shot actions. No dropdown: every tool is a single
-        // visible icon, in the order windowing, invert, zoom, rotate, flip,
-        // fit to view, reset.
+        // Tools — windowing, zoom and rotate are click-and-drag tools, exclusive
+        // of each other and highlighted while armed; invert, flip, fit and reset
+        // are one-shot actions. Quarter turns stay in the Image menu and the
+        // image's context menu, for when an exact 90° is what's wanted — the
+        // toolbar icon arms the free-turn drag. No dropdown: every tool is a
+        // single visible icon, in the order windowing, invert, zoom, rotate,
+        // flip, fit to view, reset.
         ToolbarItemGroup(placement: .automatic) {
+            // A half-filled circle: window/level is contrast and brightness, and
+            // that is the dial every reading room draws it as. Inversion takes
+            // the square of the same pair below, so the two never read alike.
             toolButton(
-                systemImage: "slider.horizontal.below.rectangle",
+                systemImage: "circle.lefthalf.filled",
                 isActive: activeTool == .windowing,
                 label: "Windowing tool",
                 help: "Windowing tool — drag on the image to adjust window/level"
@@ -797,7 +1013,8 @@ public struct ImageViewerView: View {
                 Button {
                     viewModel.toggleInversion()
                 } label: {
-                    Image(systemName: viewModel.isInverted ? "circle.lefthalf.filled" : "circle.righthalf.filled")
+                    Image(systemName: viewModel.isInverted
+                          ? "square.lefthalf.filled" : "square.righthalf.filled")
                 }
                 .accessibilityLabel(viewModel.isInverted ? "Remove inversion" : "Invert grayscale")
                 .help(viewModel.isInverted ? "Remove grayscale inversion" : "Invert grayscale")
@@ -812,11 +1029,17 @@ public struct ImageViewerView: View {
                 activeTool = activeTool == .zoom ? nil : .zoom
             }
 
-            Button { viewModel.rotateClockwise() } label: {
-                Image(systemName: "rotate.right")
+            // A closed circle of arrows, not a quarter-turn glyph: this tool
+            // turns the picture the whole way round, either way, and a "90°"
+            // icon promises the quarter turns that live in the Image menu.
+            toolButton(
+                systemImage: "arrow.triangle.2.circlepath",
+                isActive: activeTool == .rotate,
+                label: "Rotate tool",
+                help: "Rotate tool — drag on the image to turn it freely, either way"
+            ) {
+                activeTool = activeTool == .rotate ? nil : .rotate
             }
-            .accessibilityLabel("Rotate")
-            .help("Rotate 90° clockwise")
 
             Button { viewModel.flipHorizontal() } label: {
                 Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right")
@@ -883,6 +1106,7 @@ public struct ImageViewerView: View {
 private enum ImageViewerDragTool {
     case windowing
     case zoom
+    case rotate
 }
 
 // MARK: - Layout shortcuts
@@ -911,6 +1135,56 @@ private extension KeyEquivalent {
         guard let character = String(number).first else { return nil }
         self.init(character)
     }
+}
+
+// MARK: - Print Screen Presenter
+
+/// Raises the print screen when the viewer asks for it.
+///
+/// On macOS that is a window of its own (`StudioWindowID.printPreview`), so the
+/// film can be held up against the images it was made from — a sheet covers
+/// exactly the thing being compared, and only one screen can be looked at at a
+/// time. Everywhere else there are no windows to open, so it stays a sheet.
+///
+/// The request is a flag rather than a call because it also arrives from the
+/// library's "Print…", which fires while the viewer is still being built —
+/// hence `onAppear` as well as `onChange`.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+private struct PrintScreenPresenter<SheetContent: View>: ViewModifier {
+    @Binding var isRequested: Bool
+    let prepare: () -> Void
+    @ViewBuilder let sheetContent: () -> SheetContent
+
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content
+            .onAppear { if isRequested { present() } }
+            .onChange(of: isRequested) { _, requested in
+                if requested { present() }
+            }
+        #else
+        content
+            .onChange(of: isRequested) { _, requested in
+                if requested { prepare() }
+            }
+            .sheet(isPresented: $isRequested) { sheetContent() }
+        #endif
+    }
+
+    #if os(macOS)
+    /// Prepares the print state, then raises the window — and lowers the flag,
+    /// which is a request, not the window's state. Leaving it raised would make
+    /// the next request no change at all, and nothing would happen.
+    private func present() {
+        prepare()
+        openWindow(id: StudioWindowID.printPreview)
+        isRequested = false
+    }
+    #endif
 }
 
 // MARK: - Print Sheet Host

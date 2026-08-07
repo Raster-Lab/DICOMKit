@@ -224,6 +224,47 @@ struct PrintCellEditingTests {
         #expect(viewModel.selection.items[0].presentation?.panY == 20)
     }
 
+    @Test("A pan stops at the image's edge instead of cropping past it")
+    func testPanIsHeldInsideTheImage() {
+        let selection = PrintSelectionModel()
+        selection.add(PrintSelectionItem(
+            filePath: "/a.dcm", frameIndex: 0,
+            presentation: ViewerPresentation(
+                zoom: 2, viewportWidth: 500, viewportHeight: 500)))
+        let viewModel = PrintViewModel(selection: selection)
+
+        // 1000×1000 pixels fitted into a 500-point viewport at zoom 2: 250
+        // points hidden either side, so that is as far as the drag goes.
+        viewModel.panCell(forItemID: "/a.dcm#0", dx: 4000, dy: 0,
+                          cellSize: CGSize(width: 500, height: 500),
+                          pixelSize: CGSize(width: 1000, height: 1000))
+
+        #expect(viewModel.selection.items[0].presentation?.panX == 250)
+    }
+
+    @Test("A fitted cell has nothing hidden to pan to")
+    func testPanDoesNothingWhileFitted() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.panCell(forItemID: "/a.dcm#0", dx: 60, dy: 40,
+                          cellSize: CGSize(width: 300, height: 300),
+                          pixelSize: CGSize(width: 512, height: 512))
+
+        #expect(viewModel.selection.items[0].presentation?.panX == 0)
+        #expect(viewModel.selection.items[0].presentation?.panY == 0)
+    }
+
+    @Test("Arranging a cell turns the film's arrangement on, so the drag shows")
+    func testArrangementEditEnablesViewerPresentation() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.useViewerPresentation = false
+
+        viewModel.adjustZoom(forItemID: "/a.dcm#0", factor: 2,
+                             cellSize: CGSize(width: 300, height: 300))
+
+        #expect(viewModel.useViewerPresentation)
+        #expect(viewModel.previewItems[0].presentation?.zoom == 2)
+    }
+
     @Test("Zooming a cell re-bases the crop on the cell's own shape")
     func testZoomRebasesViewportOnTheCell() {
         let selection = PrintSelectionModel()

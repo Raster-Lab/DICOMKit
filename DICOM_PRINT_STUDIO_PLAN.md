@@ -611,3 +611,66 @@ sheet, and it is where the user is already looking.
 | `LibraryStudyMergeTests`, `LibraryImportEndToEndTests`, `StudyRowSummaryTests` | Field-wise merge and modality accumulation; DICOMDIR and UID-less objects refused; empty studies pruned; row fallbacks |
 | `ScrollStepAccumulatorTests` | Fine trackpad deltas neither drop nor stampede |
 | `ViewerTileLayoutTests` | Tile grid arrangement, hanging and focus behaviour |
+
+## 11. Comparing cells, naming a sheet once, and getting the film out (2026-08-06 → 07)
+
+*Work in progress, not yet committed.*
+
+§10 made a cell editable. This section makes a *set* of cells comparable, makes a single-study
+sheet identify itself once instead of sixteen times, and gets the composed film off the screen —
+into a file, or wider on it while it's being judged.
+
+### 11.1 Film layouts the standard has and a grid has not
+
+PS3.3 C.13.3 lets a film's rows hold different numbers of images (`ROW\1,3`: a scout above three
+slices; `COL\1,2`: one image beside two). The Print SCP has always understood these — it has to,
+modalities send them — but composing a film here could only say rows × columns.
+
+| File | Change |
+|---|---|
+| [dicom-print/main.swift](Sources/dicom-print/main.swift), [README.md](Sources/dicom-print/README.md) | `--layout` accepts any valid Image Display Format string, quoted for the backslash, alongside the existing grid tokens. |
+
+### 11.2 Linked film cells — adjust one, adjust them all
+
+"Apply this window to all cells" was a one-shot copy made after the fact. Judging a film means
+comparing its cells, and cells can only be compared when they are shown alike.
+
+| File | Change |
+|---|---|
+| [PrintCellSyncOptions](Sources/DICOMPrintKit/PrintJobRequest.swift) | Zoom & Pan, Window, and Invert locks. Zoom and pan are one switch deliberately — cells that magnify together but sit over different anatomy is the confusing state, not one anybody asks for. Rotation and flip are not offered: they put one image the right way up, not the sheet. |
+| [PrintViewModel+CellEditing.swift](Sources/DICOMStudio/ViewModels/PrintViewModel+CellEditing.swift) | While a lock is on, dragging a cell carries that adjustment to its peers as the gesture happens. Geometry copies absolutely (every cell on a film is the same size, so the same zoom/pan is the same picture); windowing carries relatively (a film mixes modalities, so a drag scales each peer's window width by the same factor and shifts its centre by the same fraction of a width) — except presets, which name a tissue and so copy as the numbers they are. It yields to the job: with raw pixels or a job-wide window on, nothing per-cell reaches the film, so the link reads as off rather than claiming an effect the job already removed. |
+| [PrintSettingsView.swift](Sources/DICOMStudio/Views/Print/PrintSettingsView.swift) | Tools moved back onto a rail down the left of the film, alongside the three locks, the scope picker, and Reset Cell / Reset All (`0` / `⇧0`) — a right-click menu can't answer "which tool is armed" or "what's linked" while it's closed. |
+| [FilmPreviewView.swift](Sources/DICOMStudio/Views/Print/FilmPreviewView.swift) | A closed padlock is drawn on every cell a linked drag would move, and none it would not — the scope is visible before the drag, not after. |
+| `PrintCellTextureCache` | A window/level drag re-keys the cell every mouse event; a superseded GPU render now stands in for the mark it belongs to instead of being thrown away, so the dragged cell tracks the gesture a dispatch behind rather than showing the picture the drag started from. |
+| Marks | Now carry Series Instance UID, for scope (All Cells / Same Series / This Film, default Same Series — a film carrying two series is usually carrying them for comparison). A mark never opened is given its file's own window when a link turns on, so it moves with the rest instead of sitting still. |
+
+### 11.3 A film of one study names its patient once
+
+Identification burned under every image is right for a sheet mixing studies and repetitive noise
+on one that does not — sixteen cells of one CT carried the same name sixteen times, each costing
+its picture a strip of height.
+
+| File | Change |
+|---|---|
+| `FilmIdentificationPlanner` | Decides per **film**, not per job: a sheet whose captioned images all share one Study Instance UID states the patient once along the bottom edge; a sheet mixing studies captions each image, as before. The UID is the test, not the caption text — two studies of one patient on the same day read identically and are still two studies. An image whose header could not be read forces per-image captions. |
+| `FilmCellLayout` | Takes a footer band out of the sheet before laying out cells, so the footer sits under the bottom row rather than across it. Footer height is now 1.1% of the sheet's height, floored at 2.5 mm and capped at 6 mm, in place of a flat 3 mm — oversized on an 8×10, lost on a 14×17. |
+| [PrintService.swift](Sources/DICOMStudio/Services/PrintService.swift), `PrintOptions.filmAnnotations` | On the wire, the footer goes as a film-level Basic Annotation Box, one set per film — two sheets of one job can name two patients. |
+| `DICOMPrintService.supportsAnnotationBoxes` | Opens an association, asks whether the printer accepted the Basic Annotation Box SOP Class, releases — asked *before* frames are prepared, since the answer decides whether they're captioned. A printer that takes boxes but has no configured Annotation Display Format ID gets a plain default (`ANNOTATION`) rather than being assumed unsupported (the original check, "was a format ID typed into settings", silently fell back to per-image captions for every printer not hand-configured — i.e. every printer, by default). A printer that refuses the box entirely still gets captions burned under each image: a film with no name is worse than one that repeats it. |
+| Preview | Automatic (the rule above), "Under each image", or "Once at the foot of the film" — choosable in the preview and the settings column, drawn scaled off the physical sheet, so the strip that's approved is the strip that prints. |
+
+### 11.4 The preview stays shut, opens wider, and writes the film out
+
+| File | Change |
+|---|---|
+| Print Preview / Printer Emulator windows | `.restorationBehavior(.disabled)` + `.defaultLaunchBehavior(.suppressed)` — a launch used to restore whichever was open at quit, holding no marks and a stopped server, since neither survives the app. They now open only when asked for. |
+| Console log column | Resizable from the divider, 260–60%-of-panel, opening at 460 (was a fixed 300) and kept in `AppStorage` rather than chosen fresh every job. |
+| "Save Film" | Writes PNG, TIFF or PDF through the same `PrintService.prepare` a real print sends frames through, composed by the same `FilmComposer` the printer emulator uses — identification band, drawn annotations and spillover included, not a screenshot of the preview. A PDF holds every film of the job as a page; PNG/TIFF write one file per sheet. |
+
+### 11.5 Tests
+
+| Suite | Covers |
+|---|---|
+| `PrintCellEditingTests` (extended) | Linked window/zoom/pan/invert drags land on the mark(s) the scope selects; presets copy as values, not as a scaled window |
+| `PrintPresentationTransformTests` (extended) | Relative window-copy math; flip-after-rotate under the shared `sourceRegion` |
+| `PrintSCPTests` (extended) | Basic Annotation Box negotiation and the `ANNOTATION` fallback |
+| `MetalCPUEquivalenceTests`, `MetalDisplayPathTests` (extended) | `PrintCellTextureCache` stand-in render matches the CPU thumbnail |

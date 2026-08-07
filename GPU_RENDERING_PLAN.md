@@ -575,7 +575,8 @@ redraw with a new transform (what it now costs):
   `shouldInterpolate: false`, so zooming in shows actual pixels rather than a smoothed guess.
   Switching to linear here would silently change what is on screen.
 - The display path deliberately ignores `minimumGPUPixelCount`: a frame already headed for a GPU
-  texture has no cheaper route, whatever its size.
+  texture has no cheaper route, whatever its size. (Moot since the threshold became 0, but the
+  reasoning is independent of the constant and still holds if one ever returns.)
 - `toggleInversion()` no longer re-renders when the display path is active.
 
 **Two frames deliberately keep the CPU path**, and the viewport falls back to
@@ -624,6 +625,38 @@ because GPU and CPU output are byte-identical, a GPU-rendered tile and the CPU-r
 prints to cannot disagree regardless.
 
 The cache-key rework is **not** done — see M5.
+
+**Follow-on (2026-08-04, in progress, uncommitted): GPU textures for unfocused tiles.**
+`ViewerTileTextureCache` puts the GPU display path behind unfocused grid tiles too, closing the
+deferral above — a tile now has both its CPU `ViewerTileImageCache` image and, where Metal is
+available and the frame supports it, a GPU texture keyed only on file + frame + window (not
+arrangement, which is the shader's transform). A synchronized zoom or window drag across a grid
+now re-draws a quad per tile instead of re-rendering one. Falls back to the CPU image per tile —
+overlay planes, an unresolvable window, no Metal device — not per grid. Landed alongside a new
+corner-annotation overlay (`ViewerAnnotationOverlayView`, `ViewerAnnotationCorners`,
+`ViewerHoverGeometry`) replacing the viewer's single patient-ID band with the four-corner
+reading-room layout; `PatientIdentificationOverlayView` is now film/print-only.
+
+**Follow-on (2026-08-06, in progress, uncommitted): GPU textures for the film preview.**
+`PrintCellTextureCache` does for a film cell what `ViewerTileTextureCache` did for a tile, and for
+a stronger reason — the preview is where the tools are actually *used*, so every window/level,
+zoom, pan, rotate and invert drag was a CPU re-render per mouse delta. Keyed on file + frame +
+window + window space only; the arrangement is the shader's transform. A re-windowed cell holds
+its previous texture as a stand-in, without which a drag would fall back to the CPU thumbnail per
+delta and render exactly what this removes. Only the film on screen holds textures.
+
+The geometry is the one thing that could not be borrowed from the tile path. The viewer's
+transform (fit → zoom → rotate → pan, panning after the turn) and the printer's composition (crop
+`visibleRegion` → rotate → flip → fit the result into the image box) agree while a cell is merely
+zoomed and nowhere else, and a preview that composed like the viewer would misreport every rotated
+or edge-panned cell. So `DisplayPresentation.sourceRegion` was added: the caller resolves the
+region through the same `ViewerPresentation.visibleRegion` the print path calls, and the transform
+fits and centres *that*, flipping after the rotation as `PrintPresentationTransform` does.
+`FilmDisplayGeometryTests` pins it — corner projections, clockwise turn, clamped crops centred
+rather than pushed aside, flips after rotation.
+
+**Film composition itself is still CPU and stays that way**, per the fence above. What changed is
+only what the reader looks at while arranging the film.
 
 ### M7 — Fallback guarantees, CI and docs · ~1 day — **LANDED**
 
@@ -728,10 +761,19 @@ at roughly 0.53 ms per megapixel. Below about half a megapixel the fixed cost do
 GPU *loses*. Sending everything to the GPU because it is available would have made the most
 common render in the app — tiles and thumbnails — measurably slower.
 
-So `MetalFrameRenderer.minimumGPUPixelCount` is **1 megapixel**: past the crossover with margin,
-and it keeps every tile (1024 px), print thumbnail (512 px) and series thumbnail (256 px) render
-on the CPU where they belong. `testSmallFramesAreDeclinedByTheProductionRenderer` and
-`testLargeFramesAreAcceptedByTheProductionRenderer` hold both sides of the threshold.
+So `MetalFrameRenderer.minimumGPUPixelCount` was **1 megapixel**: past the crossover with margin,
+keeping every tile (1024 px), print thumbnail (512 px) and series thumbnail (256 px) render on
+the CPU.
+
+**Superseded (2026-08-04): the threshold is now 0 — no frame is declined for being small.**
+The measurement above still stands and was not revised; the project chose the other trade. The
+CPU is the fallback for having *no* GPU, not a faster alternative selected by size, and one
+rendering path is worth ~0.1 ms on small frames. This is only defensible because the two paths
+are byte-for-byte identical (`MetalCPUEquivalenceTests`), so nothing about the picture depends
+on which one ran. `testSmallFramesAreAcceptedByTheProductionRenderer` now asserts a small frame
+reaches the GPU *and* matches the CPU exactly; `testThereIsNoSizeThreshold` stops the cutoff
+creeping back. The constant and the `minimumPixelCount` parameter are kept so benchmarks can
+still measure the crossover and a threshold can be restored in one line.
 
 One-time cost of page-aligning a decoded file, paid per file on entry to `FrameSourceCache`:
 0.008 ms (CT), 0.193 ms (CR/DX), 0.536 ms (MG). The alternative is a copy of the same size on

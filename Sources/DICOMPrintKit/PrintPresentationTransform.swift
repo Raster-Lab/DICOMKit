@@ -55,13 +55,29 @@ public enum PrintPresentationTransform {
         }
 
         // 2. Rotate, then flip — the order the viewer composes them in.
-        if presentation.quarterTurns != 0 {
-            pixels = rotate(
-                pixels, width: currentWidth, height: currentHeight,
-                quarterTurns: presentation.quarterTurns, pixelStride: pixelStride)
-            if presentation.quarterTurns % 2 == 1 {
-                swap(&currentWidth, &currentHeight)
+        if presentation.isQuarterTurn {
+            if presentation.quarterTurns != 0 {
+                pixels = rotate(
+                    pixels, width: currentWidth, height: currentHeight,
+                    quarterTurns: presentation.quarterTurns, pixelStride: pixelStride)
+                if presentation.quarterTurns % 2 == 1 {
+                    swap(&currentWidth, &currentHeight)
+                }
             }
+        } else {
+            // A free angle cannot be permuted, so it is resampled — once, here,
+            // over full-resolution pixels rather than over the monitor's copy.
+            let turned = presentation.turnedSize(
+                width: Double(currentWidth), height: Double(currentHeight))
+            let outWidth = max(1, Int(turned.width.rounded()))
+            let outHeight = max(1, Int(turned.height.rounded()))
+            pixels = rotateResampling(
+                pixels, width: currentWidth, height: currentHeight,
+                outWidth: outWidth, outHeight: outHeight,
+                presentation: presentation,
+                samples: samples, bytesPerSample: bytesPerSample)
+            currentWidth = outWidth
+            currentHeight = outHeight
         }
         if presentation.flipHorizontal {
             pixels = flipHorizontally(
@@ -139,6 +155,100 @@ public enum PrintPresentationTransform {
         return out
     }
 
+    /// Turns pixels by an angle that is not a quarter turn.
+    ///
+    /// The one resampling step in this file, and it exists because the viewer's
+    /// rotate tool turns freely: without it a 30° arrangement would print
+    /// upright, which is a film that disagrees with the screen it was composed
+    /// on. Bilinear, so a diagonal edge does not come out as a staircase, and
+    /// over the *source* pixels — the crop is full modality resolution, not the
+    /// monitor's copy of it.
+    ///
+    /// The output is the turned picture's bounding box, so nothing is cut off;
+    /// what falls outside the turned rectangle is black, which is the film's
+    /// background and what the printer would leave around any fitted image.
+    private static func rotateResampling(
+        _ pixels: [UInt8], width: Int, height: Int,
+        outWidth: Int, outHeight: Int,
+        presentation: ViewerPresentation,
+        samples: Int, bytesPerSample: Int
+    ) -> [UInt8] {
+        let pixelStride = samples * bytesPerSample
+        var out = [UInt8](repeating: 0, count: outWidth * outHeight * pixelStride)
+        let (cosine, sine) = presentation.rotationComponents
+
+        // Destination centre back to source centre: the inverse of a clockwise
+        // turn in screen coordinates, which is where the viewer's angle is
+        // measured. Sampling backwards is what leaves no holes in the output.
+        let outCenterX = Double(outWidth) / 2
+        let outCenterY = Double(outHeight) / 2
+        let sourceCenterX = Double(width) / 2
+        let sourceCenterY = Double(height) / 2
+
+        for outY in 0..<outHeight {
+            let dy = Double(outY) + 0.5 - outCenterY
+            for outX in 0..<outWidth {
+                let dx = Double(outX) + 0.5 - outCenterX
+                let sourceX = dx * cosine + dy * sine + sourceCenterX - 0.5
+                let sourceY = -dx * sine + dy * cosine + sourceCenterY - 0.5
+
+                // Outside the picture is background, not a smeared edge pixel.
+                guard sourceX > -1, sourceY > -1,
+                      sourceX < Double(width), sourceY < Double(height) else { continue }
+
+                let x0 = Int(sourceX.rounded(.down)), y0 = Int(sourceY.rounded(.down))
+                let fx = sourceX - Double(x0), fy = sourceY - Double(y0)
+                let x1 = min(x0 + 1, width - 1), y1 = min(y0 + 1, height - 1)
+                let cx0 = max(0, min(x0, width - 1)), cy0 = max(0, min(y0, height - 1))
+
+                let destBase = (outY * outWidth + outX) * pixelStride
+                for sample in 0..<samples {
+                    let value =
+                        sampleAt(pixels, x: cx0, y: cy0, width: width,
+                                 sample: sample, pixelStride: pixelStride,
+                                 bytesPerSample: bytesPerSample) * (1 - fx) * (1 - fy)
+                        + sampleAt(pixels, x: x1, y: cy0, width: width,
+                                   sample: sample, pixelStride: pixelStride,
+                                   bytesPerSample: bytesPerSample) * fx * (1 - fy)
+                        + sampleAt(pixels, x: cx0, y: y1, width: width,
+                                   sample: sample, pixelStride: pixelStride,
+                                   bytesPerSample: bytesPerSample) * (1 - fx) * fy
+                        + sampleAt(pixels, x: x1, y: y1, width: width,
+                                   sample: sample, pixelStride: pixelStride,
+                                   bytesPerSample: bytesPerSample) * fx * fy
+
+                    write(value, to: &out, at: destBase + sample * bytesPerSample,
+                          bytesPerSample: bytesPerSample)
+                }
+            }
+        }
+        return out
+    }
+
+    /// One sample of one pixel, whatever its depth.
+    private static func sampleAt(
+        _ pixels: [UInt8], x: Int, y: Int, width: Int,
+        sample: Int, pixelStride: Int, bytesPerSample: Int
+    ) -> Double {
+        let index = (y * width + x) * pixelStride + sample * bytesPerSample
+        guard index + bytesPerSample <= pixels.count else { return 0 }
+        if bytesPerSample == 1 { return Double(pixels[index]) }
+        // Film pixels are little-endian, as they go on the wire.
+        return Double(UInt16(pixels[index]) | (UInt16(pixels[index + 1]) << 8))
+    }
+
+    private static func write(
+        _ value: Double, to pixels: inout [UInt8], at index: Int, bytesPerSample: Int
+    ) {
+        if bytesPerSample == 1 {
+            pixels[index] = UInt8(max(0, min(255, value.rounded())))
+        } else {
+            let stored = UInt16(max(0, min(Double(UInt16.max), value.rounded())))
+            pixels[index] = UInt8(stored & 0xFF)
+            pixels[index + 1] = UInt8(stored >> 8)
+        }
+    }
+
     private static func flipHorizontally(
         _ pixels: [UInt8], width: Int, height: Int, pixelStride: Int
     ) -> [UInt8] {
@@ -195,6 +305,13 @@ public enum PrintPresentationTransform {
 // MARK: - Prepared image
 
 public extension PreparedPrintImage {
+    /// An angle for the console: whole degrees, unless it isn't one.
+    static func angleText(_ degrees: Double) -> String {
+        degrees == degrees.rounded()
+            ? String(Int(degrees))
+            : String(format: "%.1f", degrees)
+    }
+
     /// A copy with the viewer's arrangement baked into its pixels.
     func applying(
         _ presentation: ViewerPresentation,
@@ -206,7 +323,10 @@ public extension PreparedPrintImage {
             "Applied viewer presentation: "
             + "\(descriptor.columns)x\(descriptor.rows) → "
             + "\(transformed.columns)x\(transformed.rows)"
-            + (presentation.quarterTurns != 0 ? ", rotated \(presentation.quarterTurns * 90)°" : "")
+            + (presentation.rotationDegrees != 0
+               ? ", rotated \(Self.angleText(presentation.rotationDegrees))°"
+               + (presentation.isQuarterTurn ? "" : " (resampled)")
+               : "")
             + (presentation.flipHorizontal ? ", flipped horizontally" : "")
             + (presentation.flipVertical ? ", flipped vertically" : "")
             + (presentation.invert ? ", inverted" : ""))

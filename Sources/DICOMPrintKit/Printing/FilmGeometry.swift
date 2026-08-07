@@ -119,18 +119,27 @@ public enum FilmCellLayout {
     ///   - sheet: the film sheet.
     ///   - margin: sheet margin in millimetres, applied on all four edges.
     ///   - spacing: gap between adjacent cells in millimetres.
+    ///   - footer: a strip in millimetres kept clear along the bottom of the
+    ///     sheet, below the margin, for film-wide text. The cells are laid out
+    ///     in what is left, so a footer never lands on the bottom row's anatomy.
     public static func cells(
         for format: PrintImageDisplayFormat,
         on sheet: FilmSheet,
         marginMillimeters margin: Double = 5,
-        spacingMillimeters spacing: Double = 2
+        spacingMillimeters spacing: Double = 2,
+        footerMillimeters footer: Double = 0
     ) -> [FilmCell] {
         let inset = max(0, sheet.pixels(fromMillimeters: margin))
         let gap = max(0, sheet.pixels(fromMillimeters: spacing))
         let originX = inset
         let originY = inset
         let usableWidth = max(0, Double(sheet.pixelWidth) - 2 * inset)
-        let usableHeight = max(0, Double(sheet.pixelHeight) - 2 * inset)
+        // The footer eats into the picture's height, never into its own
+        // clearance: a strip deeper than the sheet can spare would leave no
+        // cells at all, so it is capped at a third of what the margins left.
+        let available = max(0, Double(sheet.pixelHeight) - 2 * inset)
+        let reserved = min(max(0, sheet.pixels(fromMillimeters: footer)), available / 3)
+        let usableHeight = available - reserved
 
         switch format.kind {
         case .standard(let rows, let columns):

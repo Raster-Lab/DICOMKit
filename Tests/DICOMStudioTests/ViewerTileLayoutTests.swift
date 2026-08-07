@@ -332,6 +332,108 @@ struct ViewerTileLayoutViewModelTests {
         #expect(viewModel.isCellMarkedForPrint(0))
     }
 
+    @Test("Select all wakes up again when the focused tile scrolls onto an unmarked image")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSelectAllFollowsTheFocusedTile() {
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+        viewModel.markLayoutForPrint()
+        #expect(viewModel.isLayoutFullyMarkedForPrint)
+
+        // The focused tile steps onto an image that is not on the film. Its own
+        // checkbox says so at once; the menu used to disagree, because it read
+        // the tile's stored state rather than the image on screen.
+        viewModel.currentFileIndex = 2
+        viewModel.filePath = "/c.dcm"
+
+        #expect(!viewModel.isCellMarkedForPrint(0))
+        #expect(!viewModel.isLayoutFullyMarkedForPrint,
+                "select all must be available — one of the two images is unmarked")
+        #expect(viewModel.isAnyLayoutImageMarkedForPrint)
+        #expect(viewModel.layoutMarkedForPrintCount == 1)
+
+        // And it marks the image actually on screen.
+        #expect(viewModel.markLayoutForPrint() == 1)
+        #expect(viewModel.printSelection.items.map(\.filePath).contains("/c.dcm"))
+        #expect(viewModel.isLayoutFullyMarkedForPrint)
+    }
+
+    @Test("Select and unselect toggle each other, round after round")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSelectUnselectToggleRoundTrip() {
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 2, columns: 2))
+
+        for round in 1...3 {
+            #expect(!viewModel.isLayoutFullyMarkedForPrint, "round \(round): select all is available")
+            #expect(viewModel.markLayoutForPrint() == 4)
+            #expect(viewModel.isLayoutFullyMarkedForPrint, "round \(round): now fully marked")
+            #expect(!viewModel.printSelection.isEmpty, "round \(round): unselect all is available")
+
+            viewModel.clearAllPrintMarks()
+            #expect(viewModel.printSelection.isEmpty)
+            #expect(!viewModel.isAnyLayoutImageMarkedForPrint)
+        }
+    }
+
+    // MARK: - What the reading area reports
+
+    @Test("The reading area counts how much of what is on screen is on the film")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testLayoutMarkedCount() {
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 2, columns: 2))
+
+        #expect(viewModel.layoutImageCount == 4)
+        #expect(viewModel.layoutMarkedForPrintCount == 0)
+
+        viewModel.togglePrintMarkForCell(1)
+        viewModel.togglePrintMarkForCell(3)
+        #expect(viewModel.layoutMarkedForPrintCount == 2)
+
+        // A mark taken elsewhere in the study is not on screen, so it is not
+        // part of what the strip is reporting.
+        viewModel.printSelection.add(PrintSelectionItem(filePath: "/z.dcm"))
+        #expect(viewModel.layoutMarkedForPrintCount == 2)
+        #expect(viewModel.printSelection.count == 3)
+    }
+
+    @Test("A tile reports the film position its image will print at")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testTileFilmPosition() {
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 2, columns: 2))
+
+        #expect((0..<4).allSatisfy { viewModel.printPositionForCell($0) == nil })
+
+        // Ticked out of grid order: the chip shows film order, not tile order.
+        viewModel.togglePrintMarkForCell(2)
+        viewModel.togglePrintMarkForCell(0)
+        #expect(viewModel.printPositionForCell(2) == 1)
+        #expect(viewModel.printPositionForCell(0) == 2)
+        #expect(viewModel.printPositionForCell(1) == nil)
+
+        // Unmarking closes the gap behind it, as the tray does.
+        viewModel.togglePrintMarkForCell(2)
+        #expect(viewModel.printPositionForCell(2) == nil)
+        #expect(viewModel.printPositionForCell(0) == 1)
+    }
+
+    @Test("The focused tile's chip follows the image it is showing")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testFocusedTileFilmPositionFollowsNavigation() {
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+        viewModel.togglePrintMarkForCell(1)
+        viewModel.togglePrintMarkForCell(0)
+        #expect(viewModel.printPositionForCell(0) == 2)
+
+        // The focused tile steps onto an image that was never marked.
+        viewModel.currentFileIndex = 2
+        viewModel.filePath = "/c.dcm"
+        #expect(viewModel.printPositionForCell(0) == nil)
+    }
+
     @Test("Capturing a navigated tile records the image it is showing")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testCaptureFollowsNavigation() {
@@ -529,17 +631,89 @@ struct ViewerTileLayoutViewModelTests {
         #expect(!viewModel.navigateToNextImage())
         #expect(viewModel.currentFileIndex == 4)
     }
+
+    // MARK: - The selection tray following the selection
+
+    @Test("The selection tray stays out of the way until an image is marked")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testTrayHiddenUntilFirstMark() {
+        let viewModel = seriesViewModel()
+        #expect(viewModel.isPrintTrayVisible == false, "nothing on the film yet")
+
+        viewModel.togglePrintMarkForCurrentFrame()
+        #expect(viewModel.isPrintTrayVisible, "the first mark brings the tray up")
+    }
+
+    @Test("Every marking path brings the tray up")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testEveryMarkingPathRevealsTray() {
+        let perTile = seriesViewModel()
+        perTile.applyLayout(ViewerTileLayout(rows: 2, columns: 2))
+        perTile.togglePrintMarkForCell(2)
+        #expect(perTile.isPrintTrayVisible)
+
+        let wholeLayout = seriesViewModel()
+        wholeLayout.applyLayout(ViewerTileLayout(rows: 2, columns: 2))
+        wholeLayout.markLayoutForPrint()
+        #expect(wholeLayout.isPrintTrayVisible)
+
+        let wholeSeries = seriesViewModel()
+        wholeSeries.markWholeSeriesForPrint()
+        #expect(wholeSeries.isPrintTrayVisible)
+
+        let allFrames = seriesViewModel()
+        allFrames.numberOfFrames = 3
+        allFrames.markAllFramesOfCurrentFileForPrint()
+        #expect(allFrames.isPrintTrayVisible)
+    }
+
+    /// The tray is not a mirror of the count: it goes up on its own, and after
+    /// that it is the reader's panel to close. Unticking the last image while
+    /// the pointer is on the tray's own "Clear" button must not pull the panel
+    /// out from under it.
+    @Test("Unmarking the last image leaves the tray where the reader left it")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testTrayStaysAfterUnmarking() {
+        let viewModel = seriesViewModel()
+        viewModel.togglePrintMarkForCurrentFrame()
+        viewModel.clearAllPrintMarks()
+
+        #expect(viewModel.printSelection.isEmpty)
+        #expect(viewModel.isPrintTrayVisible)
+    }
+
+    @Test("A new study puts the tray away with the marks it held")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testNewStudyHidesTray() {
+        let viewModel = seriesViewModel()
+        viewModel.togglePrintMarkForCurrentFrame()
+        #expect(viewModel.isPrintTrayVisible)
+
+        viewModel.prepareForNewStudy()
+        #expect(viewModel.printSelection.isEmpty)
+        #expect(viewModel.isPrintTrayVisible == false)
+    }
 }
 
 @MainActor
 @Suite("Film Mirrors Viewer Grid Tests")
 struct FilmMirrorsViewerGridTests {
 
-    @Test("The film layout can be any viewer grid, including ones the catalogue omits")
+    @Test("Every grid the viewer offers can be chosen on film")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testEveryViewerGridIsAPrintLayout() {
+        let printable = Set(PrintLayoutOption.allCases.map { "\($0.layout.rows)x\($0.layout.columns)" })
+        for layout in ViewerTileLayout.allCases {
+            #expect(printable.contains("\(layout.rows)x\(layout.columns)"),
+                    "the viewer hangs \(layout.displayName) but the film cannot be set to it")
+        }
+    }
+
+    @Test("The film layout can be any viewer grid, catalogued or not")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testCustomLayoutMirrorsViewer() throws {
         let viewModel = PrintViewModel()
-        // 1×3 has no PrintLayoutOption case; the viewer still offers it.
+        // Any rows × columns, whether or not the catalogue names it.
         viewModel.viewerLayout = PrintLayout(rows: 1, columns: 3)
         viewModel.layoutMode = .matchViewer
 

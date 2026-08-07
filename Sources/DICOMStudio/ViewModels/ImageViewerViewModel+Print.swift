@@ -29,6 +29,7 @@ extension ImageViewerViewModel {
             frameIndex: currentFrameIndex,
             frameCount: numberOfFrames,
             seriesDescription: seriesDescriptionForPrint,
+            seriesInstanceUID: currentSeriesUID,
             instanceNumber: instanceNumberForPrint,
             windowCenter: windowCenter,
             windowWidth: windowWidth,
@@ -69,11 +70,27 @@ extension ImageViewerViewModel {
 
     // MARK: - Marking
 
+    /// Brings the selection tray up once the film has something on it.
+    ///
+    /// The tray starts hidden, so marking is what asks for it: the first tick is
+    /// the point at which "what have I picked?" becomes a question, and the
+    /// answer appearing beside the image is the confirmation that the tick
+    /// registered. Called from every marking path, including the library's
+    /// "Print…". Unmarking never puts it away again — a column that vanished
+    /// under the cursor as the last image came off the film would take the
+    /// "Clear" button with it, mid-gesture.
+    func revealPrintTray() {
+        guard !printSelection.isEmpty else { return }
+        isPrintTrayVisible = true
+    }
+
     /// Marks or unmarks the frame currently on screen.
     @discardableResult
     public func togglePrintMarkForCurrentFrame() -> Bool {
         guard let item = currentSelectionItem else { return false }
-        return printSelection.toggle(item)
+        let marked = printSelection.toggle(item)
+        revealPrintTray()
+        return marked
     }
 
     /// Marks every frame of the currently loaded file, in frame order.
@@ -91,13 +108,16 @@ extension ImageViewerViewModel {
                 frameIndex: frameIndex,
                 frameCount: numberOfFrames,
                 seriesDescription: seriesDescriptionForPrint,
+            seriesInstanceUID: currentSeriesUID,
                 instanceNumber: instanceNumberForPrint,
                 windowCenter: windowCenter,
                 windowWidth: windowWidth,
                 presentation: presentation
             )
         }
-        return printSelection.add(contentsOf: items)
+        let added = printSelection.add(contentsOf: items)
+        revealPrintTray()
+        return added
     }
 
     /// Marks the first frame of every file in the loaded series, in series order.
@@ -112,9 +132,14 @@ extension ImageViewerViewModel {
             if path == filePath, let current = currentSelectionItem {
                 return current
             }
-            return PrintSelectionItem(filePath: path)
+            // The file has not been read, so only the series it was reached
+            // through is known — enough for the marks to group together.
+            return PrintSelectionItem(filePath: path,
+                                      seriesInstanceUID: currentSeriesUID)
         }
-        return printSelection.add(contentsOf: items)
+        let added = printSelection.add(contentsOf: items)
+        revealPrintTray()
+        return added
     }
 
     // MARK: - Revisiting a mark
@@ -161,6 +186,26 @@ extension ImageViewerViewModel {
     /// Clears the whole print selection.
     public func clearAllPrintMarks() {
         printSelection.clear()
+    }
+
+    // MARK: - Keeping marks in step
+
+    /// Pushes the arrangement now on screen into the marks that describe it.
+    ///
+    /// Called from every window, zoom, pan, rotation, flip and inversion the
+    /// viewer performs — that is what makes the film follow the screen rather
+    /// than the moment the box was ticked. Marking is a snapshot, but the reader
+    /// carries on working after ticking: windowing the slice, turning it,
+    /// zooming into a nodule. Refreshing only when the print screen opens was
+    /// not enough — the print window outlives one visit to it, and a mark taken
+    /// before the tools were used printed the untouched image.
+    ///
+    /// Free when nothing is marked, which is the usual case, and a no-op for
+    /// cells the user has adjusted by hand in the preview — see
+    /// ``PrintSelectionModel/adjustedIDs``.
+    func printMarksFollowScreen() {
+        guard !printSelection.isEmpty else { return }
+        refreshMarksFromViewer()
     }
 
     // MARK: - Metadata helpers

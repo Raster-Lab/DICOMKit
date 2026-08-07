@@ -8,15 +8,34 @@
 // layout is chosen by hand.
 //
 // It is also where a cell is adjusted. Clicking a cell focuses it; dragging runs
-// the selected tool over it — window/level, zoom or pan. Every edit is written
-// back into the mark, which is what the print path reads, so a cell that looks
-// right here prints that way. What is rendered is ``PrintViewModel/previewItems``
-// rather than the raw marks: job-wide settings (an explicit window, raw pixels)
-// override a mark's own arrangement, and a preview ignoring that would lie.
+// the selected tool over it — window/level, zoom or pan. The tools are on a rail
+// down the left, along with the locks that hold an adjustment together across
+// cells, and everything that can be done to one cell is also on the film's own
+// right-click menu. A mode belongs on the rail rather than in the menu: which
+// tool is armed and which cells are linked have to be answerable at a glance,
+// and a menu that only exists while it is open cannot answer them. The locks are
+// echoed on the cells themselves, which is the sole thing drawn over a picture
+// that the film will not carry — see the cell's overlay for why it earns that.
+// Every edit is written back into the mark, which is what the
+// print path reads, so a cell that looks right here prints that way. What is
+// rendered is ``PrintViewModel/previewItems`` rather than the raw marks:
+// job-wide settings (an explicit window, raw pixels) override a mark's own
+// arrangement, and a preview ignoring that would lie.
+//
+// Because the tools live here, the picture is drawn from a GPU texture: a cell's
+// zoom, pan, rotation, flip and inversion are the display shader's transform, so a
+// drag re-draws a quad instead of re-rendering the frame. The transform is built
+// from the *film's* composition rather than the viewer's — see `PrintCellDisplay`
+// — so what the shader draws is what the printer will lay down. The film itself is
+// still composed on the CPU, and must be: the two are byte-identical only because
+// neither invents anything the other does not. The one exception is a cell turned
+// to a free angle: the shader would fill the corners the film leaves black with
+// the neighbouring anatomy, so those cells are drawn by the film's own renderer.
 
 #if canImport(SwiftUI)
 import SwiftUI
 import DICOMPrintKit
+import DICOMRenderKit
 
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 struct FilmPreviewView: View {
@@ -26,7 +45,20 @@ struct FilmPreviewView: View {
     /// Thumbnails of the marked frames. Owned here so the preview is
     /// self-contained, and keyed by mark so changing the layout — which
     /// re-renders this view constantly — never re-decodes a frame.
+    ///
+    /// The CPU path: what a cell shows when the GPU will not take it, and what
+    /// fills the cell for the moment before its texture arrives.
     @State private var thumbnails = PrintThumbnailCache()
+    #endif
+
+    #if canImport(Metal)
+    /// GPU textures for the cells of the film on screen.
+    ///
+    /// The preview is where the tools are used, so the picture is drawn from a
+    /// texture and every tool step is the display shader's transform: a zoom, pan,
+    /// rotation, flip or invert re-draws a quad and renders nothing. Only a
+    /// window/level change produces a new texture, and that is one GPU dispatch.
+    @State private var cellTextures = PrintCellTextureCache()
     #endif
 
     /// Live drag state, so a gesture applies deltas rather than absolutes.
@@ -47,7 +79,7 @@ struct FilmPreviewView: View {
     private var items: [PrintSelectionItem] { viewModel.previewItems }
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 0) {
             if plan.filmCount == 0 {
                 ContentUnavailableView(
                     "Nothing marked",
@@ -56,8 +88,15 @@ struct FilmPreviewView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                HStack(spacing: 6) {
+                // The rail is back beside the film. The right-click menu is a
+                // fine place for the occasional command but a poor place for a
+                // mode: it costs a click and a read to find out which tool is
+                // armed and whether the cells are linked, and both are things
+                // the eye should be able to answer while dragging. The menu
+                // keeps everything it had, for the hand already on a cell.
+                HStack(spacing: 0) {
                     toolRail
+                    Divider()
                     filmStrip
                         // The film takes focus so the arrow keys walk cells and
                         // the tool shortcuts land here rather than in whatever
@@ -69,6 +108,10 @@ struct FilmPreviewView: View {
                         // separate per-key handlers cannot tell them apart — both
                         // would fire and the page would fight the focus.
                         .onKeyPress(phases: .down) { press in handleKeyPress(press) }
+                        // The keys the rail's buttons also carry. Hidden buttons
+                        // rather than `.keyboardShortcut` on the menu items,
+                        // because a context menu only exists while it is open.
+                        .background(toolShortcuts)
                 }
             }
 
@@ -87,9 +130,11 @@ struct FilmPreviewView: View {
         // page follows the focus rather than making the reader page by hand.
         .onChange(of: viewModel.focusedItemID) { _, _ in showFilmOfFocusedCell() }
         #if canImport(CoreGraphics)
-        .onAppear { thumbnails.refresh(for: items) }
-        .onChange(of: items) { _, newItems in
-            thumbnails.refresh(for: newItems)
+        .onAppear { refreshCells() }
+        // Textures belong to the film on screen; paging releases the last one's.
+        .onChange(of: currentFilm) { _, _ in refreshCells() }
+        .onChange(of: items) { _, _ in
+            refreshCells()
             viewModel.pruneFocus()
             // Annotations belong to marks; a mark that has been taken off the film
             // must not leave its arrows behind to reappear on a later one.
@@ -98,6 +143,190 @@ struct FilmPreviewView: View {
         }
         #endif
     }
+
+    // MARK: - The tool rail
+
+    /// Everything a cell can be worked on with, down the left of the film.
+    ///
+    /// Icon-only and narrow: the sheet is what the reader is judging, and every
+    /// point the rail takes is a point the picture does not get. Names and keys
+    /// live in the tooltips.
+    private var toolRail: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 10) {
+                ForEach(PrintViewModel.CellTool.allCases) { tool in
+                    railButton(
+                        symbol: tool.symbolName,
+                        caption: Self.railCaption(for: tool),
+                        isOn: viewModel.cellTool == tool,
+                        help: "\(tool.displayName)  (\(Self.shortcut(for: tool).uppercased()))"
+                    ) {
+                        viewModel.cellTool = tool
+                    }
+                }
+
+                // Invert is a switch on the focused cell, not a drag, so it does
+                // not arm anything — its lit state is the cell's, which is what
+                // "is this picture inverted" is asking. The film's own polarity
+                // is a job setting and lives in the settings column; this is one
+                // picture being read the other way round.
+                railButton(
+                    symbol: "circle.righthalf.filled",
+                    caption: "Invert",
+                    isOn: viewModel.focusedItem?.presentation?.invert ?? false,
+                    help: viewModel.focusedItem == nil
+                        ? "Invert a cell's greys — click a cell first."
+                        : "Invert the focused cell's greys.  (V)"
+                ) {
+                    if let id = viewModel.focusedItemID {
+                        viewModel.toggleCellInversion(forItemID: id)
+                    }
+                }
+                .disabled(viewModel.focusedItemID == nil)
+
+                Divider().padding(.horizontal, 6)
+
+                // The locks. A closed one says this adjustment is held together
+                // across the cells; an open one says each cell keeps its own.
+                ForEach(PrintCellSyncOptions.catalog, id: \.title) { entry in
+                    let isOn = viewModel.cellSync.contains(entry.option)
+                    let blocked = entry.option == .window && viewModel.isCellWindowingOverridden
+                    railButton(
+                        symbol: isOn ? "lock.fill" : "lock.open",
+                        caption: Self.railCaption(for: entry.option),
+                        isOn: isOn && !blocked,
+                        help: blocked
+                            ? (viewModel.cellWindowingBlockedReason ?? "")
+                            : (isOn ? "\(entry.title) is locked together across cells — unlock to adjust one cell alone."
+                                    : "Lock \(entry.title.lowercased()) together, so adjusting one cell adjusts the others.")
+                    ) {
+                        viewModel.toggleSync(entry.option)
+                        // Cells never opened carry no window, and a relative
+                        // window edit has nothing to work from — so they are
+                        // given one the moment the lock closes, not mid-drag.
+                        if entry.option == .window && viewModel.cellSync.contains(.window) {
+                            Task { await viewModel.seedWindowsForSync() }
+                        }
+                    }
+                    .disabled(blocked)
+                }
+
+                // How far a locked adjustment reaches. Under the locks because
+                // it is meaningless without one.
+                Menu {
+                    ForEach(PrintCellSyncScope.allCases) { scope in
+                        Button {
+                            viewModel.cellSyncScope = scope
+                        } label: {
+                            Label(scope.title,
+                                  systemImage: viewModel.cellSyncScope == scope ? "checkmark" : "")
+                        }
+                    }
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right.square")
+                            .font(.system(size: 17))
+                        Text(Self.scopeCaption(viewModel.cellSyncScope))
+                            .font(.system(size: 10))
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(width: Self.railWidth - 8)
+                .foregroundStyle(Color.secondary)
+                .disabled(!viewModel.isCellSyncActive)
+                .help("How far a locked adjustment reaches: \(viewModel.cellSyncScope.title).")
+
+                Divider().padding(.horizontal, 6)
+
+                railButton(symbol: "arrow.counterclockwise", caption: "Cell",
+                           isOn: false,
+                           help: "Return the focused cell to the untouched frame.  (0)") {
+                    viewModel.resetFocusedCell()
+                }
+                .disabled(viewModel.focusedItem.map { !viewModel.isCellEdited($0) } ?? true)
+
+                railButton(symbol: "arrow.counterclockwise.circle", caption: "All",
+                           isOn: false,
+                           help: "Return every cell to the untouched frame.  (\u{21E7}0)") {
+                    viewModel.resetAllCells()
+                }
+                .disabled(!viewModel.hasEditedCells)
+            }
+            .padding(.vertical, 8)
+        }
+        .frame(width: Self.railWidth)
+        .scrollBounceBehavior(.basedOnSize)
+    }
+
+    /// One rail button: a glyph, a word under it, and a tinted background when
+    /// it is the one in force.
+    private func railButton(
+        symbol: String, caption: String, isOn: Bool, help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: symbol)
+                    .font(.system(size: 17, weight: isOn ? .semibold : .regular))
+                Text(caption)
+                    .font(.system(size: 10, weight: isOn ? .semibold : .regular))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(width: Self.railWidth - 8, height: 44)
+            // The armed tool is filled, not merely tinted. A wash of accent
+            // behind one of six glyphs is easy to miss on a bright sheet, and
+            // "which tool is this drag about to run" is the question the rail
+            // exists to answer — so the selected one reads as a solid chip with
+            // the film's own contrast, the way a pressed key looks pressed.
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isOn ? Color.accentColor : Color.clear)
+                    .shadow(color: isOn ? Color.accentColor.opacity(0.35) : .clear,
+                            radius: 3, y: 1))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(isOn ? Color.accentColor : Color.clear, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isOn ? Color.white : Color.secondary)
+        .help(help)
+        .accessibilityLabel(help)
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
+    }
+
+    /// The word under a tool's glyph — short enough for the rail's width.
+    private static func railCaption(for tool: PrintViewModel.CellTool) -> String {
+        switch tool {
+        case .window: return "W/L"
+        case .zoom:   return "Zoom"
+        case .pan:    return "Pan"
+        case .text:   return "Text"
+        case .arrow:  return "Arrow"
+        }
+    }
+
+    /// The word under a lock.
+    private static func railCaption(for option: PrintCellSyncOptions) -> String {
+        if option == .zoomPan { return "Zoom+Pan" }
+        if option == .window { return "W/L" }
+        return "Invert"
+    }
+
+    private static func scopeCaption(_ scope: PrintCellSyncScope) -> String {
+        switch scope {
+        case .allCells: return "All"
+        case .sameSeries: return "Series"
+        case .thisFilm: return "Film"
+        }
+    }
+
+    /// Wide enough for the longest caption at the rail's type size — "Zoom+Pan"
+    /// — without it shrinking to fit, which is what a caption too small to read
+    /// at a glance costs the rail its point.
+    private static let railWidth: CGFloat = 68
 
     private var filmStrip: some View {
         // The film is sized from the space actually available rather than a
@@ -114,10 +343,16 @@ struct FilmPreviewView: View {
             let sheetWidth = sheetHeight * sheetAspect
 
             HStack(spacing: 0) {
-                pagingButton(step: -1, symbol: "chevron.left")
+                // The arrows take a gutter only when there is a second film to
+                // turn to; on a single film that width is the film's.
+                if plan.filmCount > 1 {
+                    pagingButton(step: -1, symbol: "chevron.left")
+                }
                 filmSheet(filmIndex: currentFilm, width: sheetWidth, height: sheetHeight)
                     .frame(maxWidth: .infinity)
-                pagingButton(step: 1, symbol: "chevron.right")
+                if plan.filmCount > 1 {
+                    pagingButton(step: 1, symbol: "chevron.right")
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
@@ -129,10 +364,56 @@ struct FilmPreviewView: View {
         min(max(0, visibleFilm), max(0, plan.filmCount - 1))
     }
 
+    /// The marks on the film being shown.
+    private var visibleItems: [PrintSelectionItem] {
+        guard plan.filmCount > 0 else { return [] }
+        let range = plan.imageIndices(onFilm: currentFilm)
+        return range.compactMap { items.indices.contains($0) ? items[$0] : nil }
+    }
+
+    #if canImport(CoreGraphics)
+    /// Marks that still need a CPU thumbnail: the ones the GPU is not drawing.
+    ///
+    /// A cell with a texture is deliberately excluded, and so is dropped from the
+    /// thumbnail cache. That is what makes a tool drag free here — the CPU key
+    /// includes the arrangement, so leaving a GPU-drawn cell in that cache would
+    /// re-render it on every mouse delta the shader was about to handle for
+    /// nothing, which is the cost this path exists to remove.
+    private var itemsNeedingThumbnail: [PrintSelectionItem] {
+        #if canImport(Metal)
+        guard PrintCellTextureCache.isAvailable else { return visibleItems }
+        return visibleItems.filter { drawnTexture(for: $0) == nil }
+        #else
+        return visibleItems
+        #endif
+    }
+
+    #if canImport(Metal)
+    /// The texture a cell is actually drawn from, if it is drawn from one.
+    ///
+    /// A freely rotated cell is not: the shader draws the whole frame and lets
+    /// the view clip it, so the corners the film leaves black would come out as
+    /// the neighbouring anatomy instead. The film's own renderer answers those
+    /// cells, at the cost of a re-render per tool step on a rotated cell only.
+    private func drawnTexture(for item: PrintSelectionItem) -> DisplayFrameTexture? {
+        guard item.presentation?.isQuarterTurn ?? true else { return nil }
+        return cellTextures.texture(for: item)
+    }
+    #endif
+
+    /// Brings both cell caches up to date with the film on screen.
+    private func refreshCells() {
+        #if canImport(Metal)
+        cellTextures.refresh(for: visibleItems)
+        #endif
+        thumbnails.refresh(for: itemsNeedingThumbnail)
+    }
+    #endif
+
     /// One page turn: an arrow either side of the film, disabled at the ends.
     ///
-    /// Reserved even for a single film so the sheet does not shift sideways when
-    /// a second film appears; it is simply invisible and takes no clicks.
+    /// Shown only when there is more than one film — an invisible gutter kept for
+    /// symmetry is width the single film being judged could have used.
     @ViewBuilder
     private func pagingButton(step: Int, symbol: String) -> some View {
         let isEnabled = canTurnPage(by: step)
@@ -147,7 +428,6 @@ struct FilmPreviewView: View {
         .buttonStyle(.plain)
         .foregroundStyle(isEnabled ? Color.primary : Color.secondary.opacity(0.3))
         .disabled(!isEnabled)
-        .opacity(plan.filmCount > 1 ? 1 : 0)
         .accessibilityLabel(step < 0 ? "Previous film" : "Next film")
         .help(step < 0 ? "Previous film (⌥←)" : "Next film (⌥→)")
     }
@@ -206,9 +486,9 @@ struct FilmPreviewView: View {
             if isOption { return turnPage(by: 1) ? .handled : .ignored }
             return moveFocus(by: 1) ? .handled : .ignored
         case KeyEquivalent.upArrow.character:
-            return moveFocus(by: -plan.layout.columns) ? .handled : .ignored
+            return moveFocusVertically(-1) ? .handled : .ignored
         case KeyEquivalent.downArrow.character:
-            return moveFocus(by: plan.layout.columns) ? .handled : .ignored
+            return moveFocusVertically(1) ? .handled : .ignored
         case KeyEquivalent.delete.character:
             // Deleting removes what is selected, and only that: the marks
             // themselves are taken off the film in the images list, not by
@@ -249,100 +529,318 @@ struct FilmPreviewView: View {
         return true
     }
 
+    /// Moves the focus one cell up or down, by where the cells actually are.
+    ///
+    /// A film's rows need not hold the same number of images — `ROW\1,2` is one
+    /// over two — so "the cell above" is a question about geometry and not
+    /// arithmetic on a column count. Off the top or bottom of a film the walk
+    /// carries on to the next one, entering the band the eye would come to.
+    @discardableResult
+    private func moveFocusVertically(_ direction: Int) -> Bool {
+        // A nominal sheet: only the proportions of the cells matter here — and
+        // the footer, which shortens the rows the walk steps between.
+        let cells = sheetCells(
+            width: 1000 * sheetAspect, height: 1000,
+            footerLines: identification(onFilm: currentFilm).footerLines.count)
+        guard let current = focusedCell(among: cells) else {
+            return moveFocus(by: direction)
+        }
+        let centerX = current.x + current.width / 2
+        let centerY = current.y + current.height / 2
+
+        /// The cell nearest this one in the direction travelled: the closest band
+        /// first, then the cell in it whose horizontal centre is nearest.
+        func nearest(_ pool: [FilmCell]) -> FilmCell? {
+            pool.min { a, b in
+                let dyA = abs((a.y + a.height / 2) - centerY)
+                let dyB = abs((b.y + b.height / 2) - centerY)
+                if abs(dyA - dyB) > 0.5 { return dyA < dyB }
+                return abs((a.x + a.width / 2) - centerX) < abs((b.x + b.width / 2) - centerX)
+            }
+        }
+
+        let ahead = cells.filter { cell in
+            let y = cell.y + cell.height / 2
+            return direction > 0 ? y > centerY + 0.5 : y < centerY - 0.5
+        }
+        if let target = nearest(ahead) {
+            return moveFocus(by: target.position - current.position)
+        }
+
+        // At the edge of this film: onto the next one, entering from its far side.
+        guard let edge = direction > 0
+                ? cells.map({ $0.y + $0.height / 2 }).min()
+                : cells.map({ $0.y + $0.height / 2 }).max() else { return false }
+        let entryBand = cells.filter { abs(($0.y + $0.height / 2) - edge) < 0.5 }
+        guard let target = entryBand.min(by: {
+            abs(($0.x + $0.width / 2) - centerX) < abs(($1.x + $1.width / 2) - centerX)
+        }) else { return false }
+        return moveFocus(by: direction * plan.cellsPerFilm + target.position - current.position)
+    }
+
+    /// The cell the focused mark sits in, by its position on its own film.
+    private func focusedCell(among cells: [FilmCell]) -> FilmCell? {
+        guard plan.cellsPerFilm > 0,
+              let focusedID = viewModel.focusedItemID,
+              let index = viewModel.selection.items.firstIndex(where: { $0.id == focusedID })
+        else { return nil }
+        let position = index % plan.cellsPerFilm + 1
+        return cells.first { $0.position == position }
+    }
+
     // MARK: - Tools
 
-    /// The tool a drag on a cell runs, plus the per-cell actions.
+    /// The keyboard shortcuts the tool rail used to carry.
     ///
-    /// A rail rather than a menu bar: it sits beside the film, where the cell
-    /// being adjusted is, and costs the film no height.
-    private var toolRail: some View {
-        VStack(spacing: 3) {
+    /// Zero-sized buttons behind the film: a context menu only exists while it
+    /// is open, so its items cannot own the keys. W, Z, P, T, R still arm a
+    /// tool, I toggles the identification caption and 0 resets the focused cell,
+    /// exactly as they did when the rail was on screen.
+    private var toolShortcuts: some View {
+        ZStack {
             ForEach(PrintViewModel.CellTool.allCases) { tool in
-                FilmToolButton(
-                    symbol: tool.symbolName,
-                    isOn: viewModel.cellTool == tool,
-                    help: "\(tool.displayName) — drag on a film cell "
-                        + "(\(Self.shortcut(for: tool)))",
-                    label: tool.displayName
-                ) {
-                    viewModel.cellTool = tool
-                }
-                .keyboardShortcut(KeyEquivalent(Self.shortcut(for: tool)), modifiers: [])
+                Button("") { viewModel.cellTool = tool }
+                    .keyboardShortcut(KeyEquivalent(Self.shortcut(for: tool)), modifiers: [])
             }
-
-            Divider().frame(width: 20).padding(.vertical, 3)
-
-            FilmToolButton(
-                symbol: "person.text.rectangle",
-                isOn: viewModel.showPatientIdentification,
-                help: "Patient ID caption (I) — the patient, ID and study burned across "
-                    + "the bottom of every cell",
-                label: "Patient ID caption"
-            ) {
-                viewModel.showPatientIdentification.toggle()
-            }
-            .keyboardShortcut("i", modifiers: [])
-
-            // Rotation and inversion of a single cell are not offered here: the
-            // film is meant to reproduce what the viewer showed, and arranging a
-            // cell differently from the screen it came from is how a film ends up
-            // disagreeing with the report written from that screen.
-
-            FilmToolButton(
-                symbol: "arrow.uturn.backward",
-                isOn: false,
-                isEnabled: viewModel.focusedItemID != nil,
-                help: "Reset the focused cell to the untouched frame (0)",
-                label: "Reset focused cell"
-            ) {
+            Button("") { viewModel.showPatientIdentification.toggle() }
+                .keyboardShortcut("i", modifiers: [])
+            Button("") {
                 if let id = viewModel.focusedItemID {
-                    viewModel.resetCell(forItemID: id)
+                    viewModel.toggleCellInversion(forItemID: id)
                 }
             }
-            .keyboardShortcut("0", modifiers: [])
+            .keyboardShortcut("v", modifiers: [])
+            Button("") { viewModel.resetFocusedCell() }
+                .keyboardShortcut("0", modifiers: [])
+            // The sheet-wide way out, shifted: linked cells make a bad
+            // arrangement easy to spread, and undoing it cell by cell is the
+            // work the link just saved.
+            Button("") { viewModel.resetAllCells() }
+                .keyboardShortcut("0", modifiers: [.shift])
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+    }
 
-            Spacer(minLength: 0)
+    /// The film's own menu: what a drag will do, and what can be done to the
+    /// cell under the pointer.
+    ///
+    /// On the film rather than beside it. A tool is chosen for the cell being
+    /// worked on, and the right-click is already over that cell — so the menu
+    /// costs the picture no width at all, which is what the rail cost it.
+    @ViewBuilder
+    private func cellMenu(for item: PrintSelectionItem?) -> some View {
+        ForEach(PrintViewModel.CellTool.allCases) { tool in
+            Button {
+                viewModel.cellTool = tool
+            } label: {
+                Label("\(tool.displayName)  (\(String(Self.shortcut(for: tool)).uppercased()))",
+                      systemImage: viewModel.cellTool == tool ? "checkmark" : tool.symbolName)
+            }
         }
-        .padding(5)
-        // The rail reads as an instrument beside the film rather than five grey
-        // glyphs floating on the panel: a raised surface, so the tool that is
-        // armed is obvious from across a reading room.
-        .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.thinMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+
+        Divider()
+
+        Button {
+            viewModel.showPatientIdentification.toggle()
+        } label: {
+            Label(viewModel.showPatientIdentification
+                  ? "Hide Patient ID Caption  (I)" : "Show Patient ID Caption  (I)",
+                  systemImage: "person.text.rectangle")
+        }
+
+        // Where that caption goes. Beside the switch that turns it on, because
+        // "one name at the bottom or one under every picture" is the same
+        // question as "does this film name its patient" — asked of the film in
+        // front of the reader, not of a control in another panel.
+        Menu {
+            ForEach(PrintIdentificationPlacement.allCases, id: \.self) { placement in
+                Button {
+                    viewModel.identificationPlacement = placement
+                } label: {
+                    Label(placement.title,
+                          systemImage: viewModel.identificationPlacement == placement
+                          ? "checkmark" : "")
                 }
-                .shadow(color: .black.opacity(0.22), radius: 6, x: 0, y: 2)
+            }
+        } label: {
+            Label("Patient ID Caption Goes", systemImage: "text.alignleft")
         }
-        .fixedSize(horizontal: true, vertical: false)
-        .padding(.vertical, 2)
+        .disabled(!viewModel.showPatientIdentification)
+
+        // Whether the film carries the viewer's zoom and pan at all. Here as
+        // well as in the settings column, because "why is this cell showing a
+        // close-up" is asked of the cell, not of a checkbox two panels away:
+        // switching it off puts every whole image back on the film.
+        Button {
+            viewModel.useViewerPresentation.toggle()
+        } label: {
+            Label(viewModel.useViewerPresentation
+                  ? "Fit the Whole Image in Every Cell"
+                  : "Use the Viewer's Zoom and Pan",
+                  systemImage: viewModel.useViewerPresentation
+                  ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+        }
+        .disabled(viewModel.sendRawPixels)
+
+        Divider()
+
+        // The same switches as the strip above the film, for the hand that is
+        // already on the cell.
+        Menu {
+            ForEach(PrintCellSyncOptions.catalog, id: \.title) { entry in
+                Button {
+                    viewModel.toggleSync(entry.option)
+                    if entry.option == .window && viewModel.cellSync.contains(.window) {
+                        Task { await viewModel.seedWindowsForSync() }
+                    }
+                } label: {
+                    Label(entry.title,
+                          systemImage: viewModel.cellSync.contains(entry.option)
+                          ? "lock.fill" : "lock.open")
+                }
+                .disabled(entry.option == .window && viewModel.isCellWindowingOverridden)
+            }
+            Divider()
+            ForEach(PrintCellSyncScope.allCases) { scope in
+                Button {
+                    viewModel.cellSyncScope = scope
+                } label: {
+                    Label(scope.title,
+                          systemImage: viewModel.cellSyncScope == scope ? "checkmark" : "")
+                }
+            }
+        } label: {
+            Label("Lock Cells Together",
+                  systemImage: viewModel.isCellSyncActive ? "lock.fill" : "lock.open")
+        }
+
+        if let item {
+            Divider()
+
+            Button("Apply This Window to All Cells") {
+                viewModel.focusCell(item.id)
+                viewModel.applyFocusedWindowToAllCells()
+            }
+            .disabled(viewModel.window(forItemID: item.id) == nil)
+
+            Button("Revert to the Viewer's Arrangement") {
+                viewModel.focusCell(item.id)
+                viewModel.revertCell(forItemID: item.id)
+            }
+            .disabled(!viewModel.isCellAdjusted(item.id))
+
+            Button(item.presentation?.invert == true
+                   ? "Show This Cell the Right Way Round  (V)"
+                   : "Invert This Cell's Greys  (V)") {
+                viewModel.focusCell(item.id)
+                viewModel.toggleCellInversion(forItemID: item.id)
+            }
+
+            Button("Reset This Cell  (0)") {
+                viewModel.focusCell(item.id)
+                viewModel.resetCell(forItemID: item.id)
+            }
+            .disabled(!viewModel.isCellEdited(item))
+
+            if let focused = viewModel.focusedItem, focused.id != item.id {
+                Button("Reset the Focused Cell") {
+                    viewModel.resetFocusedCell()
+                }
+                .disabled(!viewModel.isCellEdited(focused))
+            }
+
+            Button("Reset All Cells  (⇧0)", role: .destructive) {
+                viewModel.resetAllCells()
+            }
+            .disabled(!viewModel.hasEditedCells)
+
+            if !viewModel.annotations(forItemID: item.id).isEmpty {
+                Divider()
+                Button("Clear This Cell's Annotations", role: .destructive) {
+                    viewModel.clearAnnotations(forItemID: item.id)
+                }
+            }
+
+            Divider()
+
+            Button("Take Off the Film", role: .destructive) {
+                viewModel.selection.remove(
+                    filePath: item.filePath, frameIndex: item.frameIndex)
+            }
+        }
     }
 
     // MARK: - One film
 
+    /// The cells of the film on screen, in Image Box Position order.
+    ///
+    /// Laid out by ``FilmCellLayout`` — the film composer's own geometry — rather
+    /// than by a SwiftUI `Grid`, because a grid can only draw the layouts whose
+    /// rows all hold the same number of images. `ROW\1,2` holds one over two, and
+    /// the preview has to be able to show the film that is going to be printed.
+    private func sheetCells(width: CGFloat, height: CGFloat, footerLines: Int = 0) -> [FilmCell] {
+        plan.cells(onSheetOfWidth: Double(width), height: Double(height),
+                   margin: Double(Self.sheetMargin), spacing: Double(Self.cellSpacing),
+                   footer: plan.footerUnits(forLineCount: footerLines, sheetHeight: Double(height)))
+    }
+
+    /// How the film being drawn states its identification.
+    ///
+    /// Decided by ``FilmIdentificationPlanner`` — the rule the print run and the
+    /// composed sheet apply — so the strip the reader approves is the strip the
+    /// film carries. Nothing is drawn until every cell's header has been read:
+    /// a film that footers on the first file to load and then breaks into
+    /// per-image captions when the second arrives is a preview flickering
+    /// between two answers.
+    private func identification(onFilm filmIndex: Int) -> FilmIdentification {
+        guard viewModel.showPatientIdentification, plan.filmCount > 0 else { return .none }
+        var sources: [FilmIdentificationSource] = []
+        for index in plan.imageIndices(onFilm: filmIndex) {
+            guard items.indices.contains(index) else { continue }
+            let item = items[index]
+            guard let text = overlayTexts.text(forPath: item.filePath) else { return .none }
+            sources.append(FilmIdentificationSource(
+                key: item.id, studyKey: text.studyInstanceUID, lines: text.lines))
+        }
+        return FilmIdentificationPlanner.identification(
+            for: sources, placement: viewModel.identificationPlacement)
+    }
+
     @ViewBuilder
     private func filmSheet(filmIndex: Int, width: CGFloat, height: CGFloat) -> some View {
         let range = plan.imageIndices(onFilm: filmIndex)
-        VStack(spacing: 6) {
-            Grid(horizontalSpacing: 4, verticalSpacing: 4) {
-                ForEach(0..<plan.layout.rows, id: \.self) { row in
-                    GridRow {
-                        ForEach(0..<plan.layout.columns, id: \.self) { column in
-                            cell(filmIndex: filmIndex, row: row, column: column, range: range)
-                        }
-                    }
+        let identification = identification(onFilm: filmIndex)
+        let footer = identification.footerLines
+        VStack(spacing: 3) {
+            ZStack(alignment: .topLeading) {
+                Color.black
+                ForEach(sheetCells(width: width, height: height, footerLines: footer.count),
+                        id: \.position) { filmCell in
+                    cell(filmCell: filmCell, range: range, identification: identification)
+                        .frame(width: CGFloat(filmCell.width), height: CGFloat(filmCell.height))
+                        .offset(x: CGFloat(filmCell.x), y: CGFloat(filmCell.y))
+                }
+                // The film's own caption, in the strip the layout kept clear for
+                // it — one statement of whose study this sheet is, where the
+                // composed film burns it.
+                if !footer.isEmpty {
+                    FilmIdentificationFooterView(
+                        lines: footer,
+                        sheetHeight: height,
+                        sheetHeightMillimeters: sheetHeightMillimeters)
+                    .padding(.bottom, CGFloat(Self.sheetMargin))
+                    .frame(width: width, height: height, alignment: .bottom)
+                    .allowsHitTesting(false)
                 }
             }
-            .padding(8)
-            .background(Color.black)
+            .frame(width: width, height: height)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
                     .strokeBorder(.secondary.opacity(0.35), lineWidth: 1)
             )
-            .frame(width: width, height: height)
 
             // Only worth naming when there is more than one film to tell apart.
             if plan.filmCount > 1 {
@@ -358,17 +856,26 @@ struct FilmPreviewView: View {
     }
 
     @ViewBuilder
-    private func cell(filmIndex: Int, row: Int, column: Int, range: Range<Int>) -> some View {
-        let cellIndex = row * plan.layout.columns + column
-        let itemIndex = range.lowerBound + cellIndex
+    private func cell(
+        filmCell: FilmCell,
+        range: Range<Int>,
+        identification: FilmIdentification = .perImage
+    ) -> some View {
+        let itemIndex = range.lowerBound + filmCell.position - 1
         let isFilled = itemIndex < range.upperBound
         let item = items.indices.contains(itemIndex) ? items[itemIndex] : nil
         let isFocused = item != nil && item?.id == viewModel.focusedItemID
+        // The cell's own size, from the layout rather than measured: under a band
+        // layout the cells differ, and every tool that works in cell points —
+        // zoom, pan, annotation anchors, the identification strip — has to be
+        // told about *this* cell rather than about a film-wide average.
+        let cellSize = CGSize(width: CGFloat(filmCell.width), height: CGFloat(filmCell.height))
         // The picture's own area: the cell less whatever the identification strip
         // takes. Zoom, pan and annotations all resolve against this rather than the
         // cell, because this is what actually gets printed.
-        let picture = item.map { pictureSize(for: $0, cellSize: focusedCellSize) }
-            ?? focusedCellSize
+        let picture = item.map {
+            pictureSize(for: $0, cellSize: cellSize, identification: identification)
+        } ?? cellSize
 
         // Nothing is drawn over the image that the film will not carry: the cell
         // shows the frame, the identification band and the reader's own
@@ -380,6 +887,17 @@ struct FilmPreviewView: View {
             .overlay {
                 if isFilled {
                     cellImage(item)
+                        // Held to the picture's own rectangle. The shader draws
+                        // the whole frame and lets the view clip it, so without
+                        // this the margins either side of a crop would fill with
+                        // the neighbouring anatomy — the cell would show more
+                        // than the film prints, and read as an enlarged image
+                        // spilling past its edges.
+                        .mask(alignment: .center) {
+                            let rect = item.map { imageRect(for: $0, in: picture) }
+                                ?? CGRect(origin: .zero, size: picture)
+                            Rectangle().frame(width: rect.width, height: rect.height)
+                        }
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 2))
@@ -397,18 +915,18 @@ struct FilmPreviewView: View {
                             || !viewModel.annotations(forItemID: item.id).isEmpty)
                 }
             }
-            // Identification in its own strip under the picture, as the viewer
-            // draws it and as the print run now burns it: text over anatomy is
-            // where a finding hides. `safeAreaInset` takes the height from the
-            // cell rather than covering it, so the picture above is complete.
+            // Identification in its own strip under the picture, as the print
+            // run burns it: on paper, text over anatomy is where a finding
+            // hides, and the reader cannot move the picture out from under it.
+            // `safeAreaInset` takes the height from the cell rather than
+            // covering it, so the picture above is complete.
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if isFilled, viewModel.showPatientIdentification, let item,
+                if isFilled, identification.isPerImage, let item,
                    let text = overlayTexts.text(forPath: item.filePath), !text.isEmpty {
                     PatientIdentificationOverlayView(
                         primaryLine: text.primaryLine,
                         secondaryLine: text.secondaryLine,
-                        cellSize: focusedCellSize,
-                        style: .band)
+                        cellSize: cellSize)
                     .allowsHitTesting(false)
                 }
             }
@@ -418,14 +936,32 @@ struct FilmPreviewView: View {
                         .strokeBorder(Color.accentColor, lineWidth: 2)
                 }
             }
-            .contentShape(Rectangle())
-            .background(
-                GeometryReader { geo in
-                    Color.clear
-                        .onAppear { recordCellSize(geo.size) }
-                        .onChange(of: geo.size) { _, size in recordCellSize(size) }
+            // The lock, on the picture itself. The one thing here that is not
+            // burned into the film — the rule this file otherwise holds to — and
+            // it earns the exception: it says this cell is about to move when
+            // its neighbour is dragged, which is the fact a reader most needs
+            // *before* dragging, and it costs a right-click to find anywhere
+            // else. It appears only while a lock is closed, sits in the corner
+            // over the letterbox margin rather than the anatomy, and never takes
+            // a click — the rail is where locks are opened and shut.
+            .overlay(alignment: .topTrailing) {
+                if isFilled, let item, viewModel.isLinkedToFocus(item.id) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Color.accentColor)
+                        .padding(2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.black.opacity(0.55)))
+                        .padding(3)
+                        .allowsHitTesting(false)
+                        .accessibilityLabel(
+                            isFocused
+                            ? "Linked: adjusting this cell adjusts the others"
+                            : "Linked to the focused cell")
                 }
-            )
+            }
+            .contentShape(Rectangle())
             #if os(macOS)
             // Scroll zooms the cell under the cursor, as it does in the viewer.
             // The handler scopes itself to this view in this window, so scrolling
@@ -444,7 +980,8 @@ struct FilmPreviewView: View {
                             viewModel.adjustZoom(
                                 forItemID: item.id,
                                 factor: 1.0 + amount * Self.scrollZoomSensitivity,
-                                cellSize: picture)
+                                cellSize: picture,
+                                pixelSize: sourcePixelSize(for: item))
                         }
                     }
                 }
@@ -457,7 +994,13 @@ struct FilmPreviewView: View {
                 dragAnchor: $dragAnchor,
                 draftArrowID: $draftArrowID,
                 cellSize: picture,
+                pixelSize: item.flatMap { sourcePixelSize(for: $0) },
                 imageRect: item.map { imageRect(for: $0, in: picture) } ?? .zero))
+            // The tools live here now. Each item acts on the cell that was
+            // right-clicked — it takes the cell first — so the menu is about the
+            // picture under the pointer rather than about whichever cell
+            // happened to be focused before.
+            .contextMenu { cellMenu(for: item) }
             .accessibilityLabel(
                 isFilled
                 ? "Cell \(itemIndex + 1): \(item?.displayLabel ?? "image")"
@@ -465,27 +1008,29 @@ struct FilmPreviewView: View {
             .accessibilityAddTraits(isFocused ? [.isSelected] : [])
     }
 
-    /// The size a film cell is drawn at, for edits and overlay type measured in
-    /// cell points. The grid is uniform, so one size describes every cell.
-    @State private var focusedCellSize: CGSize = CGSize(width: 200, height: 200)
-
-    private func recordCellSize(_ size: CGSize) {
-        guard size.width > 0, size.height > 0 else { return }
-        focusedCellSize = size
-    }
-
     /// Lines of identification this cell will carry, which is what decides how
     /// deep its strip is — one line takes less room than two, and none takes none.
-    private func identificationLineCount(for item: PrintSelectionItem) -> Int {
-        guard viewModel.showPatientIdentification,
+    ///
+    /// None at all on a film that states its identification once at the foot of
+    /// the sheet: the cell keeps the height a strip would have taken, which is
+    /// the point of footering it.
+    private func identificationLineCount(
+        for item: PrintSelectionItem,
+        identification: FilmIdentification
+    ) -> Int {
+        guard identification.isPerImage,
               let text = overlayTexts.text(forPath: item.filePath), !text.isEmpty else { return 0 }
         return (text.primaryLine.isEmpty ? 0 : 1) + (text.secondaryLine.isEmpty ? 0 : 1)
     }
 
     /// The area of a cell the picture itself gets: the cell, less the strip the
     /// identification reserves under it.
-    private func pictureSize(for item: PrintSelectionItem, cellSize: CGSize) -> CGSize {
-        let lines = identificationLineCount(for: item)
+    private func pictureSize(
+        for item: PrintSelectionItem,
+        cellSize: CGSize,
+        identification: FilmIdentification
+    ) -> CGSize {
+        let lines = identificationLineCount(for: item, identification: identification)
         guard lines > 0 else { return cellSize }
         let band = PatientIdentificationOverlayView.bandHeight(for: cellSize, lines: lines)
         return CGSize(width: cellSize.width, height: max(1, cellSize.height - band))
@@ -500,10 +1045,10 @@ struct FilmPreviewView: View {
     private func imageRect(for item: PrintSelectionItem, in cellSize: CGSize) -> CGRect {
         let cell = CGRect(origin: .zero, size: cellSize)
         #if canImport(CoreGraphics)
-        guard let image = thumbnails.image(for: item),
-              image.width > 0, image.height > 0,
+        guard let pixels = arrangedPixelSize(for: item),
+              pixels.width > 0, pixels.height > 0,
               cellSize.width > 0, cellSize.height > 0 else { return cell }
-        let imageAspect = CGFloat(image.width) / CGFloat(image.height)
+        let imageAspect = CGFloat(pixels.width) / CGFloat(pixels.height)
         let cellAspect = cellSize.width / cellSize.height
         if imageAspect > cellAspect {
             // Wider than the cell: full width, margins top and bottom.
@@ -519,10 +1064,72 @@ struct FilmPreviewView: View {
         #endif
     }
 
+    /// The size of the *source* frame behind a cell, when it is known.
+    ///
+    /// The zoom and pan tools need it to know how much of the image is hidden
+    /// outside the cell, which is how far they are allowed to travel. Only the
+    /// GPU path can answer: its texture is the whole frame, whereas the CPU
+    /// thumbnail is already the arranged crop.
+    private func sourcePixelSize(for item: PrintSelectionItem) -> CGSize? {
+        #if canImport(Metal)
+        if let texture = cellTextures.texture(for: item) {
+            return CGSize(width: texture.width, height: texture.height)
+        }
+        #endif
+        return nil
+    }
+
+    #if canImport(CoreGraphics)
+    /// The size of the picture this cell prints, in source pixels.
+    ///
+    /// Whichever path drew the cell, this is the same number: the CPU thumbnail
+    /// *is* the arranged picture, so its own dimensions say it, and on the GPU the
+    /// arrangement is a transform over a full-frame texture, so it is worked out
+    /// from the visible region instead. Getting the two to agree is what keeps an
+    /// annotation in the same place when a cell's texture arrives.
+    private func arrangedPixelSize(for item: PrintSelectionItem) -> (width: Int, height: Int)? {
+        #if canImport(Metal)
+        if let texture = drawnTexture(for: item) {
+            return PrintCellDisplay.arrangedPixelSize(
+                for: item, imageWidth: texture.width, imageHeight: texture.height)
+        }
+        #endif
+        guard let image = thumbnails.image(for: item) else { return nil }
+        return (image.width, image.height)
+    }
+    #endif
+
     /// The marked frame itself, or a placeholder while it loads or if it cannot
     /// be rendered.
+    ///
+    /// From the GPU when the frame is there — which is where the tools want it,
+    /// since every drag then costs a redraw of a quad rather than a re-render —
+    /// and from the CPU thumbnail otherwise. The two compose the same geometry:
+    /// the shader is given the film's own composition (see ``PrintCellDisplay``),
+    /// not the viewer's, so a cell does not change shape when its texture lands.
     @ViewBuilder
     private func cellImage(_ item: PrintSelectionItem?) -> some View {
+        #if canImport(Metal)
+        if let item, let texture = drawnTexture(for: item) {
+            MetalImageView(
+                frame: texture,
+                presentation: PrintCellDisplay.presentation(
+                    for: item,
+                    imageWidth: texture.width,
+                    imageHeight: texture.height))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            cellCPUImage(item)
+        }
+        #else
+        cellCPUImage(item)
+        #endif
+    }
+
+    /// A cell drawn from a CPU-rendered still — the fallback, and the only path on
+    /// a machine without Metal.
+    @ViewBuilder
+    private func cellCPUImage(_ item: PrintSelectionItem?) -> some View {
         #if canImport(CoreGraphics)
         if let item, let image = thumbnails.image(for: item) {
             // Fills the cell in both directions, aspect ratio intact — the same
@@ -559,6 +1166,14 @@ struct FilmPreviewView: View {
         return CGFloat(sheet.widthMillimeters / sheet.heightMillimeters)
     }
 
+    /// The printed sheet's height in millimetres — what the footer's type is
+    /// scaled against, so the strip on screen is the strip on film.
+    private var sheetHeightMillimeters: CGFloat {
+        let sheet = FilmSheet(
+            filmSize: plan.filmSize, orientation: plan.filmOrientation, dpi: 150)
+        return CGFloat(sheet.heightMillimeters)
+    }
+
     /// Zoom fraction per unit of scroll.
     private static let scrollZoomSensitivity: Double = 0.02
 
@@ -576,21 +1191,27 @@ struct FilmPreviewView: View {
 
     /// Room reserved under the film, and only when there is something to put
     /// there: with one film there is no caption, so the film takes that height.
-    private var captionAllowance: CGFloat { plan.filmCount > 1 ? 22 : 0 }
+    private var captionAllowance: CGFloat { plan.filmCount > 1 ? 18 : 0 }
 
     /// Room left either side of a single film, so it does not touch the panel
     /// edges.
-    private static let sideAllowance: CGFloat = 8
+    private static let sideAllowance: CGFloat = 4
 
     /// Width of one page-turn arrow.
     private static let pagingButtonWidth: CGFloat = 34
 
-    /// Width the two arrows take from the film, reserved whether or not there is
-    /// a second film to turn to.
-    private var pagingAllowance: CGFloat { Self.pagingButtonWidth * 2 }
+    /// Width the two arrows take from the film — none at all on a single film,
+    /// where the picture gets it instead.
+    private var pagingAllowance: CGFloat {
+        plan.filmCount > 1 ? Self.pagingButtonWidth * 2 : 0
+    }
 
     /// Below this the cells stop being readable, so the preview scrolls instead.
     private static let minimumSheetHeight: CGFloat = 160
+
+    /// The unprinted edge of the sheet, and the gutter between two cells.
+    private static let sheetMargin: CGFloat = 6
+    private static let cellSpacing: CGFloat = 4
 }
 
 // MARK: - Cell interaction
@@ -611,6 +1232,10 @@ private struct CellInteraction: ViewModifier {
     @Binding var draftArrowID: UUID?
 
     let cellSize: CGSize
+
+    /// The source frame's own size, when the cell knows it — what bounds how far
+    /// the zoom and pan tools may travel.
+    let pixelSize: CGSize?
 
     /// Where the picture is inside the cell, for placing what gets drawn on it.
     let imageRect: CGRect
@@ -719,10 +1344,12 @@ private struct CellInteraction: ViewModifier {
         case .zoom:
             // Dragging up enlarges, as a zoom slider pushed away from you does.
             let factor = 1.0 - Double(dy) * Self.zoomSensitivity
-            viewModel.adjustZoom(forItemID: item.id, factor: factor, cellSize: cellSize)
+            viewModel.adjustZoom(forItemID: item.id, factor: factor,
+                                 cellSize: cellSize, pixelSize: pixelSize)
         case .pan:
             viewModel.panCell(
-                forItemID: item.id, dx: Double(dx), dy: Double(dy), cellSize: cellSize)
+                forItemID: item.id, dx: Double(dx), dy: Double(dy),
+                cellSize: cellSize, pixelSize: pixelSize)
         }
     }
 
@@ -734,73 +1361,4 @@ private struct CellInteraction: ViewModifier {
     private static let zoomSensitivity: Double = 0.005
 }
 
-// MARK: - Tool rail button
-
-/// One tool on the rail beside the film.
-///
-/// The armed tool is filled, not tinted: which tool a drag will run decides what
-/// happens to a cell, and a faint wash behind a grey glyph is not a strong enough
-/// answer to "what is my mouse about to do". Hover lights the button so the rail
-/// answers before it is clicked.
-@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-private struct FilmToolButton: View {
-    let symbol: String
-    let isOn: Bool
-    var isEnabled: Bool = true
-    let help: String
-    let label: String
-    let action: () -> Void
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: Self.size, height: Self.size)
-                .foregroundStyle(foreground)
-                .background {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(fill)
-                        .shadow(color: isOn ? Color.accentColor.opacity(0.45) : .clear,
-                                radius: 4, x: 0, y: 1)
-                }
-                .overlay {
-                    // A hairline over the armed tool, so it still reads as a
-                    // pressed key on a light background where the accent fill and
-                    // the panel are close in value.
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(Color.white.opacity(isOn ? 0.25 : 0), lineWidth: 1)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .onHover { isHovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: isOn)
-        .animation(.easeOut(duration: 0.12), value: isHovering)
-        .help(help)
-        .accessibilityLabel(label)
-        .accessibilityAddTraits(isOn ? [.isSelected] : [])
-    }
-
-    private var foreground: some ShapeStyle {
-        if !isEnabled { return AnyShapeStyle(.tertiary) }
-        if isOn { return AnyShapeStyle(Color.white) }
-        return AnyShapeStyle(isHovering ? Color.primary : Color.secondary)
-    }
-
-    private var fill: some ShapeStyle {
-        if isOn {
-            return AnyShapeStyle(LinearGradient(
-                colors: [Color.accentColor, Color.accentColor.opacity(0.72)],
-                startPoint: .top, endPoint: .bottom))
-        }
-        return AnyShapeStyle(isEnabled && isHovering
-                             ? Color.primary.opacity(0.12)
-                             : Color.clear)
-    }
-
-    private static let size: CGFloat = 26
-}
 #endif

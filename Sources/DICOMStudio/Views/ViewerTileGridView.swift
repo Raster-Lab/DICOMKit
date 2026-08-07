@@ -10,6 +10,7 @@
 
 #if canImport(SwiftUI)
 import SwiftUI
+import DICOMRenderKit
 
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 struct ViewerTileGridView<FocusedContent: View>: View {
@@ -22,14 +23,27 @@ struct ViewerTileGridView<FocusedContent: View>: View {
     @State private var tileImages = ViewerTileImageCache()
     #endif
 
+    #if canImport(Metal)
+    /// GPU textures for the unfocused tiles, when this machine has Metal.
+    ///
+    /// Kept alongside the image cache rather than replacing it: a tile whose frame
+    /// cannot go on the GPU — overlay planes, an unresolvable window — still needs
+    /// a picture, and that is the CPU image it has always had.
+    @State private var tileTextures = ViewerTileTextureCache()
+    #endif
+
     /// Tile a series card is currently hovering over, for the drop highlight.
     @State private var dropTargetIndex: Int?
 
-    /// Patient identification for the files the unfocused tiles are showing.
-    @State private var overlayTexts = PatientOverlayTextCache()
+    /// Corner annotations for the files the unfocused tiles are showing.
+    @State private var overlayTexts = ViewerAnnotationTextCache()
 
     /// Turns scroll events into whole image steps — one per wheel notch.
     @State private var scrollSteps = ScrollStepAccumulator()
+
+    /// Where the pointer is inside the tile it is over, and which tile that is.
+    @State private var hoverPoint: CGPoint?
+    @State private var hoveredIndex: Int?
 
     var body: some View {
         Grid(horizontalSpacing: 2, verticalSpacing: 2) {
@@ -46,14 +60,19 @@ struct ViewerTileGridView<FocusedContent: View>: View {
         .onAppear { overlayTexts.refresh(for: overlayPaths) }
         .onChange(of: overlayPaths) { _, paths in overlayTexts.refresh(for: paths) }
         #if canImport(CoreGraphics)
-        .onAppear { tileImages.refresh(for: unfocusedCells) }
+        .onAppear { refreshTiles() }
         .onChange(of: viewModel.cells) { _, _ in
-            tileImages.refresh(for: unfocusedCells)
+            refreshTiles()
         }
         .onChange(of: viewModel.focusedCellIndex) { _, _ in
             // The tile losing focus becomes a still, so it needs rendering now.
             viewModel.captureFocusedCell()
-            tileImages.refresh(for: unfocusedCells)
+            refreshTiles()
+        }
+        // A texture arriving — or turning out to be impossible — moves a tile
+        // between the two paths, and the loser of that move releases its copy.
+        .onChange(of: cellsNeedingCPUImage) { _, cells in
+            tileImages.refresh(for: cells)
         }
         #endif
     }
@@ -65,22 +84,65 @@ struct ViewerTileGridView<FocusedContent: View>: View {
             .compactMap(\.filePath)
     }
 
-    /// The overlay text for a tile.
+    /// The annotation text for a tile.
     ///
     /// The focused tile is the file the view model has loaded, so its text is
     /// already to hand; every other tile is read once and cached.
-    private func overlayText(for cell: ViewerCellState) -> PatientOverlayText? {
+    private func overlayText(for cell: ViewerCellState) -> ViewerAnnotationText? {
         if cell.index == viewModel.focusedCellIndex {
-            return viewModel.patientOverlayText
+            return viewModel.annotationText
         }
         guard let path = cell.filePath else { return nil }
         return overlayTexts.text(forPath: path)
+    }
+
+    /// The pixel under the pointer, for the tile it is over.
+    ///
+    /// The focused tile only: it is the one the view model has decoded pixels
+    /// for, and a value read from a file the viewer has not opened would mean
+    /// decoding a second image on the hover path. Clicking a tile focuses it,
+    /// which is the same gesture that arms every other tool for it.
+    private func cursorReadout(for cell: ViewerCellState) -> ViewerCursorReadout? {
+        guard cell.index == viewModel.focusedCellIndex,
+              hoveredIndex == cell.index,
+              let hoverPoint else { return nil }
+        return viewModel.cursorReadout(
+            atViewPoint: hoverPoint,
+            viewSize: CGSize(width: cell.viewportWidth, height: cell.viewportHeight),
+            zoom: cell.zoom,
+            panX: cell.panX,
+            panY: cell.panY)
     }
 
     /// Tiles that are not the live viewer, and so need a rendered still.
     private var unfocusedCells: [ViewerCellState] {
         viewModel.cells.filter { $0.index != viewModel.focusedCellIndex && !$0.isEmpty }
     }
+
+    #if canImport(CoreGraphics)
+    /// Tiles that still need a CPU image: the ones the GPU is not already drawing.
+    ///
+    /// A tile with a texture is deliberately excluded, and so is dropped from the
+    /// image cache. That is what makes a tool drag free on this path — the CPU key
+    /// includes the arrangement, so leaving a GPU-drawn tile in that cache would
+    /// re-render on every mouse delta the shader was about to handle for nothing.
+    private var cellsNeedingCPUImage: [ViewerCellState] {
+        #if canImport(Metal)
+        guard ViewerTileTextureCache.isAvailable else { return unfocusedCells }
+        return unfocusedCells.filter { tileTextures.texture(for: $0) == nil }
+        #else
+        return unfocusedCells
+        #endif
+    }
+
+    /// Brings both tile caches up to date with what the grid is showing.
+    private func refreshTiles() {
+        #if canImport(Metal)
+        tileTextures.refresh(for: unfocusedCells)
+        #endif
+        tileImages.refresh(for: cellsNeedingCPUImage)
+    }
+    #endif
 
     // MARK: - One tile
 
@@ -113,33 +175,60 @@ struct ViewerTileGridView<FocusedContent: View>: View {
                     .padding(4)
             }
         }
-        // Patient identification in a band under the picture, sized to this tile
-        // rather than the viewer: a 4×4 tile gets small type, a 1×2 tile gets
-        // large, and both stay legible without covering anatomy. The text is
-        // this tile's own file, not the focused one — two studies can hang side
-        // by side, and a tile naming the wrong patient is worse than no label.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let cell, !cell.isEmpty, viewModel.showPatientOverlay,
+        // Where this tile lands on the film, in the corner opposite its tick.
+        // A grid of twenty tiles all wearing the same small check answered "is
+        // this one on the film?" only if you looked at each in turn; a lit,
+        // numbered chip answers it — and the running order — across the whole
+        // grid at once.
+        .overlay(alignment: .topLeading) {
+            if let position = viewModel.printPositionForCell(index) {
+                filmPositionChip(position)
+                    .padding(4)
+            }
+        }
+        // No third mark for "on the film". A marked tile used to carry an accent
+        // edge along its bottom as well as the chip and the tick — three cues for
+        // one fact, and on a grid where everything is marked (which is the normal
+        // way a film gets composed) it drew a blue rule under every tile. The only
+        // accent *edge* in the grid is now the focus ring, so the lit tile is the
+        // one being worked on; whether a tile is on the film is the chip in one
+        // corner and the tick in the other.
+        // Reading annotations in this tile's corners, sized to the tile rather
+        // than to the viewer: a 4×4 tile carries small type and only the lines
+        // that matter at that size, a 1×2 tile carries the block in full. The
+        // text is this tile's own file, not the focused one — two studies can
+        // hang side by side, and a tile naming the wrong patient is worse than
+        // no label at all.
+        .overlay {
+            if let cell, !cell.isEmpty, viewModel.showImageAnnotations,
                let text = overlayText(for: cell), !text.isEmpty {
-                PatientIdentificationOverlayView(
-                    primaryLine: text.primaryLine,
-                    secondaryLine: text.secondaryLine,
+                ViewerAnnotationOverlayView(
+                    text: text,
+                    state: viewModel.annotationViewportState(
+                        for: cell, cursor: cursorReadout(for: cell)),
                     cellSize: CGSize(width: cell.viewportWidth, height: cell.viewportHeight),
-                    style: .band
+                    // Clears the print checkbox, which sits in the same corner
+                    // as the identification block.
+                    topTrailingInset: Self.checkboxInset,
+                    // …and the film chip opposite it, on tiles that have one.
+                    topLeadingInset: viewModel.printPositionForCell(index) == nil
+                        ? 0 : Self.checkboxInset
                 )
-                .allowsHitTesting(false)
             }
         }
         .overlay {
             // A focus ring, not a selection highlight: it marks where gestures
             // and window/level will land. A drop target outranks it — during a
             // drag the question is "where will this land", not "what is focused".
+            // Hovering brightens the hairline, so the tile a click would take
+            // answers before the click.
             let isDropTarget = dropTargetIndex == index
+            let isHovered = hoveredIndex == index
             Rectangle()
                 .strokeBorder(
-                    isDropTarget ? Color.accentColor
-                                 : (isFocused ? Color.accentColor : .white.opacity(0.12)),
-                    lineWidth: isDropTarget ? 3 : (isFocused ? 2 : 1))
+                    isDropTarget || isFocused ? Color.accentColor
+                        : .white.opacity(isHovered ? 0.35 : 0.12),
+                    lineWidth: isDropTarget ? 3 : (isFocused ? Self.focusRingWidth : 1))
         }
         .background(
             GeometryReader { geo in
@@ -154,6 +243,21 @@ struct ViewerTileGridView<FocusedContent: View>: View {
                     }
             }
         )
+        // The pointer, for the focused tile's pixel readout. Tracked on every
+        // tile so the readout disappears the moment the pointer leaves the one
+        // it belongs to, rather than freezing on the last pixel it was over.
+        .onContinuousHover(coordinateSpace: .local) { phase in
+            switch phase {
+            case .active(let point):
+                hoverPoint = point
+                hoveredIndex = index
+            case .ended:
+                if hoveredIndex == index {
+                    hoverPoint = nil
+                    hoveredIndex = nil
+                }
+            }
+        }
         .onTapGesture { viewModel.focusCell(index) }
         #if os(macOS)
         // Scrolling a tile steps through its images. The tile takes focus first:
@@ -193,6 +297,27 @@ struct ViewerTileGridView<FocusedContent: View>: View {
 
     @ViewBuilder
     private func tileImage(_ cell: ViewerCellState) -> some View {
+        #if canImport(Metal)
+        if let texture = tileTextures.texture(for: cell) {
+            // The GPU tile path. Zoom, pan, rotation, flip and inversion are the
+            // shader's transform here, exactly as in the focused viewport — which
+            // is what lets a synchronised tool move redraw a quad per tile instead
+            // of re-decoding the grid. `.fit` is the shader's zoom 1.0, so a tile
+            // frames its image the same way it did on the CPU path.
+            MetalImageView(frame: texture, presentation: cell.displayPresentation)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            tileCPUImage(cell)
+        }
+        #else
+        tileCPUImage(cell)
+        #endif
+    }
+
+    /// A tile drawn from a CPU-rendered still — the fallback, and the only path on
+    /// a machine without Metal.
+    @ViewBuilder
+    private func tileCPUImage(_ cell: ViewerCellState) -> some View {
         #if canImport(CoreGraphics)
         if let image = tileImages.image(for: cell) {
             // Fills the tile in both directions but never distorts: `.fit`
@@ -213,6 +338,38 @@ struct ViewerTileGridView<FocusedContent: View>: View {
         #else
         Color.black
         #endif
+    }
+
+    /// Room the print checkbox takes in the top-right corner, which the
+    /// identification block starts below. The film chip in the opposite corner
+    /// is the same height, so the two corners clear their text by the same step.
+    private static var checkboxInset: CGFloat { 26 }
+
+    /// Width of the ring around the live tile. Three points rather than two: a
+    /// 4×5 grid puts twenty edges on screen, and the one that matters has to win
+    /// against nineteen others from a normal seating distance.
+    private static var focusRingWidth: CGFloat { 3 }
+
+    /// Where a marked tile lands on the film.
+    ///
+    /// Numbered, not merely lit: film order is the other half of the question,
+    /// and the tray on the right lists the same numbers, so a tile and its row
+    /// can be matched without counting either of them.
+    private func filmPositionChip(_ position: Int) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: "printer.fill")
+                .font(.system(size: 8))
+            Text("\(position)")
+                .font(.caption2.monospacedDigit().bold())
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(Color.accentColor, in: Capsule())
+        // The tiles are black and the accent is a mid blue: a hairline keeps the
+        // chip's shape when it happens to sit over bone rather than over air.
+        .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.5))
+        .accessibilityLabel("On film at position \(position)")
     }
 
     /// Per-tile print checkbox — unticked until the user ticks it.

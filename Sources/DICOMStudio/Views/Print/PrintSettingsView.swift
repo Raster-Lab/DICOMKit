@@ -1,16 +1,20 @@
 // PrintSettingsView.swift
 // DICOMStudio
 //
-// DICOM Studio — the print sheet: pick a printer and layout, check the film
-// plan, and send the marked images to the DICOM printer.
+// DICOM Studio — the print screen: pick a printer and a grid, check the film,
+// and send the marked images to the DICOM printer.
 //
-// Three columns, like every other print dialog: the settings down the left, the
-// film large in the middle, the focused cell's controls down the right. The film
-// is the thing actually being judged, so it keeps the centre at full height —
-// nothing is stacked above or below it that could take that height away.
+// The film is the thing being judged, so the film gets the window. Two slim rows
+// of chrome across the top — what is being printed and the actions, then the
+// printer, sheet, orientation, copies and grid — and everything below them is
+// the picture. The tools that adjust a cell are on the film's own right-click
+// menu rather than in a rail beside it, and the rest of what the print SCU can
+// send is behind "More", in a column that is closed until it is wanted.
 //
-// Visible zone: printer, layout, orientation, film size, copies, preview.
-// Advanced zone: everything else the dicom-print CLI exposes.
+// Top row: title, plan summary, console toggle, shortcuts, recent jobs, actions.
+// Options row: printer, film size, orientation, copies, layout gallery, More.
+// Behind More: printer tests, the marked images, everything the CLI exposes,
+// and the focused cell's own window and annotation controls.
 
 #if canImport(SwiftUI)
 import SwiftUI
@@ -19,6 +23,22 @@ import AppKit
 #endif
 import DICOMNetwork
 import DICOMPrintKit
+#if canImport(UniformTypeIdentifiers)
+import UniformTypeIdentifiers
+#endif
+
+/// How the print screen is on screen.
+///
+/// A sheet has to be told its size — given only a minimum it settles on the
+/// smallest thing its content will accept, and the film ends up a square in the
+/// middle of a clipped options band. A window is sized by the user and
+/// remembered by the system, so there only a floor is imposed.
+public enum PrintScreenPresentation: Sendable {
+    /// Raised over the viewer as a modal sheet.
+    case sheet
+    /// A window of its own, beside the viewer.
+    case window
+}
 
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 public struct PrintSettingsView: View {
@@ -27,30 +47,56 @@ public struct PrintSettingsView: View {
 
     @State private var showAdvanced = false
 
-    /// Whether the full options band is showing. Collapsed, the sheet is film
-    /// size, orientation and the preview — which is all a film usually needs.
-    @State private var showOptions = true
+    /// Whether the advanced settings column is showing.
+    ///
+    /// Closed to begin with. What a reading room changes per film — the printer,
+    /// the sheet, how many copies, the grid — is in the bar across the top, and
+    /// everything else is a setting that is chosen once and then left alone. A
+    /// column of those permanently open is width the film cannot use.
+    @State private var showOptions = false
 
     /// Whether the console log panel is showing on the right, alongside the film.
     ///
-    /// The log used to *replace* the sheet, which took the film away at the one
-    /// moment a user wants to see what was sent. It is a permanent side panel the
-    /// film keeps its room beside, toggled from the header.
-    @State private var showConsole = true
+    /// Closed while the film is being composed: there is nothing in the log yet,
+    /// and its column is width the film can use to be judged. It opens by itself
+    /// the moment a job starts — that is when the log has something to say, and
+    /// it says it beside the film rather than in place of it, which is what the
+    /// old full-screen log took away. The header toggle overrides either way.
+    @State private var showConsole = false
     @State private var showPrinterManagement = false
     @State private var showImageList = false
+
+    /// How wide the console column is, as the reader last left it. Kept across
+    /// jobs and launches: a log column is sized once for the paths and UIDs a
+    /// site's printers emit, not re-dragged every print.
+    @AppStorage("print.consoleWidth") private var storedConsoleWidth: Double = Double(
+        PrintSettingsView.defaultConsoleWidth)
+
+    /// The console's width when the splitter was picked up, so the drag applies
+    /// a delta rather than jumping the panel to the pointer.
+    @State private var splitterAnchor: CGFloat?
 
     /// Keyboard focus for the annotation's text field, so text placed on a cell
     /// can be typed straight away rather than clicked into first.
     @FocusState private var isAnnotationTextFocused: Bool
 
     /// Size of the window the sheet was raised from. The print screen opens at
-    /// the same size as the screen behind it.
+    /// the same size as the screen behind it. Unused when it *is* a window.
     private let parentSize: CGSize?
 
-    public init(viewModel: PrintViewModel, parentSize: CGSize? = nil) {
+    /// Whether this is a sheet over the viewer or a window of its own — which
+    /// decides only how the screen is sized; the contents are the same either
+    /// way, and `dismiss()` closes whichever it is.
+    private let presentation: PrintScreenPresentation
+
+    public init(
+        viewModel: PrintViewModel,
+        parentSize: CGSize? = nil,
+        presentation: PrintScreenPresentation = .sheet
+    ) {
         self.viewModel = viewModel
         self.parentSize = parentSize
+        self.presentation = presentation
     }
 
     public var body: some View {
@@ -64,11 +110,16 @@ public struct PrintSettingsView: View {
             } else {
                 configurationForm
             }
-
-            Divider()
-
-            footer
         }
+        // The log follows the job: it appears when printing starts and is put
+        // away again when the screen goes back to composing a film ("Print
+        // Again"), where its column is better spent on the picture.
+        .onChange(of: viewModel.phase) { _, phase in
+            showConsole = (phase != .configuring)
+        }
+        // The screen can be opened onto a job already running — the window
+        // outlives any one visit to it — and then the log is wanted at once.
+        .onAppear { showConsole = (viewModel.phase != .configuring) }
         // Text placed on a cell is created empty, so the caret goes to its field:
         // clicking to place text and then having to click again to type it is one
         // click too many for something done a dozen times a film.
@@ -81,7 +132,8 @@ public struct PrintSettingsView: View {
         // A fixed size, not a range: given only a range, the sheet settles on
         // whatever its content asks for — which is the minimum — and the options
         // band ends up clipped with the film in a small square in the middle.
-        .frame(width: sheetSize.width, height: sheetSize.height)
+        // A window is sized by the user, so there the same numbers are a floor.
+        .modifier(PrintScreenSizing(presentation: presentation, sheetSize: sheetSize))
         .sheet(isPresented: $showPrinterManagement) {
             PrinterManagementView(viewModel: viewModel)
         }
@@ -120,9 +172,12 @@ public struct PrintSettingsView: View {
     /// How much of the parent window the sheet takes — all of it.
     private static let parentFraction: CGFloat = 1.0
 
-    /// Below these the two columns and the film stop fitting side by side.
-    private static let minimumWidth: CGFloat = 1160
-    private static let minimumHeight: CGFloat = 680
+    /// Below these the options row wraps and the film stops being judgeable.
+    ///
+    /// Smaller than they were: the settings no longer hold a column open beside
+    /// the film, so the window only has to fit one row of controls and a sheet.
+    fileprivate static let minimumWidth: CGFloat = 960
+    fileprivate static let minimumHeight: CGFloat = 620
 
     /// Used when the sheet was raised without a window size to match.
     private static let fallbackWidth: CGFloat = 1100
@@ -130,45 +185,117 @@ public struct PrintSettingsView: View {
 
     // MARK: - Header
 
+    /// The one strip of chrome on this screen: what is being printed, the panel
+    /// toggles, and the actions.
+    ///
+    /// A single row rather than a title block above and a button bar below. Both
+    /// bands were height the film could not use, and the film is the thing being
+    /// judged here — so the title is one line beside its summary and Print and
+    /// Cancel sit at the end of the same row.
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Print to DICOM Printer")
-                    .font(.title3.bold())
-                Text(viewModel.planSummary)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 10) {
+            Text("Print")
+                .font(.headline)
+            Text(viewModel.planSummary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            if let message = viewModel.validationMessage, !viewModel.isRunning {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .labelStyle(.titleAndIcon)
+                    .lineLimit(2)
+                    .frame(maxWidth: 240, alignment: .trailing)
             }
-            Spacer()
+
+            #if os(macOS)
+            // The film as a file. Composed by the same `FilmComposer` the
+            // emulator composes a received film with, from the same prepared
+            // images the SCU would have sent — so what lands on disk is the
+            // sheet the printer would have laid down, not a screenshot of the
+            // preview.
+            Menu {
+                Button("PNG…")  { saveFilm(extension: "png") }
+                Button("TIFF…") { saveFilm(extension: "tiff") }
+                Button("PDF…")  { saveFilm(extension: "pdf") }
+            } label: {
+                if viewModel.isSavingFilm {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Label("Save Film", systemImage: "square.and.arrow.down")
+                        .labelStyle(.iconOnly)
+                }
+            }
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(viewModel.selection.isEmpty || viewModel.isSavingFilm)
+            .help("Save the composed film as an image or a PDF")
+            #endif
+
             Button {
                 showConsole.toggle()
             } label: {
                 Label(showConsole ? "Hide Console" : "Show Console",
                       systemImage: showConsole ? "sidebar.trailing" : "sidebar.right")
+                    .labelStyle(.iconOnly)
             }
             .help("Show or hide the print console and give the film more room")
+
             if viewModel.phase == .configuring {
                 KeyboardShortcutsButton(
                     title: "Print Preview Shortcuts",
                     groups: KeyboardShortcutsLegendView.printPreviewGroups)
 
-                Button {
-                    showOptions.toggle()
-                } label: {
-                    Label(showOptions ? "Hide Options" : "Show Options",
-                          systemImage: showOptions ? "chevron.up" : "slider.horizontal.3")
+                // The settings column is opened from "More" in the options bar,
+                // beside the settings it belongs to — not from up here.
+
+                if !viewModel.history.isEmpty {
+                    Menu {
+                        ForEach(viewModel.history.prefix(10)) { entry in
+                            Text("\(entry.success ? "✓" : "✗") \(entry.summary)")
+                        }
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Recent jobs")
                 }
-                .help("Hide the settings column and give the film the whole sheet")
             }
-            if let message = viewModel.validationMessage, !viewModel.isRunning {
-                Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .labelStyle(.titleAndIcon)
-                    .frame(maxWidth: 280, alignment: .trailing)
-            }
+
+            actions
         }
-        .padding()
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+    }
+
+    /// Print and Cancel — in the top panel, beside everything else that acts on
+    /// the job rather than on a cell.
+    @ViewBuilder
+    private var actions: some View {
+        switch viewModel.phase {
+        case .configuring:
+            Button("Cancel") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+            Button(viewModel.dryRun ? "Dry Run" : "Print") {
+                viewModel.print()
+            }
+            .keyboardShortcut(.defaultAction)
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.canPrint)
+        case .preparing, .printing:
+            Button("Cancel Job", role: .destructive) { viewModel.cancel() }
+        case .finished:
+            Button("Print Again") { viewModel.reset() }
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+        }
     }
 
     // MARK: - While the job runs
@@ -181,14 +308,17 @@ public struct PrintSettingsView: View {
     /// film, so hiding it hands its width back to the film without touching
     /// the film's height.
     private var runLayout: some View {
-        HStack(spacing: 0) {
-            previewSection
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                previewSection
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if showConsole {
-                Divider()
-                consolePanel
+                if showConsole {
+                    consoleSplitter(containerWidth: geo.size.width)
+                    consolePanel(containerWidth: geo.size.width)
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -203,42 +333,124 @@ public struct PrintSettingsView: View {
     /// annotation controls live in the settings column too (below Advanced),
     /// so the right edge is dedicated to the console.
     private var configurationForm: some View {
-        HStack(spacing: 0) {
-            if showOptions {
-                optionsSidebar
-                Divider()
-            }
-
-            VStack(spacing: 0) {
-                // Collapsed, the two things a reading room still changes per
-                // film ride above the preview as a single slim row.
-                if !showOptions {
-                    compactBand
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                if showOptions {
+                    optionsSidebar
                     Divider()
                 }
 
-                previewSection
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 0) {
+                    // What a film is actually composed of — where it goes, what it
+                    // is printed on, and how it is divided — rides above the picture
+                    // as one slim row. Everything else is behind "More".
+                    optionsBar
+                    Divider()
 
-            if showConsole {
-                Divider()
-                consolePanel
+                    previewSection
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if showConsole {
+                    consoleSplitter(containerWidth: geo.size.width)
+                    consolePanel(containerWidth: geo.size.width)
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
     }
 
     /// The console log panel, permanently on the right — reset each time the
     /// preview is opened (see `PrintViewModel.resetConsole()`), not just when
     /// a job finishes.
-    private var consolePanel: some View {
+    ///
+    /// Its width is the reader's, not ours: paths, UIDs and printer messages are
+    /// long lines, and a column narrow enough to wrap every one of them into four
+    /// is a log that has to be re-read rather than read. The width is kept across
+    /// jobs and launches, and the film takes whatever is left.
+    private func consolePanel(containerWidth: CGFloat) -> some View {
         PrintProgressView(viewModel: viewModel)
-            .frame(width: Self.consoleWidth)
+            .frame(width: consoleWidth(in: containerWidth))
     }
 
-    /// Width of the console column on the right.
-    private static let consoleWidth: CGFloat = 300
+    /// The grab handle between the film and the log.
+    private func consoleSplitter(containerWidth: CGFloat) -> some View {
+        Divider()
+            .padding(.horizontal, 3)
+            .frame(width: Self.splitterWidth)
+            .contentShape(Rectangle())
+            #if os(macOS)
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            #endif
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        // Dragging left widens the log, which is the direction
+                        // it has to grow in — the film is on the other side.
+                        let anchor = splitterAnchor ?? consoleWidth(in: containerWidth)
+                        if splitterAnchor == nil { splitterAnchor = anchor }
+                        storedConsoleWidth = Double(Self.clampConsoleWidth(
+                            anchor - value.translation.width, in: containerWidth))
+                    }
+                    .onEnded { _ in splitterAnchor = nil }
+            )
+            .accessibilityLabel("Resize the console")
+    }
+
+    /// The console's width for a panel this wide: what was chosen, held inside
+    /// what the window can actually give it.
+    private func consoleWidth(in containerWidth: CGFloat) -> CGFloat {
+        Self.clampConsoleWidth(CGFloat(storedConsoleWidth), in: containerWidth)
+    }
+
+    /// Never narrower than a readable log, and never so wide that the film it
+    /// is reporting on is squeezed off the screen.
+    private static func clampConsoleWidth(_ width: CGFloat, in containerWidth: CGFloat) -> CGFloat {
+        guard containerWidth > 0 else { return max(minimumConsoleWidth, width) }
+        let ceiling = max(minimumConsoleWidth, containerWidth * maximumConsoleFraction)
+        return min(max(width, minimumConsoleWidth), ceiling)
+    }
+
+    /// Default width of the console column on the right.
+    ///
+    /// Wide enough for a file path and a print job UID to arrive on one or two
+    /// lines rather than five, which is what 300 points made of them.
+    static let defaultConsoleWidth: CGFloat = 460
+
+    private static let minimumConsoleWidth: CGFloat = 260
+
+    /// The most of the panel the log may take: past this the film stops being
+    /// judgeable, which is what the screen is for.
+    private static let maximumConsoleFraction: CGFloat = 0.6
+
+    /// Width of the drag handle between the two panels.
+    private static let splitterWidth: CGFloat = 7
+
+    // MARK: - Saving the film
+
+    #if os(macOS)
+    /// Asks where to put the film and composes it there.
+    ///
+    /// The log is opened first: composing re-reads and re-renders every marked
+    /// frame, so where the file went — or why it did not — is said in the same
+    /// place a print says it.
+    private func saveFilm(extension ext: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(viewModel.suggestedFilmFileName).\(ext)"
+        #if canImport(UniformTypeIdentifiers)
+        if let type = UTType(filenameExtension: ext) {
+            panel.allowedContentTypes = [type]
+        }
+        #endif
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        showConsole = true
+        Task { await viewModel.saveFilm(to: url) }
+    }
+    #endif
 
     /// The column of settings down the left edge.
     ///
@@ -249,8 +461,10 @@ public struct PrintSettingsView: View {
     private var optionsSidebar: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 10) {
+                // The printer's picker, the sheet and the grid are in the bar
+                // above the film; what is left here is what a film is checked
+                // against rather than composed from.
                 card { printerSection }
-                card { basicSection }
                 card { marksSection }
                 card { advancedSection }
                 card { cellAndAnnotationSection }
@@ -280,18 +494,37 @@ public struct PrintSettingsView: View {
     /// Width of the settings column — enough for a picker and its caption.
     private static let sidebarWidth: CGFloat = 320
 
-    /// The band collapsed to what a reading room changes per film: the sheet it
-    /// prints on and which way round it goes. Everything else keeps the value it
-    /// already has — collapsing hides controls, it never resets them.
-    private var compactBand: some View {
-        HStack(spacing: 14) {
-            labeledControl("Film size") {
+    /// The film's own settings, in one row above the picture.
+    ///
+    /// Printer, sheet, orientation, copies, grid — the five things that change
+    /// from film to film. They are here rather than in a column beside the film
+    /// because every point of width that column takes is width the picture is
+    /// judged without; the rest of what the print SCU can send is a setting, not
+    /// a decision, and lives behind "More".
+    private var optionsBar: some View {
+        HStack(spacing: 12) {
+            labeledControl("Printer") {
+                if viewModel.printers.isEmpty {
+                    Button("Add Printer…") { showPrinterManagement = true }
+                } else {
+                    Picker("Printer", selection: $viewModel.selectedPrinterID) {
+                        ForEach(viewModel.printers) { printer in
+                            Text(printer.summary).tag(Optional(printer.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 220)
+                }
+            }
+
+            labeledControl("Film") {
                 Picker("Film size", selection: $viewModel.filmSize) {
                     ForEach(PrintOptionCatalog.filmSizes, id: \.cliToken) { entry in
                         Text(entry.label).tag(entry.value)
                     }
                 }
                 .labelsHidden()
+                .frame(width: 130)
                 .disabled(viewModel.layoutMode == .template)
             }
 
@@ -302,21 +535,60 @@ public struct PrintSettingsView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 200)
+            .frame(width: 170)
             .disabled(viewModel.layoutMode == .template)
 
-            if let printer = viewModel.selectedPrinter {
-                Text(printer.summary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            labeledControl("Copies") {
+                Stepper(value: $viewModel.copies, in: 1...99) {
+                    Text("\(viewModel.copies)")
+                        .monospacedDigit()
+                        .frame(minWidth: 18, alignment: .trailing)
+                }
             }
 
-            Spacer()
+            Button {
+                showLayoutGallery.toggle()
+            } label: {
+                Label(layoutButtonTitle, systemImage: "square.grid.2x2")
+            }
+            .help("Choose the film's grid")
+            .popover(isPresented: $showLayoutGallery, arrowEdge: .bottom) {
+                FilmLayoutGalleryView(viewModel: viewModel, isPresented: $showLayoutGallery)
+            }
+
+            Spacer(minLength: 4)
+
+            Text(layoutCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Button {
+                showOptions.toggle()
+            } label: {
+                Label(showOptions ? "Less" : "More", systemImage: "slider.horizontal.3")
+            }
+            .help("Show or hide the rest of the print settings")
         }
         .controlSize(.small)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    /// Whether the layout gallery popover is up.
+    @State private var showLayoutGallery = false
+
+    /// What the layout button says it will do — the layout actually in force.
+    private var layoutButtonTitle: String {
+        let layout = viewModel.plan.layout
+        switch viewModel.layoutMode {
+        case .matchViewer: return "Viewer \(layout.rows)×\(layout.columns)"
+        case .automatic:   return "Auto \(layout.rows)×\(layout.columns)"
+        case .explicit:    return "\(layout.rows)×\(layout.columns)"
+        case .template:    return viewModel.templatePreset.displayName
+        // The format string itself: a band layout has no grid to name it by.
+        case .custom:      return viewModel.customLayoutFormat?.raw ?? "Custom"
+        }
     }
 
     /// Widest a picker in the sidebar grows to.
@@ -335,14 +607,15 @@ public struct PrintSettingsView: View {
                         .controlSize(.small)
                 }
             } else {
-                Picker("Printer", selection: $viewModel.selectedPrinterID) {
-                    ForEach(viewModel.printers) { printer in
-                        Text(printer.summary).tag(Optional(printer.id))
-                    }
+                // Which printer is chosen is settled in the bar above the film;
+                // this card is what is done *to* that printer.
+                if let printer = viewModel.selectedPrinter {
+                    Text(printer.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .labelsHidden()
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
 
                 // One row of equal buttons, so the column reads as a column
                 // rather than as three differently-sized things.
@@ -397,81 +670,6 @@ public struct PrintSettingsView: View {
         }
     }
 
-    // MARK: Basic settings
-
-    private var basicSection: some View {
-        bandGroup("Film") {
-            stackedControl("Layout") {
-                Picker("Layout mode", selection: $viewModel.layoutMode) {
-                    ForEach(PrintViewModel.LayoutMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-            }
-
-            switch viewModel.layoutMode {
-            case .matchViewer, .automatic:
-                EmptyView()
-            case .explicit:
-                stackedControl("Grid") {
-                    Picker("Grid", selection: $viewModel.layoutOption) {
-                        ForEach(PrintLayoutOption.allCases) { option in
-                            Text(option.displayName).tag(option)
-                        }
-                    }
-                    .labelsHidden()
-                }
-            case .template:
-                stackedControl("Preset") {
-                    Picker("Preset", selection: $viewModel.templatePreset) {
-                        ForEach(PrintTemplatePreset.allCases) { preset in
-                            Text(preset.displayName).tag(preset)
-                        }
-                    }
-                    .labelsHidden()
-                }
-            }
-
-            stackedControl("Film size") {
-                Picker("Film size", selection: $viewModel.filmSize) {
-                    ForEach(PrintOptionCatalog.filmSizes, id: \.cliToken) { entry in
-                        Text(entry.label).tag(entry.value)
-                    }
-                }
-                .labelsHidden()
-                .disabled(viewModel.layoutMode == .template)
-            }
-
-            stackedControl("Orientation") {
-                Picker("Orientation", selection: $viewModel.filmOrientation) {
-                    ForEach(PrintOptionCatalog.orientations, id: \.cliToken) { entry in
-                        Text(entry.label).tag(entry.value)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-                .disabled(viewModel.layoutMode == .template)
-            }
-
-            stackedControl("Copies") {
-                Stepper(value: $viewModel.copies, in: 1...99) {
-                    Text("\(viewModel.copies)")
-                        .monospacedDigit()
-                }
-                .controlSize(.small)
-            }
-
-            Text(layoutCaption)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
     /// One line explaining what the chosen layout mode will do.
     private var layoutCaption: String {
         switch viewModel.layoutMode {
@@ -486,6 +684,11 @@ public struct PrintSettingsView: View {
             return "Fixed grid"
         case .template:
             return "Film size and orientation are set by the preset."
+        case .custom:
+            guard let format = viewModel.customLayoutFormat else {
+                return "\(viewModel.customLayoutText) is not an Image Display Format"
+            }
+            return format.summary
         }
     }
 
@@ -545,8 +748,8 @@ public struct PrintSettingsView: View {
             // Tight to the panel: the film is the thing being judged, and every
             // point of padding is a point it cannot use. Its own aspect ratio
             // still decides its shape.
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 4)
     }
 
     // MARK: Cell inspector
@@ -830,6 +1033,7 @@ public struct PrintSettingsView: View {
                 Divider()
 
                 arrangementToggle
+                identificationControls
             }
         } else {
             VStack(alignment: .leading, spacing: 8) {
@@ -841,8 +1045,37 @@ public struct PrintSettingsView: View {
                 Divider()
 
                 arrangementToggle
+                identificationControls
             }
         }
+    }
+
+    /// Whether the film names its patient, and where it says so.
+    ///
+    /// The two halves of one decision, together: a caption under every image is
+    /// the right answer for a sheet that mixes studies and repetitive noise on a
+    /// sheet that does not, and the reader can only judge that with the film in
+    /// front of them — which is where this panel is.
+    @ViewBuilder
+    private var identificationControls: some View {
+        Toggle("Patient identification", isOn: $viewModel.showPatientIdentification)
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .help("Print the patient, ID, study date and description on the film")
+
+        Picker("Caption", selection: $viewModel.identificationPlacement) {
+            ForEach(PrintIdentificationPlacement.allCases, id: \.self) { placement in
+                Text(placement.title).tag(placement)
+            }
+        }
+        .controlSize(.small)
+        .disabled(!viewModel.showPatientIdentification)
+        .help(viewModel.identificationPlacement.help)
+
+        Text(viewModel.identificationPlacement.help)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// Arrangement is a job-wide switch, not a windowing control, so a window
@@ -1130,42 +1363,28 @@ public struct PrintSettingsView: View {
         }
     }
 
-    // MARK: - Footer
+}
 
-    private var footer: some View {
-        HStack {
-            if !viewModel.history.isEmpty, viewModel.phase == .configuring {
-                Menu("Recent Jobs") {
-                    ForEach(viewModel.history.prefix(10)) { entry in
-                        Text("\(entry.success ? "✓" : "✗") \(entry.summary)")
-                    }
-                }
-                .menuStyle(.borderlessButton)
-                .frame(width: 140)
-            }
+/// Sizes the print screen for the way it is being shown.
+///
+/// A modifier rather than an inline `if`: the two branches pass *different*
+/// frame arguments, and `frame(width: nil, height: nil)` is not the same as no
+/// frame at all — it still centres the content in a frame the window would
+/// otherwise let it fill.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+private struct PrintScreenSizing: ViewModifier {
+    let presentation: PrintScreenPresentation
+    let sheetSize: CGSize
 
-            Spacer()
-
-            switch viewModel.phase {
-            case .configuring:
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button(viewModel.dryRun ? "Dry Run" : "Print") {
-                    viewModel.print()
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .disabled(!viewModel.canPrint)
-            case .preparing, .printing:
-                Button("Cancel Job", role: .destructive) { viewModel.cancel() }
-            case .finished:
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                Button("Print Again") { viewModel.reset() }
-            }
+    func body(content: Content) -> some View {
+        switch presentation {
+        case .sheet:
+            content.frame(width: sheetSize.width, height: sheetSize.height)
+        case .window:
+            content.frame(
+                minWidth: PrintSettingsView.minimumWidth,
+                minHeight: PrintSettingsView.minimumHeight)
         }
-        .padding()
     }
 }
 #endif

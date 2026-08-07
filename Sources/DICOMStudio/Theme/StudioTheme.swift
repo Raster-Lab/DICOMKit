@@ -26,15 +26,29 @@ public enum StudioColors: Sendable {
     public static let backgroundGreen: Double = 0.07
     public static let backgroundBlue: Double = 0.10
 
-    /// Neutral grey for the chrome around a reading area — the series pane, the
-    /// selection tray, and the gutter between them and the image.
+    /// Neutral grey for the mount the reading area is set into — the gutter
+    /// between the image and the panes flanking it.
     ///
     /// Deliberately lighter than the image area, which is pure black: on a
     /// reporting station the darkest thing on screen must be the picture, so the
-    /// panes read as furniture and the eye lands on the anatomy without being
+    /// chrome reads as furniture and the eye lands on the anatomy without being
     /// told to. Neutral grey rather than tinted — a colour cast next to a
     /// greyscale image shifts how its own greys are judged.
-    public static let viewerChromeWhite: Double = 0.14
+    public static let viewerChromeWhite: Double = 0.10
+
+    /// Surface of the panes flanking the reading area — the series list on the
+    /// left, the selection tray on the right.
+    ///
+    /// A clear step lighter than the gutter, because the three columns used to
+    /// sit at one tone and read as a single dark field: which of them held the
+    /// images that were about to print was a question the screen did not answer.
+    /// Lighter panes, a darker mount and a black picture put the columns on
+    /// three separate planes, and the reading area is the one that recedes.
+    public static let viewerPanelWhite: Double = 0.19
+
+    /// Header strip at the top of a pane — a step lighter again, so each column
+    /// is titled and the titles sit on a surface of their own.
+    public static let viewerPanelHeaderWhite: Double = 0.25
 
     /// Soft white for text on dark backgrounds.
     public static let textOnDarkRed: Double = 0.92
@@ -104,9 +118,24 @@ extension StudioColors {
         Color(red: backgroundRed, green: backgroundGreen, blue: backgroundBlue)
     }
 
-    /// Chrome around a reading area: the viewer's side panes and the gutter.
+    /// The mount the reading area is set into: the gutter around the image.
     public static var viewerChrome: Color {
         Color(white: viewerChromeWhite)
+    }
+
+    /// Surface of the panes flanking the reading area.
+    public static var viewerPanel: Color {
+        Color(white: viewerPanelWhite)
+    }
+
+    /// Surface of a pane's title strip.
+    public static var viewerPanelHeader: Color {
+        Color(white: viewerPanelHeaderWhite)
+    }
+
+    /// Hairline along the edge where a pane meets the gutter.
+    public static var viewerPanelEdge: Color {
+        Color.black.opacity(0.55)
     }
 
     /// Fill behind the selected study in the library.

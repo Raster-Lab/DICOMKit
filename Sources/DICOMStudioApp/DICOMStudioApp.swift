@@ -32,6 +32,28 @@ struct DICOMStudioApp: App {
         }
         .defaultSize(width: 1320, height: 880)
         .windowResizability(.contentMinSize)
+        // Restored at launch it comes up with the server stopped and no films —
+        // an emulator nobody asked for, over the study list. A launch shows the
+        // library; the emulator opens from the sidebar, when it is wanted.
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(.suppressed)
+
+        // The print preview is held up against the images it was made from, so
+        // it is a window rather than a sheet over the viewer — it can sit beside
+        // the viewer or move to a second display. One `Window`, not a
+        // `WindowGroup`: there is one print job being composed, and printing
+        // again raises the window that already has it.
+        Window("Print Preview", id: StudioWindowID.printPreview) {
+            PrintSettingsView(viewModel: viewModel.printViewModel,
+                              presentation: .window)
+        }
+        .defaultSize(width: 1400, height: 900)
+        .windowResizability(.contentMinSize)
+        // The window belongs to a print job, and a print job does not survive
+        // the app: restored at launch it comes up holding no marks at all. It
+        // opens when something is sent to it and not before.
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(.suppressed)
 
         Settings {
             SettingsView(viewModel: SettingsViewModel(settingsService: viewModel.settingsService))

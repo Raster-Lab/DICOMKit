@@ -25,26 +25,46 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
     private let renderDevice: MetalRenderDevice
     private let pool: UnifiedMemoryPool
 
-    /// Persistent table buffers, reused across renders.
+    /// Free table buffers, reused across renders.
     ///
     /// A window drag changes the table on every mouse delta, so these are written
     /// often — but they are allocated once. 64 KB written per drag step is the
     /// *entire* per-frame data movement in this design.
+    ///
+    /// A free list rather than one buffer per slot: a table is written by the CPU and
+    /// then read by a dispatch that runs *after* the lock is released, so a buffer
+    /// held across renders is shared mutable state between them. Concurrent renders —
+    /// a pane of series thumbnails is a dozen of them at once — would then trample
+    /// each other's window table and window a CT with an MR's LUT. Each dispatch
+    /// borrows its tables for its own lifetime and returns them when it completes.
     private let lock = NSLock()
-    private var tableBuffers: [Int: MTLBuffer] = [:]
+    private var freeTableBuffers: [MTLBuffer] = []
 
-    /// Frames smaller than this render on the CPU instead.
+    /// How many table buffers to keep between renders. Above the peak concurrency a
+    /// viewer actually reaches, so the steady state still allocates nothing.
+    private static let retainedTableBuffers = 16
+
+    /// Frames smaller than this render on the CPU instead. **Zero: no frame is
+    /// declined for being small.**
     ///
-    /// Measured, not guessed. A dispatch — encode, commit, wait — costs about
-    /// 0.24 ms whatever the image size, while the LUT-based CPU renderer runs at
-    /// roughly 0.53 ms per megapixel. Below about half a megapixel the fixed cost
-    /// dominates and the GPU *loses*: on an M4 a 512×512 CT takes 0.156 ms on the
-    /// CPU and 0.254 ms on the GPU.
+    /// This was one megapixel, from a measurement that still holds: a dispatch —
+    /// encode, commit, wait — costs about 0.24 ms whatever the image size, while
+    /// the LUT-based CPU renderer runs at roughly 0.53 ms per megapixel, so below
+    /// about half a megapixel the fixed cost dominates and the GPU loses on raw
+    /// time. On an M4 a 512×512 CT takes 0.156 ms on the CPU and 0.254 ms on the GPU.
     ///
-    /// One megapixel leaves margin past that crossover, and it keeps every
-    /// thumbnail- and tile-sized render (256, 512 and 1024 px caps) on the CPU,
-    /// where they belong — those are the renders a viewer does most of.
-    public static let minimumGPUPixelCount = 1_000_000
+    /// It is nevertheless zero by project policy: the GPU renders every frame it
+    /// can, and the CPU is a fallback for when there is no GPU — not a faster
+    /// alternative to be selected into. The ~0.1 ms this concedes on small frames
+    /// buys one rendering path to reason about instead of a size-dependent pair.
+    /// Nothing about the *picture* changes either way: `MetalCPUEquivalenceTests`
+    /// holds GPU and CPU output to byte-for-byte equality, so this is a pure
+    /// scheduling decision.
+    ///
+    /// The constant and the `minimumPixelCount` parameter are kept rather than
+    /// deleted so benchmarks can still measure the crossover, and so restoring a
+    /// threshold is a one-line change if the concession ever stops being worth it.
+    public static let minimumGPUPixelCount = 0
 
     /// The threshold this instance applies. Lowered to 0 by the equivalence tests,
     /// which must exercise the kernels on small synthetic frames — the shader's
@@ -189,10 +209,10 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             bytesPerRow: stride,
             isGrayscale: true,
             destination: destination,
-            configure: { encoder, input, output in
+            configure: { encoder, input, output, lease in
                 encoder.setBuffer(input, offset: 0, index: 0)
                 encoder.setBytes(&params, length: MemoryLayout<MonochromeParams>.stride, index: 1)
-                guard let table = self.tableBuffer(lut.table, slot: 0) else { return false }
+                guard let table = self.tableBuffer(lut.table, lease: lease) else { return false }
                 encoder.setBuffer(table, offset: 0, index: 2)
                 encoder.setBuffer(output, offset: 0, index: 3)
                 return true
@@ -261,10 +281,10 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             bytesPerRow: stride,
             isGrayscale: false,
             destination: destination,
-            configure: { encoder, input, output in
+            configure: { encoder, input, output, lease in
                 encoder.setBuffer(input, offset: 0, index: 0)
                 encoder.setBytes(&params, length: MemoryLayout<ColorParams>.stride, index: 1)
-                guard let table = self.tableBuffer(lut.table, slot: 0) else { return false }
+                guard let table = self.tableBuffer(lut.table, lease: lease) else { return false }
                 encoder.setBuffer(table, offset: 0, index: 2)
                 encoder.setBuffer(output, offset: 0, index: 3)
                 return true
@@ -311,12 +331,12 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             bytesPerRow: stride,
             isGrayscale: false,
             destination: destination,
-            configure: { encoder, input, output in
+            configure: { encoder, input, output, lease in
                 encoder.setBuffer(input, offset: 0, index: 0)
                 encoder.setBytes(&params, length: MemoryLayout<PaletteParams>.stride, index: 1)
-                guard let red = self.tableBuffer(lut.red, slot: 0),
-                      let green = self.tableBuffer(lut.green, slot: 1),
-                      let blue = self.tableBuffer(lut.blue, slot: 2) else { return false }
+                guard let red = self.tableBuffer(lut.red, lease: lease),
+                      let green = self.tableBuffer(lut.green, lease: lease),
+                      let blue = self.tableBuffer(lut.blue, lease: lease) else { return false }
                 encoder.setBuffer(red, offset: 0, index: 2)
                 encoder.setBuffer(green, offset: 0, index: 3)
                 encoder.setBuffer(blue, offset: 0, index: 4)
@@ -395,7 +415,7 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
         bytesPerRow: Int,
         isGrayscale: Bool,
         destination: Destination,
-        configure: (MTLComputeCommandEncoder, MTLBuffer, MTLBuffer) -> Bool
+        configure: (MTLComputeCommandEncoder, MTLBuffer, MTLBuffer, TableLease) -> Bool
     ) -> RenderOutput? {
         let outputByteCount = bytesPerRow * geometry.height
         guard let pipeline = renderDevice.pipelineState(for: kernel),
@@ -406,8 +426,12 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             return nil
         }
 
+        // Tables belong to this dispatch alone until the GPU is done reading them.
+        let lease = TableLease()
+        defer { returnTables(lease) }
+
         encoder.setComputePipelineState(pipeline)
-        guard configure(encoder, input, output) else {
+        guard configure(encoder, input, output, lease) else {
             encoder.endEncoding()
             pool.recycle(output)
             return nil
@@ -511,16 +535,25 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
         )
     }
 
-    /// Writes a byte table into a reusable shared buffer.
+    /// The table buffers one dispatch has borrowed — the palette kernel takes three,
+    /// live simultaneously — held until that dispatch completes.
+    final class TableLease {
+        fileprivate var buffers: [MTLBuffer] = []
+    }
+
+    /// Writes a byte table into a shared buffer borrowed for this dispatch.
     ///
-    /// `slot` separates the three palette tables, which are live simultaneously.
-    private func tableBuffer(_ table: [UInt8], slot: Int) -> MTLBuffer? {
+    /// The buffer is the dispatch's own until ``returnTables(_:)`` hands it back, so
+    /// a render running concurrently cannot overwrite the table this one is about to
+    /// read.
+    private func tableBuffer(_ table: [UInt8], lease: TableLease) -> MTLBuffer? {
         lock.lock()
-        defer { lock.unlock() }
+        let reused = freeTableBuffers.popLast()
+        lock.unlock()
 
         let buffer: MTLBuffer
-        if let existing = tableBuffers[slot], existing.length >= table.count {
-            buffer = existing
+        if let reused, reused.length >= table.count {
+            buffer = reused
         } else {
             // Always allocate the largest table size so a switch between 8- and
             // 16-bit images does not reallocate.
@@ -528,7 +561,6 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
                 length: 65_536,
                 options: [.storageModeShared, .hazardTrackingModeUntracked]
             ) else { return nil }
-            tableBuffers[slot] = created
             buffer = created
         }
 
@@ -536,7 +568,19 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             guard let base = source.baseAddress else { return }
             buffer.contents().copyMemory(from: base, byteCount: table.count)
         }
+        lease.buffers.append(buffer)
         return buffer
+    }
+
+    /// Returns a completed dispatch's tables for the next render to borrow.
+    private func returnTables(_ lease: TableLease) {
+        guard !lease.buffers.isEmpty else { return }
+        lock.lock()
+        for buffer in lease.buffers where freeTableBuffers.count < Self.retainedTableBuffers {
+            freeTableBuffers.append(buffer)
+        }
+        lock.unlock()
+        lease.buffers.removeAll()
     }
 
     // MARK: - Diagnostics
@@ -546,7 +590,12 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
     var memoryCounters: UnifiedMemoryPool.Counters { pool.counters }
 
     /// Releases pooled GPU memory.
-    public func purgeCaches() { pool.purge() }
+    public func purgeCaches() {
+        lock.lock()
+        freeTableBuffers.removeAll()
+        lock.unlock()
+        pool.purge()
+    }
 }
 
 /// Keeps an output buffer alive for exactly as long as the `CGImage` reading it,

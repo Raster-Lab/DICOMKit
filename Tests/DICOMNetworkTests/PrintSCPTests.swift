@@ -151,6 +151,40 @@ final class PrintImageDisplayFormatTests: XCTestCase {
         XCTAssertEqual(format.imageBoxCount, 1)
         XCTAssertEqual(format.layout, PrintLayout(rows: 1, columns: 1))
     }
+
+    func testValidatedRefusesWhatParseWouldHaveGuessedAt() {
+        // The SCP's lenient fallback is the wrong answer for a UI or a command
+        // line: "it fell back to 1×1" and "the user asked for 1×1" have to be
+        // told apart before a film is composed from the wrong layout.
+        XCTAssertNil(PrintImageDisplayFormat.validated("NONSENSE"))
+        XCTAssertNil(PrintImageDisplayFormat.validated("ROW\\"))
+        XCTAssertNil(PrintImageDisplayFormat.validated("ROW"))
+        XCTAssertNil(PrintImageDisplayFormat.validated("STANDARD\\2"))
+        XCTAssertNil(PrintImageDisplayFormat.validated(""))
+
+        XCTAssertEqual(PrintImageDisplayFormat.validated("ROW\\1,2")?.imageBoxCount, 3)
+        XCTAssertEqual(PrintImageDisplayFormat.validated("standard\\2,2")?.imageBoxCount, 4)
+    }
+
+    func testAGridIsWrittenAsTheStandardFormItSends() {
+        let format = PrintImageDisplayFormat(layout: PrintLayout(rows: 3, columns: 2))
+        XCTAssertEqual(format.raw, "STANDARD\\2,3")
+        XCTAssertEqual(format.imageBoxCount, 6)
+        XCTAssertTrue(format.isUniformGrid)
+        XCTAssertEqual(PrintImageDisplayFormat.parse(format.raw), format)
+    }
+
+    func testOnlyStandardIsAUniformGrid() {
+        XCTAssertFalse(PrintImageDisplayFormat.parse("ROW\\1,2").isUniformGrid)
+        XCTAssertFalse(PrintImageDisplayFormat.parse("COL\\1,2").isUniformGrid)
+        XCTAssertTrue(PrintImageDisplayFormat.parse("STANDARD\\2,2").isUniformGrid)
+    }
+
+    func testSummaryDescribesWhatIsLaidOut() {
+        XCTAssertEqual(PrintImageDisplayFormat.parse("STANDARD\\2,3").summary, "3 × 2 grid, 6 images")
+        XCTAssertEqual(PrintImageDisplayFormat.parse("ROW\\1,3").summary, "rows of 1, 3 — 4 images")
+        XCTAssertEqual(PrintImageDisplayFormat.parse("COL\\1,2").summary, "columns of 1, 2 — 3 images")
+    }
 }
 
 final class PrintSCPParserTests: XCTestCase {
@@ -626,6 +660,50 @@ final class PrintSCPLoopbackTests: XCTestCase {
         let film = try XCTUnwrap(films.first)
         XCTAssertEqual(film.annotationDisplayFormatID, "ANNO1")
         XCTAssertEqual(film.annotations, [PrintAnnotation(position: 1, text: "DOE^JANE")])
+    }
+
+    /// A job whose sheets hold different studies footers each sheet with its
+    /// own patient. One job-wide annotation list could only ever say one of
+    /// them, which on the second film is the wrong name.
+    func testEachFilmCarriesItsOwnAnnotations() async throws {
+        let images = (0..<4).map { _ in makeImage(size: 4) }
+        let result = try await DICOMPrintService.printImages(
+            configuration: configuration(),
+            images: images.map { $0.0 },
+            options: PrintOptions(
+                annotationDisplayFormatID: "ANNO1",
+                filmAnnotations: [
+                    [PrintAnnotation(position: 1, text: "DOE^JANE")],
+                    [PrintAnnotation(position: 1, text: "ROE^RICHARD")]
+                ]),
+            imageDescriptors: images.map { $0.1 },
+            layout: PrintLayout(rows: 1, columns: 2))
+
+        XCTAssertTrue(result.success, result.errorMessage ?? "")
+        let films = await handler.films
+        XCTAssertEqual(films.count, 2)
+        XCTAssertEqual(films[0].annotations.map(\.text), ["DOE^JANE"])
+        XCTAssertEqual(films[1].annotations.map(\.text), ["ROE^RICHARD"])
+    }
+
+    /// Whether a footer can be sent at all is answered by negotiation, and it is
+    /// asked before the pixels are prepared — a printer that takes annotation
+    /// boxes gets the caption once per film, and one that does not gets it
+    /// burned under each image.
+    func testAnnotationBoxSupportIsDiscoverable() async throws {
+        let supported = await DICOMPrintService.supportsAnnotationBoxes(
+            configuration: configuration())
+        XCTAssertTrue(supported)
+    }
+
+    /// A printer that is not there is not a reason to fail: the answer is "no
+    /// annotation boxes", and the caller burns the caption instead.
+    func testAnnotationBoxSupportIsFalseWhenThePrinterIsUnreachable() async throws {
+        let supported = await DICOMPrintService.supportsAnnotationBoxes(
+            configuration: PrintConfiguration(
+                host: "127.0.0.1", port: 1, callingAETitle: "TEST_SCU",
+                calledAETitle: "TEST_SCP", timeout: 2))
+        XCTAssertFalse(supported)
     }
 
     func testDelegateFailurePropagatesToTheSCU() async throws {

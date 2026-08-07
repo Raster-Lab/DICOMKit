@@ -55,13 +55,37 @@ public enum PrintLayoutSelection: Sendable, Equatable {
     /// is on screen; most of those have no catalogue entry.
     case custom(PrintLayout)
 
-    /// The resolved layout, or `nil` for `.automatic` (the service decides).
+    /// A raw Image Display Format (2010,0010) — the `ROW\` and `COL\` films of
+    /// PS3.3 C.13.3, whose rows hold different numbers of images.
+    ///
+    /// A grid cannot say "one large image over three small ones", which is how a
+    /// scout-plus-slices film is laid out and what the standard's band forms
+    /// exist for. The format travels as written, so what the printer receives is
+    /// what was typed.
+    case displayFormat(PrintImageDisplayFormat)
+
+    /// The bounding grid, or `nil` for `.automatic` (the service decides).
+    ///
+    /// For a band layout this is the *bounding* grid and not the film: use
+    /// ``imageDisplayFormat`` for anything that lays cells out or counts them.
     public var layout: PrintLayout? {
         switch self {
         case .automatic:            return nil
         case .explicit(let option): return option.layout
         case .template(let preset): return preset.layout
         case .custom(let layout):   return layout
+        case .displayFormat(let format): return format.layout
+        }
+    }
+
+    /// The Image Display Format this selection sends, or `nil` for `.automatic`.
+    public var imageDisplayFormat: PrintImageDisplayFormat? {
+        switch self {
+        case .automatic:                 return nil
+        case .explicit(let option):      return PrintImageDisplayFormat(layout: option.layout)
+        case .template(let preset):      return PrintImageDisplayFormat.parse(preset.template.imageDisplayFormat)
+        case .custom(let layout):        return PrintImageDisplayFormat(layout: layout)
+        case .displayFormat(let format): return format
         }
     }
 }
@@ -141,6 +165,14 @@ public struct PrintJobRequest: Sendable {
     public var annotations: [DICOMNetwork.PrintAnnotation]
     /// Printer-configured Annotation Display Format ID (2010,0030).
     public var annotationDisplayFormatID: String?
+    /// Annotations for one film each, overriding ``annotations`` on the films
+    /// they name — the patient footer of a job whose sheets hold different
+    /// studies (see ``FilmIdentificationPlanner``).
+    ///
+    /// Composed film draws these itself; on the wire they still need
+    /// ``annotationDisplayFormatID``, and a caller that has none burns the
+    /// caption into the pixels instead.
+    public var filmAnnotations: [[DICOMNetwork.PrintAnnotation]]
 
     // MARK: Pixel preparation
 
@@ -186,6 +218,7 @@ public struct PrintJobRequest: Sendable {
         presentationLUTShape: PresentationLUTShape? = nil,
         annotations: [DICOMNetwork.PrintAnnotation] = [],
         annotationDisplayFormatID: String? = nil,
+        filmAnnotations: [[DICOMNetwork.PrintAnnotation]] = [],
         colorMode: DICOMNetwork.PrintColorMode = .grayscale,
         frameSelection: PrintFrameSelection = .first,
         raw: Bool = false,
@@ -214,6 +247,7 @@ public struct PrintJobRequest: Sendable {
         self.presentationLUTShape = presentationLUTShape
         self.annotations = annotations
         self.annotationDisplayFormatID = annotationDisplayFormatID
+        self.filmAnnotations = filmAnnotations
         self.colorMode = colorMode
         self.frameSelection = frameSelection
         self.raw = raw
@@ -242,6 +276,11 @@ public struct PrintJobRequest: Sendable {
 
     /// The resolved layout, or `nil` when the service should choose one.
     public var resolvedLayout: PrintLayout? { layoutSelection.layout }
+
+    /// The Image Display Format sent, or `nil` when the service should choose one.
+    public var resolvedDisplayFormat: PrintImageDisplayFormat? {
+        layoutSelection.imageDisplayFormat
+    }
 
     /// The DICOMKit-side color mode used by `ImagePreprocessor`.
     ///
@@ -272,7 +311,8 @@ public struct PrintJobRequest: Sendable {
             presentationLUTShape: presentationLUTShape,
             annotations: annotations,
             annotationDisplayFormatID: annotationDisplayFormatID,
-            configurationInformation: configurationInformation
+            configurationInformation: configurationInformation,
+            filmAnnotations: filmAnnotations
         )
     }
 
@@ -284,10 +324,10 @@ public struct PrintJobRequest: Sendable {
     /// answer is always one film.
     public func filmCount(forImageCount imageCount: Int) -> Int {
         guard imageCount > 0 else { return 0 }
-        guard let layout = resolvedLayout else {
+        guard let format = resolvedDisplayFormat else {
             return PrintPlan.automaticFilmCount(forImageCount: imageCount)
         }
-        let cells = max(1, layout.rows * layout.columns)
+        let cells = max(1, format.imageBoxCount)
         return max(1, (imageCount + cells - 1) / cells)
     }
 
@@ -337,7 +377,13 @@ public struct PrintPlan: Sendable, Equatable {
     /// Number of images to be placed.
     public let imageCount: Int
     /// Rows × columns actually used (resolved, never `nil`).
+    ///
+    /// The *bounding* grid of the film. For a `ROW\` or `COL\` layout the cells
+    /// are not that grid — ``displayFormat`` is what describes the film, and
+    /// ``cells(onSheetOfWidth:height:margin:spacing:)`` is what lays it out.
     public let layout: (rows: Int, columns: Int)
+    /// The Image Display Format the film boxes carry.
+    public let displayFormat: PrintImageDisplayFormat
     /// Number of physical films.
     public let filmCount: Int
     /// Cells per film.
@@ -361,9 +407,11 @@ public struct PrintPlan: Sendable, Equatable {
 
     init(request: PrintJobRequest, imageCount: Int) {
         self.imageCount = imageCount
-        let resolved = request.resolvedLayout ?? PrintPlan.automaticLayout(forImageCount: imageCount)
-        self.layout = (resolved.rows, resolved.columns)
-        self.cellsPerFilm = max(1, resolved.rows * resolved.columns)
+        let format = request.resolvedDisplayFormat
+            ?? PrintImageDisplayFormat(layout: PrintPlan.automaticLayout(forImageCount: imageCount))
+        self.displayFormat = format
+        self.layout = (format.layout.rows, format.layout.columns)
+        self.cellsPerFilm = max(1, format.imageBoxCount)
         self.filmCount = imageCount > 0
             ? max(1, (imageCount + self.cellsPerFilm - 1) / self.cellsPerFilm)
             : 0
@@ -372,8 +420,53 @@ public struct PrintPlan: Sendable, Equatable {
         self.filmOrientation = request.effectiveFilmOrientation
     }
 
+    /// The cells this film lays out on a sheet of the given size, in that sheet's
+    /// own units, in Image Box Position order.
+    ///
+    /// The same ``FilmCellLayout`` the SCP composes received film with, so a
+    /// preview drawn from these rectangles is drawn by the code that prints.
+    public func cells(
+        onSheetOfWidth width: Double,
+        height: Double,
+        margin: Double = 5,
+        spacing: Double = 2,
+        footer: Double = 0
+    ) -> [FilmCell] {
+        // A sheet at 25.4 dpi is one unit per millimetre, so the caller's units
+        // pass straight through: the layout maths cares only about proportion.
+        let sheet = FilmSheet(widthMillimeters: width, heightMillimeters: height, dpi: 25.4)
+        return FilmCellLayout.cells(
+            for: displayFormat, on: sheet,
+            marginMillimeters: margin, spacingMillimeters: spacing,
+            footerMillimeters: footer)
+    }
+
+    /// The identification footer's depth in the units of a sheet drawn `height`
+    /// units tall — the millimetres it takes on real film, to the same scale.
+    ///
+    /// A preview is a few hundred points tall and the film is a few hundred
+    /// millimetres; taking the strip straight in the caller's units would draw
+    /// a footer of the wrong proportion, and the preview's whole job is to show
+    /// what the sheet will look like.
+    public func footerUnits(forLineCount lineCount: Int, sheetHeight height: Double) -> Double {
+        guard lineCount > 0, height > 0, sheetHeightMillimeters > 0 else { return 0 }
+        return FilmIdentificationFooter.heightMillimeters(
+            lineCount: lineCount, sheetHeightMillimeters: sheetHeightMillimeters)
+            * (height / sheetHeightMillimeters)
+    }
+
+    /// The height of the sheet this job prints on, in millimetres.
+    ///
+    /// What the footer's type is scaled against: a caption is read at the
+    /// distance its film is read from, and that goes with the sheet.
+    public var sheetHeightMillimeters: Double {
+        FilmSheet(filmSize: filmSize, orientation: filmOrientation, dpi: 25.4)
+            .heightMillimeters
+    }
+
     public static func == (lhs: PrintPlan, rhs: PrintPlan) -> Bool {
         lhs.imageCount == rhs.imageCount
+            && lhs.displayFormat == rhs.displayFormat
             && lhs.layout == rhs.layout
             && lhs.filmCount == rhs.filmCount
             && lhs.cellsPerFilm == rhs.cellsPerFilm

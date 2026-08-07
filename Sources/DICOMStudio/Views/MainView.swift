@@ -15,17 +15,29 @@ import SwiftUI
 public struct MainView: View {
     @Bindable var viewModel: MainViewModel
 
-    /// The shell owns the split's column visibility so the sidebar is ALWAYS shown
-    /// on launch. Without this, NavigationSplitView is free to drop to `.detailOnly`
-    /// whenever a detail view (e.g. the wide CLI Parity / network forms) demands more
-    /// width than the window can spare — and macOS then persists that collapsed state,
-    /// so the navigation sidebar goes missing on the landing page across launches.
-    /// Defaulting to `.all` (and pinning the sidebar's column width in SidebarView)
-    /// keeps it visible while leaving the toolbar toggle free to collapse it on demand.
+    /// The shell owns the split's column visibility so the sidebar is shown on
+    /// launch and never disappears by accident. Without this, NavigationSplitView is
+    /// free to drop to `.detailOnly` whenever a detail view (e.g. the wide CLI Parity
+    /// / network forms) demands more width than the window can spare — and macOS then
+    /// persists that collapsed state, so the navigation sidebar goes missing on the
+    /// landing page across launches. Defaulting to `.all` (and pinning the sidebar's
+    /// column width in SidebarView) keeps it visible while leaving the toolbar toggle
+    /// free to collapse it on demand.
+    ///
+    /// The viewer is the one deliberate exception, driven from `onChange` below.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    #if os(macOS)
+    @Environment(\.dismissWindow) private var dismissWindow
+    #endif
 
     public init(viewModel: MainViewModel) {
         self.viewModel = viewModel
+        // Launching straight into the viewer — a file opened from the Finder,
+        // say — never crosses `onChange`, so the sidebar has to start collapsed
+        // rather than be collapsed on arrival.
+        _columnVisibility = State(
+            initialValue: viewModel.selectedDestination == .viewer ? .detailOnly : .all)
     }
 
     public var body: some View {
@@ -43,17 +55,26 @@ public struct MainView: View {
             }
         }
         .navigationTitle("DICOM Studio")
+        // The viewer reads full-width. Every other screen is a feature being
+        // used, and the feature list beside it is how the user got there and
+        // where they go next; the viewer is the one screen whose subject is the
+        // picture, and the list of everything the app can do is chrome charged
+        // against it. So the sidebar steps aside on the way in and comes back on
+        // the way out — the toolbar toggle still opens it over the images for
+        // anyone who wants it, and that choice survives until the viewer is left.
+        .onChange(of: viewModel.selectedDestination) { _, destination in
+            columnVisibility = destination == .viewer ? .detailOnly : .all
+        }
         #if os(macOS)
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    viewModel.toggleInspector()
-                } label: {
-                    Image(systemName: "sidebar.right")
-                }
-                .accessibilityLabel("Toggle Inspector")
-                .help("Toggle Inspector Panel")
-            }
+        // Opening a study clears the print marks, and the print preview window
+        // was composed from the study being left — so it comes down with them
+        // rather than staying up over a different patient's images.
+        //
+        // Watched here rather than in the viewer: the study may be opened while
+        // the library is on screen, and the viewer that would have seen the
+        // signal does not exist until a moment later.
+        .onChange(of: viewModel.imageViewerViewModel.printScreenDismissRequests) { _, _ in
+            dismissWindow(id: StudioWindowID.printPreview)
         }
         #endif
     }

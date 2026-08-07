@@ -105,6 +105,19 @@ public enum PrintWorkflow {
         }
     }
 
+    /// Whether this printer can carry film-level annotation text.
+    ///
+    /// Asked before the frames are prepared, because the answer decides how they
+    /// are prepared: a film footer travels as a Basic Annotation Box, and a
+    /// printer that has none needs the caption burned into each image instead.
+    /// Costs one short association; a printer that cannot be reached answers
+    /// `false`, so the job falls back to burning rather than to nothing.
+    public static func supportsAnnotationBoxes(
+        configuration: PrintConfiguration
+    ) async -> Bool {
+        await DICOMPrintService.supportsAnnotationBoxes(configuration: configuration)
+    }
+
     // MARK: Execute
 
     /// Prints the prepared images, honoring the request's retry policy.
@@ -130,6 +143,9 @@ public enum PrintWorkflow {
         let descriptors = images.imageDescriptors
         let options = request.printOptions
         let layout = request.resolvedLayout
+        // Carries the band layouts a grid cannot state; nil lets the SCU size the
+        // grid to the image count, as before.
+        let displayFormat = request.resolvedDisplayFormat
 
         let eventHandler: PrintEventHandler? = diagnostics.map { handler -> PrintEventHandler in
             { (event: PrintEvent) in handler(.event(event)) }
@@ -147,6 +163,7 @@ public enum PrintWorkflow {
                     options: options,
                     imageDescriptors: descriptors,
                     layout: layout,
+                    displayFormat: displayFormat,
                     eventHandler: eventHandler,
                     progressHandler: progress
                 )

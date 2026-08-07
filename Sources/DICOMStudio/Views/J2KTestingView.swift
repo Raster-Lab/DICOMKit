@@ -153,8 +153,9 @@ public struct J2KTestingView: View {
                         Spacer()
                     }
                 }
-                Text("Frames under \(MetalFrameRenderer.minimumGPUPixelCount / 1_000_000) MP, "
-                     + "YBR colour and auto-windowed frames always render on the CPU. "
+                Text("Every frame the GPU can render goes to the GPU, at any size. "
+                     + "YBR colour and auto-windowed frames render on the CPU, as do "
+                     + "all frames when there is no Metal device. "
                      + "Set DICOMKIT_RENDER_BACKEND=cpu to force it.")
                     .font(.system(size: StudioTypography.captionSize - 1))
                     .foregroundStyle(.secondary)

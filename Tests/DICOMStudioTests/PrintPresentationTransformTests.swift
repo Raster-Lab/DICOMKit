@@ -83,6 +83,59 @@ struct PrintPresentationTransformTests {
 
     // MARK: - Flips
 
+    // MARK: - Free angles
+
+    @Test("A free angle is carried to film rather than snapped upright")
+    func testFreeAngleIsRotated() {
+        // 20° is nobody's quarter turn: before, the film printed this upright.
+        let image = grayImage(width: 4, height: 4)
+        let result = PrintPresentationTransform.apply(
+            ViewerPresentation(rotationDegrees: 20), to: image)
+
+        // The turned picture needs a bigger box than the square it came from:
+        // 4·cos20 + 4·sin20 ≈ 5.13 → 5.
+        #expect(result.columns == 5)
+        #expect(result.rows == 5)
+        #expect(result != image, "the pixels are turned, not passed through")
+    }
+
+    @Test("The corners the turn leaves empty are film background, not smeared edge")
+    func testFreeAngleCornersAreBackground() {
+        let image = grayImage(width: 8, height: 8)
+        let result = PrintPresentationTransform.apply(
+            ViewerPresentation(rotationDegrees: 45), to: image)
+
+        let pixels = values(result)
+        let width = Int(result.columns)
+        #expect(pixels[0] == 0, "top-left corner is outside the turned picture")
+        #expect(pixels[width - 1] == 0, "and so is the top-right")
+        #expect(pixels[pixels.count - 1] == 0)
+    }
+
+    @Test("An angle a hair off a quarter turn is still taken exactly")
+    func testNearQuarterTurnStaysExact() {
+        // The rotate tool emits a float per mouse event; 90° must not become a
+        // resampling rotation because it arrived as 90.0000000001.
+        let image = grayImage(width: 3, height: 2)
+        let exact = PrintPresentationTransform.apply(
+            ViewerPresentation(rotationDegrees: 90), to: image)
+        let nearly = PrintPresentationTransform.apply(
+            ViewerPresentation(rotationDegrees: 90 + 1e-9), to: image)
+
+        #expect(values(nearly) == values(exact))
+        #expect(nearly.columns == exact.columns)
+    }
+
+    @Test("Turning by 45° twice is a quarter turn's shape")
+    func testFreeAngleGeometryIsConsistent() {
+        // A 10×10 turned 45° needs ⌈10·√2⌉ = 15 either way.
+        let image = grayImage(width: 10, height: 10)
+        let result = PrintPresentationTransform.apply(
+            ViewerPresentation(rotationDegrees: 45), to: image)
+        #expect(result.columns == 14 || result.columns == 15)
+        #expect(result.rows == result.columns, "a square stays square at 45°")
+    }
+
     @Test("Horizontal flip mirrors each row")
     func testFlipHorizontal() {
         let image = grayImage(width: 3, height: 2)

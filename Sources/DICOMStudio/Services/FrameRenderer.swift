@@ -50,7 +50,7 @@ enum FrameRenderer {
                 String(presentation.zoom),
                 String(presentation.panX), String(presentation.panY),
                 String(presentation.viewportWidth), String(presentation.viewportHeight),
-                String(presentation.quarterTurns),
+                String(presentation.rotationDegrees),
                 presentation.flipHorizontal ? "H" : "",
                 presentation.flipVertical ? "V" : "",
                 presentation.invert ? "I" : ""
@@ -101,29 +101,11 @@ enum FrameRenderer {
             let isMonochrome = source.pixelData.descriptor
                 .photometricInterpretation.isMonochrome
 
-            // Window *resolution* stays here and stays shared — which window a
-            // frame gets is the policy `DICOMImageExporter` owns, and both the CLI
-            // and the app must reach the same answer. Only the per-pixel mapping
-            // moves; the backend is handed a resolved window and applies it.
-            var window: WindowSettings?
-            if isMonochrome {
-                if let windowCenter, let windowWidth, windowWidth >= 1 {
-                    switch windowSpace {
-                    case .storedValues:
-                        window = WindowSettings(center: windowCenter, width: windowWidth)
-                    case .outputUnits:
-                        // The shared policy's explicit rung: output units in,
-                        // stored values out, through this file's rescale pair.
-                        window = DICOMImageExporter.determineWindowSettings(
-                            from: file, pixelData: source.pixelData, frameIndex: frameIndex,
-                            windowCenter: windowCenter, windowWidth: windowWidth)
-                    }
-                } else {
-                    window = DICOMImageExporter.determineWindowSettings(
-                        from: file, pixelData: source.pixelData, frameIndex: frameIndex,
-                        windowCenter: nil, windowWidth: nil)
-                }
-            }
+            let window = resolvedWindow(
+                file: file, pixelData: source.pixelData, frameIndex: frameIndex,
+                isMonochrome: isMonochrome,
+                windowCenter: windowCenter, windowWidth: windowWidth,
+                windowSpace: windowSpace)
 
             // GPU when it is available, exact and worth it; CPU otherwise. The
             // service decides, and its output is byte-identical either way, so a
@@ -150,6 +132,94 @@ enum FrameRenderer {
             return downscaled(image, maxDimension: maxDimension) ?? image
         }.value
     }
+
+    /// Which window a frame gets, as one shared decision.
+    ///
+    /// Window *resolution* is the policy `DICOMImageExporter` owns, and both the
+    /// CLI and the app must reach the same answer. Only the per-pixel mapping
+    /// varies by backend — each is handed a resolved window and applies it.
+    ///
+    /// Shared by the CPU tile path and the GPU texture path below so a tile cannot
+    /// change window merely by changing which renderer drew it.
+    static func resolvedWindow(
+        file: DICOMFile,
+        pixelData: PixelData,
+        frameIndex: Int,
+        isMonochrome: Bool,
+        windowCenter: Double?,
+        windowWidth: Double?,
+        windowSpace: PrintWindowSpace
+    ) -> WindowSettings? {
+        guard isMonochrome else { return nil }
+        guard let windowCenter, let windowWidth, windowWidth >= 1 else {
+            return DICOMImageExporter.determineWindowSettings(
+                from: file, pixelData: pixelData, frameIndex: frameIndex,
+                windowCenter: nil, windowWidth: nil)
+        }
+        switch windowSpace {
+        case .storedValues:
+            return WindowSettings(center: windowCenter, width: windowWidth)
+        case .outputUnits:
+            // The shared policy's explicit rung: output units in, stored values
+            // out, through this file's rescale pair.
+            return DICOMImageExporter.determineWindowSettings(
+                from: file, pixelData: pixelData, frameIndex: frameIndex,
+                windowCenter: windowCenter, windowWidth: windowWidth)
+        }
+    }
+
+    #if canImport(Metal)
+    /// Renders one frame of a file on disk straight to a GPU texture.
+    ///
+    /// The tile equivalent of the focused viewport's display path. Everything the
+    /// CPU sibling above bakes into pixels — zoom, pan, rotation, flip, inversion —
+    /// is deliberately *absent* here: on this path the arrangement is the display
+    /// shader's transform, so a tile keeps one texture for its frame and window and
+    /// re-draws a quad when a tool moves. That is what makes a synchronised zoom or
+    /// window drag across a grid cost one redraw per tile rather than one decode.
+    ///
+    /// Two things send a tile back to the CPU. Frames with drawable overlay planes
+    /// are burned rather than drawn, exactly as the focused viewport refuses them —
+    /// a Siemens Patient Protocol has all-zero pixels and its whole content in a
+    /// 1-bit plane, so its texture would be a black square. And an unresolvable
+    /// window leaves the monochrome kernel with nothing to map, which the CPU
+    /// renderer handles by auto-windowing from the pixel range.
+    static func renderDisplayTexture(
+        path: String,
+        frameIndex: Int,
+        windowCenter: Double?,
+        windowWidth: Double?,
+        windowSpace: PrintWindowSpace = .storedValues
+    ) async -> DisplayFrameTexture? {
+        guard let renderer = FrameRenderService.shared.displayRenderer,
+              let source = await FrameSourceCache.shared.source(forPath: path) else { return nil }
+
+        return await Task.detached(priority: .userInitiated) { () -> DisplayFrameTexture? in
+            let file = source.file
+            guard !OverlayPlaneRenderer.hasOverlay(file.dataSet, forFrame: frameIndex) else {
+                return nil
+            }
+
+            let isMonochrome = source.pixelData.descriptor
+                .photometricInterpretation.isMonochrome
+            let window = resolvedWindow(
+                file: file, pixelData: source.pixelData, frameIndex: frameIndex,
+                isMonochrome: isMonochrome,
+                windowCenter: windowCenter, windowWidth: windowWidth,
+                windowSpace: windowSpace)
+            // The monochrome kernel has no auto-window: a nil window here would be
+            // rejected by the renderer anyway, so it falls to the CPU tile instead.
+            if isMonochrome && window == nil { return nil }
+
+            return renderer.renderDisplayTexture(FrameRenderRequest(
+                pixelData: source.pixelData,
+                frameIndex: frameIndex,
+                window: window,
+                paletteLUT: source.paletteLUT
+            ))
+        }.value
+    }
+    #endif
 
     /// The window a frame would be rendered with if none is supplied.
     ///
@@ -183,14 +253,17 @@ enum FrameRenderer {
             result = cropped
         }
 
-        let quarterTurns = presentation.quarterTurns
+        let rotation = presentation.rotationDegrees
         let flipH = presentation.flipHorizontal
         let flipV = presentation.flipVertical
 
-        if quarterTurns != 0 || flipH || flipV {
-            let swapsAxes = quarterTurns % 2 == 1
-            let outWidth = swapsAxes ? result.height : result.width
-            let outHeight = swapsAxes ? result.width : result.height
+        if rotation != 0 || flipH || flipV {
+            // The turned box, so a free angle keeps its corners instead of being
+            // cut to the crop's own rectangle — the same shape the film carries.
+            let turned = presentation.turnedSize(
+                width: Double(result.width), height: Double(result.height))
+            let outWidth = max(1, Int(turned.width.rounded()))
+            let outHeight = max(1, Int(turned.height.rounded()))
             guard let context = CGContext(
                 data: nil,
                 width: outWidth,
@@ -205,7 +278,7 @@ enum FrameRenderer {
             // screen space, so the clockwise turn is negated here.
             context.translateBy(x: Double(outWidth) / 2, y: Double(outHeight) / 2)
             context.scaleBy(x: flipH ? -1 : 1, y: flipV ? -1 : 1)
-            context.rotate(by: Double(quarterTurns) * .pi / 2)
+            context.rotate(by: rotation * .pi / 180)
             context.draw(result, in: CGRect(
                 x: -Double(result.width) / 2,
                 y: -Double(result.height) / 2,

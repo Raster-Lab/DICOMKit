@@ -250,6 +250,36 @@ final class MetalDisplayPathTests: XCTestCase {
         XCTAssertEqual(matrix.columns.0.y, 0, accuracy: 1e-5)
     }
 
+    /// A turned picture must keep its shape in a viewport that isn't square.
+    ///
+    /// Rotating in NDC alone would stretch it — the same two units span a wide view's
+    /// long axis as its short one — so a square image would come out of a quarter turn
+    /// as a rectangle, and would visibly breathe through the angles the rotate tool
+    /// sweeps. Measured in screen points, where the image's own extents live.
+    func testRotationPreservesShapeInNonSquareView() throws {
+        let view = (800.0, 600.0)
+        for angle in [0.0, 17.0, 45.0, 90.0, 213.5, 300.0] {
+            let matrix = try XCTUnwrap(
+                transform(DisplayPresentation(rotationDegrees: angle),
+                          image: (100, 100), view: view))
+            // Where the quad's own axes land, in points rather than NDC.
+            let xAxis = SIMD2<Double>(Double(matrix.columns.0.x) * view.0 / 2,
+                                     Double(matrix.columns.0.y) * view.1 / 2)
+            let yAxis = SIMD2<Double>(Double(matrix.columns.1.x) * view.0 / 2,
+                                     Double(matrix.columns.1.y) * view.1 / 2)
+            // Equal lengths and still at right angles: a rotation, not a shear.
+            // Tolerances are single-precision: the matrix is Float, as the shader
+            // wants it, so exact equality is not on offer at these magnitudes.
+            XCTAssertEqual(simd_length(xAxis), simd_length(yAxis), accuracy: 1e-3,
+                           "axes differ in length at \(angle)°")
+            XCTAssertEqual(simd_dot(xAxis, yAxis), 0, accuracy: 1e-2,
+                           "axes are not perpendicular at \(angle)°")
+            // And the same size as the unrotated fit — 600 points across.
+            XCTAssertEqual(simd_length(xAxis), 300, accuracy: 1e-3,
+                           "scale changed at \(angle)°")
+        }
+    }
+
     /// Pan is in view points and must land in NDC, where the view spans 2 units.
     /// Screen y grows downward while NDC y grows upward, so the sign flips.
     func testPanTranslatesInNormalisedDeviceCoordinates() throws {

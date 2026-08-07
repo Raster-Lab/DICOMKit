@@ -49,9 +49,9 @@ struct PrintViewerPresentationEndToEndTests {
         #expect(presentation.invert)
     }
 
-    @Test("A mark is a snapshot — later viewer changes do not alter it")
+    @Test("A mark keeps up with the tools — the film prints the last arrangement")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testMarkIsASnapshot() throws {
+    func testMarkFollowsLaterToolUse() throws {
         let viewModel = ImageViewerViewModel()
         viewModel.filePath = "/a.dcm"
         viewModel.viewContentWidth = 800
@@ -60,13 +60,38 @@ struct PrintViewerPresentationEndToEndTests {
 
         viewModel.togglePrintMarkForCurrentFrame()
 
-        // The user carries on exploring the series.
+        // The reader carries on working on the image they have already ticked —
+        // which is the normal order: mark the slice, then window and turn it.
         viewModel.zoomLevel = 7.0
         viewModel.rotationAngle = 180
+        viewModel.windowCenter = 60
 
         let marked = try #require(viewModel.printSelection.items.first)
-        #expect(marked.presentation?.zoom == 2.0)
-        #expect(marked.presentation?.quarterTurns == 0)
+        #expect(marked.presentation?.zoom == 7.0)
+        #expect(marked.presentation?.quarterTurns == 2)
+        #expect(marked.windowCenter == 60)
+    }
+
+    @Test("A cell adjusted by hand in the preview stops following the viewer")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testHandAdjustedCellIsDefended() throws {
+        let viewModel = ImageViewerViewModel()
+        viewModel.filePath = "/a.dcm"
+        viewModel.viewContentWidth = 800
+        viewModel.viewContentHeight = 600
+        viewModel.togglePrintMarkForCurrentFrame()
+
+        // The user windows this cell in the print preview itself…
+        let print = PrintViewModel(selection: viewModel.printSelection)
+        print.setWindow(forItemID: "/a.dcm#0", center: -600, width: 1500)
+
+        // …so the viewer must not throw that away when it moves on.
+        viewModel.windowCenter = 40
+        viewModel.windowWidth = 400
+
+        let marked = try #require(viewModel.printSelection.items.first)
+        #expect(marked.windowCenter == -600)
+        #expect(marked.windowWidth == 1500)
     }
 
     @Test("Marking every frame carries the arrangement to each one")

@@ -76,17 +76,20 @@ extension PrintViewModel {
 
     // MARK: - Identification
 
-    /// The lines burned into each marked file's pixels, keyed by path.
+    /// The identification each marked file carries, keyed by path.
     ///
     /// The same two lines the viewer draws and the preview overlays — patient,
     /// ID and study date over the study description — so film, screen and
-    /// preview all say the same thing about whose study this is.
+    /// preview all say the same thing about whose study this is, plus the Study
+    /// Instance UID that decides whether a film can state them once.
     ///
     /// Read here rather than taken from the preview's cache: printing must not
     /// depend on whether the user happened to look at the preview first, and a
     /// missing caption is not something to discover on the film.
-    public func identificationLines(for items: [PrintSelectionItem]) async -> [String: [String]] {
-        var result: [String: [String]] = [:]
+    public func identificationTexts(
+        for items: [PrintSelectionItem]
+    ) async -> [String: PatientOverlayText] {
+        var result: [String: PatientOverlayText] = [:]
         for path in Set(items.map(\.filePath)).sorted() {
             let text = await Task.detached(priority: .userInitiated) { () -> PatientOverlayText? in
                 guard let data = FileManager.default.contents(atPath: path),
@@ -94,7 +97,76 @@ extension PrintViewModel {
                 return PatientOverlayText.make(from: file.dataSet)
             }.value
             guard let text, !text.isEmpty else { continue }
-            result[path] = [text.primaryLine, text.secondaryLine].filter { !$0.isEmpty }
+            result[path] = text
+        }
+        return result
+    }
+
+    /// How each film of a job states its identification, in film order.
+    ///
+    /// Films are decided one at a time: a job can spill onto a second sheet
+    /// holding a different study, and each sheet has to be identifiable on its
+    /// own. ``PrintIdentificationPlacement`` says which rule to apply; the rule
+    /// itself lives in ``FilmIdentificationPlanner``, shared with the composer
+    /// so the preview, the saved film and the print all agree.
+    public func filmIdentifications(
+        for items: [PrintSelectionItem],
+        texts: [String: PatientOverlayText],
+        plan: PrintPlan
+    ) -> [FilmIdentification] {
+        guard showPatientIdentification else {
+            return Array(repeating: .none, count: max(0, plan.filmCount))
+        }
+        return (0..<max(0, plan.filmCount)).map { filmIndex in
+            let sources = plan.imageIndices(onFilm: filmIndex).compactMap { index -> FilmIdentificationSource? in
+                guard items.indices.contains(index) else { return nil }
+                let item = items[index]
+                let text = texts[item.filePath]
+                return FilmIdentificationSource(
+                    key: item.id,
+                    studyKey: text?.studyInstanceUID ?? "",
+                    lines: text?.lines ?? [])
+            }
+            return FilmIdentificationPlanner.identification(
+                for: sources, placement: identificationPlacement)
+        }
+    }
+
+    /// The caption lines to burn into each mark's pixels, keyed by mark ID.
+    ///
+    /// Only the marks on films that caption per image: on a footered film the
+    /// sheet says it once, and burning it again under every picture is the noise
+    /// the footer exists to remove.
+    ///
+    /// - Parameter footersDelivered: whether the film footers will actually
+    ///   reach the film. When they will not — a printer with no configured
+    ///   Annotation Display Format composes the sheet itself and has nowhere to
+    ///   put them — every mark is captioned instead. A film with no name on it
+    ///   is worse than a film that repeats one.
+    public func identificationBurns(
+        for items: [PrintSelectionItem],
+        texts: [String: PatientOverlayText],
+        identifications: [FilmIdentification],
+        plan: PrintPlan,
+        footersDelivered: Bool
+    ) -> [String: [String]] {
+        var result: [String: [String]] = [:]
+        for filmIndex in 0..<max(0, plan.filmCount) {
+            let identification = filmIndex < identifications.count
+                ? identifications[filmIndex] : .perImage
+            switch identification {
+            case .none:
+                continue
+            case .footer where footersDelivered:
+                continue
+            case .footer, .perImage:
+                for index in plan.imageIndices(onFilm: filmIndex) {
+                    guard items.indices.contains(index) else { continue }
+                    let item = items[index]
+                    guard let lines = texts[item.filePath]?.lines, !lines.isEmpty else { continue }
+                    result[item.id] = lines
+                }
+            }
         }
         return result
     }
@@ -156,12 +228,20 @@ extension PrintViewModel {
     public func setWindow(forItemID itemID: String, center: Double, width: Double) {
         guard let item = selection.items.first(where: { $0.id == itemID }) else { return }
         guard center.isFinite, width.isFinite else { return }
+        // Read before the write: a synchronised edit is carried to the other
+        // cells as a proportion of this one's change, which is gone once the
+        // new numbers are in. See `PrintViewModel+CellSync.swift`.
+        let previous = window(forItemID: itemID)
         // Rounded to whole units. A drag emits a window value per mouse event
         // and each distinct value is a re-render; fractions of a Hounsfield unit
         // change no pixel, so they are quantised away before they can queue up.
+        let current = WindowSettings(center: center.rounded(), width: max(1, width.rounded()))
         selection.adjust(item.with(
-            windowCenter: .some(center.rounded()),
-            windowWidth: .some(max(1, width.rounded()))))
+            windowCenter: .some(current.center),
+            windowWidth: .some(current.width)))
+        if let previous {
+            propagateWindowDelta(from: itemID, previous: previous, current: current)
+        }
     }
 
     /// Nudges a mark's window, as a window/level drag does.
@@ -173,8 +253,17 @@ extension PrintViewModel {
     }
 
     /// Applies a preset to a mark.
+    ///
+    /// A preset is copied to synchronised cells as the window it is, not as the
+    /// change it made here: "lung" names a tissue, and the cells beside this one
+    /// should show that tissue too.
     public func applyWindowPreset(_ preset: WindowLevelPreset, toItemID itemID: String) {
-        setWindow(forItemID: itemID, center: preset.center, width: preset.width)
+        let window = WindowSettings(center: preset.center, width: preset.width)
+        guard let item = selection.items.first(where: { $0.id == itemID }) else { return }
+        selection.adjust(item.with(
+            windowCenter: .some(window.center.rounded()),
+            windowWidth: .some(max(1, window.width.rounded()))))
+        propagateWindowAbsolute(from: itemID, window: window)
     }
 
     /// Gives every mark on film the focused cell's window.
@@ -206,7 +295,14 @@ extension PrintViewModel {
     ///   the viewport for marks that never carried one (marked from the library
     ///   rather than composed on screen). Zoom and pan are meaningless without a
     ///   viewport — see ``ViewerPresentation/visibleRegion(imageWidth:imageHeight:)``.
-    public func adjustZoom(forItemID itemID: String, factor: Double, cellSize: CGSize) {
+    /// - Parameter pixelSize: the source frame's own size, when the caller knows
+    ///   it, so the pan can be held to what the image covers. Without it the
+    ///   cell is assumed to be filled by the image, which bounds the pan on the
+    ///   tight axis and is no worse than not bounding it at all.
+    public func adjustZoom(
+        forItemID itemID: String, factor: Double, cellSize: CGSize,
+        pixelSize: CGSize? = nil
+    ) {
         guard factor.isFinite, factor > 0 else { return }
         mutatePresentation(forItemID: itemID, cellSize: cellSize) { presentation in
             presentation.zoom = min(Self.maximumCellZoom,
@@ -216,12 +312,23 @@ extension PrintViewModel {
                 // would otherwise keep cropping the fitted image.
                 presentation.panX = 0
                 presentation.panY = 0
+            } else {
+                // Zooming back out leaves less of the image hidden, so a pan
+                // that was legal a moment ago can now be off the edge.
+                Self.clampPan(of: &presentation, pixelSize: pixelSize)
             }
         }
+        propagateZoomPan(from: itemID, cellSize: cellSize)
     }
 
     /// Pans a cell by a drag in cell points.
-    public func panCell(forItemID itemID: String, dx: Double, dy: Double, cellSize: CGSize) {
+    ///
+    /// - Parameter pixelSize: the source frame's own size — see
+    ///   ``adjustZoom(forItemID:factor:cellSize:pixelSize:)``.
+    public func panCell(
+        forItemID itemID: String, dx: Double, dy: Double, cellSize: CGSize,
+        pixelSize: CGSize? = nil
+    ) {
         guard dx.isFinite, dy.isFinite, cellSize.width > 0 else { return }
         mutatePresentation(forItemID: itemID, cellSize: cellSize) { presentation in
             // The drag is measured on the cell; the pan is stored in the
@@ -229,7 +336,27 @@ extension PrintViewModel {
             let scale = presentation.viewportWidth / Double(cellSize.width)
             presentation.panX += dx * scale
             presentation.panY += dy * scale
+            // The picture slides and stops at the image's edge; without this the
+            // drag runs off it and the cell refits a shrinking crop instead.
+            Self.clampPan(of: &presentation, pixelSize: pixelSize)
         }
+        propagateZoomPan(from: itemID, cellSize: cellSize)
+    }
+
+    /// Holds a presentation's pan inside the image it is over.
+    ///
+    /// With no frame size to go on the viewport stands in for the image, which
+    /// is exact on whichever axis the image fills and generous on the other.
+    static func clampPan(of presentation: inout ViewerPresentation,
+                                 pixelSize: CGSize?) {
+        let width = Int((pixelSize.map { Double($0.width) } ?? presentation.viewportWidth).rounded())
+        let height = Int((pixelSize.map { Double($0.height) } ?? presentation.viewportHeight).rounded())
+        guard width > 0, height > 0 else { return }
+        let clamped = presentation.clampedPan(
+            x: presentation.panX, y: presentation.panY,
+            imageWidth: width, imageHeight: height)
+        presentation.panX = clamped.x
+        presentation.panY = clamped.y
     }
 
     /// Turns a cell a quarter turn clockwise.
@@ -240,10 +367,16 @@ extension PrintViewModel {
     }
 
     /// Inverts a cell's greyscale.
-    public func toggleCellInversion(forItemID itemID: String, cellSize: CGSize) {
+    ///
+    /// - Parameter cellSize: the cell the picture is drawn in, when the caller
+    ///   knows it. Optional because inversion is not geometry: a rail button has
+    ///   no cell to speak of, and re-basing the viewport on a guess would change
+    ///   the crop while claiming only to have flipped the greys.
+    public func toggleCellInversion(forItemID itemID: String, cellSize: CGSize? = nil) {
         mutatePresentation(forItemID: itemID, cellSize: cellSize) { presentation in
             presentation.invert.toggle()
         }
+        propagateInversion(from: itemID, cellSize: cellSize)
     }
 
     /// Returns a cell to the untouched frame: the file's own window, no crop, no
@@ -256,6 +389,34 @@ extension PrintViewModel {
         // The untouched frame is not a hand-made arrangement worth defending
         // from the viewer, so the cell follows the screen again.
         selection.clearAdjustment(forID: itemID)
+    }
+
+    /// Returns the focused cell to the untouched frame.
+    ///
+    /// The same edit as ``resetCell(forItemID:)``, aimed at the focus rather
+    /// than at a cell named by the caller: the menu's own reset acts on whatever
+    /// was right-clicked, which is not always the cell the tools are on.
+    public func resetFocusedCell() {
+        guard let focusedItemID else { return }
+        resetCell(forItemID: focusedItemID)
+    }
+
+    /// Returns every cell on the film to the untouched frame.
+    ///
+    /// The way out of an arrangement that has gone wrong across the sheet —
+    /// which linked cells make easy to produce, since one drag now moves many.
+    /// Job-wide switches are left alone: this undoes the hand-made arrangement,
+    /// and how the job is set up is a different decision.
+    public func resetAllCells() {
+        for item in selection.items {
+            resetCell(forItemID: item.id)
+        }
+    }
+
+    /// Whether any cell differs from the untouched frame, so a sheet-wide reset
+    /// has something to undo.
+    public var hasEditedCells: Bool {
+        selection.items.contains { isCellEdited($0) }
     }
 
     /// Takes back the adjustments made to a cell here, restoring the mark to how
@@ -279,13 +440,27 @@ extension PrintViewModel {
     }
 
     /// Edits a mark's presentation, giving it one first if it has none.
-    private func mutatePresentation(
+    ///
+    /// Deliberately does not propagate to synchronised cells: this is the write
+    /// itself, and the peers are driven from the public tools above so that one
+    /// gesture produces one round of propagation rather than a cascade. See
+    /// `PrintViewModel+CellSync.swift`.
+    func mutatePresentation(
         forItemID itemID: String,
-        cellSize: CGSize,
+        cellSize: CGSize?,
         _ transform: (inout ViewerPresentation) -> Void
     ) {
         guard let item = selection.items.first(where: { $0.id == itemID }) else { return }
         var presentation = item.presentation ?? ViewerPresentation()
+
+        // Arranging a cell says the film should carry arrangements. With the
+        // job-wide switch off the edit is written to the mark and then dropped
+        // by `previewItem(for:)`, so the tool looks broken — nothing on the cell
+        // moves however far it is dragged. Raw pixels are left alone: there the
+        // switch would change nothing either way.
+        if !useViewerPresentation && !sendRawPixels {
+            useViewerPresentation = true
+        }
 
         // The film cell becomes the viewport for anything adjusted here.
         //
@@ -296,13 +471,15 @@ extension PrintViewModel {
         // cell means what the user zooms into is the shape of what will print.
         // The zoom factor is carried across so the picture does not jump: the
         // same magnification, seen through a differently shaped window.
-        let cellWidth = max(1, Double(cellSize.width))
-        let cellHeight = max(1, Double(cellSize.height))
-        if !Self.aspectsMatch(width: presentation.viewportWidth,
-                              height: presentation.viewportHeight,
-                              otherWidth: cellWidth, otherHeight: cellHeight) {
-            presentation.viewportWidth = cellWidth
-            presentation.viewportHeight = cellHeight
+        if let cellSize {
+            let cellWidth = max(1, Double(cellSize.width))
+            let cellHeight = max(1, Double(cellSize.height))
+            if !Self.aspectsMatch(width: presentation.viewportWidth,
+                                  height: presentation.viewportHeight,
+                                  otherWidth: cellWidth, otherHeight: cellHeight) {
+                presentation.viewportWidth = cellWidth
+                presentation.viewportHeight = cellHeight
+            }
         }
         transform(&presentation)
         // Quantised for the same reason as the window: a zoom that differs in

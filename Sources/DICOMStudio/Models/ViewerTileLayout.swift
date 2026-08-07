@@ -10,6 +10,7 @@
 
 import Foundation
 import DICOMPrintKit
+import DICOMRenderKit
 
 // MARK: - Layout
 
@@ -156,6 +157,27 @@ public struct ViewerCellState: Sendable, Equatable, Identifiable {
         )
     }
 
+    #if canImport(Metal)
+    /// This tile's arrangement, as the display shader's geometry.
+    ///
+    /// The same state ``presentation`` carries, minus the viewport: on the GPU
+    /// path the view supplies its own size at draw time, so a tile that changes
+    /// shape re-draws without re-rendering. The focused viewport builds the
+    /// identical value from the view model's tool state, which is what keeps a
+    /// tile looking the same on either side of gaining focus.
+    public var displayPresentation: DisplayPresentation {
+        DisplayPresentation(
+            zoom: zoom,
+            panX: panX,
+            panY: panY,
+            rotationDegrees: rotationAngle,
+            flipHorizontal: isFlippedHorizontal,
+            flipVertical: isFlippedVertical,
+            invert: isInverted
+        )
+    }
+    #endif
+
     /// A print mark for this tile, or `nil` when the tile is empty.
     public func selectionItem(
         sopInstanceUID: String? = nil,
@@ -169,6 +191,7 @@ public struct ViewerCellState: Sendable, Equatable, Identifiable {
             frameIndex: frameIndex,
             frameCount: frameCount,
             seriesDescription: seriesDescription,
+            seriesInstanceUID: seriesUID,
             instanceNumber: instanceNumber,
             windowCenter: windowCenter,
             windowWidth: windowWidth,

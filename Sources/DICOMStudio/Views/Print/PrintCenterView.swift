@@ -11,6 +11,10 @@ import SwiftUI
 public struct PrintCenterView: View {
     @Bindable var viewModel: PrintViewModel
 
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
+
     public init(viewModel: PrintViewModel) {
         self.viewModel = viewModel
     }
@@ -26,13 +30,30 @@ public struct PrintCenterView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("DICOM Print")
-                .font(.title2.bold())
-            Text("Manage printers and review submitted jobs. "
-                 + "To print, mark images in the viewer and press ⌘P.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("DICOM Print")
+                    .font(.title2.bold())
+                Text("Manage printers and review submitted jobs. "
+                     + "To print, mark images in the viewer and press ⌘P.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            #if os(macOS)
+            Spacer()
+            // The preview is a window of its own, so it can be raised from here
+            // as well — and raised again after it has been closed, without
+            // going back to the viewer to re-press ⌘P.
+            Button {
+                openWindow(id: StudioWindowID.printPreview)
+            } label: {
+                Label("Print Preview", systemImage: "macwindow")
+            }
+            .disabled(viewModel.selection.isEmpty)
+            .help(viewModel.selection.isEmpty
+                  ? "Mark images in the viewer to compose a film"
+                  : "Open the film preview in its own window")
+            #endif
         }
         .padding()
     }

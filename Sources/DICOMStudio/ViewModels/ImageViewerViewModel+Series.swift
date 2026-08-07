@@ -67,9 +67,14 @@ extension ImageViewerViewModel {
         resetTransformations()
         isInverted = false
         // Everything the print panel held: the marks, their captured windows and
-        // their film positions, and the sheet itself if it was still up.
+        // their film positions, and the print screen itself if it was still up —
+        // the film on it was composed from the study being left behind.
         printSelection.clear()
-        isPrintSheetPresented = false
+        requestPrintScreenDismissal()
+        // And the panel that held them: with nothing on the film, the tray is
+        // back to where it starts — out of the way until this study's first
+        // image is marked.
+        isPrintTrayVisible = false
     }
 
     /// Hangs the first series of the study when the viewer has nothing to show.

@@ -7,6 +7,330 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — linked film cells: adjust one, adjust them all (2026-08-07)
+
+*Work in progress, not yet committed.*
+
+"Apply this window to all cells" was a one-shot copy made after the fact. Judging
+a film means comparing its cells, and cells can only be compared when they are
+shown alike — which meant repeating every zoom by hand, cell by cell.
+
+- **The tools are back on a rail, and the locks are on it too.** Window/level,
+  zoom, pan, text, arrow and invert (`V`) sit down the left of the film with the
+  three locks,
+  the scope and the two resets. A right-click menu is a fine place for a command
+  and a poor place for a *mode*: which tool is armed and which cells are linked
+  have to be answerable at a glance, and a menu that only exists while it is open
+  cannot answer them. The menu keeps everything it had.
+- **The lock is drawn on the cells it applies to.** A closed padlock appears on
+  every cell that will move when the focused cell is dragged — and on none that
+  will not, which is how the scope becomes visible before the drag rather than
+  after it. It is the one thing the preview draws over a picture that the film
+  will not carry, sits in the corner over the letterbox margin, and takes no
+  clicks.
+- **A mode, not a command.** `PrintCellSyncOptions` — Zoom & Pan, Window, Invert
+  — are locks on that rail. While one is on, dragging a cell carries that
+  adjustment to the others as the gesture happens. Zoom and pan are one switch
+  deliberately: cells that magnify together but sit over different anatomy are
+  the confusing state, not one anybody asks for. Rotation and flip are not
+  offered: they are how one image is put the right way up, and turning the whole
+  sheet because one cell was upside down is never what was meant.
+- **A way back out.** Reset Cell and Reset All sit beside the links (`0` and
+  `⇧0`), because one linked drag can now put a whole sheet wrong and undoing it
+  must not be harder than causing it. The cell menu's reset still acts on the
+  cell that was right-clicked, and names itself so.
+- **A dragged cell keeps up with the drag.** A window/level drag re-keys the
+  cell on every mouse event, so its GPU render nearly always landed after its own
+  key had been superseded — and `PrintCellTextureCache` threw those renders away,
+  leaving the cell being dragged showing the picture the drag started from. A
+  superseded render now stands in for the mark it belongs to, so the cell tracks
+  the drag a dispatch behind instead of stalling.
+- **Geometry copies absolutely, windowing carries relatively.** Every cell on a
+  film is the same size, so the same zoom and pan is the same picture, and each
+  peer's pan is then re-held inside its own image. A window is not portable that
+  way — a film mixes modalities, and marks do not all state their window in the
+  same space — so a drag scales each cell's width by the same factor and shifts
+  its centre by the same fraction of a width. Presets are the exception: "lung"
+  names a tissue, so it is copied as the numbers it is.
+- **Scope, because a film is not always one series.** All Cells / Same Series /
+  This Film, defaulting to Same Series — a film carrying two series is usually
+  carrying them for comparison. Marks now carry their Series Instance UID for
+  this; marks made without opening a file group by the folder they came from.
+- **It yields to the job.** With raw pixels or a job-wide window on, nothing
+  per-cell reaches the film, so the window link reads and behaves as off rather
+  than claiming an effect the job has already taken away. Marks never opened are
+  given their file's own window when the link goes on, so they move with the
+  rest instead of sitting still.
+
+### Added — a film of one study names its patient once (2026-08-07)
+
+*Work in progress, not yet committed.*
+
+Identification was burned under every image, which is right for a sheet that
+mixes studies and repetitive noise on a sheet that does not: sixteen cells of one
+CT carried the same name sixteen times, each one costing its picture a strip of
+height. With multi-study selections coming, "print this film" has to answer both
+cases.
+
+- **The rule, in one place.** `FilmIdentificationPlanner` decides per *film*, not
+  per job: a sheet whose captioned images all share one Study Instance UID states
+  the patient once along its bottom edge; a sheet mixing studies captions each
+  image, as before. A job spilling onto a second sheet has each sheet decided on
+  its own, because each sheet has to be identifiable on its own. The UID is the
+  test rather than the caption text — two studies of one patient on the same day
+  read identically and are still two studies. An image whose header could not be
+  read has no study to agree with, so it forces per-image captions.
+- **The strip is kept clear of the pictures.** `FilmCellLayout` takes a footer
+  band out of the sheet before it lays out cells, so the footer sits under the
+  bottom row rather than across it — text over anatomy is where a finding hides.
+  Annotation boxes generally now get that band too; they used to be drawn into
+  the bottom margin over whatever was there, and they are centred rather than
+  flush left.
+- **It reaches real film three ways.** Composed sheets (Save Film, the printer
+  emulator) draw the footer themselves. On the wire it goes as a film-level Basic
+  Annotation Box — `PrintOptions.filmAnnotations` carries a set per film, so two
+  sheets of one job can name two patients, which one job-wide list could not.
+- **Whether the printer can carry it is asked, not assumed.** The first cut
+  looked at whether an Annotation Display Format ID had been typed into the
+  settings sheet, so every printer that had not been configured by hand — which
+  is every printer, by default — silently fell back to captioning each image and
+  the film never matched the preview. Support is now a question about the
+  association: `DICOMPrintService.supportsAnnotationBoxes` opens one, asks
+  whether the Basic Annotation Box SOP Class was accepted, and releases. It is
+  asked *before* the frames are prepared, because the answer decides whether they
+  are captioned. A printer that takes annotation boxes but has no configured
+  format ID gets a plain default (`ANNOTATION`), since a film box cannot carry
+  annotation boxes without one; a printer that refuses the film box over that
+  value has it created again without it rather than losing the job, and the
+  progress line says the film will carry no annotation text. A printer that takes
+  no annotation boxes at all — or cannot be reached — still gets the caption
+  burned under each image: a film with no name on it is worse than a film that
+  repeats one.
+- **The footer's type is sized off the film.** It was a flat 3 mm, which is
+  oversized on an 8×10 held in a hand and lost on a 14×17 across a viewing room.
+  It is now 1.1% of the sheet's height, floored at 2.5 mm and capped at 6 mm —
+  ~2.8 mm on 8×10 and ~4.75 mm on 14×17 — and the strip reserved for it, in the
+  composer and in the preview alike, follows the type rather than a constant.
+- **Choosable, in the preview and in the settings column.** Automatic (the rule
+  above), "Under each image", or "Once at the foot of the film". The preview
+  draws whichever the film will carry, scaled off the physical sheet, so the
+  strip that is approved is the strip that prints.
+
+### Changed — the print preview stays shut, opens wider, and writes the film out (2026-08-07)
+
+*Work in progress, not yet committed.*
+
+- **A launch shows the library and nothing else.** Print Preview and Printer
+  Emulator are singleton `Window` scenes, so macOS restored whichever was open at
+  quit — the preview holding no marks and the emulator with its server stopped,
+  because neither survives the app. Both now carry `.restorationBehavior(.disabled)`
+  and `.defaultLaunchBehavior(.suppressed)`; they open when they are asked for and
+  not before.
+- **The console log column is as wide as the reader wants it.** It was a fixed 300
+  points, which wrapped every import path and print job UID into four lines. It
+  now opens at 460 and is dragged from the divider between it and the film, up to
+  60% of the panel and never below 260; the width is kept in `AppStorage`, so it
+  is chosen once rather than every job. The film takes back whatever the log is
+  not using, as it did before.
+- **The film can be saved as a file.** "Save Film" in the preview's header writes
+  PNG, TIFF or PDF. Not a screenshot of the preview: the images go through the
+  same `PrintService.prepare` a real print sends them through and the sheet comes
+  out of the same `FilmComposer` the printer emulator composes received film
+  with, so what lands on disk is the sheet the printer would have laid down —
+  identification band, drawn annotations, spillover and all. A PDF holds every
+  film of the job as a page; PNG and TIFF write one file per sheet.
+
+### Added — film layouts the standard has and a grid has not (2026-08-06)
+
+*Work in progress, not yet committed.*
+
+PS3.3 C.13.3 lets a film's rows hold different numbers of images: `ROW\1,3` is a
+scout above three slices, `COL\1,2` is one image beside two. The Print SCP has
+always understood those forms — it has to, modalities send them — but everything
+that *composes* a film here could only say rows × columns, so the one layout a
+reader most often wants for a comparison film could be received and not sent.
+
+- **Seven band layouts are in the gallery, drawn.** `ROW\1,2`, `ROW\2,3`,
+  `COL\1,2`, `COL\1,3`, `COL\1,4`, `COL\1,4,4` and `COL\2,4,4` are picked the way
+  the grids are — by looking at the film rather than reading a string — and live
+  in `PrintBandLayout` in `PrintOptionCatalog`, the one table the print sheet and
+  `dicom-print --layout` both read.
+- **The print sheet takes a format string too.** Under the bands is a Custom
+  field: type an Image Display Format and the film beside it is redrawn as it is
+  typed, with the layout named in words underneath ("rows of 1, 3 — 4 images").
+  Picking a band fills that same field, so the layout in force can always be read
+  as the string that will be sent, and adjusted from there. Text that is not a
+  format says so in red and leaves the film on the automatic grid rather than
+  quietly printing 1×1, which is what a lenient parse would have made of
+  half-typed input. The gallery scrolls now that it holds four sections.
+- **The preview draws the film, not a grid.** `FilmPreviewView` lays its cells
+  out with `FilmCellLayout` — the same geometry the SCP composes received film
+  with — instead of a SwiftUI `Grid`, so a band layout is shown as the bands it
+  is. Every per-cell measurement (zoom and pan limits, annotation anchors, the
+  identification strip) now comes from that cell's own rectangle; it used to come
+  from one film-wide size, which was only ever right because the cells were all
+  the same. Arrow-key navigation follows the cells' geometry for the same reason.
+- **The format reaches the printer verbatim.** `PrintLayoutSelection` gained a
+  `.displayFormat` case, `PrintJobRequest`/`PrintPlan` carry the format and count
+  films by its image-box count, and the SCU sends the string as written. Verified
+  end to end against `dicom-printscp`: `--layout 'ROW\1,3'` composes one image
+  over three, `'COL\1,2'` one beside two, `'COL\1,4,4'` one beside two columns
+  of four.
+- **`dicom-print --layout` accepts both.** A grid token ("2x3") as before, or a
+  format (`'ROW\2,1,2'`, quoted so the shell keeps the backslash); the named
+  bands are listed in its help. The dry-run banner and the film plan name a band
+  layout by its format string — reporting `ROW\1,1` as a 2×1 grid would have
+  misstated the film.
+- `PrintImageDisplayFormat` gained `validated(_:)` (strict, for UI and command
+  lines), an initializer from a `PrintLayout`, `isUniformGrid`, and `summary`.
+
+### Changed — the viewer opens on the images (2026-08-06)
+
+*Work in progress, not yet committed.*
+
+Opening a study put four columns on screen before the first picture: the app's
+feature list, the series pane, the images, and an empty selection tray. Two of
+them were answering questions nobody had asked yet.
+
+- The feature sidebar steps aside on the way into the viewer and comes back on
+  the way out (`MainView` drives `columnVisibility`). The toolbar toggle still
+  opens it over the images, and that choice holds until the viewer is left.
+  Launching straight into the viewer starts collapsed too.
+- The selection tray starts hidden (`isPrintTrayVisible` now defaults to `false`)
+  and comes up on its own the moment the first image is marked — every marking
+  path, the library's "Print…" included, goes through `revealPrintTray()`.
+  Unmarking never puts it away again, so the "Clear" button cannot vanish under
+  the pointer; opening a different study does, along with the marks it held.
+- The current series is marked by one cue, on the card: a neutral white ring and
+  a lifted surface. Nothing is drawn on the thumbnail — a ring there framed the
+  letterboxing rather than the picture — and the accent stays out of the pane
+  entirely, because in the viewer it means "this is what prints".
+- In the grid, a marked tile no longer carries an accent edge along its bottom.
+  The chip and the tick already say it, and with a film fully composed the edge
+  drew a blue rule under every tile; the only accent edge left in the grid is the
+  focus ring, so exactly one tile is lit — the one being worked on.
+
+### Changed — the viewer's three columns are told apart (2026-08-06)
+
+*Work in progress, not yet committed.*
+
+The series pane, the reading area and the selection tray all sat on the same
+near-black surface, so nothing on screen said which column held the images that
+were about to print:
+
+- Three planes instead of one. The panes are a lighter surface
+  (`StudioColors.viewerPanel`) with a dark seam on the side facing the picture;
+  the gutter is darker than before (0.14 → 0.10); the reading area keeps its pure
+  black and gains a shadow that lifts it off the mount.
+- Every column is titled. A shared `ViewerPaneHeader` names the panes ("Series",
+  "On film" with its count); the reading area's own strip names it, shows the tile
+  layout, and reports "N of M on film" — the count of images *on screen* that are
+  marked, so the middle column visibly owns the print selection.
+- The reading area's frame is thicker and keeps the accent while it holds the
+  keyboard, in a grid as well as at 1×1.
+- Marked tiles are readable across a whole grid: a numbered film-position chip in
+  the top-left corner (the number the tray lists it at) and an accent bar along the
+  bottom edge. The border stays focus-only — the live tile's ring went 2 pt → 3 pt,
+  and hovering brightens a tile's hairline.
+- The patient plate in the series pane is neutral rather than accent-tinted: in the
+  viewer the accent now means "this is what prints".
+
+### Changed — the print preview is a window, not a sheet (2026-08-06)
+
+*Work in progress, not yet committed.*
+
+- The preview's cells now draw from GPU textures (`PrintCellTextureCache`), because
+  the preview is where the tools are used: window/level, zoom, pan, rotate, flip and
+  invert were each a CPU re-render per mouse delta. The arrangement is the display
+  shader's transform, so those drags now re-draw a quad and render nothing; only a
+  window change makes a new texture, and that is one GPU dispatch. A re-windowed cell
+  holds its previous texture while the new one renders, so a drag never falls back to
+  the CPU. Falls back per cell — overlay planes, YBR, an unresolvable window, no
+  Metal — never per film. Only the film on screen holds textures.
+- The shader is given the *film's* geometry, not the viewer's: new
+  `DisplayPresentation.sourceRegion` fits and centres the region that
+  `ViewerPresentation.visibleRegion` — the same call the print path makes — says will
+  be cropped, and flips after the rotation as `PrintPresentationTransform` does. The
+  viewer's own transform agrees with the printer only while a cell is merely zoomed,
+  so reusing it would have misreported every rotated or edge-panned cell.
+- Film composition and export are unchanged and still CPU, as the GPU plan fences
+  them: preview and film agree because neither invents anything the other does not.
+
+- On macOS the print preview opens in its own window (`StudioWindowID.printPreview`)
+  instead of a modal sheet over the viewer, so the film can be compared with the
+  images it was made from, moved to a second display, or zoomed to fill one.
+  ⌘P and the library's "Print…" both raise it; `PrintScreenPresenter` keeps the
+  sheet on platforms without windows.
+- `PrintSettingsView` takes a `presentation` (`.sheet` / `.window`): a sheet is
+  still given a fixed size, a window only a minimum, so the user's own size sticks.
+- The Print screen gained a "Print Preview" button that raises the window — the
+  preview no longer has to be re-opened from the viewer once it has been closed.
+- Opening a study closes the print preview window along with clearing the marks:
+  the film on it was composed from the study being left. `prepareForNewStudy()`
+  bumps `printScreenDismissRequests`, which the shell turns into a
+  `dismissWindow` — watched there rather than in the viewer, since the study may
+  be opened while the library is still on screen.
+- The print log console starts closed and opens by itself when a job starts,
+  giving the film its width while the film is what is being judged. It is put
+  away again on "Print Again", and the header toggle still overrides both.
+
+### Added — Metal GPU frame rendering, `DICOMRenderKit` (2026-08-04)
+
+Full GPU rendering pipeline for the viewer, landing GPU plan milestones M0–M7
+(see `GPU_RENDERING_PLAN.md`):
+
+- New `DICOMRenderKit` target: a Metal compute pipeline that windows/LUTs a decoded
+  frame directly into a `CGImage`-readable texture with zero-copy UMA input and no
+  upload/render/readback round trip. Monochrome and RGB/palette kernels; YBR stays
+  on the CPU. Output is byte-for-byte identical to the CPU path
+  (`MetalCPUEquivalenceTests`), so the two are freely interchangeable.
+- Shared `WindowLUT` (integer, not float shader math) backs both the CPU and GPU
+  paths — 10–19× faster monochrome rendering on its own (M0+M1), before any GPU
+  work.
+- Focused-viewport direct-to-display path keeps the frame on the GPU across tool
+  actions (window/level, invert, zoom, pan): 0.008 ms per action, down from a full
+  re-render (M5). The per-drag decode is cached too, up to 675× faster per step.
+- `minimumGPUPixelCount` dropped from 1 megapixel to 0 — no frame is declined for
+  being small; the CPU is now purely the no-GPU fallback, not a size-selected
+  alternative. Safe only because of the CPU/GPU output equivalence guarantee above.
+- Shipped the compute shader as `.metal.txt` so the app builds without requiring
+  the separate Metal Toolchain install in Xcode.
+
+### Added — corner annotations and GPU textures for unfocused tiles (2026-08-04, in progress)
+
+*Work in progress, not yet committed.*
+
+- On-screen viewer tiles and the focused viewport now carry the traditional
+  four-corner reading-room annotation layout — size/window/cursor readout
+  (top left), patient/study identification (top right), zoom/position/
+  compression/geometry (bottom left), acquisition date/time (bottom right) —
+  composed by `ViewerAnnotationCorners`/`ViewerAnnotationText` and drawn by the
+  new `ViewerAnnotationOverlayView`. Detail scales down (`.full` → `.reduced` →
+  `.minimal`) as a tile shrinks, keeping identification and position and
+  dropping the rest rather than shrinking everything to illegibility.
+- `ViewerHoverGeometry` maps a cursor point back through the viewport's fit,
+  zoom, pan, rotation and flip to the underlying image pixel — separately for
+  the CPU/print transform order (pan before rotation) and the GPU display
+  shader's order (pan after rotation), since they only agree when a picture is
+  unrotated or unpanned — so the top-left corner can show the pixel value and
+  patient-space position under the cursor. A wrong readout is worse than none,
+  so every step returns `nil` rather than guess when the point is off the
+  picture.
+- `PatientIdentificationOverlayView` is now film/print-only — the on-screen
+  viewer's old single-band overlay is replaced by the corner layout above,
+  since on screen the reader can move the picture out from under the text but
+  paper cannot.
+- New `ViewerTileTextureCache` extends the GPU display path (M5) to unfocused
+  grid tiles: a texture keyed only on file + frame + window, so a synchronized
+  zoom or window drag across a grid re-draws a quad per tile instead of
+  re-rendering one. This is the GPU-tile work M6 explicitly deferred ("`
+  ViewerTileImageCache` ... stay on the readback path") — tiles now have both a
+  CPU image and, where Metal is available and the frame supports it, a GPU
+  texture, falling back to the CPU image per tile (overlay planes, an
+  unresolvable window, no Metal device) rather than per grid.
+- Also removed the unused Inspector-panel toggle from `MainView`/`MainViewModel`
+  (dead code, unrelated cleanup).
+
 ### Removed — CLI-parity test harness (2026-08-03)
 
 Deleted the whole Tier-2 CLI-parity subsystem: the "CLI Parity" Studio screen and its

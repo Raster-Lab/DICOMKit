@@ -396,6 +396,23 @@ struct ImageViewerViewModelTests {
         #expect(vm.rotationAngle == 270)
     }
 
+    @Test("Rotate freely by any angle, either way, wrapping at the full turn")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testRotateByDegrees() {
+        let vm = ImageViewerViewModel()
+        vm.rotate(byDegrees: 37.5)
+        #expect(vm.rotationAngle == 37.5)
+        // Accumulates rather than snapping — this is the drag path.
+        vm.rotate(byDegrees: 10)
+        #expect(vm.rotationAngle == 47.5)
+        // Anticlockwise past zero comes out the other side.
+        vm.rotate(byDegrees: -60)
+        #expect(abs(vm.rotationAngle - 347.5) < 0.001)
+        // And clockwise past the full turn keeps going.
+        vm.rotate(byDegrees: 20)
+        #expect(abs(vm.rotationAngle - 7.5) < 0.001)
+    }
+
     // MARK: - Display Text Helpers
 
     @Test("Window level text formatting")

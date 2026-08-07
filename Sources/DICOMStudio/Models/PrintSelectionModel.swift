@@ -33,6 +33,13 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
     /// Series description, for the marks tray.
     public let seriesDescription: String?
 
+    /// Series Instance UID, when the mark was made somewhere that knew it.
+    ///
+    /// Carried for grouping rather than display: synchronised cell editing has
+    /// to know which cells came off the same series, and a description is not
+    /// an identity — two series of one study are routinely described alike.
+    public let seriesInstanceUID: String?
+
     /// Instance number, for the marks tray.
     public let instanceNumber: Int?
 
@@ -69,6 +76,7 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
         frameIndex: Int = 0,
         frameCount: Int = 1,
         seriesDescription: String? = nil,
+        seriesInstanceUID: String? = nil,
         instanceNumber: Int? = nil,
         windowCenter: Double? = nil,
         windowWidth: Double? = nil,
@@ -80,6 +88,7 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
         self.frameIndex = frameIndex
         self.frameCount = frameCount
         self.seriesDescription = seriesDescription
+        self.seriesInstanceUID = seriesInstanceUID
         self.instanceNumber = instanceNumber
         self.windowCenter = windowCenter
         self.windowWidth = windowWidth
@@ -108,12 +117,27 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
             frameIndex: frameIndex,
             frameCount: frameCount,
             seriesDescription: seriesDescription,
+            seriesInstanceUID: seriesInstanceUID,
             instanceNumber: instanceNumber,
             windowCenter: windowCenter ?? self.windowCenter,
             windowWidth: windowWidth ?? self.windowWidth,
             windowSpace: windowSpace,
             presentation: presentation ?? self.presentation
         )
+    }
+
+    /// What counts as "the same series" when grouping marks.
+    ///
+    /// The Series Instance UID when the mark carries one. Marks made without
+    /// opening the file (a whole series marked from the library) carry neither
+    /// UID nor description, so the containing folder stands in — the arrangement
+    /// on disk is the only thing left that says these frames belong together,
+    /// and grouping by it is closer to right than treating every such mark as
+    /// its own series.
+    public var seriesKey: String {
+        if let seriesInstanceUID, !seriesInstanceUID.isEmpty { return seriesInstanceUID }
+        if let seriesDescription, !seriesDescription.isEmpty { return "desc:" + seriesDescription }
+        return "dir:" + (filePath as NSString).deletingLastPathComponent
     }
 
     /// Label for the marks tray, e.g. "CHEST AXIAL · #14 · frame 3/60".

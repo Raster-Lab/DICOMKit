@@ -253,6 +253,20 @@ extension ImageViewerViewModel {
         return printSelection.contains(filePath: path, frameIndex: frame)
     }
 
+    /// The 1-based film position of a tile's image, or `nil` if it is unmarked.
+    ///
+    /// Read the same way as ``isCellMarkedForPrint(_:)``, focused tile included,
+    /// so the number on a tile is the number that image prints at — a tile shows
+    /// where it lands on the film, not merely that it is on it.
+    public func printPositionForCell(_ index: Int) -> Int? {
+        guard cells.indices.contains(index) else { return nil }
+        let isFocused = index == focusedCellIndex
+        guard let path = isFocused ? (filePath ?? cells[index].filePath)
+                                   : cells[index].filePath else { return nil }
+        let frame = isFocused ? currentFrameIndex : cells[index].frameIndex
+        return printSelection.position(ofFilePath: path, frameIndex: frame)
+    }
+
     /// Marks or unmarks one tile, carrying that tile's own arrangement.
     @discardableResult
     public func togglePrintMarkForCell(_ index: Int) -> Bool {
@@ -264,7 +278,9 @@ extension ImageViewerViewModel {
             seriesDescription: isFocused ? seriesDescriptionForPrint : nil,
             instanceNumber: isFocused ? instanceNumberForPrint : nil
         ) else { return false }
-        return printSelection.toggle(item)
+        let marked = printSelection.toggle(item)
+        revealPrintTray()
+        return marked
     }
 
     /// Brings existing marks back in step with what the viewer is showing.
@@ -328,17 +344,25 @@ extension ImageViewerViewModel {
     /// This is what "select all" means in the viewer: the pictures on screen,
     /// not the study behind them. At 1×1 the viewer itself is the one tile.
     /// Grid order is film order, so a 2×2 of viewer tiles prints as that 2×2.
+    ///
+    /// The focused tile is read from the live view model, exactly as
+    /// ``isCellMarkedForPrint(_:)`` reads it, and for the same reason: that tile
+    /// owns navigation, and its *stored* state only catches up when something
+    /// calls ``captureFocusedCell()``. Reading the stale copy here made the menu
+    /// disagree with the tile's own checkbox — scroll the focused tile onto an
+    /// unmarked slice and "Select All for Print" stayed greyed out as though
+    /// everything on screen were already on the film, while the tick beside it
+    /// said otherwise. Every "is the screen marked" answer now comes from the
+    /// same place the checkboxes do.
     public var layoutSelectionItems: [PrintSelectionItem] {
         guard isMultiCellLayout else {
             return currentSelectionItem.map { [$0] } ?? []
         }
         return cells.compactMap { cell -> PrintSelectionItem? in
-            let isFocused = cell.index == focusedCellIndex
-            return cell.selectionItem(
-                sopInstanceUID: isFocused ? sopInstanceUID : nil,
-                seriesDescription: isFocused ? seriesDescriptionForPrint : nil,
-                instanceNumber: isFocused ? instanceNumberForPrint : nil
-            )
+            if cell.index == focusedCellIndex, let live = currentSelectionItem {
+                return live
+            }
+            return cell.selectionItem()
         }
     }
 
@@ -346,7 +370,9 @@ extension ImageViewerViewModel {
     @discardableResult
     public func markLayoutForPrint() -> Int {
         captureFocusedCell()
-        return printSelection.add(contentsOf: layoutSelectionItems)
+        let added = printSelection.add(contentsOf: layoutSelectionItems)
+        revealPrintTray()
+        return added
     }
 
     /// Unmarks every image the layout is showing.
@@ -369,6 +395,20 @@ extension ImageViewerViewModel {
         let items = layoutSelectionItems
         guard !items.isEmpty else { return false }
         return items.allSatisfy {
+            printSelection.contains(filePath: $0.filePath, frameIndex: $0.frameIndex)
+        }
+    }
+
+    /// How many images the layout is showing — tiles with something in them.
+    public var layoutImageCount: Int { layoutSelectionItems.count }
+
+    /// How many of the images on screen are marked for print.
+    ///
+    /// The reading area's title strip reports this, which is the whole point of
+    /// having one: the count answers "how much of what I am looking at is on the
+    /// film" without counting ticks across a grid of twenty.
+    public var layoutMarkedForPrintCount: Int {
+        layoutSelectionItems.count {
             printSelection.contains(filePath: $0.filePath, frameIndex: $0.frameIndex)
         }
     }

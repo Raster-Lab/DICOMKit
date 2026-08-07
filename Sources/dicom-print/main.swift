@@ -45,6 +45,9 @@ struct DICOMPrint: ParsableCommand {
             
               # Print multiple images with layout
               dicom-print send pacs://server:11112 *.dcm --aet APP --layout 2x3
+
+              # A scout over its slices: one image in the top row, three beneath
+              dicom-print send pacs://server:11112 *.dcm --aet APP --layout 'ROW\\1,3'
             
               # Print with specific options
               dicom-print send pacs://server:11112 scan.dcm --aet APP \\
@@ -211,6 +214,9 @@ struct SendCommand: ParsableCommand {
             
               # Print multiple images with layout
               dicom-print send pacs://server:11112 *.dcm --aet APP --layout 2x3
+
+              # A scout over its slices: one image in the top row, three beneath
+              dicom-print send pacs://server:11112 *.dcm --aet APP --layout 'ROW\\1,3'
             
               # Print directory recursively
               dicom-print send pacs://server:11112 studies/ --aet APP --recursive
@@ -241,7 +247,7 @@ struct SendCommand: ParsableCommand {
     @Option(name: .long, help: "Print priority: low, medium, high (default: medium)")
     var priority: PrintPriorityOption = .medium
     
-    @Option(name: .long, help: "Image layout: 1x1, 1x2, 2x1, 2x2, 2x3, 3x3, 3x4, 4x4, 4x5 (auto if not specified)")
+    @Option(name: .long, help: "Image layout: a grid (1x1 to 4x5) or an Image Display Format ('ROW\\2,1,2', 'COL\\1,2' — quote it, the shell eats backslashes); auto if not specified")
     var layout: LayoutOption?
 
     @Option(name: .long, help: "Layout preset: single, comparison, grid, multi-phase (sets layout + film size + orientation; conflicts with --layout)")
@@ -341,7 +347,7 @@ struct SendCommand: ParsableCommand {
             filmDestination: filmDestination.filmDestination,
             layoutSelection: {
                 if let template { return .template(template.preset) }
-                if let layout { return .explicit(layout.option) }
+                if let layout { return layout.selection }
                 return .automatic
             }(),
             filmSize: filmSize.filmSize,
@@ -1028,26 +1034,35 @@ enum PrintPriorityOption: String, ExpressibleByArgument {
     }
 }
 
-enum LayoutOption: String, ExpressibleByArgument {
-    case layout1x1 = "1x1"
-    case layout1x2 = "1x2"
-    case layout2x1 = "2x1"
-    case layout2x2 = "2x2"
-    case layout2x3 = "2x3"
-    case layout3x3 = "3x3"
-    case layout3x4 = "3x4"
-    case layout4x4 = "4x4"
-    case layout4x5 = "4x5"
-    
-    /// The shared layout option this argument maps to (same raw values).
-    var option: PrintLayoutOption {
-        // Raw values are identical by construction; the force-unwrap is
-        // covered by LayoutOptionMappingTests-style parity on the token table.
-        PrintLayoutOption(rawValue: rawValue) ?? .layout1x1
+/// A `--layout` argument: a grid token from the shared catalogue ("2x3"), or an
+/// Image Display Format (2010,0010) as PS3.3 C.13.3 writes one.
+///
+/// The format forms are how the standard states a film whose rows hold different
+/// numbers of images — `ROW\1,2` is one image over two — which no rows × columns
+/// token can name.
+struct LayoutOption: ExpressibleByArgument {
+    /// What was typed, echoed back in the run banner.
+    let rawValue: String
+
+    /// The layout the job is built with.
+    let selection: PrintLayoutSelection
+
+    init?(argument: String) {
+        rawValue = argument
+        if let option = PrintLayoutOption(rawValue: argument.lowercased()) {
+            selection = .explicit(option)
+        } else if let format = PrintImageDisplayFormat.validated(argument) {
+            selection = .displayFormat(format)
+        } else {
+            return nil
+        }
     }
 
-    /// Rows and columns for this layout (RxC).
-    var printLayout: PrintLayout { option.layout }
+    static var allValueStrings: [String] {
+        // The same two catalogues the print sheet's gallery offers.
+        PrintLayoutOption.allCases.map(\.rawValue)
+            + PrintBandLayout.allCases.map(\.imageDisplayFormat)
+    }
 }
 
 enum PresentationLUTOption: String, ExpressibleByArgument {

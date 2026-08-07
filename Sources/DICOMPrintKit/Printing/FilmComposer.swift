@@ -135,7 +135,19 @@ public struct FilmComposer: Sendable {
             for: PrintImageDisplayFormat.parse(film.filmBox.imageDisplayFormat),
             on: sheet(for: film),
             marginMillimeters: configuration.marginMillimeters,
-            spacingMillimeters: configuration.cellSpacingMillimeters)
+            spacingMillimeters: configuration.cellSpacingMillimeters,
+            footerMillimeters: footerMillimeters(for: film))
+    }
+
+    /// The strip this film's annotations need along the bottom of the sheet.
+    ///
+    /// Zero when annotations are switched off or there are none — a film with
+    /// nothing to say at its foot gives the whole sheet to the pictures.
+    func footerMillimeters(for film: ReceivedFilm) -> Double {
+        guard configuration.drawAnnotations, !film.annotations.isEmpty else { return 0 }
+        return FilmIdentificationFooter.heightMillimeters(
+            for: film.annotations,
+            sheetHeightMillimeters: sheet(for: film).heightMillimeters)
     }
 
     #if canImport(CoreGraphics)
@@ -589,12 +601,17 @@ public struct FilmComposer: Sendable {
         context.restoreGState()
     }
 
-    /// Draws Basic Annotation Box text in a strip along the bottom margin.
+    /// Draws Basic Annotation Box text in the strip kept clear along the bottom
+    /// of the sheet.
     ///
     /// A real printer places annotations per its configured Annotation Display
     /// Format; an emulator has no such configuration, so positions are laid out
     /// in order along the bottom of the sheet, which is where film headers
-    /// conventionally sit.
+    /// conventionally sit — and where a film-wide patient footer belongs.
+    ///
+    /// Centred, and in the band ``cells(for:)`` has already taken out of the
+    /// layout, so the text sits under the pictures rather than across the
+    /// bottom row of them.
     private func drawAnnotations(
         _ annotations: [PrintAnnotation],
         sheet: FilmSheet,
@@ -602,11 +619,16 @@ public struct FilmComposer: Sendable {
         isColor: Bool,
         background: Double
     ) {
-        let fontSize = max(8, sheet.pixels(fromMillimeters: 3))
+        // Type off the sheet, so the same caption reads at the distance a film
+        // of this size is read from.
+        let fontMillimeters = FilmIdentificationFooter.fontMillimeters(
+            sheetHeightMillimeters: sheet.heightMillimeters)
+        let fontSize = max(8, sheet.pixels(fromMillimeters: fontMillimeters))
         let font = CTFontCreateWithName("Helvetica" as CFString, fontSize, nil)
         let color = gray(background > 0.5 ? 0 : 1, isColor: isColor)
-        let lineHeight = fontSize * 1.3
-        let left = sheet.pixels(fromMillimeters: configuration.marginMillimeters)
+        let lineHeight = fontSize * FilmIdentificationFooter.lineFactor
+        let margin = sheet.pixels(fromMillimeters: configuration.marginMillimeters)
+        let padding = fontSize * FilmIdentificationFooter.paddingFactor
 
         context.saveGState()
         context.textMatrix = .identity
@@ -621,10 +643,11 @@ public struct FilmComposer: Sendable {
                 nil, annotation.text as CFString, attributes as CFDictionary)
             guard let attributed else { continue }
             let line = CTLineCreateWithAttributedString(attributed)
+            let bounds = CTLineGetImageBounds(line, context)
             // Stack upwards from the bottom margin, first position lowest.
             context.textPosition = CGPoint(
-                x: left,
-                y: sheet.pixels(fromMillimeters: 1.5) + Double(annotations.count - index - 1) * lineHeight)
+                x: max(margin, (Double(sheet.pixelWidth) - Double(bounds.width)) / 2),
+                y: margin + padding + Double(annotations.count - index - 1) * lineHeight)
             CTLineDraw(line, context)
         }
         context.restoreGState()

@@ -96,6 +96,7 @@ extension KeyboardShortcutsLegendView {
             KeyboardShortcutHint("Drag", "Pan"),
             KeyboardShortcutHint("⌘-drag", "Zoom"),
             KeyboardShortcutHint("⌥-drag", "Window / level"),
+            KeyboardShortcutHint("Drag", "Turn the image — with the rotate tool armed"),
             KeyboardShortcutHint("= / -", "Zoom in / out"),
             KeyboardShortcutHint("F", "Fit image to view"),
             KeyboardShortcutHint("R", "Reset view"),
@@ -125,6 +126,7 @@ extension KeyboardShortcutsLegendView {
             KeyboardShortcutHint("esc", "Deselect the focused cell"),
         ]),
         KeyboardShortcutGroup("Adjusting a cell", [
+            KeyboardShortcutHint("Right-click", "Every tool, on the cell under the pointer"),
             KeyboardShortcutHint("W", "Window/level tool — then drag on a cell"),
             KeyboardShortcutHint("Z", "Zoom tool"),
             KeyboardShortcutHint("P", "Pan tool"),

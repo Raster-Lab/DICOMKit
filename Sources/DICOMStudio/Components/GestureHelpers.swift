@@ -144,6 +144,62 @@ public enum GestureHelpers: Sendable {
         snapRotation(currentAngle - 90)
     }
 
+    /// Wraps a free rotation angle into [0, 360), leaving the angle itself alone.
+    ///
+    /// Unlike ``snapRotation(_:)`` this keeps any angle the user dialled in — the
+    /// rotate tool turns the picture continuously, not in quarter turns.
+    ///
+    /// - Parameter degrees: Rotation in degrees, any magnitude, either sign.
+    /// - Returns: The same rotation expressed in [0, 360).
+    public static func normalizeRotation(_ degrees: Double) -> Double {
+        guard degrees.isFinite else { return 0 }
+        let wrapped = degrees.truncatingRemainder(dividingBy: 360)
+        return wrapped < 0 ? wrapped + 360 : wrapped
+    }
+
+    /// The pointer's bearing around a pivot, in degrees clockwise from straight up.
+    ///
+    /// Screen coordinates grow downwards, so a clockwise sweep on screen is a
+    /// rising angle — which is the direction ``ImageViewerViewModel/rotationAngle``
+    /// counts in too.
+    ///
+    /// - Parameters:
+    ///   - x: Pointer x, in the same space as the pivot.
+    ///   - y: Pointer y, in the same space as the pivot.
+    ///   - pivotX: Pivot x — normally the centre of the viewport.
+    ///   - pivotY: Pivot y.
+    /// - Returns: The bearing in degrees, or `nil` when the pointer sits so close
+    ///   to the pivot that the bearing is noise rather than an intent.
+    public static func dragBearing(
+        x: Double,
+        y: Double,
+        pivotX: Double,
+        pivotY: Double,
+        minimumRadius: Double = 12.0
+    ) -> Double? {
+        let dx = x - pivotX
+        let dy = y - pivotY
+        guard (dx * dx + dy * dy).squareRoot() >= minimumRadius else { return nil }
+        return atan2(dx, -dy) * 180 / .pi
+    }
+
+    /// The shorter way round between two bearings, signed.
+    ///
+    /// Used to turn a stream of pointer bearings into a rotation delta: taking the
+    /// short arc is what lets a drag cross 359° → 1° without the image spinning
+    /// the long way back.
+    ///
+    /// - Parameters:
+    ///   - from: Previous bearing in degrees.
+    ///   - to: Current bearing in degrees.
+    /// - Returns: Signed delta in (-180, 180].
+    public static func shortestAngleDelta(from: Double, to: Double) -> Double {
+        var delta = (to - from).truncatingRemainder(dividingBy: 360)
+        if delta > 180 { delta -= 360 }
+        if delta <= -180 { delta += 360 }
+        return delta
+    }
+
     // MARK: - Window/Level Drag
 
     /// Calculates window/level adjustment from a drag gesture delta.

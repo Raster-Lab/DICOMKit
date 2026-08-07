@@ -12,14 +12,27 @@ import DICOMNetwork
 // MARK: - Layout
 
 /// A selectable rows × columns film layout.
+///
+/// Every grid from 1×1 to 4×4, plus the 4×5 film sheet — the same list the
+/// viewer hangs images in, deliberately: film order is viewer order, and a grid
+/// a reader can arrange on screen but not print would break that promise the
+/// moment they tried to print it.
 public enum PrintLayoutOption: String, CaseIterable, Sendable, Identifiable {
     case layout1x1 = "1x1"
     case layout1x2 = "1x2"
+    case layout1x3 = "1x3"
+    case layout1x4 = "1x4"
     case layout2x1 = "2x1"
     case layout2x2 = "2x2"
     case layout2x3 = "2x3"
+    case layout2x4 = "2x4"
+    case layout3x1 = "3x1"
+    case layout3x2 = "3x2"
     case layout3x3 = "3x3"
     case layout3x4 = "3x4"
+    case layout4x1 = "4x1"
+    case layout4x2 = "4x2"
+    case layout4x3 = "4x3"
     case layout4x4 = "4x4"
     case layout4x5 = "4x5"
 
@@ -30,11 +43,19 @@ public enum PrintLayoutOption: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .layout1x1: return PrintLayout(rows: 1, columns: 1)
         case .layout1x2: return PrintLayout(rows: 1, columns: 2)
+        case .layout1x3: return PrintLayout(rows: 1, columns: 3)
+        case .layout1x4: return PrintLayout(rows: 1, columns: 4)
         case .layout2x1: return PrintLayout(rows: 2, columns: 1)
         case .layout2x2: return PrintLayout(rows: 2, columns: 2)
         case .layout2x3: return PrintLayout(rows: 2, columns: 3)
+        case .layout2x4: return PrintLayout(rows: 2, columns: 4)
+        case .layout3x1: return PrintLayout(rows: 3, columns: 1)
+        case .layout3x2: return PrintLayout(rows: 3, columns: 2)
         case .layout3x3: return PrintLayout(rows: 3, columns: 3)
         case .layout3x4: return PrintLayout(rows: 3, columns: 4)
+        case .layout4x1: return PrintLayout(rows: 4, columns: 1)
+        case .layout4x2: return PrintLayout(rows: 4, columns: 2)
+        case .layout4x3: return PrintLayout(rows: 4, columns: 3)
         case .layout4x4: return PrintLayout(rows: 4, columns: 4)
         case .layout4x5: return PrintLayout(rows: 4, columns: 5)
     }
@@ -49,6 +70,52 @@ public enum PrintLayoutOption: String, CaseIterable, Sendable, Identifiable {
     /// Label for menus: "2×2 (4 images)".
     public var displayName: String {
         "\(layout.rows)×\(layout.columns) (\(cellCount) image\(cellCount == 1 ? "" : "s"))"
+    }
+}
+
+// MARK: - Band layouts
+
+/// A selectable band layout: one of the PS3.3 C.13.3 films whose rows — or
+/// columns — hold different numbers of images.
+///
+/// `ROW\1,2` is one image over two; `COL\1,4,4` is one image beside two columns
+/// of four. No rows × columns pair names either of them, which is why they are
+/// carried as the Image Display Format itself rather than as a ``PrintLayout``.
+/// The list is short and fixed on purpose: these are the arrangements a reader
+/// asks for by name, and anything else is typed into the custom field.
+public enum PrintBandLayout: String, CaseIterable, Sendable, Identifiable {
+    case rowOneOverTwo    = "ROW\\1,2"
+    case rowTwoOverThree  = "ROW\\2,3"
+    case columnOneAndTwo  = "COL\\1,2"
+    case columnOneAndThree = "COL\\1,3"
+    case columnOneAndFour = "COL\\1,4"
+    case columnOneAndTwoFours = "COL\\1,4,4"
+    case columnTwoAndTwoFours = "COL\\2,4,4"
+
+    public var id: String { rawValue }
+
+    /// The Image Display Format (2010,0010) this layout sends — the raw value.
+    public var imageDisplayFormat: String { rawValue }
+
+    /// The parsed format, for laying the cells out and counting them.
+    public var displayFormat: PrintImageDisplayFormat {
+        PrintImageDisplayFormat.parse(rawValue)
+    }
+
+    /// Cells on one film.
+    public var cellCount: Int { displayFormat.imageBoxCount }
+
+    /// Label for menus: what the film puts where, in words.
+    public var displayName: String {
+        switch self {
+        case .rowOneOverTwo:        return "1 over 2"
+        case .rowTwoOverThree:      return "2 over 3"
+        case .columnOneAndTwo:      return "1 beside 2"
+        case .columnOneAndThree:    return "1 beside 3"
+        case .columnOneAndFour:     return "1 beside 4"
+        case .columnOneAndTwoFours: return "1 beside 4 and 4"
+        case .columnTwoAndTwoFours: return "2 beside 4 and 4"
+        }
     }
 }
 

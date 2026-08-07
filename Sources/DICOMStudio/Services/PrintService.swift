@@ -49,9 +49,15 @@ public struct PrintService: Sendable {
     ///     so a zoomed print keeps the modality's detail. Ignored for `raw`
     ///     requests, whose whole point is untouched stored pixels.
     ///   - annotations: Lines of identification to burn into each frame's
-    ///     pixels, keyed by file path. Empty leaves the pixels alone. Burning is
+    ///     pixels, keyed by mark ID. Empty leaves the pixels alone. Burning is
     ///     how film carries a patient's name reliably: a DICOM printer draws
     ///     annotation boxes to its own layout, and many ignore them entirely.
+    ///
+    ///     Per mark rather than per file, because whether a mark carries its own
+    ///     caption is a question about the *film* it lands on: one sheet of a
+    ///     single study states the patient once at its foot, while the next
+    ///     sheet — mixing studies — captions every image, and the same file can
+    ///     be marked onto both.
     ///   - drawnAnnotations: The text and arrows a reader drew on each film cell,
     ///     keyed by mark ID — per mark rather than per file, because two marks can
     ///     be different frames of the same file and each carries its own drawing.
@@ -107,7 +113,7 @@ public struct PrintService: Sendable {
             if !request.raw, let overlays = drawnAnnotations[item.id], !overlays.isEmpty {
                 arranged = arranged.map { ImageAnnotationBurner.burning(overlays: overlays, into: $0) }
             }
-            if !request.raw, let lines = annotations[item.filePath], !lines.isEmpty {
+            if !request.raw, let lines = annotations[item.id], !lines.isEmpty {
                 arranged = arranged.map { ImageAnnotationBurner.burning(lines, into: $0) }
             }
             #endif
@@ -161,6 +167,14 @@ public struct PrintService: Sendable {
             calledAE: config.calledAETitle,
             timeout: config.timeout
         )
+    }
+
+    /// Whether this printer can carry film-level annotation text (the patient
+    /// footer). Costs one short association, and is asked before the frames are
+    /// prepared because the answer decides whether they are captioned.
+    public func supportsAnnotationBoxes(profile: PrinterProfile) async -> Bool {
+        await PrintWorkflow.supportsAnnotationBoxes(
+            configuration: profile.printConfiguration())
     }
 
     /// N-GET the printer's status.

@@ -123,13 +123,13 @@ public final class ImageViewerViewModel {
     // MARK: - Window/Level State
 
     /// Current window center value.
-    public var windowCenter: Double = 128.0
+    public var windowCenter: Double = 128.0 { didSet { printMarksFollowScreen() } }
 
     /// Current window width value.
-    public var windowWidth: Double = 256.0
+    public var windowWidth: Double = 256.0 { didSet { printMarksFollowScreen() } }
 
     /// Whether grayscale is inverted.
-    public var isInverted: Bool = false
+    public var isInverted: Bool = false { didSet { printMarksFollowScreen() } }
 
     /// Available window presets for the current modality.
     public var availablePresets: [WindowLevelPreset] = []
@@ -166,22 +166,22 @@ public final class ImageViewerViewModel {
     // MARK: - Zoom / Pan / Rotation
 
     /// Current zoom level (1.0 = 100%).
-    public var zoomLevel: Double = 1.0
+    public var zoomLevel: Double = 1.0 { didSet { printMarksFollowScreen() } }
 
     /// Pan offset X in points.
-    public var panOffsetX: Double = 0.0
+    public var panOffsetX: Double = 0.0 { didSet { printMarksFollowScreen() } }
 
     /// Pan offset Y in points.
-    public var panOffsetY: Double = 0.0
+    public var panOffsetY: Double = 0.0 { didSet { printMarksFollowScreen() } }
 
     /// Rotation angle in degrees.
-    public var rotationAngle: Double = 0.0
+    public var rotationAngle: Double = 0.0 { didSet { printMarksFollowScreen() } }
 
     /// Whether the image is flipped horizontally.
-    public var isFlippedHorizontal: Bool = false
+    public var isFlippedHorizontal: Bool = false { didSet { printMarksFollowScreen() } }
 
     /// Whether the image is flipped vertically.
-    public var isFlippedVertical: Bool = false
+    public var isFlippedVertical: Bool = false { didSet { printMarksFollowScreen() } }
 
     /// Whether the metadata overlay is visible.
     public var showMetadataOverlay: Bool = false
@@ -189,12 +189,22 @@ public final class ImageViewerViewModel {
     /// Whether the performance overlay is visible.
     public var showPerformanceOverlay: Bool = false
 
-    /// Whether the patient identification overlay is burned over the image.
+    /// What the open file says, for the corner annotations.
     ///
-    /// On by default: identifying the patient on the picture is the reading-room
-    /// expectation, and it is what reaches film when these images are printed.
-    /// See `ImageViewerViewModel+PatientOverlay.swift`.
-    public var showPatientOverlay: Bool = true
+    /// Read once when the file loads rather than on every draw: the values are a
+    /// header's worth of strings and none of them changes while the file is
+    /// open, whereas the viewport redraws on every mouse delta of a window drag.
+    /// See `ImageViewerViewModel+Annotations.swift`.
+    public internal(set) var annotationText = ViewerAnnotationText()
+
+    /// Whether the reading annotations are drawn in the viewport's corners.
+    ///
+    /// On by default: a workstation that does not say who the patient is, what
+    /// window the picture is under and where in the series it sits is not a
+    /// workstation. Film is a separate decision — it carries the identification
+    /// strip below the picture instead, and has its own switch.
+    /// See `ImageViewerViewModel+Annotations.swift`.
+    public var showImageAnnotations: Bool = true
 
     /// Whether the DICOM tag inspector sheet is visible.
     public var showDICOMInspector: Bool = false
@@ -243,11 +253,33 @@ public final class ImageViewerViewModel {
     /// See `ImageViewerViewModel+Print.swift` for the marking API.
     public var printSelection = PrintSelectionModel()
 
-    /// Whether the print settings sheet is showing.
+    /// A request for the print screen — the sheet off macOS, the print preview
+    /// window on it. Raised by ⌘P and by the library's "Print…"; on macOS the
+    /// presenter lowers it again once the window is up, since a window's own
+    /// state is the window's, not this flag's.
     public var isPrintSheetPresented: Bool = false
 
+    /// Bumped when the print screen has to come down with the study it belongs
+    /// to. A counter rather than a flag: a window is dismissed by an event, and
+    /// two studies opened in a row must send two of them.
+    ///
+    /// Off macOS ``isPrintSheetPresented`` going false closes the sheet on its
+    /// own; this is what reaches the separate window.
+    public private(set) var printScreenDismissRequests: Int = 0
+
+    /// Asks for the print screen to be closed.
+    public func requestPrintScreenDismissal() {
+        isPrintSheetPresented = false
+        printScreenDismissRequests += 1
+    }
+
     /// Whether the tray of selected images is showing on the right.
-    public var isPrintTrayVisible: Bool = true
+    ///
+    /// Out of the way until there is something in it. A reader opens the viewer
+    /// to read, and an empty column headed "On film" is a third of the chrome
+    /// spent saying "nothing yet"; the moment an image is marked the tray comes
+    /// up on its own — see ``revealPrintTray()``.
+    public var isPrintTrayVisible: Bool = false
 
     // MARK: - Tile Layout
 
@@ -494,6 +526,7 @@ public final class ImageViewerViewModel {
             ?? ""
         self.transferSyntaxUID = tsUID
         self.transferSyntaxName = ImageMetadataHelpers.transferSyntaxLabel(for: tsUID)
+        self.annotationText = ViewerAnnotationText.make(from: ds, transferSyntaxUID: tsUID)
 
         // Waveform IODs (ECG, hemodynamic, EP, audio, …) carry a Waveform Sequence
         // instead of Pixel Data. Detect and parse them here so the viewer can render
@@ -670,6 +703,23 @@ public final class ImageViewerViewModel {
             decodeFailure = error
             throw error
         }
+    }
+
+    /// The stored value of one pixel of the current frame, or `nil` when the
+    /// pixels cannot be read.
+    ///
+    /// Reads the same decoded pixels the viewport is drawn from — the ones
+    /// already held above — so a cursor moving across the image costs a lookup
+    /// rather than a decode. Colour images answer their three samples instead.
+    func storedPixelValue(column: Int, row: Int) -> (gray: Int?, rgb: (Int, Int, Int)?) {
+        guard let file = dicomFile,
+              let source = try? decodedPixelSource(for: file) else { return (nil, nil) }
+        let pixels = source.0
+        if samplesPerPixel >= 3 {
+            let colour = pixels.colorValue(row: row, column: column, frame: currentFrameIndex)
+            return (nil, colour)
+        }
+        return (pixels.pixelValue(row: row, column: column, frame: currentFrameIndex), nil)
     }
 
     // MARK: - GPU display path
@@ -1075,6 +1125,17 @@ public final class ImageViewerViewModel {
     /// Rotates the image 90° counter-clockwise.
     public func rotateCounterClockwise() {
         rotationAngle = GestureHelpers.rotateCounterClockwise(from: rotationAngle)
+    }
+
+    /// Turns the image by an arbitrary angle, clockwise for a positive delta.
+    ///
+    /// This is the rotate *tool*'s path: a drag turns the picture continuously
+    /// through the full circle either way, where the toolbar's quarter-turn
+    /// actions above snap back to the orthogonal angles.
+    ///
+    /// - Parameter degrees: Signed rotation to add, in degrees.
+    public func rotate(byDegrees degrees: Double) {
+        rotationAngle = GestureHelpers.normalizeRotation(rotationAngle + degrees)
     }
 
     /// Flips the image horizontally.

@@ -756,6 +756,15 @@ public struct PrintOptions: Sendable {
     /// annotation layout. Required for ``annotations`` to be sent.
     public let annotationDisplayFormatID: String?
 
+    /// Annotations for one film each, when the films of a job do not all say the
+    /// same thing — a patient footer on a job that spills onto a second sheet
+    /// holding a different study.
+    ///
+    /// Indexed by film; a film past the end, or with an empty entry, falls back
+    /// to ``annotations``. Empty (the default) means every film carries
+    /// ``annotations``, which is what a job-wide header wants.
+    public let filmAnnotations: [[PrintAnnotation]]
+
     /// Configuration Information (2010,0150) — the printer-specific rendering
     /// configuration to select for this film box.
     ///
@@ -782,7 +791,8 @@ public struct PrintOptions: Sendable {
         presentationLUTShape: PresentationLUTShape? = nil,
         annotations: [PrintAnnotation] = [],
         annotationDisplayFormatID: String? = nil,
-        configurationInformation: String? = nil
+        configurationInformation: String? = nil,
+        filmAnnotations: [[PrintAnnotation]] = []
     ) {
         self.numberOfCopies = numberOfCopies
         self.priority = priority
@@ -800,6 +810,20 @@ public struct PrintOptions: Sendable {
         self.annotations = annotations
         self.annotationDisplayFormatID = annotationDisplayFormatID
         self.configurationInformation = configurationInformation
+        self.filmAnnotations = filmAnnotations
+    }
+
+    /// The annotations one film carries: its own when it has any, else the
+    /// job-wide set.
+    public func annotations(forFilm filmIndex: Int) -> [PrintAnnotation] {
+        guard filmIndex >= 0, filmIndex < filmAnnotations.count,
+              !filmAnnotations[filmIndex].isEmpty else { return annotations }
+        return filmAnnotations[filmIndex]
+    }
+
+    /// Whether any film in this job carries annotation text.
+    public var hasAnnotations: Bool {
+        !annotations.isEmpty || filmAnnotations.contains { !$0.isEmpty }
     }
     
     /// Default print options for general use
@@ -2196,6 +2220,56 @@ public enum DICOMPrintService {
         }
     }
     
+    /// Whether this printer can carry Basic Annotation Boxes.
+    ///
+    /// Asked by association negotiation and nothing else: the SCU proposes the
+    /// Basic Annotation Box SOP Class along with everything else, and a printer
+    /// that accepts that context — directly or through the Print Management
+    /// Meta class that subsumes it — implements the service. There is no N-GET
+    /// that answers this, and a conformance statement is not something a print
+    /// job can read.
+    ///
+    /// The question is worth an association of its own because the answer
+    /// decides how the *pixels* are prepared: film-level text goes in an
+    /// annotation box, and a printer that has none needs the caption burned
+    /// under each image instead — a decision that has to be made before the
+    /// frames are rendered, not halfway through sending them.
+    ///
+    /// - Returns: `true` when annotation boxes can be sent. A printer that
+    ///   refuses the context, or that cannot be reached, returns `false`: the
+    ///   caller falls back to burning, which is the outcome that still puts the
+    ///   patient's name on the film.
+    public static func supportsAnnotationBoxes(
+        configuration: PrintConfiguration
+    ) async -> Bool {
+        guard let proposedContexts = try? PrintPresentationContexts.propose(
+                colorMode: configuration.colorMode),
+              let callingAE = try? AETitle(configuration.callingAETitle),
+              let calledAE = try? AETitle(configuration.calledAETitle) else { return false }
+
+        let association = Association(configuration: AssociationConfiguration(
+            callingAETitle: callingAE,
+            calledAETitle: calledAE,
+            host: configuration.host,
+            port: configuration.port,
+            implementationClassUID: defaultImplementationClassUID,
+            implementationVersionName: defaultImplementationVersionName,
+            timeout: configuration.timeout))
+
+        do {
+            let negotiated = try await association.request(presentationContexts: proposedContexts)
+            let contexts = try PrintContextResolver(
+                negotiated: negotiated, proposed: proposedContexts,
+                colorMode: configuration.colorMode)
+            let supported = contexts.supports(basicAnnotationBoxSOPClassUID)
+            try await association.release()
+            return supported
+        } catch {
+            try? await association.abort()
+            return false
+        }
+    }
+
     /// Builds a human-readable detail string from a failure response's
     /// Error Comment (0000,0902) and Error ID (0000,0903), when the SCP
     /// supplied them. Returns nil when neither is present.
@@ -3545,7 +3619,10 @@ public enum DICOMPrintService {
     ///   - images: Array of pixel data to print
     ///   - imageDescriptors: Optional per-image descriptors with dimensions and bit depth
     ///   - options: Print options
-    ///   - layout: Image layout (rows × columns)
+    ///   - displayFormat: The Image Display Format (2010,0010) the film boxes
+    ///     carry. Sent verbatim, and its image-box count — not `rows × columns` —
+    ///     is what decides how many images fit one film, so the non-uniform
+    ///     `ROW\` and `COL\` bands chunk correctly.
     /// - Returns: The print result
     /// - Throws: `DICOMNetworkError` if any step fails
     private static func executePrintWorkflow(
@@ -3553,7 +3630,7 @@ public enum DICOMPrintService {
         images: [Data],
         imageDescriptors: [PrintImageData],
         options: PrintOptions,
-        layout: PrintLayout,
+        displayFormat: PrintImageDisplayFormat,
         eventHandler: PrintEventHandler? = nil,
         progressHandler: (@Sendable (PrintProgress) -> Void)? = nil
     ) async throws -> PrintResult {
@@ -3670,12 +3747,12 @@ public enum DICOMPrintService {
             var allPrintJobUIDs: [String] = []
             var allFilmBoxUIDs: [String] = []
 
-            let imagesPerFilm = layout.rows * layout.columns
+            let imagesPerFilm = max(1, displayFormat.imageBoxCount)
             let filmBoxCount = max(1, (images.count + imagesPerFilm - 1) / imagesPerFilm)
 
             for filmIndex in 0..<filmBoxCount {
                 // ── Step 2a: N-CREATE Film Box ────────────────────────────
-                let imageDisplayFormat = layout.imageDisplayFormat
+                let imageDisplayFormat = displayFormat.raw
 
                 var filmBoxElements: [DataElement] = []
                 filmBoxElements.append(DataElement.string(tag: .imageDisplayFormat, vr: .ST, value: imageDisplayFormat))
@@ -3735,31 +3812,59 @@ public enum DICOMPrintService {
                         tag: .configurationInformation, vr: .ST, value: configurationInformation))
                 }
 
-                let annotationsEnabled = !options.annotations.isEmpty && options.annotationDisplayFormatID != nil
+                // Per film: a job whose sheets hold different studies footers
+                // each sheet with its own patient, not the first one's.
+                let filmAnnotations = options.annotations(forFilm: filmIndex)
+                var annotationsEnabled = !filmAnnotations.isEmpty
+                    && options.annotationDisplayFormatID != nil
+                    && contexts.supports(basicAnnotationBoxSOPClassUID)
+                let plainFilmBoxElements = filmBoxElements
                 if annotationsEnabled, let formatID = options.annotationDisplayFormatID {
                     filmBoxElements.append(DataElement.string(tag: .annotationDisplayFormatID, vr: .CS, value: formatID))
                 }
 
-                let filmBoxRequest = NCreateRequest(
-                    messageID: messageID,
-                    affectedSOPClassUID: basicFilmBoxSOPClassUID,
-                    affectedSOPInstanceUID: nil,
-                    hasDataSet: true,
-                    presentationContextID: filmBoxContext
-                )
-                messageID += 1
-                
-                let filmBoxResponse = try await sendAndReceive(
-                    association: association,
-                    negotiated: negotiated,
-                    commandSet: filmBoxRequest.commandSet,
-                    dataSet: serializeElements(filmBoxElements, explicitVR: explicitVR),
-                    presentationContextID: filmBoxContext,
-                    timeout: configuration.timeout,
-                    eventHandler: eventHandler
-                )
-                
-                let filmBoxRsp = NCreateResponse(commandSet: filmBoxResponse.commandSet, presentationContextID: filmBoxContext)
+                /// Creates the film box from a set of attributes.
+                func createFilmBox(_ elements: [DataElement]) async throws -> (NCreateResponse, AssembledMessage) {
+                    let request = NCreateRequest(
+                        messageID: messageID,
+                        affectedSOPClassUID: basicFilmBoxSOPClassUID,
+                        affectedSOPInstanceUID: nil,
+                        hasDataSet: true,
+                        presentationContextID: filmBoxContext
+                    )
+                    messageID += 1
+                    let response = try await sendAndReceive(
+                        association: association,
+                        negotiated: negotiated,
+                        commandSet: request.commandSet,
+                        dataSet: serializeElements(elements, explicitVR: explicitVR),
+                        presentationContextID: filmBoxContext,
+                        timeout: configuration.timeout,
+                        eventHandler: eventHandler
+                    )
+                    return (NCreateResponse(commandSet: response.commandSet,
+                                            presentationContextID: filmBoxContext),
+                            response)
+                }
+
+                var (filmBoxRsp, filmBoxResponse) = try await createFilmBox(filmBoxElements)
+
+                // Annotation Display Format ID is printer-defined: the value a
+                // device does not recognise is a value it may refuse the whole
+                // film box over. A refusal is not worth losing the film for, so
+                // the box is created again without it and the film prints with
+                // no annotation — the pictures are what the job is for.
+                if !filmBoxRsp.status.isSuccessOrWarning, annotationsEnabled {
+                    progressHandler?(PrintProgress(
+                        phase: .creatingSession,
+                        progress: 0.15,
+                        message: "The printer refused the film box with Annotation Display "
+                            + "Format ID '\(options.annotationDisplayFormatID ?? "")'. Retrying "
+                            + "without it — this film will carry no annotation text."))
+                    annotationsEnabled = false
+                    (filmBoxRsp, filmBoxResponse) = try await createFilmBox(plainFilmBoxElements)
+                }
+
                 guard filmBoxRsp.status.isSuccessOrWarning else {
                     // Abort/cleanup handled by the workflow catch (P2-3).
                     throw DICOMNetworkError.printOperationFailed(filmBoxRsp.status, detail: errorDetail(from: filmBoxRsp.commandSet))
@@ -3863,7 +3968,7 @@ public enum DICOMPrintService {
                         withinSequence: .referencedBasicAnnotationBoxSequence,
                         explicitVR: explicitVR
                     )
-                    for annotation in options.annotations {
+                    for annotation in filmAnnotations {
                         let idx = Int(annotation.position) - 1
                         guard idx >= 0, idx < annotationBoxUIDs.count else { continue }
                         let annotationBoxUID = annotationBoxUIDs[idx]
@@ -4036,7 +4141,7 @@ public enum DICOMPrintService {
             images: [imageData],
             imageDescriptors: imageDescriptor.map { [$0] } ?? [],
             options: options,
-            layout: PrintLayout(rows: 1, columns: 1),
+            displayFormat: PrintImageDisplayFormat(layout: PrintLayout(rows: 1, columns: 1)),
             eventHandler: eventHandler
         )
     }
@@ -4053,6 +4158,8 @@ public enum DICOMPrintService {
     ///   - imageDescriptors: Optional per-image descriptors with dimensions and bit depth
     ///   - layout: Optional explicit layout. When `nil`, an optimal layout is chosen
     ///     automatically for the number of images.
+    ///   - displayFormat: Optional Image Display Format, for the `ROW\` and `COL\`
+    ///     films a rows × columns grid cannot express. Overrides `layout`.
     ///   - eventHandler: Optional handler invoked for each N-EVENT-REPORT (printer
     ///     status or print-job progress) the SCP pushes during the association.
     /// - Returns: The print result
@@ -4067,6 +4174,7 @@ public enum DICOMPrintService {
         options: PrintOptions = .default,
         imageDescriptors: [PrintImageData] = [],
         layout: PrintLayout? = nil,
+        displayFormat: PrintImageDisplayFormat? = nil,
         eventHandler: PrintEventHandler? = nil,
         progressHandler: (@Sendable (PrintProgress) -> Void)? = nil
     ) async throws -> PrintResult {
@@ -4078,21 +4186,15 @@ public enum DICOMPrintService {
             )
         }
 
-        let resolvedLayout: PrintLayout
-        if let layout = layout {
-            resolvedLayout = layout
-        } else if images.count == 1 {
-            resolvedLayout = PrintLayout(rows: 1, columns: 1)
-        } else {
-            resolvedLayout = PrintLayout.optimalLayout(for: images.count)
-        }
+        let resolvedFormat = resolveDisplayFormat(
+            displayFormat: displayFormat, layout: layout, imageCount: images.count)
 
         return try await executePrintWorkflow(
             configuration: configuration,
             images: images,
             imageDescriptors: imageDescriptors,
             options: options,
-            layout: resolvedLayout,
+            displayFormat: resolvedFormat,
             eventHandler: eventHandler,
             progressHandler: progressHandler
         )
@@ -4149,7 +4251,9 @@ public enum DICOMPrintService {
             sessionLabel: options.sessionLabel,
             presentationLUTShape: options.presentationLUTShape,
             annotations: options.annotations,
-            annotationDisplayFormatID: options.annotationDisplayFormatID
+            annotationDisplayFormatID: options.annotationDisplayFormatID,
+            configurationInformation: options.configurationInformation,
+            filmAnnotations: options.filmAnnotations
         )
 
         // Reimplemented on the single-association workflow (PS3.4 H.4): the
@@ -4162,7 +4266,9 @@ public enum DICOMPrintService {
             images: images,
             imageDescriptors: imageDescriptors,
             options: templateOptions,
-            layout: layout(fromImageDisplayFormat: template.imageDisplayFormat),
+            // The template's own format string, sent as written: a template is
+            // free to name a layout no rows × columns pair can describe.
+            displayFormat: PrintImageDisplayFormat.parse(template.imageDisplayFormat),
             eventHandler: eventHandler
         )
     }
@@ -4176,7 +4282,23 @@ public enum DICOMPrintService {
     static func layout(fromImageDisplayFormat format: String) -> PrintLayout {
         PrintImageDisplayFormat.parse(format).layout
     }
-    
+
+    /// The Image Display Format a job actually sends.
+    ///
+    /// An explicit format wins over a grid — it is the more expressive of the
+    /// two, and the only one that can say `ROW\` or `COL\`. With neither, the
+    /// grid is chosen to fit the images, as it always was.
+    static func resolveDisplayFormat(
+        displayFormat: PrintImageDisplayFormat?,
+        layout: PrintLayout?,
+        imageCount: Int
+    ) -> PrintImageDisplayFormat {
+        if let displayFormat { return displayFormat }
+        if let layout { return PrintImageDisplayFormat(layout: layout) }
+        if imageCount == 1 { return PrintImageDisplayFormat(layout: PrintLayout(rows: 1, columns: 1)) }
+        return PrintImageDisplayFormat(layout: PrintLayout.optimalLayout(for: imageCount))
+    }
+
     /// Prints images with progress reporting via AsyncThrowingStream
     ///
     /// Provides progress updates during the print workflow. The entire workflow
@@ -4191,6 +4313,7 @@ public enum DICOMPrintService {
     ///   - imageDescriptors: Per-image descriptors (required — see P1-1: image-box
     ///     pixel-module attributes are mandatory)
     ///   - layout: Optional explicit layout; auto-chosen when nil
+    ///   - displayFormat: Optional Image Display Format; overrides `layout`
     ///   - eventHandler: Optional handler for N-EVENT-REPORT notifications
     /// - Returns: An AsyncThrowingStream that yields PrintProgress updates
     public static func printImagesWithProgress(
@@ -4199,6 +4322,7 @@ public enum DICOMPrintService {
         options: PrintOptions = .default,
         imageDescriptors: [PrintImageData] = [],
         layout: PrintLayout? = nil,
+        displayFormat: PrintImageDisplayFormat? = nil,
         eventHandler: PrintEventHandler? = nil
     ) -> AsyncThrowingStream<PrintProgress, Error> {
         AsyncThrowingStream { continuation in
@@ -4210,21 +4334,15 @@ public enum DICOMPrintService {
                         return
                     }
 
-                    let resolvedLayout: PrintLayout
-                    if let layout = layout {
-                        resolvedLayout = layout
-                    } else if images.count == 1 {
-                        resolvedLayout = PrintLayout(rows: 1, columns: 1)
-                    } else {
-                        resolvedLayout = PrintLayout.optimalLayout(for: images.count)
-                    }
+                    let resolvedFormat = resolveDisplayFormat(
+                        displayFormat: displayFormat, layout: layout, imageCount: images.count)
 
                     _ = try await executePrintWorkflow(
                         configuration: configuration,
                         images: images,
                         imageDescriptors: imageDescriptors,
                         options: options,
-                        layout: resolvedLayout,
+                        displayFormat: resolvedFormat,
                         eventHandler: eventHandler,
                         progressHandler: { continuation.yield($0) }
                     )
