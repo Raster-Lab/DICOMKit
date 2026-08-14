@@ -45,7 +45,7 @@ public struct PixelRegion: Sendable, Equatable, Hashable {
 /// quarter turn is still taken exactly, by permuting pixels; anything else is
 /// resampled once, at print time, and the turned picture is fitted into the
 /// image box with its corners falling outside the film's rectangle.
-public struct ViewerPresentation: Sendable, Equatable, Hashable {
+public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
 
     /// Display zoom multiplier applied on top of fit-to-view. 1.0 = fitted.
     public var zoom: Double
@@ -192,18 +192,30 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable {
     /// the same rectangle, which is why flips never change *which* pixels are
     /// visible, only where they end up. `R⁻¹ · V` swaps width and height on odd
     /// quarter turns.
-    public func visibleRegion(imageWidth: Int, imageHeight: Int) -> PixelRegion? {
+    /// - Parameter covers: whether the picture is laid in covering the whole
+    ///   viewport — fill-to-film — rather than fitted inside it. A covering
+    ///   picture is cropped by the viewport on its long axis at every zoom, so
+    ///   the region is smaller than the image even at zoom 1 and a pan slides
+    ///   it; computed as fitted, that same call answered "the whole image" and
+    ///   the pan a filled cell stored never reached the pixels anyone saw.
+    public func visibleRegion(
+        imageWidth: Int, imageHeight: Int, covers: Bool = false
+    ) -> PixelRegion? {
         guard imageWidth > 0, imageHeight > 0,
               viewportWidth > 0, viewportHeight > 0,
               zoom.isFinite, zoom > 0,
               panX.isFinite, panY.isFinite else { return nil }
 
-        // Fit-to-view: the image is aspect-fitted before zoom is applied.
-        let fitScale = min(viewportWidth / Double(imageWidth),
-                           viewportHeight / Double(imageHeight))
-        guard fitScale > 0 else { return nil }
+        // How the image is laid into the viewport before zoom: fitted touches
+        // its inside, covering is cropped by it.
+        let baseScale = covers
+            ? max(viewportWidth / Double(imageWidth),
+                  viewportHeight / Double(imageHeight))
+            : min(viewportWidth / Double(imageWidth),
+                  viewportHeight / Double(imageHeight))
+        guard baseScale > 0 else { return nil }
 
-        let scale = fitScale * zoom
+        let scale = baseScale * zoom
         guard scale > 0 else { return nil }
 
         // The viewport as the image sees it, in source pixels: the box the
@@ -221,7 +233,8 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable {
         // size however far the drag went, and a fitted image cannot be cropped
         // by a pan at all. See ``clampedPan(x:y:imageWidth:imageHeight:)``.
         let (heldPanX, heldPanY) = clampedPan(
-            x: panX, y: panY, imageWidth: imageWidth, imageHeight: imageHeight)
+            x: panX, y: panY, imageWidth: imageWidth, imageHeight: imageHeight,
+            covers: covers)
 
         // Un-rotate the pan vector: it is applied before the rotation on screen.
         let (unrotatedPanX, unrotatedPanY) = unrotate(x: heldPanX, y: heldPanY)
@@ -253,26 +266,45 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable {
     /// is refitted around a smaller crop — the picture appears to shrink and
     /// stretch rather than slide, which is not what a pan tool is for. Holding
     /// the pan to the region the image still fully covers makes the drag slide
-    /// the picture and stop at the edge, and makes it a no-op on a fitted image,
-    /// where there is nothing hidden to bring into view.
+    /// the picture and stop at the edge.
+    ///
+    /// Whether there is anything to slide depends on how the picture was laid
+    /// into the cell, which is why `covers` is not optional in practice. A
+    /// *fitted* picture at zoom 1 is entirely inside its cell, so the pan is a
+    /// no-op and should be: there is nothing hidden to bring into view. A
+    /// *filled* one is cropped by the cell on its long axis at every zoom, so
+    /// the same drag has real travel. Assuming fitted for both is what made the
+    /// pan tool appear dead on a fill-scaled film.
     ///
     /// - Parameters:
     ///   - x: Desired pan in view points.
     ///   - y: Desired pan in view points.
     ///   - imageWidth: Source frame width in pixels.
     ///   - imageHeight: Source frame height in pixels.
+    ///   - covers: Whether the picture is drawn covering the whole viewport —
+    ///     the cropping scaling modes, fill and stretch. Fitted is the default
+    ///     because it is what the film does unless told otherwise.
     /// - Returns: The pan, clamped on each axis.
     public func clampedPan(
-        x: Double, y: Double, imageWidth: Int, imageHeight: Int
+        x: Double, y: Double, imageWidth: Int, imageHeight: Int,
+        covers: Bool = false
     ) -> (x: Double, y: Double) {
         guard x.isFinite, y.isFinite,
               imageWidth > 0, imageHeight > 0,
               viewportWidth > 0, viewportHeight > 0,
               zoom.isFinite, zoom > 0 else { return (x, y) }
 
-        let fitScale = min(viewportWidth / Double(imageWidth),
-                           viewportHeight / Double(imageHeight))
-        let scale = fitScale * zoom
+        // How the picture is laid into the viewport before the zoom: fitted
+        // touches the inside of it, filled covers it. A covering picture is
+        // cropped by the viewport on its long axis, so there is image outside
+        // the cell to bring into view even at zoom 1 — which is exactly what
+        // the pan tool is for, and what taking the fit scale here denied it.
+        let baseScale = covers
+            ? max(viewportWidth / Double(imageWidth),
+                  viewportHeight / Double(imageHeight))
+            : min(viewportWidth / Double(imageWidth),
+                  viewportHeight / Double(imageHeight))
+        let scale = baseScale * zoom
         guard scale > 0 else { return (x, y) }
 
         // The viewport as the image sees it: turned, so a quarter turn swaps its

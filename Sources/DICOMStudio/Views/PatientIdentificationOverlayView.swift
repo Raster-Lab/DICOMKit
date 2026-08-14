@@ -1,123 +1,174 @@
 // PatientIdentificationOverlayView.swift
 // DICOMStudio
 //
-// DICOM Studio — patient identification under a film cell.
+// DICOM Studio — patient identification in the corners of a film cell.
 //
-// Two lines, centred: "name, ID, study date" over the study description, in a
-// reserved strip below the picture so text and anatomy never share pixels. The
-// type scales with the cell it sits in, so a 4×5 film sheet carries the same
-// strip as a single-image film without either drowning the picture or becoming
-// unreadable.
+// The arrangement a reading station has used for decades, and the one
+// ``ViewerAnnotationOverlayView`` draws on screen: who and what at the top
+// right, what made the picture at the bottom left, when it was taken at the
+// bottom right. The corners of a fitted image are background, the reader's eye
+// is in the middle, and a caption in a strip below the picture is a caption read
+// by looking away from the anatomy it describes.
 //
-// Film only. The viewer annotates in the corners instead
-// (``ViewerAnnotationOverlayView``): on screen the reader can move the picture
-// out from under the text, and paper cannot — a name printed over anatomy is a
-// name that can hide a finding on the one copy that leaves the department.
+// Held to the corners of the *cell*, so the text reads off the edges of the film
+// rather than floating against the letterbox margin of a picture that does not
+// happen to be the cell's shape. ``ImageAnnotationBurner`` burns the same four
+// blocks into the printed pixels; on the wire the image box is all there is to
+// draw into, so on a letterboxed cell the film's text sits at the picture's edge
+// rather than the cell's. The type scales with the cell, so a 4×5 sheet carries
+// the same block as a single-image film without either drowning the picture or
+// becoming unreadable.
 
 #if canImport(SwiftUI)
 import SwiftUI
+import CoreText
+import DICOMPrintKit
 
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 struct PatientIdentificationOverlayView: View {
 
-    /// "Patient name, ID, study date".
-    let primaryLine: String
+    /// What each corner says. Blank lines are already dropped — see
+    /// ``PatientOverlayText/corners``.
+    let corners: PrintCornerAnnotation
 
-    /// Study description.
-    let secondaryLine: String
-
-    /// Size of the cell the overlay is drawn in — the type scales against it.
+    /// The cell this is drawn in — the corners the text is pushed into.
+    ///
+    /// The cell rather than the picture inside it: a frame fitted into a cell of
+    /// a different shape leaves a letterbox margin, and text held to the picture
+    /// floats in the middle of the cell with black either side of it. The reader
+    /// looks at the corner of the *cell* for the corner text, which is where the
+    /// eye goes on a light box.
     let cellSize: CGSize
 
     var body: some View {
-        if primaryLine.isEmpty && secondaryLine.isEmpty {
+        if corners.isEmpty {
             EmptyView()
         } else {
-            VStack(spacing: fontSize * 0.25) {
-                if !primaryLine.isEmpty {
-                    Text(primaryLine)
-                        .font(.system(size: fontSize, weight: .semibold))
-                }
-                if !secondaryLine.isEmpty {
-                    Text(secondaryLine)
-                        .font(.system(size: fontSize))
-                        .foregroundStyle(.white.opacity(0.85))
-                }
+            ZStack {
+                block(corners.topLeft, alignment: .leading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                block(corners.topRight, alignment: .trailing)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                block(corners.bottomLeft, alignment: .leading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                block(corners.bottomRight, alignment: .trailing)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
-            .multilineTextAlignment(.center)
-            .lineLimit(1)
-            // A long name must shrink rather than truncate: the point of the
-            // overlay is that the identification is legible in full.
-            .minimumScaleFactor(0.5)
+            // Plain, at one weight: nothing in the corners is a different kind of
+            // statement from anything else there, and bold type on film reads as
+            // emphasis nobody meant.
+            .font(.system(size: fontSize))
             .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.9), radius: 1.5)
-            .padding(.horizontal, fontSize * 0.5)
-            .padding(.vertical, fontSize * 0.3)
-            .frame(maxWidth: .infinity)
-            .frame(height: Self.bandHeight(for: cellSize, lines: lineCount))
-            .background(Color.black)
+            // The picture underneath is arbitrary: a halo is what keeps a line
+            // readable over bone as well as over air, without a panel behind it
+            // that would hide the anatomy the corner stands on. The burner draws
+            // the same halo into the pixels.
+            .shadow(color: .black.opacity(0.9), radius: 1.4)
+            .padding(padding)
+            .frame(width: cellSize.width, height: cellSize.height)
+            .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Patient identification: \(primaryLine). \(secondaryLine)")
+            .accessibilityLabel(
+                "Patient identification: \(corners.allLines.joined(separator: ". "))")
         }
     }
 
-    /// Type size derived from the band the text has to live in.
-    private var fontSize: CGFloat { Self.fontSize(for: cellSize, lines: lineCount) }
-
-    private var lineCount: Int {
-        (primaryLine.isEmpty ? 0 : 1) + (secondaryLine.isEmpty ? 0 : 1)
+    private func block(_ lines: [String], alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: fontSize * 0.22) {
+            ForEach(lines, id: \.self) { line in
+                Text(line)
+                    .lineLimit(1)
+            }
+        }
+        .multilineTextAlignment(alignment == .leading ? .leading : .trailing)
+        // Half the cell apiece, so the two blocks along an edge cannot run into
+        // each other and leave a name overprinted by a technique.
+        .frame(maxWidth: max(0, cellSize.width * 0.48),
+               alignment: alignment == .leading ? .leading : .trailing)
     }
 
-    /// Height of the band reserved under the image for this overlay.
+    // MARK: - Metrics
+
+    /// The one size every line in this cell is set at.
     ///
-    /// The band is sized first and the type is fitted into it — not the other way
-    /// round. Deriving the band from the type let a large image reserve a strip
-    /// deep enough to notice; a caption's job is to be read, not to take height
-    /// from the picture, so the strip is a small, bounded fraction of the cell.
+    /// Derived from the cell, then shrunk — as a block — until the widest line
+    /// fits its corner. It used to be per-line `minimumScaleFactor`, which
+    /// shrank only the lines that needed it: the patient's name at full size
+    /// over a study description at half size read as two kinds of statement,
+    /// and the burner (which draws every line at one size) disagreed with the
+    /// preview. One size, fitted to the longest line, keeps the corners a
+    /// single block of type on screen and on film alike.
+    private var fontSize: CGFloat {
+        Self.fittedFontSize(for: corners, cellSize: cellSize)
+    }
+
+    /// Inset from the cell's edge — enough that the text does not sit on the
+    /// border, scaled so a small cell does not lose room to margins.
+    private var padding: CGFloat { max(2, fontSize * Self.marginFactor) }
+
+    /// Type size for a cell of this size.
     ///
-    /// The text sits below the picture rather than on it: identification drawn
-    /// over the anatomy is exactly where a finding can hide.
-    static func bandHeight(for cellSize: CGSize, lines: Int = 2) -> CGFloat {
+    /// Scaled to the cell's height, so a 4×5 tile carries a block in proportion
+    /// to it rather than one sized for a full sheet, and bounded at both ends:
+    /// below the floor nothing is readable at any distance, above the ceiling a
+    /// caption starts competing with the anatomy.
+    static func fontSize(for cellSize: CGSize) -> CGFloat {
+        let byHeight = cellSize.height * heightFraction
+        return min(max(byHeight, minimumSize), maximumSize)
+    }
+
+    /// The cell's type size, shrunk as one block until the widest line fits
+    /// its corner — never below half, the floor the per-line shrink used to
+    /// have, past which a line truncates rather than dragging every other
+    /// line into illegibility with it.
+    static func fittedFontSize(
+        for corners: PrintCornerAnnotation, cellSize: CGSize
+    ) -> CGFloat {
+        let base = fontSize(for: cellSize)
+        let available = cellSize.width * 0.48
+        guard available > 0 else { return base }
+        let widest = corners.allLines
+            .map { width(of: $0, fontSize: base) }
+            .max() ?? 0
+        guard widest > available else { return base }
+        return base * max(0.5, available / widest)
+    }
+
+    /// One line's set width at a size.
+    ///
+    /// Measured in Helvetica — the film's face — rather than the view's system
+    /// font: the two set within a few percent of each other, and one
+    /// measurement shared with the burner means preview and film step the
+    /// block down at the same line.
+    private static func width(of line: String, fontSize: CGFloat) -> CGFloat {
+        let font = CTFontCreateWithName("Helvetica" as CFString, fontSize, nil)
+        let attributes: [CFString: Any] = [kCTFontAttributeName: font]
+        guard let attributed = CFAttributedStringCreate(
+            nil, line as CFString, attributes as CFDictionary) else { return 0 }
+        let ctLine = CTLineCreateWithAttributedString(attributed)
+        return CGFloat(CTLineGetTypographicBounds(ctLine, nil, nil, nil))
+    }
+
+    /// The room a corner block of this many lines takes in a cell of this size —
+    /// what tells a caller whether the corners are about to collide.
+    static func blockHeight(for cellSize: CGSize, lines: Int) -> CGFloat {
         guard lines > 0 else { return 0 }
-        let full = min(max(cellSize.height * bandFraction, minimumBandHeight), maximumBandHeight)
-        guard lines == 1 else { return full }
-        // One line needs roughly half the box two do, padding aside.
-        return full * 0.62
+        let size = fontSize(for: cellSize)
+        return size * (marginFactor + CGFloat(lines) * lineHeightFactor)
     }
 
-    /// Type size that fits `lines` lines inside the band for this cell.
-    ///
-    /// Both axes still matter: the band bounds the height, and the cell's width
-    /// bounds how much text fits on a line before `minimumScaleFactor` starts
-    /// shrinking it anyway. The smaller of the two wins.
-    static func fontSize(for cellSize: CGSize, lines: Int = 2) -> CGFloat {
-        let lines = max(1, lines)
-        let band = bandHeight(for: cellSize, lines: lines)
-        // Line boxes, the gaps between them, and the band's own padding, all
-        // expressed in multiples of the type size — invert to get the size.
-        let boxesPerSize = CGFloat(lines) * lineHeightFactor
-            + CGFloat(lines - 1) * lineGapFactor
-            + verticalPaddingFactor
-        let byBand = band / boxesPerSize
-        let byWidth = cellSize.width * widthFraction
-        let fitted = byWidth > 0 ? min(byBand, byWidth) : byBand
-        return min(max(fitted, minimumSize), maximumSize)
-    }
+    /// Type size as a fraction of the cell's height. A notch under the viewer's
+    /// own 0.026: film cells sit four and sixteen to a sheet, and the corners
+    /// carry more lines than a viewport's do, so the block has to stay out of the
+    /// picture's way at sizes a viewport never reaches.
+    private static let heightFraction: CGFloat = 0.023
 
-    /// Fraction of the cell's height a two-line band occupies.
-    private static let bandFraction: CGFloat = 0.09
-    /// Deep enough to hold two lines at the smallest legible type — a floor
-    /// below that would clip the text it exists to protect.
-    private static let minimumBandHeight: CGFloat = 20
-    private static let maximumBandHeight: CGFloat = 40
+    /// Must match the layout above: the inset off the edge, and one line box
+    /// (type plus its gap) per line.
+    static let marginFactor: CGFloat = 0.6
+    static let lineHeightFactor: CGFloat = 1.22
 
-    // Must match the VStack above: line box, inter-line spacing, vertical padding.
-    private static let lineHeightFactor: CGFloat = 1.2
-    private static let lineGapFactor: CGFloat = 0.25
-    private static let verticalPaddingFactor: CGFloat = 0.6
-
-    private static let widthFraction: CGFloat = 0.024
-    private static let minimumSize: CGFloat = 6
-    private static let maximumSize: CGFloat = 13
+    private static let minimumSize: CGFloat = 5
+    private static let maximumSize: CGFloat = 11
 }
 #endif

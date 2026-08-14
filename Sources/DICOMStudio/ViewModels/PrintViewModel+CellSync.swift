@@ -58,24 +58,32 @@ public struct PrintCellSyncOptions: OptionSet, Sendable, Hashable {
 
     /// The switches in the order they are offered, with their labels.
     ///
+    /// The order matches the tool rail's — W/L, then zoom and pan, then invert —
+    /// so a lock sits in the same place in the list as the tool it holds
+    /// together. A lock list ordered differently from the tools above it makes
+    /// the reader search for "the one for the tool I am holding" every time.
+    ///
     /// Rotation and flip are deliberately absent. They are how a cell is put the
     /// right way up, which is a fact about that image rather than a way of
     /// looking at the film — turning every cell because one was upside down is
     /// never what was meant.
     public static let catalog: [(option: PrintCellSyncOptions, title: String, symbol: String)] = [
-        (.zoomPan, "Zoom & Pan", "arrow.up.left.and.arrow.down.right"),
         (.window, "Window", "circle.lefthalf.filled"),
+        (.zoomPan, "Zoom & Pan", "arrow.up.left.and.arrow.down.right"),
         (.invert, "Invert", "circle.righthalf.filled")
     ]
 }
 
 // MARK: - How far it reaches
 
-/// Which other cells a synchronised edit reaches.
+/// Which other cells on the film a synchronised edit reaches.
+///
+/// Never past the film the edited cell is on. A reader judges one sheet at a
+/// time — it is the sheet in front of them, and the only one whose cells they
+/// can see move — so an edit that also re-windowed thirteen films they have not
+/// turned to is an edit whose effects are discovered on paper. Both cases below
+/// are read as "…on this film".
 public enum PrintCellSyncScope: String, CaseIterable, Sendable, Identifiable {
-
-    /// Every mark in the job, across all films.
-    case allCells
 
     /// Only marks from the same series as the cell being edited.
     ///
@@ -84,16 +92,15 @@ public enum PrintCellSyncScope: String, CaseIterable, Sendable, Identifiable {
     /// was meant.
     case sameSeries
 
-    /// Only the cells on the film the edited cell is on.
+    /// Every cell on the film the edited cell is on.
     case thisFilm
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
-        case .allCells: return "All Cells"
         case .sameSeries: return "Same Series"
-        case .thisFilm: return "This Film"
+        case .thisFilm: return "Whole Film"
         }
     }
 }
@@ -133,6 +140,28 @@ extension PrintViewModel {
         }
     }
 
+    /// Shuts or opens a lock the way the rail's button does, seeding included.
+    ///
+    /// The window lock cannot simply be set: cells never opened carry no window,
+    /// and a relative window edit has nothing to work from, so they are given
+    /// one the moment the lock shuts (see ``seedWindowsForSync()``). That is a
+    /// precondition of the lock, not a detail of the button that happened to
+    /// shut it — and with a keyboard shortcut now shutting the same lock, a
+    /// caller that forgot it would leave the unseeded cells sitting still while
+    /// their neighbours moved. One door in, so neither caller can forget.
+    ///
+    /// Refuses while a job-wide window is in force, where nothing per-cell
+    /// reaches the film and a lit lock would promise otherwise.
+    @discardableResult
+    public func toggleSyncFromUI(_ option: PrintCellSyncOptions) -> Bool {
+        guard option != .window || !isCellWindowingOverridden else { return false }
+        toggleSync(option)
+        if option == .window, cellSync.contains(.window) {
+            Task { await seedWindowsForSync() }
+        }
+        return true
+    }
+
     /// Gives every mark a concrete window, so a synchronised drag moves all of
     /// them and not just the ones that have been looked at.
     ///
@@ -163,25 +192,33 @@ extension PrintViewModel {
     /// The source itself is never in the result — it has already been written by
     /// the tool that called in, and writing it twice would re-apply the delta.
     public func syncPeers(of itemID: String) -> [PrintSelectionItem] {
-        guard let source = selection.items.first(where: { $0.id == itemID }) else { return [] }
+        guard let source = printedItems.first(where: { $0.id == itemID }) else { return [] }
+        // The film first, always: whatever the scope says, an edit stops at the
+        // edge of the sheet being judged.
+        let onFilm = cellsOnFilm(containing: itemID)
         let candidates: [PrintSelectionItem]
         switch cellSyncScope {
-        case .allCells:
-            candidates = selection.items
+        case .thisFilm:
+            candidates = onFilm
         case .sameSeries:
             let key = source.seriesKey
-            candidates = selection.items.filter { $0.seriesKey == key }
-        case .thisFilm:
-            let cellsPerFilm = max(1, plan.cellsPerFilm)
-            guard let index = selection.items.firstIndex(where: { $0.id == itemID }) else {
-                return []
-            }
-            let film = index / cellsPerFilm
-            let start = film * cellsPerFilm
-            let end = min(selection.items.count, start + cellsPerFilm)
-            candidates = Array(selection.items[start..<end])
+            candidates = onFilm.filter { $0.seriesKey == key }
         }
         return candidates.filter { $0.id != itemID }
+    }
+
+    /// The cells sharing a film with this one, in cell order — the film's own
+    /// slice of the printed marks.
+    ///
+    /// Computed from ``printedItems`` rather than the raw marks: a range filter
+    /// decides what is laid out, so it decides which cells are neighbours.
+    public func cellsOnFilm(containing itemID: String) -> [PrintSelectionItem] {
+        let items = printedItems
+        let cellsPerFilm = max(1, plan.cellsPerFilm)
+        guard let index = items.firstIndex(where: { $0.id == itemID }) else { return [] }
+        let start = (index / cellsPerFilm) * cellsPerFilm
+        let end = min(items.count, start + cellsPerFilm)
+        return Array(items[start..<end])
     }
 
     /// Whether this cell moves when the focused cell is adjusted.
@@ -206,10 +243,14 @@ extension PrintViewModel {
     ///   too, and re-basing each peer's viewport on it is what makes the copied
     ///   pan mean the same crop.
     func propagateZoomPan(from itemID: String, cellSize: CGSize) {
-        guard isSynced(.zoomPan),
+        guard propagates(.zoomPan, from: itemID),
               let source = selection.items.first(where: { $0.id == itemID })?.presentation
         else { return }
-        for peer in syncPeers(of: itemID) {
+        // The same laying-in rule as the cell that was dragged: a peer clamped
+        // as though it were fitted would sit still at zoom 1 while the source
+        // slid, which is the linked-cells version of the pan tool looking dead.
+        let covers = picturesCoverTheirCells
+        for peer in editPeers(of: itemID) {
             mutatePresentation(forItemID: peer.id, cellSize: cellSize) { presentation in
                 presentation.zoom = source.zoom
                 presentation.panX = source.panX
@@ -220,17 +261,18 @@ extension PrintViewModel {
                 // image fills and generous on the other. A pan that is a little
                 // loose is recoverable; one that is not clamped at all slides
                 // the picture off the cell.
-                PrintViewModel.clampPan(of: &presentation, pixelSize: nil)
+                PrintViewModel.clampPan(of: &presentation, pixelSize: nil,
+                                        covers: covers)
             }
         }
     }
 
     /// Copies the edited cell's inversion onto its peers.
     func propagateInversion(from itemID: String, cellSize: CGSize?) {
-        guard isSynced(.invert),
+        guard propagates(.invert, from: itemID),
               let source = selection.items.first(where: { $0.id == itemID })?.presentation
         else { return }
-        for peer in syncPeers(of: itemID) {
+        for peer in editPeers(of: itemID) {
             mutatePresentation(forItemID: peer.id, cellSize: cellSize) { presentation in
                 presentation.invert = source.invert
             }
@@ -252,11 +294,11 @@ extension PrintViewModel {
     func propagateWindowDelta(
         from itemID: String, previous: WindowSettings, current: WindowSettings
     ) {
-        guard isSynced(.window), previous.width > 0 else { return }
+        guard propagates(.window, from: itemID), previous.width > 0 else { return }
         let widthFactor = current.width / previous.width
         let centerShift = (current.center - previous.center) / previous.width
         guard widthFactor.isFinite, centerShift.isFinite else { return }
-        for peer in syncPeers(of: itemID) {
+        for peer in editPeers(of: itemID) {
             guard let window = window(forItemID: peer.id) else { continue }
             selection.adjust(peer.with(
                 windowCenter: .some((window.center + centerShift * window.width).rounded()),
@@ -270,8 +312,8 @@ extension PrintViewModel {
     /// Used for presets, which name a tissue rather than a nudge, and so mean
     /// the same numbers everywhere they are applied.
     func propagateWindowAbsolute(from itemID: String, window: WindowSettings) {
-        guard isSynced(.window) else { return }
-        for peer in syncPeers(of: itemID) {
+        guard propagates(.window, from: itemID) else { return }
+        for peer in editPeers(of: itemID) {
             selection.adjust(peer.with(
                 windowCenter: .some(window.center.rounded()),
                 windowWidth: .some(max(1, window.width.rounded())),

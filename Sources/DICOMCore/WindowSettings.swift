@@ -5,7 +5,7 @@ import Foundation
 /// Defines the Window Center (Level) and Window Width parameters used to
 /// map pixel values to display values.
 /// Reference: DICOM PS3.3 C.11.2.1.2 - Window Center and Window Width
-public struct WindowSettings: Sendable, Equatable {
+public struct WindowSettings: Sendable, Equatable, Codable {
     /// The center of the window (also called Level)
     ///
     /// This is the pixel value that maps to the middle of the output range.
@@ -106,7 +106,7 @@ public struct WindowSettings: Sendable, Equatable {
 /// VOI LUT Function types
 ///
 /// Reference: DICOM PS3.3 C.11.2.1.3 - VOI LUT Function
-public enum VOILUTFunction: String, Sendable, Equatable {
+public enum VOILUTFunction: String, Sendable, Equatable, Codable {
     /// Linear transformation (default)
     /// Reference: PS3.3 C.11.2.1.2.1
     case linear = "LINEAR"

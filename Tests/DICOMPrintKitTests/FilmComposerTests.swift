@@ -109,13 +109,25 @@ final class FilmComposerTests: XCTestCase {
     }
 
     func testOversizedSheetIsRejectedRatherThanAllocated() {
+        // 14 in at the maximum DPI is ~9100 px, well past the cap.
         let huge = FilmComposer(configuration: FilmComposerConfiguration(
-            dpi: 1200, maximumPixelDimension: 1000))
+            dpi: PrintSCPSettings.dpiRange.upperBound, maximumPixelDimension: 1000))
         XCTAssertThrowsError(try huge.compose(film(filmSize: .size14InX17In))) { error in
             guard case FilmCompositionError.sheetTooLarge = error else {
                 return XCTFail("Expected sheetTooLarge, got \(error)")
             }
         }
+    }
+
+    func testResolutionIsClampedToWhatFilmImagersAddress() {
+        // Film imagers top out around 650 DPI, so a higher request is composed
+        // at the ceiling rather than spending memory on detail film cannot hold.
+        XCTAssertEqual(FilmComposerConfiguration(dpi: 4800).dpi,
+                       PrintSCPSettings.dpiRange.upperBound)
+        XCTAssertEqual(FilmComposerConfiguration(dpi: 1).dpi,
+                       PrintSCPSettings.dpiRange.lowerBound)
+        // The default sits inside the range, so it survives the clamp intact.
+        XCTAssertEqual(FilmComposerConfiguration().dpi, PrintSCPSettings.defaultDPI)
     }
 
     // MARK: Determinism and sensitivity — what a golden hash is a proxy for
@@ -193,6 +205,111 @@ final class FilmComposerTests: XCTestCase {
             film(image: image(value: 255), presentationLUTShape: .inverse))
         XCTAssertGreaterThan(sample(identity, atFractionX: 0.5, y: 0.5), 200)
         XCTAssertLessThan(sample(inverse, atFractionX: 0.5, y: 0.5), 55)
+    }
+
+    func testLinODKeepsItsOrientation() throws {
+        // Low P prints light (Min Density), high P dark — the direction the
+        // old invert-toggle already had, so films do not flip under the fix.
+        let low = try composer.compose(
+            film(image: image(value: 0), presentationLUTShape: .linearOpticalDensity))
+        let high = try composer.compose(
+            film(image: image(value: 255), presentationLUTShape: .linearOpticalDensity))
+        XCTAssertGreaterThan(sample(low, atFractionX: 0.5, y: 0.5), 200)
+        XCTAssertLessThan(sample(high, atFractionX: 0.5, y: 0.5), 10)
+    }
+
+    func testLinODIsADensityCurveNotANegation() throws {
+        // Mid-gray under LIN OD: OD = 0.2 + 0.5·(3.0 − 0.2) = 1.6, whose
+        // transmitted luminance is ~4% of full — nowhere near the 50% a plain
+        // inversion (the old behavior) put there. The curve *is* the fix.
+        let mid = try composer.compose(
+            film(image: image(value: 128), presentationLUTShape: .linearOpticalDensity))
+        let value = sample(mid, atFractionX: 0.5, y: 0.5)
+        XCTAssertLessThan(value, 40, "mid P-value must fall on the exponential density curve")
+        XCTAssertGreaterThan(value, 0, "…but not clip to black")
+    }
+
+    // MARK: Annotation bands (FR-006)
+
+    /// Ink from the annotation text: any bright pixel inside the given
+    /// fractional region of the sheet (rows are top-down, like the bitmap).
+    private func regionHasInk(
+        _ film: ComposedFilm,
+        x: ClosedRange<Double> = 0...1,
+        y: ClosedRange<Double> = 0...1
+    ) -> Bool {
+        let x0 = max(0, Int(Double(film.width) * x.lowerBound))
+        let x1 = min(film.width - 1, Int(Double(film.width) * x.upperBound))
+        let y0 = max(0, Int(Double(film.height) * y.lowerBound))
+        let y1 = min(film.height - 1, Int(Double(film.height) * y.upperBound))
+        for row in y0...y1 {
+            let base = film.pixels.startIndex + row * film.bytesPerRow
+            for column in x0...x1 where film.pixels[base + column * film.samplesPerPixel] > 128 {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func composer(edge: FilmAnnotationEdge) -> FilmComposer {
+        FilmComposer(configuration: FilmComposerConfiguration(dpi: 50, annotationEdge: edge))
+    }
+
+    private func annotatedFilm() -> ReceivedFilm {
+        // A black image so the only bright pixels on the sheet are the text.
+        film(image: image(value: 0),
+             annotations: [PrintAnnotation(position: 1, text: "DOE^JANE 123456")])
+    }
+
+    func testHeaderBandPutsTheTextAtTheTop() throws {
+        let composed = try composer(edge: .top).compose(annotatedFilm())
+        XCTAssertTrue(regionHasInk(composed, y: 0...0.1),
+                      "header text must be at the top of the sheet")
+        XCTAssertFalse(regionHasInk(composed, y: 0.9...1),
+                       "…and nowhere near the foot")
+    }
+
+    func testFooterBandPutsTheTextAtTheBottom() throws {
+        let composed = try composer(edge: .bottom).compose(annotatedFilm())
+        XCTAssertTrue(regionHasInk(composed, y: 0.9...1))
+        XCTAssertFalse(regionHasInk(composed, y: 0...0.1))
+    }
+
+    func testSideBandsPutTheTextOnTheirEdge() throws {
+        let left = try composer(edge: .left).compose(annotatedFilm())
+        XCTAssertTrue(regionHasInk(left, x: 0...0.1),
+                      "left-band text must run along the left edge")
+        XCTAssertFalse(regionHasInk(left, x: 0.9...1))
+
+        let right = try composer(edge: .right).compose(annotatedFilm())
+        XCTAssertTrue(regionHasInk(right, x: 0.9...1),
+                      "right-band text must run along the right edge")
+        XCTAssertFalse(regionHasInk(right, x: 0...0.1))
+    }
+
+    func testBandsMoveTheCellsOffTheirEdge() {
+        let format = PrintImageDisplayFormat.parse("STANDARD\\1,1")
+        let sheet = FilmSheet(filmSize: .size8InX10In, orientation: .portrait, dpi: 50)
+
+        let plain = FilmCellLayout.cells(for: format, on: sheet)[0]
+        let top = FilmCellLayout.cells(
+            for: format, on: sheet, footerMillimeters: 12, annotationEdge: .top)[0]
+        let bottom = FilmCellLayout.cells(
+            for: format, on: sheet, footerMillimeters: 12, annotationEdge: .bottom)[0]
+        let leftBand = FilmCellLayout.cells(
+            for: format, on: sheet, footerMillimeters: 12, annotationEdge: .left)[0]
+        let overlay = FilmCellLayout.cells(
+            for: format, on: sheet, footerMillimeters: 12, annotationEdge: .overlay)[0]
+
+        XCTAssertGreaterThan(top.y, plain.y, "a header pushes the cells down")
+        XCTAssertLessThan(top.height, plain.height)
+        XCTAssertEqual(bottom.y, plain.y, "a footer leaves the top edge alone")
+        XCTAssertLessThan(bottom.height, plain.height)
+        XCTAssertGreaterThan(leftBand.x, plain.x, "a left band pushes the cells right")
+        XCTAssertLessThan(leftBand.width, plain.width)
+        XCTAssertEqual(leftBand.height, plain.height, "a side band never costs height")
+        XCTAssertEqual(overlay.width, plain.width, "overlay reserves nothing")
+        XCTAssertEqual(overlay.height, plain.height)
     }
 
     func testTwoInversionsCancel() throws {

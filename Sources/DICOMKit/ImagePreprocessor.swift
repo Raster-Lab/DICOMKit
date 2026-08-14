@@ -143,13 +143,18 @@ public actor ImagePreprocessor {
     ///   - frameIndex: Zero-based frame to prepare
     ///   - colorMode: Target color mode for printing
     ///   - windowSettings: Optional window settings (if nil, auto-calculated)
+    ///   - voiLUT: A table-form VOI LUT to apply *instead of* a window. The
+    ///     caller resolves the precedence (an explicit user window beats the
+    ///     table, the table beats the header's Window Center/Width — PS3.3
+    ///     C.11.2); passing both is a caller error and the LUT wins.
     public func prepareForPrint(
         pixelData: PixelData,
         dataSet: DataSet,
         frameIndex: Int = 0,
         colorMode: PrintColorMode,
         windowSettings: WindowSettings? = nil,
-        outputBitDepth: Int = 8
+        outputBitDepth: Int = 8,
+        voiLUT: GrayscaleLUT? = nil
     ) async throws -> PreparedImage {
         let descriptor = pixelData.descriptor
         guard frameIndex >= 0, frameIndex < descriptor.numberOfFrames else {
@@ -171,7 +176,8 @@ public actor ImagePreprocessor {
                 colorMode: colorMode,
                 windowSettings: windowSettings,
                 frameIndex: frameIndex,
-                outputBitDepth: outputBitDepth
+                outputBitDepth: outputBitDepth,
+                voiLUT: voiLUT
             )
         } else if photometric.isPaletteColor {
             return try await preprocessPaletteColorImage(
@@ -202,7 +208,8 @@ public actor ImagePreprocessor {
         colorMode: PrintColorMode,
         windowSettings: WindowSettings?,
         frameIndex: Int = 0,
-        outputBitDepth: Int = 8
+        outputBitDepth: Int = 8,
+        voiLUT: GrayscaleLUT? = nil
     ) async throws -> PreparedImage {
         let width = descriptor.columns
         let height = descriptor.rows
@@ -219,27 +226,39 @@ public actor ImagePreprocessor {
             count: totalPixels
         )
         
-        // Apply rescale slope and intercept
-        pixelValues = applyRescale(
-            to: pixelValues,
-            dataSet: dataSet
-        )
-        
-        // Determine window settings
-        let window: WindowSettings
-        if let providedWindow = windowSettings {
-            window = providedWindow
+        // Modality transform. A table-form Modality LUT Sequence *replaces*
+        // the rescale pair — PS3.3 C.11.1 makes them mutually exclusive, so
+        // applying both would rescale twice.
+        if let modalityLUT = dataSet.modalityLUT() {
+            pixelValues = pixelValues.map { modalityLUT.value(for: $0) }
         } else {
-            // Auto-calculate from pixel range
-            let minVal = pixelValues.min() ?? 0.0
-            let maxVal = pixelValues.max() ?? 1.0
-            let center = (minVal + maxVal) / 2.0
-            let width = maxVal - minVal
-            window = WindowSettings(center: center, width: max(1.0, width))
+            pixelValues = applyRescale(
+                to: pixelValues,
+                dataSet: dataSet
+            )
         }
-        
-        // Apply window/level transformation
-        var normalizedPixels = pixelValues.map { window.apply(to: $0) }
+
+        // VOI transform: a table LUT when the caller resolved to one,
+        // otherwise a window — provided, or auto-stretched over the frame.
+        var normalizedPixels: [Double]
+        if let voiLUT {
+            normalizedPixels = pixelValues.map { voiLUT.normalized($0) }
+        } else {
+            let window: WindowSettings
+            if let providedWindow = windowSettings {
+                window = providedWindow
+            } else {
+                // Auto-calculate from pixel range
+                let minVal = pixelValues.min() ?? 0.0
+                let maxVal = pixelValues.max() ?? 1.0
+                let center = (minVal + maxVal) / 2.0
+                let width = maxVal - minVal
+                window = WindowSettings(center: center, width: max(1.0, width))
+            }
+
+            // Apply window/level transformation
+            normalizedPixels = pixelValues.map { window.apply(to: $0) }
+        }
         
         // Handle MONOCHROME1 polarity (invert)
         if descriptor.photometricInterpretation == .monochrome1 {

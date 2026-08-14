@@ -14,7 +14,7 @@ import DICOMPrintKit
 // MARK: - Selection Item
 
 /// One marked frame destined for a film cell.
-public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
+public struct PrintSelectionItem: Identifiable, Hashable, Sendable, Codable {
     /// Stable identity: a given frame of a given file can be marked only once.
     public var id: String { "\(filePath)#\(frameIndex)" }
 

@@ -197,7 +197,12 @@ public enum FilmIdentificationFooter {
     /// Type size as a fraction of the sheet's height. A 14×17 portrait sheet
     /// (432 mm) gets ~4.75 mm; an 8×10 (254 mm) gets ~2.8 mm.
     public static let fontHeightFraction: Double = 0.011
-    public static let minimumFontMillimeters: Double = 2.5
+
+    /// The SRS legibility floor (§4.6): 8 pt at 300 DPI. A point is 1/72 in,
+    /// so 8 pt = 8/72 × 25.4 ≈ 2.82 mm on the physical sheet — regardless of
+    /// the DPI it is rasterized at, which is the point of stating it in
+    /// millimetres.
+    public static let minimumFontMillimeters: Double = 8.0 / 72.0 * 25.4
     public static let maximumFontMillimeters: Double = 6
 
     /// Baseline-to-baseline distance, as a multiple of the type size.

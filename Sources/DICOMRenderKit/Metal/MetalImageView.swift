@@ -106,7 +106,8 @@ public final class MetalImageRenderer: NSObject, MTKViewDelegate {
         var params = DisplayShaderParams(
             transform: transform,
             invert: presentation.invert ? 1 : 0,
-            isGrayscale: frame.isGrayscale ? 1 : 0
+            isGrayscale: frame.isGrayscale ? 1 : 0,
+            linearFilter: presentation.linearFiltering ? 1 : 0
         )
 
         encoder.setRenderPipelineState(pipelineState)

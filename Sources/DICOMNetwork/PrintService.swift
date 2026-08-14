@@ -174,7 +174,7 @@ public struct PrintConfiguration: Sendable {
 }
 
 /// Print color mode
-public enum PrintColorMode: String, Sendable {
+public enum PrintColorMode: String, Sendable, Codable {
     case grayscale = "GRAYSCALE"
     case color = "COLOR"
 }
@@ -206,14 +206,14 @@ public struct FilmSession: Sendable, Equatable {
 }
 
 /// Print priority levels
-public enum PrintPriority: String, Sendable, Hashable, CaseIterable {
+public enum PrintPriority: String, Sendable, Hashable, CaseIterable, Codable {
     case high = "HIGH"
     case medium = "MED"
     case low = "LOW"
 }
 
 /// Film medium types
-public enum MediumType: String, Sendable, Hashable, CaseIterable {
+public enum MediumType: String, Sendable, Hashable, CaseIterable, Codable {
     case paper = "PAPER"
     case clearFilm = "CLEAR FILM"
     case blueFilm = "BLUE FILM"
@@ -222,7 +222,7 @@ public enum MediumType: String, Sendable, Hashable, CaseIterable {
 }
 
 /// Film destination
-public enum FilmDestination: String, Sendable, Hashable, CaseIterable {
+public enum FilmDestination: String, Sendable, Hashable, CaseIterable, Codable {
     case magazine = "MAGAZINE"
     case processor = "PROCESSOR"
     case bin1 = "BIN_1"
@@ -268,13 +268,13 @@ public struct FilmBox: Sendable, Equatable {
 }
 
 /// Film orientation
-public enum FilmOrientation: String, Sendable, Hashable, CaseIterable {
+public enum FilmOrientation: String, Sendable, Hashable, CaseIterable, Codable {
     case portrait = "PORTRAIT"
     case landscape = "LANDSCAPE"
 }
 
 /// Film size identifiers (PS3.3 C.13.6)
-public enum FilmSize: String, Sendable, Hashable, CaseIterable {
+public enum FilmSize: String, Sendable, Hashable, CaseIterable, Codable {
     case size8InX10In = "8INX10IN"
     case size8_5InX11In = "8_5INX11IN"
     case size10InX12In = "10INX12IN"
@@ -290,7 +290,7 @@ public enum FilmSize: String, Sendable, Hashable, CaseIterable {
 }
 
 /// Magnification type
-public enum MagnificationType: String, Sendable, Hashable, CaseIterable {
+public enum MagnificationType: String, Sendable, Hashable, CaseIterable, Codable {
     case replicate = "REPLICATE"
     case bilinear = "BILINEAR"
     case cubic = "CUBIC"
@@ -298,12 +298,31 @@ public enum MagnificationType: String, Sendable, Hashable, CaseIterable {
 }
 
 /// Trim option
-public enum TrimOption: String, Sendable, Hashable, CaseIterable {
+public enum TrimOption: String, Sendable, Hashable, CaseIterable, Codable {
     case yes = "YES"
     case no = "NO"
 }
 
 // MARK: - Image Box
+
+/// The per-image scaling attributes a job can attach to an image box: what
+/// FR-003's scaling modes look like on the wire.
+public struct PrintImageBoxOptions: Sendable, Equatable, Hashable {
+    /// Requested Image Size (2020,0030) — the printed width in millimetres,
+    /// as a DS string. `nil` sends nothing and the printer fits the cell.
+    public var requestedImageSize: String?
+
+    /// Requested Decimate/Crop Behavior (2020,0040). DECIMATE — the printer
+    /// default — is omitted from the N-SET, so printers that do not implement
+    /// the attribute still accept the image box.
+    public var requestedDecimateCropBehavior: DecimateCropBehavior
+
+    public init(requestedImageSize: String? = nil,
+                requestedDecimateCropBehavior: DecimateCropBehavior = .decimate) {
+        self.requestedImageSize = requestedImageSize
+        self.requestedDecimateCropBehavior = requestedDecimateCropBehavior
+    }
+}
 
 /// Image box content (PS3.4 H.4.3)
 public struct ImageBoxContent: Sendable, Equatable {
@@ -327,7 +346,7 @@ public struct ImageBoxContent: Sendable, Equatable {
 }
 
 /// Image polarity
-public enum ImagePolarity: String, Sendable, Hashable, CaseIterable {
+public enum ImagePolarity: String, Sendable, Hashable, CaseIterable, Codable {
     case normal = "NORMAL"
     case reverse = "REVERSE"
 }
@@ -340,6 +359,38 @@ public enum DecimateCropBehavior: String, Sendable, Hashable, CaseIterable {
 }
 
 // MARK: - Printer Status
+
+/// The three operational states a Print SCP reports in Printer Status (2110,0010),
+/// plus the case where it reported nothing usable.
+///
+/// PS3.3 C.13.9 defines exactly NORMAL, WARNING and FAILURE. Callers should switch
+/// on this rather than compare ``PrinterStatus/status`` strings, so an unrecognised
+/// value from a non-conformant SCP lands on ``unknown`` instead of being silently
+/// treated as normal.
+public enum PrinterStatusSeverity: String, Sendable, Equatable, Hashable, CaseIterable {
+    case normal  = "NORMAL"
+    case warning = "WARNING"
+    case failure = "FAILURE"
+    case unknown = "UNKNOWN"
+
+    /// Human-readable label.
+    public var displayName: String {
+        switch self {
+        case .normal:  return "Normal"
+        case .warning: return "Warning"
+        case .failure: return "Failure"
+        case .unknown: return "Unknown"
+        }
+    }
+
+    /// Whether new print jobs should be sent while the printer reports this.
+    ///
+    /// WARNING is accepting-with-notice per the spec (a low-film printer still
+    /// prints); FAILURE and UNKNOWN are not safe to submit to.
+    public var acceptsJobs: Bool {
+        self == .normal || self == .warning
+    }
+}
 
 /// Printer status information
 public struct PrinterStatus: Sendable, Equatable {
@@ -364,9 +415,30 @@ public struct PrinterStatus: Sendable, Equatable {
         self.manufacturerModelName = manufacturerModelName
     }
 
+    /// The reported state as a closed enum.
+    ///
+    /// Parsed leniently: SCPs have been seen padding the CS value or varying its
+    /// case, and an unrecognised value is reported as ``PrinterStatusSeverity/unknown``
+    /// rather than assumed normal.
+    public var severity: PrinterStatusSeverity {
+        let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return PrinterStatusSeverity(rawValue: normalized) ?? .unknown
+    }
+
     /// Whether the printer is in a normal operational state
     public var isNormal: Bool {
-        status == "NORMAL"
+        severity == .normal
+    }
+
+    /// Whether the printer is operational but reported a non-blocking issue,
+    /// e.g. "SUPPLY LOW". Jobs are still accepted; the user should be told.
+    public var isWarning: Bool {
+        severity == .warning
+    }
+
+    /// Whether the printer reported a condition that should block new jobs.
+    public var isFailure: Bool {
+        severity == .failure
     }
 }
 
@@ -670,15 +742,64 @@ public struct PrintImageData: Sendable, Equatable {
 /// Presentation LUT Shape (2050,0020) — the transformation applied to stored
 /// pixel values before printing.
 ///
-/// Reference: PS3.3 C.11.6.1. Only the well-defined shapes are modelled; a full
-/// LUT-data variant can be added later if a printer requires it.
-public enum PresentationLUTShape: String, Sendable, Equatable, CaseIterable {
+/// Reference: PS3.3 C.11.6.1. For a custom curve, send a
+/// ``PresentationLUTTable`` instead of a shape.
+public enum PresentationLUTShape: String, Sendable, Equatable, CaseIterable, Codable {
     /// No transformation — stored values map directly to P-Values (IDENTITY).
     case identity = "IDENTITY"
     /// Inverse of IDENTITY (INVERSE).
     case inverse = "INVERSE"
     /// Linear optical density (LIN OD).
     case linearOpticalDensity = "LIN OD"
+}
+
+/// A custom Presentation LUT, sent as the Presentation LUT Sequence
+/// (2050,0010) instead of a shape — the SRS's "Custom" option.
+///
+/// Reference: PS3.3 C.11.4. The LUT Descriptor's first value mapped is always
+/// 0 for a Presentation LUT, so only the entries and their depth are stated.
+public struct PresentationLUTTable: Sendable, Equatable, Codable {
+    /// The output values, in ascending input order. 1...65536 entries.
+    public let entries: [UInt16]
+    /// Bits per entry, 8...16. Entries must fit.
+    public let bitsPerEntry: Int
+
+    /// Fails on an entry count or depth PS3.3 C.11.4 does not allow, because a
+    /// malformed LUT would be rejected mid-association after film was created.
+    public init?(entries: [UInt16], bitsPerEntry: Int = 12) {
+        guard (1...65536).contains(entries.count),
+              (8...16).contains(bitsPerEntry),
+              entries.allSatisfy({ Int($0) < (1 << bitsPerEntry) }) else { return nil }
+        self.entries = entries
+        self.bitsPerEntry = bitsPerEntry
+    }
+
+    /// The Presentation LUT Sequence element carrying this table.
+    ///
+    /// Descriptor value 0 means 2^16 entries — the one place DICOM's 16-bit
+    /// counter wraps and means "the most", not "none".
+    func sequenceElement() -> DataElement {
+        let count = entries.count == 65536 ? 0 : entries.count
+        var descriptor = Data()
+        for value in [UInt16(count), 0, UInt16(bitsPerEntry)] {
+            descriptor.append(UInt8(value & 0xFF))
+            descriptor.append(UInt8(value >> 8))
+        }
+        var lutData = Data(capacity: entries.count * 2)
+        for value in entries {
+            lutData.append(UInt8(value & 0xFF))
+            lutData.append(UInt8(value >> 8))
+        }
+        let item = SequenceItem(elements: [
+            DataElement(tag: Tag(group: 0x0028, element: 0x3002), vr: .US,
+                        length: UInt32(descriptor.count), valueData: descriptor),
+            DataElement(tag: Tag(group: 0x0028, element: 0x3006), vr: .OW,
+                        length: UInt32(lutData.count), valueData: lutData)
+        ])
+        return DataElement(
+            tag: Tag(group: 0x2050, element: 0x0010), vr: .SQ,
+            length: 0xFFFFFFFF, valueData: Data(), sequenceItems: [item])
+    }
 }
 
 // MARK: - Print Annotation
@@ -688,7 +809,7 @@ public enum PresentationLUTShape: String, Sendable, Equatable, CaseIterable {
 /// Reference: PS3.3 C.13.6. The printer must be configured with an Annotation
 /// Display Format that provides annotation box positions; ``position`` selects
 /// which configured box receives ``text``.
-public struct PrintAnnotation: Sendable, Equatable {
+public struct PrintAnnotation: Sendable, Equatable, Codable {
     /// The 1-based annotation box position on the film (Annotation Position, 2030,0010).
     public let position: UInt16
 
@@ -748,6 +869,11 @@ public struct PrintOptions: Sendable {
     /// When `nil`, no Presentation LUT is created (printer default applies).
     public let presentationLUTShape: PresentationLUTShape?
 
+    /// Optional custom Presentation LUT, sent as a LUT Sequence instead of a
+    /// shape. Takes precedence over ``presentationLUTShape`` — an instance
+    /// carries one or the other, and a caller providing data means the data.
+    public let presentationLUTTable: PresentationLUTTable?
+
     /// Text annotations to place on the film via Basic Annotation Boxes. Applied
     /// only when ``annotationDisplayFormatID`` is also set (it is printer-specific).
     public let annotations: [PrintAnnotation]
@@ -774,6 +900,12 @@ public struct PrintOptions: Sendable {
     /// statement, e.g. `"CS000"`.
     public let configurationInformation: String?
 
+    /// Per-image scaling attributes, indexed like the job's images. An image
+    /// past the end of the array (or the empty default) gets no Requested
+    /// Image Size and DECIMATE behavior — the printer's own fit, exactly as
+    /// jobs before this attribute existed were sent.
+    public let imageBoxOptions: [PrintImageBoxOptions]
+
     /// Creates print options with specified parameters
     public init(
         numberOfCopies: Int = 1,
@@ -789,10 +921,12 @@ public struct PrintOptions: Sendable {
         trimOption: TrimOption = .no,
         sessionLabel: String? = nil,
         presentationLUTShape: PresentationLUTShape? = nil,
+        presentationLUTTable: PresentationLUTTable? = nil,
         annotations: [PrintAnnotation] = [],
         annotationDisplayFormatID: String? = nil,
         configurationInformation: String? = nil,
-        filmAnnotations: [[PrintAnnotation]] = []
+        filmAnnotations: [[PrintAnnotation]] = [],
+        imageBoxOptions: [PrintImageBoxOptions] = []
     ) {
         self.numberOfCopies = numberOfCopies
         self.priority = priority
@@ -807,10 +941,43 @@ public struct PrintOptions: Sendable {
         self.trimOption = trimOption
         self.sessionLabel = sessionLabel
         self.presentationLUTShape = presentationLUTShape
+        self.presentationLUTTable = presentationLUTTable
         self.annotations = annotations
         self.annotationDisplayFormatID = annotationDisplayFormatID
         self.configurationInformation = configurationInformation
         self.filmAnnotations = filmAnnotations
+        self.imageBoxOptions = imageBoxOptions
+    }
+
+    /// The scaling attributes for one image, by its 0-based job-wide index.
+    public func imageBoxOptions(forImage index: Int) -> PrintImageBoxOptions {
+        guard index >= 0, index < imageBoxOptions.count else { return PrintImageBoxOptions() }
+        return imageBoxOptions[index]
+    }
+
+    /// These options with per-image scaling attributes attached — how a caller
+    /// adds them once the images (whose pixel spacing they need) are prepared.
+    public func withImageBoxOptions(_ boxOptions: [PrintImageBoxOptions]) -> PrintOptions {
+        PrintOptions(
+            numberOfCopies: numberOfCopies,
+            priority: priority,
+            filmSize: filmSize,
+            filmOrientation: filmOrientation,
+            mediumType: mediumType,
+            filmDestination: filmDestination,
+            borderDensity: borderDensity,
+            emptyImageDensity: emptyImageDensity,
+            magnificationType: magnificationType,
+            polarity: polarity,
+            trimOption: trimOption,
+            sessionLabel: sessionLabel,
+            presentationLUTShape: presentationLUTShape,
+            presentationLUTTable: presentationLUTTable,
+            annotations: annotations,
+            annotationDisplayFormatID: annotationDisplayFormatID,
+            configurationInformation: configurationInformation,
+            filmAnnotations: filmAnnotations,
+            imageBoxOptions: boxOptions)
     }
 
     /// The annotations one film carries: its own when it has any, else the
@@ -879,7 +1046,7 @@ public struct PrintOptions: Sendable {
 // MARK: - Print Layout
 
 /// Represents a print layout (rows x columns)
-public struct PrintLayout: Sendable, Equatable {
+public struct PrintLayout: Sendable, Equatable, Codable {
     /// Number of rows in the layout
     public let rows: Int
     
@@ -2760,21 +2927,34 @@ public enum DICOMPrintService {
         }
     }
 
-    /// Creates a Presentation LUT SOP Instance (N-CREATE) carrying a Presentation
-    /// LUT Shape, returning its SOP Instance UID for the film box to reference.
+    /// Creates a Presentation LUT SOP Instance (N-CREATE) carrying either a
+    /// Presentation LUT Shape or a custom LUT Sequence, returning its SOP
+    /// Instance UID for the film box to reference.
+    ///
+    /// PS3.3 C.11.4: the instance carries the sequence *or* the shape, never
+    /// both — a caller providing table data means the data.
     private static func createPresentationLUTInstance(
         association: Association,
         negotiated: NegotiatedAssociation,
-        shape: PresentationLUTShape,
+        shape: PresentationLUTShape?,
+        table: PresentationLUTTable? = nil,
         messageID: inout UInt16,
         contextID: UInt8,
         timeout: TimeInterval = 30,
         explicitVR: Bool = true,
         eventHandler: PrintEventHandler?
     ) async throws -> String {
-        let elements = [
-            DataElement.string(tag: .presentationLUTShape, vr: .CS, value: shape.rawValue)
-        ]
+        let elements: [DataElement]
+        if let table {
+            elements = [table.sequenceElement()]
+        } else if let shape {
+            elements = [
+                DataElement.string(tag: .presentationLUTShape, vr: .CS, value: shape.rawValue)
+            ]
+        } else {
+            throw PrintError.invalidConfiguration(
+                reason: "A Presentation LUT needs a shape or a table")
+        }
         let request = NCreateRequest(
             messageID: messageID,
             affectedSOPClassUID: presentationLUTSOPClassUID,
@@ -3729,12 +3909,13 @@ public enum DICOMPrintService {
             // ── Step 1b: N-CREATE Presentation LUT (optional) ─────────────
             // Created once per association and referenced from each film box.
             var presentationLUTUID: String?
-            if let lutShape = options.presentationLUTShape {
+            if options.presentationLUTShape != nil || options.presentationLUTTable != nil {
                 var lutMessageID: UInt16 = 1000
                 presentationLUTUID = try await createPresentationLUTInstance(
                     association: association,
                     negotiated: negotiated,
-                    shape: lutShape,
+                    shape: options.presentationLUTShape,
+                    table: options.presentationLUTTable,
                     messageID: &lutMessageID,
                     contextID: try contexts.contextID(for: presentationLUTSOPClassUID),
                     timeout: configuration.timeout,
@@ -3899,10 +4080,22 @@ public enum DICOMPrintService {
                     imgElements.append(DataElement.uint16(tag: .imageBoxPosition, value: position))
                     // Polarity (2020,0020)
                     imgElements.append(DataElement.string(tag: .polarity, vr: .CS, value: options.polarity.rawValue))
-                    // Decimate/Crop (2020,0040), Type 3 — omitted for DECIMATE,
-                    // the printer default, so printers that do not implement the
-                    // attribute still accept the image box.
-                    
+                    // Requested Image Size (2020,0030), Type 3 — the printed
+                    // width in millimetres, when the job asked for one (true
+                    // size). Decimate/Crop (2020,0040), Type 3 — omitted for
+                    // DECIMATE, the printer default, so printers that do not
+                    // implement the attribute still accept the image box.
+                    let boxOptions = options.imageBoxOptions(forImage: globalIndex)
+                    if let requestedSize = boxOptions.requestedImageSize {
+                        imgElements.append(DataElement.string(
+                            tag: .requestedImageSize, vr: .DS, value: requestedSize))
+                    }
+                    if boxOptions.requestedDecimateCropBehavior != .decimate {
+                        imgElements.append(DataElement.string(
+                            tag: .requestedDecimateCropBehavior, vr: .CS,
+                            value: boxOptions.requestedDecimateCropBehavior.rawValue))
+                    }
+
                     // Build Preformatted Image Sequence with image attributes.
                     // The descriptor is guaranteed present by the guard at the top
                     // of the workflow — the pixel-module attributes are always sent.

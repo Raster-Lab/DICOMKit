@@ -39,6 +39,11 @@ public struct FilmComposerConfiguration: Sendable, Hashable {
     /// Whether to draw Basic Annotation Box text on the sheet.
     public let drawAnnotations: Bool
 
+    /// Which edge the film-wide annotation band occupies (SRS FR-006:
+    /// header, footer, side or overlay). Footer is the default and what
+    /// every film before this option existed was composed with.
+    public let annotationEdge: FilmAnnotationEdge
+
     /// Whether to draw crop marks when Trim (2010,0140) is YES.
     public let drawTrimMarks: Bool
 
@@ -48,25 +53,64 @@ public struct FilmComposerConfiguration: Sendable, Hashable {
     /// Film Size / DPI combination must not be able to allocate unboundedly.
     public let maximumPixelDimension: Int
 
+    /// Where an image sits in a cell it does not fill (SRS FR-003).
+    ///
+    /// Centred by default — what a real printer does. Alignment and
+    /// ``stretchToFill`` are local composition preferences with no DICOM
+    /// attribute behind them: a film received over the wire is composed with
+    /// the defaults, so the emulator keeps printing what the SCU asked for.
+    public let cellAlignment: PrintCellAlignment
+
+    /// Fill each cell exactly, aspect ratio ignored (SRS FR-003 "stretch").
+    /// Not for diagnostic use; local composition only.
+    public let stretchToFill: Bool
+
     public init(
-        dpi: Double = 300,
+        dpi: Double = PrintSCPSettings.defaultDPI,
         densityMapping: DensityMapping = .paperDirect,
         marginMillimeters: Double = 5,
         cellSpacingMillimeters: Double = 2,
         drawAnnotations: Bool = true,
+        annotationEdge: FilmAnnotationEdge = .bottom,
         drawTrimMarks: Bool = true,
-        maximumPixelDimension: Int = 12000
+        maximumPixelDimension: Int = 12000,
+        cellAlignment: PrintCellAlignment = .center,
+        stretchToFill: Bool = false
     ) {
-        self.dpi = max(36, min(1200, dpi))
+        // Clamped to the one range the whole app agrees on, so the settings UI
+        // and the composer cannot drift apart on what a printable DPI is.
+        self.dpi = min(max(dpi, PrintSCPSettings.dpiRange.lowerBound),
+                       PrintSCPSettings.dpiRange.upperBound)
         self.densityMapping = densityMapping
         self.marginMillimeters = max(0, marginMillimeters)
         self.cellSpacingMillimeters = max(0, cellSpacingMillimeters)
         self.drawAnnotations = drawAnnotations
+        self.annotationEdge = annotationEdge
         self.drawTrimMarks = drawTrimMarks
         self.maximumPixelDimension = max(256, maximumPixelDimension)
+        self.cellAlignment = cellAlignment
+        self.stretchToFill = stretchToFill
     }
 
-    /// Print-quality defaults (300 DPI, paper-direct density).
+    /// This configuration with a different cell placement — how the simulator
+    /// and save-film apply a job's scaling mode over the emulator's settings.
+    public func withPlacement(
+        alignment: PrintCellAlignment, stretch: Bool
+    ) -> FilmComposerConfiguration {
+        FilmComposerConfiguration(
+            dpi: dpi,
+            densityMapping: densityMapping,
+            marginMillimeters: marginMillimeters,
+            cellSpacingMillimeters: cellSpacingMillimeters,
+            drawAnnotations: drawAnnotations,
+            annotationEdge: annotationEdge,
+            drawTrimMarks: drawTrimMarks,
+            maximumPixelDimension: maximumPixelDimension,
+            cellAlignment: alignment,
+            stretchToFill: stretch)
+    }
+
+    /// Print-quality defaults (600 DPI, paper-direct density).
     public static let `default` = FilmComposerConfiguration()
 
     /// A fast, low-resolution configuration for previews.
@@ -136,7 +180,8 @@ public struct FilmComposer: Sendable {
             on: sheet(for: film),
             marginMillimeters: configuration.marginMillimeters,
             spacingMillimeters: configuration.cellSpacingMillimeters,
-            footerMillimeters: footerMillimeters(for: film))
+            footerMillimeters: footerMillimeters(for: film),
+            annotationEdge: configuration.annotationEdge)
     }
 
     /// The strip this film's annotations need along the bottom of the sheet.
@@ -288,7 +333,9 @@ public struct FilmComposer: Sendable {
         emptyDensity: Double
     ) throws {
         let invert = shouldInvert(box: box, image: image, film: film)
-        guard let cgImage = try makeCGImage(from: image, invert: invert, forceColor: isColor) else {
+        let transfer = linODTransfer(film: film)
+        guard let cgImage = try makeCGImage(
+            from: image, invert: invert, transfer: transfer, forceColor: isColor) else {
             throw FilmCompositionError.unsupportedPhotometricInterpretation(
                 image.photometricInterpretation)
         }
@@ -300,7 +347,9 @@ public struct FilmComposer: Sendable {
             in: cell,
             requestedSizeMillimeters: requestedMillimeters,
             behavior: box.content.requestedDecimateCropBehavior,
-            sheet: sheet)
+            sheet: sheet,
+            alignment: configuration.cellAlignment,
+            stretch: configuration.stretchToFill)
 
         switch placement {
         case .failed(let reason):
@@ -340,9 +389,14 @@ public struct FilmComposer: Sendable {
     // MARK: Pixels
 
     /// Converts an image box's P-Values into an 8-bit `CGImage`.
+    ///
+    /// `transfer`, when present, is a 256-entry P-value → luminance curve
+    /// (LIN OD) applied after the inversions — grayscale only, since a density
+    /// curve has no meaning for an RGB box.
     private func makeCGImage(
         from image: PrintImageData,
         invert: Bool,
+        transfer: [UInt8]? = nil,
         forceColor: Bool
     ) throws -> CGImage? {
         let width = Int(image.columns), height = Int(image.rows)
@@ -364,6 +418,9 @@ public struct FilmComposer: Sendable {
 
         if invert {
             samples = Data(samples.map { 255 &- $0 })
+        }
+        if let transfer, samplesPerPixel == 1 {
+            samples = Data(samples.map { transfer[Int($0)] })
         }
 
         // A grayscale box on a colour film has to be widened to RGB so it can
@@ -528,11 +585,43 @@ public struct FilmComposer: Sendable {
         if photometric == "MONOCHROME1" { invert.toggle() }
         if box.content.polarity == .reverse { invert.toggle() }
         switch film.presentationLUTShape {
-        case .inverse, .linearOpticalDensity: invert.toggle()
-        case .identity, nil: break
+        case .inverse: invert.toggle()
+        // LIN OD is not a negation — it is the density curve applied in
+        // ``linODTransfer(film:)``, whose low-P-is-dark orientation already
+        // contains the reversal this switch used to fake with a toggle.
+        case .identity, .linearOpticalDensity, nil: break
         }
         if configuration.densityMapping == .filmEmulation { invert.toggle() }
         return invert
+    }
+
+    /// The LIN OD transfer curve as a 256-entry P-value → luminance table.
+    ///
+    /// Under LIN OD the input values are linearly proportional to *optical
+    /// density*, low input printing light (Min Density) and high input dark —
+    /// the same orientation the previous invert-toggle approximated. What the
+    /// toggle got wrong is the curve: a screen shows transmitted luminance,
+    /// which falls off as 10^(−OD), so equal density steps are exponential
+    /// luminance steps, not the straight line a negation draws:
+    ///
+    ///     OD(p) = Dmin + (p/255)·(Dmax − Dmin)
+    ///     l(p)  = (10^(−OD(p)) − 10^(−Dmax)) / (10^(−Dmin) − 10^(−Dmax))
+    ///
+    /// Min/Max Density arrive in hundredths of OD (PS3.3 C.13.3), defaulting
+    /// to 0.2 / 3.0 — ordinary film stock — when the film box does not say.
+    func linODTransfer(film: ReceivedFilm) -> [UInt8]? {
+        guard film.presentationLUTShape == .linearOpticalDensity else { return nil }
+        let minOD = Double(film.minDensity ?? 20) / 100
+        let maxOD = Double(film.maxDensity ?? 300) / 100
+        guard maxOD > minOD else { return nil }
+
+        let brightest = pow(10, -minOD)
+        let darkest = pow(10, -maxOD)
+        return (0...255).map { p in
+            let density = minOD + (Double(p) / 255) * (maxOD - minOD)
+            let luminance = (pow(10, -density) - darkest) / (brightest - darkest)
+            return UInt8(max(0, min(255, (luminance * 255).rounded())))
+        }
     }
 
     /// Maps a Border / Empty Image Density value to a luminance in 0...1.
@@ -629,9 +718,33 @@ public struct FilmComposer: Sendable {
         let lineHeight = fontSize * FilmIdentificationFooter.lineFactor
         let margin = sheet.pixels(fromMillimeters: configuration.marginMillimeters)
         let padding = fontSize * FilmIdentificationFooter.paddingFactor
+        let edge = configuration.annotationEdge
+        let sheetWidth = Double(sheet.pixelWidth)
+        let sheetHeight = Double(sheet.pixelHeight)
 
         context.saveGState()
         context.textMatrix = .identity
+        // A side band runs the text along the edge: the whole context turns a
+        // quarter, lines then lay out exactly as they do on a horizontal band.
+        // (CG origin is bottom-left, +y up; rotations are counterclockwise.)
+        switch edge {
+        case .left:
+            // Baseline runs down the sheet (reads top-to-bottom, glyph tops
+            // inward) — spine orientation. Lines stack in from the left edge.
+            context.rotate(by: -.pi / 2)
+            context.translateBy(x: -sheetHeight, y: 0)
+        case .right:
+            // Baseline runs up the sheet (reads bottom-to-top, glyph tops
+            // inward). Lines stack in from the right edge.
+            context.rotate(by: .pi / 2)
+            context.translateBy(x: 0, y: -sheetWidth)
+        case .top, .bottom, .overlay:
+            break
+        }
+        // The band's coordinate space: on a side band the "width" to centre in
+        // is the sheet's height, and the lines stack in from the turned edge.
+        let bandWidth = (edge == .left || edge == .right) ? sheetHeight : sheetWidth
+
         for (index, annotation) in annotations.enumerated() {
             // CoreText attribute keys directly: DICOMPrintKit must not pull in
             // AppKit/UIKit for `NSAttributedString.Key.font`.
@@ -644,10 +757,17 @@ public struct FilmComposer: Sendable {
             guard let attributed else { continue }
             let line = CTLineCreateWithAttributedString(attributed)
             let bounds = CTLineGetImageBounds(line, context)
-            // Stack upwards from the bottom margin, first position lowest.
-            context.textPosition = CGPoint(
-                x: max(margin, (Double(sheet.pixelWidth) - Double(bounds.width)) / 2),
-                y: margin + padding + Double(annotations.count - index - 1) * lineHeight)
+            let x = max(margin, (bandWidth - Double(bounds.width)) / 2)
+            let y: Double
+            switch edge {
+            case .bottom, .overlay, .left, .right:
+                // Stack upwards from the near margin, first position innermost.
+                y = margin + padding + Double(annotations.count - index - 1) * lineHeight
+            case .top:
+                // Stack downward from the top, first position uppermost.
+                y = sheetHeight - margin - padding - Double(index + 1) * lineHeight
+            }
+            context.textPosition = CGPoint(x: x, y: y)
             CTLineDraw(line, context)
         }
         context.restoreGState()

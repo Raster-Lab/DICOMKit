@@ -48,16 +48,13 @@ public struct PrintService: Sendable {
     ///     Cropping and permutation happen on the full-resolution decoded frame,
     ///     so a zoomed print keeps the modality's detail. Ignored for `raw`
     ///     requests, whose whole point is untouched stored pixels.
-    ///   - annotations: Lines of identification to burn into each frame's
-    ///     pixels, keyed by mark ID. Empty leaves the pixels alone. Burning is
-    ///     how film carries a patient's name reliably: a DICOM printer draws
-    ///     annotation boxes to its own layout, and many ignore them entirely.
+    ///   - annotations: Identification to burn into each frame's corners, keyed
+    ///     by mark ID. Empty leaves the pixels alone. Burning is how film carries
+    ///     a patient's name reliably: a DICOM printer draws annotation boxes to
+    ///     its own layout, and many ignore them entirely.
     ///
-    ///     Per mark rather than per file, because whether a mark carries its own
-    ///     caption is a question about the *film* it lands on: one sheet of a
-    ///     single study states the patient once at its foot, while the next
-    ///     sheet — mixing studies — captions every image, and the same file can
-    ///     be marked onto both.
+    ///     Per mark rather than per file, because the same file can be marked
+    ///     onto two films and each mark is captioned on its own.
     ///   - drawnAnnotations: The text and arrows a reader drew on each film cell,
     ///     keyed by mark ID — per mark rather than per file, because two marks can
     ///     be different frames of the same file and each carries its own drawing.
@@ -67,7 +64,8 @@ public struct PrintService: Sendable {
         request: PrintJobRequest,
         useViewerWindow: Bool = true,
         applyViewerPresentation: Bool = true,
-        annotations: [String: [String]] = [:],
+        annotations: [String: PrintCornerAnnotation] = [:],
+        annotationStyle: PrintAnnotationStyle = .automatic,
         drawnAnnotations: [String: [PrintOverlayAnnotation]] = [:],
         onProgress: PrintImagePreparer.ProgressHandler? = nil
     ) async throws -> [PreparedPrintImage] {
@@ -98,7 +96,13 @@ public struct PrintService: Sendable {
             var arranged: [PreparedPrintImage]
             if applyViewerPresentation, !request.raw,
                let presentation = item.presentation, !presentation.isIdentity {
-                arranged = frames.map { $0.applying(presentation, onProgress: onProgress) }
+                // The film reads the crop with the geometry the job scales by,
+                // so a filled cell prints the panned crop the preview shows.
+                arranged = frames.map {
+                    $0.applying(presentation,
+                                covers: request.scalingMode == .fillToFilm,
+                                onProgress: onProgress)
+                }
             } else {
                 arranged = frames
             }
@@ -108,13 +112,15 @@ public struct PrintService: Sendable {
             // half-rotated patient name is worse than none. The reader's own
             // drawing goes on first and the identification caption over it — the
             // caption is the one thing on the film that must stay legible, and an
-            // arrow drawn across the bottom would otherwise cover it.
+            // arrow drawn into a corner would otherwise cover it.
             #if canImport(CoreGraphics)
             if !request.raw, let overlays = drawnAnnotations[item.id], !overlays.isEmpty {
                 arranged = arranged.map { ImageAnnotationBurner.burning(overlays: overlays, into: $0) }
             }
-            if !request.raw, let lines = annotations[item.id], !lines.isEmpty {
-                arranged = arranged.map { ImageAnnotationBurner.burning(lines, into: $0) }
+            if !request.raw, let corners = annotations[item.id], !corners.isEmpty {
+                arranged = arranged.map {
+                    ImageAnnotationBurner.burning(corners: corners, into: $0, style: annotationStyle)
+                }
             }
             #endif
 
@@ -159,7 +165,7 @@ public struct PrintService: Sendable {
 
     /// C-ECHO the printer AE (the "Test Connection" action).
     public func verify(profile: PrinterProfile) async throws -> Bool {
-        let config = profile.printConfiguration()
+        let config = profile.printConfiguration(probe: true)
         return try await DICOMVerificationService.verify(
             host: config.host,
             port: config.port,
@@ -179,7 +185,8 @@ public struct PrintService: Sendable {
 
     /// N-GET the printer's status.
     public func printerStatus(profile: PrinterProfile) async throws -> PrinterStatus {
-        try await PrintWorkflow.printerStatus(configuration: profile.printConfiguration())
+        try await PrintWorkflow.printerStatus(
+            configuration: profile.printConfiguration(probe: true))
     }
 
     /// N-GET the execution status of a submitted print job.
@@ -190,3 +197,13 @@ public struct PrintService: Sendable {
         )
     }
 }
+
+// MARK: - Job status seam
+
+/// Answers print-job status queries — the seam that lets the history pane's
+/// re-query be tested without a printer on the network.
+public protocol PrintJobStatusQuerying: Sendable {
+    func jobStatus(profile: PrinterProfile, printJobUID: String) async throws -> DICOMNetwork.PrintJobStatus
+}
+
+extension PrintService: PrintJobStatusQuerying {}

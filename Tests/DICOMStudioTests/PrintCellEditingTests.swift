@@ -253,6 +253,49 @@ struct PrintCellEditingTests {
         #expect(viewModel.selection.items[0].presentation?.panY == 0)
     }
 
+    /// The other half of the rule above, and the one that was wrong: a *filled*
+    /// cell is showing a crop at every zoom, so the pan tool has real travel
+    /// there even at zoom 1. Clamping it as though it were fitted zeroed both
+    /// axes, and the tool looked dead on a fill-scaled film.
+    @Test("A filled cell is a crop, so the pan tool moves it even unzoomed")
+    func testPanWorksOnAFilledCellAtZoomOne() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.scalingMode = .fillToFilm
+
+        // A 1000×500 frame covering a square 300-point cell is scaled by 0.6 on
+        // its short side, so it is 600 points wide in a 300-point cell: 150
+        // points hidden either side, and the drag stops there.
+        viewModel.panCell(forItemID: "/a.dcm#0", dx: 1000, dy: 0,
+                          cellSize: CGSize(width: 300, height: 300),
+                          pixelSize: CGSize(width: 1000, height: 500))
+
+        #expect(viewModel.selection.items[0].presentation?.panX == 150)
+    }
+
+    @Test("Zooming a filled cell back out keeps the framing the reader chose")
+    func testZoomOutKeepsPanOnAFilledCell() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.scalingMode = .fillToFilm
+        let cell = CGSize(width: 300, height: 300)
+        let pixels = CGSize(width: 1000, height: 500)
+
+        viewModel.panCell(forItemID: "/a.dcm#0", dx: 100, dy: 0,
+                          cellSize: cell, pixelSize: pixels)
+        #expect(viewModel.selection.items[0].presentation?.panX == 100)
+
+        // Zoom in and straight back out to 1. On a filled cell zoom 1 is still
+        // a crop, so the part of the picture the reader framed must survive —
+        // on a fitted cell this same step correctly clears the pan (above).
+        viewModel.adjustZoom(forItemID: "/a.dcm#0", factor: 2,
+                             cellSize: cell, pixelSize: pixels)
+        viewModel.adjustZoom(forItemID: "/a.dcm#0", factor: 0.5,
+                             cellSize: cell, pixelSize: pixels)
+
+        #expect(viewModel.selection.items[0].presentation?.zoom == 1.0)
+        #expect(viewModel.selection.items[0].presentation?.panX == 100,
+                "zooming back to fitted is not a request to re-frame the crop")
+    }
+
     @Test("Arranging a cell turns the film's arrangement on, so the drag shows")
     func testArrangementEditEnablesViewerPresentation() {
         let viewModel = makeViewModel(items: markedFrames)

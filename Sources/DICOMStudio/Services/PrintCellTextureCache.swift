@@ -193,11 +193,39 @@ public final class PrintCellTextureCache {
 public enum PrintCellDisplay {
 
     /// The shader geometry for a mark over a frame of the given size.
+    ///
+    /// - Parameter fillingCellOfSize: when set, the region is cropped to the
+    ///   cell's aspect (SRS FR-003 fill-to-film) so the shader's centred fit
+    ///   covers the cell exactly — the fill happens in the source region, and
+    ///   the view showing it never has to change size.
     public static func presentation(
-        for item: PrintSelectionItem, imageWidth: Int, imageHeight: Int
+        for item: PrintSelectionItem, imageWidth: Int, imageHeight: Int,
+        fillingCellOfSize cellSize: CGSize? = nil
     ) -> DisplayPresentation {
         let arrangement = item.presentation
-        let region = arrangement?.visibleRegion(imageWidth: imageWidth, imageHeight: imageHeight)
+        // A filling cell reads its region with the covering geometry: the crop
+        // is smaller than the image even unzoomed, and the pan chooses which
+        // part shows. Read as fitted, the region came back "the whole image",
+        // the fill crop below re-centred it, and the pan a filled cell stored
+        // never moved anything on screen.
+        let region = arrangement?.visibleRegion(
+            imageWidth: imageWidth, imageHeight: imageHeight,
+            covers: cellSize != nil)
+        // No region means the whole frame is on the film — which the transform
+        // states as the frame's own rectangle rather than as a special case.
+        var source = DisplayPresentation.SourceRegion(
+            x: Double(region?.x ?? 0),
+            y: Double(region?.y ?? 0),
+            width: Double(region?.width ?? imageWidth),
+            height: Double(region?.height ?? imageHeight))
+        if let cellSize, cellSize.width > 0, cellSize.height > 0 {
+            source = fillCrop(
+                of: source,
+                cellAspect: Double(cellSize.width / cellSize.height),
+                quarterTurns: arrangement.map {
+                    ViewerPresentation.quarterTurns(fromDegrees: $0.rotationDegrees)
+                } ?? 0)
+        }
         return DisplayPresentation(
             // The angle itself, not the nearest quarter turn: the viewer's
             // rotate tool turns freely and the film now follows it.
@@ -205,14 +233,42 @@ public enum PrintCellDisplay {
             flipHorizontal: arrangement?.flipHorizontal ?? false,
             flipVertical: arrangement?.flipVertical ?? false,
             invert: arrangement?.invert ?? false,
-            // No region means the whole frame is on the film — which the transform
-            // states as the frame's own rectangle rather than as a special case.
-            sourceRegion: DisplayPresentation.SourceRegion(
-                x: Double(region?.x ?? 0),
-                y: Double(region?.y ?? 0),
-                width: Double(region?.width ?? imageWidth),
-                height: Double(region?.height ?? imageHeight))
+            // Bilinear: a film cell is judged as a picture on a panel-scaled
+            // sheet, and its CPU-drawn neighbours are smoothed — the viewer's
+            // pixel-exact nearest sampling belongs to the viewer.
+            linearFiltering: true,
+            sourceRegion: source
         )
+    }
+
+    /// The centred crop of a source region that matches a cell's aspect —
+    /// fill-to-film, stated in source pixels.
+    ///
+    /// The comparison happens on the region as it will be *after* turning: a
+    /// quarter turn makes a wide crop a tall one, so the aspect the cell must
+    /// be matched against swaps with it. The crop is centred; a non-centre
+    /// alignment shows in the composed film, where the fitter places it.
+    static func fillCrop(
+        of region: DisplayPresentation.SourceRegion,
+        cellAspect: Double,
+        quarterTurns: Int
+    ) -> DisplayPresentation.SourceRegion {
+        guard region.width > 0, region.height > 0, cellAspect > 0 else { return region }
+        let odd = quarterTurns % 2 == 1
+        // The aspect the *unturned* region must have for its turned form to
+        // match the cell.
+        let target = odd ? 1 / cellAspect : cellAspect
+        let aspect = region.width / region.height
+        var cropped = region
+        if aspect > target {
+            // Too wide: narrow it, keeping the centre.
+            cropped.width = region.height * target
+            cropped.x += (region.width - cropped.width) / 2
+        } else if aspect < target {
+            cropped.height = region.width / target
+            cropped.y += (region.height - cropped.height) / 2
+        }
+        return cropped
     }
 
     /// The size, in source pixels, of the picture this cell actually prints:

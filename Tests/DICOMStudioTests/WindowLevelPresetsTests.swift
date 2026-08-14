@@ -184,10 +184,15 @@ struct WindowLevelPresetsTests {
 
     // MARK: - allPresets
 
-    @Test("All presets includes CT and MR")
+    @Test("All presets includes every modality's list")
     func testAllPresets() {
         let all = WindowLevelPresets.allPresets
-        #expect(all.count == 11) // 8 CT + 3 MR
+        // 8 CT + 3 MR + 3 CR + 3 DX + 2 MG + 2 PT + 2 NM + 2 XA (FR-004).
+        #expect(all.count == 25)
+        #expect(all.contains { $0.modality == "CT" })
+        #expect(all.contains { $0.modality == "MR" })
+        #expect(all.contains { $0.modality == "CR" })
+        #expect(all.contains { $0.modality == "PT" })
     }
 
     // MARK: - preset(named:modality:)

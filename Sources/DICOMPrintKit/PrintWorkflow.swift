@@ -141,7 +141,21 @@ public enum PrintWorkflow {
     ) async throws -> PrintResult {
         let payloads = images.pixelPayloads
         let descriptors = images.imageDescriptors
-        let options = request.printOptions
+        var options = request.printOptions
+        // FR-003: fill and true size travel as per-image-box attributes.
+        let boxOptions = request.imageBoxOptions(for: images)
+        if !boxOptions.isEmpty {
+            options = options.withImageBoxOptions(boxOptions)
+        }
+        // True size is undefined without pixel spacing; those images fall back
+        // to fit — audibly, never silently: a wrong-scale film is one a
+        // clinician might measure against.
+        let fallbacks = request.trueSizeFallbackCount(for: images)
+        if fallbacks > 0 {
+            diagnostics?(.warning(
+                "⚠ \(fallbacks) image(s) record no pixel spacing — "
+                + "printed fit-to-film instead of true size"))
+        }
         let layout = request.resolvedLayout
         // Carries the band layouts a grid cannot state; nil lets the SCU size the
         // grid to the image count, as before.

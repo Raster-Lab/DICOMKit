@@ -239,6 +239,7 @@ struct DisplayParams {
     float4x4 transform;    // image quad → normalised device coordinates
     uint     invert;       // 1 → present inverted (white ↔ black)
     uint     isGrayscale;  // 1 → splat .r across RGB; the texture is r8Unorm
+    uint     linearFilter; // 1 → bilinear magnification (print preview cells)
 };
 
 struct DisplayVertex {
@@ -265,13 +266,21 @@ fragment float4 display_fragment(DisplayVertex in [[stage_in]],
                                  constant DisplayParams& p [[buffer(0)]],
                                  texture2d<float> frame [[texture(0)]])
 {
-    // Nearest, not linear. The existing viewer builds its CGImage with
+    // Nearest by default. The existing viewer builds its CGImage with
     // `shouldInterpolate: false`, so a zoomed-in image shows its actual pixels
     // rather than a smoothed guess — which is what reading pixel data calls for.
-    // Switching to linear here would silently change what is on screen.
+    // Switching the viewer to linear would silently change what is on screen.
+    //
+    // The print preview asks for bilinear instead: its cells are judged as
+    // pictures on a panel-scaled sheet, its CPU-drawn cells are smoothed by
+    // the platform image view, and a cell must not change texture when its
+    // GPU texture arrives.
     constexpr sampler nearest(filter::nearest, mag_filter::nearest, address::clamp_to_edge);
+    constexpr sampler bilinear(filter::linear, mag_filter::linear, address::clamp_to_edge);
 
-    float4 colour = frame.sample(nearest, in.texCoord);
+    float4 colour = p.linearFilter != 0
+        ? frame.sample(bilinear, in.texCoord)
+        : frame.sample(nearest, in.texCoord);
     float3 rgb = p.isGrayscale != 0 ? float3(colour.r) : colour.rgb;
     if (p.invert != 0) {
         rgb = 1.0 - rgb;

@@ -39,11 +39,16 @@ public struct ImageViewerView: View {
     /// Where the pointer is over the image area, or `nil` when it has left.
     @State private var hoverPoint: CGPoint?
 
-    /// The click-and-drag tool currently armed, or `nil` for plain pan.
+    /// The click-and-drag tool currently armed. Pan is the resting state.
     ///
-    /// Windowing, zoom and rotate are mutually exclusive: picking one arms it and
-    /// disarms the others, and the toolbar highlights whichever is active.
-    @State private var activeTool: ImageViewerDragTool?
+    /// The tools are mutually exclusive: picking one arms it and disarms the
+    /// others, and the toolbar highlights whichever is active. Pressing an armed
+    /// tool's own button or key again drops back to pan, as does escape.
+    @State private var activeTool: ImageViewerDragTool = .pan
+
+    /// True while a pan drag is actually in progress, so the pointer can show
+    /// the closed hand for exactly as long as the image is being carried.
+    @State private var isPanDragging = false
 
     /// Turns scroll events into whole image steps — one per wheel notch.
     @State private var scrollSteps = ScrollStepAccumulator()
@@ -366,6 +371,7 @@ public struct ImageViewerView: View {
                     }
             }
         )
+        .background(toolShortcuts)
         .focusedValue(\.imageViewerViewModel, viewModel)
         .overlay(alignment: .bottomLeading) {
             if viewModel.showMetadataOverlay && viewModel.hasImage && !viewModel.isWaveform {
@@ -425,6 +431,19 @@ public struct ImageViewerView: View {
                     .padding(8)
             }
         }
+        // The pointer, last of all — and this position is the whole trick.
+        //
+        // A cursor rect belongs to the topmost view under the pointer, and the
+        // reading area is covered by things that sit above the picture: the
+        // `contentShape(Rectangle())` that carries the context menu, the
+        // continuous-hover reader behind the coordinate readout, the annotation
+        // and cine overlays. Attached to the image itself this layer is under
+        // all of them, so AppKit asks one of *them* what shape to use and gets
+        // the arrow. Attached here it is above them, over the whole area every
+        // one of those covers, and the tool's shape is the one that shows.
+        //
+        // Deaf to the mouse, so none of what it covers stops working.
+        .overlay(toolCursorLayer)
         .toolbar {
             viewerToolbar
         }
@@ -523,6 +542,12 @@ public struct ImageViewerView: View {
         if printViewModel == nil {
             printViewModel = PrintViewModel(selection: viewModel.printSelection)
         } else {
+            // The screen is kept alive so reopening it is instant, but the film
+            // it is holding describes the last set of marks. Opening it again is
+            // opening it on what is ticked *now* — so the range, the drawn
+            // annotations and the picked cells go, while the printer and the
+            // film settings stay.
+            printViewModel?.resetForNewFilm()
             // Printers may have been added since it was last open.
             printViewModel?.loadPrinters()
         }
@@ -538,10 +563,8 @@ public struct ImageViewerView: View {
                 printViewModel?.layoutMode = .automatic
             }
         }
-
-        // The console reads like a fresh log each time the preview is opened,
-        // not a running transcript of every past visit to it.
-        printViewModel?.resetConsole()
+        // The console is cleared by the reset above, so the preview reads like a
+        // fresh log each time it is opened rather than a running transcript.
     }
 
     // MARK: - Cursor readout
@@ -612,7 +635,7 @@ public struct ImageViewerView: View {
                 .gesture(magnificationGesture)
                 .accessibilityLabel("DICOM Image")
                 .accessibilityValue(viewModel.dimensionsText)
-                .accessibilityHint("Drag to pan, or use the windowing, zoom and rotate tools to drag-adjust; scroll to step through images")
+                .accessibilityHint(imageAccessibilityHint)
                 #if os(macOS)
                 .background(ScrollWheelHandler { scrollImages($0) })
                 #endif
@@ -651,7 +674,7 @@ public struct ImageViewerView: View {
                 .gesture(magnificationGesture)
                 .accessibilityLabel("DICOM Image")
                 .accessibilityValue(viewModel.dimensionsText)
-                .accessibilityHint("Drag to pan, or use the windowing, zoom and rotate tools to drag-adjust; scroll to step through images")
+                .accessibilityHint(imageAccessibilityHint)
                 #if os(macOS)
                 .background(ScrollWheelHandler { scrollImages($0) })
                 #endif
@@ -718,7 +741,8 @@ public struct ImageViewerView: View {
                     zoomDragStart = value.translation
                 case .rotate:
                     rotateByDrag(to: value.location)
-                case nil:
+                case .pan:
+                    isPanDragging = true
                     dragOffset = value.translation
                 }
             }
@@ -731,16 +755,101 @@ public struct ImageViewerView: View {
                 case .rotate:
                     rotateByDrag(to: value.location)
                     rotateDragBearing = nil
-                case nil:
+                case .pan:
                     viewModel.panOffsetX += value.translation.width
                     viewModel.panOffsetY += value.translation.height
                     dragOffset = .zero
+                    isPanDragging = false
                 }
             }
     }
 
     /// Zoom fraction per point dragged.
     private static let dragZoomSensitivity: Double = 0.005
+
+    /// What a drag will do right now, spoken.
+    ///
+    /// The pointer's shape carries this for a sighted reader; the hint is the
+    /// same fact for one using VoiceOver, which is why it names the armed tool
+    /// rather than listing every tool that could be armed.
+    private var imageAccessibilityHint: String {
+        "\(activeTool.displayName) tool armed. \(activeTool.guidance) "
+        + "Press W, Z, E or H to change tool; scroll to step through images."
+    }
+
+    /// Sets the pointer's shape over the reading area to match the armed tool.
+    ///
+    /// Only once there is a picture: over an empty viewer none of the tools has
+    /// anything to act on, and a magnifier over it promises otherwise.
+    ///
+    /// The pointer's shape for the armed tool.
+    ///
+    /// Applied as the outermost overlay of the whole image area rather than on
+    /// the picture — see the call site for why that position is load-bearing.
+    /// `allowsHitTesting(false)` is what stops it swallowing the drags, clicks
+    /// and right-clicks of everything it now covers.
+    @ViewBuilder
+    private var toolCursorLayer: some View {
+        #if os(macOS)
+        // The closed hand for as long as the image is being carried, the tool's
+        // own shape the rest of the time — the same before/during distinction
+        // the film preview makes.
+        ToolCursor(cursor: viewModel.hasImage
+                   ? (isPanDragging ? NSCursor.closedHand : activeTool.cursor)
+                   : nil)
+            .allowsHitTesting(false)
+        #else
+        Color.clear
+        #endif
+    }
+
+    /// The keys that arm each tool, and the one-shot actions beside them.
+    ///
+    /// Zero-sized buttons behind the image: the toolbar's own buttons could
+    /// carry these, but the flip and invert icons come and go with the image's
+    /// photometric interpretation, and a key that disappears with its button is
+    /// worse than no key. Delivered wherever the viewer is, like the film's.
+    private var toolShortcuts: some View {
+        ZStack {
+            ForEach(ImageViewerDragTool.allCases) { tool in
+                Button("") { arm(tool) }
+                    .keyboardShortcut(KeyEquivalent(tool.shortcut), modifiers: [])
+            }
+
+            // No escape key here. Escape is how the inspector sheet, the print
+            // sheet and the ⌘/ popover are dismissed, and a second always-live
+            // claim on it risks the reader's way out of a modal to save them
+            // pressing H. H is the way back to pan.
+
+            // Guarded in the action rather than by `.disabled`: inversion is
+            // meaningless on a colour image, and doing the check here means the
+            // key is simply inert there instead of depending on whether a
+            // disabled button forgoes its shortcut or swallows it.
+            Button("") {
+                guard viewModel.isMonochrome else { return }
+                viewModel.toggleInversion()
+            }
+            .keyboardShortcut("v", modifiers: [])
+
+            // The bracket pair reads as the two mirror axes: [ lays the image
+            // over left-to-right, ] over top-to-bottom.
+            Button("") { viewModel.flipHorizontal() }
+                .keyboardShortcut("[", modifiers: [])
+            Button("") { viewModel.flipVertical() }
+                .keyboardShortcut("]", modifiers: [])
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+    }
+
+    /// Arms a tool, or drops back to pan if it was already armed.
+    ///
+    /// Pan itself is the resting state, so pressing it twice cannot leave the
+    /// viewer with nothing armed.
+    private func arm(_ tool: ImageViewerDragTool) {
+        activeTool = (activeTool == tool) ? .pan : tool
+    }
 
     /// Measures the space a drag reports its locations in, so the rotate tool knows
     /// where the centre of the picture it is turning actually is.
@@ -877,7 +986,7 @@ public struct ImageViewerView: View {
                 .keyboardShortcut("s", modifiers: [])
                 .accessibilityLabel(viewModel.isSeriesPaneVisible
                                     ? "Hide series list" : "Show series list")
-                .help("Show or hide the study's series (S)")
+                .help("Series pane (S) — every series in the study; drag one onto a tile to load it")
             }
         }
 
@@ -904,7 +1013,8 @@ public struct ImageViewerView: View {
             }
             .disabled(!viewModel.hasImage)
             .accessibilityLabel("Tile layout, currently \(viewModel.layout.displayName)")
-            .help("Viewer tile layout — tiles map to film cells in the same order")
+            .help("Tile layout (⌘1–⌘4 for 1×1 to 4×4) — splits the reading area into tiles; "
+                  + "they map to film cells in the same order")
         }
 
         // DICOM print — mark the current frame, then open the print sheet
@@ -954,7 +1064,8 @@ public struct ImageViewerView: View {
             .disabled(!viewModel.hasImage)
             .accessibilityLabel(viewModel.isCurrentFrameMarkedForPrint
                                 ? "Unmark image for print" : "Mark image for print")
-            .help("Mark this image for print (M)")
+            .help("Mark this image for print (M) — click to mark the image on screen; "
+                  + "the menu marks a whole series or every frame at once")
             .keyboardShortcut("m", modifiers: [])
 
             Button {
@@ -966,7 +1077,7 @@ public struct ImageViewerView: View {
             .keyboardShortcut("t", modifiers: [])
             .accessibilityLabel(viewModel.isPrintTrayVisible
                                 ? "Hide selected images" : "Show selected images")
-            .help("Show the images selected for print (T)")
+            .help("Selected-images tray (T) — the images marked for print, in film order")
 
             Button {
                 openPrintSheet()
@@ -985,31 +1096,35 @@ public struct ImageViewerView: View {
             }
             .disabled(viewModel.printSelection.isEmpty)
             .accessibilityLabel("Print marked images")
-            .help("Print marked images (⌘P)")
+            .help("Print marked images (⌘P) — opens the print sheet with everything marked, "
+                  + "laid onto film")
             .keyboardShortcut("p", modifiers: .command)
         }
 
-        // Tools — windowing, zoom and rotate are click-and-drag tools, exclusive
-        // of each other and highlighted while armed; invert, flip, fit and reset
-        // are one-shot actions. Quarter turns stay in the Image menu and the
-        // image's context menu, for when an exact 90° is what's wanted — the
-        // toolbar icon arms the free-turn drag. No dropdown: every tool is a
-        // single visible icon, in the order windowing, invert, zoom, rotate,
-        // flip, fit to view, reset.
+        // Tools — pan, windowing, zoom and rotate are click-and-drag tools,
+        // exclusive of each other and highlighted while armed; invert, flip, fit
+        // and reset are one-shot actions. Quarter turns stay in the Image menu
+        // and the image's context menu, for when an exact 90° is what's wanted —
+        // the toolbar icon arms the free-turn drag. No dropdown: every tool is a
+        // single visible icon, and every one of them has a key.
         ToolbarItemGroup(placement: .automatic) {
-            // A half-filled circle: window/level is contrast and brightness, and
-            // that is the dial every reading room draws it as. Inversion takes
-            // the square of the same pair below, so the two never read alike.
-            toolButton(
-                systemImage: "circle.lefthalf.filled",
-                isActive: activeTool == .windowing,
-                label: "Windowing tool",
-                help: "Windowing tool — drag on the image to adjust window/level"
-            ) {
-                activeTool = activeTool == .windowing ? nil : .windowing
+            // The drag tools, in the order pan, windowing, zoom, rotate. Built
+            // from the enum so the icon, the tooltip and the key can only ever
+            // describe the tool the button actually arms.
+            ForEach(ImageViewerDragTool.allCases) { tool in
+                toolButton(
+                    systemImage: tool.symbolName,
+                    isActive: activeTool == tool,
+                    label: "\(tool.displayName) tool",
+                    help: tool.help
+                ) {
+                    arm(tool)
+                }
             }
 
             if viewModel.isMonochrome {
+                // The square of the half-filled pair the windowing circle comes
+                // from, so the two never read alike.
                 Button {
                     viewModel.toggleInversion()
                 } label: {
@@ -1017,41 +1132,26 @@ public struct ImageViewerView: View {
                           ? "square.lefthalf.filled" : "square.righthalf.filled")
                 }
                 .accessibilityLabel(viewModel.isInverted ? "Remove inversion" : "Invert grayscale")
-                .help(viewModel.isInverted ? "Remove grayscale inversion" : "Invert grayscale")
-            }
-
-            toolButton(
-                systemImage: "magnifyingglass",
-                isActive: activeTool == .zoom,
-                label: "Zoom tool",
-                help: "Zoom tool — drag on the image to zoom in or out"
-            ) {
-                activeTool = activeTool == .zoom ? nil : .zoom
-            }
-
-            // A closed circle of arrows, not a quarter-turn glyph: this tool
-            // turns the picture the whole way round, either way, and a "90°"
-            // icon promises the quarter turns that live in the Image menu.
-            toolButton(
-                systemImage: "arrow.triangle.2.circlepath",
-                isActive: activeTool == .rotate,
-                label: "Rotate tool",
-                help: "Rotate tool — drag on the image to turn it freely, either way"
-            ) {
-                activeTool = activeTool == .rotate ? nil : .rotate
+                // The key lives on the hidden button in `toolShortcuts`, not
+                // here: this button is only on the toolbar for monochrome
+                // images, and a key that vanishes with its button is worse than
+                // one that is always delivered. Same for the two flips below.
+                .help(viewModel.isInverted
+                      ? "Remove grayscale inversion (V) — back to black-on-white as stored"
+                      : "Invert grayscale (V) — swaps black and white, as on a lightbox")
             }
 
             Button { viewModel.flipHorizontal() } label: {
                 Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right")
             }
             .accessibilityLabel("Flip horizontal")
-            .help("Flip horizontally")
+            .help("Flip horizontally ([) — mirrors left to right; laterality markers move with it")
 
             Button { viewModel.flipVertical() } label: {
                 Image(systemName: "arrow.up.and.down.righttriangle.up.righttriangle.down")
             }
             .accessibilityLabel("Flip vertical")
-            .help("Flip vertically")
+            .help("Flip vertically (]) — mirrors top to bottom")
 
             Button {
                 viewModel.fitToView(viewWidth: viewSize.width, viewHeight: viewSize.height)
@@ -1059,14 +1159,14 @@ public struct ImageViewerView: View {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
             }
             .accessibilityLabel("Fit image to view")
-            .help("Fit image to view (F)")
+            .help("Fit image to view (F) — sizes it so the whole picture is on screen, and re-centres it")
             .keyboardShortcut("f", modifiers: [])
 
             Button { viewModel.resetView() } label: {
                 Image(systemName: "arrow.counterclockwise")
             }
             .accessibilityLabel("Reset to original image")
-            .help("Reset to original image — undoes zoom, pan, rotation, flip, and windowing (R)")
+            .help("Reset to original image (R) — undoes zoom, pan, rotation, flip, and windowing")
             .keyboardShortcut("r", modifiers: [])
         }
 
@@ -1087,7 +1187,8 @@ public struct ImageViewerView: View {
             } label: {
                 Image(systemName: "square.stack.3d.up")
             }
-            .help("Overlays and panels")
+            .help("Overlays and panels — patient and study text over the picture, "
+                  + "render timings, and the DICOM tag inspector")
         }
 
         // The keys, where they can be found.
@@ -1101,12 +1202,107 @@ public struct ImageViewerView: View {
 
 // MARK: - Tools
 
-/// A click-and-drag tool armed from the toolbar. `nil` (no case selected)
-/// means a plain drag pans; picking one of these has the drag do that instead.
-private enum ImageViewerDragTool {
+/// A click-and-drag tool armed from the toolbar.
+///
+/// `.pan` is the resting state — a drag with nothing else armed moves the
+/// picture — so it is a case here rather than the `nil` it used to be. Making
+/// it a case is what lets it carry a key, an icon and a pointer shape like the
+/// rest, and lets the toolbar show that *something* is always armed.
+///
+/// Each case carries its own name, icon, key and one-line guide. Tooltips, the
+/// hidden shortcut buttons and the ⌘/ legend are all built from these, so the
+/// three cannot drift apart the way a hand-copied list does.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+enum ImageViewerDragTool: String, CaseIterable, Identifiable {
+    case pan
     case windowing
     case zoom
     case rotate
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .pan:       return "Pan"
+        case .windowing: return "Window/Level"
+        case .zoom:      return "Zoom"
+        case .rotate:    return "Rotate"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .pan:       return "hand.draw"
+        case .windowing: return "circle.lefthalf.filled"
+        case .zoom:      return "magnifyingglass"
+        // A closed circle of arrows, not a quarter-turn glyph: this tool turns
+        // the picture the whole way round, either way, and a "90°" icon
+        // promises the quarter turns that live in the Image menu.
+        case .rotate:    return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    /// The key that arms it, with no modifier.
+    ///
+    /// R is the viewer's reset and T its print tray, so rotate takes E — the
+    /// letter is arbitrary either way, and a key that already does something
+    /// else is worse than one that has to be learnt.
+    var shortcut: Character {
+        switch self {
+        case .pan:       return "h"
+        case .windowing: return "w"
+        case .zoom:      return "z"
+        case .rotate:    return "e"
+        }
+    }
+
+    /// What a drag does with this armed — the tooltip's second line, and the
+    /// whole of the tool's entry in the shortcut legend.
+    var guidance: String {
+        switch self {
+        case .pan:
+            return "Drag to move the image inside the tile."
+        case .windowing:
+            return "Drag across for window width, up and down for level — "
+                 + "left/right widens or narrows the greys, up/down brightens or darkens."
+        case .zoom:
+            return "Drag up to enlarge, down to shrink. Pinch or scroll-with-⌘ does the same."
+        case .rotate:
+            return "Drag around the centre of the picture and it follows the pointer, "
+                 + "either way, through the full circle."
+        }
+    }
+
+    /// Tooltip text: what it is, what the key is, and how to use it.
+    var help: String {
+        "\(displayName) (\(String(shortcut).uppercased())) — \(guidance)"
+    }
+
+    #if os(macOS)
+    /// The pointer's shape while this tool is armed.
+    ///
+    /// The toolbar says which tool is armed, but the toolbar is at the top of
+    /// the window and the hand is on the picture — and the cost of being wrong
+    /// is a drag that has already windowed an image you meant to pan. The
+    /// pointer is the one part of the screen guaranteed to be where the reader
+    /// is looking when the drag starts, which is what makes it worth changing.
+    var cursor: NSCursor {
+        switch self {
+        case .pan:
+            // The open hand, not the closed one: closed says "you are dragging
+            // now", and this is the shape shown before the drag begins.
+            return .openHand
+        case .windowing:
+            // No system cursor means "windowing", so this borrows the one the
+            // gesture actually is — the drag runs in both axes.
+            return .crosshair
+        case .zoom:
+            return .zoomIn
+        case .rotate:
+            return .crosshair
+        }
+    }
+    #endif
 }
 
 // MARK: - Layout shortcuts
@@ -1211,7 +1407,11 @@ private struct PrintSheetHost: View {
             if printViewModel == nil {
                 printViewModel = PrintViewModel(selection: selection)
             } else {
+                // A different set of marks than the one the held film was built
+                // from — the range, the drawn annotations and the picked cells
+                // all describe images that are no longer on it.
                 printViewModel?.selection = selection
+                printViewModel?.resetForNewFilm()
                 printViewModel?.loadPrinters()
             }
         }

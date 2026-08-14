@@ -38,6 +38,24 @@ public final class PrintViewModel {
     /// `PrintViewModel+CellEditing.swift`.
     public var focusedItemID: String?
 
+    /// The run of image numbers each series carries on film, keyed by
+    /// ``PrintSelectionItem/seriesKey``. A series with no entry prints whole.
+    /// See `PrintViewModel+ImageRange.swift`.
+    public var imageRanges: [String: ClosedRange<Int>] = [:]
+
+    /// Instance Numbers of the marked files, read on demand — what the image
+    /// range matches against.
+    public let imageNumbers = PrintImageNumberCache()
+
+    /// Cells picked out by hand, by mark ID. See
+    /// `PrintViewModel+CellSelection.swift`.
+    ///
+    /// While this holds two or more, a tool acts on exactly these and the sync
+    /// locks stand aside: an explicit selection is a statement the reader has
+    /// just made, and a rule quietly widening it would undo the point of making
+    /// it.
+    public var selectedItemIDs: Set<String> = []
+
     /// Which cell edits are carried to the other cells as they are made.
     /// See `PrintViewModel+CellSync.swift`.
     public var cellSync: PrintCellSyncOptions = []
@@ -67,7 +85,12 @@ public final class PrintViewModel {
 
         public var symbolName: String {
             switch self {
-            case .window: return "circle.lefthalf.filled"
+            // The pointer, not the half-filled circle. The circle is the
+            // *result* of windowing — it is the same glyph the Invert button
+            // carries, mirrored — and two buttons a few points apart showing
+            // the same shape is what made the rail hard to scan. The pointer
+            // says what the button arms instead: a drag, on a cell.
+            case .window: return "cursorarrow"
             case .zoom:   return "magnifyingglass"
             case .pan:    return "hand.draw"
             case .text:   return "character.textbox"
@@ -112,14 +135,6 @@ public final class PrintViewModel {
     ///
     /// On by default: film that cannot be tied to a patient is not useful film.
     public var showPatientIdentification: Bool = true
-
-    /// Whether identification is stated once per film or under every image.
-    ///
-    /// Automatic by default, which is the rule a reader would apply by hand: a
-    /// sheet whose images all come from one study says whose it is once, along
-    /// the bottom; a sheet mixing studies captions each image, because one
-    /// footer under two patients is a statement the film cannot support.
-    public var identificationPlacement: PrintIdentificationPlacement = .automatic
 
     // MARK: - Printers
 
@@ -166,11 +181,22 @@ public final class PrintViewModel {
     public var filmSize: FilmSize = .size14InX17In
     public var filmOrientation: FilmOrientation = .portrait
 
+    /// How images are scaled to their cells (SRS FR-003).
+    public var scalingMode: PrintScalingMode = .fitToFilm
+
+    /// Where an image sits in a cell it does not fill (SRS FR-003). Applies to
+    /// composed film (preview, save, the emulator); a real printer centres.
+    public var cellAlignment: PrintCellAlignment = .center
+
     /// Advanced settings.
     public var priority: DICOMNetwork.PrintPriority = .medium
-    public var mediumType: MediumType = .paper
-    public var filmDestination: FilmDestination = .processor
-    public var magnificationType: MagnificationType = .replicate
+    // Department defaults, chosen for the common radiology setup: blue-base
+    // film out of the magazine, smoothed on the printer's side. Not persisted —
+    // every launch starts from these, and `resetForNewFilm()` keeps a session's
+    // own changes only between films, not between launches.
+    public var mediumType: MediumType = .blueFilm
+    public var filmDestination: FilmDestination = .magazine
+    public var magnificationType: MagnificationType = .bilinear
     public var trimOption: TrimOption = .no
     public var borderDensity: String = "BLACK"
     public var emptyImageDensity: String = "BLACK"
@@ -183,6 +209,33 @@ public final class PrintViewModel {
     public var configurationInformation: String = ""
     public var annotationTexts: [String] = []
     public var annotationDisplayFormatID: String = ""
+
+    /// The optional identification fields this job burns (SRS FR-006).
+    ///
+    /// Birth date and institution on by default — a deliberate choice, since
+    /// both are burned into pixels and survive later header de-identification;
+    /// film that reaches another hospital is expected to say who it is about
+    /// and where it was made. Accession number and series description stay off
+    /// unless asked for.
+    public var identificationFields: PrintIdentificationFields = [.birthDate, .institutionName]
+
+    /// Typography of the burned identification (SRS FR-006). Custom values
+    /// feed ``identificationStyle``; the defaults are the automatic behaviour.
+    public var identificationFontFamily: String = "Helvetica"
+    public var identificationUsesCustomSize: Bool = false
+    public var identificationSizePercent: Double = 3.5
+    public var identificationForeground: PrintAnnotationStyle.Foreground = .automatic
+
+    /// The style the burner is handed for this job.
+    public var identificationStyle: PrintAnnotationStyle {
+        PrintAnnotationStyle(
+            fontFamily: identificationFontFamily.trimmingCharacters(in: .whitespaces)
+                .isEmpty ? "Helvetica" : identificationFontFamily,
+            sizeFraction: identificationUsesCustomSize
+                ? identificationSizePercent / 100 : nil,
+            foreground: identificationForeground)
+    }
+
     public var useViewerWindow: Bool = true
     /// Bake each mark's zoom, pan, rotation, flip and inversion into the film.
     ///
@@ -253,6 +306,28 @@ public final class PrintViewModel {
     /// Submitted jobs, newest first.
     public private(set) var history: [PrintJobHistoryEntry] = []
 
+    /// Results of re-querying past jobs from the history pane, keyed by entry.
+    ///
+    /// In-memory only: an execution status is what the printer says right now,
+    /// so a stale answer from a previous launch would mislead.
+    public private(set) var historyStatusChecks: [PrintJobHistoryEntry.ID: HistoryStatusCheck] = [:]
+
+    /// One re-query of a past job, as the history pane renders it.
+    public enum HistoryStatusCheck: Sendable, Equatable {
+        case running
+        /// One line per film, plus whether any film failed or errored.
+        case checked(lines: [HistoryJobStatusLine], anyFailed: Bool)
+        /// The entry cannot be queried — printer removed, for instance.
+        case unavailable(String)
+    }
+
+    /// One film's execution status within a history re-query.
+    public struct HistoryJobStatusLine: Sendable, Equatable {
+        public enum Kind: Sendable, Equatable { case completed, inProgress, failed }
+        public let text: String
+        public let kind: Kind
+    }
+
     /// A console line with a severity, so the view can style it.
     public struct ConsoleLine: Identifiable, Sendable, Equatable {
         public enum Level: Sendable { case info, notice, warning, failure, success }
@@ -266,25 +341,125 @@ public final class PrintViewModel {
         phase == .preparing || phase == .printing
     }
 
+    /// Whether the submitted job is sitting in the queue rather than printing.
+    ///
+    /// The sheet is showing progress, but nothing is happening and nothing will
+    /// until the queue is resumed — so the job outlives the sheet, and the user
+    /// can close it without cancelling anything.
+    public var isWaitingOnQueue: Bool {
+        guard let id = submittedJobID, isRunning else { return false }
+        return queue.runningJobID != id
+    }
+
     // MARK: - Dependencies
 
+    /// The print queue every submitted job goes through. Serial: one job's
+    /// association finishes before the next opens.
+    public let queue: PrintQueueService
+
+    /// The app-side audit trail: every queue action and job outcome, recorded
+    /// with a timestamp and persisted locally. No user accounts are involved.
+    public let auditTrail: PrintAuditTrail
+
     private let service: PrintService
+    private let jobStatusQuerier: any PrintJobStatusQuerying
     private let printerStorage: PrinterProfileStorageService
     private let historyStorage: PrintJobHistoryStorageService
+    private let statusMonitor: PrinterStatusMonitor
     private var runTask: Task<Void, Never>?
+    private var monitorObservationTask: Task<Void, Never>?
+
+    /// The queue job the print sheet is currently mirroring, if any.
+    private var submittedJobID: UUID?
 
     public init(
         selection: PrintSelectionModel = PrintSelectionModel(),
         service: PrintService = PrintService(),
         printerStorage: PrinterProfileStorageService = PrinterProfileStorageService(),
-        historyStorage: PrintJobHistoryStorageService = PrintJobHistoryStorageService()
+        historyStorage: PrintJobHistoryStorageService = PrintJobHistoryStorageService(),
+        auditStorage: PrintAuditTrailStorageService = PrintAuditTrailStorageService(),
+        statusMonitor: PrinterStatusMonitor? = nil,
+        jobStatusQuerier: (any PrintJobStatusQuerying)? = nil,
+        queueStorage: PrintQueueStorageService? = nil
     ) {
         self.selection = selection
         self.service = service
+        self.jobStatusQuerier = jobStatusQuerier ?? service
         self.printerStorage = printerStorage
         self.historyStorage = historyStorage
+        self.statusMonitor = statusMonitor ?? PrinterStatusMonitor(probe: service)
+        let trail = PrintAuditTrail(storage: auditStorage)
+        self.auditTrail = trail
+        // `nil` storage keeps stray instances (previews, standalone viewers) and
+        // tests off the real queue file; the app's shared instance passes one.
+        self.queue = PrintQueueService(service: service, audit: trail, storage: queueStorage)
         loadPrinters()
         history = historyStorage.load()
+        // History is recorded off the queue, not the sheet, so a job resent
+        // from the queue screen lands in history like any other.
+        queue.onJobFinished = { [weak self] job, outcome in
+            self?.recordFinishedJob(job, outcome: outcome)
+        }
+        // The FR-012 offline auto-queue: a job whose printer's last monitored
+        // status is offline stays queued instead of failing against a dead
+        // socket. Only a monitored printer holds jobs — an unmonitored one has
+        // no live status to trust, so its jobs run and fail honestly.
+        queue.isPrinterReady = { [weak self] profile in
+            guard let self,
+                  let current = self.printers.first(where: { $0.id == profile.id }),
+                  current.isMonitoringEnabled else { return true }
+            return current.status != .offline
+        }
+    }
+
+    // MARK: - Background status monitoring (FR-012)
+
+    /// Starts observing the background monitor and polls the printers that opt in.
+    ///
+    /// Called when the print screen appears. Safe to call repeatedly — the
+    /// observation task is only created once.
+    public func startMonitoring() {
+        if monitorObservationTask == nil {
+            let monitor = statusMonitor
+            monitorObservationTask = Task { [weak self] in
+                for await update in await monitor.updates() {
+                    guard !Task.isCancelled else { return }
+                    self?.apply(update)
+                }
+            }
+        }
+        let profiles = printers
+        Task { [statusMonitor] in await statusMonitor.sync(profiles: profiles) }
+    }
+
+    /// Stops all background polling. Called when the print screen goes away, so
+    /// a backgrounded app is not holding associations open on hospital printers.
+    public func stopMonitoring() {
+        monitorObservationTask?.cancel()
+        monitorObservationTask = nil
+        Task { [statusMonitor] in await statusMonitor.stopAll() }
+    }
+
+    /// Folds one poll result into the printer list.
+    func apply(_ update: PrinterStatusUpdate) {
+        guard let index = printers.firstIndex(where: { $0.id == update.printerID }) else { return }
+        printers[index].status = update.connectionStatus
+        printers[index].lastStatusCheckDate = update.checkedAt
+        printers[index].lastStatusDetail = update.detail
+        // Only a printer that actually answered counts as verified.
+        if update.errorDescription == nil {
+            printers[index].lastVerifiedDate = update.checkedAt
+        }
+        // Deliberately not persisted: status is observed state, and writing
+        // printer-profiles.json on every poll would rewrite the file every few
+        // seconds per printer for data that is meaningless after a restart.
+        if update.printerID == selectedPrinterID, let status = update.status {
+            printerStatus = status
+        }
+        // A printer coming back is the signal a held job has been waiting for.
+        if update.connectionStatus != .offline {
+            queue.reevaluate()
+        }
     }
 
     // MARK: - Printer management
@@ -344,6 +519,11 @@ public final class PrintViewModel {
         } catch {
             append(.warning, "Could not save printers: \(error.localizedDescription)")
         }
+        // Every printer edit funnels through here, so this is the one place that
+        // has to tell the monitor about an added, removed or re-timed printer.
+        if monitorObservationTask != nil {
+            Task { [statusMonitor] in await statusMonitor.sync(profiles: profiles) }
+        }
     }
 
     /// C-ECHO the selected printer.
@@ -351,6 +531,9 @@ public final class PrintViewModel {
         guard let printer = selectedPrinter else { return }
         isQueryingPrinter = true
         printerQueryMessage = nil
+        // A C-ECHO says nothing about printer status, so leaving the previous
+        // N-GET result on screen would caption this probe with stale detail.
+        printerStatus = nil
         defer { isQueryingPrinter = false }
         do {
             let ok = try await service.verify(profile: printer)
@@ -375,11 +558,40 @@ public final class PrintViewModel {
             printerStatus = status
             printerQueryMessage = PrintConsoleFormatter.printerStatusText(status)
                 .joined(separator: "\n")
-            updateStatus(of: printer, to: status.isNormal ? .online : .error, verified: status.isNormal)
+            updateStatus(
+                of: printer,
+                to: Self.connectionStatus(for: status.severity),
+                // A WARNING printer answered the N-GET, so the association is
+                // verified even though the printer is telling us about a problem.
+                verified: status.severity.acceptsJobs
+            )
         } catch {
             printerStatus = nil
             printerQueryMessage = "✗ Status query failed: \(error.localizedDescription)"
             updateStatus(of: printer, to: .error, verified: false)
+        }
+    }
+
+    /// Drops the last probe result.
+    ///
+    /// Nothing expires `printerQueryMessage` on its own, so without this the
+    /// text from a probe run minutes ago reappears the next time the sheet is
+    /// opened, reading as a fresh answer about the printer's current state.
+    public func clearPrinterProbeResult() {
+        printerQueryMessage = nil
+        printerStatus = nil
+    }
+
+    /// Maps a printer's reported severity onto the shared connection-status enum.
+    ///
+    /// WARNING stays distinct from FAILURE: a printer low on film still prints,
+    /// and collapsing the two would either hide a real fault or block usable work.
+    nonisolated static func connectionStatus(for severity: PrinterStatusSeverity) -> ServerConnectionStatus {
+        switch severity {
+        case .normal:  return .online
+        case .warning: return .warning
+        case .failure: return .error
+        case .unknown: return .unknown
         }
     }
 
@@ -431,6 +643,8 @@ public final class PrintViewModel {
             emptyImageDensity: emptyImageDensity,
             trimOption: trimOption,
             configurationInformation: trimmedConfig.isEmpty ? nil : trimmedConfig,
+            scalingMode: scalingMode,
+            cellAlignment: cellAlignment,
             polarity: polarity,
             presentationLUTShape: presentationLUTShape,
             annotations: annotations,
@@ -457,7 +671,11 @@ public final class PrintViewModel {
 
     /// The film-by-film plan for the current selection and settings.
     public var plan: PrintPlan {
-        request.plan(forImageCount: selection.count)
+        // Counted from what the films actually carry, not from every mark: an
+        // image range narrows the job to a run of the series, and a plan
+        // counting the marks it is holding back would report films nobody asked
+        // for and page the preview past the end of the sheet.
+        request.plan(forImageCount: printedItems.count)
     }
 
     /// One-line plan summary for the sheet header.
@@ -484,16 +702,19 @@ public final class PrintViewModel {
 
     // MARK: - Running a job
 
-    /// Prepares and prints the current selection.
+    /// Submits the current selection to the print queue.
+    ///
+    /// The sheet's phase, console and progress mirror the queue's execution of
+    /// this job through the handlers passed at enqueue — the run itself belongs
+    /// to ``queue``, which serializes it against anything else waiting.
     public func print() {
         guard let printer = selectedPrinter, !selection.isEmpty else { return }
         guard validationMessage == nil else { return }
 
-        let items = selection.items
+        let items = printedItems
         let jobRequest = request
         let useViewerWindow = self.useViewerWindow
         let useViewerPresentation = self.useViewerPresentation
-        let service = self.service
         let burnIdentification = self.showPatientIdentification
         let drawnAnnotations = self.annotationsForPrinting
 
@@ -521,115 +742,106 @@ public final class PrintViewModel {
                 return
             }
 
-            let diagnostics: PrintService.DiagnosticHandler = { [weak self] diagnostic in
-                Task { @MainActor in self?.appendDiagnostic(diagnostic) }
+            // Read from the files themselves, so what is burned in does not
+            // depend on the preview having been opened. Captured now, before
+            // enqueueing: the queue may hold the job while the sheet moves on,
+            // and the job must print what was on the film when it was submitted.
+            let texts = burnIdentification
+                ? await self.identificationTexts(for: items) : [:]
+            let identifications = self.filmIdentifications(
+                for: items, texts: texts, plan: plan)
+
+            // Burned into the pixels rather than sent as annotation boxes:
+            // the caption names the image it sits under — its number, its
+            // slice thickness — so it has to travel with that image, and a
+            // printer lays annotation boxes out to its own configured
+            // format wherever it likes.
+            let annotationLines = self.identificationBurns(
+                for: items, texts: texts, identifications: identifications, plan: plan)
+            if !annotationLines.isEmpty {
+                self.append(.info, "Burning patient identification into \(annotationLines.count) image(s)")
             }
-            let progressHandler: PrintService.ProgressHandler = { [weak self] update in
-                Task { @MainActor in
-                    self?.progress = update.progress
-                    self?.progressMessage = update.message
-                }
+            if !drawnAnnotations.isEmpty {
+                let count = drawnAnnotations.values.reduce(0) { $0 + $1.count }
+                self.append(.info,
+                            "Burning \(count) drawn annotation(s) into "
+                            + "\(drawnAnnotations.count) image(s)")
             }
-
-            do {
-                try await service.preflight(
-                    profile: printer, request: jobRequest, diagnostics: diagnostics)
-
-                // Read from the files themselves, so what is burned in does not
-                // depend on the preview having been opened.
-                let texts = burnIdentification
-                    ? await self.identificationTexts(for: items) : [:]
-                let identifications = self.filmIdentifications(
-                    for: items, texts: texts, plan: plan)
-
-                // A footer is film-level text, and the printer composes the
-                // sheet: on the wire the only place film-level text can go is a
-                // Basic Annotation Box. Whether this printer has one is a
-                // question about the association, not about the settings sheet
-                // — so it is *asked*, before the frames are prepared, because
-                // the answer decides whether they are captioned. A printer that
-                // has none, or cannot be reached, gets the caption burned under
-                // each image, which is what still puts a name on the film.
-                var jobRequest = jobRequest
-                let footered = identifications.contains { !$0.footerLines.isEmpty }
-                var footersDelivered = false
-                if footered {
-                    footersDelivered = await service.supportsAnnotationBoxes(profile: printer)
-                }
-                if footered, footersDelivered {
-                    // The format ID is printer-defined and a film box cannot
-                    // carry annotation boxes without one, so a job that wants a
-                    // footer sends the configured value or a plain default.
-                    if jobRequest.annotationDisplayFormatID == nil {
-                        jobRequest.annotationDisplayFormatID =
-                            FilmIdentificationFooter.defaultAnnotationDisplayFormatID
-                    }
-                    jobRequest.filmAnnotations = identifications.map {
-                        FilmIdentificationFooter.annotations(for: $0.footerLines)
-                    }
-                    let count = identifications.filter { !$0.footerLines.isEmpty }.count
-                    self.append(.info,
-                                "Patient identification goes on \(count) film(s) as an annotation "
-                                + "box at the foot of the sheet (format ID "
-                                + "'\(jobRequest.annotationDisplayFormatID ?? "")')")
-                } else if footered {
-                    self.append(.notice,
-                                "This printer takes no annotation boxes, so the identification is "
-                                + "burned under each image instead of once per film.")
-                }
-
-                let annotationLines = self.identificationBurns(
-                    for: items, texts: texts, identifications: identifications,
-                    plan: plan, footersDelivered: footersDelivered)
-                if !annotationLines.isEmpty {
-                    self.append(.info, "Burning patient identification into \(annotationLines.count) image(s)")
-                }
-                if !drawnAnnotations.isEmpty {
-                    let count = drawnAnnotations.values.reduce(0) { $0 + $1.count }
-                    self.append(.info,
-                                "Burning \(count) drawn annotation(s) into "
-                                + "\(drawnAnnotations.count) image(s)")
-                }
-                if !drawnAnnotations.isEmpty, jobRequest.raw {
-                    self.append(.warning,
-                                "Raw pixels are being sent — drawn annotations are not burned in.")
-                }
-
-                let images = try await service.prepare(
-                    items: items,
-                    request: jobRequest,
-                    useViewerWindow: useViewerWindow,
-                    applyViewerPresentation: useViewerPresentation,
-                    annotations: annotationLines,
-                    drawnAnnotations: drawnAnnotations,
-                    onProgress: { line in
-                        Task { @MainActor in self.append(.info, line) }
-                    }
-                )
-                if Task.isCancelled { return }
-
-                self.phase = .printing
-                self.progressMessage = "Printing \(images.count) image(s)…"
-
-                let outcome = try await service.print(
-                    images: images,
-                    profile: printer,
-                    request: jobRequest,
-                    diagnostics: diagnostics,
-                    progress: progressHandler
-                )
-
-                self.finish(with: outcome, printer: printer, plan: plan, imageCount: images.count)
-            } catch is CancellationError {
+            if !drawnAnnotations.isEmpty, jobRequest.raw {
+                self.append(.warning,
+                            "Raw pixels are being sent — drawn annotations are not burned in.")
+            }
+            if Task.isCancelled {
                 self.append(.notice, "Print cancelled.")
                 self.phase = .configuring
-            } catch let error as PrintRequestError {
-                self.fail(error.message, printer: printer, plan: plan)
-            } catch let error as PrintWorkflowError {
-                self.fail(error.description, printer: printer, plan: plan)
-            } catch {
-                self.fail(error.localizedDescription, printer: printer, plan: plan)
+                return
             }
+
+            let payload = PrintQueuePayload(
+                items: items,
+                request: jobRequest,
+                profile: printer,
+                useViewerWindow: useViewerWindow,
+                useViewerPresentation: useViewerPresentation,
+                annotations: annotationLines,
+                annotationStyle: self.identificationStyle,
+                drawnAnnotations: drawnAnnotations
+            )
+
+            let handlers = PrintQueueJobHandlers(
+                onDiagnostic: { [weak self] diagnostic in self?.appendDiagnostic(diagnostic) },
+                onConsole: { [weak self] line in self?.append(.info, line) },
+                onPhase: { [weak self] printing in
+                    self?.phase = printing ? .printing : .preparing
+                },
+                onProgress: { [weak self] fraction, message in
+                    self?.progress = fraction
+                    self?.progressMessage = message
+                },
+                onFinish: { [weak self] outcome in self?.applySheetOutcome(outcome) }
+            )
+
+            let layoutText = plan.displayFormat.isUniformGrid
+                ? "\(plan.layout.rows)×\(plan.layout.columns)"
+                : plan.displayFormat.raw
+            self.submittedJobID = self.queue.enqueue(
+                payload: payload,
+                imageCount: items.count,
+                filmCount: plan.filmCount,
+                copies: plan.copies,
+                layout: layoutText,
+                handlers: handlers
+            )
+            if self.queue.isPaused {
+                self.append(.notice, "The print queue is paused — the job starts when the queue is resumed.")
+            } else if self.queue.runningJobID != self.submittedJobID {
+                self.append(.info, "Queued behind the job currently printing.")
+            }
+        }
+    }
+
+    /// Folds the queue's outcome for the sheet-submitted job back into the
+    /// sheet's own state.
+    private func applySheetOutcome(_ outcome: PrintQueueOutcome) {
+        submittedJobID = nil
+        switch outcome {
+        case .finished(let printResult, _):
+            result = printResult
+            progress = 1.0
+            for line in PrintConsoleFormatter.printResultText(printResult) {
+                append(printResult.success ? .success : .failure, line)
+            }
+            if printResult.printJobUIDs.count > 1 {
+                append(.info, "Print job UIDs: \(printResult.printJobUIDs.joined(separator: ", "))")
+            }
+            phase = .finished(success: printResult.success)
+        case .failed(let message):
+            append(.failure, "✗ Print failed")
+            append(.failure, "  Error: \(message)")
+            phase = .finished(success: false)
+        case .cancelled:
+            append(.notice, "Print cancelled.")
+            phase = .configuring
         }
     }
 
@@ -672,8 +884,8 @@ public final class PrintViewModel {
         isSavingFilm = true
         defer { isSavingFilm = false }
 
-        let items = selection.items
-        var jobRequest = request
+        let items = printedItems
+        let jobRequest = request
         let plan = jobRequest.plan(forImageCount: items.count)
         append(.info, "Composing \(items.count) image(s) into "
                + "\(plan.filmCount) film(s) for \(url.lastPathComponent)…")
@@ -682,20 +894,15 @@ public final class PrintViewModel {
             let texts = showPatientIdentification
                 ? await identificationTexts(for: items) : [:]
             let identifications = filmIdentifications(for: items, texts: texts, plan: plan)
-            // The sheet is composed here, so a footer always lands: it is drawn
-            // into the strip `FilmComposer` keeps clear along the bottom.
-            jobRequest.filmAnnotations = identifications.map {
-                FilmIdentificationFooter.annotations(for: $0.footerLines)
-            }
             let annotationLines = identificationBurns(
-                for: items, texts: texts, identifications: identifications,
-                plan: plan, footersDelivered: true)
+                for: items, texts: texts, identifications: identifications, plan: plan)
             let images = try await service.prepare(
                 items: items,
                 request: jobRequest,
                 useViewerWindow: useViewerWindow,
                 applyViewerPresentation: useViewerPresentation,
                 annotations: annotationLines,
+                annotationStyle: identificationStyle,
                 drawnAnnotations: annotationsForPrinting)
 
             // Rasterizing a 14×17 sheet at 300 dpi is tens of megapixels of
@@ -758,7 +965,8 @@ public final class PrintViewModel {
         }
     }
 
-    /// Cancels a running job.
+    /// Cancels the sheet's job — still-preparing, waiting in the queue, or
+    /// mid-print.
     ///
     /// The SCU tears the association down on cancellation and issues a
     /// best-effort Film Session N-DELETE, so a cancelled job does not leave the
@@ -766,13 +974,16 @@ public final class PrintViewModel {
     public func cancel() {
         runTask?.cancel()
         runTask = nil
+        if let id = submittedJobID {
+            queue.stop(id)
+        }
     }
 
     /// Queries the status of a print job from the last result.
     public func refreshJobStatus(printJobUID: String) async {
         guard let printer = selectedPrinter else { return }
         do {
-            jobStatus = try await service.jobStatus(profile: printer, printJobUID: printJobUID)
+            jobStatus = try await jobStatusQuerier.jobStatus(profile: printer, printJobUID: printJobUID)
             for line in PrintConsoleFormatter.jobStatusText(jobStatus!) {
                 append(.info, line)
             }
@@ -781,68 +992,130 @@ public final class PrintViewModel {
         }
     }
 
+    // MARK: - History
+
+    /// Re-queries the execution status of a past job from the history pane.
+    ///
+    /// The entry stores its Print Job UIDs precisely so "did that print?" can
+    /// be asked again later. The printer is found by name — the profile the
+    /// job was sent to may have been edited or removed since.
+    public func refreshHistoryStatus(for entry: PrintJobHistoryEntry) async {
+        guard !entry.printJobUIDs.isEmpty else {
+            historyStatusChecks[entry.id] = .unavailable(
+                "The printer did not return job UIDs for this job, so it cannot be queried.")
+            return
+        }
+        guard let printer = printers.first(where: { $0.name == entry.printerName }) else {
+            historyStatusChecks[entry.id] = .unavailable(
+                "Printer “\(entry.printerName)” is no longer configured.")
+            return
+        }
+        historyStatusChecks[entry.id] = .running
+        var lines: [HistoryJobStatusLine] = []
+        var anyFailed = false
+        for (index, uid) in entry.printJobUIDs.enumerated() {
+            // Multi-film jobs label each line; a single film speaks for the job.
+            let prefix = entry.printJobUIDs.count > 1 ? "Film \(index + 1): " : ""
+            do {
+                let status = try await jobStatusQuerier.jobStatus(profile: printer, printJobUID: uid)
+                let info = status.executionStatusInfo.map { " (\($0))" } ?? ""
+                let kind: HistoryJobStatusLine.Kind = status.isFailed ? .failed
+                    : (status.isCompleted ? .completed : .inProgress)
+                lines.append(HistoryJobStatusLine(
+                    text: "\(prefix)\(status.executionStatus)\(info)", kind: kind))
+                if status.isFailed { anyFailed = true }
+            } catch {
+                lines.append(HistoryJobStatusLine(
+                    text: "\(prefix)Query failed — \(error.localizedDescription)", kind: .failed))
+                anyFailed = true
+            }
+        }
+        historyStatusChecks[entry.id] = .checked(lines: lines, anyFailed: anyFailed)
+    }
+
+    /// Removes all history entries, on disk as well. The removal itself is
+    /// recorded in the audit trail — a wiped history should not be silent.
+    public func clearHistory() {
+        let removed = history.count
+        history = []
+        historyStatusChecks = [:]
+        try? historyStorage.save(history)
+        auditTrail.record(.historyCleared, detail: "\(removed) entr\(removed == 1 ? "y" : "ies") removed")
+    }
+
+    /// The history in its on-disk JSON form, for "Export…".
+    public func historyExportData() throws -> Data {
+        try PrintJobHistoryStorageService.exportData(history)
+    }
+
+    /// The history as CSV, one row per job.
+    public func historyCSVData() -> Data {
+        var lines = ["date,printer,images,films,copies,layout,success,print_job_uids,film_session_uid,error"]
+        let formatter = ISO8601DateFormatter()
+        for entry in history {
+            lines.append([
+                formatter.string(from: entry.date),
+                entry.printerName,
+                String(entry.imageCount),
+                String(entry.filmCount),
+                String(entry.copies),
+                entry.layout,
+                entry.success ? "true" : "false",
+                entry.printJobUIDs.joined(separator: " "),
+                entry.filmSessionUID ?? "",
+                entry.errorMessage ?? ""
+            ].map { field -> String in
+                guard field.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" }) else { return field }
+                return "\"\(field.replacingOccurrences(of: "\"", with: "\"\""))\""
+            }.joined(separator: ","))
+        }
+        return Data(lines.joined(separator: "\n").utf8)
+    }
+
+    #if canImport(CoreGraphics) && canImport(CoreText)
+    /// The history as a paginated PDF report — the form a job record is asked
+    /// for when it has to be filed or handed to someone.
+    public func historyPDFData() throws -> Data {
+        try PrintReportPDF.historyReport(history)
+    }
+    #endif
+
     // MARK: - Completion
 
-    private func finish(with outcome: PrintResult, printer: PrinterProfile, plan: PrintPlan, imageCount: Int) {
-        result = outcome
-        progress = 1.0
-        for line in PrintConsoleFormatter.printResultText(outcome) {
-            append(outcome.success ? .success : .failure, line)
+    /// Records a finished queue job in the history — called by the queue for
+    /// every job it finishes, whether the sheet or the queue screen sent it.
+    private func recordFinishedJob(_ job: PrintQueueJob, outcome: PrintQueueOutcome) {
+        let entry: PrintJobHistoryEntry
+        switch outcome {
+        case .finished(let result, let preparedCount):
+            entry = PrintJobHistoryEntry(
+                printerName: job.printerName,
+                // The prepared count is what actually left; the planned count
+                // stands in only if preparation never got that far.
+                imageCount: preparedCount > 0 ? preparedCount : job.imageCount,
+                filmCount: job.filmCount,
+                copies: job.copies,
+                layout: job.layout,
+                success: result.success,
+                printJobUIDs: result.printJobUIDs,
+                filmSessionUID: result.filmSessionUID,
+                errorMessage: result.errorMessage
+            )
+        case .failed(let message):
+            entry = PrintJobHistoryEntry(
+                printerName: job.printerName,
+                imageCount: job.imageCount,
+                filmCount: job.filmCount,
+                copies: job.copies,
+                layout: job.layout,
+                success: false,
+                errorMessage: message
+            )
+        case .cancelled:
+            // A cancelled job never reached the printer; the audit trail keeps
+            // the stop, and history stays a record of jobs that were sent.
+            return
         }
-        if outcome.printJobUIDs.count > 1 {
-            append(.info, "Print job UIDs: \(outcome.printJobUIDs.joined(separator: ", "))")
-        }
-        phase = .finished(success: outcome.success)
-        record(
-            printer: printer,
-            plan: plan,
-            imageCount: imageCount,
-            success: outcome.success,
-            printJobUIDs: outcome.printJobUIDs,
-            filmSessionUID: outcome.filmSessionUID,
-            errorMessage: outcome.errorMessage
-        )
-    }
-
-    private func fail(_ message: String, printer: PrinterProfile, plan: PrintPlan) {
-        append(.failure, "✗ Print failed")
-        append(.failure, "  Error: \(message)")
-        phase = .finished(success: false)
-        record(
-            printer: printer,
-            plan: plan,
-            imageCount: selection.count,
-            success: false,
-            printJobUIDs: [],
-            filmSessionUID: nil,
-            errorMessage: message
-        )
-    }
-
-    private func record(
-        printer: PrinterProfile,
-        plan: PrintPlan,
-        imageCount: Int,
-        success: Bool,
-        printJobUIDs: [String],
-        filmSessionUID: String?,
-        errorMessage: String?
-    ) {
-        let entry = PrintJobHistoryEntry(
-            printerName: printer.name,
-            imageCount: imageCount,
-            filmCount: plan.filmCount,
-            copies: plan.copies,
-            // A band layout is recorded as the format it was sent as: there is
-            // no grid that names it, and the history is a record of what left.
-            layout: plan.displayFormat.isUniformGrid
-                ? "\(plan.layout.rows)×\(plan.layout.columns)"
-                : plan.displayFormat.raw,
-            success: success,
-            printJobUIDs: printJobUIDs,
-            filmSessionUID: filmSessionUID,
-            errorMessage: errorMessage
-        )
         history.insert(entry, at: 0)
         try? historyStorage.save(history)
     }
@@ -875,5 +1148,63 @@ public final class PrintViewModel {
     /// a prior job's lines don't linger on the next look at the film.
     public func resetConsole() {
         consoleLines = []
+    }
+
+    /// Puts the film back to a fresh sheet, for a new set of marks.
+    ///
+    /// The print screen is kept alive between visits so that reopening it is
+    /// instant and so the printer stays chosen — but everything that describes
+    /// *this film* is about the images that were on it, and those have just been
+    /// replaced. A range reading "60 to 140" filters a series that is no longer
+    /// marked; arrows drawn on cell 7 belong to a study nobody is printing;
+    /// image numbers cached from the old paths answer for files that are not on
+    /// the film. Carried over, each of them silently prints something other than
+    /// what was ticked.
+    ///
+    /// What survives is what is not about these images: the chosen printer, film
+    /// size and medium, and the identification switch — department settings,
+    /// which a reader sets once and expects to find again. The tools and the
+    /// locks do not survive; see ``resetPreviewTools()``.
+    public func resetForNewFilm() {
+        resetPreviewTools()
+        // The ranges filter by numbers from the previous series.
+        imageRanges = [:]
+        imageNumbers.clear()
+
+        // Drawn text and arrows are keyed by mark ID, and the marks are new.
+        cellAnnotations = [:]
+        selectedAnnotationID = nil
+
+        // Nothing on this film has been picked out or focused yet.
+        selectedItemIDs = []
+        focusedItemID = nil
+
+        // A finished job's outcome is not this film's outcome.
+        reset()
+        resetConsole()
+    }
+
+    /// Puts the preview's tools and locks back to how the screen opens.
+    ///
+    /// A mode is only safe to leave lying around while the thing it acts on is
+    /// still on screen. The preview is opened, worked in and closed, and the
+    /// state it leaves behind is invisible from the viewer — so a reader who
+    /// closed the screen with the pan tool armed and every lock shut comes back,
+    /// drags a cell to window it, and instead slides all four cells sideways.
+    /// The first drag of a visit is the one that has to behave, and there is no
+    /// way to see what is armed before making it.
+    ///
+    /// So the screen always opens the same way: windowing, nothing locked,
+    /// nothing picked out, scope back to the series. Habits that outlive a visit
+    /// belong to the job settings — printer, film size, medium — not here.
+    public func resetPreviewTools() {
+        cellTool = .window
+        cellSync = []
+        cellSyncScope = .sameSeries
+        selectedItemIDs = []
+        focusedItemID = nil
+        selectedAnnotationID = nil
+        annotationScale = PrintOverlayAnnotation.defaultScale
+        annotationColor = .yellow
     }
 }

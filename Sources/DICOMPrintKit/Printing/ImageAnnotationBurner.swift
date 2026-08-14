@@ -7,8 +7,9 @@
 // A DICOM printer draws annotation from the film box's own annotation boxes,
 // which every printer lays out differently and many ignore. Film that must
 // carry the patient's name — which is most film — therefore carries it in the
-// pixels, exactly where the viewer draws it: two lines across the bottom of the
-// image. A drawn arrow could not be expressed as an annotation box at all.
+// pixels, exactly where the viewer draws it: in the corners of the picture,
+// where a fitted image has background rather than anatomy. A drawn arrow could
+// not be expressed as an annotation box at all.
 //
 // This runs once per image, on the already-prepared 8-bit frame, so the cost is
 // one bitmap pass per film cell rather than anything per redraw.
@@ -16,13 +17,69 @@
 import Foundation
 import DICOMNetwork
 
+// MARK: - Style
+
+/// How burned identification text is set (SRS FR-006).
+///
+/// The default, `.automatic`, is exactly what the burner always did: Helvetica,
+/// sized as a fraction of the frame, coloured to the far end of the greyscale
+/// from whatever is under it. That logic is good — it adapts to image size and
+/// flips correctly for MONOCHROME1 — so overriding it is available, not
+/// required.
+public struct PrintAnnotationStyle: Sendable, Equatable, Hashable, Codable {
+
+    /// How the caption is coloured.
+    public enum Foreground: String, Sendable, Equatable, Hashable, Codable, CaseIterable {
+        /// White as the pixels express it, halo at the other end — adapts to
+        /// MONOCHROME1 and RGB. The default.
+        case automatic
+        /// Force white type (black halo). On MONOCHROME1 this is the *dark*
+        /// stored value; on film it reads white.
+        case white
+        /// Force black type (white halo).
+        case black
+    }
+
+    /// PostScript/family name of the caption font. Names CoreText cannot
+    /// resolve fall back to Helvetica, so a bad value degrades to the default
+    /// rather than to no caption.
+    public var fontFamily: String
+
+    /// Caption height as a fraction of the frame's height, or `nil` for the
+    /// automatic size. Clamped to 0.02…0.10: below 2% the caption is
+    /// illegible on any cell — the SRS's 8 pt floor, expressed relative to
+    /// the picture the way every other size here is — and above 10% it is a
+    /// headline over the anatomy.
+    public var sizeFraction: Double?
+
+    /// Caption colour.
+    public var foreground: Foreground
+
+    public init(fontFamily: String = "Helvetica",
+                sizeFraction: Double? = nil,
+                foreground: Foreground = .automatic) {
+        self.fontFamily = fontFamily
+        self.sizeFraction = sizeFraction.map { min(0.10, max(0.02, $0)) }
+        self.foreground = foreground
+    }
+
+    /// Today's behaviour, byte for byte.
+    public static let automatic = PrintAnnotationStyle()
+}
+
 #if canImport(CoreGraphics)
 import CoreGraphics
 import CoreText
 
 public enum ImageAnnotationBurner {
 
-    /// Draws lines of text across the bottom of a prepared frame.
+    /// Draws identification into the four corners of a prepared frame.
+    ///
+    /// Over the picture, not in a strip taken out of it: the corners of a fitted
+    /// image are background, and every pixel the anatomy has is a pixel the
+    /// reader keeps. Each line is drawn twice — a halo at the far end of the
+    /// scale, then the text — so it survives both a black background and a white
+    /// lung field.
     ///
     /// Returns the frame unchanged when there is nothing to draw, or when the
     /// pixels are not 8-bit grayscale or 8-bit RGB — the two formats an image
@@ -31,22 +88,43 @@ public enum ImageAnnotationBurner {
     /// to fail the job or to write text into pixels of a depth this has not
     /// been asked to interpret.
     public static func burning(
-        _ lines: [String],
-        into image: PreparedPrintImage
+        corners: PrintCornerAnnotation,
+        into image: PreparedPrintImage,
+        style: PrintAnnotationStyle = .automatic
     ) -> PreparedPrintImage {
-        let text = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        guard !text.isEmpty else { return image }
+        guard !corners.isEmpty else { return image }
 
         return rendering(into: image) { canvas in
-            // A reserved strip, not a caption laid over the anatomy: text drawn on
-            // the picture is exactly where a finding can hide, and the viewer
-            // reserves the same band on screen. The picture is scaled into what is
-            // left, so the film shows what the preview showed.
-            reserveCaptionBand(lineCount: text.count, in: canvas)
-            draw(text, in: canvas.context,
-                 width: canvas.width, height: canvas.height,
-                 foreground: canvas.captionForeground,
-                 shadow: canvas.captionShadow)
+            let fontSize = fittedCaptionFontSize(
+                for: corners, width: canvas.width, height: canvas.height,
+                style: style)
+            let margin = fontSize * captionMarginFactor
+            let lineHeight = fontSize * captionLineFactor
+            let foreground = canvas.captionForeground(style.foreground)
+            let shadow = canvas.captionShadow(style.foreground)
+
+            // A bitmap context's origin is its bottom-left, so the top corners
+            // are the high `y` values — and the top of the anatomy as it is
+            // displayed, since a DICOM image's rows run top to bottom.
+            let top = Double(canvas.height) - margin - fontSize
+            let bottom = margin
+
+            func block(_ lines: [String], top isTop: Bool, trailing: Bool) {
+                for (index, text) in lines.enumerated() {
+                    let step = Double(isTop ? index : lines.count - 1 - index) * lineHeight
+                    let baseline = isTop ? top - step : bottom + step
+                    drawLine(text, in: canvas.context, fontSize: fontSize,
+                             baseline: baseline, margin: margin,
+                             width: Double(canvas.width), trailing: trailing,
+                             foreground: foreground, shadow: shadow,
+                             fontFamily: style.fontFamily)
+                }
+            }
+
+            block(corners.topLeft, top: true, trailing: false)
+            block(corners.topRight, top: true, trailing: true)
+            block(corners.bottomLeft, top: false, trailing: false)
+            block(corners.bottomRight, top: false, trailing: true)
         }
     }
 
@@ -101,6 +179,31 @@ public enum ImageAnnotationBurner {
 
         /// The halo colour: the opposite end of the scale.
         var captionShadow: CGColor { background }
+
+        /// The caption colour a style asks for, in these pixels' terms.
+        ///
+        /// "White" and "black" are what the *film* shows, so on MONOCHROME1 —
+        /// whose maximum stored value is black — the forced values flip just
+        /// as the automatic ones do.
+        func captionForeground(_ choice: PrintAnnotationStyle.Foreground) -> CGColor {
+            switch choice {
+            case .automatic: return captionForeground
+            case .white:
+                return isGrayscale ? CGColor(gray: isInverted ? 0 : 1, alpha: 1)
+                                   : CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+            case .black:
+                return isGrayscale ? CGColor(gray: isInverted ? 1 : 0, alpha: 1)
+                                   : CGColor(red: 0, green: 0, blue: 0, alpha: 1)
+            }
+        }
+
+        /// The halo for a styled caption: always the far end from the type.
+        func captionShadow(_ choice: PrintAnnotationStyle.Foreground) -> CGColor {
+            switch choice {
+            case .automatic, .white: return captionShadow
+            case .black:             return captionForeground
+            }
+        }
 
         /// Black as these pixels express it — the fill behind a reserved strip,
         /// and the halo a caption is drawn over.
@@ -181,7 +284,9 @@ public enum ImageAnnotationBurner {
                 photometricInterpretation: descriptor.photometricInterpretation
             ),
             sourcePath: image.sourcePath,
-            frameIndex: image.frameIndex
+            frameIndex: image.frameIndex,
+            rowSpacingMillimeters: image.rowSpacingMillimeters,
+            columnSpacingMillimeters: image.columnSpacingMillimeters
         )
     }
 
@@ -266,54 +371,56 @@ public enum ImageAnnotationBurner {
 
     // MARK: - Drawing
 
-    /// Draws the lines centred along the bottom of the context.
+    /// Draws one line at a baseline, against the left or the right margin.
     ///
-    /// A bitmap context's origin is its bottom-left, and its bottom row is the
-    /// last row in memory — which is the bottom of a DICOM image, whose rows run
-    /// top to bottom. So drawing at low `y` puts the caption under the anatomy,
-    /// not over it.
-    private static func draw(
-        _ lines: [String],
+    /// A line too long for the frame is pulled back to the margin rather than
+    /// allowed to run off the edge: a patient's name half printed is a name that
+    /// can be misread, and the halo makes the overlap survivable.
+    private static func drawLine(
+        _ text: String,
         in context: CGContext,
-        width: Int,
-        height: Int,
+        fontSize: Double,
+        baseline: Double,
+        margin: Double,
+        width: Double,
+        trailing: Bool,
         foreground: CGColor,
-        shadow: CGColor
+        shadow: CGColor,
+        fontFamily: String = "Helvetica"
     ) {
-        let fontSize = captionFontSize(width: width, height: height)
-        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, fontSize, nil)
-        let lineHeight = fontSize * 1.3
-        let margin = fontSize * 0.5
-
+        // Plain, as the preview sets it: one weight for the whole block, because
+        // nothing in the corners is a different kind of statement from anything
+        // else there. The halo below is what keeps it legible, not the weight.
+        // CTFontCreateWithName resolves unknown names to a fallback face, so a
+        // bad family degrades to a readable caption rather than to none.
+        let font = CTFontCreateWithName(fontFamily as CFString, fontSize, nil)
         context.saveGState()
         context.textMatrix = .identity
-        // Lines read top to bottom, so the last one sits lowest.
-        for (index, text) in lines.enumerated() {
-            let baseline = margin + Double(lines.count - index - 1) * lineHeight
-            // A caption has to survive both a white lung field and a black
-            // background, so it is drawn twice: a dark halo, then the text.
-            for (offset, color) in [(1.0, shadow), (0.0, foreground)] {
-                let attributes: [CFString: Any] = [
-                    kCTFontAttributeName: font,
-                    kCTForegroundColorAttributeName: color
-                ]
-                guard let attributed = CFAttributedStringCreate(
-                    nil, text as CFString, attributes as CFDictionary) else { continue }
-                let line = CTLineCreateWithAttributedString(attributed)
-                let bounds = CTLineGetImageBounds(line, context)
-                let x = max(margin, (Double(width) - Double(bounds.width)) / 2)
-                if offset > 0 {
-                    // The halo is the same text nudged around the glyphs.
-                    for dx in [-offset, 0, offset] {
-                        for dy in [-offset, 0, offset] where !(dx == 0 && dy == 0) {
-                            context.textPosition = CGPoint(x: x + dx, y: baseline + dy)
-                            CTLineDraw(line, context)
-                        }
+        // Drawn twice: a halo at the far end of the scale, then the text — so it
+        // survives both a white lung field and a black background.
+        let spread = max(1.0, fontSize * 0.08)
+        for (offset, color) in [(spread, shadow), (0.0, foreground)] {
+            let attributes: [CFString: Any] = [
+                kCTFontAttributeName: font,
+                kCTForegroundColorAttributeName: color
+            ]
+            guard let attributed = CFAttributedStringCreate(
+                nil, text as CFString, attributes as CFDictionary) else { continue }
+            let line = CTLineCreateWithAttributedString(attributed)
+            let bounds = CTLineGetImageBounds(line, context)
+            let x = trailing
+                ? max(margin, width - margin - Double(bounds.width))
+                : margin
+            if offset > 0 {
+                for dx in [-offset, 0, offset] {
+                    for dy in [-offset, 0, offset] where !(dx == 0 && dy == 0) {
+                        context.textPosition = CGPoint(x: x + dx, y: baseline + dy)
+                        CTLineDraw(line, context)
                     }
-                } else {
-                    context.textPosition = CGPoint(x: x, y: baseline)
-                    CTLineDraw(line, context)
                 }
+            } else {
+                context.textPosition = CGPoint(x: x, y: baseline)
+                CTLineDraw(line, context)
             }
         }
         context.restoreGState()
@@ -331,54 +438,59 @@ public enum ImageAnnotationBurner {
             min(Double(height) * heightFraction, Double(width) * widthFraction))
     }
 
-    /// How deep the caption's own strip is on a frame of these dimensions.
+    /// The styled size: the style's own fraction of the frame height when it
+    /// sets one (already clamped to the legible range by the style), else the
+    /// automatic size. The floor still applies — a fraction of a tiny
+    /// thumbnail must not become unreadable type.
+    static func captionFontSize(width: Int, height: Int, style: PrintAnnotationStyle) -> Double {
+        guard let fraction = style.sizeFraction else {
+            return captionFontSize(width: width, height: height)
+        }
+        return max(minimumFontSize, Double(height) * fraction)
+    }
+
+    /// The caption size for a cell, shrunk as one block until the widest line
+    /// fits its corner.
     ///
-    /// Matches what ``draw(_:in:width:height:foreground:shadow:)`` lays out: a
-    /// margin, the line boxes, and a margin.
-    static func captionBandHeight(lineCount: Int, width: Int, height: Int) -> Double {
+    /// Every line of every corner is set at this one size — the preview does
+    /// the same (see `PatientIdentificationOverlayView`), so a long study
+    /// description costs the whole block a step of size on screen and on film
+    /// alike, instead of shrinking alone and printing the corners in two
+    /// sizes. A corner is allotted just under half the frame, the same share
+    /// the preview gives it, so the two blocks along an edge cannot collide.
+    /// Never below half the base size: past that a line is cut off rather
+    /// than dragging the patient's name into illegibility with it.
+    static func fittedCaptionFontSize(
+        for corners: PrintCornerAnnotation,
+        width: Int, height: Int,
+        style: PrintAnnotationStyle = .automatic
+    ) -> Double {
+        let base = captionFontSize(width: width, height: height, style: style)
+        let available = Double(width) * 0.48
+        guard available > 0 else { return base }
+        let font = CTFontCreateWithName(style.fontFamily as CFString, base, nil)
+        let widest = corners.allLines.map { line -> Double in
+            let attributes: [CFString: Any] = [kCTFontAttributeName: font]
+            guard let attributed = CFAttributedStringCreate(
+                nil, line as CFString, attributes as CFDictionary) else { return 0 }
+            return CTLineGetTypographicBounds(
+                CTLineCreateWithAttributedString(attributed), nil, nil, nil)
+        }.max() ?? 0
+        guard widest > available else { return base }
+        return base * max(0.5, available / widest)
+    }
+
+    /// How deep a corner block of this many lines is, in pixels — the room the
+    /// text takes at the edge it is drawn against.
+    static func captionBlockHeight(lineCount: Int, width: Int, height: Int) -> Double {
         guard lineCount > 0 else { return 0 }
         let fontSize = captionFontSize(width: width, height: height)
-        return fontSize * (2 * captionMarginFactor + Double(lineCount) * captionLineFactor)
+        return fontSize * (captionMarginFactor + Double(lineCount) * captionLineFactor)
     }
 
-    /// Clears a strip at the bottom of the frame and scales the picture into what
-    /// is left above it.
-    ///
-    /// Nothing is reserved when the strip would eat a serious fraction of the
-    /// image — a tiny frame is better captioned over than shrunk to a stamp — or
-    /// when the pixels cannot be snapshotted, in which case the caption is drawn
-    /// over the anatomy as it used to be. Both fallbacks keep the name on the
-    /// film, which matters more than where it sits.
-    private static func reserveCaptionBand(lineCount: Int, in canvas: Canvas) {
-        let width = Double(canvas.width)
-        let height = Double(canvas.height)
-        let band = captionBandHeight(lineCount: lineCount,
-                                     width: canvas.width, height: canvas.height)
-        guard band > 0, band < height * maximumBandFraction,
-              let snapshot = canvas.context.makeImage() else { return }
-
-        let available = height - band
-        // Fitted, never stretched: the caption must not cost the picture its
-        // aspect ratio, which is a measurement radiologists read off the film.
-        let scale = available / height
-        let fittedWidth = width * scale
-
-        canvas.context.saveGState()
-        canvas.context.setFillColor(canvas.background)
-        canvas.context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        // The context runs bottom-up, so the band at `y = 0` is the image's last
-        // rows — the bottom of the anatomy as it is displayed.
-        canvas.context.draw(snapshot,
-                            in: CGRect(x: (width - fittedWidth) / 2, y: band,
-                                       width: fittedWidth, height: available))
-        canvas.context.restoreGState()
-    }
-
-    /// Above this the strip is taking too much of the picture to be worth it.
-    static let maximumBandFraction: Double = 0.3
-
-    // Must match the caption layout: margin, then one line box per line.
-    static let captionMarginFactor: Double = 0.5
+    // Must match the corner layout: a margin off the edge, then one line box per
+    // line, running in towards the middle.
+    static let captionMarginFactor: Double = 0.6
     static let captionLineFactor: Double = 1.3
 
     // MARK: - Drawn annotations

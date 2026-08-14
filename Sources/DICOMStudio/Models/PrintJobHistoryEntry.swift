@@ -87,12 +87,18 @@ public final class PrintJobHistoryStorageService: Sendable {
 
     /// Saves the history, newest first, truncated to the retention limit.
     public func save(_ entries: [PrintJobHistoryEntry]) throws {
+        let data = try Self.exportData(Array(entries.prefix(Self.retentionLimit)))
+        try storageService.createDirectories()
+        try data.write(to: fileURL, options: .atomic)
+    }
+
+    /// Encodes entries in the on-disk format — also what "Export…" writes, so
+    /// an exported file and the live history file are interchangeable.
+    public static func exportData(_ entries: [PrintJobHistoryEntry]) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(Array(entries.prefix(Self.retentionLimit)))
-        try storageService.createDirectories()
-        try data.write(to: fileURL, options: .atomic)
+        return try encoder.encode(entries)
     }
 
     /// Loads the history, or an empty array if there is none.

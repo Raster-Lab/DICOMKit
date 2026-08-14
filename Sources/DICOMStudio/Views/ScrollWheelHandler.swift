@@ -106,4 +106,77 @@ struct ScrollWheelHandler: NSViewRepresentable {
 }
 #endif
 
+// MARK: - Tool cursor (macOS)
+
+#if os(macOS)
+/// Sets the pointer's shape over the view it is placed behind.
+///
+/// Via a tracking area and `cursorUpdate` rather than SwiftUI's `.onHover` with
+/// `NSCursor.push()`/`.pop()`. A push/pop pair is a stack, and hover callbacks
+/// do not arrive in balanced pairs: move the mouse quickly between two cells and
+/// the second cell's enter can land before the first cell's exit, so the pops
+/// come out of order and the pointer is left as a magnifier over the whole
+/// window until something else happens to reset it. `cursorUpdate` has no stack
+/// — AppKit asks the view under the pointer what shape it wants, every time it
+/// crosses a boundary, and a view that is gone is simply not asked.
+struct ToolCursor: NSViewRepresentable {
+    let cursor: NSCursor?
+
+    func makeNSView(context: Context) -> CursorView {
+        let view = CursorView()
+        view.cursor = cursor
+        return view
+    }
+
+    func updateNSView(_ nsView: CursorView, context: Context) {
+        nsView.cursor = cursor
+    }
+
+    final class CursorView: NSView {
+        /// Invisible to clicks, visible to the cursor.
+        ///
+        /// The two are separate questions in AppKit and this view answers them
+        /// differently: it sits over the film cell, so it must not take the
+        /// taps and drags the tools run on — but SwiftUI's own
+        /// `allowsHitTesting(false)` answers *both* with no, and a view outside
+        /// hit testing is a view AppKit never asks for a cursor. Refusing hits
+        /// here instead keeps the tracking area live while every event still
+        /// lands on the cell behind.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        var cursor: NSCursor? {
+            didSet {
+                guard cursor !== oldValue else { return }
+                // The pointer may already be inside: the tool was changed from
+                // the rail or by its keyboard shortcut, under a mouse that has
+                // not moved. AppKit only asks at a boundary crossing, so
+                // without this the new shape waits for one — and the reader,
+                // who has just armed a tool and is about to drag, is looking at
+                // the previous tool's pointer.
+                if isPointerInside { (cursor ?? .arrow).set() }
+            }
+        }
+
+        private var isPointerInside: Bool {
+            guard let window else { return false }
+            let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            return bounds.contains(point)
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(
+                rect: bounds,
+                options: [.activeInKeyWindow, .inVisibleRect, .cursorUpdate, .mouseEnteredAndExited],
+                owner: self))
+        }
+
+        override func cursorUpdate(with event: NSEvent) {
+            if let cursor { cursor.set() } else { super.cursorUpdate(with: event) }
+        }
+    }
+}
+#endif
+
 #endif

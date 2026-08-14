@@ -29,7 +29,7 @@ public struct PrintRequestError: Error, CustomStringConvertible, Sendable {
 // MARK: - Frame Selection
 
 /// Which frame(s) of a multi-frame source become image boxes.
-public enum PrintFrameSelection: Sendable, Equatable {
+public enum PrintFrameSelection: Sendable, Equatable, Codable {
     /// A single 1-based frame number.
     case single(Int)
     /// Every frame of the file, one image box per frame.
@@ -42,7 +42,7 @@ public enum PrintFrameSelection: Sendable, Equatable {
 // MARK: - Layout Selection
 
 /// How the film layout (rows × columns) is chosen.
-public enum PrintLayoutSelection: Sendable, Equatable {
+public enum PrintLayoutSelection: Sendable, Equatable, Codable {
     /// Let the print service pick an optimal grid for the image count.
     case automatic
     /// An explicit rows × columns grid.
@@ -121,7 +121,7 @@ public enum PrintWindowSpace: String, Sendable, Equatable, Codable {
 /// Holds every option the `dicom-print send` command exposes. Construct it,
 /// call ``validate()``, then feed it to ``PrintImagePreparer`` (for the pixel
 /// side) and ``PrintWorkflow`` (for the DIMSE side).
-public struct PrintJobRequest: Sendable {
+public struct PrintJobRequest: Sendable, Codable {
 
     // MARK: Film session
 
@@ -157,10 +157,26 @@ public struct PrintJobRequest: Sendable {
 
     // MARK: Image box
 
+    /// How images are scaled to their cells (SRS FR-003).
+    ///
+    /// Fit and fill travel to a real printer as Decimate/Crop Behavior; true
+    /// size additionally sends Requested Image Size per image. Stretch has no
+    /// wire form and applies only where this toolkit composes the film itself.
+    public var scalingMode: PrintScalingMode
+
+    /// Where an image sits in a cell it does not fill (SRS FR-003).
+    ///
+    /// Local composition only — a printer receiving the job centres, as
+    /// printers do; the preview shows which of the two will happen.
+    public var cellAlignment: PrintCellAlignment
+
     /// Image polarity (NORMAL / REVERSE).
     public var polarity: ImagePolarity
     /// Presentation LUT shape to create and reference, if any.
     public var presentationLUTShape: PresentationLUTShape?
+    /// Custom Presentation LUT data, sent instead of a shape (the "Custom"
+    /// option) — takes precedence over ``presentationLUTShape``.
+    public var presentationLUTTable: PresentationLUTTable?
     /// Film annotations. Only sent when ``annotationDisplayFormatID`` is set.
     public var annotations: [DICOMNetwork.PrintAnnotation]
     /// Printer-configured Annotation Display Format ID (2010,0030).
@@ -214,8 +230,11 @@ public struct PrintJobRequest: Sendable {
         emptyImageDensity: String = "BLACK",
         trimOption: TrimOption = .no,
         configurationInformation: String? = nil,
+        scalingMode: PrintScalingMode = .fitToFilm,
+        cellAlignment: PrintCellAlignment = .center,
         polarity: ImagePolarity = .normal,
         presentationLUTShape: PresentationLUTShape? = nil,
+        presentationLUTTable: PresentationLUTTable? = nil,
         annotations: [DICOMNetwork.PrintAnnotation] = [],
         annotationDisplayFormatID: String? = nil,
         filmAnnotations: [[DICOMNetwork.PrintAnnotation]] = [],
@@ -243,8 +262,11 @@ public struct PrintJobRequest: Sendable {
         self.emptyImageDensity = emptyImageDensity
         self.trimOption = trimOption
         self.configurationInformation = configurationInformation
+        self.scalingMode = scalingMode
+        self.cellAlignment = cellAlignment
         self.polarity = polarity
         self.presentationLUTShape = presentationLUTShape
+        self.presentationLUTTable = presentationLUTTable
         self.annotations = annotations
         self.annotationDisplayFormatID = annotationDisplayFormatID
         self.filmAnnotations = filmAnnotations
@@ -309,11 +331,57 @@ public struct PrintJobRequest: Sendable {
             trimOption: trimOption,
             sessionLabel: sessionLabel,
             presentationLUTShape: presentationLUTShape,
+            presentationLUTTable: presentationLUTTable,
             annotations: annotations,
             annotationDisplayFormatID: annotationDisplayFormatID,
             configurationInformation: configurationInformation,
             filmAnnotations: filmAnnotations
         )
+    }
+
+    /// The per-image scaling attributes ``scalingMode`` sends on the wire.
+    ///
+    /// - Fit and stretch send nothing: DECIMATE is the printer default, and
+    ///   stretch has no DICOM form.
+    /// - Fill sends CROP for every image.
+    /// - True size sends CROP plus Requested Image Size (2020,0030) — the
+    ///   image's physical width — for every image whose source recorded its
+    ///   pixel spacing. An image without spacing **falls back to fit**, and
+    ///   ``trueSizeFallbackCount(for:)`` is how a caller finds out and says so:
+    ///   a film silently printed at the wrong scale is a film a clinician
+    ///   might measure against.
+    public func imageBoxOptions(for images: [PreparedPrintImage]) -> [PrintImageBoxOptions] {
+        switch scalingMode {
+        case .fitToFilm, .stretch:
+            return []
+        case .fillToFilm:
+            return images.map { _ in
+                PrintImageBoxOptions(requestedDecimateCropBehavior: .crop)
+            }
+        case .trueSize:
+            return images.map { image in
+                guard let millimeters = image.physicalWidthMillimeters else {
+                    return PrintImageBoxOptions()
+                }
+                return PrintImageBoxOptions(
+                    requestedImageSize: Self.decimalString(millimeters),
+                    requestedDecimateCropBehavior: .crop)
+            }
+        }
+    }
+
+    /// How many of `images` cannot be printed true-size because their source
+    /// records no pixel spacing. Zero unless ``scalingMode`` is `.trueSize`.
+    public func trueSizeFallbackCount(for images: [PreparedPrintImage]) -> Int {
+        guard scalingMode == .trueSize else { return 0 }
+        return images.filter { $0.physicalWidthMillimeters == nil }.count
+    }
+
+    /// A DS-legal rendering of a millimetre value (≤ 16 characters).
+    static func decimalString(_ value: Double) -> String {
+        var text = String(format: "%.4f", value)
+        if text.count > 16 { text = String(format: "%.6g", value) }
+        return text
     }
 
     /// How many physical films `imageCount` images produce under this request.

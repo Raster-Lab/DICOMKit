@@ -48,6 +48,13 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
 
     public var id: String { rawValue }
 
+    /// What the sidebar row reads.
+    ///
+    /// Separate from `rawValue`, which is the stable identity behind selection,
+    /// deep links and the feature search — a row's wording can say more about
+    /// what the screen currently holds without that string moving underneath it.
+    public var displayName: String { rawValue }
+
     /// SF Symbol name for this destination.
     public var systemImage: String {
         switch self {

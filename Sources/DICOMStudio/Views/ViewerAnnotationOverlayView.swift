@@ -9,9 +9,9 @@
 // annotation has to be in the same view as the anatomy it describes — glancing
 // away to a caption strip is what a workstation exists to avoid.
 //
-// Film is the opposite case, and keeps the identification strip below the
-// picture: paper leaves the department, and a name printed over anatomy is a
-// name that can hide a finding on the one copy that gets read.
+// Film is annotated the same way, in the same corners — see
+// ``PatientIdentificationOverlayView``, which draws a film cell's identification
+// and ``ImageAnnotationBurner``, which burns it into the printed pixels.
 
 #if canImport(SwiftUI)
 import SwiftUI

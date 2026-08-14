@@ -154,7 +154,11 @@ public final class MainViewModel {
 
         let imageViewer = ImageViewerViewModel()
         self.imageViewerViewModel = imageViewer
-        self.printViewModel = PrintViewModel(selection: imageViewer.printSelection)
+        // The app's one shared print view model gets the persistent queue —
+        // stray instances (previews, standalone viewers) stay off the file.
+        self.printViewModel = PrintViewModel(
+            selection: imageViewer.printSelection,
+            queueStorage: PrintQueueStorageService(storageService: storageService))
         self.printSCPViewModel = PrintSCPViewModel(
             storage: PrintSCPSettingsStorageService(storageService: storageService))
         self.volumeViewerViewModel = DICOMVolumeViewerViewModel()

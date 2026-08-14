@@ -527,9 +527,9 @@ public actor CollectingPrintHandler: PrintSCPDelegate {
 /// the SCU emits; an SCP has to cope with everything real modalities send, so
 /// this type models the other PS3.3 C.13.3 forms too. The count it reports is
 /// what the SCP allocates Image Box SOP Instance UIDs for.
-public struct PrintImageDisplayFormat: Sendable, Equatable {
+public struct PrintImageDisplayFormat: Sendable, Equatable, Codable {
     /// The layout family.
-    public enum Kind: Sendable, Equatable {
+    public enum Kind: Sendable, Equatable, Codable {
         /// `STANDARD\columns,rows` — a uniform grid.
         case standard(rows: Int, columns: Int)
         /// `ROW\c1,c2,…` — one entry per row, giving that row's image count.

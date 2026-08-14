@@ -39,6 +39,25 @@ public struct PrinterProfile: Sendable, Identifiable, Equatable, Hashable, Codab
     public var lastVerifiedDate: Date?
     /// Whether this is the default printer.
     public var isDefault: Bool
+    /// Whether the background monitor polls this printer (FR-012).
+    ///
+    /// Off by default: polling opens a real association on someone's printer, so
+    /// it is opted into per device rather than switched on for every profile the
+    /// user has ever saved.
+    public var isMonitoringEnabled: Bool
+    /// Seconds between background status polls, clamped to
+    /// ``PrinterProfile/monitoringIntervalRange`` (FR-012: configurable 10–300s).
+    public var monitoringIntervalSeconds: Double
+    /// Date/time of the last completed status poll, successful or not.
+    public var lastStatusCheckDate: Date?
+    /// What the printer reported at ``lastStatusCheckDate``.
+    public var lastStatusDetail: String?
+
+    /// The interval range FR-012 permits.
+    public static let monitoringIntervalRange: ClosedRange<Double> = 10...300
+
+    /// Default poll interval — 30 seconds, the figure named in the SRS.
+    public static let defaultMonitoringInterval: Double = 30
 
     public init(
         id: UUID = UUID(),
@@ -51,7 +70,11 @@ public struct PrinterProfile: Sendable, Identifiable, Equatable, Hashable, Codab
         timeoutSeconds: Double = 60.0,
         status: ServerConnectionStatus = .unknown,
         lastVerifiedDate: Date? = nil,
-        isDefault: Bool = false
+        isDefault: Bool = false,
+        isMonitoringEnabled: Bool = false,
+        monitoringIntervalSeconds: Double = PrinterProfile.defaultMonitoringInterval,
+        lastStatusCheckDate: Date? = nil,
+        lastStatusDetail: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -64,6 +87,23 @@ public struct PrinterProfile: Sendable, Identifiable, Equatable, Hashable, Codab
         self.status = status
         self.lastVerifiedDate = lastVerifiedDate
         self.isDefault = isDefault
+        self.isMonitoringEnabled = isMonitoringEnabled
+        self.monitoringIntervalSeconds = Self.clampInterval(monitoringIntervalSeconds)
+        self.lastStatusCheckDate = lastStatusCheckDate
+        self.lastStatusDetail = lastStatusDetail
+    }
+
+    /// Brings any interval into the permitted range.
+    ///
+    /// A stored profile can carry anything — an older build, a hand-edited JSON —
+    /// and an out-of-range value here would become a hot loop against a hospital
+    /// printer, so it is clamped rather than trusted.
+    public static func clampInterval(_ seconds: Double) -> Double {
+        // NaN compares false against everything, so it cannot be clamped and
+        // falls back to the default. Infinities clamp normally.
+        guard !seconds.isNaN else { return defaultMonitoringInterval }
+        return min(max(seconds, monitoringIntervalRange.lowerBound),
+                   monitoringIntervalRange.upperBound)
     }
 
     /// Display string for lists: "RAD-PRINTER — 10.0.0.5:11112 (PRINT_SCP)".
@@ -71,16 +111,60 @@ public struct PrinterProfile: Sendable, Identifiable, Equatable, Hashable, Codab
         "\(name) — \(host):\(port) (\(remoteAETitle))"
     }
 
+    /// The ceiling for interactive probes — Test Connection and Query Status.
+    ///
+    /// `timeoutSeconds` is sized for a print job, where a busy printer taking a
+    /// minute to answer is normal. A probe the user is watching is not: an
+    /// unreachable printer would leave the menu action spinning for the full
+    /// print timeout with no feedback, which reads as a hang.
+    public static let probeTimeoutCeiling: Double = 10.0
+
     /// The Print SCU configuration this profile produces.
-    public func printConfiguration() -> PrintConfiguration {
+    ///
+    /// - Parameter probe: `true` for interactive status/echo probes, which clamp
+    ///   the timeout to ``probeTimeoutCeiling``. Print jobs pass `false`.
+    public func printConfiguration(probe: Bool = false) -> PrintConfiguration {
         PrintConfiguration(
             host: host,
             port: port,
             callingAETitle: localAETitle,
             calledAETitle: remoteAETitle,
-            timeout: timeoutSeconds,
+            // min, not a flat replacement: a profile deliberately set below the
+            // ceiling keeps its shorter timeout.
+            timeout: probe ? min(timeoutSeconds, Self.probeTimeoutCeiling) : timeoutSeconds,
             colorMode: colorMode.printColorMode
         )
+    }
+
+    // MARK: Codable
+
+    /// Decodes tolerantly, so a `printer-profiles.json` written before the
+    /// monitoring fields existed still loads instead of dropping every printer
+    /// the user configured.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        host = try container.decode(String.self, forKey: .host)
+        port = try container.decode(UInt16.self, forKey: .port)
+        remoteAETitle = try container.decode(String.self, forKey: .remoteAETitle)
+        localAETitle = try container.decode(String.self, forKey: .localAETitle)
+        colorMode = try container.decode(PrinterColorMode.self, forKey: .colorMode)
+        timeoutSeconds = try container.decode(Double.self, forKey: .timeoutSeconds)
+        status = try container.decode(ServerConnectionStatus.self, forKey: .status)
+        lastVerifiedDate = try container.decodeIfPresent(Date.self, forKey: .lastVerifiedDate)
+        isDefault = try container.decode(Bool.self, forKey: .isDefault)
+
+        isMonitoringEnabled = (try? container.decodeIfPresent(
+            Bool.self, forKey: .isMonitoringEnabled)).flatMap { $0 } ?? false
+        let storedInterval = (try? container.decodeIfPresent(
+            Double.self, forKey: .monitoringIntervalSeconds)).flatMap { $0 }
+        monitoringIntervalSeconds = Self.clampInterval(
+            storedInterval ?? Self.defaultMonitoringInterval)
+        lastStatusCheckDate = (try? container.decodeIfPresent(
+            Date.self, forKey: .lastStatusCheckDate)).flatMap { $0 }
+        lastStatusDetail = (try? container.decodeIfPresent(
+            String.self, forKey: .lastStatusDetail)).flatMap { $0 }
     }
 }
 

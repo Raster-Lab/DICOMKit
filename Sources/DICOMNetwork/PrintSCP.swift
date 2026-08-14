@@ -40,6 +40,43 @@ private final class LockedFlag: @unchecked Sendable {
     }
 }
 
+// MARK: - Print job store
+
+/// Print Job SOP Instances, shared by every association of one server.
+///
+/// Film session state dies with its association (PS3.4 H.4), but a Print Job
+/// SOP Instance is exactly the part that must not: an SCU prints, releases,
+/// and N-GETs the job's execution status over a later association. Keeping
+/// jobs on the association made that query answer 0x0112 (no such SOP
+/// Instance) the moment the print association closed.
+///
+/// Bounded, newest kept, so a long-running emulator does not grow forever.
+actor PrintSCPJobStore {
+
+    /// The most recent jobs retained.
+    static let retentionLimit = 100
+
+    private var jobs: [String: PrintSCPJobRecord] = [:]
+    /// Insertion order, oldest first, for eviction.
+    private var order: [String] = []
+
+    /// Inserts or updates a job record, evicting the oldest past the limit.
+    func set(_ job: PrintSCPJobRecord) {
+        if jobs[job.printJobUID] == nil {
+            order.append(job.printJobUID)
+            while order.count > Self.retentionLimit {
+                jobs.removeValue(forKey: order.removeFirst())
+            }
+        }
+        jobs[job.printJobUID] = job
+    }
+
+    /// The job for a Print Job SOP Instance UID, if still retained.
+    func job(for uid: String) -> PrintSCPJobRecord? {
+        jobs[uid]
+    }
+}
+
 // MARK: - Server
 
 /// DICOM Print Server (SCP) — a printer emulator.
@@ -70,6 +107,9 @@ public actor DICOMPrintServer {
 
     /// Active associations, keyed by identity.
     private var activeAssociations: [ObjectIdentifier: PrintSCPAssociation] = [:]
+
+    /// Print jobs across all associations, so status is queryable after release.
+    private let jobStore = PrintSCPJobStore()
 
     /// Event stream continuation.
     private var eventContinuation: AsyncStream<PrintServerEvent>.Continuation?
@@ -246,6 +286,7 @@ public actor DICOMPrintServer {
             connection: connection,
             configuration: configuration,
             delegate: delegate,
+            jobStore: jobStore,
             rejectAtCapacity: atCapacity,
             eventHandler: { [weak self] event in
                 await self?.handleAssociationEvent(event)
@@ -313,7 +354,10 @@ actor PrintSCPAssociation {
     private var imageBoxes: [String: ReceivedImageBox] = [:]
     private var presentationLUTs: [String: PresentationLUTShape?] = [:]
     private var annotationBoxes: [String: PrintAnnotation] = [:]
-    private var printJobs: [String: PrintSCPJobRecord] = [:]
+
+    /// Server-wide: a Print Job SOP Instance outlives this association
+    /// (PS3.4 H.4.8), so status queries on later associations can find it.
+    private let jobStore: PrintSCPJobStore
 
     /// UID allocator; a dedicated root keeps emulator UIDs recognizable.
     private let uidGenerator = UIDGenerator()
@@ -322,6 +366,7 @@ actor PrintSCPAssociation {
         connection: NWConnection,
         configuration: PrintSCPConfiguration,
         delegate: any PrintSCPDelegate,
+        jobStore: PrintSCPJobStore,
         rejectAtCapacity: Bool = false,
         eventHandler: @escaping @Sendable (PrintServerEvent) async -> Void,
         completionHandler: @escaping @Sendable (PrintSCPAssociation) async -> Void
@@ -329,6 +374,7 @@ actor PrintSCPAssociation {
         self.connection = connection
         self.configuration = configuration
         self.delegate = delegate
+        self.jobStore = jobStore
         self.rejectAtCapacity = rejectAtCapacity
         self.eventHandler = eventHandler
         self.completionHandler = completionHandler
@@ -927,7 +973,7 @@ actor PrintSCPAssociation {
             executionStatus: "PRINTING",
             printPriority: session.printPriority,
             numberOfCopies: session.numberOfCopies)
-        printJobs[jobUID] = job
+        await jobStore.set(job)
 
         // Annotation boxes the SCU never filled stay empty; drop them rather
         // than handing the composer blank text boxes.
@@ -955,7 +1001,7 @@ actor PrintSCPAssociation {
         } catch {
             job.executionStatus = "FAILURE"
             job.executionStatusInfo = "\(error)"
-            printJobs[jobUID] = job
+            await jobStore.set(job)
             await delegate.didFail(error: error, forPrintJob: jobUID)
             throw PrintSCPFailure(
                 .processingFailure, comment: "Failed to print film: \(error)")
@@ -963,7 +1009,7 @@ actor PrintSCPAssociation {
 
         job.executionStatus = "DONE"
         job.executionStatusInfo = "NORMAL"
-        printJobs[jobUID] = job
+        await jobStore.set(job)
 
         outcome.events.append(.filmPrinted(film))
         if configuration.pushPrintJobEvents {
@@ -1052,7 +1098,7 @@ actor PrintSCPAssociation {
                     configuration: configuration, status: status, explicitVR: explicitVR))
 
         case printJobSOPClassUID:
-            guard let job = printJobs[sopInstance] else {
+            guard let job = await jobStore.job(for: sopInstance) else {
                 throw PrintSCPFailure(.noSuchSOPInstance, comment: "Unknown Print Job \(sopInstance)")
             }
             return Outcome(

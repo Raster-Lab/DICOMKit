@@ -27,10 +27,32 @@ public struct PreparedPrintImage: Sendable {
     /// 0-based frame index within the source.
     public let frameIndex: Int
 
-    public init(descriptor: PrintImageData, sourcePath: String?, frameIndex: Int) {
+    /// The physical height of one pixel row in millimetres, when the source
+    /// records it (see ``PrintPhysicalSize/pixelSpacing(from:)``).
+    public let rowSpacingMillimeters: Double?
+
+    /// The physical width of one pixel column in millimetres, when the source
+    /// records it. What true-size printing (FR-003) multiplies by
+    /// ``PrintImageData/columns`` — so a crop that narrows the frame narrows
+    /// the requested size with it, for free.
+    public let columnSpacingMillimeters: Double?
+
+    public init(descriptor: PrintImageData, sourcePath: String?, frameIndex: Int,
+                rowSpacingMillimeters: Double? = nil,
+                columnSpacingMillimeters: Double? = nil) {
         self.descriptor = descriptor
         self.sourcePath = sourcePath
         self.frameIndex = frameIndex
+        self.rowSpacingMillimeters = rowSpacingMillimeters
+        self.columnSpacingMillimeters = columnSpacingMillimeters
+    }
+
+    /// The width this frame prints at 1:1, in millimetres — `nil` when the
+    /// source recorded no spacing, in which case true size is undefined.
+    public var physicalWidthMillimeters: Double? {
+        guard let spacing = columnSpacingMillimeters, spacing > 0,
+              descriptor.columns > 0 else { return nil }
+        return Double(descriptor.columns) * spacing
     }
 
     /// One-line summary, e.g. "512x512 MONOCHROME2 8-bit".
@@ -136,6 +158,9 @@ public struct PrintImagePreparer: Sendable {
             frameIndices = [frameNumber - 1]
         }
 
+        // Read once per source: every frame of a file shares its spacing.
+        let pixelSpacing = PrintPhysicalSize.pixelSpacing(from: dataSet)
+
         var prepared: [PreparedPrintImage] = []
         for frameIndex in frameIndices {
             let descriptor: PrintImageData
@@ -160,13 +185,15 @@ public struct PrintImagePreparer: Sendable {
                     photometricInterpretation: sourceDescriptor.photometricInterpretation.rawValue
                 )
             } else {
+                let voi = Self.resolvedVOI(request, dataSet: dataSet)
                 let image = try await preprocessor.prepareForPrint(
                     pixelData: pixelData,
                     dataSet: dataSet,
                     frameIndex: frameIndex,
                     colorMode: request.preprocessColorMode,
-                    windowSettings: Self.resolvedWindow(request, dataSet: dataSet),
-                    outputBitDepth: request.bitDepth
+                    windowSettings: voi.window,
+                    outputBitDepth: request.bitDepth,
+                    voiLUT: voi.lut
                 )
                 guard image.width <= Int(UInt16.max),
                       image.height <= Int(UInt16.max) else {
@@ -210,7 +237,9 @@ public struct PrintImagePreparer: Sendable {
             prepared.append(PreparedPrintImage(
                 descriptor: descriptor,
                 sourcePath: sourcePath,
-                frameIndex: frameIndex
+                frameIndex: frameIndex,
+                rowSpacingMillimeters: pixelSpacing?.row,
+                columnSpacingMillimeters: pixelSpacing?.column
             ))
         }
 
@@ -249,6 +278,30 @@ public struct PrintImagePreparer: Sendable {
         return dataSet.allWindowSettings().first ?? dataSet.windowSettings()
     }
 
+    /// The full VOI resolution, table LUTs included (SRS FR-004).
+    ///
+    /// PS3.3 C.11.2 precedence, highest first:
+    ///
+    /// 1. The request's explicit window — the user (or the viewer the film
+    ///    must match) asked for it, so it beats everything, the file's own
+    ///    table included.
+    /// 2. The file's VOI LUT Sequence (0028,3010), which the standard puts
+    ///    above Window Center/Width: a file carrying both means the table.
+    /// 3. Window Center/Width from the header.
+    /// 4. Nothing — the preprocessor auto-stretches.
+    static func resolvedVOI(
+        _ request: PrintJobRequest,
+        dataSet: DataSet
+    ) -> (window: WindowSettings?, lut: GrayscaleLUT?) {
+        if request.windowSettings != nil {
+            return (windowInOutputUnits(request, dataSet: dataSet), nil)
+        }
+        if let lut = dataSet.voiLUT() {
+            return (nil, lut)
+        }
+        return (dataSet.allWindowSettings().first ?? dataSet.windowSettings(), nil)
+    }
+
     /// The request's window in the units ``ImagePreprocessor`` windows in.
     ///
     /// The preprocessor rescales before it windows, so it expects output units.
@@ -261,7 +314,12 @@ public struct PrintImagePreparer: Sendable {
         dataSet: DataSet
     ) -> WindowSettings? {
         guard let window = request.windowSettings else { return nil }
-        guard request.windowSpace == .storedValues else { return window }
+        let function = resolvedFunction(for: window, dataSet: dataSet)
+        guard request.windowSpace == .storedValues else {
+            return WindowSettings(
+                center: window.center, width: window.width,
+                explanation: window.explanation, function: function)
+        }
 
         let slope = dataSet.rescaleSlope()
         guard slope != 0 else { return window }
@@ -270,7 +328,24 @@ public struct PrintImagePreparer: Sendable {
             center: window.center * slope + intercept,
             width: window.width * abs(slope),
             explanation: window.explanation,
-            function: window.function)
+            function: function)
+    }
+
+    /// The VOI LUT Function the window is applied with.
+    ///
+    /// PS3.3 C.11.2.1.3: the function belongs to the *image* — (0028,1056)
+    /// says how any Window Center/Width is to be interpreted for it. A window
+    /// carried off a viewer mark arrives as two bare numbers whose `function`
+    /// defaulted to linear, so a SIGMOID image would print with linear
+    /// contrast, silently, while the screen showed sigmoid. `.linear` is the
+    /// "nothing was said" default, so it defers to the file; an explicit
+    /// LINEAR_EXACT or SIGMOID on the request is a real choice and stands.
+    static func resolvedFunction(
+        for window: WindowSettings,
+        dataSet: DataSet
+    ) -> VOILUTFunction {
+        guard window.function == .linear else { return window.function }
+        return VOILUTFunction.parse(dataSet.string(for: .voiLUTFunction))
     }
 }
 

@@ -30,7 +30,7 @@ extension PrintViewModel {
     /// what the printer receives, and a preview still showing the mark's own
     /// arrangement would be quietly lying about the film.
     public var previewItems: [PrintSelectionItem] {
-        selection.items.map(previewItem(for:))
+        printedItems.map(previewItem(for:))
     }
 
     /// One mark resolved against the job-wide settings.
@@ -78,10 +78,9 @@ extension PrintViewModel {
 
     /// The identification each marked file carries, keyed by path.
     ///
-    /// The same two lines the viewer draws and the preview overlays — patient,
-    /// ID and study date over the study description — so film, screen and
-    /// preview all say the same thing about whose study this is, plus the Study
-    /// Instance UID that decides whether a film can state them once.
+    /// The same lines the preview overlays — patient, ID and study date, the
+    /// study description, and what made the picture — so film, screen and
+    /// preview all say the same thing about whose study this is.
     ///
     /// Read here rather than taken from the preview's cache: printing must not
     /// depend on whether the user happened to look at the preview first, and a
@@ -104,11 +103,12 @@ extension PrintViewModel {
 
     /// How each film of a job states its identification, in film order.
     ///
-    /// Films are decided one at a time: a job can spill onto a second sheet
-    /// holding a different study, and each sheet has to be identifiable on its
-    /// own. ``PrintIdentificationPlacement`` says which rule to apply; the rule
-    /// itself lives in ``FilmIdentificationPlanner``, shared with the composer
-    /// so the preview, the saved film and the print all agree.
+    /// Under each image, or — when identification is switched off, or nothing
+    /// could be read from the files — not at all. A caption states the technique
+    /// of the image it sits under as well as the patient, and that differs from
+    /// cell to cell, so there is nothing a single footer could say for a whole
+    /// sheet. The rule lives in ``FilmIdentificationPlanner``, shared with the
+    /// preview and the composer so all three agree.
     public func filmIdentifications(
         for items: [PrintSelectionItem],
         texts: [String: PatientOverlayText],
@@ -127,45 +127,33 @@ extension PrintViewModel {
                     studyKey: text?.studyInstanceUID ?? "",
                     lines: text?.lines ?? [])
             }
-            return FilmIdentificationPlanner.identification(
-                for: sources, placement: identificationPlacement)
+            return FilmIdentificationPlanner.identification(for: sources, placement: .perImage)
         }
     }
 
-    /// The caption lines to burn into each mark's pixels, keyed by mark ID.
+    /// The corner text to burn into each mark's pixels, keyed by mark ID.
     ///
-    /// Only the marks on films that caption per image: on a footered film the
-    /// sheet says it once, and burning it again under every picture is the noise
-    /// the footer exists to remove.
-    ///
-    /// - Parameter footersDelivered: whether the film footers will actually
-    ///   reach the film. When they will not — a printer with no configured
-    ///   Annotation Display Format composes the sheet itself and has nowhere to
-    ///   put them — every mark is captioned instead. A film with no name on it
-    ///   is worse than a film that repeats one.
+    /// Burned rather than sent as annotation boxes: a DICOM printer lays those
+    /// out to its own configured format and many ignore them, and a caption that
+    /// names the slice it stands on is no use anywhere but on that slice.
     public func identificationBurns(
         for items: [PrintSelectionItem],
         texts: [String: PatientOverlayText],
         identifications: [FilmIdentification],
-        plan: PrintPlan,
-        footersDelivered: Bool
-    ) -> [String: [String]] {
-        var result: [String: [String]] = [:]
+        plan: PrintPlan
+    ) -> [String: PrintCornerAnnotation] {
+        var result: [String: PrintCornerAnnotation] = [:]
         for filmIndex in 0..<max(0, plan.filmCount) {
             let identification = filmIndex < identifications.count
                 ? identifications[filmIndex] : .perImage
-            switch identification {
-            case .none:
-                continue
-            case .footer where footersDelivered:
-                continue
-            case .footer, .perImage:
-                for index in plan.imageIndices(onFilm: filmIndex) {
-                    guard items.indices.contains(index) else { continue }
-                    let item = items[index]
-                    guard let lines = texts[item.filePath]?.lines, !lines.isEmpty else { continue }
-                    result[item.id] = lines
-                }
+            guard identification != .none else { continue }
+            for index in plan.imageIndices(onFilm: filmIndex) {
+                guard items.indices.contains(index) else { continue }
+                let item = items[index]
+                guard let corners = texts[item.filePath]?
+                    .corners(including: identificationFields),
+                    !corners.isEmpty else { continue }
+                result[item.id] = corners
             }
         }
         return result
@@ -304,18 +292,23 @@ extension PrintViewModel {
         pixelSize: CGSize? = nil
     ) {
         guard factor.isFinite, factor > 0 else { return }
+        let covers = picturesCoverTheirCells
         mutatePresentation(forItemID: itemID, cellSize: cellSize) { presentation in
             presentation.zoom = min(Self.maximumCellZoom,
                                     max(Self.minimumCellZoom, presentation.zoom * factor))
-            if presentation.zoom <= 1.0 {
-                // Fitted again: a pan that was only meaningful while zoomed in
-                // would otherwise keep cropping the fitted image.
+            if presentation.zoom <= 1.0 && !covers {
+                // Back to fitted: a pan that was only meaningful while zoomed in
+                // would otherwise keep cropping the fitted image. Not so on a
+                // filled cell, where zoom 1 is already a crop and the pan
+                // chooses which part of it prints — throwing that away would
+                // undo the reader's framing every time they zoomed back out.
                 presentation.panX = 0
                 presentation.panY = 0
             } else {
                 // Zooming back out leaves less of the image hidden, so a pan
                 // that was legal a moment ago can now be off the edge.
-                Self.clampPan(of: &presentation, pixelSize: pixelSize)
+                Self.clampPan(of: &presentation, pixelSize: pixelSize,
+                              covers: covers)
             }
         }
         propagateZoomPan(from: itemID, cellSize: cellSize)
@@ -330,6 +323,7 @@ extension PrintViewModel {
         pixelSize: CGSize? = nil
     ) {
         guard dx.isFinite, dy.isFinite, cellSize.width > 0 else { return }
+        let covers = picturesCoverTheirCells
         mutatePresentation(forItemID: itemID, cellSize: cellSize) { presentation in
             // The drag is measured on the cell; the pan is stored in the
             // viewport the mark was composed in, which is usually larger.
@@ -338,9 +332,21 @@ extension PrintViewModel {
             presentation.panY += dy * scale
             // The picture slides and stops at the image's edge; without this the
             // drag runs off it and the cell refits a shrinking crop instead.
-            Self.clampPan(of: &presentation, pixelSize: pixelSize)
+            Self.clampPan(of: &presentation, pixelSize: pixelSize,
+                          covers: covers)
         }
         propagateZoomPan(from: itemID, cellSize: cellSize)
+    }
+
+    /// Whether the film's scaling *crops* each picture to cover its whole cell.
+    ///
+    /// Fill only. What it decides is whether a pan has anywhere to go at zoom 1
+    /// — a fill-cropped cell is showing part of the image, so it does. Stretch
+    /// also covers the cell but by distortion, not by cropping: the whole image
+    /// is in the cell and there is nothing hidden for a pan to bring in, which
+    /// is the fitted situation, not the filled one.
+    var picturesCoverTheirCells: Bool {
+        scalingMode == .fillToFilm
     }
 
     /// Holds a presentation's pan inside the image it is over.
@@ -348,13 +354,13 @@ extension PrintViewModel {
     /// With no frame size to go on the viewport stands in for the image, which
     /// is exact on whichever axis the image fills and generous on the other.
     static func clampPan(of presentation: inout ViewerPresentation,
-                                 pixelSize: CGSize?) {
+                                 pixelSize: CGSize?, covers: Bool = false) {
         let width = Int((pixelSize.map { Double($0.width) } ?? presentation.viewportWidth).rounded())
         let height = Int((pixelSize.map { Double($0.height) } ?? presentation.viewportHeight).rounded())
         guard width > 0, height > 0 else { return }
         let clamped = presentation.clampedPan(
             x: presentation.panX, y: presentation.panY,
-            imageWidth: width, imageHeight: height)
+            imageWidth: width, imageHeight: height, covers: covers)
         presentation.panX = clamped.x
         presentation.panY = clamped.y
     }

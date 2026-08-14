@@ -29,6 +29,10 @@ struct PrintCellSyncTests {
     }
 
     /// Two frames of one series and one from another, so scope is testable.
+    ///
+    /// Three marks land on one film under the default layout, which is what
+    /// makes them peers at all: a locked edit never leaves the sheet it was made
+    /// on — see ``PrintCellSyncScope``.
     private var mixedFilm: [PrintSelectionItem] {
         [
             PrintSelectionItem(filePath: "/ct1.dcm", seriesInstanceUID: "1.2.3",
@@ -58,7 +62,7 @@ struct PrintCellSyncTests {
     @Test("A linked zoom is copied to the other cells exactly")
     func testZoomIsCopiedAbsolutely() {
         let viewModel = makeViewModel(items: mixedFilm)
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         viewModel.toggleSync(.zoomPan)
 
         viewModel.adjustZoom(forItemID: "/ct1.dcm#0", factor: 2, cellSize: cell)
@@ -72,7 +76,7 @@ struct PrintCellSyncTests {
     @Test("A linked pan puts every cell over the same part of its image")
     func testPanIsCopied() {
         let viewModel = makeViewModel(items: mixedFilm)
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         viewModel.toggleSync(.zoomPan)
 
         // Zoomed in first: a fitted cell has nowhere to pan to.
@@ -88,7 +92,7 @@ struct PrintCellSyncTests {
     @Test("Rotation is never linked — it is how one image is put the right way up")
     func testRotationIsNotLinked() {
         let viewModel = makeViewModel(items: mixedFilm)
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         viewModel.cellSync = .all
 
         viewModel.rotateCell(forItemID: "/ct1.dcm#0", cellSize: cell)
@@ -103,7 +107,7 @@ struct PrintCellSyncTests {
     @Test("Inversion travels on its own switch")
     func testInvertIsLinked() {
         let viewModel = makeViewModel(items: mixedFilm)
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         viewModel.toggleSync(.invert)
 
         viewModel.toggleCellInversion(forItemID: "/ct1.dcm#0", cellSize: cell)
@@ -138,7 +142,7 @@ struct PrintCellSyncTests {
     @Test("Reset returns the focused cell alone to the untouched frame")
     func testResetFocusedCell() {
         let viewModel = makeViewModel(items: mixedFilm)
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         viewModel.toggleSync(.zoomPan)
         viewModel.adjustZoom(forItemID: "/ct1.dcm#0", factor: 3, cellSize: cell)
         viewModel.focusCell("/ct1.dcm#0")
@@ -154,7 +158,7 @@ struct PrintCellSyncTests {
     @Test("Reset All clears the whole sheet, which is what a linked drag can spoil")
     func testResetAllCells() {
         let viewModel = makeViewModel(items: mixedFilm)
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         viewModel.toggleSync(.zoomPan)
         viewModel.toggleSync(.window)
         viewModel.adjustZoom(forItemID: "/ct1.dcm#0", factor: 3, cellSize: cell)
@@ -177,7 +181,7 @@ struct PrintCellSyncTests {
     @Test("A linked window drag moves each cell in proportion to its own window")
     func testWindowIsCarriedRelatively() {
         let viewModel = makeViewModel(items: mixedFilm)
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         viewModel.toggleSync(.window)
 
         // The CT is widened by half and its centre raised by a tenth of a width.
@@ -195,7 +199,7 @@ struct PrintCellSyncTests {
     @Test("A preset is copied as the window it is, not as the change it made")
     func testPresetIsCopiedAbsolutely() {
         let viewModel = makeViewModel(items: mixedFilm)
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         viewModel.toggleSync(.window)
 
         let lung = WindowLevelPreset(name: "Lung", center: -600, width: 1500, modality: "CT")
@@ -210,7 +214,7 @@ struct PrintCellSyncTests {
     @Test("A job-wide window switches the cell link off — nothing per-cell prints")
     func testWindowSyncYieldsToTheJobWideWindow() {
         let viewModel = makeViewModel(items: mixedFilm)
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         viewModel.toggleSync(.window)
         viewModel.useExplicitWindow = true
 
@@ -276,7 +280,7 @@ struct PrintCellSyncTests {
 
         // Widening the scope lights the rest of the sheet — which is the point
         // of drawing it per cell rather than stating it once.
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         #expect(viewModel.isLinkedToFocus("/mr1.dcm#0"))
     }
 
@@ -290,8 +294,44 @@ struct PrintCellSyncTests {
     @Test("The source cell is never in its own peer list")
     func testSourceIsNotItsOwnPeer() {
         let viewModel = makeViewModel(items: mixedFilm)
-        viewModel.cellSyncScope = .allCells
+        viewModel.cellSyncScope = .thisFilm
         #expect(!viewModel.syncPeers(of: "/ct1.dcm#0").contains { $0.id == "/ct1.dcm#0" })
         #expect(viewModel.syncPeers(of: "/ct1.dcm#0").count == 2)
+    }
+
+    // MARK: - The one door the UI toggles a lock through
+
+    /// The rail button, the context menu and the keyboard shortcut all shut a
+    /// lock through ``toggleSyncFromUI(_:)`` — so the seeding and the job-wide
+    /// window guard cannot be honoured by one caller and forgotten by another.
+
+    @Test("Shutting and opening a lock from the UI is a plain toggle")
+    func testUIToggleShutsAndOpens() {
+        let viewModel = makeViewModel(items: mixedFilm)
+
+        #expect(viewModel.toggleSyncFromUI(.zoomPan))
+        #expect(viewModel.cellSync.contains(.zoomPan))
+
+        #expect(viewModel.toggleSyncFromUI(.zoomPan))
+        #expect(!viewModel.cellSync.contains(.zoomPan))
+    }
+
+    @Test("A job-wide window refuses the window lock, whoever asks")
+    func testUIToggleRefusesWindowLockWhenOverridden() {
+        let viewModel = makeViewModel(items: mixedFilm)
+        viewModel.useExplicitWindow = true
+        #expect(viewModel.isCellWindowingOverridden)
+
+        // The rail's button is disabled in this state, but a keyboard shortcut
+        // is delivered whether or not a button would have taken the click — so
+        // the refusal has to live below the button, not in it.
+        #expect(viewModel.toggleSyncFromUI(.window) == false)
+        #expect(!viewModel.cellSync.contains(.window),
+                "a lit window lock would promise a link that reaches no film")
+
+        // The other locks are unaffected: a job-wide window says nothing about
+        // where the cells are zoomed to.
+        #expect(viewModel.toggleSyncFromUI(.zoomPan))
+        #expect(viewModel.cellSync.contains(.zoomPan))
     }
 }

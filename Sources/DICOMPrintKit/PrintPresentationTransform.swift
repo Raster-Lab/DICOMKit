@@ -19,12 +19,17 @@ public enum PrintPresentationTransform {
     ///   - image: Prepared, uncompressed image-box pixels (8- or 16-bit,
     ///     1 or 3 samples per pixel).
     ///   - presentation: The viewer arrangement to bake in.
+    ///   - covers: Whether the job's scaling lays the picture covering its cell
+    ///     (fill-to-film). The crop is then read with the covering geometry, so
+    ///     the film prints the same panned crop the preview shows — read as
+    ///     fitted, the film re-centred what the preview had slid.
     /// - Returns: The transformed image, or `image` unchanged when the
     ///   presentation is an identity or the pixel layout is not one this can
     ///   safely permute.
     public static func apply(
         _ presentation: ViewerPresentation,
-        to image: PrintImageData
+        to image: PrintImageData,
+        covers: Bool = false
     ) -> PrintImageData {
         guard !presentation.isIdentity else { return image }
 
@@ -48,7 +53,8 @@ public enum PrintPresentationTransform {
         // 1. Crop to the region the viewport was showing.
         var currentWidth = width
         var currentHeight = height
-        if let region = presentation.visibleRegion(imageWidth: width, imageHeight: height) {
+        if let region = presentation.visibleRegion(
+            imageWidth: width, imageHeight: height, covers: covers) {
             pixels = crop(pixels, width: currentWidth, region: region, pixelStride: pixelStride)
             currentWidth = region.width
             currentHeight = region.height
@@ -313,11 +319,16 @@ public extension PreparedPrintImage {
     }
 
     /// A copy with the viewer's arrangement baked into its pixels.
+    ///
+    /// - Parameter covers: whether the job scales pictures to cover their cells
+    ///   (fill-to-film) — see ``PrintPresentationTransform/apply(_:to:covers:)``.
     func applying(
         _ presentation: ViewerPresentation,
+        covers: Bool = false,
         onProgress: PrintImagePreparer.ProgressHandler? = nil
     ) -> PreparedPrintImage {
-        let transformed = PrintPresentationTransform.apply(presentation, to: descriptor)
+        let transformed = PrintPresentationTransform.apply(
+            presentation, to: descriptor, covers: covers)
         guard transformed != descriptor else { return self }
         onProgress?(
             "Applied viewer presentation: "
@@ -330,10 +341,21 @@ public extension PreparedPrintImage {
             + (presentation.flipHorizontal ? ", flipped horizontally" : "")
             + (presentation.flipVertical ? ", flipped vertically" : "")
             + (presentation.invert ? ", inverted" : ""))
+        // The physical spacing follows the permutation: a crop keeps it (fewer
+        // columns, same millimetres each), a quarter turn swaps row for column,
+        // and a free-angle resample invalidates it — a resampled pixel has no
+        // single spacing, so true size becomes undefined rather than wrong.
+        let odd = presentation.isQuarterTurn && presentation.quarterTurns % 2 == 1
+        let row = presentation.isQuarterTurn
+            ? (odd ? columnSpacingMillimeters : rowSpacingMillimeters) : nil
+        let column = presentation.isQuarterTurn
+            ? (odd ? rowSpacingMillimeters : columnSpacingMillimeters) : nil
         return PreparedPrintImage(
             descriptor: transformed,
             sourcePath: sourcePath,
-            frameIndex: frameIndex
+            frameIndex: frameIndex,
+            rowSpacingMillimeters: row,
+            columnSpacingMillimeters: column
         )
     }
 }

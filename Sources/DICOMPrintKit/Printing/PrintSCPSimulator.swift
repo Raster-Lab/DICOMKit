@@ -68,7 +68,14 @@ public struct PrintSCPSimulator: Sendable {
         guard !images.isEmpty else { return [] }
 
         let plan = request.plan(forImageCount: images.count)
-        let composer = FilmComposer(configuration: settings.makeComposerConfiguration())
+        // FR-003: the job's scaling mode composes here exactly as it would
+        // print — fill and true size through the wire attributes each image
+        // box carries, stretch and alignment as the local placement they are.
+        let boxOptions = request.imageBoxOptions(for: images)
+        let composer = FilmComposer(
+            configuration: settings.makeComposerConfiguration().withPlacement(
+                alignment: request.cellAlignment,
+                stretch: request.scalingMode == .stretch))
         let sessionUID = UIDGenerator.generateSOPInstanceUID().value
         let session = FilmSession(
             sopInstanceUID: sessionUID,
@@ -87,12 +94,16 @@ public struct PrintSCPSimulator: Sendable {
             let indices = plan.imageIndices(onFilm: filmIndex)
             let boxes = (0..<plan.cellsPerFilm).map { cell -> ReceivedImageBox in
                 let imageIndex = indices.lowerBound + cell
+                let box = imageIndex < boxOptions.count
+                    ? boxOptions[imageIndex] : PrintImageBoxOptions()
                 return ReceivedImageBox(
                     sopInstanceUID: UIDGenerator.generateSOPInstanceUID().value,
                     sopClassUID: sopClassUID,
                     content: ImageBoxContent(
                         imagePosition: UInt16(cell + 1),
-                        polarity: request.polarity),
+                        polarity: request.polarity,
+                        requestedImageSize: box.requestedImageSize,
+                        requestedDecimateCropBehavior: box.requestedDecimateCropBehavior),
                     image: imageIndex < indices.upperBound ? images[imageIndex].descriptor : nil)
             }
 

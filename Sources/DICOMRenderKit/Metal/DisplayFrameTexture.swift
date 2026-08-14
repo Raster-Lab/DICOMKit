@@ -61,6 +61,15 @@ public struct DisplayPresentation: Equatable, Sendable {
     /// Grey inversion, applied in the fragment shader as `1 - x`. Exact on 8-bit.
     public var invert: Bool = false
 
+    /// Bilinear magnification instead of the viewer's nearest-pixel default.
+    ///
+    /// The viewer stays nearest deliberately — reading pixel data calls for
+    /// the actual pixels, not a smoothed guess. The print preview sets this:
+    /// its cells are judged as pictures on a panel-scaled sheet, its CPU-drawn
+    /// cells are smoothed by the platform image view, and a cell must not
+    /// change texture the moment its GPU texture arrives.
+    public var linearFiltering: Bool = false
+
     /// The rectangle of source pixels to show, when the caller knows it exactly.
     ///
     /// Set this and ``zoom``/``panX``/``panY`` are ignored: the region is fitted to
@@ -90,6 +99,7 @@ public struct DisplayPresentation: Equatable, Sendable {
         rotationDegrees: Double = 0,
         flipHorizontal: Bool = false, flipVertical: Bool = false,
         invert: Bool = false,
+        linearFiltering: Bool = false,
         sourceRegion: SourceRegion? = nil
     ) {
         self.zoom = zoom
@@ -99,6 +109,7 @@ public struct DisplayPresentation: Equatable, Sendable {
         self.flipHorizontal = flipHorizontal
         self.flipVertical = flipVertical
         self.invert = invert
+        self.linearFiltering = linearFiltering
         self.sourceRegion = sourceRegion
     }
 
@@ -111,6 +122,7 @@ struct DisplayShaderParams {
     var transform: simd_float4x4
     var invert: UInt32
     var isGrayscale: UInt32
+    var linearFilter: UInt32
 }
 
 extension DisplayPresentation {

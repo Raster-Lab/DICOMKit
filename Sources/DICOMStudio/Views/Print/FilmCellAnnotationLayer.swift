@@ -36,6 +36,19 @@ struct FilmCellAnnotationLayer: View {
     /// Anchor for the annotation being dragged, so a drag applies deltas.
     @State private var dragAnchor: CGSize = .zero
 
+    /// The text annotation whose words are being typed right now, if any.
+    ///
+    /// Editing state lives here, not in the view model: whether a box is open
+    /// for typing is chrome, like a focus ring — the film neither knows nor
+    /// cares. A freshly placed annotation opens for editing on its own (it is
+    /// empty, and empty text exists only to be typed into); an existing one
+    /// opens on double-click, so that a single click still selects and a drag
+    /// still moves it.
+    @State private var editingTextID: UUID?
+
+    /// Keyboard focus for the inline text editor.
+    @FocusState private var isTextEditorFocused: Bool
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(viewModel.annotations(forItemID: itemID)) { annotation in
@@ -60,41 +73,106 @@ struct FilmCellAnnotationLayer: View {
         let isSelected = viewModel.selectedAnnotationID == annotation.id
         let fontSize = max(Self.minimumPreviewFontSize, imageRect.height * annotation.scale)
         let position = point(annotation.start)
+        // A just-placed annotation is empty, and empty text exists only to be
+        // typed into — so it opens straight into the editor without a second
+        // click. Anything already worded needs the deliberate double-click.
+        let isEditing = isSelected && (editingTextID == annotation.id || annotation.text.isEmpty)
 
-        Group {
-            if annotation.text.isEmpty {
-                // A caret, not placeholder words. Prompt text drawn on the film
-                // reads as something that will print — and the moment it appears
-                // over anatomy, the preview is lying about the film. The caret
-                // marks where typing will land and nothing more; it is only ever
-                // shown while this annotation is the one being edited.
-                Rectangle()
-                    .fill(color(annotation.color))
-                    .frame(width: max(1, fontSize * 0.08), height: fontSize)
-                    .shadow(color: halo(annotation.color), radius: 1)
-            } else {
-                // Helvetica Bold, because that is the face burned into the pixels
-                // — a preview in the system font would set to a different width
-                // and break differently from the film.
-                Text(annotation.text)
-                    .font(.custom("Helvetica-Bold", size: fontSize))
-                    .foregroundStyle(color(annotation.color))
-                    .shadow(color: halo(annotation.color), radius: max(1, fontSize * 0.08))
-            }
+        if isEditing {
+            textEditor(annotation, fontSize: fontSize)
+                .offset(x: position.x, y: position.y)
+        } else {
+            // Helvetica Bold, because that is the face burned into the pixels
+            // — a preview in the system font would set to a different width
+            // and break differently from the film.
+            Text(annotation.text)
+                .font(.custom("Helvetica-Bold", size: fontSize))
+                .foregroundStyle(color(annotation.color))
+                .shadow(color: halo(annotation.color), radius: max(1, fontSize * 0.08))
+                .padding(2)
+                .background(
+                    RoundedRectangle(cornerRadius: 2)
+                        .strokeBorder(isSelected ? Color.accentColor : .clear,
+                                      style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                )
+                .contentShape(Rectangle())
+                .offset(x: position.x, y: position.y)
+                .gesture(moveGesture(annotation))
+                .onTapGesture(count: 2) {
+                    viewModel.selectAnnotation(annotation.id)
+                    editingTextID = annotation.id
+                }
+                .onTapGesture { viewModel.selectAnnotation(annotation.id) }
+                .accessibilityLabel("Text annotation: \(annotation.text)")
         }
-        .padding(2)
-        .background(
-            RoundedRectangle(cornerRadius: 2)
-                .strokeBorder(isSelected ? Color.accentColor : .clear,
-                              style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-        )
-        .contentShape(Rectangle())
-        .offset(x: position.x, y: position.y)
-        .gesture(moveGesture(annotation))
-        .onTapGesture { viewModel.selectAnnotation(annotation.id) }
-        .accessibilityLabel(annotation.text.isEmpty
-                            ? "Empty text annotation"
-                            : "Text annotation: \(annotation.text)")
+    }
+
+    /// The box the words are typed into, sitting where the text will print.
+    ///
+    /// Typing happens on the cell itself: the inspector's field lives in a
+    /// sidebar that may well be closed, and a click that produces nothing but a
+    /// hairline caret reads as a workflow that broke. The field wears the print
+    /// face and colour so the words set to the width they will burn at — but it
+    /// never renders below a typeable size, and it carries a visible box and a
+    /// floor on its width, because a box too small to see or hit is the failure
+    /// this editor exists to fix. The box itself is chrome, like the focus
+    /// ring: it is not on the film, only the words are.
+    private func textEditor(_ annotation: PrintOverlayAnnotation, fontSize: CGFloat) -> some View {
+        let editingFontSize = max(fontSize, Self.minimumEditingFontSize)
+        let font = Font.custom("Helvetica-Bold", size: editingFontSize)
+
+        return TextField("Type here", text: textBinding(annotation), axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(font)
+            .foregroundStyle(color(annotation.color))
+            .lineLimit(1...4)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .frame(minWidth: min(Self.minimumEditorWidth, max(imageRect.width - 12, 60)),
+                   maxWidth: max(imageRect.width * 0.9, 60),
+                   alignment: .leading)
+            .fixedSize(horizontal: true, vertical: true)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.black.opacity(0.55))
+                    .overlay(RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(Color.accentColor, lineWidth: 1))
+            )
+            .focused($isTextEditorFocused)
+            .onAppear {
+                editingTextID = annotation.id
+                isTextEditorFocused = true
+            }
+            .onSubmit { commitTextEditing(annotation.id) }
+            #if os(macOS)
+            .onExitCommand { commitTextEditing(annotation.id) }
+            #endif
+            // Clicking elsewhere pulls focus; the box must not linger open.
+            .onChange(of: isTextEditorFocused) { _, focused in
+                if !focused, editingTextID == annotation.id { commitTextEditing(annotation.id) }
+            }
+            .accessibilityLabel("Text annotation editor")
+    }
+
+    /// Closes the inline editor. Deselecting discards a box nothing was typed
+    /// into — see ``PrintViewModel/selectAnnotation(_:)``. Only the editor's
+    /// own annotation is let go: by the time a lost focus lands here, the click
+    /// that took it may already have selected — or placed — the next one.
+    private func commitTextEditing(_ id: UUID) {
+        editingTextID = nil
+        isTextEditorFocused = false
+        if viewModel.selectedAnnotationID == id { viewModel.selectAnnotation(nil) }
+    }
+
+    /// The words of one annotation, straight into the model — every keystroke
+    /// lands in the same place the burner reads from.
+    private func textBinding(_ annotation: PrintOverlayAnnotation) -> Binding<String> {
+        Binding(
+            get: {
+                viewModel.annotations(forItemID: itemID)
+                    .first(where: { $0.id == annotation.id })?.text ?? ""
+            },
+            set: { viewModel.setAnnotationText($0, id: annotation.id, forItemID: itemID) })
     }
 
     // MARK: - Arrow
@@ -210,6 +288,15 @@ struct FilmCellAnnotationLayer: View {
 
     /// Below this the preview type is illegible however small the cell is.
     private static let minimumPreviewFontSize: CGFloat = 6
+
+    /// The editor never sets type below this: words being typed must be
+    /// readable at the keyboard even when the printed size is smaller. Once
+    /// committed, the annotation renders at its true preview size.
+    private static let minimumEditingFontSize: CGFloat = 12
+
+    /// The box opens wide enough to type into before a single letter exists —
+    /// clamped to the image when the cell itself is narrower.
+    private static let minimumEditorWidth: CGFloat = 140
 
     /// The drawn ring at each end of a selected arrow.
     private static let handleSize: CGFloat = 6

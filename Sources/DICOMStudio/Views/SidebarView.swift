@@ -26,9 +26,10 @@ struct SidebarView: View {
                     Section(category.rawValue, isExpanded: expanded(category)) {
                         ForEach(items) { destination in
                             NavigationLink(value: destination) {
-                                Label(destination.rawValue, systemImage: destination.systemImage)
+                                Label(label(for: destination),
+                                      systemImage: destination.systemImage)
                             }
-                            .accessibilityLabel(destination.accessibilityLabel)
+                            .accessibilityLabel(accessibilityLabel(for: destination))
                         }
                     }
                 }
@@ -57,6 +58,28 @@ struct SidebarView: View {
         #if os(macOS)
         .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
         #endif
+    }
+
+    /// The row's text. Most destinations are simply their own name; Print also
+    /// says what its queue is doing, since a job runs on regardless of which
+    /// screen is open and a stalled or failed queue is otherwise invisible from
+    /// here.
+    private func label(for destination: NavigationDestination) -> String {
+        guard destination == .printing,
+              let state = printQueueState else { return destination.displayName }
+        return "\(destination.displayName) — \(state)"
+    }
+
+    /// Spells the row out for VoiceOver: the destination's full description,
+    /// plus the queue state when there is one.
+    private func accessibilityLabel(for destination: NavigationDestination) -> String {
+        guard destination == .printing,
+              let state = printQueueState else { return destination.accessibilityLabel }
+        return "\(destination.accessibilityLabel) — \(state)"
+    }
+
+    private var printQueueState: String? {
+        viewModel.printViewModel.queue.activitySummary
     }
 
     /// Disclosure binding for one category. While a search is active the

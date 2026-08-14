@@ -31,15 +31,24 @@ struct PrintProgressView: View {
         if viewModel.isRunning {
             VStack(alignment: .leading, spacing: 6) {
                 ProgressView(value: viewModel.progress) {
-                    Text(viewModel.progressMessage.isEmpty
-                         ? "Working…" : viewModel.progressMessage)
+                    Text(headerMessage)
                 }
                 .font(.callout)
                 .progressViewStyle(.linear)
                 .accessibilityLabel("Print progress")
-                .accessibilityValue(viewModel.progressMessage)
+                .accessibilityValue(headerMessage)
             }
         }
+    }
+
+    /// What the progress bar calls the current state.
+    ///
+    /// "Working…" is only true once the job is actually running: a job waiting
+    /// behind a paused queue makes no progress, and labelling that as work makes
+    /// a stalled queue look like a slow printer.
+    private var headerMessage: String {
+        if !viewModel.progressMessage.isEmpty { return viewModel.progressMessage }
+        return viewModel.isWaitingOnQueue ? "Waiting in the print queue…" : "Working…"
     }
 
     // MARK: - Console

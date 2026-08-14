@@ -17,7 +17,7 @@ import DICOMNetwork
 /// viewer hangs images in, deliberately: film order is viewer order, and a grid
 /// a reader can arrange on screen but not print would break that promise the
 /// moment they tried to print it.
-public enum PrintLayoutOption: String, CaseIterable, Sendable, Identifiable {
+public enum PrintLayoutOption: String, CaseIterable, Sendable, Identifiable, Codable {
     case layout1x1 = "1x1"
     case layout1x2 = "1x2"
     case layout1x3 = "1x3"
@@ -122,7 +122,7 @@ public enum PrintBandLayout: String, CaseIterable, Sendable, Identifiable {
 // MARK: - Template presets
 
 /// A layout preset that also fixes film size and orientation.
-public enum PrintTemplatePreset: String, CaseIterable, Sendable, Identifiable {
+public enum PrintTemplatePreset: String, CaseIterable, Sendable, Identifiable, Codable {
     case single
     case comparison
     case grid

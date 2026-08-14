@@ -119,16 +119,20 @@ public struct PrintSettingsView: View {
         }
         // The screen can be opened onto a job already running — the window
         // outlives any one visit to it — and then the log is wanted at once.
-        .onAppear { showConsole = (viewModel.phase != .configuring) }
-        // Text placed on a cell is created empty, so the caret goes to its field:
-        // clicking to place text and then having to click again to type it is one
-        // click too many for something done a dozen times a film.
-        .onChange(of: viewModel.selectedAnnotationID) { _, _ in
-            if let selected = viewModel.selectedAnnotation,
-               selected.annotation.kind == .text, selected.annotation.text.isEmpty {
-                isAnnotationTextFocused = true
-            }
+        .onAppear {
+            showConsole = (viewModel.phase != .configuring)
+            // Every visit starts with the same tool armed and no locks shut.
+            // The caller that opened the screen normally resets it too, but the
+            // window can be reopened from the Print Center and by ⌘-tabbing back
+            // to one that was closed, and neither goes through that path — while
+            // an armed pan tool is invisible until the first drag has already
+            // moved the wrong thing. Cheap enough to do twice; not doing it once
+            // is what costs.
+            if viewModel.phase == .configuring { viewModel.resetPreviewTools() }
         }
+        // Text placed on a cell opens its own editor on the cell — typing lands
+        // there, not in this sidebar (which may not even be open). Grabbing
+        // focus here as well would fight the inline box for the keyboard.
         // A fixed size, not a range: given only a range, the sheet settles on
         // whatever its content asks for — which is the minimum — and the options
         // band ends up clipped with the film in a small square in the middle.
@@ -290,6 +294,14 @@ public struct PrintSettingsView: View {
             .disabled(!viewModel.canPrint)
         case .preparing, .printing:
             Button("Cancel Job", role: .destructive) { viewModel.cancel() }
+            // A queued job runs whether or not this sheet is open, so closing is
+            // not the same as cancelling and must not be the only way out.
+            if viewModel.isWaitingOnQueue {
+                Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .buttonStyle(.borderedProminent)
+                    .help("Leave the job in the queue and close this window")
+            }
         case .finished:
             Button("Print Again") { viewModel.reset() }
             Button("Done") { dismiss() }
@@ -514,10 +526,17 @@ public struct PrintSettingsView: View {
                     }
                     .labelsHidden()
                     .frame(width: 220)
+                    .help("Which printer the film is sent to. Manage the list under "
+                          + "More ▸ Printers.")
                 }
             }
 
-            labeledControl("Film") {
+            // "Film Size", spelled out in front of the menu. "Film" alone read
+            // as a heading for the whole bar — everything here is about the film
+            // — and left the menu's own numbers ("14in x 17in") to say what the
+            // control was for, which they only do if you already know sheets are
+            // named by their inches.
+            labeledControl("Film Size") {
                 Picker("Film size", selection: $viewModel.filmSize) {
                     ForEach(PrintOptionCatalog.filmSizes, id: \.cliToken) { entry in
                         Text(entry.label).tag(entry.value)
@@ -526,6 +545,10 @@ public struct PrintSettingsView: View {
                 .labelsHidden()
                 .frame(width: 130)
                 .disabled(viewModel.layoutMode == .template)
+                .help(viewModel.layoutMode == .template
+                      ? "The template sets the sheet size — switch off the template to choose it."
+                      : "Size of the sheet the printer loads. Must match the film in the "
+                      + "printer's magazine, or the printer refuses the job.")
             }
 
             Picker("Orientation", selection: $viewModel.filmOrientation) {
@@ -537,6 +560,10 @@ public struct PrintSettingsView: View {
             .labelsHidden()
             .frame(width: 170)
             .disabled(viewModel.layoutMode == .template)
+            .help(viewModel.layoutMode == .template
+                  ? "The template sets the orientation — switch off the template to choose it."
+                  : "Which way round the sheet is used. Portrait is taller than wide; "
+                  + "landscape turns it, and the layout's cells turn with it.")
 
             labeledControl("Copies") {
                 Stepper(value: $viewModel.copies, in: 1...99) {
@@ -544,17 +571,21 @@ public struct PrintSettingsView: View {
                         .monospacedDigit()
                         .frame(minWidth: 18, alignment: .trailing)
                 }
+                .help("How many identical sets of film to print, 1 to 99. "
+                      + "The printer makes the copies; the job is sent once.")
             }
 
             Button {
                 showLayoutGallery.toggle()
             } label: {
-                Label(layoutButtonTitle, systemImage: "square.grid.2x2")
+                Label("Layout: \(layoutButtonTitle)", systemImage: "square.grid.2x2")
             }
-            .help("Choose the film's grid")
+            .help("Choose the film's layout — how many cells the sheet is divided into")
             .popover(isPresented: $showLayoutGallery, arrowEdge: .bottom) {
                 FilmLayoutGalleryView(viewModel: viewModel, isPresented: $showLayoutGallery)
             }
+
+            imageRangeControl
 
             Spacer(minLength: 4)
 
@@ -578,6 +609,200 @@ public struct PrintSettingsView: View {
     /// Whether the layout gallery popover is up.
     @State private var showLayoutGallery = false
 
+    /// Whether the image-range popover is up.
+    @State private var showImageRange = false
+
+    /// What the popover's fields hold before "Apply" — a draft per series,
+    /// keyed by series key, so typing does not filter the film mid-keystroke.
+    @State private var imageRangeDraftStarts: [String: Int] = [:]
+    @State private var imageRangeDraftEnds: [String: Int] = [:]
+
+    /// Printing a run of each series rather than all of it — "images 60 to 140".
+    ///
+    /// A filter, not an edit: the marks it holds back keep their windowing and
+    /// come straight back when the range is widened or "Load All" is pressed.
+    /// Image numbers restart in every series, so the popover offers one range
+    /// per marked series — a single-series film gets the one row it always had.
+    @ViewBuilder
+    private var imageRangeControl: some View {
+        if viewModel.canRangeImages {
+            Button {
+                showImageRange.toggle()
+            } label: {
+                Label(imageRangeButtonTitle, systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .help("Filter the film by image number — print only a run of each series, "
+                  + "with the rest still marked")
+            .popover(isPresented: $showImageRange, arrowEdge: .bottom) {
+                imageRangePopover
+                    // The numbers are read from the files, once, when the
+                    // control is actually opened: a reader who never ranges the
+                    // film should not pay a header read per mark for it.
+                    .task {
+                        await viewModel.loadImageNumbers()
+                        seedImageRangeDrafts()
+                    }
+            }
+        }
+    }
+
+    /// What the control says it does, not what it holds.
+    ///
+    /// "Images: 1–25" reads as a count of what is on the film; the control is a
+    /// filter over the marked images, and the title has to say so before it is
+    /// opened. Once a range is set the useful part is what is printing — the
+    /// run itself for one series, and the count of what survives when several
+    /// series each have their own run.
+    private var imageRangeButtonTitle: String {
+        guard viewModel.isImageRangeActive else { return "Filter Images" }
+        let series = viewModel.markedSeriesRanges
+        if series.count == 1, let sole = series.first,
+           let range = viewModel.imageRange(forSeries: sole.key) {
+            return "Filter: \(range.lowerBound)–\(range.upperBound)"
+        }
+        return "Filter: \(viewModel.printedItems.count) of \(viewModel.selection.count)"
+    }
+
+    private var imageRangePopover: some View {
+        let series = viewModel.markedSeriesRanges
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Filter Images by Number")
+                .font(.headline)
+
+            if viewModel.imageNumbers.isLoading {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Reading image numbers…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text(series.count == 1
+                     ? "Image numbers \(series.first.map { "\($0.bounds.lowerBound)–\($0.bounds.upperBound)" } ?? "") are marked. "
+                       + "Narrowing this prints only that run; the rest stay marked and keep "
+                       + "their windowing."
+                     : "Each series filters by its own image numbers. Narrowing a range "
+                       + "prints only that run of the series; the rest stay marked and keep "
+                       + "their windowing.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 280, alignment: .leading)
+            }
+
+            ForEach(series) { entry in
+                imageRangeRow(for: entry, showsLabel: series.count > 1)
+            }
+            // Typing a range against half-read numbers would filter against the
+            // fallback and print a run nobody asked for.
+            .disabled(viewModel.imageNumbers.isLoading)
+
+            if viewModel.isImageRangeActive {
+                Text("\(viewModel.imagesHeldBackByRange) of \(viewModel.selection.count) "
+                     + "marked images are held back.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Button("Clear Filter") {
+                    viewModel.loadAllImages()
+                    seedImageRangeDrafts()
+                    showImageRange = false
+                }
+                .disabled(!viewModel.isImageRangeActive)
+
+                Spacer()
+
+                Button("Apply") { applyImageRange(); showImageRange = false }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14)
+        .frame(width: 330)
+    }
+
+    /// One series' row: its name and marked run, and the fields for its range.
+    private func imageRangeRow(
+        for entry: PrintViewModel.MarkedSeriesRange,
+        showsLabel: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if showsLabel {
+                Text("\(entry.label) (\(entry.bounds.lowerBound)–\(entry.bounds.upperBound))")
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            HStack(spacing: 8) {
+                Text("From")
+                TextField("", value: imageRangeDraftBinding($imageRangeDraftStarts,
+                                                            key: entry.key,
+                                                            fallback: entry.bounds.lowerBound),
+                          format: .number)
+                    .frame(width: 60)
+                    .onSubmit { applyImageRange() }
+                Text("to")
+                TextField("", value: imageRangeDraftBinding($imageRangeDraftEnds,
+                                                            key: entry.key,
+                                                            fallback: entry.bounds.upperBound),
+                          format: .number)
+                    .frame(width: 60)
+                    .onSubmit { applyImageRange() }
+                if showsLabel {
+                    Button("All") {
+                        imageRangeDraftStarts[entry.key] = entry.bounds.lowerBound
+                        imageRangeDraftEnds[entry.key] = entry.bounds.upperBound
+                        viewModel.loadAllImages(forSeries: entry.key)
+                    }
+                    .controlSize(.small)
+                    .disabled(!viewModel.isImageRangeActive(forSeries: entry.key))
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    /// A field binding into the draft dictionaries, reading the series' own
+    /// bound until the reader types something.
+    private func imageRangeDraftBinding(
+        _ drafts: Binding<[String: Int]>,
+        key: String,
+        fallback: Int
+    ) -> Binding<Int> {
+        Binding(
+            get: { drafts.wrappedValue[key] ?? fallback },
+            set: { drafts.wrappedValue[key] = $0 }
+        )
+    }
+
+    /// Fills the drafts from what is actually in force, so the popover opens
+    /// saying what the film is doing.
+    private func seedImageRangeDrafts() {
+        var starts: [String: Int] = [:]
+        var ends: [String: Int] = [:]
+        for entry in viewModel.markedSeriesRanges {
+            let range = viewModel.imageRange(forSeries: entry.key) ?? entry.bounds
+            starts[entry.key] = range.lowerBound
+            ends[entry.key] = range.upperBound
+        }
+        imageRangeDraftStarts = starts
+        imageRangeDraftEnds = ends
+    }
+
+    private func applyImageRange() {
+        for entry in viewModel.markedSeriesRanges {
+            viewModel.setImageRange(
+                from: imageRangeDraftStarts[entry.key] ?? entry.bounds.lowerBound,
+                to: imageRangeDraftEnds[entry.key] ?? entry.bounds.upperBound,
+                forSeries: entry.key)
+        }
+        // The model clamps typos back inside each series; the fields should
+        // show what was actually applied.
+        seedImageRangeDrafts()
+    }
+
     /// What the layout button says it will do — the layout actually in force.
     private var layoutButtonTitle: String {
         let layout = viewModel.plan.layout
@@ -590,9 +815,6 @@ public struct PrintSettingsView: View {
         case .custom:      return viewModel.customLayoutFormat?.raw ?? "Custom"
         }
     }
-
-    /// Widest a picker in the sidebar grows to.
-    private static let controlWidth: CGFloat = 180
 
     // MARK: Printer
 
@@ -651,13 +873,11 @@ public struct PrintSettingsView: View {
 
                 if let status = viewModel.printerStatus {
                     Label(
-                        "Printer status: \(status.status)"
-                            + (status.statusInfo.map { " (\($0))" } ?? ""),
-                        systemImage: status.isNormal
-                            ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                        "Printer status: \(PrinterStatusPresentation.summary(for: status))",
+                        systemImage: PrinterStatusPresentation.symbol(for: status.severity)
                     )
                     .font(.caption)
-                    .foregroundStyle(status.isNormal ? .green : .orange)
+                    .foregroundStyle(PrinterStatusPresentation.color(for: status.severity))
                     .lineLimit(2)
                 } else if let message = viewModel.printerQueryMessage {
                     Text(message)
@@ -699,11 +919,18 @@ public struct PrintSettingsView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         HStack(spacing: 6) {
+            // The caption must neither wrap nor be crushed when the bar runs
+            // out of width — a wrapped "Printer" reads as three words.
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
+            // No maxWidth clamp here: each caller sets its control's own
+            // width, and a clamp narrower than that width does not shrink the
+            // control — SwiftUI frames don't clip — it just lets the control
+            // spill under the next caption.
             content()
-                .frame(maxWidth: Self.controlWidth, alignment: .leading)
                 .fixedSize(horizontal: true, vertical: false)
         }
     }
@@ -1050,32 +1277,108 @@ public struct PrintSettingsView: View {
         }
     }
 
-    /// Whether the film names its patient, and where it says so.
+    /// Whether the film names its patient.
     ///
-    /// The two halves of one decision, together: a caption under every image is
-    /// the right answer for a sheet that mixes studies and repetitive noise on a
-    /// sheet that does not, and the reader can only judge that with the film in
-    /// front of them — which is where this panel is.
+    /// One switch, because there is one answer: the caption goes under the image
+    /// it belongs to. It carries what made that picture as well as who it is of
+    /// — modality, image number, slice thickness on a CT — and those differ from
+    /// cell to cell, so there is nothing a single line at the foot of the sheet
+    /// could say for all of them.
     @ViewBuilder
     private var identificationControls: some View {
         Toggle("Patient identification", isOn: $viewModel.showPatientIdentification)
             .toggleStyle(.checkbox)
             .controlSize(.small)
-            .help("Print the patient, ID, study date and description on the film")
+            .help("Print the patient, ID, study date, description and technique "
+                  + "under each image")
 
-        Picker("Caption", selection: $viewModel.identificationPlacement) {
-            ForEach(PrintIdentificationPlacement.allCases, id: \.self) { placement in
-                Text(placement.title).tag(placement)
-            }
-        }
-        .controlSize(.small)
-        .disabled(!viewModel.showPatientIdentification)
-        .help(viewModel.identificationPlacement.help)
-
-        Text(viewModel.identificationPlacement.help)
+        Text("A caption under each image: patient, ID and study date, the study "
+             + "description, then what made the picture.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+
+        if viewModel.showPatientIdentification {
+            identificationFieldToggles
+            identificationTypography
+        }
+    }
+
+    /// FR-006's optional fields. Each off by default: the standard caption is
+    /// the caption today's films carry, and every extra line is a line of type
+    /// over the picture.
+    @ViewBuilder
+    private var identificationFieldToggles: some View {
+        identificationFieldToggle(
+            "Birth date", .birthDate,
+            help: "Burned into the pixels, a birth date survives later "
+                + "de-identification of the file. For clinical film only.")
+        identificationFieldToggle(
+            "Accession number", .accessionNumber,
+            help: "\"Acc:\" under the study description")
+        identificationFieldToggle(
+            "Institution", .institutionName,
+            help: "Under the study date")
+        identificationFieldToggle(
+            "Series description", .seriesDescription,
+            help: "Under the study description")
+    }
+
+    private func identificationFieldToggle(
+        _ title: String,
+        _ field: PrintIdentificationFields,
+        help: String
+    ) -> some View {
+        Toggle(title, isOn: Binding(
+            get: { viewModel.identificationFields.contains(field) },
+            set: { on in
+                if on { viewModel.identificationFields.insert(field) }
+                else { viewModel.identificationFields.remove(field) }
+            }
+        ))
+        .toggleStyle(.checkbox)
+        .controlSize(.mini)
+        .padding(.leading, 16)
+        .help(help)
+    }
+
+    /// FR-006 typography. Automatic is the default and stays the
+    /// recommendation — it sizes to the frame and flips for MONOCHROME1;
+    /// the overrides exist for sites whose protocol dictates a look.
+    @ViewBuilder
+    private var identificationTypography: some View {
+        Toggle("Custom caption size", isOn: $viewModel.identificationUsesCustomSize)
+            .toggleStyle(.checkbox)
+            .controlSize(.mini)
+            .padding(.leading, 16)
+            .help("Size as a percentage of the image height, "
+                  + "instead of the automatic size")
+        if viewModel.identificationUsesCustomSize {
+            HStack(spacing: 6) {
+                Slider(value: $viewModel.identificationSizePercent, in: 2...10)
+                    .frame(width: 110)
+                Text(String(format: "%.1f%%", viewModel.identificationSizePercent))
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.leading, 32)
+        }
+        HStack(spacing: 6) {
+            Text("Color")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker("Caption color", selection: $viewModel.identificationForeground) {
+                Text("Auto").tag(PrintAnnotationStyle.Foreground.automatic)
+                Text("White").tag(PrintAnnotationStyle.Foreground.white)
+                Text("Black").tag(PrintAnnotationStyle.Foreground.black)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.mini)
+            .frame(width: 140)
+        }
+        .padding(.leading, 16)
     }
 
     /// Arrangement is a job-wide switch, not a windowing control, so a window
@@ -1220,6 +1523,33 @@ public struct PrintSettingsView: View {
     private var imageAdvanced: some View {
         subsection("Film box & image box") {
             VStack(alignment: .leading, spacing: 8) {
+                stackedControl("Scaling") {
+                    Picker("Scaling", selection: $viewModel.scalingMode) {
+                        ForEach(PrintScalingMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }.labelsHidden()
+                }
+                if viewModel.scalingMode == .trueSize {
+                    Text("Prints at physical size from the image's pixel spacing. "
+                         + "Images without spacing fall back to Fit, with a warning. "
+                         + "For projection X-ray this is detector-plane size, not anatomy.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if viewModel.scalingMode == .stretch {
+                    Text("Stretch distorts anatomy — not for diagnostic use. "
+                         + "Applies to composed film only; a DICOM printer will fit instead.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if viewModel.scalingMode != .stretch {
+                    stackedControl("Position in cell") {
+                        alignmentGrid
+                    }
+                }
                 stackedControl("Magnification") {
                     Picker("Magnification", selection: $viewModel.magnificationType) {
                         ForEach(PrintOptionCatalog.magnificationTypes, id: \.cliToken) { entry in
@@ -1265,6 +1595,40 @@ public struct PrintSettingsView: View {
             .padding(4)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// A 3×3 grid of anchors — reads as the cell it positions within, where a
+    /// nine-item dropdown reads as a list of words (SRS FR-003).
+    private var alignmentGrid: some View {
+        let rows: [[PrintCellAlignment]] = [
+            [.topLeft, .topCenter, .topRight],
+            [.centerLeft, .center, .centerRight],
+            [.bottomLeft, .bottomCenter, .bottomRight],
+        ]
+        return VStack(spacing: 2) {
+            ForEach(rows, id: \.self) { row in
+                HStack(spacing: 2) {
+                    ForEach(row, id: \.self) { alignment in
+                        Button {
+                            viewModel.cellAlignment = alignment
+                        } label: {
+                            Image(systemName: viewModel.cellAlignment == alignment
+                                  ? "circle.inset.filled" : "circle")
+                                .font(.system(size: 9))
+                                .frame(width: 22, height: 18)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(viewModel.cellAlignment == alignment
+                                         ? Color.accentColor : Color.secondary)
+                        .help(alignment.displayName)
+                        .accessibilityLabel(alignment.displayName)
+                    }
+                }
+            }
+        }
+        .padding(3)
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.quaternary))
+        .fixedSize()
     }
 
     /// A caption above its control, for the settings column — a label beside the

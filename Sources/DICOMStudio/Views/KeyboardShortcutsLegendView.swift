@@ -85,6 +85,21 @@ struct KeyboardShortcutsLegendView: View {
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 extension KeyboardShortcutsLegendView {
 
+    /// One line per drag tool, taken from the tools themselves.
+    ///
+    /// The rest of this file is hand-written because SwiftUI will not say what a
+    /// `keyboardShortcut` was attached to. The tools are the exception: their
+    /// keys, names and descriptions all live on ``ImageViewerDragTool``, and the
+    /// buttons that bind them are built from the same list, so deriving these
+    /// removes the one part of the legend that could silently go stale.
+    static var toolHints: [KeyboardShortcutHint] {
+        ImageViewerDragTool.allCases.map { tool in
+            KeyboardShortcutHint(
+                String(tool.shortcut).uppercased(),
+                "\(tool.displayName) tool — \(tool.guidance)")
+        }
+    }
+
     /// What the viewer binds.
     static let viewerGroups: [KeyboardShortcutGroup] = [
         KeyboardShortcutGroup("Moving through the study", [
@@ -92,14 +107,16 @@ extension KeyboardShortcutsLegendView {
             KeyboardShortcutHint("↑ / ↓", "Previous / next file — skims past a cine loop"),
             KeyboardShortcutHint("Scroll", "Step through images, one per notch"),
         ]),
+        // The tool keys are read off the tools themselves, so arming a tool and
+        // reading about it cannot disagree. Everything below them is hand-written
+        // like the rest of this file.
+        KeyboardShortcutGroup("Choosing what a drag does", toolHints),
         KeyboardShortcutGroup("The image", [
-            KeyboardShortcutHint("Drag", "Pan"),
-            KeyboardShortcutHint("⌘-drag", "Zoom"),
-            KeyboardShortcutHint("⌥-drag", "Window / level"),
-            KeyboardShortcutHint("Drag", "Turn the image — with the rotate tool armed"),
-            KeyboardShortcutHint("= / -", "Zoom in / out"),
+            KeyboardShortcutHint("V", "Invert greys — monochrome images only"),
+            KeyboardShortcutHint("[ / ]", "Flip left-to-right / top-to-bottom"),
+            KeyboardShortcutHint("⌘= / ⌘-", "Zoom in / out"),
             KeyboardShortcutHint("F", "Fit image to view"),
-            KeyboardShortcutHint("R", "Reset view"),
+            KeyboardShortcutHint("R", "Reset view — undoes every adjustment above"),
         ]),
         KeyboardShortcutGroup("Layout and panes", [
             KeyboardShortcutHint("⌘1 … ⌘4", "1×1, 2×2, 3×3, 4×4 tile grid"),
