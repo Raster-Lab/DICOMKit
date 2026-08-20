@@ -12,6 +12,10 @@ import DICOMKit
 import DICOMNetwork
 import DICOMPrintKit
 
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
+
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 @MainActor
 @Observable
@@ -38,6 +42,18 @@ public final class PrintViewModel {
     /// `PrintViewModel+CellEditing.swift`.
     public var focusedItemID: String?
 
+    /// The size the preview last drew a cell at, in points.
+    ///
+    /// The viewport for controls that live outside the preview and so have no
+    /// cell geometry of their own — the sidebar's saved-view picker, which has
+    /// to restore a Displayed Area against the cell the picture will print in.
+    /// Every cell on a sheet is the same size, so one value serves them all.
+    /// Nil until the preview has laid out. See ``recordCellSize(_:)``.
+    ///
+    /// `@ObservationIgnored`: this is written during layout, and observing it
+    /// would feed a layout pass back into the view that produced it.
+    @ObservationIgnored public internal(set) var lastCellSize: CGSize?
+
     /// The run of image numbers each series carries on film, keyed by
     /// ``PrintSelectionItem/seriesKey``. A series with no entry prints whole.
     /// See `PrintViewModel+ImageRange.swift`.
@@ -46,6 +62,101 @@ public final class PrintViewModel {
     /// Instance Numbers of the marked files, read on demand — what the image
     /// range matches against.
     public let imageNumbers = PrintImageNumberCache()
+
+    /// The window each mark was *seeded* with, keyed by mark ID — the file's own
+    /// resolved values, written into a mark the first time its cell is picked up
+    /// so a window drag has concrete numbers to start from. See
+    /// ``seedWindowIfNeeded(forItemID:)``.
+    ///
+    /// Kept so ``isCellEdited(_:)`` can tell a seeded window from an edited one.
+    /// Seeding writes the values already on screen, so it must not count as an
+    /// edit — without this baseline, merely clicking a cell lit "Reset Cell",
+    /// and a seed landing *after* a reset (the file read is asynchronous)
+    /// re-lit it, which read as the reset not having taken.
+    var seededWindows: [String: WindowSettings] = [:]
+
+    // MARK: - Saved presentation states (PR)
+
+    /// Where the study's saved views are read from. See
+    /// `PrintViewModel+PresentationStates.swift`.
+    ///
+    /// Nil keeps the controls hidden rather than offering a picker with nothing
+    /// behind it — which is what a standalone print sheet or a preview gets.
+    public var presentationStateStore: PresentationStateStore?
+
+    /// The study the marks belong to, which is what saved views are filed under.
+    ///
+    /// Set by whoever opens the print screen, because a mark carries its series
+    /// but not its study. Without it nothing can be looked up, and the sheet
+    /// behaves exactly as it did before saved views existed.
+    public var presentationStateStudyUID: String?
+
+    /// Whether film cells adopt their image's saved view as the sheet is composed.
+    ///
+    /// **Off by default.** A saved view is a reading decision — a window dialled
+    /// in to look at one thing — and the film is a different artefact from the
+    /// screen it was read on. Opening the print screen with those states already
+    /// baked in meant a reader who never asked for them had to notice the cells
+    /// were not the plain frames, work out which of several job-wide switches was
+    /// responsible, and turn it off; the film opens on the images as marked, and
+    /// adopting the saved views is the deliberate act.
+    ///
+    /// Cells adjusted by hand on the print screen are never overwritten — see
+    /// ``adoptSavedViewsWhereUntouched()``.
+    public var applySavedPresentationStates: Bool = false {
+        didSet {
+            guard applySavedPresentationStates != oldValue else { return }
+            if applySavedPresentationStates {
+                adoptSavedViews()
+            } else {
+                clearAllSavedViews()
+            }
+        }
+    }
+
+    /// The adoption pass currently running, so a second request replaces it
+    /// rather than racing it.
+    ///
+    /// Adoption writes into the marks, and every write is observed by the film
+    /// preview, which reacts to a changed mark list by asking for adoption
+    /// again. Left unmanaged those requests pile up: each one re-walks every
+    /// cell, awaits a pixel size per cell, and hops back to the main actor
+    /// after each await — so toggling the switch on a sixteen-cell film left a
+    /// crowd of interleaved passes writing marks between one another's
+    /// suspensions, and the tools stopped answering because the main actor was
+    /// never idle. One pass at a time, newest wins.
+    @ObservationIgnored var savedViewAdoptionTask: Task<Void, Never>?
+
+    /// Starts an adoption pass, cancelling any pass already running.
+    ///
+    /// The cancellation is what keeps the reader in control: a switch toggled
+    /// twice in a second does the work once, for the state it finished in.
+    func adoptSavedViews() {
+        savedViewAdoptionTask?.cancel()
+        savedViewAdoptionTask = Task { [weak self] in
+            await self?.adoptSavedViewsWhereUntouched()
+        }
+    }
+
+    /// Which saved view the cells adopt, by name, or nil for each image's most
+    /// recent. Only consulted while ``applySavedPresentationStates`` is on.
+    public var defaultSavedViewLabel: String? {
+        didSet {
+            guard defaultSavedViewLabel != oldValue else { return }
+            adoptSavedViews()
+        }
+    }
+
+    /// The saved view each cell is currently showing, by mark ID.
+    ///
+    /// Names the view rather than holding it: the store is the authority, and a
+    /// label survives the list being reloaded after a save or a delete — the
+    /// same reasoning as the viewer's ``ImageViewerViewModel/selectedPresentationStateLabel``.
+    var appliedSavedViews: [String: String] = [:]
+
+    /// Source frame sizes by file path, read once and kept. Restoring a stored
+    /// Displayed Area needs the image's real pixel dimensions.
+    var pixelSizes: [String: CGSize] = [:]
 
     /// Cells picked out by hand, by mark ID. See
     /// `PrintViewModel+CellSelection.swift`.
@@ -68,6 +179,7 @@ public final class PrintViewModel {
         case window
         case zoom
         case pan
+        case rotate
         case text
         case arrow
 
@@ -78,6 +190,7 @@ public final class PrintViewModel {
             case .window: return "Window/Level"
             case .zoom:   return "Zoom"
             case .pan:    return "Pan"
+            case .rotate: return "Rotate"
             case .text:   return "Text Annotation"
             case .arrow:  return "Arrow"
             }
@@ -85,14 +198,21 @@ public final class PrintViewModel {
 
         public var symbolName: String {
             switch self {
-            // The pointer, not the half-filled circle. The circle is the
-            // *result* of windowing — it is the same glyph the Invert button
-            // carries, mirrored — and two buttons a few points apart showing
-            // the same shape is what made the rail hard to scan. The pointer
-            // says what the button arms instead: a drag, on a cell.
-            case .window: return "cursorarrow"
+            // The brightness sun, not the half-filled circle. The circle is
+            // the same glyph the Invert button carries, mirrored — and two
+            // buttons a few points apart showing the same shape is what made
+            // the rail hard to scan. The sun collides with nothing on the
+            // rail, says what the drag changes, and matches the viewer's W/L
+            // button, so the same act shows the same icon on both screens.
+            case .window: return "sun.max"
             case .zoom:   return "magnifyingglass"
             case .pan:    return "hand.draw"
+            // A closed circle of arrows, not a quarter-turn glyph: the drag
+            // turns the cell the whole way round, either way, and a "90°" icon
+            // would promise the quarter turns the Image menu offers. The same
+            // glyph the viewer's rotate tool carries, so one act shows one
+            // picture on both screens.
+            case .rotate: return "arrow.triangle.2.circlepath"
             case .text:   return "character.textbox"
             case .arrow:  return "arrow.up.left"
             }
@@ -109,20 +229,31 @@ public final class PrintViewModel {
     public var cellTool: CellTool = .window
 
     // MARK: - Drawn annotations
-
-    /// The text and arrows drawn on each cell, keyed by mark ID. See
-    /// `PrintViewModel+Annotations.swift`.
-    public var cellAnnotations: [String: [PrintOverlayAnnotation]] = [:]
+    //
+    // Storage lives on `selection` (a `PrintSelectionModel`) rather than here,
+    // keyed by image identity rather than mark ID — that is what lets the main
+    // viewer show an image's annotations without ever opening this print
+    // sheet. `PrintViewModel+Annotations.swift` forwards the tray's calls
+    // there. See `PrintSelectionModel+Annotations.swift`.
 
     /// The annotation the inspector is editing, if any.
-    public var selectedAnnotationID: UUID?
+    public var selectedAnnotationID: UUID? {
+        get { selection.selectedAnnotationID }
+        set { selection.selectedAnnotationID = newValue }
+    }
 
     /// Size the next annotation is drawn at, as a fraction of the image's height.
     /// Changing a selected annotation's size adopts it here too.
-    public var annotationScale: Double = PrintOverlayAnnotation.defaultScale
+    public var annotationScale: Double {
+        get { selection.annotationScale }
+        set { selection.annotationScale = newValue }
+    }
 
     /// Colour the next annotation is drawn in.
-    public var annotationColor: PrintOverlayColor = .yellow
+    public var annotationColor: PrintOverlayColor {
+        get { selection.annotationColor }
+        set { selection.annotationColor = newValue }
+    }
 
     /// Whether patient identification is drawn over each image and burned into
     /// the film.
@@ -135,6 +266,21 @@ public final class PrintViewModel {
     ///
     /// On by default: film that cannot be tied to a patient is not useful film.
     public var showPatientIdentification: Bool = true
+
+    /// Whether the reader's drawn text and arrows are burned into the film and
+    /// into a saved file.
+    ///
+    /// On screen they are always a layer over the picture, never pixels — that
+    /// is what lets them be moved, retyped and deleted. Film has no layer to
+    /// carry them in, so on the way out they have to become pixels or not
+    /// travel at all.
+    ///
+    /// On by default: a reader who drew an arrow at a finding drew it for
+    /// whoever reads the film, and film that silently drops it is film that
+    /// disagrees with the screen it was approved on. Off is for the case where
+    /// the marks were working notes — a second read, a teaching file — and the
+    /// film wanted is the clean picture.
+    public var burnDrawnAnnotations: Bool = true
 
     // MARK: - Printers
 
@@ -203,7 +349,39 @@ public final class PrintViewModel {
     public var polarity: ImagePolarity = .normal
     public var colorMode: DICOMNetwork.PrintColorMode = .grayscale
     public var autoDetectColorMode: Bool = true
+
+    /// Keep colour sources in colour when preparing the pixels.
+    ///
+    /// On by default. Off renders colour images as greys before they are sent,
+    /// which is what a monochrome film stock wants — and the only way to get
+    /// greys now that the colour mode alone no longer flattens them.
+    public var preservesSourceColor: Bool = true
+
+    /// Whether each marked file's pixels are colour, keyed by path.
+    ///
+    /// Filled in by ``refreshSourceColor()`` as marks arrive, because deciding
+    /// the colour mode means reading Samples per Pixel (0028,0002) out of every
+    /// source — file I/O that must not happen inside a computed property the
+    /// view layer reads on every redraw. A path missing from the map has not
+    /// been read yet and counts as monochrome until it has.
+    public private(set) var sourceIsColorByPath: [String: Bool] = [:]
     public var bitDepth: Int = 8
+
+    /// The film's pseudo-colour palette: the one every cell takes unless it has
+    /// chosen its own.
+    ///
+    /// `nil` — the default — is a grey film. This is deliberately *not* the same
+    /// control as ``presentationLUTShape``: that one is the DICOM grayscale
+    /// transfer function the printer is asked to apply (PS3.3 C.11.4), while
+    /// this recolours the pixels before they are ever sent. Print Management has
+    /// no way to carry a palette by reference, so the colours are baked in and
+    /// the printer never learns which palette produced them.
+    ///
+    /// Setting this writes through to every cell that has not chosen for itself,
+    /// so the film and its cells never disagree about what is about to print —
+    /// see ``applyFilmPalette(_:)``.
+    public internal(set) var filmPalette: DICOMCore.PseudoColorPalette?
+
     public var presentationLUTShape: DICOMNetwork.PresentationLUTShape?
     public var sessionLabel: String = ""
     public var configurationInformation: String = ""
@@ -221,7 +399,7 @@ public final class PrintViewModel {
 
     /// Typography of the burned identification (SRS FR-006). Custom values
     /// feed ``identificationStyle``; the defaults are the automatic behaviour.
-    public var identificationFontFamily: String = "Helvetica"
+    public var identificationFontFamily: String = PrintAnnotationStyle.defaultFontFamily
     public var identificationUsesCustomSize: Bool = false
     public var identificationSizePercent: Double = 3.5
     public var identificationForeground: PrintAnnotationStyle.Foreground = .automatic
@@ -230,7 +408,7 @@ public final class PrintViewModel {
     public var identificationStyle: PrintAnnotationStyle {
         PrintAnnotationStyle(
             fontFamily: identificationFontFamily.trimmingCharacters(in: .whitespaces)
-                .isEmpty ? "Helvetica" : identificationFontFamily,
+                .isEmpty ? PrintAnnotationStyle.defaultFontFamily : identificationFontFamily,
             sizeFraction: identificationUsesCustomSize
                 ? identificationSizePercent / 100 : nil,
             foreground: identificationForeground)
@@ -368,6 +546,9 @@ public final class PrintViewModel {
     private let statusMonitor: PrinterStatusMonitor
     private var runTask: Task<Void, Never>?
     private var monitorObservationTask: Task<Void, Never>?
+    /// Whether the print screen is open and claiming full-roster polling.
+    /// The queue holds its own, narrower claim — see ``reconcileMonitoring()``.
+    private var isPrintScreenMonitoring = false
 
     /// The queue job the print sheet is currently mirroring, if any.
     private var submittedJobID: UUID?
@@ -410,34 +591,92 @@ public final class PrintViewModel {
                   current.isMonitoringEnabled else { return true }
             return current.status != .offline
         }
+        // The monitor's lifecycle follows the queue as well as the screen: a
+        // waiting job keeps its printer polled even with no print screen open,
+        // or nothing would ever call `reevaluate()` and release it.
+        queue.onQueueChanged = { [weak self] in self?.reconcileMonitoring() }
     }
 
     // MARK: - Background status monitoring (FR-012)
 
-    /// Starts observing the background monitor and polls the printers that opt in.
-    ///
-    /// Called when the print screen appears. Safe to call repeatedly — the
-    /// observation task is only created once.
+    /// Starts full-roster polling for the print screen. Called when it appears.
+    /// Safe to call repeatedly.
     public func startMonitoring() {
-        if monitorObservationTask == nil {
-            let monitor = statusMonitor
-            monitorObservationTask = Task { [weak self] in
-                for await update in await monitor.updates() {
-                    guard !Task.isCancelled else { return }
-                    self?.apply(update)
-                }
-            }
-        }
-        let profiles = printers
-        Task { [statusMonitor] in await statusMonitor.sync(profiles: profiles) }
+        isPrintScreenMonitoring = true
+        reconcileMonitoring()
     }
 
-    /// Stops all background polling. Called when the print screen goes away, so
-    /// a backgrounded app is not holding associations open on hospital printers.
+    /// Ends the print screen's claim on polling. Called when it goes away.
+    ///
+    /// Not necessarily the end of polling: a printer the queue is waiting on
+    /// stays watched — see ``reconcileMonitoring()``.
     public func stopMonitoring() {
-        monitorObservationTask?.cancel()
-        monitorObservationTask = nil
-        Task { [statusMonitor] in await statusMonitor.stopAll() }
+        isPrintScreenMonitoring = false
+        reconcileMonitoring()
+    }
+
+    /// Reconciles background polling with who actually needs it.
+    ///
+    /// Two things want printers watched. The print screen shows live status
+    /// for every monitored printer while it is open. The queue needs the
+    /// printer of a waiting job watched regardless of any screen: the FR-012
+    /// offline auto-queue holds such a job until a poll reports the printer
+    /// back, so polling that stopped with the screen would leave the job
+    /// waiting forever. The monitor therefore covers the full roster while
+    /// the screen is up, the waiting jobs' printers when only the queue needs
+    /// answers, and nothing otherwise — a backgrounded app must not hold
+    /// associations open on hospital printers no job is waiting for.
+    ///
+    /// A printer the queue is *newly* waiting on is probed immediately rather
+    /// than on the poll loop's own jittered schedule: submission is when the
+    /// held-or-sent decision is made, and it should be made on a fresh answer,
+    /// not on whatever status was left behind when polling last stopped.
+    func reconcileMonitoring() {
+        // Demand is resolved against the live roster: a job's payload carries
+        // the profile as it was at submission, and edits since then — host,
+        // interval, monitoring switched off — belong to the current profile.
+        // A deleted printer resolves to nothing; the readiness gate treats it
+        // as unmonitored, so its job runs and fails honestly rather than
+        // waiting on a poll that can never come.
+        let demanded = queue.printersAwaitingJobs
+            .compactMap { snapshot in printers.first { $0.id == snapshot.id } }
+            .filter(\.isMonitoringEnabled)
+        let wanted = isPrintScreenMonitoring ? printers : demanded
+
+        guard !wanted.isEmpty else {
+            monitorObservationTask?.cancel()
+            monitorObservationTask = nil
+            Task { [statusMonitor] in await statusMonitor.stopAll() }
+            return
+        }
+
+        observeMonitorUpdates()
+        Task { [weak self, statusMonitor] in
+            let alreadyPolled = await statusMonitor.monitoredPrinterIDs
+            await statusMonitor.sync(profiles: wanted)
+            guard let self else { return }
+            // Demand can shrink between the announcement and this probe —
+            // enqueue announces before `processNext` runs, so a job that
+            // started in the meantime needs no probe.
+            let still = Set(self.queue.printersAwaitingJobs.map(\.id))
+            for profile in demanded
+            where still.contains(profile.id) && !alreadyPolled.contains(profile.id) {
+                await statusMonitor.pollOnce(profile: profile)
+            }
+        }
+    }
+
+    /// Starts observing the monitor's update stream. Safe to call repeatedly —
+    /// the observation task is only created once.
+    private func observeMonitorUpdates() {
+        guard monitorObservationTask == nil else { return }
+        let monitor = statusMonitor
+        monitorObservationTask = Task { [weak self] in
+            for await update in await monitor.updates() {
+                guard !Task.isCancelled else { return }
+                self?.apply(update)
+            }
+        }
     }
 
     /// Folds one poll result into the printer list.
@@ -519,11 +758,13 @@ public final class PrintViewModel {
         } catch {
             append(.warning, "Could not save printers: \(error.localizedDescription)")
         }
-        // Every printer edit funnels through here, so this is the one place that
-        // has to tell the monitor about an added, removed or re-timed printer.
-        if monitorObservationTask != nil {
-            Task { [statusMonitor] in await statusMonitor.sync(profiles: profiles) }
-        }
+        // Every printer edit funnels through here, so this is the one place
+        // that has to tell the monitor about an added, removed or re-timed
+        // printer. Reconciling (rather than syncing the roster directly) keeps
+        // the queue's narrower claim intact when the print screen is closed,
+        // and covers monitoring being switched on for a printer whose job is
+        // already waiting. With no screen and no waiting jobs it is a no-op.
+        reconcileMonitoring()
     }
 
     /// C-ECHO the selected printer.
@@ -650,6 +891,7 @@ public final class PrintViewModel {
             annotations: annotations,
             annotationDisplayFormatID: trimmedFormatID.isEmpty ? nil : trimmedFormatID,
             colorMode: resolvedColorMode,
+            preservesSourceColor: preservesSourceColor,
             frameSelection: .first,     // per-mark frames are applied by PrintService
             raw: sendRawPixels,
             windowSettings: (useExplicitWindow && !sendRawPixels)
@@ -663,10 +905,59 @@ public final class PrintViewModel {
         )
     }
 
-    /// The color mode actually used: the printer's own mode when auto-detecting.
+    /// The color mode actually used.
+    ///
+    /// Auto-detect means detect *from the images*, with the printer as the
+    /// constraint: colour is used when the marked frames actually carry colour
+    /// pixels and the printer is configured to accept them. A grayscale-only
+    /// printer stays grayscale however colourful the source is — it has no
+    /// Basic Colour SOP class to send to — and a monochrome study stays
+    /// grayscale on a colour printer, since widening greys to RGB triples the
+    /// bytes on the wire and changes nothing on the film.
+    ///
+    /// Without auto-detect the user's own choice stands, unexamined.
     public var resolvedColorMode: DICOMNetwork.PrintColorMode {
         guard autoDetectColorMode, let printer = selectedPrinter else { return colorMode }
-        return printer.colorMode.printColorMode
+        guard printer.colorMode == .color else { return .grayscale }
+        return selectionHasColorImages ? .color : .grayscale
+    }
+
+    /// Why this job will print in greys despite carrying colour images, if it
+    /// will.
+    ///
+    /// Only the case worth warning about: colour pixels marked, and a printer
+    /// that will not be sent them. The reverse (greys on a colour printer) costs
+    /// the reader nothing, and a job with no colour in it has nothing to lose.
+    public var colorDowngradeNotice: String? {
+        guard selectionHasColorImages, !preservesSourceColor else { return nil }
+        return "\"Print colour images as greys\" is on, so these colour images "
+            + "will print as greys."
+    }
+
+    /// Whether this job will print colour images in colour.
+    ///
+    /// Colour survives whenever the source has it and it is not deliberately
+    /// flattened: the SOP class follows the pixels on the wire
+    /// (``PrintWorkflow/execute``), so the printer's configured colour mode no
+    /// longer decides this on its own.
+    public var willPrintInColor: Bool {
+        selectionHasColorImages && preservesSourceColor
+    }
+
+    /// Records what ``refreshSourceColor()`` read for one file.
+    func setSourceIsColor(_ isColor: Bool, forPath path: String) {
+        sourceIsColorByPath[path] = isColor
+    }
+
+    /// Whether any marked frame carries colour pixels.
+    ///
+    /// Read off the cached per-file photometric interpretations
+    /// (``sourceIsColorByPath``), which the sheet fills in as it loads marks.
+    /// Unknown files count as monochrome: a job that guessed colour and was
+    /// wrong opens a Basic Colour association a grayscale printer will refuse,
+    /// which is a worse failure than a grey film.
+    public var selectionHasColorImages: Bool {
+        printedItems.contains { sourceIsColorByPath[$0.filePath] == true }
     }
 
     /// The film-by-film plan for the current selection and settings.
@@ -716,7 +1007,10 @@ public final class PrintViewModel {
         let useViewerWindow = self.useViewerWindow
         let useViewerPresentation = self.useViewerPresentation
         let burnIdentification = self.showPatientIdentification
-        let drawnAnnotations = self.annotationsForPrinting
+        // Captured now, with the rest of the job: the queue may hold this job
+        // while the reader goes on drawing, and what prints is what was on the
+        // film when Print was pressed.
+        let drawnAnnotations = burnDrawnAnnotations ? self.annotationsForPrinting : [:]
 
         consoleLines = []
         result = nil
@@ -770,6 +1064,14 @@ public final class PrintViewModel {
             if !drawnAnnotations.isEmpty, jobRequest.raw {
                 self.append(.warning,
                             "Raw pixels are being sent — drawn annotations are not burned in.")
+            }
+            // Said once, where it is decided rather than where it is skipped:
+            // a film that silently arrives without the arrows the preview
+            // showed is the failure this line exists to prevent.
+            if !self.burnDrawnAnnotations, self.hasAnnotations {
+                self.append(.notice,
+                            "Drawn annotations are turned off for this job — "
+                            + "the film carries the picture without them.")
             }
             if Task.isCancelled {
                 self.append(.notice, "Print cancelled.")
@@ -903,7 +1205,7 @@ public final class PrintViewModel {
                 applyViewerPresentation: useViewerPresentation,
                 annotations: annotationLines,
                 annotationStyle: identificationStyle,
-                drawnAnnotations: annotationsForPrinting)
+                drawnAnnotations: burnDrawnAnnotations ? annotationsForPrinting : [:])
 
             // Rasterizing a 14×17 sheet at 300 dpi is tens of megapixels of
             // drawing; done on the main actor it stalls the film it is drawing.
@@ -1152,14 +1454,24 @@ public final class PrintViewModel {
 
     /// Puts the film back to a fresh sheet, for a new set of marks.
     ///
+    /// Every launch of the print screen starts from the tray as it stands: all
+    /// the marked images, each one as it was picked, with the tool work of
+    /// previous visits taken off. Composing a film is a job of work, and the
+    /// film screen is where it is done and where it stays — a zoom or a window
+    /// applied on one visit is not a property of the image, and finding it
+    /// still on the cell next time is finding a film half-composed by a session
+    /// nobody remembers. What is *drawn* on an image is different in kind: a
+    /// reader marking a finding with an arrow means the finding, not the sheet,
+    /// so annotations survive the reset and travel with the image — see
+    /// ``resetCellToolsForNewFilm()``.
+    ///
     /// The print screen is kept alive between visits so that reopening it is
     /// instant and so the printer stays chosen — but everything that describes
-    /// *this film* is about the images that were on it, and those have just been
-    /// replaced. A range reading "60 to 140" filters a series that is no longer
-    /// marked; arrows drawn on cell 7 belong to a study nobody is printing;
-    /// image numbers cached from the old paths answer for files that are not on
-    /// the film. Carried over, each of them silently prints something other than
-    /// what was ticked.
+    /// *this film* is about how the last sheet was composed. A range reading
+    /// "60 to 140" filters a series that may no longer be marked; image numbers
+    /// cached from the old paths answer for files that are not on the film.
+    /// Carried over, each of them silently prints something other than what was
+    /// ticked.
     ///
     /// What survives is what is not about these images: the chosen printer, film
     /// size and medium, and the identification switch — department settings,
@@ -1171,13 +1483,61 @@ public final class PrintViewModel {
         imageRanges = [:]
         imageNumbers.clear()
 
-        // Drawn text and arrows are keyed by mark ID, and the marks are new.
-        cellAnnotations = [:]
+        // Drawn text and arrows are keyed by image identity, not by mark, so
+        // they are not cleared here purely because the marks are new — an
+        // image carried over into the next film keeps what was drawn on it.
+        // `pruneAnnotations()` (called when marks change) drops annotations
+        // for images no mark points at anymore. Only the editing selection
+        // goes: nothing is being edited on a film just opened.
         selectedAnnotationID = nil
+
+        // Hand adjustments defend a cell from the viewer while a film is being
+        // composed; they must not defend it from the *next* film. Left set, the
+        // flag is permanent — the screen outlives a visit — so a cell windowed
+        // in the preview once would ignore every later zoom, turn and window the
+        // reader applied in the viewer, and reopening the screen would show the
+        // stale arrangement with no way back short of "reset cell". Reverted,
+        // not just unflagged: the viewer's re-sync only reaches marks on
+        // screen, and the rest must not keep a cancelled visit's edits.
+        selection.revertAllAdjustments()
+
+        // …and then the marks are put back to the untouched frame. Reverting
+        // only undoes what *this screen* did; a mark also carries the window
+        // and arrangement it was made with in the viewer, and the film opens
+        // showing the images plainly rather than wearing a reading session's
+        // zooms.
+        resetCellToolsForNewFilm()
 
         // Nothing on this film has been picked out or focused yet.
         selectedItemIDs = []
         focusedItemID = nil
+
+        // An adoption pass from the previous visit is writing into marks this
+        // reset has just put back. Cancelled *before* the bookkeeping is cleared,
+        // so it cannot land after and leave cells wearing states the film no
+        // longer claims to have applied — which is what made a reopened screen
+        // show the last visit's arrangement.
+        savedViewAdoptionTask?.cancel()
+        savedViewAdoptionTask = nil
+
+        // The previous film's adopted views describe cells that no longer exist,
+        // and the reset above has just put every mark back to how it was made.
+        appliedSavedViews = [:]
+
+        // The switch is a per-visit decision, not a habit: the film opens on the
+        // images as marked, whatever the reader turned on last time.
+        //
+        // Through the property, not the stored `_` backing: an `@Observable`
+        // underscore write skips the observation registrar, so the Toggle bound
+        // to this would keep drawing itself on while the model read off. The
+        // `didSet` it fires is harmless and in fact wanted — `clearAllSavedViews`
+        // over the emptied bookkeeping is a no-op, and going through the property
+        // is what keeps a reopened screen's switch honest.
+        applySavedPresentationStates = false
+
+        // Nothing is adopted as the screen opens. A reader who wants the saved
+        // views on the film asks for them with the switch, and that is what
+        // starts the pass — see ``applySavedPresentationStates``.
 
         // A finished job's outcome is not this film's outcome.
         reset()

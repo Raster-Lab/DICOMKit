@@ -158,6 +158,61 @@ final class FilmDisplayGeometryTests: XCTestCase {
         XCTAssertEqual(flipped.y, plain.y, accuracy: 1e-6)
     }
 
+    // MARK: - Free angles keep their scale
+
+    /// A freely turned cell must not shrink.
+    ///
+    /// The film path used to fit the *turned bounding box* into the cell, so a
+    /// square picture turned 45° was drawn at 1/√2 — 71% — of the size it had at
+    /// 0°, and grew back to full size by 90°. On a sheet of otherwise identical
+    /// cells that reads as the rotate tool having zoomed the picture out, and it
+    /// is worst at the small angles used to straighten a tilted head.
+    ///
+    /// So the scale is now the quarter-turn scale at every angle: the picture
+    /// turns about its centre at the size it already had, and the corners that
+    /// swing outside the cell are cut, exactly as the viewer does it.
+    func testFreeAngleKeepsTheUnrotatedScale() throws {
+        let image = (100, 100)
+        let square = region(0, 0, 100, 100)
+
+        // How far the centre of the top edge sits from the middle, unturned.
+        let upright = try XCTUnwrap(transform(
+            DisplayPresentation(sourceRegion: square), image: image))
+        let reference = project(upright, pixel: (50, 0), image: image)
+        let radius = abs(Double(reference.y))
+        XCTAssertGreaterThan(radius, 0)
+
+        // The same point, turned. Its distance from the centre is the picture's
+        // scale, and a turn about the centre must not change it.
+        for angle in [10.0, 20, 30, 45, 60, 80] {
+            let turned = try XCTUnwrap(transform(
+                DisplayPresentation(rotationDegrees: angle, sourceRegion: square),
+                image: image))
+            let point = project(turned, pixel: (50, 0), image: image)
+            let distance = (Double(point.x) * Double(point.x)
+                            + Double(point.y) * Double(point.y)).squareRoot()
+            XCTAssertEqual(distance, radius, accuracy: 1e-5,
+                           "a \(angle)° turn must not resize the picture")
+        }
+    }
+
+    /// The corners are what a constant scale spends: at 45° they leave the cell.
+    ///
+    /// The other half of the contract above — this is the cost the choice
+    /// accepts, and pinning it stops a well-meaning "fix" from quietly bringing
+    /// the shrink back to reclaim them.
+    func testFreeAngleLetsTheCornersLeaveTheCell() throws {
+        let image = (100, 100)
+        let turned = try XCTUnwrap(transform(
+            DisplayPresentation(rotationDegrees: 45, sourceRegion: region(0, 0, 100, 100)),
+            image: image))
+
+        // A corner of the frame, turned 45°, sits outside the cell's own edges
+        // (|NDC| > 1) — it is cropped rather than scaled down to fit.
+        let corner = project(turned, pixel: (0, 0), image: image)
+        XCTAssertGreaterThan(max(abs(Double(corner.x)), abs(Double(corner.y))), 1.0)
+    }
+
     // MARK: - Degenerate input
 
     /// Nothing here may divide by zero: a zero-sized region or view answers nil, so
@@ -190,6 +245,89 @@ final class FilmDisplayGeometryTests: XCTestCase {
                 XCTAssertEqual(plain[column][row], withTools[column][row], accuracy: 1e-6)
             }
         }
+    }
+
+    // MARK: - Stretch
+
+    /// Stretch pulls the composed picture to the view's edges on each axis
+    /// independently — the film's stretch mode, which distorts and does not crop.
+    /// A wide region in a square view therefore spans the whole view, not the
+    /// letterboxed band the fit leaves.
+    func testStretchPullsThePictureToTheViewEdges() throws {
+        let image = (200, 100)
+        let matrix = try XCTUnwrap(transform(
+            DisplayPresentation(sourceRegion: region(0, 0, 200, 100),
+                                stretchToFill: true),
+            image: image))
+
+        let topLeft = project(matrix, pixel: (0, 0), image: image)
+        let bottomRight = project(matrix, pixel: (200, 100), image: image)
+        XCTAssertEqual(topLeft.x, -1, accuracy: 1e-5)
+        XCTAssertEqual(topLeft.y, 1, accuracy: 1e-5)
+        XCTAssertEqual(bottomRight.x, 1, accuracy: 1e-5)
+        XCTAssertEqual(bottomRight.y, -1, accuracy: 1e-5)
+    }
+
+    /// Stretch acts on the *turned* picture: rotate a wide crop a quarter turn
+    /// and it is the tall result that is pulled to the edges — the same order
+    /// the printer-side composition uses. Stretching before the turn would
+    /// shear, not stretch.
+    func testStretchStretchesTheTurnedPicture() throws {
+        let image = (200, 100)
+        let matrix = try XCTUnwrap(transform(
+            DisplayPresentation(rotationDegrees: 90,
+                                sourceRegion: region(0, 0, 200, 100),
+                                stretchToFill: true),
+            image: image))
+
+        // Wherever the four corners land, together they must span the view.
+        let corners = [(0.0, 0.0), (200.0, 0.0), (0.0, 100.0), (200.0, 100.0)]
+            .map { project(matrix, pixel: $0, image: image) }
+        XCTAssertEqual(corners.map(\.x).min() ?? 0, -1, accuracy: 1e-5)
+        XCTAssertEqual(corners.map(\.x).max() ?? 0, 1, accuracy: 1e-5)
+        XCTAssertEqual(corners.map(\.y).min() ?? 0, -1, accuracy: 1e-5)
+        XCTAssertEqual(corners.map(\.y).max() ?? 0, 1, accuracy: 1e-5)
+    }
+
+    /// Without a region the flag is inert: stretch is the film's mode, and the
+    /// viewer — which never sets a region — must be unaffected by it.
+    func testStretchWithoutRegionDoesNothing() throws {
+        let plain = try XCTUnwrap(transform(.identity, image: (200, 100)))
+        let flagged = try XCTUnwrap(transform(
+            DisplayPresentation(stretchToFill: true), image: (200, 100)))
+
+        for column in 0..<4 {
+            for row in 0..<4 {
+                XCTAssertEqual(plain[column][row], flagged[column][row], accuracy: 1e-6)
+            }
+        }
+    }
+
+    // MARK: - The mask rectangle
+
+    /// The crop the fragment shader masks to, in texture coordinates, with half
+    /// a texel of slack — the outward rounding the CPU crop also performs. The
+    /// slack is what keeps a fill-scaled cell's border pixel from flickering
+    /// black when the mask edge lands exactly on the view edge.
+    func testSourceRegionUVCarriesTheCropWithHalfATexelOfSlack() {
+        let presentation = DisplayPresentation(sourceRegion: region(60, 20, 20, 20))
+        let uv = presentation.sourceRegionUV(imageWidth: 100, imageHeight: 100)
+        XCTAssertEqual(uv.x, 0.6 - 0.005, accuracy: 1e-6)
+        XCTAssertEqual(uv.y, 0.2 - 0.005, accuracy: 1e-6)
+        XCTAssertEqual(uv.z, 0.8 + 0.005, accuracy: 1e-6)
+        XCTAssertEqual(uv.w, 0.4 + 0.005, accuracy: 1e-6)
+    }
+
+    /// No region — the viewer's path — answers the whole frame, which is the
+    /// mask's off switch. A full-frame region clamps to the same answer.
+    func testSourceRegionUVIsTheWholeFrameWhenThereIsNoCrop() {
+        let none = DisplayPresentation.identity
+            .sourceRegionUV(imageWidth: 100, imageHeight: 100)
+        XCTAssertEqual(none, SIMD4<Float>(0, 0, 1, 1))
+
+        let whole = DisplayPresentation(sourceRegion: region(0, 0, 100, 100))
+            .sourceRegionUV(imageWidth: 100, imageHeight: 100)
+        XCTAssertEqual(whole, SIMD4<Float>(0, 0, 1, 1))
     }
 }
 

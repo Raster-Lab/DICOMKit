@@ -186,14 +186,31 @@ public struct PrintImagePreparer: Sendable {
                 )
             } else {
                 let voi = Self.resolvedVOI(request, dataSet: dataSet)
+                // A colour source keeps its colour unless the job says otherwise.
+                //
+                // Handing the preprocessor GRAYSCALE is what makes it flatten
+                // RGB to luminance, and that is a decision about the *source*,
+                // not about the printer: a raw job of the same ultrasound comes
+                // out in colour, so a processed one coming out grey is a
+                // surprise nobody asked for. The printer's own limits are
+                // applied later, on the wire, where the prepared pixels are
+                // known — see `PrintWorkflow.reconcilingColorMode`.
+                let colorMode = Self.preparationColorMode(
+                    request, sourceDescriptor: sourceDescriptor)
+                // A coloured frame is fixed at 8 bits per sample by the
+                // standard, so asking for 12- or 16-bit greys alongside a
+                // palette is a contradiction; the palette wins and the depth is
+                // dropped rather than silently producing a frame the colour
+                // image box cannot describe.
                 let image = try await preprocessor.prepareForPrint(
                     pixelData: pixelData,
                     dataSet: dataSet,
                     frameIndex: frameIndex,
-                    colorMode: request.preprocessColorMode,
+                    colorMode: colorMode,
                     windowSettings: voi.window,
-                    outputBitDepth: request.bitDepth,
-                    voiLUT: voi.lut
+                    outputBitDepth: Self.preparationBitDepth(request),
+                    voiLUT: voi.lut,
+                    palette: Self.preparationPalette(request)
                 )
                 guard image.width <= Int(UInt16.max),
                       image.height <= Int(UInt16.max) else {
@@ -207,7 +224,7 @@ public struct PrintImagePreparer: Sendable {
                 // without it is a black sheet that disagrees with the screen it
                 // was approved on. Not for `--raw`, which sends stored pixels
                 // untouched by definition.
-                let samples = OverlayPlaneRenderer.burningOverlays(
+                var samples = OverlayPlaneRenderer.burningOverlays(
                     of: dataSet,
                     into: image.pixelData,
                     width: image.width,
@@ -217,6 +234,21 @@ public struct PrintImagePreparer: Sendable {
                     samplesPerPixel: image.samplesPerPixel,
                     photometricInterpretation: image.photometricInterpretation,
                     frameIndex: frameIndex)
+
+                // The Presentation LUT, for the one option the printer cannot
+                // apply for us. IDENTITY and LIN OD go on the wire as a shape
+                // and are the printer's job — applying them here too would
+                // double them. A rendered inverse has no legal shape to send
+                // (PS3.3 C.11.4), so the inversion has to happen in the pixels.
+                if request.presentationLUTShape?.invertsPixels == true,
+                   let curve = PresentationLUTTransform.curve(
+                       for: request.presentationLUTShape) {
+                    samples = PresentationLUTTransform.apply(
+                        curve: curve,
+                        to: samples,
+                        samplesPerPixel: image.samplesPerPixel,
+                        bitsStored: image.bitsStored)
+                }
                 descriptor = PrintImageData(
                     pixelData: samples,
                     rows: UInt16(image.height),
@@ -244,6 +276,56 @@ public struct PrintImagePreparer: Sendable {
         }
 
         return prepared
+    }
+
+    // MARK: - Colour preparation
+
+    /// The colour mode the *preprocessor* is driven with for one source.
+    ///
+    /// Colour is preserved when the source has it and the request allows it;
+    /// everything else keeps the request's own mode. Note this only ever widens
+    /// the result — a monochrome source stays monochrome whatever is asked for,
+    /// since there is no colour in it to keep.
+    ///
+    /// A pseudo-colour palette is the one thing that *does* put colour into a
+    /// monochrome source, so it widens too. Without this a palettised cell would
+    /// be prepared as grey and the chosen colours would never reach the film.
+    static func preparationColorMode(
+        _ request: PrintJobRequest,
+        sourceDescriptor: PixelDataDescriptor
+    ) -> DICOMKit.PrintColorMode {
+        if Self.preparationPalette(request) != nil { return .color }
+        guard request.preservesSourceColor else { return request.preprocessColorMode }
+        let photometric = sourceDescriptor.photometricInterpretation
+        let isColorSource = sourceDescriptor.samplesPerPixel > 1
+            || photometric.isColor
+            || photometric.isPaletteColor
+        return isColorSource ? .color : request.preprocessColorMode
+    }
+
+    /// The palette actually applied to a job, or `nil` for a grey film.
+    ///
+    /// Grey palettes are dropped here rather than carried down: the preprocessor
+    /// would fall through to the grayscale path anyway, and dropping them early
+    /// keeps ``preparationColorMode`` and ``preparationBitDepth`` from treating
+    /// "the reader chose grey" as a reason to spend the film's bit depth.
+    ///
+    /// Raw jobs never colourise. Raw means the stored values reach the printer
+    /// untouched, and a palette is by definition a transformation of them.
+    static func preparationPalette(_ request: PrintJobRequest) -> PseudoColorPalette? {
+        guard !request.raw, let palette = request.palette, !palette.isGrayscale else {
+            return nil
+        }
+        return palette
+    }
+
+    /// The bit depth a frame is prepared at.
+    ///
+    /// Eight, whenever a palette is in force: PS3.3 Table C.13-5 fixes Bits
+    /// Allocated and Bits Stored at 8 for the Basic Color Image Box, so a
+    /// coloured frame has no deeper form to take.
+    static func preparationBitDepth(_ request: PrintJobRequest) -> Int {
+        Self.preparationPalette(request) == nil ? request.bitDepth : 8
     }
 
     // MARK: - Window resolution

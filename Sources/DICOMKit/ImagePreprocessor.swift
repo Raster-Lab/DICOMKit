@@ -154,7 +154,8 @@ public actor ImagePreprocessor {
         colorMode: PrintColorMode,
         windowSettings: WindowSettings? = nil,
         outputBitDepth: Int = 8,
-        voiLUT: GrayscaleLUT? = nil
+        voiLUT: GrayscaleLUT? = nil,
+        palette: PseudoColorPalette? = nil
     ) async throws -> PreparedImage {
         let descriptor = pixelData.descriptor
         guard frameIndex >= 0, frameIndex < descriptor.numberOfFrames else {
@@ -177,7 +178,8 @@ public actor ImagePreprocessor {
                 windowSettings: windowSettings,
                 frameIndex: frameIndex,
                 outputBitDepth: outputBitDepth,
-                voiLUT: voiLUT
+                voiLUT: voiLUT,
+                palette: palette
             )
         } else if photometric.isPaletteColor {
             return try await preprocessPaletteColorImage(
@@ -209,7 +211,8 @@ public actor ImagePreprocessor {
         windowSettings: WindowSettings?,
         frameIndex: Int = 0,
         outputBitDepth: Int = 8,
-        voiLUT: GrayscaleLUT? = nil
+        voiLUT: GrayscaleLUT? = nil,
+        palette: PseudoColorPalette? = nil
     ) async throws -> PreparedImage {
         let width = descriptor.columns
         let height = descriptor.rows
@@ -264,6 +267,25 @@ public actor ImagePreprocessor {
         if descriptor.photometricInterpretation == .monochrome1 {
             normalizedPixels = normalizedPixels.map { 1.0 - $0 }
         }
+
+        // A pseudo-colour palette turns the windowed grey into colour, and from
+        // here the frame is RGB: it leaves by a different door, below.
+        //
+        // This is the last point at which the value is still the normalised
+        // [0, 1] level the palette indexes — after the modality and VOI
+        // transforms and after polarity, so the colour lands on what the reader
+        // actually sees rather than on raw stored values.
+        //
+        // Grey palettes deliberately fall through to the grayscale path: they
+        // have no colour to add, and taking the RGB door would cost the film its
+        // deep-grayscale bit depth and its density curve for nothing.
+        if let palette, !palette.isGrayscale {
+            return Self.colorize(
+                normalizedPixels,
+                palette: palette,
+                width: width,
+                height: height)
+        }
         
         // Convert to unsigned P-Values at the requested depth: 8-bit stays one
         // byte per pixel; 9–16 bits emit little-endian UInt16 samples with
@@ -298,6 +320,61 @@ public actor ImagePreprocessor {
         )
     }
     
+    // MARK: - Pseudo-colour
+
+    /// Turns windowed grey levels into an 8-bit RGB frame through a palette.
+    ///
+    /// The palette is baked into the pixels here because there is nowhere else
+    /// to put it: PS3.3 Table C.13-5 enumerates `RGB` as the only photometric
+    /// interpretation a Basic Color Image Sequence may carry, and the word
+    /// "palette" does not appear anywhere in the Print Management service
+    /// (PS3.4 Annex H). A printer therefore never learns which palette was
+    /// chosen — only the colours it produced. The choice itself is recorded in
+    /// the print audit trail, which is the only place it survives.
+    ///
+    /// Eight bits per sample is the standard's ceiling for colour print, not a
+    /// shortcut: Bits Allocated and Bits Stored are both fixed at 8 for the
+    /// colour image box. A film that wanted 12- or 16-bit greys gives that up
+    /// when it takes colour, and the print sheet says so before the job is sent.
+    static func colorize(
+        _ normalizedPixels: [Double],
+        palette: PseudoColorPalette,
+        width: Int,
+        height: Int
+    ) -> PreparedImage {
+        // Resolved once: the table is 256 fixed entries, and looking it up per
+        // pixel through the enum would rebuild it for every pixel on the sheet.
+        let table = palette.entries()
+        let lastIndex = table.count - 1
+
+        var rgb = Data(count: normalizedPixels.count * 3)
+        rgb.withUnsafeMutableBytes { raw in
+            guard let out = raw.bindMemory(to: UInt8.self).baseAddress else { return }
+            for (offset, value) in normalizedPixels.enumerated() {
+                // The window has already mapped the frame into [0, 1]; anything
+                // outside it is a value the window clipped, and clamping is what
+                // the grey path does with it too.
+                let clamped = value.isFinite ? Swift.min(Swift.max(value, 0), 1) : 0
+                let index = Swift.min(lastIndex, Int(clamped * Double(lastIndex) + 0.5))
+                let entry = table[index]
+                let base = offset * 3
+                out[base] = entry.red
+                out[base + 1] = entry.green
+                out[base + 2] = entry.blue
+            }
+        }
+
+        return PreparedImage(
+            pixelData: rgb,
+            width: width,
+            height: height,
+            bitsAllocated: 8,
+            samplesPerPixel: 3,
+            photometricInterpretation: "RGB",
+            bitsStored: 8
+        )
+    }
+
     // MARK: - Color Image Processing
     
     private func preprocessColorImage(

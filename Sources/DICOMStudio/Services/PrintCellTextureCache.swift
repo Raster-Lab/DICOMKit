@@ -20,6 +20,7 @@
 // them; paging to another film releases the last one's.
 
 import Foundation
+import DICOMNetwork
 import DICOMPrintKit
 import DICOMRenderKit
 
@@ -127,7 +128,8 @@ public final class PrintCellTextureCache {
                     frameIndex: item.frameIndex,
                     windowCenter: item.windowCenter,
                     windowWidth: item.windowWidth,
-                    windowSpace: item.windowSpace)
+                    windowSpace: item.windowSpace,
+                    palette: item.presentation?.palette)
                 guard let self else { return }
                 self.inFlight.remove(key)
                 // The film this cell was on may have been paged away, or the
@@ -171,11 +173,17 @@ public final class PrintCellTextureCache {
     /// a texture that did not need to change — the exact cost this path exists to
     /// remove. The window *space* is in the key because the same two numbers are
     /// two different pictures in stored values and in output units.
+    ///
+    /// The palette is pixels, not arrangement, and so it *is* here: the shader
+    /// has no colour table, the render bakes the ramp into the texture, and a
+    /// key without it served the previous palette's texture back after every
+    /// change — which looked exactly like the picker doing nothing.
     static func key(for item: PrintSelectionItem) -> String {
         let centre = item.windowCenter.map { String($0) } ?? "-"
         let width = item.windowWidth.map { String($0) } ?? "-"
         let space = item.windowCenter == nil ? "-" : item.windowSpace.rawValue
-        return "\(item.filePath)|\(item.frameIndex)|\(centre)|\(width)|\(space)"
+        let palette = item.presentation?.palette?.rawValue ?? "-"
+        return "\(item.filePath)|\(item.frameIndex)|\(centre)|\(width)|\(space)|\(palette)"
     }
 }
 
@@ -198,9 +206,15 @@ public enum PrintCellDisplay {
     ///   cell's aspect (SRS FR-003 fill-to-film) so the shader's centred fit
     ///   covers the cell exactly — the fill happens in the source region, and
     ///   the view showing it never has to change size.
+    /// - Parameter presentationLUTShape: the film's Presentation LUT. A
+    ///   rendered inverse flips the whole sheet, composing with the per-cell
+    ///   invert exactly as the two inversions compose on the printed film, so
+    ///   a cell already inverted comes back to normal polarity under it.
     public static func presentation(
         for item: PrintSelectionItem, imageWidth: Int, imageHeight: Int,
-        fillingCellOfSize cellSize: CGSize? = nil
+        fillingCellOfSize cellSize: CGSize? = nil,
+        stretchingToCell: Bool = false,
+        presentationLUTShape: DICOMNetwork.PresentationLUTShape? = nil
     ) -> DisplayPresentation {
         let arrangement = item.presentation
         // A filling cell reads its region with the covering geometry: the crop
@@ -232,12 +246,16 @@ public enum PrintCellDisplay {
             rotationDegrees: arrangement?.rotationDegrees ?? 0,
             flipHorizontal: arrangement?.flipHorizontal ?? false,
             flipVertical: arrangement?.flipVertical ?? false,
-            invert: arrangement?.invert ?? false,
+            invert: (arrangement?.invert ?? false)
+                != (presentationLUTShape?.invertsPixels ?? false),
             // Bilinear: a film cell is judged as a picture on a panel-scaled
             // sheet, and its CPU-drawn neighbours are smoothed — the viewer's
             // pixel-exact nearest sampling belongs to the viewer.
             linearFiltering: true,
-            sourceRegion: source
+            sourceRegion: source,
+            // Stretch keeps the fitted region — it distorts, it does not crop —
+            // and the shader pulls the composed picture out to the cell's edges.
+            stretchToFill: stretchingToCell
         )
     }
 
@@ -285,10 +303,12 @@ public enum PrintCellDisplay {
         let width = region?.width ?? imageWidth
         let height = region?.height ?? imageHeight
         guard let arrangement else { return (width, height) }
-        // The turned box, so a freely rotated cell reports the shape the film
-        // actually carries — corners of background included.
-        let turned = arrangement.turnedSize(width: Double(width), height: Double(height))
-        return (max(1, Int(turned.width.rounded())), max(1, Int(turned.height.rounded())))
+        // Quarter turns swap the axes; a free angle does not change the shape at
+        // all. The picture turns about its centre at the size it already had and
+        // the corners that leave the cell are cut — on screen and on film alike
+        // — so the rectangle the film carries is still the region's own.
+        guard arrangement.isQuarterTurn else { return (width, height) }
+        return arrangement.quarterTurns % 2 == 1 ? (height, width) : (width, height)
     }
 }
 #endif

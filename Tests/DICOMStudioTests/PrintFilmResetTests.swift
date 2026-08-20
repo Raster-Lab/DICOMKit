@@ -49,8 +49,8 @@ struct PrintFilmResetTests {
                 "no series keeps a range from the old film")
     }
 
-    @Test("Text and arrows drawn on the last film do not reappear on the new one")
-    func testAnnotationsAreDropped() {
+    @Test("Text and arrows drawn on an image marked for the new film reappear on it")
+    func testAnnotationsSurviveOnAnImageStillMarked() {
         let selection = makeSelection(count: 4, series: "1.2.3", prefix: "/a")
         let viewModel = PrintViewModel(selection: selection)
         let cell = selection.items[0].id
@@ -67,8 +67,29 @@ struct PrintFilmResetTests {
 
         viewModel.resetForNewFilm()
 
-        #expect(viewModel.annotations(forItemID: cell).isEmpty)
-        #expect(viewModel.cellAnnotations.isEmpty, "no cell keeps a drawing")
+        // Annotations belong to the image, not to the print sheet's session —
+        // the same file/frame is still marked, so what was drawn on it stays.
+        #expect(viewModel.annotations(forItemID: cell).count == 2,
+                "the mark still points at the same image, so its drawing stays")
+        #expect(viewModel.selectedAnnotationID == nil, "nothing is left selected for editing")
+    }
+
+    @Test("Text and arrows drawn on an image dropped from the film do not reappear")
+    func testAnnotationsAreDroppedForUnmarkedImages() {
+        let selection = makeSelection(count: 4, series: "1.2.3", prefix: "/a")
+        let viewModel = PrintViewModel(selection: selection)
+        let cell = selection.items[0].id
+
+        let text = viewModel.addTextAnnotation(forItemID: cell, at: PrintOverlayPoint(x: 0.5, y: 0.5))
+        viewModel.setAnnotationText("lesion", id: text, forItemID: cell)
+        #expect(viewModel.annotations(forItemID: cell).count == 1)
+
+        viewModel.selection.replace(with: makeSelection(count: 12, series: "9.9.9", prefix: "/b").items)
+        viewModel.selection.pruneAnnotations()
+        viewModel.resetForNewFilm()
+
+        #expect(viewModel.annotations(forItemID: cell).isEmpty,
+                "the image that was drawn on is no longer marked anywhere")
         #expect(viewModel.selectedAnnotationID == nil, "nothing is left selected for editing")
     }
 
@@ -173,7 +194,7 @@ struct PrintFilmResetTests {
         #expect(viewModel.selection.count == 4, "the marks are not the tools")
     }
 
-    @Test("The marks themselves are untouched — the reset clears the film, not the selection")
+    @Test("The marks themselves survive — the reset clears the film, not the selection")
     func testTheMarksSurvive() {
         let selection = makeSelection(count: 7, series: "1.2.3", prefix: "/a")
         let viewModel = PrintViewModel(selection: selection)
@@ -182,9 +203,182 @@ struct PrintFilmResetTests {
 
         viewModel.resetForNewFilm()
 
-        #expect(viewModel.selection.count == 7)
-        let kept = viewModel.selection.items.first { $0.id == selection.items[3].id }
-        #expect(kept?.windowCenter == 60, "windowing done on a mark belongs to the mark")
-        #expect(kept?.windowWidth == 360)
+        #expect(viewModel.selection.count == 7, "what was ticked stays ticked")
+    }
+
+    // MARK: - A launch opens on the plain images
+
+    /// Marks as the viewer takes them: carrying the window and arrangement the
+    /// reader had on screen at the moment they ticked the box.
+    private func makeViewerMarkedSelection(count: Int = 5) -> PrintSelectionModel {
+        let selection = PrintSelectionModel()
+        selection.add(contentsOf: (1...count).map {
+            PrintSelectionItem(
+                filePath: "/a/\($0).dcm", frameIndex: 0,
+                seriesInstanceUID: "1.2.3", instanceNumber: $0,
+                windowCenter: 40, windowWidth: 400,
+                presentation: ViewerPresentation(zoom: 2.5, panX: 30, panY: -10,
+                                                 viewportWidth: 800, viewportHeight: 600,
+                                                 rotationDegrees: 90, invert: true))
+        })
+        return selection
+    }
+
+    /// With both switches off, the film screen is where a film is composed and
+    /// the work stays there: a launch shows every marked image as the file
+    /// holds it — not wearing the zooms and windows of a reading session, and
+    /// not wearing the tool work of a previous visit to this screen.
+    @Test("A launch resets every mark when the viewer-matching switches are off")
+    func testLaunchResetsToolActionsOnEveryMark() {
+        let selection = makeViewerMarkedSelection()
+        let viewModel = PrintViewModel(selection: selection)
+        viewModel.useViewerWindow = false
+        viewModel.useViewerPresentation = false
+
+        viewModel.resetForNewFilm()
+
+        #expect(viewModel.selection.count == 5, "every marked image is still on the film")
+        for mark in viewModel.selection.items {
+            #expect(mark.windowCenter == nil, "the cell opens with the file's own window")
+            #expect(mark.windowWidth == nil)
+            #expect(mark.presentation == nil,
+                    "no zoom, pan, rotation or inversion carried in from the viewer")
+            #expect(!viewModel.isCellEdited(mark), "so nothing lights Reset on a fresh film")
+        }
+        #expect(!viewModel.hasEditedCells)
+    }
+
+    /// The switches are standing instructions about how film relates to screen,
+    /// so a launch must not quietly overrule them. Wiping every mark on the way
+    /// in is what made "Match the viewer's window/level" look dead: there was
+    /// nothing left in the mark for it to match, and no amount of toggling
+    /// brought the reading session's window back.
+    @Test("A launch keeps the viewer's window and arrangement while the switches ask for them")
+    func testLaunchKeepsViewerStateWhenMatchingIsOn() {
+        let selection = makeViewerMarkedSelection()
+        let viewModel = PrintViewModel(selection: selection)
+        // Both default to on; stated here because that is what is under test.
+        viewModel.useViewerWindow = true
+        viewModel.useViewerPresentation = true
+
+        viewModel.resetForNewFilm()
+
+        #expect(viewModel.selection.count == 5)
+        for mark in viewModel.selection.items {
+            #expect(mark.windowCenter == 40, "the screen's window survives the launch")
+            #expect(mark.windowWidth == 400)
+            #expect(mark.presentation?.zoom == 2.5,
+                    "and so does the zoom, pan, rotation and inversion")
+            #expect(mark.presentation?.rotationDegrees == 90)
+            #expect(mark.presentation?.invert == true)
+        }
+        // And the preview renders what the printer will receive.
+        for item in viewModel.previewItems {
+            #expect(item.windowCenter == 40)
+            #expect(item.presentation?.zoom == 2.5)
+        }
+    }
+
+    /// The two switches are independent: matching the window without adopting
+    /// the reader's zoom is a legitimate film, and vice versa.
+    @Test("Each viewer-matching switch is honoured on its own")
+    func testLaunchHonoursEachMatchingSwitchIndependently() {
+        let windowOnly = PrintViewModel(selection: makeViewerMarkedSelection(count: 2))
+        windowOnly.useViewerWindow = true
+        windowOnly.useViewerPresentation = false
+        windowOnly.resetForNewFilm()
+        for mark in windowOnly.selection.items {
+            #expect(mark.windowCenter == 40, "the window is matched")
+            #expect(mark.presentation == nil, "the arrangement is not")
+        }
+
+        let shapeOnly = PrintViewModel(selection: makeViewerMarkedSelection(count: 2))
+        shapeOnly.useViewerWindow = false
+        shapeOnly.useViewerPresentation = true
+        shapeOnly.resetForNewFilm()
+        for mark in shapeOnly.selection.items {
+            #expect(mark.windowCenter == nil, "the window is not matched")
+            #expect(mark.presentation?.zoom == 2.5, "the arrangement is")
+        }
+    }
+
+    /// What is drawn on an image is about the anatomy under it, so it outlives
+    /// the film it was drawn on — while the zoom that framed it does not.
+    @Test("A launch keeps what was drawn on an image and resets only the tools")
+    func testLaunchKeepsAnnotationsButResetsTools() {
+        let selection = makeSelection(count: 3, series: "1.2.3", prefix: "/a")
+        let viewModel = PrintViewModel(selection: selection)
+        let cell = selection.items[0].id
+
+        let text = viewModel.addTextAnnotation(forItemID: cell, at: PrintOverlayPoint(x: 0.5, y: 0.5))
+        viewModel.setAnnotationText("lesion", id: text, forItemID: cell)
+        viewModel.addArrowAnnotation(
+            forItemID: cell,
+            from: PrintOverlayPoint(x: 0.1, y: 0.1),
+            to: PrintOverlayPoint(x: 0.4, y: 0.4))
+        // …and the cell was windowed and zoomed to draw them.
+        viewModel.setWindow(forItemID: cell, center: 60, width: 360)
+        viewModel.adjustZoom(forItemID: cell, factor: 3,
+                             cellSize: CGSize(width: 200, height: 200))
+
+        viewModel.resetForNewFilm()
+
+        #expect(viewModel.annotations(forItemID: cell).count == 2,
+                "the finding an arrow marks is not undone by opening a new film")
+        let mark = viewModel.selection.items.first { $0.id == cell }
+        #expect(mark?.windowCenter == nil, "the windowing that framed it is")
+        #expect(mark?.presentation == nil, "and so is the zoom")
+    }
+
+    /// The tray reports the selection, not the sheet being composed beside it.
+    @Test("Film-screen tool work never reaches the viewer's tray")
+    func testTrayShowsImagesAsMarked() {
+        let selection = makeSelection(count: 3, series: "1.2.3", prefix: "/a")
+        let asMarked = selection.items[1]
+        let viewModel = PrintViewModel(selection: selection)
+
+        viewModel.setWindow(forItemID: asMarked.id, center: 900, width: 1800)
+        viewModel.adjustZoom(forItemID: asMarked.id, factor: 4,
+                             cellSize: CGSize(width: 200, height: 200))
+
+        // The film reads the live mark — that is the picture being sent.
+        let onFilm = viewModel.selection.items.first { $0.id == asMarked.id }
+        #expect(onFilm?.windowCenter == 900)
+        #expect(onFilm?.presentation?.zoom == 4)
+
+        // The tray reads the image as it was picked, so its row does not
+        // re-render on every drag happening on the print screen beside it.
+        let inTray = viewModel.selection.itemsAsMarked.first { $0.id == asMarked.id }
+        #expect(inTray?.windowCenter == asMarked.windowCenter)
+        #expect(inTray?.presentation == nil)
+        #expect(viewModel.selection.itemsAsMarked.map(\.id) ==
+                viewModel.selection.items.map(\.id),
+                "same images, same film order — only the arrangement differs")
+    }
+
+    /// The re-sync on reopening only reaches marks the viewer has on screen, so
+    /// merely unflagging an adjustment left every *other* cell wearing the last
+    /// visit's edits — cancel the screen, click Print again, and the film still
+    /// showed the pans and windows the cancel appeared to discard.
+    @Test("Hand edits from the last visit are taken back, on-screen or not")
+    func testHandEditsAreRevertedForCellsTheViewerCannotResync() {
+        let selection = makeSelection(count: 7, series: "1.2.3", prefix: "/a")
+        let viewModel = PrintViewModel(selection: selection)
+        let offScreen = selection.items[3]
+        // Windowed and panned by hand in the preview, first visit.
+        viewModel.setWindow(forItemID: offScreen.id, center: 60, width: 360)
+        viewModel.panCell(forItemID: offScreen.id, dx: 40, dy: 0,
+                          cellSize: CGSize(width: 200, height: 200))
+        #expect(viewModel.selection.isAdjusted(offScreen.id))
+
+        // Cancel, then reopen from the viewer's print icon. No viewer re-sync
+        // follows for this mark: the file is not the one on screen.
+        viewModel.resetForNewFilm()
+
+        let kept = viewModel.selection.items.first { $0.id == offScreen.id }
+        #expect(viewModel.selection.isAdjusted(offScreen.id) == false,
+                "the mark follows the viewer again")
+        #expect(kept?.windowCenter == nil, "the visit's windowing is gone")
+        #expect(kept?.presentation == nil, "the visit's pan is gone")
     }
 }

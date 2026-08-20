@@ -180,6 +180,22 @@ struct PrintImageNumberCacheTests {
         #expect(cache.seriesDescription(forPath: url.path) == "CHEST AXIAL")
     }
 
+    @Test("The modality rides along too — it names which presets the cell gets")
+    func testReadsModality() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let url = directory.appendingPathComponent("slice.dcm")
+        try writeFile(instanceNumber: 7, to: url)
+
+        let cache = PrintImageNumberCache()
+        #expect(cache.modality(forPath: url.path) == nil, "nothing before the read")
+        await cache.load(paths: [url.path])
+
+        // The fixture writes Modality (0008,0060) as "CT".
+        #expect(cache.modality(forPath: url.path) == "CT")
+    }
+
     @Test("The range row is named by the file's description, not the UID folder")
     func testRowLabelPrefersHeaderDescriptionOverFolder() async throws {
         let directory = try temporaryDirectory()

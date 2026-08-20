@@ -311,6 +311,14 @@ public enum PrintSCPParser {
     /// shape is honored during composition.
     public static func presentationLUTShape(in attributes: PrintAttributeSet) throws -> PresentationLUTShape? {
         guard let shape = attributes.string(for: .presentationLUTShape) else { return nil }
+        // Be liberal in what we accept: PS3.3 C.11.4 does not list INVERSE, but
+        // senders that borrow the softcopy module's value do emit it, and
+        // failing the N-CREATE over it would be a worse outcome than printing
+        // the inverted film they plainly asked for.
+        let normalized = shape
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+            .uppercased()
+        if normalized == "INVERSE" { return .inverseRendered }
         return try enumeration(PresentationLUTShape.self, shape, tag: "Presentation LUT Shape")
     }
 

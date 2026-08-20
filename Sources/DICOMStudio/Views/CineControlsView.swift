@@ -70,7 +70,6 @@ public struct CineControlsView: View {
                 // Play/Pause
                 Button {
                     viewModel.togglePlayback()
-                    updateTimer()
                 } label: {
                     Image(systemName: CinePlaybackHelpers.stateSystemImage(for: viewModel.playbackState))
                 }
@@ -81,7 +80,6 @@ public struct CineControlsView: View {
                 // Stop
                 Button {
                     viewModel.stopPlayback()
-                    stopTimer()
                 } label: {
                     Image(systemName: "stop.fill")
                 }
@@ -141,13 +139,11 @@ public struct CineControlsView: View {
                             step: 1
                         )
                         .frame(width: 80)
-                        .onChange(of: viewModel.playbackFPS) { _, _ in updateTimer() }
                         .accessibilityLabel("Playback speed")
                         TextField("FPS", value: Bindable(viewModel).playbackFPS, format: .number)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 44)
                             .accessibilityLabel("Frames per second")
-                            .onSubmit { updateTimer() }
                     }
                     Text(String(format: "%.1fs", Double(viewModel.numberOfFrames) / viewModel.playbackFPS))
                         .font(.system(size: StudioTypography.captionSize).monospacedDigit())
@@ -161,11 +157,22 @@ public struct CineControlsView: View {
         .padding(.vertical, 8)
         .background(.black.opacity(0.8))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        // The timer follows the view model's state rather than the buttons that
+        // used to own it. Playback can now start without a click — a multi-frame
+        // file opens running — and that start has to drive the timer too.
         .onChange(of: viewModel.playbackState) { _, newValue in
-            if newValue != .playing {
-                stopTimer()
-            }
+            newValue == .playing ? updateTimer() : stopTimer()
         }
+        // A file that opens already playing sets its state before this view
+        // exists, so there is no change for `onChange` to see.
+        .onAppear { if viewModel.playbackState == .playing { updateTimer() } }
+        // Re-arms the running timer at the new interval. Watched on the value
+        // rather than on the slider and the field, because the rate also
+        // changes when a file that states its own frame rate is opened.
+        .onChange(of: viewModel.playbackFPS) { _, _ in
+            if viewModel.playbackState == .playing { updateTimer() }
+        }
+        .onDisappear { stopTimer() }
     }
 
     private func updateTimer() {

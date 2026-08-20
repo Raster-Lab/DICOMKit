@@ -7,8 +7,10 @@ functional requirements) against the implementation in this repo at commit
 Every status below was verified against code, not against planning docs. Where a
 type exists but is never called, it is reported as **absent**, not done.
 
-**Last revised 2026-08-14 (second pass)**, after the day's implementation work
-landed. The scorecard and the "closed 2026-08-14" section below are current; the
+**Last revised 2026-08-19 (third pass)**, after the palette / colour-print /
+saved-view work. The 2026-08-19 section below records that pass; the
+2026-08-14 second-pass notes and the scorecard remain current for everything
+else. The scorecard and the "closed 2026-08-14" section below are current; the
 prose in gaps §1–§4 describes the state *before* that work and is kept as the
 record of what was found — each affected gap carries a closure note. On hold by
 decision: per-user statistics (needs authentication), FR-010 capability query,
@@ -24,10 +26,10 @@ in `PRINT_GAP_CLOSURE_COMPLETION.md`.
 | FR-001 | Film size & format | MUST | ✅ Done |
 | FR-002 | Film layout & image matrix | MUST | ✅ Done |
 | FR-003 | Image scaling & positioning | MUST | ✅ Done |
-| FR-004 | Window/Level & LUT processing | MUST | ✅ Done — SIGMOID, Presentation LUT table and LIN OD closed 2026-08-14 |
+| FR-004 | Window/Level & LUT processing | MUST | ✅ Done — SIGMOID, Presentation LUT table and LIN OD closed 2026-08-14; INVERSE rendered into pixels 2026-08-19 |
 | FR-005 | Image transformations | MUST | ✅ Done |
 | FR-006 | Annotation & patient info | MUST | ⚠️ Bands (header/side/overlay) done 2026-08-14; custom field, Study Time, halo config remain |
-| FR-007 | Color & grayscale management | MUST | ✅ Done (GSDF curve absent) |
+| FR-007 | Color & grayscale management | MUST | ✅ Done — colour sources preserved and SOP class reconciled to the pixels 2026-08-19 (GSDF curve absent) |
 | FR-008 | Print preview | MUST | ✅ Done |
 | FR-009 | Multiple copies & priority | MUST | ✅ Done |
 | FR-010 | Printer selection & management | MUST | ⚠️ Capability query **on hold** by decision; rest done |
@@ -42,6 +44,56 @@ in `PRINT_GAP_CLOSURE_COMPLETION.md`.
 **All 17 are MUST.** There is no SHOULD/MAY tier to defer.
 
 As of 2026-08-14 (second pass): **13 done, 3 partial, 1 absent**.
+
+**Closed 2026-08-19**, each with tests:
+
+- **FR-007 colour, twice over.** Colour sources were being flattened to
+  luminance on any non-raw job — a colour ultrasound or fused PET printed and
+  saved as greys — because the preprocessor was handed the *job's* colour mode.
+  `PrintJobRequest.preservesSourceColor` keeps them in colour, with the app
+  detecting colour from Samples per Pixel / Photometric Interpretation per file
+  rather than from the mark. Separately, a request whose colour mode disagreed
+  with its prepared pixels was rejected outright by the printer (raw RGB on a
+  Basic Grayscale Image Box → 0x0106, *Samples per Pixel must be 1*):
+  `PrintWorkflow.reconcilingColorMode(_:with:diagnostics:)` now moves the job
+  onto Basic Colour when frames carry three samples and back to grayscale when
+  none do, reporting the switch. The film simulator likewise names a saved
+  film's image box after the pixels rather than the request.
+
+- **FR-004 Presentation LUT INVERSE.** INVERSE belongs to the softcopy module
+  (C.11.6), not the print module (C.11.4), so sending it risked an N-CREATE
+  rejection. `PresentationLUTShape.inverse` becomes `.inverseRendered`
+  (`wireValue` nil): the inversion is applied to the pixels by
+  `PresentationLUTTransform` and no Presentation LUT SOP instance is created —
+  the behaviour DCMTK gives for `--inverse-plut`. As SCP we are liberal in the
+  other direction and honour an incoming INVERSE rather than failing the
+  association. `PresentationLUTTransform` also supplies the pixel side of LIN OD
+  for the on-screen preview, where there is no printer to defer to.
+
+- **FR-006 corner captions land on the cell's corners.** The preview anchors
+  identification to the cell, but on the wire only the image box exists, so a
+  fitted frame of a different aspect than its cell was letterboxed by the
+  printer and the caption floated in the margin.
+  `PreparedPrintImage.padded(toCellAspectRatio:)` pads to the cell's shape with
+  film background (minimum stored value for MONOCHROME2/RGB, maximum for
+  MONOCHROME1), applied only for non-raw fit-to-film jobs that actually carry
+  captions. The burner's typography is now public and single-source, and the
+  preview consumes it — it had been drawing captions at well under half the
+  size the film printed.
+
+- **Pseudo-colour palettes (outside the SRS, noted for FR-007).** 23 palettes
+  in `DICOMCore.PseudoColorPalette`, baked into 8-bit RGB before transmission.
+  This is a display-side feature by necessity, not a wire feature: PS3.3
+  Table C.13-5 permits only RGB in a Basic Color Image Sequence and "palette"
+  appears nowhere in PS3.4 Annex H, so a printer can never be told which
+  palette was used. Consequences recorded in the app: colour film caps at
+  8 bits per sample, and LIN OD stays grayscale-only.
+
+**Still open after 2026-08-19:** the SCP stores Presentation LUT *shape* only
+(`PrintSCP.presentationLUTs` is `[String: PresentationLUTShape?]`), so a
+`PresentationLUTTable` sent by an SCU is accepted and then silently composed
+without the curve — a DICOMKit→DICOMKit round trip loses it. The SCU side can
+send the table; the gap is on the receiving end.
 
 **Closed 2026-08-14**, each with tests, verified by running them:
 

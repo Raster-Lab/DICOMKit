@@ -591,10 +591,16 @@ struct PrintSCPEndToEndTests {
 
         // The film reaches the list through the sink's stream, so it lands a
         // moment after the SCU's N-ACTION response.
-        var waited = 0
-        while viewModel.films.isEmpty, waited < 100 {
+        // The screen is fed by *two* independent streams — the sink's films and
+        // the server's protocol events, which carry the counters — so waiting on
+        // the film alone can arrive before the counter it is asserted against.
+        // Both are waited for, against a deadline rather than a fixed number of
+        // sleeps: under a loaded run the sleeps themselves are what get delayed,
+        // so a tick budget expires in far less wall-clock time than it reads as.
+        let deadline = ContinuousClock.now + .seconds(30)
+        while viewModel.films.isEmpty || viewModel.filmCount == 0,
+              ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(50))
-            waited += 1
         }
 
         #expect(viewModel.films.count == 1)

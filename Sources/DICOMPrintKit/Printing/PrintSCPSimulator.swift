@@ -85,7 +85,14 @@ public struct PrintSCPSimulator: Sendable {
             filmDestination: request.filmDestination,
             filmSessionLabel: request.sessionLabel)
         let layout = PrintLayout(rows: plan.layout.rows, columns: plan.layout.columns)
-        let sopClassUID = request.colorMode == .color
+        // Named after the pixels, not the request. A saved film is what the
+        // printer would have received, and the SCU moves a job carrying colour
+        // frames onto Basic Colour whatever the request said
+        // (`PrintWorkflow.reconcilingColorMode`) — a box labelled grayscale
+        // while holding three samples per pixel is a state no real printer
+        // could be in, and it makes the saved film disagree with the print.
+        let hasColorFrames = images.contains { $0.descriptor.samplesPerPixel > 1 }
+        let sopClassUID = (request.colorMode == .color || hasColorFrames)
             ? basicColorImageBoxSOPClassUID
             : basicGrayscaleImageBoxSOPClassUID
 

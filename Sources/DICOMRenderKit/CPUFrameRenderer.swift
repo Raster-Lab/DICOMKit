@@ -31,6 +31,17 @@ public struct CPUFrameRenderer: FrameRenderBackend {
             guard let window = request.window else {
                 return renderer.renderFrame(request.frameIndex)
             }
+            // A pseudo-colour palette folds into the window as one raw-sample →
+            // RGB table, exactly as the Metal path folds it, so the two backends
+            // stay byte-identical in colour as they are in grey.
+            if let palette = request.effectivePseudoColorPalette {
+                let lut = PaletteDisplayLUT.make(
+                    window: WindowLUT.grayscale(
+                        descriptor: request.pixelData.descriptor, window: window),
+                    entries: palette.entries())
+                return renderer.renderMonochromeFrame(
+                    request.frameIndex, displayLUT: lut)
+            }
             return renderer.renderMonochromeFrame(request.frameIndex, window: window)
         case .palette:
             return renderer.renderPaletteColorFrame(request.frameIndex)

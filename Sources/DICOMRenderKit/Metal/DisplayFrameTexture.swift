@@ -76,7 +76,20 @@ public struct DisplayPresentation: Equatable, Sendable {
     /// the view and centred in it, which is the *film's* composition rather than
     /// the viewer's. See ``sourceRegionTransform(imageWidth:imageHeight:viewWidth:viewHeight:)``
     /// for why the two differ and when that matters.
+    ///
+    /// The region also masks: the fragment shader paints everything outside it
+    /// black, because on a film only the crop exists — the corners a free
+    /// rotation leaves empty and the letterbox beside a zoomed crop are
+    /// unexposed film, not the neighbouring anatomy the quad happens to carry.
     public var sourceRegion: SourceRegion?
+
+    /// Fill the view exactly, aspect ratio ignored — the film's stretch mode.
+    ///
+    /// Only meaningful with ``sourceRegion``: the region is composed as usual
+    /// (cropped, turned, centred) and the finished picture is then stretched to
+    /// the view on both axes, which is what the printer-side stretch does to a
+    /// cell. Without a region this flag does nothing.
+    public var stretchToFill: Bool = false
 
     /// A rectangle of source pixels, in the frame's own pixel coordinates with the
     /// origin at its top left.
@@ -100,7 +113,8 @@ public struct DisplayPresentation: Equatable, Sendable {
         flipHorizontal: Bool = false, flipVertical: Bool = false,
         invert: Bool = false,
         linearFiltering: Bool = false,
-        sourceRegion: SourceRegion? = nil
+        sourceRegion: SourceRegion? = nil,
+        stretchToFill: Bool = false
     ) {
         self.zoom = zoom
         self.panX = panX
@@ -111,15 +125,46 @@ public struct DisplayPresentation: Equatable, Sendable {
         self.invert = invert
         self.linearFiltering = linearFiltering
         self.sourceRegion = sourceRegion
+        self.stretchToFill = stretchToFill
+    }
+
+    /// The region as the shader's mask rectangle: (minU, minV, maxU, maxV).
+    ///
+    /// Grown by half a texel on every side. The mask boundary and the region's
+    /// edge are the same line, and a fill-scaled cell puts that line exactly on
+    /// the view's border — sampled there with float arithmetic, a coordinate a
+    /// rounding error outside would flicker black along the cell's edge. Half a
+    /// texel of slack keeps the border pixel; it is the same outward rounding
+    /// the CPU crop performs when it floors and ceils the region to whole
+    /// pixels.
+    ///
+    /// `(0,0,1,1)` — the whole frame — when there is no region, which turns the
+    /// mask off; the viewer's own path always answers that.
+    func sourceRegionUV(imageWidth: Int, imageHeight: Int) -> SIMD4<Float> {
+        guard let region = sourceRegion, imageWidth > 0, imageHeight > 0 else {
+            return SIMD4<Float>(0, 0, 1, 1)
+        }
+        let w = Double(imageWidth), h = Double(imageHeight)
+        let slackU = 0.5 / w, slackV = 0.5 / h
+        return SIMD4<Float>(
+            Float(max(0, region.x / w - slackU)),
+            Float(max(0, region.y / h - slackV)),
+            Float(min(1, (region.x + region.width) / w + slackU)),
+            Float(min(1, (region.y + region.height) / h + slackV)))
     }
 
     public static let identity = DisplayPresentation()
 }
 
 /// The parameter block the display shader reads. Layout must match `DisplayParams`
-/// in the shader (`Metal/FrameRender.metal.txt`).
+/// in the shader (`Metal/FrameRender.metal.txt`) — field order included: the
+/// `float4` sits directly after the matrix on both sides so the two layouts
+/// cannot disagree about padding.
 struct DisplayShaderParams {
     var transform: simd_float4x4
+    /// The film's crop as (minU, minV, maxU, maxV); fragments outside it are
+    /// black. (0,0,1,1) — the whole frame — disables the mask.
+    var sourceRegion: SIMD4<Float>
     var invert: UInt32
     var isGrayscale: UInt32
     var linearFilter: UInt32
@@ -128,11 +173,20 @@ struct DisplayShaderParams {
 extension DisplayPresentation {
     /// Builds the image-quad → normalised-device-coordinates matrix.
     ///
-    /// Order matters and is: aspect-fit, then flip, then zoom, then rotate, then
+    /// Order matters and is: aspect-fit, then zoom, then rotate, then flip, then
     /// pan. Fit first so zoom is relative to the fitted image rather than to the
     /// view; rotate after zoom so the image spins about its own centre; pan last so
     /// dragging moves the picture across the screen rather than through its own
     /// rotated frame — which is what a hand tool is expected to feel like.
+    ///
+    /// Flip goes *after* the rotation, which is what every other path in the
+    /// codebase already does — ``sourceRegionTransform`` below, and
+    /// `FrameRenderer.applying`'s `CGContext`. Folding the mirror into the fit
+    /// scale put it *before* the rotation instead, and the two orders are the
+    /// same picture only while the image is unturned. On a quarter turn they
+    /// differ by a half turn: flip an image rotated 90° and it came back upside
+    /// down rather than mirrored, and the film — composing in the other order —
+    /// disagreed with the screen it was supposed to be showing.
     ///
     /// Returns `nil` for a degenerate viewport. **A zero-sized drawable is the known
     /// hazard here**: this codebase has already shipped a viewer that blanked every
@@ -162,8 +216,10 @@ extension DisplayPresentation {
             fitX = imageAspect / viewAspect   // height-limited: shrink horizontally
         }
 
-        let scaleX = fitX * zoom * (flipHorizontal ? -1 : 1)
-        let scaleY = fitY * zoom * (flipVertical ? -1 : 1)
+        // The mirror is deliberately *not* folded in here — see the note above.
+        // It is applied after the rotation, below.
+        let scaleX = fitX * zoom
+        let scaleY = fitY * zoom
         var matrix = simd_float4x4(diagonal: SIMD4<Float>(Float(scaleX), Float(scaleY), 1, 1))
 
         if rotationDegrees != 0 {
@@ -189,6 +245,14 @@ extension DisplayPresentation {
             let fromSquare = simd_float4x4(diagonal:
                 SIMD4<Float>(Float(1 / viewAspect), 1, 1, 1))
             matrix = fromSquare * rotation * toSquare * matrix
+        }
+
+        // Mirror, after the turn: the flip buttons mirror what is on screen —
+        // left-to-right as the reader sees it — not the image's own stored axes.
+        if flipHorizontal || flipVertical {
+            let flip = simd_float4x4(diagonal: SIMD4<Float>(
+                flipHorizontal ? -1 : 1, flipVertical ? -1 : 1, 1, 1))
+            matrix = flip * matrix
         }
 
         // Pan is in points; NDC spans 2 units across the view, hence the doubling.
@@ -237,9 +301,16 @@ extension DisplayPresentation {
               region.x.isFinite, region.y.isFinite else { return nil }
 
         // The region as it will be *after* turning, which is the shape actually
-        // being fitted — a quarter turn makes a wide crop a tall one, and a free
-        // angle needs the bounding box of the turned rectangle.
-        let (turnedWidth, turnedHeight) = Self.turnedSize(
+        // being fitted — a quarter turn makes a wide crop a tall one.
+        //
+        // Quarter turns only. A free angle turns the picture about its centre at
+        // the scale the region already had, and the corners that swing outside
+        // the cell are cut — the way the viewer turns a picture, and the way the
+        // film's own resampler now composes one. Fitting the turned *bounding
+        // box* instead would keep those corners at the cost of the anatomy's
+        // size: √2 smaller at 45°, and visibly smaller at the small angles used
+        // to straighten a tilted head.
+        let (turnedWidth, turnedHeight) = Self.quarterTurnedSize(
             width: region.width, height: region.height, degrees: rotationDegrees)
 
         // Points per source pixel: the fit the printer performs into its box.
@@ -292,13 +363,46 @@ extension DisplayPresentation {
             matrix = flip * matrix
         }
 
+        // Stretch, last of all: the composed picture — cropped, turned, flipped,
+        // centred — is pulled out to the view's edges on each axis independently,
+        // which is what the film's stretch mode does to a finished cell. Applied
+        // after the rotation so it stretches the *turned* picture to the cell,
+        // as the printer-side composition does; before it, an anisotropic scale
+        // would shear a turned image rather than stretch it.
+        if stretchToFill {
+            let fittedWidth = turnedWidth * scale
+            let fittedHeight = turnedHeight * scale
+            if fittedWidth > 0, fittedHeight > 0 {
+                let stretch = simd_float4x4(diagonal: SIMD4<Float>(
+                    Float(viewWidth / fittedWidth),
+                    Float(viewHeight / fittedHeight), 1, 1))
+                matrix = stretch * matrix
+            }
+        }
+
         return matrix
     }
 
-    /// The box a rectangle occupies once turned by an angle.
+    /// The box a rectangle occupies once turned, counting quarter turns only.
     ///
-    /// Exact at the quarter turns — `cos(90°)` is 6e-17 in binary floating point,
-    /// and a crop that is a pixel out is a crop that disagrees with the film.
+    /// A quarter turn swaps the sides; any other angle leaves the box alone,
+    /// because a freely turned picture keeps its scale and loses its corners
+    /// rather than shrinking to fit its own bounding rectangle. Exact at the
+    /// quarter turns — `cos(90°)` is 6e-17 in binary floating point, and a crop
+    /// that is a pixel out is a crop that disagrees with the film.
+    static func quarterTurnedSize(
+        width: Double, height: Double, degrees: Double
+    ) -> (width: Double, height: Double) {
+        let turns = quarterTurns(fromDegrees: degrees)
+        guard abs(degrees - Double(turns) * 90) <= 1e-6 else { return (width, height) }
+        return turns % 2 == 1 ? (height, width) : (width, height)
+    }
+
+    /// The full bounding box a rectangle occupies once turned by any angle.
+    ///
+    /// Not what the display fits — see ``quarterTurnedSize(width:height:degrees:)``
+    /// — but still the honest answer to "how much room would this need to keep
+    /// every corner", which the film's own geometry asks elsewhere.
     static func turnedSize(
         width: Double, height: Double, degrees: Double
     ) -> (width: Double, height: Double) {

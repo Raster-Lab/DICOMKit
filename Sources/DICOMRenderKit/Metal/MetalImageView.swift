@@ -29,6 +29,29 @@ public final class MetalImageRenderer: NSObject, MTKViewDelegate {
     /// swaps which texture the quad samples.
     public var frame: DisplayFrameTexture?
 
+    /// A reader's drawn text and arrows, composited over `frame`. `nil` draws
+    /// none — the shader still samples a real (1×1, fully transparent) texture
+    /// in that case, see `placeholderAnnotationTexture`, so the fragment
+    /// function never has to branch on whether one was bound.
+    public var annotationOverlay: AnnotationOverlayTexture?
+
+    /// A 1×1 fully transparent texture, bound whenever `annotationOverlay` is
+    /// `nil`. Built once and reused: most frames carry no annotation, and
+    /// there is no reason to allocate a full-resolution transparent texture
+    /// per draw just to say "nothing here".
+    private lazy var placeholderAnnotationTexture: MTLTexture? = {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: 1, height: 1, mipmapped: false)
+        descriptor.usage = [.shaderRead]
+        descriptor.storageMode = .shared
+        guard let texture = device.device.makeTexture(descriptor: descriptor) else { return nil }
+        let zero: [UInt8] = [0, 0, 0, 0]
+        texture.replace(
+            region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0,
+            withBytes: zero, bytesPerRow: 4)
+        return texture
+    }()
+
     /// Tool state. Changing any of it costs one redraw and touches no pixel data.
     public var presentation: DisplayPresentation = .identity
 
@@ -105,6 +128,8 @@ public final class MetalImageRenderer: NSObject, MTKViewDelegate {
 
         var params = DisplayShaderParams(
             transform: transform,
+            sourceRegion: presentation.sourceRegionUV(
+                imageWidth: frame.width, imageHeight: frame.height),
             invert: presentation.invert ? 1 : 0,
             isGrayscale: frame.isGrayscale ? 1 : 0,
             linearFilter: presentation.linearFiltering ? 1 : 0
@@ -114,6 +139,7 @@ public final class MetalImageRenderer: NSObject, MTKViewDelegate {
         encoder.setVertexBytes(&params, length: MemoryLayout<DisplayShaderParams>.stride, index: 0)
         encoder.setFragmentBytes(&params, length: MemoryLayout<DisplayShaderParams>.stride, index: 0)
         encoder.setFragmentTexture(frame.texture, index: 0)
+        encoder.setFragmentTexture(annotationOverlay?.texture ?? placeholderAnnotationTexture, index: 1)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         encoder.endEncoding()
 
@@ -144,10 +170,16 @@ public struct MetalImageView: PlatformViewRepresentable {
 
     private let frame: DisplayFrameTexture?
     private let presentation: DisplayPresentation
+    private let annotationOverlay: AnnotationOverlayTexture?
 
-    public init(frame: DisplayFrameTexture?, presentation: DisplayPresentation) {
+    public init(
+        frame: DisplayFrameTexture?,
+        presentation: DisplayPresentation,
+        annotationOverlay: AnnotationOverlayTexture? = nil
+    ) {
         self.frame = frame
         self.presentation = presentation
+        self.annotationOverlay = annotationOverlay
     }
 
     public final class Coordinator {
@@ -176,6 +208,7 @@ public struct MetalImageView: PlatformViewRepresentable {
         guard let renderer = context.coordinator.renderer else { return }
         renderer.frame = frame
         renderer.presentation = presentation
+        renderer.annotationOverlay = annotationOverlay
         #if os(macOS)
         view.needsDisplay = true
         #else

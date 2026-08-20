@@ -19,10 +19,20 @@ struct WindowLevelPresetTests {
         #expect(preset.modality == "CT")
     }
 
-    @Test("Preset id is the name")
+    @Test("Preset id carries the modality — names repeat across modalities")
     func testPresetId() {
         let preset = WindowLevelPreset(name: "Brain", center: 40, width: 80, modality: "CT")
-        #expect(preset.id == "Brain")
+        #expect(preset.id == "CT/Brain")
+    }
+
+    /// "Bone" is a CT, CR and DX preset; "Standard" belongs to three
+    /// modalities. A menu spanning all presets feeds these ids to `ForEach`,
+    /// and duplicate identities wire rows to the wrong actions.
+    @Test("Every preset in the all-modalities list has a distinct id")
+    func testAllPresetIdsAreUnique() {
+        let ids = WindowLevelPresets.allPresets.map(\.id)
+        #expect(Set(ids).count == ids.count,
+                "duplicate ids: \(Dictionary(grouping: ids) { $0 }.filter { $1.count > 1 }.keys)")
     }
 
     @Test("Presets are equatable")

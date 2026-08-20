@@ -55,9 +55,14 @@ public struct PrintService: Sendable {
     ///
     ///     Per mark rather than per file, because the same file can be marked
     ///     onto two films and each mark is captioned on its own.
-    ///   - drawnAnnotations: The text and arrows a reader drew on each film cell,
-    ///     keyed by mark ID — per mark rather than per file, because two marks can
-    ///     be different frames of the same file and each carries its own drawing.
+    ///   - drawnAnnotations: The text and arrows a reader drew, keyed by mark
+    ///     ID — per mark rather than per file, because the same image can be
+    ///     marked onto two films. Burned into the pixels here, which is the
+    ///     one place they become pixels: on screen they are a separate,
+    ///     editable layer (`PrintSelectionModel/cellAnnotations`), but a film
+    ///     has nothing to carry a layer in, so what is sent has to hold them.
+    ///     Empty leaves the pixels alone — which is what the print sheet
+    ///     passes when the reader has turned burning off.
     ///   - onProgress: Optional per-frame diagnostic line.
     public func prepare(
         items: [PrintSelectionItem],
@@ -70,11 +75,46 @@ public struct PrintService: Sendable {
         onProgress: PrintImagePreparer.ProgressHandler? = nil
     ) async throws -> [PreparedPrintImage] {
         var prepared: [PreparedPrintImage] = []
+
+        // The corner caption is held to the corners of the film *cell*, as the
+        // preview draws it; on the wire the image box is all there is to draw
+        // into. A fitted frame is therefore letterboxed to its cell's shape
+        // before the caption is burned — the picture lands exactly where the
+        // printer's own letterbox would have put it, and the caption falls at
+        // the cell's corners rather than floating against the picture's edge.
+        // Fit scaling only: fill and stretch cover the cell, so there is no
+        // letterbox to cross, and padding a true-size frame would change the
+        // physical size the film was asked to hold.
+        let cellShapes: [FilmCell]
+        if !request.raw, request.scalingMode == .fitToFilm, !annotations.isEmpty {
+            let sheet = FilmSheet(filmSize: request.effectiveFilmSize,
+                                  orientation: request.effectiveFilmOrientation,
+                                  dpi: 25.4)
+            cellShapes = request.plan(forImageCount: items.count).cells(
+                onSheetOfWidth: sheet.widthMillimeters,
+                height: sheet.heightMillimeters)
+        } else {
+            cellShapes = []
+        }
+
         // Files are re-read per mark rather than cached: marks routinely span
         // whole series, and holding every decoded frame would dwarf the film.
-        for item in items {
+        for (itemIndex, item) in items.enumerated() {
             var itemRequest = request
             itemRequest.frameSelection = .single(item.frameIndex + 1)
+            // The cell's own palette, since colour is a per-cell choice like the
+            // window: a film can hold a colourised PET beside a grey CT, and
+            // each cell is prepared with what it was given. The film-wide
+            // default has already been folded into the marks by the sheet, so
+            // there is nothing to resolve here.
+            //
+            // Only when the film is applying viewer presentations at all — with
+            // that switch off the arrangement is deliberately dropped, and
+            // colouring the cell anyway would apply half of a state the rest of
+            // the film is ignoring.
+            if applyViewerPresentation, !request.raw {
+                itemRequest.palette = item.presentation?.palette
+            }
             if request.windowSettings == nil, useViewerWindow, !request.raw,
                let center = item.windowCenter, let width = item.windowWidth, width >= 1 {
                 // A mark carries the viewer's window, which is in stored values:
@@ -113,11 +153,28 @@ public struct PrintService: Sendable {
             // drawing goes on first and the identification caption over it — the
             // caption is the one thing on the film that must stay legible, and an
             // arrow drawn into a corner would otherwise cover it.
+            //
+            // Burning is the *output* path only. On screen — the viewer and the
+            // film preview — the same annotations are a separate layer over the
+            // picture, so they stay editable; see `PrintSelectionModel
+            // .cellAnnotations`. Film and file are where they become pixels,
+            // because a film has no layer to carry them in.
             #if canImport(CoreGraphics)
             if !request.raw, let overlays = drawnAnnotations[item.id], !overlays.isEmpty {
                 arranged = arranged.map { ImageAnnotationBurner.burning(overlays: overlays, into: $0) }
             }
             if !request.raw, let corners = annotations[item.id], !corners.isEmpty {
+                // Cells are consumed in film order, spilling over per film —
+                // the same order the SCU fills image boxes in — so a ROW/COL
+                // layout pads each frame to its *own* cell's shape.
+                if !cellShapes.isEmpty {
+                    let cell = cellShapes[itemIndex % cellShapes.count]
+                    if !cell.isEmpty {
+                        arranged = arranged.map {
+                            $0.padded(toCellAspectRatio: cell.width / cell.height)
+                        }
+                    }
+                }
                 arranged = arranged.map {
                     ImageAnnotationBurner.burning(corners: corners, into: $0, style: annotationStyle)
                 }

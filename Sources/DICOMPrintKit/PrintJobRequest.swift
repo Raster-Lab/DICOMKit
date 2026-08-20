@@ -194,6 +194,21 @@ public struct PrintJobRequest: Sendable, Codable {
 
     /// Grayscale or color print management.
     public var colorMode: DICOMNetwork.PrintColorMode
+
+    /// Keep a colour source's colour even when the job is configured grayscale.
+    ///
+    /// On by default, because losing colour is almost never what was meant.
+    /// A colour ultrasound or a fused PET/CT carries its diagnosis *in* the
+    /// colour — flow direction, uptake — and flattening it to greys throws that
+    /// away silently, while a raw job of the same image keeps it. The mismatch
+    /// is resolved on the wire instead: ``PrintWorkflow/execute`` moves the job
+    /// onto Basic Colour Print Management when the prepared frames turn out to
+    /// carry colour, so the pixels and the SOP class always agree.
+    ///
+    /// Set `false` for the old behaviour — deliberately rendering colour sources
+    /// as greys, which is what a grayscale-only printer or a monochrome film
+    /// stock actually wants.
+    public var preservesSourceColor: Bool = true
     /// Which frames of multi-frame sources to print.
     public var frameSelection: PrintFrameSelection
     /// Send stored pixel values with no rescale / window / inversion applied.
@@ -204,6 +219,18 @@ public struct PrintJobRequest: Sendable, Codable {
     public var windowSpace: PrintWindowSpace
     /// Grayscale output bit depth: 8, 12, or 16.
     public var bitDepth: Int
+    /// A pseudo-colour palette to bake into the prepared pixels.
+    ///
+    /// Set per image by the print sheet, from the cell's own presentation. It
+    /// takes a monochrome frame to 8-bit RGB, since Print Management has no way
+    /// to carry a palette by reference — PS3.3 Table C.13-5 allows only `RGB` in
+    /// a Basic Color Image Sequence. ``bitDepth`` is therefore ignored for a
+    /// coloured frame: the standard fixes colour at 8 bits per sample.
+    ///
+    /// Grey palettes are not set here; they are the absence of colour, and
+    /// leaving this `nil` keeps the frame on the grayscale path with its bit
+    /// depth and density curve intact.
+    public var palette: PseudoColorPalette?
 
     // MARK: Execution
 
@@ -239,11 +266,13 @@ public struct PrintJobRequest: Sendable, Codable {
         annotationDisplayFormatID: String? = nil,
         filmAnnotations: [[DICOMNetwork.PrintAnnotation]] = [],
         colorMode: DICOMNetwork.PrintColorMode = .grayscale,
+        preservesSourceColor: Bool = true,
         frameSelection: PrintFrameSelection = .first,
         raw: Bool = false,
         windowSettings: WindowSettings? = nil,
         windowSpace: PrintWindowSpace = .outputUnits,
         bitDepth: Int = 8,
+        palette: PseudoColorPalette? = nil,
         verifyFirst: Bool = false,
         checkStatus: Bool = false,
         retries: Int = 0,
@@ -271,11 +300,13 @@ public struct PrintJobRequest: Sendable, Codable {
         self.annotationDisplayFormatID = annotationDisplayFormatID
         self.filmAnnotations = filmAnnotations
         self.colorMode = colorMode
+        self.preservesSourceColor = preservesSourceColor
         self.frameSelection = frameSelection
         self.raw = raw
         self.windowSettings = windowSettings
         self.windowSpace = windowSpace
         self.bitDepth = bitDepth
+        self.palette = palette
         self.verifyFirst = verifyFirst
         self.checkStatus = checkStatus
         self.retries = retries

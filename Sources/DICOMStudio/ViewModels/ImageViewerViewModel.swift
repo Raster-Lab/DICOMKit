@@ -8,6 +8,7 @@ import Observation
 import DICOMKit
 import DICOMCore
 import DICOMRenderKit
+import DICOMPrintKit
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -123,13 +124,13 @@ public final class ImageViewerViewModel {
     // MARK: - Window/Level State
 
     /// Current window center value.
-    public var windowCenter: Double = 128.0 { didSet { printMarksFollowScreen() } }
+    public var windowCenter: Double = 128.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools() } }
 
     /// Current window width value.
-    public var windowWidth: Double = 256.0 { didSet { printMarksFollowScreen() } }
+    public var windowWidth: Double = 256.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools() } }
 
     /// Whether grayscale is inverted.
-    public var isInverted: Bool = false { didSet { printMarksFollowScreen() } }
+    public var isInverted: Bool = false { didSet { printMarksFollowScreen(); presentationStateFollowsTools() } }
 
     /// Available window presets for the current modality.
     public var availablePresets: [WindowLevelPreset] = []
@@ -163,25 +164,33 @@ public final class ImageViewerViewModel {
     /// Cine playback frames per second.
     public var playbackFPS: Double = CinePlaybackHelpers.defaultFPS
 
+    /// Whether a multi-frame file starts looping the moment it opens.
+    ///
+    /// On by default: a multi-frame image is a moving picture, and a reader
+    /// opening one is looking for the motion, not for frame 0 held still. The
+    /// preference exists because that is not true of every multi-frame IOD —
+    /// a CT stack is multi-frame too and is read by scrolling, not by playing.
+    public var autoPlayMultiFrame: Bool = true
+
     // MARK: - Zoom / Pan / Rotation
 
     /// Current zoom level (1.0 = 100%).
-    public var zoomLevel: Double = 1.0 { didSet { printMarksFollowScreen() } }
+    public var zoomLevel: Double = 1.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools() } }
 
     /// Pan offset X in points.
-    public var panOffsetX: Double = 0.0 { didSet { printMarksFollowScreen() } }
+    public var panOffsetX: Double = 0.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools() } }
 
     /// Pan offset Y in points.
-    public var panOffsetY: Double = 0.0 { didSet { printMarksFollowScreen() } }
+    public var panOffsetY: Double = 0.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools() } }
 
     /// Rotation angle in degrees.
-    public var rotationAngle: Double = 0.0 { didSet { printMarksFollowScreen() } }
+    public var rotationAngle: Double = 0.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools() } }
 
     /// Whether the image is flipped horizontally.
-    public var isFlippedHorizontal: Bool = false { didSet { printMarksFollowScreen() } }
+    public var isFlippedHorizontal: Bool = false { didSet { printMarksFollowScreen(); presentationStateFollowsTools() } }
 
     /// Whether the image is flipped vertically.
-    public var isFlippedVertical: Bool = false { didSet { printMarksFollowScreen() } }
+    public var isFlippedVertical: Bool = false { didSet { printMarksFollowScreen(); presentationStateFollowsTools() } }
 
     /// Whether the metadata overlay is visible.
     public var showMetadataOverlay: Bool = false
@@ -309,6 +318,50 @@ public final class ImageViewerViewModel {
 
     /// Series the focused tile is showing, for the pane's "Current series" mark.
     public internal(set) var currentSeriesUID: String?
+
+    // MARK: - Saved views (presentation states)
+
+    /// Where saved views are kept. See `ImageViewerViewModel+PresentationStates.swift`.
+    ///
+    /// Nil only when the app-support directory could not be reached, in which
+    /// case the picker stays hidden rather than offering a save that would fail.
+    public internal(set) var presentationStateStore: PresentationStateStore? =
+        try? PresentationStateStore.applicationSupport()
+
+    /// The saved view being shown, or nil for the image as the file describes it.
+    ///
+    /// Names the view rather than holding it: the store is the authority, and a
+    /// label survives the list being reloaded after a save or a delete.
+    public internal(set) var selectedPresentationStateLabel: String?
+
+    /// Set while a saved view is being applied.
+    ///
+    /// The tool paths clear ``selectedPresentationStateLabel`` so a moved tool
+    /// stops claiming to be a saved view; applying one moves those same tools,
+    /// and without this guard would clear its own selection.
+    var applyingPresentationState: Bool = false
+
+    /// Whatever went wrong saving or deleting a view, for the viewer to show.
+    public internal(set) var presentationStateError: String?
+
+    /// Whether the window on screen is one the reader chose.
+    ///
+    /// A window differing from the file's is worth naming a view for; one that
+    /// matches it adds nothing the file does not already say.
+    var hasReaderChosenWindow: Bool {
+        guard let file = dicomFile else { return false }
+        let fileCenter = file.dataSet.decimalStrings(for: .windowCenter)?.first?.value
+        let fileWidth = file.dataSet.decimalStrings(for: .windowWidth)?.first?.value
+        guard let fileCenter, let fileWidth else {
+            // No window in the file: any window on screen was computed or chosen.
+            return true
+        }
+        // Stored-value space, so the comparison is against the same units the
+        // viewer holds. A hair of drift is not a reader's decision.
+        let center = rescaleSlope != 0 ? (windowCenter * rescaleSlope + rescaleIntercept) : windowCenter
+        let width = rescaleSlope != 0 ? (windowWidth * rescaleSlope) : windowWidth
+        return abs(center - fileCenter) > 0.5 || abs(width - fileWidth) > 0.5
+    }
 
     /// Series shown in a tile at some point this session.
     ///
@@ -492,6 +545,28 @@ public final class ImageViewerViewModel {
         return ds.sequence(for: .waveformSequence)?.isEmpty == false
     }
 
+    /// The frame rate the file asks to be played at, if it states one.
+    ///
+    /// Three tags can carry it, and they are read in the order the standard
+    /// prefers: Recommended Display Frame Rate (0008,2144) is the display
+    /// instruction, Cine Rate (0018,0040) is the rate the equipment captured
+    /// at, and Frame Time (0018,1063) gives the interval in milliseconds, which
+    /// inverts to a rate. Returns `nil` when the file states none of them, so
+    /// the caller can keep the reader's own setting rather than reset it.
+    private static func headerFrameRate(in ds: DataSet) -> Double? {
+        func number(_ tag: Tag) -> Double? {
+            guard let raw = ds.string(for: tag)?.trimmingCharacters(in: .whitespaces),
+                  let value = Double(raw), value > 0 else { return nil }
+            return value
+        }
+
+        if let rate = number(.recommendedDisplayFrameRate) { return rate }
+        if let rate = number(.cineRate) { return rate }
+        // Frame Time is a per-frame interval in milliseconds: 33.3 ms → 30 fps.
+        if let milliseconds = number(.frameTime) { return 1000.0 / milliseconds }
+        return nil
+    }
+
     /// Shared implementation for loading parsed DICOM data.
     private func loadDICOMData(_ data: Data, path: String) throws {
         // Clear any prior waveform so a failed/non-waveform load can't leave a stale
@@ -610,7 +685,17 @@ public final class ImageViewerViewModel {
 
         // Reset viewer state
         currentFrameIndex = 0
-        playbackState = .stopped
+        playbackDirection = .forward
+        // What the file says it should be played at, before deciding whether to
+        // play it. A file with no rate keeps whatever the reader last dialled in.
+        if let headerFPS = Self.headerFrameRate(in: ds) {
+            playbackFPS = CinePlaybackHelpers.clampFPS(headerFPS)
+        }
+        // A multi-frame image opens running, so the motion is visible without
+        // the reader having to find the transport bar first. Single-frame files
+        // have nothing to play, and stay stopped.
+        playbackMode = .loop
+        playbackState = (numberOfFrames > 1 && autoPlayMultiFrame) ? .playing : .stopped
         zoomLevel = 1.0
         panOffsetX = 0.0
         panOffsetY = 0.0
@@ -953,9 +1038,22 @@ public final class ImageViewerViewModel {
         renderCurrentFrame()
     }
 
-    /// Auto-adjusts window/level from the DICOM header.
+    /// Auto-adjusts window/level back to the file's own default.
+    ///
+    /// Falls through to the measured window when the header carries no VOI.
+    /// The header is not always there — CTs written by some scanners, and most
+    /// secondary captures, have no Window Center at all — and a reset that
+    /// silently did nothing on those files is what made "Reset View" look
+    /// broken for windowing: the geometry snapped back and the drag the reader
+    /// wanted undone stayed exactly where it was. `applyDefaultWindow` is the
+    /// shared policy that `loadFile` itself opens on, so a reset lands on the
+    /// picture the file first showed rather than on a second-guess.
     public func autoWindowLevel() {
-        if let firstWindow = headerWindowSettings.first {
+        if let file = dicomFile {
+            applyDefaultWindow(for: file, slope: rescaleSlope, intercept: rescaleIntercept)
+            voiLUTFunction = headerWindowSettings.first?.function.rawValue ?? voiLUTFunction
+            renderCurrentFrame()
+        } else if let firstWindow = headerWindowSettings.first {
             applyWindowSettings(firstWindow)
         }
     }
@@ -1092,18 +1190,36 @@ public final class ImageViewerViewModel {
         isFlippedVertical = false
     }
 
-    /// Fits the image to the view.
+    /// Fits the image to the view: the whole picture on screen, re-centred.
+    ///
+    /// Zoom here is *relative to the fitted image*, not a pixel ratio — every
+    /// display path aspect-fits the frame before applying zoom, so 1.0 already
+    /// means "the whole picture, as large as the viewport allows". The GPU path
+    /// does the fit in its transform (see `DisplayPresentation.transform`), and
+    /// the CPU path does it with `.aspectRatio(contentMode: .fit)` ahead of the
+    /// `.scaleEffect`.
+    ///
+    /// This used to assign `GestureHelpers.fitZoom` — a *pixel-space* answer,
+    /// `min(viewW/imageW, viewH/imageH)` — into that fit-relative field, so the
+    /// fit was applied twice and the button shrank the image instead of fitting
+    /// it. A 4096-wide CT in a 900pt viewport landed at 0.22× and all but
+    /// vanished; it only looked right when the image happened to be viewport-
+    /// sized. `fitZoom` is correct in itself and still serves callers working in
+    /// pixel space — it is simply not what this field holds.
+    ///
+    /// The parameters are kept so the call sites need not change and so the
+    /// degenerate-viewport guard below has something to check.
     ///
     /// - Parameters:
     ///   - viewWidth: Available view width.
     ///   - viewHeight: Available view height.
     public func fitToView(viewWidth: Double, viewHeight: Double) {
-        zoomLevel = GestureHelpers.fitZoom(
-            imageWidth: Double(imageColumns),
-            imageHeight: Double(imageRows),
-            viewWidth: viewWidth,
-            viewHeight: viewHeight
-        )
+        // A viewport that has not been laid out yet cannot be fitted to. Leaving
+        // the arrangement alone is the honest answer: resetting zoom against a
+        // zero-sized view would move the picture on the reader's behalf for a
+        // measurement that was never taken.
+        guard viewWidth > 0, viewHeight > 0 else { return }
+        zoomLevel = GestureHelpers.defaultZoom
         panOffsetX = 0.0
         panOffsetY = 0.0
     }

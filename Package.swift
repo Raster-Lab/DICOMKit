@@ -405,6 +405,9 @@ let package = Package(
                 "EncapsulatedPixelDataWriteTests.swift",
                 "WaveformParseRegressionTests.swift",
                 "OutputPathResolverTests.swift",
+                // GSPS writer ⇄ parser round trip: a saved presentation state
+                // the parser cannot read back is not worth storing.
+                "GrayscalePresentationStateBuilderTests.swift",
                 "PerformanceTests/SIMDImageProcessorTests.swift"
             ]
         ),

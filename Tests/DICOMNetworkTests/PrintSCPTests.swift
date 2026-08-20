@@ -658,18 +658,38 @@ final class PrintSCPLoopbackTests: XCTestCase {
         XCTAssertEqual(film.imageBoxes.first?.image, descriptor)
     }
 
+    /// A legal shape (PS3.3 C.11.4) travels as Presentation LUT Shape and the
+    /// SCP reads it back off the film box.
     func testPresentationLUTShapeReachesTheFilm() async throws {
         let (pixels, descriptor) = makeImage(size: 4)
         let result = try await DICOMPrintService.printImages(
             configuration: configuration(),
             images: [pixels],
-            options: PrintOptions(presentationLUTShape: .inverse),
+            options: PrintOptions(presentationLUTShape: .linearOpticalDensity),
             imageDescriptors: [descriptor])
 
         XCTAssertTrue(result.success, result.errorMessage ?? "")
         let films = await handler.films
         let film = try XCTUnwrap(films.first)
-        XCTAssertEqual(film.presentationLUTShape, .inverse)
+        XCTAssertEqual(film.presentationLUTShape, .linearOpticalDensity)
+    }
+
+    /// A rendered inverse is realised in the pixels before transmission, so
+    /// nothing goes into (2050,0020) — C.11.4 has no INVERSE to put there.
+    /// The job must still print, and the film must carry no shape.
+    func testRenderedInverseSendsNoPresentationLUTShape() async throws {
+        let (pixels, descriptor) = makeImage(size: 4)
+        let result = try await DICOMPrintService.printImages(
+            configuration: configuration(),
+            images: [pixels],
+            options: PrintOptions(presentationLUTShape: .inverseRendered),
+            imageDescriptors: [descriptor])
+
+        XCTAssertTrue(result.success, result.errorMessage ?? "")
+        let films = await handler.films
+        let film = try XCTUnwrap(films.first)
+        XCTAssertNil(film.presentationLUTShape,
+                     "INVERSE is not legal on the wire in a print context")
     }
 
     func testAnnotationsReachTheFilm() async throws {

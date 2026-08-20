@@ -237,10 +237,15 @@ public enum PrintOptionCatalog {
     ]
 
     /// Presentation LUT shapes (plus "none", represented by `nil`).
+    ///
+    /// Only Identity and LIN OD are Presentation LUT Shapes on the wire — PS3.3
+    /// C.11.4 enumerates no others. "Inverse (rendered)" is offered because
+    /// users want inverted film, and is realised by inverting the pixels, the
+    /// same answer DCMTK gives with `dcmpsprt --inverse-plut`.
     public static let presentationLUTShapes: [(value: PresentationLUTShape, cliToken: String, label: String)] = [
         (.identity,               "identity", "Identity"),
-        (.inverse,                "inverse",  "Inverse"),
-        (.linearOpticalDensity,   "lin-od",   "Linear optical density")
+        (.linearOpticalDensity,   "lin-od",   "Linear optical density (LIN OD)"),
+        (.inverseRendered,        "inverse",  "Inverse (rendered into pixels)")
     ]
 
     /// Color modes.

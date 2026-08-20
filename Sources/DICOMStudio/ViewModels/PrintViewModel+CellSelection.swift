@@ -74,6 +74,12 @@ extension PrintViewModel {
             // this is the same rule stated for callers that only want the list.
             return isCellSyncActive ? syncPeers(of: itemID) : []
         }
+        // Deliberately *not* bounded to the film: a hand-picked set may span
+        // films where a lock may not. The reader ⌘-clicked these cells one by
+        // one, so the set is a statement they just made by hand and nothing here
+        // may quietly narrow it — the same rule, read the other way, that stops
+        // anything quietly widening it. The automatic paths are the ones that
+        // have to stop at the sheet, and `syncPeers` above is where that happens.
         return selection.items.filter { selectedItemIDs.contains($0.id) && $0.id != itemID }
     }
 
@@ -118,11 +124,31 @@ extension PrintViewModel {
         }
         selectedItemIDs.insert(itemID)
         focusCell(itemID)
+        seedWindowsForSelection()
     }
 
     /// Selects exactly these cells.
     public func selectCells(_ itemIDs: [String]) {
         selectedItemIDs = Set(itemIDs)
+        seedWindowsForSelection()
+    }
+
+    /// Gives every picked cell a concrete window, off the main path.
+    ///
+    /// The same precondition the window lock seeds for when it shuts (see
+    /// ``toggleSyncFromUI(_:)``): a relative window edit needs numbers to start
+    /// from, and a cell marked without ever being opened has none. A hand-picked
+    /// set is the selection's version of a shut lock — without this, a window
+    /// drag across the picked cells moved only the ones that happened to have
+    /// been looked at, and the rest sat still.
+    private func seedWindowsForSelection() {
+        let ids = selection.items.map(\.id).filter { selectedItemIDs.contains($0) }
+        guard !ids.isEmpty else { return }
+        Task {
+            for id in ids {
+                await seedWindowIfNeeded(forItemID: id)
+            }
+        }
     }
 
     /// Drops the selection, handing the film back to the locks.
@@ -138,33 +164,39 @@ extension PrintViewModel {
     /// paper.
     @discardableResult
     public func selectSucceedingCellsOnFilm() -> Int {
+        // Film order and film boundaries come from what the films actually
+        // carry: with an image range narrowing the job, `selection.items` still
+        // holds the filtered-out marks, and slicing films through it selected
+        // cells that are not on the sheet — or stopped short of ones that are.
+        let items = printedItems
         guard let focusedItemID,
-              let index = selection.items.firstIndex(where: { $0.id == focusedItemID })
+              let index = items.firstIndex(where: { $0.id == focusedItemID })
         else { return 0 }
 
         let cellsPerFilm = max(1, plan.cellsPerFilm)
         let film = index / cellsPerFilm
-        let end = min(selection.items.count, (film + 1) * cellsPerFilm)
+        let end = min(items.count, (film + 1) * cellsPerFilm)
         guard index < end else { return 0 }
 
-        selectCells(selection.items[index..<end].map(\.id))
+        selectCells(items[index..<end].map(\.id))
         return end - index
     }
 
     /// Selects every cell on the film the focused cell is on.
     @discardableResult
     public func selectAllCellsOnFilm() -> Int {
+        let items = printedItems
         guard let focusedItemID,
-              let index = selection.items.firstIndex(where: { $0.id == focusedItemID })
+              let index = items.firstIndex(where: { $0.id == focusedItemID })
         else { return 0 }
 
         let cellsPerFilm = max(1, plan.cellsPerFilm)
         let film = index / cellsPerFilm
         let start = film * cellsPerFilm
-        let end = min(selection.items.count, start + cellsPerFilm)
+        let end = min(items.count, start + cellsPerFilm)
         guard start < end else { return 0 }
 
-        selectCells(selection.items[start..<end].map(\.id))
+        selectCells(items[start..<end].map(\.id))
         return end - start
     }
 
@@ -206,6 +238,7 @@ extension PrintViewModel {
 
         clearCellSelection()
         pruneAnnotations()
+        pruneAppliedSavedViews()
         clampImageRange()
         focusCell(survivorID)
         return doomed.count
@@ -233,9 +266,11 @@ extension PrintViewModel {
     }
 
     /// Forgets marks that are no longer on the film — the selection's half of
-    /// ``pruneFocus()``.
+    /// ``pruneFocus()``, judged against the same list: the marks the films
+    /// actually carry. A cell an image range has hidden must not stay picked,
+    /// or the next drag and the next Delete reach cells no sheet is showing.
     public func pruneCellSelection() {
-        let live = Set(selection.items.map(\.id))
+        let live = Set(printedItems.map(\.id))
         selectedItemIDs.formIntersection(live)
     }
 

@@ -111,14 +111,15 @@ struct ScrollWheelHandler: NSViewRepresentable {
 #if os(macOS)
 /// Sets the pointer's shape over the view it is placed behind.
 ///
-/// Via a tracking area and `cursorUpdate` rather than SwiftUI's `.onHover` with
+/// Via the window's cursor rects rather than SwiftUI's `.onHover` with
 /// `NSCursor.push()`/`.pop()`. A push/pop pair is a stack, and hover callbacks
 /// do not arrive in balanced pairs: move the mouse quickly between two cells and
 /// the second cell's enter can land before the first cell's exit, so the pops
 /// come out of order and the pointer is left as a magnifier over the whole
-/// window until something else happens to reset it. `cursorUpdate` has no stack
-/// — AppKit asks the view under the pointer what shape it wants, every time it
-/// crosses a boundary, and a view that is gone is simply not asked.
+/// window until something else happens to reset it. A cursor rect has no stack
+/// — the window resolves the shape from the rects its views have registered,
+/// every time the pointer crosses one, and a view that is gone is simply no
+/// longer registered. Leaving a rect resets to the arrow by itself.
 struct ToolCursor: NSViewRepresentable {
     let cursor: NSCursor?
 
@@ -147,12 +148,15 @@ struct ToolCursor: NSViewRepresentable {
         var cursor: NSCursor? {
             didSet {
                 guard cursor !== oldValue else { return }
+                // The rect the window holds for this view still names the old
+                // shape; ask it to rebuild from `resetCursorRects`.
+                window?.invalidateCursorRects(for: self)
                 // The pointer may already be inside: the tool was changed from
                 // the rail or by its keyboard shortcut, under a mouse that has
-                // not moved. AppKit only asks at a boundary crossing, so
-                // without this the new shape waits for one — and the reader,
-                // who has just armed a tool and is about to drag, is looking at
-                // the previous tool's pointer.
+                // not moved. The window only re-resolves its rects at a
+                // boundary crossing, so without this the new shape waits for
+                // one — and the reader, who has just armed a tool and is about
+                // to drag, is looking at the previous tool's pointer.
                 if isPointerInside { (cursor ?? .arrow).set() }
             }
         }
@@ -163,17 +167,68 @@ struct ToolCursor: NSViewRepresentable {
             return bounds.contains(point)
         }
 
+        /// Cursor rects, not a `.cursorUpdate` tracking area.
+        ///
+        /// The two mechanisms differ in who is asked. A tracking area's
+        /// `cursorUpdate` event is dispatched by the window to the view that
+        /// *hit-tests* under the pointer — and this view refuses hit testing
+        /// on purpose, so the event sailed past it to the image behind, which
+        /// answered with the arrow. The shape then only ever changed through
+        /// `didSet`, when a tool was switched under a stationary mouse; move
+        /// the pointer onto a film cell and it stayed an arrow. A cursor rect
+        /// is the window's own bookkeeping: it resolves the shape from the
+        /// rects each view has registered, no hit testing involved, so a view
+        /// that is invisible to clicks can still own the pointer over it.
+        override func resetCursorRects() {
+            if let cursor { addCursorRect(bounds, cursor: cursor) }
+        }
+
+        /// Enter events *are* owner-dispatched, so this backstops the rect for
+        /// the crossing that established it — the rect alone can lose the race
+        /// when the pointer enters at speed and the window resolves before the
+        /// rect is registered.
+        override func mouseEntered(with event: NSEvent) {
+            cursor?.set()
+        }
+
+        /// Hands the pointer back on the way out.
+        ///
+        /// `NSCursor.set()` is global, not scoped to this view: whatever was set
+        /// last is the shape the whole application draws until something sets
+        /// another. Cursor rects undo themselves at a boundary crossing *within
+        /// the window that owns them*, so leaving the image for a different
+        /// window — the print sheet, a panel — left the tool's pointer armed
+        /// over it, and a reader who had picked Rotate went to click Print with
+        /// the rotate cursor still under their hand. Restoring the arrow here is
+        /// the exit half of `mouseEntered`, and it costs nothing when the
+        /// pointer merely moves to another cursor rect: that rect sets its own
+        /// shape immediately afterwards.
+        override func mouseExited(with event: NSEvent) {
+            NSCursor.arrow.set()
+        }
+
+        /// The tracking area is deliberately not `.activeInKeyWindow`.
+        ///
+        /// Exit events have to arrive even as the window stops being key —
+        /// which is exactly what happens when the pointer leaves for the print
+        /// sheet. Scoped to the key window, AppKit stops delivering at the
+        /// moment key changes hands, the exit never lands, and the tool cursor
+        /// is left behind on the window the reader just moved to.
         override func updateTrackingAreas() {
             super.updateTrackingAreas()
             trackingAreas.forEach(removeTrackingArea)
             addTrackingArea(NSTrackingArea(
                 rect: bounds,
-                options: [.activeInKeyWindow, .inVisibleRect, .cursorUpdate, .mouseEnteredAndExited],
+                options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited],
                 owner: self))
         }
 
-        override func cursorUpdate(with event: NSEvent) {
-            if let cursor { cursor.set() } else { super.cursorUpdate(with: event) }
+        /// A view being torn down cannot be asked to restore anything later, so
+        /// a pointer still standing on it gives the arrow back now. Closing the
+        /// viewer with a tool armed otherwise left its shape behind everywhere.
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window == nil { NSCursor.arrow.set() }
         }
     }
 }

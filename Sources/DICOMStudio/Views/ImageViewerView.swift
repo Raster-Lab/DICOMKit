@@ -39,6 +39,13 @@ public struct ImageViewerView: View {
     /// Where the pointer is over the image area, or `nil` when it has left.
     @State private var hoverPoint: CGPoint?
 
+    #if canImport(Metal)
+    /// Memoizes the GPU annotation overlay, rebuilt only on an actual edit —
+    /// not on every pan/zoom-driven body re-evaluation. Outside `@Observable`
+    /// on purpose: see ``annotationOverlayTexture``.
+    @State private var annotationTextureCache = AnnotationOverlayTextureCache()
+    #endif
+
     /// The click-and-drag tool currently armed. Pan is the resting state.
     ///
     /// The tools are mutually exclusive: picking one arms it and disarms the
@@ -46,9 +53,11 @@ public struct ImageViewerView: View {
     /// tool's own button or key again drops back to pan, as does escape.
     @State private var activeTool: ImageViewerDragTool = .pan
 
-    /// True while a pan drag is actually in progress, so the pointer can show
-    /// the closed hand for exactly as long as the image is being carried.
-    @State private var isPanDragging = false
+    /// True while the armed tool's drag is actually in progress, so the pointer
+    /// can confirm the gesture for exactly as long as it is running: the closed
+    /// hand while the image is carried, and the tool's own glyph — filled in
+    /// rather than outlined — while it is being windowed, zoomed or turned.
+    @State private var isToolDragging = false
 
     /// Turns scroll events into whole image steps — one per wheel notch.
     @State private var scrollSteps = ScrollStepAccumulator()
@@ -268,14 +277,36 @@ public struct ImageViewerView: View {
                         Button("Fit to View") {
                             viewModel.fitToView(viewWidth: viewSize.width, viewHeight: viewSize.height)
                         }
+                        // The full reset, the same one the toolbar's "Reset to
+                        // original image" and ⌘R run. `resetTransformations()`
+                        // undoes geometry only, so this menu item left the
+                        // window/level drag and the inversion in place — the two
+                        // things a reader most often wants a reset *for*.
                         Button("Reset View") {
-                            viewModel.resetTransformations()
+                            viewModel.resetView()
                         }
                         Divider()
                         Button("Rotate Clockwise") { viewModel.rotateClockwise() }
                         Button("Rotate Counter-Clockwise") { viewModel.rotateCounterClockwise() }
                         Button("Flip Horizontal") { viewModel.flipHorizontal() }
                         Button("Flip Vertical") { viewModel.flipVertical() }
+                        // Saved views, when the study has any for this image.
+                        // The default view is always offered: a reader must
+                        // never be unable to get back to the file's own picture.
+                        if !viewModel.savedViewsForCurrentImage.isEmpty {
+                            Divider()
+                            Button(ImageViewerViewModel.defaultViewLabel) {
+                                viewModel.applyDefaultView()
+                            }
+                            .disabled(viewModel.selectedPresentationStateLabel == nil)
+                            ForEach(viewModel.savedViewsForCurrentImage) { saved in
+                                Button(saved.label) {
+                                    viewModel.applySavedView(saved)
+                                }
+                                .disabled(
+                                    viewModel.selectedPresentationStateLabel == saved.label)
+                            }
+                        }
                         Divider()
                         Button(viewModel.showImageAnnotations
                                ? "Hide Image Annotations" : "Show Image Annotations") {
@@ -524,13 +555,41 @@ public struct ImageViewerView: View {
     /// Brings the print state in line with the viewer, just before the print
     /// screen reads it. Idempotent: the request can arrive more than once.
     private func preparePrintScreen() {
-        // The screen is about to read the marks, so bring them up to date with
-        // what is actually on screen — the user has usually kept arranging since
-        // ticking the boxes.
-        viewModel.refreshMarksFromViewer()
+        if printViewModel == nil {
+            printViewModel = PrintViewModel(selection: viewModel.printSelection)
+        } else {
+            // Printers may have been added since it was last open.
+            printViewModel?.loadPrinters()
+        }
 
         // Film order follows the grid, so the preview reads like the screen.
+        // Ordering only — it moves marks, it does not re-window them.
         viewModel.syncPrintOrderToViewer()
+
+        // Marks are brought up to date with the screen *before* the sheet is
+        // reset, because the reset reads them: a mark still carrying the window
+        // it was ticked with, rather than the one the reader has since dragged
+        // to, is what "Match the viewer's window/level" would have matched.
+        // Only the fields the switches ask for survive the reset (see
+        // `resetCellToolsForNewFilm`), so this is safe when both are off — the
+        // film still opens on the plain images.
+        if printViewModel?.useViewerWindow == true
+            || printViewModel?.useViewerPresentation == true {
+            viewModel.refreshMarksFromViewer()
+        }
+
+        // Where the study's saved views are read from. Handed over before the
+        // reset so the fresh sheet can adopt them; the viewer owns the store,
+        // and the marks carry no study of their own to look them up by.
+        printViewModel?.presentationStateStore = viewModel.presentationStateStore
+        printViewModel?.presentationStateStudyUID = viewModel.studyInstanceUID
+
+        // The film is put back to a fresh sheet *last*, after the marks have
+        // been ordered and re-synced. Order matters: the reset is what puts a
+        // cell back to the untouched frame, so anything that writes the
+        // viewer's own window and arrangement into the marks has to happen
+        // before it, not after.
+        printViewModel?.resetForNewFilm()
 
         // Captured before the sheet exists, while the key window is still the
         // viewer's: the sheet opens at the size of the screen it came from. The
@@ -538,19 +597,6 @@ public struct ImageViewerView: View {
         #if canImport(AppKit)
         parentWindowSize = NSApplication.shared.keyWindow?.frame.size
         #endif
-
-        if printViewModel == nil {
-            printViewModel = PrintViewModel(selection: viewModel.printSelection)
-        } else {
-            // The screen is kept alive so reopening it is instant, but the film
-            // it is holding describes the last set of marks. Opening it again is
-            // opening it on what is ticked *now* — so the range, the drawn
-            // annotations and the picked cells go, while the printer and the
-            // film settings stay.
-            printViewModel?.resetForNewFilm()
-            // Printers may have been added since it was last open.
-            printViewModel?.loadPrinters()
-        }
 
         // Mirror the viewer's grid on film, so the preview matches the screen.
         if viewModel.isMultiCellLayout {
@@ -603,6 +649,41 @@ public struct ImageViewerView: View {
         presentation.panY += dragOffset.height
         return presentation
     }
+
+    /// This image's identity in the annotation store — `nil` when nothing is
+    /// loaded, matching every other "no file" branch in this view.
+    private var currentAnnotationKey: ImageAnnotationKey? {
+        guard let filePath = viewModel.filePath else { return nil }
+        return ImageAnnotationKey(filePath: filePath, frameIndex: viewModel.currentFrameIndex)
+    }
+
+    /// The text and arrows drawn on this image, wherever they were drawn —
+    /// the print tray or this viewer. Reachable without the print tray ever
+    /// having been opened: `printSelection` is eagerly constructed, not
+    /// lazy like the print sheet itself.
+    private var currentAnnotations: [PrintOverlayAnnotation] {
+        guard let key = currentAnnotationKey else { return [] }
+        return viewModel.printSelection.cellAnnotations[key] ?? []
+    }
+
+    /// The annotation texture for the frame on screen, rebuilt only when its
+    /// image identity or its annotations actually changed.
+    ///
+    /// A plain computed property here would rebuild the texture on every
+    /// evaluation of `imageContent`'s body — including the ones a pan or
+    /// zoom drag triggers by changing `livePresentation`, which reads
+    /// nothing about annotations. `annotationTextureCache` is a bare
+    /// reference type outside Observation, so reading and writing it here
+    /// does not itself trigger a re-render; only an edit that changes
+    /// `currentAnnotations` produces a different cache key and a rebuild.
+    private var annotationOverlayTexture: AnnotationOverlayTexture? {
+        guard let key = currentAnnotationKey,
+              let texture = metalDisplayFrame,
+              let device = MetalRenderDevice.shared?.device else { return nil }
+        return annotationTextureCache.texture(
+            for: key, overlays: currentAnnotations,
+            width: texture.width, height: texture.height, device: device)
+    }
     #else
     private var metalDisplayFrame: Never? { nil }
     private var livePresentation: Int { 0 }
@@ -628,7 +709,8 @@ public struct ImageViewerView: View {
             // and inversion are in the shader's transform, so none of the modifiers
             // below this branch apply — and none of them re-render anything. A tool
             // action costs one redraw of a textured quad.
-            MetalImageView(frame: texture, presentation: livePresentation)
+            MetalImageView(frame: texture, presentation: livePresentation,
+                           annotationOverlay: annotationOverlayTexture)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(toolSpaceReader)
                 .gesture(panGesture)
@@ -659,6 +741,11 @@ public struct ImageViewerView: View {
                         x: viewModel.panOffsetX + dragOffset.width,
                         y: viewModel.panOffsetY + dragOffset.height
                     )
+                    // Mirror outside the rotation, so the flip acts on what is on
+                    // screen rather than on the image's own axes. SwiftUI applies
+                    // modifiers inside-out, so the `scaleEffect` written after the
+                    // `rotationEffect` is the one that happens last — matching the
+                    // GPU transform, the film, and `FrameRenderer.applying`.
                     .rotationEffect(.degrees(viewModel.rotationAngle))
                     .scaleEffect(
                         x: viewModel.isFlippedHorizontal ? -1 : 1,
@@ -728,6 +815,11 @@ public struct ImageViewerView: View {
     private var panGesture: some Gesture {
         DragGesture()
             .onChanged { value in
+                // Every tool records that its drag is live, not just pan: the
+                // pointer changes on mouse-down to confirm the gesture took, and
+                // a tool whose drag was never marked would go on showing its
+                // resting shape all the way through the action.
+                isToolDragging = true
                 switch activeTool {
                 case .windowing:
                     let dx = Double(value.translation.width - wlDragStart.width)
@@ -742,11 +834,11 @@ public struct ImageViewerView: View {
                 case .rotate:
                     rotateByDrag(to: value.location)
                 case .pan:
-                    isPanDragging = true
                     dragOffset = value.translation
                 }
             }
             .onEnded { value in
+                isToolDragging = false
                 switch activeTool {
                 case .windowing:
                     wlDragStart = .zero
@@ -759,7 +851,6 @@ public struct ImageViewerView: View {
                     viewModel.panOffsetX += value.translation.width
                     viewModel.panOffsetY += value.translation.height
                     dragOffset = .zero
-                    isPanDragging = false
                 }
             }
     }
@@ -794,10 +885,17 @@ public struct ImageViewerView: View {
         // The closed hand for as long as the image is being carried, the tool's
         // own shape the rest of the time — the same before/during distinction
         // the film preview makes.
+        //
+        // No `.allowsHitTesting(false)` here, deliberately. SwiftUI's exclusion
+        // can detach the view from the window's tracking altogether, and the
+        // pointer then never changes at all. `ToolCursor`'s own view already
+        // overrides `hitTest` to return nil, which refuses the clicks and drags
+        // without giving up its cursor rect, so the gestures underneath still
+        // get every event. The film preview does the same thing for the same
+        // reason.
         ToolCursor(cursor: viewModel.hasImage
-                   ? (isPanDragging ? NSCursor.closedHand : activeTool.cursor)
+                   ? activeTool.cursor(isDragging: isToolDragging)
                    : nil)
-            .allowsHitTesting(false)
         #else
         Color.clear
         #endif
@@ -971,6 +1069,35 @@ public struct ImageViewerView: View {
                     .accessibilityLabel("Next file in series")
                     .help("Next file in series (↓)")
                 }
+            }
+        }
+
+        // Cine transport for a multi-frame image, which opens already looping.
+        // The overlay bar at the bottom of the picture carries the full set of
+        // controls; this is the stop/start alone, kept in the toolbar so the
+        // reader can halt the motion without first going hunting for that bar.
+        if viewModel.isMultiFrame && viewModel.hasImage && !viewModel.isWaveform {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    viewModel.togglePlayback()
+                } label: {
+                    Image(systemName: viewModel.playbackState == .playing
+                          ? "pause.fill" : "play.fill")
+                }
+                .accessibilityLabel(viewModel.playbackState == .playing
+                                    ? "Stop cine playback" : "Start cine playback")
+                .help(viewModel.playbackState == .playing
+                      ? "Stop the loop (Space) — the frame on screen stays put"
+                      : "Loop the frames (Space)")
+            }
+        }
+
+        // Saved views — the default view and whatever the reader has stored for
+        // the image on screen. Placed beside the series controls because it is
+        // navigation of a kind: which of several readings of this image to show.
+        if viewModel.dicomFile != nil {
+            ToolbarItem(placement: .automatic) {
+                SavedViewPickerView(viewModel: viewModel)
             }
         }
 
@@ -1233,7 +1360,12 @@ enum ImageViewerDragTool: String, CaseIterable, Identifiable {
     var symbolName: String {
         switch self {
         case .pan:       return "hand.draw"
-        case .windowing: return "circle.lefthalf.filled"
+        // The brightness sun, not the half-filled circle: the circle is the
+        // Invert button's glyph mirrored, and two near-identical shapes in one
+        // toolbar made it hard to scan. Brightness is the thing a windowing
+        // drag visibly changes, and the sun is the icon every platform already
+        // uses for it.
+        case .windowing: return "sun.max"
         case .zoom:      return "magnifyingglass"
         // A closed circle of arrows, not a quarter-turn glyph: this tool turns
         // the picture the whole way round, either way, and a "90°" icon
@@ -1266,7 +1398,11 @@ enum ImageViewerDragTool: String, CaseIterable, Identifiable {
             return "Drag across for window width, up and down for level — "
                  + "left/right widens or narrows the greys, up/down brightens or darkens."
         case .zoom:
-            return "Drag up to enlarge, down to shrink. Pinch or scroll-with-⌘ does the same."
+            // Pinch only. The wheel is not a zoom gesture here: `ScrollWheelHandler`
+            // reports no modifier flags and the viewer pages images on every scroll,
+            // ⌘ held or not — so promising ⌘-scroll sent a reader to a key that
+            // silently walks the stack instead, which is worse than not mentioning it.
+            return "Drag up to enlarge, down to shrink. Pinch to zoom does the same."
         case .rotate:
             return "Drag around the centre of the picture and it follows the pointer, "
                  + "either way, through the full circle."
@@ -1286,20 +1422,54 @@ enum ImageViewerDragTool: String, CaseIterable, Identifiable {
     /// is a drag that has already windowed an image you meant to pan. The
     /// pointer is the one part of the screen guaranteed to be where the reader
     /// is looking when the drag starts, which is what makes it worth changing.
-    var cursor: NSCursor {
+    /// Windowing, zoom and rotate draw their own toolbar glyph — read from
+    /// ``symbolName``, so the pointer and the button cannot describe different
+    /// tools. That is what the generic shapes could not do: the crosshair stood
+    /// for windowing *and* rotate, so the pointer said "some tool" and left the
+    /// reader to remember which.
+    ///
+    /// Pan keeps the system hand. It is the one tool the platform already has a
+    /// universally-read pointer for, and the open/closed hand pair says something
+    /// the icon cannot — whether the image is being carried right now.
+    /// - Parameter isDragging: whether the tool's drag is running right now. The
+    ///   pointer confirming mouse-down is what tells the reader the gesture took
+    ///   — on a windowing drag the greys move visibly, but a rotate drag inside
+    ///   its dead zone changes nothing at all, and a drag that has not started is
+    ///   indistinguishable from one that has until something moves.
+    @MainActor
+    func cursor(isDragging: Bool = false) -> NSCursor {
         switch self {
         case .pan:
-            // The open hand, not the closed one: closed says "you are dragging
-            // now", and this is the shape shown before the drag begins.
-            return .openHand
-        case .windowing:
-            // No system cursor means "windowing", so this borrows the one the
-            // gesture actually is — the drag runs in both axes.
-            return .crosshair
-        case .zoom:
-            return .zoomIn
-        case .rotate:
-            return .crosshair
+            // The system pair: open before the drag, closed while the image is
+            // actually being carried.
+            return isDragging ? .closedHand : .openHand
+        case .windowing, .zoom, .rotate:
+            return ToolSymbolCursor.cursor(
+                symbolName: isDragging ? activeSymbolName : symbolName,
+                fallback: fallbackCursor)
+        }
+    }
+
+    /// The glyph shown while the drag runs — the filled counterpart of the
+    /// resting icon, so the pointer visibly commits without becoming a different
+    /// picture. Tools whose symbol has no filled form keep the one they have.
+    private var activeSymbolName: String {
+        switch self {
+        case .pan:       return symbolName
+        case .windowing: return "sun.max.fill"
+        case .zoom:      return "magnifyingglass.circle.fill"
+        case .rotate:    return "arrow.triangle.2.circlepath.circle.fill"
+        }
+    }
+
+    /// The shape used if the symbol will not render — never seen in practice, but
+    /// a pointer that failed to draw would be a pointer that is not there.
+    private var fallbackCursor: NSCursor {
+        switch self {
+        case .pan:       return .openHand
+        case .zoom:      return .zoomIn
+        case .windowing: return .crosshair
+        case .rotate:    return .crosshair
         }
     }
     #endif
@@ -1407,13 +1577,13 @@ private struct PrintSheetHost: View {
             if printViewModel == nil {
                 printViewModel = PrintViewModel(selection: selection)
             } else {
-                // A different set of marks than the one the held film was built
-                // from — the range, the drawn annotations and the picked cells
-                // all describe images that are no longer on it.
+                // The held film was composed on a previous visit: the range and
+                // the picked cells describe that sheet, and the cells wear its
+                // tool work. A launch opens on the marked images plainly.
                 printViewModel?.selection = selection
-                printViewModel?.resetForNewFilm()
                 printViewModel?.loadPrinters()
             }
+            printViewModel?.resetForNewFilm()
         }
     }
 }

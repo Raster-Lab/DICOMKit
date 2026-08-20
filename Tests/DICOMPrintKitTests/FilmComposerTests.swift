@@ -202,7 +202,7 @@ final class FilmComposerTests: XCTestCase {
         let identity = try composer.compose(
             film(image: image(value: 255), presentationLUTShape: .identity))
         let inverse = try composer.compose(
-            film(image: image(value: 255), presentationLUTShape: .inverse))
+            film(image: image(value: 255), presentationLUTShape: .inverseRendered))
         XCTAssertGreaterThan(sample(identity, atFractionX: 0.5, y: 0.5), 200)
         XCTAssertLessThan(sample(inverse, atFractionX: 0.5, y: 0.5), 55)
     }
@@ -465,13 +465,13 @@ final class FilmComposerTests: XCTestCase {
     func testComposedInfoCarriesTheFilmAttributes() throws {
         let composed = try composer.compose(film(
             format: "STANDARD\\2,2", filmSize: .a4, trim: .yes,
-            presentationLUTShape: .inverse,
+            presentationLUTShape: .inverseRendered,
             annotations: [PrintAnnotation(position: 1, text: "DOE^JANE")]))
 
         XCTAssertEqual(composed.info.filmSize, "A4")
         XCTAssertEqual(composed.info.imageDisplayFormat, "STANDARD\\2,2")
         XCTAssertEqual(composed.info.trim, "YES")
-        XCTAssertEqual(composed.info.presentationLUTShape, "INVERSE")
+        XCTAssertEqual(composed.info.presentationLUTShape, "INVERSE_RENDERED")
         XCTAssertEqual(composed.info.annotations, ["1: DOE^JANE"])
         XCTAssertEqual(composed.info.callingAETitle, "TEST_SCU")
         XCTAssertEqual(composed.info.densityMapping, .paperDirect)

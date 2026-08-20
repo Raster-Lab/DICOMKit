@@ -71,7 +71,14 @@ struct FilmCellAnnotationLayer: View {
     @ViewBuilder
     private func textAnnotation(_ annotation: PrintOverlayAnnotation) -> some View {
         let isSelected = viewModel.selectedAnnotationID == annotation.id
-        let fontSize = max(Self.minimumPreviewFontSize, imageRect.height * annotation.scale)
+        // The burner's fraction of the picture's height, then this screen's own
+        // floor. The fraction is shared so the preview and the film set the
+        // words at one size; the floors are not, and legitimately so — the
+        // burner's is in the pixels of the frame, this one in points on screen.
+        let fontSize = max(Self.minimumPreviewFontSize,
+                           CGFloat(ImageAnnotationBurner.overlayFontSize(
+                            imageHeight: Double(imageRect.height),
+                            scale: annotation.scale)))
         let position = point(annotation.start)
         // A just-placed annotation is empty, and empty text exists only to be
         // typed into — so it opens straight into the editor without a second
@@ -82,11 +89,11 @@ struct FilmCellAnnotationLayer: View {
             textEditor(annotation, fontSize: fontSize)
                 .offset(x: position.x, y: position.y)
         } else {
-            // Helvetica Bold, because that is the face burned into the pixels
-            // — a preview in the system font would set to a different width
-            // and break differently from the film.
+            // The burner's own face, named by it rather than spelled again here
+            // — a preview in the system font would set to a different width and
+            // break differently from the film.
             Text(annotation.text)
-                .font(.custom("Helvetica-Bold", size: fontSize))
+                .font(.custom(ImageAnnotationBurner.overlayFontFamily, size: fontSize))
                 .foregroundStyle(color(annotation.color))
                 .shadow(color: halo(annotation.color), radius: max(1, fontSize * 0.08))
                 .padding(2)
@@ -119,7 +126,7 @@ struct FilmCellAnnotationLayer: View {
     /// ring: it is not on the film, only the words are.
     private func textEditor(_ annotation: PrintOverlayAnnotation, fontSize: CGFloat) -> some View {
         let editingFontSize = max(fontSize, Self.minimumEditingFontSize)
-        let font = Font.custom("Helvetica-Bold", size: editingFontSize)
+        let font = Font.custom(ImageAnnotationBurner.overlayFontFamily, size: editingFontSize)
 
         return TextField("Type here", text: textBinding(annotation), axis: .vertical)
             .textFieldStyle(.plain)

@@ -40,6 +40,13 @@ public final class PrintImageNumberCache {
     /// it for free.
     private var descriptions: [String: String] = [:]
 
+    /// Modality (0008,0060) by file path, picked up in the same header read.
+    ///
+    /// What lets the preset menu offer a CT's presets for a CT cell rather
+    /// than every modality's. Like the description, it sits before Instance
+    /// Number in tag order, so the parse already passes it.
+    private var modalities: [String: String] = [:]
+
     /// Files read that turned out to carry no Instance Number, so they are not
     /// read again on every look.
     private var unnumbered: Set<String> = []
@@ -58,6 +65,10 @@ public final class PrintImageNumberCache {
     /// The Series Description read from a file, or `nil` if it has none or has
     /// not been read.
     public func seriesDescription(forPath path: String) -> String? { descriptions[path] }
+
+    /// The Modality read from a file, uppercased, or `nil` if it has none or
+    /// has not been read.
+    public func modality(forPath path: String) -> String? { modalities[path] }
 
     /// Whether every one of these files has been looked at.
     public func hasNumbers(for paths: [String]) -> Bool {
@@ -81,19 +92,20 @@ public final class PrintImageNumberCache {
             isLoading = !inFlight.isEmpty
         }
 
-        let found = await withTaskGroup(of: (String, Int?, String?).self) { group in
+        let found = await withTaskGroup(of: (String, Int?, String?, String?).self) { group in
             for path in wanted {
                 group.addTask(priority: .userInitiated) {
                     let header = Self.readHeader(atPath: path)
-                    return (path, header.instanceNumber, header.seriesDescription)
+                    return (path, header.instanceNumber, header.seriesDescription,
+                            header.modality)
                 }
             }
-            var result: [(String, Int?, String?)] = []
+            var result: [(String, Int?, String?, String?)] = []
             for await entry in group { result.append(entry) }
             return result
         }
 
-        for (path, number, description) in found {
+        for (path, number, description, modality) in found {
             if let number {
                 numbers[path] = number
             } else {
@@ -102,6 +114,9 @@ public final class PrintImageNumberCache {
             if let description {
                 descriptions[path] = description
             }
+            if let modality {
+                modalities[path] = modality
+            }
         }
     }
 
@@ -109,28 +124,33 @@ public final class PrintImageNumberCache {
     public func clear() {
         numbers.removeAll()
         descriptions.removeAll()
+        modalities.removeAll()
         unnumbered.removeAll()
         inFlight.removeAll()
         isLoading = false
     }
 
-    /// Reads Instance Number (0020,0013) — and the Series Description the parse
-    /// passes on the way — out of one file, and nothing else.
+    /// Reads Instance Number (0020,0013) — and the Series Description and
+    /// Modality the parse passes on the way — out of one file, and nothing else.
     private nonisolated static func readHeader(
         atPath path: String
-    ) -> (instanceNumber: Int?, seriesDescription: String?) {
-        guard let data = FileManager.default.contents(atPath: path) else { return (nil, nil) }
+    ) -> (instanceNumber: Int?, seriesDescription: String?, modality: String?) {
+        guard let data = FileManager.default.contents(atPath: path) else { return (nil, nil, nil) }
         // Stops at the tag itself: Instance Number sits in the general image
         // module, well before the pixels, so this reads a header rather than a
         // file. `force` because a mark can point at a file with no preamble.
         let options = ParsingOptions(mode: .metadataOnly, stopAfterTag: .instanceNumber)
         guard let file = try? DICOMFile.read(from: data, force: true, options: options) else {
-            return (nil, nil)
+            return (nil, nil, nil)
         }
         let number = file.dataSet.string(for: .instanceNumber)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let description = file.dataSet.string(for: .seriesDescription)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (number.flatMap(Int.init), description?.isEmpty == false ? description : nil)
+        let modality = file.dataSet.string(for: Tag(group: 0x0008, element: 0x0060))?
+            .trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return (number.flatMap(Int.init),
+                description?.isEmpty == false ? description : nil,
+                modality?.isEmpty == false ? modality : nil)
     }
 }

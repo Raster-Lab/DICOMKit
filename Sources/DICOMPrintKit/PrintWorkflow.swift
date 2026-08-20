@@ -141,6 +141,24 @@ public enum PrintWorkflow {
     ) async throws -> PrintResult {
         let payloads = images.pixelPayloads
         let descriptors = images.imageDescriptors
+
+        // The colour mode has to match the pixels, not the intention.
+        //
+        // Two ways they drift apart. A raw job copies the source descriptor
+        // verbatim (`PrintImagePreparer`), so an RGB ultrasound keeps Samples
+        // per Pixel 3 while the request still says GRAYSCALE — and a Basic
+        // Grayscale Image Box accepts only 1, so the printer rejects the job
+        // outright (0x0106, "Samples per Pixel must be 1"). The other way round,
+        // a colour-mode job whose frames all came back monochrome would open a
+        // Basic Colour association to send greys.
+        //
+        // Whichever it is, the pixels are already made and the SOP class is not,
+        // so the SOP class is what gives way. Said out loud rather than silently:
+        // a film that comes out grey when colour was asked for is something the
+        // reader has to know about.
+        let configuration = Self.reconcilingColorMode(
+            configuration, with: descriptors, diagnostics: diagnostics)
+
         var options = request.printOptions
         // FR-003: fill and true size travel as per-image-box attributes.
         let boxOptions = request.imageBoxOptions(for: images)
@@ -195,6 +213,49 @@ public enum PrintWorkflow {
             }
         }
         throw lastError ?? PrintRequestError("Print failed")
+    }
+
+    // MARK: Colour reconciliation
+
+    /// The configuration to actually print with, given the pixels that were
+    /// prepared.
+    ///
+    /// Basic Grayscale and Basic Colour are different SOP classes with different
+    /// Image Box rules: grayscale accepts Samples per Pixel 1 only, colour
+    /// accepts 1 or 3 (PS3.3 C.13.5). The prepared frames decide which is
+    /// legal — a job carrying any 3-sample frame *must* go out as colour, and a
+    /// job carrying none has nothing to gain from colour.
+    ///
+    /// Returns `configuration` untouched when it already agrees, so the common
+    /// case allocates nothing and the diagnostics stay quiet.
+    static func reconcilingColorMode(
+        _ configuration: PrintConfiguration,
+        with descriptors: [PrintImageData],
+        diagnostics: DiagnosticHandler? = nil
+    ) -> PrintConfiguration {
+        guard !descriptors.isEmpty else { return configuration }
+        let colorFrames = descriptors.filter { $0.samplesPerPixel > 1 }.count
+        let needsColor = colorFrames > 0
+        let hasColor = configuration.colorMode == .color
+        guard needsColor != hasColor else { return configuration }
+
+        if needsColor {
+            diagnostics?(.notice(
+                "\(colorFrames) of \(descriptors.count) image(s) carry colour pixels — "
+                + "printing with Basic Colour Print Management instead of grayscale"))
+        } else {
+            diagnostics?(.notice(
+                "No image carries colour pixels — printing with Basic Grayscale "
+                + "Print Management instead of colour"))
+        }
+
+        return PrintConfiguration(
+            host: configuration.host,
+            port: configuration.port,
+            callingAETitle: configuration.callingAETitle,
+            calledAETitle: configuration.calledAETitle,
+            timeout: configuration.timeout,
+            colorMode: needsColor ? .color : .grayscale)
     }
 
     // MARK: Job status

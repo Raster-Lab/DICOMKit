@@ -368,16 +368,58 @@ struct ImageViewerViewModelTests {
         #expect(vm.rotationAngle == 0.0)
     }
 
-    @Test("Fit to view adjusts zoom")
+    @Test("Fit to view puts the whole picture on screen, whatever its size")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testFitToView() {
+        // Zoom is relative to the aspect-fitted image on every display path, so a
+        // fit is 1.0 — not a pixel ratio. This asserted `zoomLevel < 1.0` before,
+        // which pinned the double-fit bug: the button shrank the image instead of
+        // fitting it, and the further from viewport-sized the image was, the
+        // smaller it landed.
         let vm = ImageViewerViewModel()
         vm.imageColumns = 1024
         vm.imageRows = 512
+        vm.zoomLevel = 3.5
+        vm.panOffsetX = 120
+        vm.panOffsetY = -40
         vm.fitToView(viewWidth: 800, viewHeight: 600)
-        #expect(vm.zoomLevel < 1.0) // image wider than view
+        #expect(vm.zoomLevel == 1.0)
         #expect(vm.panOffsetX == 0.0)
         #expect(vm.panOffsetY == 0.0)
+    }
+
+    @Test("Fit to view is the same fit for any image size")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testFitToViewIndependentOfImageSize() {
+        // The case the old behaviour got worst: a large image in a small viewport
+        // used to land at ~0.22× and all but vanish.
+        let big = ImageViewerViewModel()
+        big.imageColumns = 4096
+        big.imageRows = 4096
+        big.fitToView(viewWidth: 900, viewHeight: 700)
+
+        let small = ImageViewerViewModel()
+        small.imageColumns = 64
+        small.imageRows = 64
+        small.fitToView(viewWidth: 900, viewHeight: 700)
+
+        #expect(big.zoomLevel == 1.0)
+        #expect(small.zoomLevel == big.zoomLevel)
+    }
+
+    @Test("Fit to view leaves the arrangement alone for an unmeasured viewport")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testFitToViewIgnoresZeroSizedViewport() {
+        // `fitToView()` (no arguments) runs off the last-known view size, which is
+        // zero until the viewer has been laid out — the menu command's path.
+        let vm = ImageViewerViewModel()
+        vm.imageColumns = 512
+        vm.imageRows = 512
+        vm.zoomLevel = 2.0
+        vm.panOffsetX = 30
+        vm.fitToView()
+        #expect(vm.zoomLevel == 2.0)
+        #expect(vm.panOffsetX == 30)
     }
 
     @Test("Rotate clockwise")

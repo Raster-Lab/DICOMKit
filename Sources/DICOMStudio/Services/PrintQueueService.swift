@@ -221,6 +221,16 @@ public final class PrintQueueService {
     /// records job history here, so resent jobs land in history too.
     public var onJobFinished: (@MainActor (PrintQueueJob, PrintQueueOutcome) -> Void)?
 
+    /// Called after any change that may alter which printers the queue is
+    /// waiting on — a submission, a state transition, a pause or a resume.
+    ///
+    /// The owner reconciles background status polling with
+    /// ``printersAwaitingJobs`` here. Without this, only the print screen ever
+    /// started the monitor, and a job held for an offline printer sat waiting
+    /// forever unless that screen happened to be open — nothing else could call
+    /// ``reevaluate()``.
+    public var onQueueChanged: (@MainActor () -> Void)?
+
     /// Answers "can this printer take a job right now?" before a job starts.
     ///
     /// Wired by the owner to the status monitor. When it answers `false` the
@@ -302,9 +312,35 @@ public final class PrintQueueService {
     ///
     /// Called on every state transition and never on progress ticks — progress
     /// is observed state, and a job restarting at 40% would be a lie anyway.
+    /// That call set makes this the one choke point that can announce "who the
+    /// queue is waiting on" may have changed, so ``onQueueChanged`` fires here —
+    /// before the storage guard, because instances without a disk (tests,
+    /// standalone viewers) still drive monitoring.
     private func persist() {
+        onQueueChanged?()
         guard let storage else { return }
         try? storage.save(PersistedPrintQueue(jobs: jobs, isPaused: isPaused))
+    }
+
+    /// The printers the queue wants a live status for: one profile per printer
+    /// with a job in line to start.
+    ///
+    /// Empty while the queue is paused — a held queue starts nothing, so it
+    /// needs no printer watched. Paused *jobs* are excluded for the same
+    /// reason; retrying jobs count, because they return to pending on their
+    /// own in seconds and their printer's polling should not stop and restart
+    /// around the wait.
+    public var printersAwaitingJobs: [PrinterProfile] {
+        guard !isPaused else { return [] }
+        var seen = Set<UUID>()
+        return jobs.compactMap { job in
+            switch job.state {
+            case .pending, .retrying: break
+            default:                  return nil
+            }
+            guard seen.insert(job.payload.profile.id).inserted else { return nil }
+            return job.payload.profile
+        }
     }
 
     /// The queue in a couple of words, or `nil` when it is idle and empty.

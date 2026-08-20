@@ -73,17 +73,24 @@ public enum PrintPresentationTransform {
         } else {
             // A free angle cannot be permuted, so it is resampled — once, here,
             // over full-resolution pixels rather than over the monitor's copy.
-            let turned = presentation.turnedSize(
-                width: Double(currentWidth), height: Double(currentHeight))
-            let outWidth = max(1, Int(turned.width.rounded()))
-            let outHeight = max(1, Int(turned.height.rounded()))
+            //
+            // The output keeps the *cropped region's own size*, deliberately: the
+            // picture turns about its centre at the scale it already had, and the
+            // corners that swing outside are cut, exactly as they are on screen.
+            //
+            // The alternative — growing the box to the turned bounding rectangle —
+            // keeps every corner, but it costs the anatomy its size: the printer
+            // fits whatever it is handed into the image box, so a 45° turn of a
+            // square frame hands it a √2-larger rectangle and the anatomy lands at
+            // 71% of the size it had. That is a real shrink on film, and it is
+            // worst at exactly the small angles a reader uses to straighten a
+            // tilted head (86% at 10°). Matching the viewer is what was asked for:
+            // the picture the reader turned is the size they turned it at.
             pixels = rotateResampling(
                 pixels, width: currentWidth, height: currentHeight,
-                outWidth: outWidth, outHeight: outHeight,
+                outWidth: currentWidth, outHeight: currentHeight,
                 presentation: presentation,
                 samples: samples, bytesPerSample: bytesPerSample)
-            currentWidth = outWidth
-            currentHeight = outHeight
         }
         if presentation.flipHorizontal {
             pixels = flipHorizontally(
@@ -329,7 +336,16 @@ public extension PreparedPrintImage {
     ) -> PreparedPrintImage {
         let transformed = PrintPresentationTransform.apply(
             presentation, to: descriptor, covers: covers)
-        guard transformed != descriptor else { return self }
+        // Unchanged pixels are only the whole story while the *spacing* is
+        // unchanged too. A free-angle resample can come out byte-identical —
+        // a small or near-uniform frame whose blended samples round back to the
+        // values they came from — and returning `self` there would hand true
+        // size the original millimetres for pixels that are now blends of their
+        // neighbours. Rare, but it is exactly the case where the claim is
+        // wrong, so it is decided by what was *asked* for rather than by what
+        // the bytes happened to do.
+        let resamples = presentation.rotationDegrees != 0 && !presentation.isQuarterTurn
+        guard transformed != descriptor || resamples else { return self }
         onProgress?(
             "Applied viewer presentation: "
             + "\(descriptor.columns)x\(descriptor.rows) → "

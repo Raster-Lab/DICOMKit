@@ -456,6 +456,47 @@ struct PrintQueueAuditTests {
         #expect(queue.jobs.first { $0.id == id }?.state.isFinished == true)
     }
 
+    @Test("The queue names the printers its waiting jobs need watched")
+    func printersAwaitingJobsFollowsWaitingWork() {
+        let (queue, _, _) = makeQueue()   // held paused
+        queue.isPrinterReady = { _ in false }   // nothing may actually run
+        // The same payload twice: demand is per printer, not per job.
+        let payload = makePayload()
+        let first = queue.enqueue(payload: payload, imageCount: 4, filmCount: 1,
+                                  copies: 1, layout: "2×2")
+        queue.enqueue(payload: payload, imageCount: 4, filmCount: 1,
+                      copies: 1, layout: "2×2")
+
+        // A paused queue starts nothing, so it demands nothing.
+        #expect(queue.printersAwaitingJobs.isEmpty)
+
+        queue.resumeQueue()
+        #expect(queue.printersAwaitingJobs.map(\.name) == ["Test Printer"])
+
+        // A paused job is not in line; the last waiting job leaving empties
+        // the demand.
+        queue.pause(first)
+        #expect(queue.printersAwaitingJobs.count == 1)
+        queue.stop(first)
+        for job in queue.jobs where job.state.isWaiting { queue.stop(job.id) }
+        #expect(queue.printersAwaitingJobs.isEmpty)
+    }
+
+    @Test("Every queue transition announces itself, so the owner can re-aim polling")
+    func onQueueChangedFires() {
+        let (queue, _, _) = makeQueue()
+        queue.isPrinterReady = { _ in false }   // nothing may actually run
+        var announcements = 0
+        queue.onQueueChanged = { announcements += 1 }
+
+        let id = enqueue(queue)
+        #expect(announcements == 1)
+        queue.resumeQueue()
+        #expect(announcements == 2)
+        queue.stop(id)
+        #expect(announcements == 3)
+    }
+
     @Test("The audit trail survives a relaunch")
     func auditPersistence() {
         let (_, trail, directory) = makeQueue()

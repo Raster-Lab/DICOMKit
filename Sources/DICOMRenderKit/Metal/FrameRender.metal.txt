@@ -237,10 +237,22 @@ kernel void render_palette(
 
 struct DisplayParams {
     float4x4 transform;    // image quad → normalised device coordinates
+    // The film's crop, in texture coordinates: (minU, minV, maxU, maxV).
+    // Fragments outside it are painted black rather than sampled — the quad is
+    // always the *whole* frame, and on a film only the cropped region exists;
+    // everything around it is unexposed film. Without this, the corners of a
+    // freely rotated cell and the letterbox beside a zoomed one showed the
+    // neighbouring anatomy the crop was supposed to remove. (0,0,1,1) — the
+    // whole frame — turns the mask off; the viewer always passes that.
+    float4   sourceRegion;
     uint     invert;       // 1 → present inverted (white ↔ black)
     uint     isGrayscale;  // 1 → splat .r across RGB; the texture is r8Unorm
     uint     linearFilter; // 1 → bilinear magnification (print preview cells)
 };
+
+// The annotation layer is always bound — a 1×1 fully transparent texture
+// stands in when nothing is drawn — so the fragment function has no
+// conditional resource binding to reason about.
 
 struct DisplayVertex {
     float4 position [[position]];
@@ -264,7 +276,8 @@ vertex DisplayVertex display_vertex(uint vertexID [[vertex_id]],
 
 fragment float4 display_fragment(DisplayVertex in [[stage_in]],
                                  constant DisplayParams& p [[buffer(0)]],
-                                 texture2d<float> frame [[texture(0)]])
+                                 texture2d<float> frame [[texture(0)]],
+                                 texture2d<float> annotations [[texture(1)]])
 {
     // Nearest by default. The existing viewer builds its CGImage with
     // `shouldInterpolate: false`, so a zoomed-in image shows its actual pixels
@@ -278,6 +291,14 @@ fragment float4 display_fragment(DisplayVertex in [[stage_in]],
     constexpr sampler nearest(filter::nearest, mag_filter::nearest, address::clamp_to_edge);
     constexpr sampler bilinear(filter::linear, mag_filter::linear, address::clamp_to_edge);
 
+    // Outside the film's crop there is no image — only unexposed film. Black,
+    // not clamped-edge smear: `clamp_to_edge` would stretch the crop's border
+    // pixels across the whole corner.
+    if (in.texCoord.x < p.sourceRegion.x || in.texCoord.y < p.sourceRegion.y ||
+        in.texCoord.x > p.sourceRegion.z || in.texCoord.y > p.sourceRegion.w) {
+        return float4(0.0, 0.0, 0.0, 1.0);
+    }
+
     float4 colour = p.linearFilter != 0
         ? frame.sample(bilinear, in.texCoord)
         : frame.sample(nearest, in.texCoord);
@@ -285,5 +306,18 @@ fragment float4 display_fragment(DisplayVertex in [[stage_in]],
     if (p.invert != 0) {
         rgb = 1.0 - rgb;
     }
+
+    // A reader's drawn text and arrows, composited last so they read at their
+    // own colour whether or not the image beneath them is inverted — a
+    // yellow annotation stays yellow on an inverted frame. Nearest sampling:
+    // the annotation texture is built at the frame's own pixel dimensions,
+    // so it is never magnified independently of the frame, and annotations
+    // should not be softened by the frame's own zoom filter. The texture is
+    // premultiplied alpha (a `CGContext` requirement for its own drawing to
+    // composite correctly), so `annot.rgb` already carries the alpha factor
+    // and "over" compositing is a straight add, not a lerp.
+    float4 annot = annotations.sample(nearest, in.texCoord);
+    rgb = rgb * (1.0 - annot.a) + annot.rgb;
+
     return float4(rgb, 1.0);
 }

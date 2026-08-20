@@ -21,6 +21,7 @@ import SwiftUI
 #if canImport(AppKit)
 import AppKit
 #endif
+import DICOMCore
 import DICOMNetwork
 import DICOMPrintKit
 #if canImport(UniformTypeIdentifiers)
@@ -129,6 +130,13 @@ public struct PrintSettingsView: View {
             // moved the wrong thing. Cheap enough to do twice; not doing it once
             // is what costs.
             if viewModel.phase == .configuring { viewModel.resetPreviewTools() }
+        }
+        // Whether the marked images carry colour decides the SOP class the job
+        // goes out on, and it can only be known by reading the files. Keyed to
+        // the marks so it runs when the screen opens and again whenever the
+        // selection changes; already-read files are skipped inside.
+        .task(id: viewModel.selection.items.map(\.filePath)) {
+            await viewModel.refreshSourceColor()
         }
         // Text placed on a cell opens its own editor on the cell — typing lands
         // there, not in this sidebar (which may not even be open). Grabbing
@@ -1083,6 +1091,46 @@ public struct PrintSettingsView: View {
                     .controlSize(.small)
                 }
             }
+
+            if viewModel.hasAnnotations {
+                Divider()
+                burnAnnotationsControl
+            }
+        }
+    }
+
+    /// Whether the drawn marks travel with the film.
+    ///
+    /// Only shown once something has been drawn: it is a decision about the
+    /// annotations on this film, and offering it over an unmarked film is
+    /// offering a choice about nothing.
+    ///
+    /// On screen the marks are a layer over the picture either way — this is
+    /// about the pixels that leave. Film has nothing to carry a layer in, so a
+    /// mark either becomes pixels here or does not reach the reader holding
+    /// the sheet.
+    @ViewBuilder
+    private var burnAnnotationsControl: some View {
+        Toggle("Include annotations on film", isOn: $viewModel.burnDrawnAnnotations)
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .help("Burn the drawn text and arrows into the printed and saved "
+                  + "pixels. Off sends the picture without them.")
+
+        Text(viewModel.burnDrawnAnnotations
+             ? "The film and any saved file carry the marks as drawn."
+             : "The marks stay on screen only — the film carries the picture "
+               + "without them.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+        if viewModel.burnDrawnAnnotations, viewModel.request.raw {
+            Text("Raw pixels are being sent, so nothing can be burned in — "
+                 + "the film will not carry the marks.")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -1213,17 +1261,13 @@ public struct PrintSettingsView: View {
                     }
 
                     Menu("Presets") {
-                        ForEach(WindowLevelPresets.allPresets) { preset in
-                            Button("\(preset.modality) \(preset.name)  "
-                                   + "\(Int(preset.center))/\(Int(preset.width))") {
-                                viewModel.applyWindowPreset(preset, toItemID: focused.id)
-                            }
-                        }
+                        presetMenuItems(for: focused)
                     }
                     .frame(maxWidth: .infinity)
 
                     Button("Apply to All") { viewModel.applyFocusedWindowToAllCells() }
-                        .help("Give every image on film this window")
+                        .help("Give every cell on this film the same window — "
+                              + "other films are left as they are")
                         .disabled(viewModel.window(forItemID: focused.id) == nil)
 
                     Button("Revert") { viewModel.revertCell(forItemID: focused.id) }
@@ -1236,6 +1280,8 @@ public struct PrintSettingsView: View {
                 }
                 .controlSize(.small)
                 .disabled(viewModel.isCellWindowingOverridden)
+
+                savedViewPicker(for: focused)
 
                 if let reason = viewModel.cellWindowingBlockedReason {
                     Label(reason, systemImage: "exclamationmark.triangle.fill")
@@ -1262,6 +1308,13 @@ public struct PrintSettingsView: View {
                 arrangementToggle
                 identificationControls
             }
+            // The preset menu offers this cell's modality first, and the
+            // modality comes off the file — a mark made without opening the
+            // file does not carry one. Header-only, once per file, kept in the
+            // same cache the range control reads.
+            .task(id: focused.id) {
+                await viewModel.imageNumbers.load(paths: [focused.filePath])
+            }
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Click a film cell to window or arrange it.")
@@ -1274,6 +1327,117 @@ public struct PrintSettingsView: View {
                 arrangementToggle
                 identificationControls
             }
+        }
+    }
+
+    /// The saved views one cell can be given, if its image has any.
+    ///
+    /// Shown per cell as well as job-wide because the two answer different
+    /// questions: the job-wide control says how the sheet should generally
+    /// relate to what was saved, and this says what *this* slice should show —
+    /// a reader comparing a lung window against a bone window on one film needs
+    /// to set them cell by cell.
+    ///
+    /// Placed outside the windowing group's `.disabled`: a saved view is not
+    /// only a window, and an explicit job-wide window does not stop it carrying
+    /// the zoom, rotation and inversion that were saved with it.
+    @ViewBuilder
+    private func savedViewPicker(for item: PrintSelectionItem) -> some View {
+        let views = viewModel.savedViews(for: item)
+        if !views.isEmpty {
+            Divider()
+
+            labeledControl("View") {
+                Picker("View", selection: Binding(
+                    get: { viewModel.savedViewSelectionLabel(forItemID: item.id) },
+                    set: { label in
+                        if label == PrintViewModel.defaultViewLabel {
+                            viewModel.clearSavedView(forItemID: item.id)
+                        } else {
+                            Task {
+                                // The cell the preview is drawing, so the
+                                // stored Displayed Area is restored against the
+                                // shape it will print in rather than against
+                                // the viewer tile the mark was made in.
+                                await viewModel.applySavedView(
+                                    label: label, toItemID: item.id,
+                                    cellSize: viewModel.lastCellSize)
+                            }
+                        }
+                    }
+                )) {
+                    Text(PrintViewModel.defaultViewLabel)
+                        .tag(PrintViewModel.defaultViewLabel)
+                    ForEach(views) { view in
+                        Text(view.label).tag(view.label)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 140)
+            }
+            .controlSize(.small)
+            .disabled(!viewModel.savedViewsCanReachTheFilm)
+            .help("Print this image with a view saved for it in the viewer")
+
+            // A view can be applied in full and still be discarded by a
+            // job-wide setting before it reaches a pixel. Said out loud, or
+            // picking one is indistinguishable from a dead control.
+            if let reason = viewModel.savedViewBlockedReason {
+                Label(reason, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// The preset menu's rows for one cell.
+    ///
+    /// The cell's own modality first, flat, because those are the presets a
+    /// reader printing a CT actually reaches for — a CT "Lung" applied to an MR
+    /// names a tissue the numbers cannot find. Every other modality stays
+    /// reachable behind one submenu, for the file whose header lied or was
+    /// never read.
+    @ViewBuilder
+    private func presetMenuItems(for focused: PrintSelectionItem) -> some View {
+        let matched = viewModel.imageNumbers.modality(forPath: focused.filePath)
+            .map { WindowLevelPresets.presets(for: $0) } ?? []
+        if matched.isEmpty {
+            // Modality unknown (not read yet, or one with no presets): offer
+            // everything, grouped so "Bone" says which Bone it is.
+            presetGroups(excludingModality: nil, for: focused)
+        } else {
+            ForEach(matched) { preset in
+                presetButton(preset, showModality: false, for: focused)
+            }
+            Divider()
+            Menu("Other Modalities") {
+                presetGroups(excludingModality: matched.first?.modality, for: focused)
+            }
+        }
+    }
+
+    /// One submenu per modality, minus the one already shown flat.
+    @ViewBuilder
+    private func presetGroups(
+        excludingModality excluded: String?, for focused: PrintSelectionItem
+    ) -> some View {
+        ForEach(WindowLevelPresets.presetsByModality.filter { $0.modality != excluded },
+                id: \.modality) { group in
+            Menu(group.modality) {
+                ForEach(group.presets) { preset in
+                    presetButton(preset, showModality: false, for: focused)
+                }
+            }
+        }
+    }
+
+    private func presetButton(
+        _ preset: WindowLevelPreset, showModality: Bool, for focused: PrintSelectionItem
+    ) -> some View {
+        Button((showModality ? "\(preset.modality) " : "") + preset.name
+               + "  \(Int(preset.center))/\(Int(preset.width))") {
+            viewModel.applyWindowPreset(preset, toItemID: focused.id)
         }
     }
 
@@ -1650,7 +1814,9 @@ public struct PrintSettingsView: View {
     private var renderingAdvanced: some View {
         subsection("Rendering") {
             VStack(alignment: .leading, spacing: 8) {
-                Toggle("Auto-detect color mode from the printer", isOn: $viewModel.autoDetectColorMode)
+                Toggle("Auto-detect colour mode", isOn: $viewModel.autoDetectColorMode)
+                    .help("Prints in colour when the marked images carry colour "
+                          + "pixels and the printer is set up to accept them.")
                 if !viewModel.autoDetectColorMode {
                     stackedControl("Color mode") {
                         Picker("Color mode", selection: $viewModel.colorMode) {
@@ -1660,6 +1826,26 @@ public struct PrintSettingsView: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                    }
+                }
+
+                // Offered only when there is colour to lose. Colour sources
+                // now keep their colour by default, so this is the switch that
+                // deliberately gives it up — for monochrome film stock, where a
+                // flattened grey is what the sheet can actually show.
+                if viewModel.selectionHasColorImages {
+                    Toggle("Print colour images as greys",
+                           isOn: Binding(
+                            get: { !viewModel.preservesSourceColor },
+                            set: { viewModel.preservesSourceColor = !$0 }))
+                        .help("Flattens colour images to greys before sending. "
+                              + "Off, they print in colour.")
+
+                    if let notice = viewModel.colorDowngradeNotice {
+                        Label(notice, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
@@ -1692,6 +1878,56 @@ public struct PrintSettingsView: View {
                     .disabled(viewModel.sendRawPixels)
                 }
 
+                stackedControl("Colour palette") {
+                    Picker("Colour palette", selection: Binding(
+                        get: { viewModel.filmPalette },
+                        set: { viewModel.applyFilmPalette($0) }
+                    )) {
+                        Text("None (grayscale)")
+                            .tag(DICOMCore.PseudoColorPalette?.none)
+                        // Grouped, because the list is long and the groups are
+                        // the part that matters: the DICOM heading is a promise
+                        // that those eight mean the same thing on any conforming
+                        // system, which none of the others can make.
+                        ForEach(DICOMCore.PseudoColorPalette.catalog, id: \.group) { entry in
+                            Section(entry.group.title) {
+                                ForEach(entry.palettes, id: \.self) { palette in
+                                    Text(palette.displayName)
+                                        .tag(DICOMCore.PseudoColorPalette?.some(palette))
+                                }
+                            }
+                        }
+                    }
+                    .labelsHidden()
+                    .disabled(viewModel.sendRawPixels)
+                    .help("Recolours the film. Cells that were given their own "
+                        + "palette keep it.")
+                }
+
+                // What colour costs, said before the job is sent rather than
+                // discovered afterwards. Both of these are the standard's rules,
+                // not ours: PS3.3 Table C.13-5 fixes the colour image box at
+                // 8 bits per sample and allows only RGB in it, so a coloured
+                // film has no deeper form and no density curve to apply.
+                if viewModel.filmPalette?.isGrayscale == false, !viewModel.sendRawPixels {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if viewModel.bitDepth > 8 {
+                            Label(
+                                "Colour prints at 8-bit; the \(viewModel.bitDepth)-bit "
+                                + "depth applies to grayscale film only.",
+                                systemImage: "info.circle")
+                        }
+                        if viewModel.presentationLUTShape == .linearOpticalDensity {
+                            Label(
+                                "Linear optical density applies to grayscale film "
+                                + "only and is not applied to colour.",
+                                systemImage: "info.circle")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
                 stackedControl("Presentation LUT") {
                     Picker("Presentation LUT", selection: $viewModel.presentationLUTShape) {
                         Text("None").tag(DICOMNetwork.PresentationLUTShape?.none)
@@ -1702,11 +1938,66 @@ public struct PrintSettingsView: View {
                     .labelsHidden()
                 }
 
+                savedPresentationStateControls
+
                 Toggle("Send stored pixels unprocessed (raw)", isOn: $viewModel.sendRawPixels)
                     .help("No rescale, window, or inversion. Compressed sources are still decoded.")
             }
             .padding(4)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// The job-wide saved-view controls.
+    ///
+    /// Hidden entirely when the study has nothing saved for any marked image: a
+    /// toggle that cannot change the film is worse than no toggle, because it
+    /// invites the reader to look for an effect that was never possible.
+    @ViewBuilder
+    private var savedPresentationStateControls: some View {
+        if viewModel.hasSavedViewsForAnyCell {
+            Divider()
+
+            Toggle("Apply saved presentation state (PR)",
+                   isOn: $viewModel.applySavedPresentationStates)
+                .help("Each image prints with the view saved for it in the viewer")
+
+            if viewModel.applySavedPresentationStates {
+                stackedControl("Saved view") {
+                    Picker("Saved view", selection: $viewModel.defaultSavedViewLabel) {
+                        Text("Most recent").tag(String?.none)
+                        // The count says how many cells the label can reach. A
+                        // label saved over part of a series is still worth
+                        // offering, but a reader who picks it must be able to
+                        // see that it lands on four cells of twenty rather than
+                        // discovering it by staring at the other sixteen.
+                        ForEach(viewModel.savedViewLabelsOnFilm, id: \.self) { label in
+                            let covered = viewModel.cellCountCovered(byLabel: label)
+                            Text("\(label) — \(covered) "
+                                 + (covered == 1 ? "cell" : "cells"))
+                                .tag(Optional(label))
+                        }
+                    }
+                    .labelsHidden()
+                }
+
+                let withViews = viewModel.cellCountWithSavedViews
+                let total = viewModel.printedItems.count
+                Text(withViews == total
+                     ? "Cells you have adjusted here keep your changes."
+                     : "\(withViews) of \(total) cells have a saved view; the rest print "
+                       + "as marked. Cells you have adjusted here keep your changes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let reason = viewModel.savedViewBlockedReason {
+                    Label(reason, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

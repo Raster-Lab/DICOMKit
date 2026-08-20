@@ -576,7 +576,7 @@ public struct FilmComposer: Sendable {
     /// Whether an image box's pixels must be inverted before drawing.
     ///
     /// Four independent inversions compose (each flips the sense of the last):
-    /// MONOCHROME1 source, Polarity REVERSE, an INVERSE / LIN OD Presentation
+    /// MONOCHROME1 source, Polarity REVERSE, a rendered-inverse Presentation
     /// LUT shape, and film-emulation density mapping.
     func shouldInvert(box: ReceivedImageBox, image: PrintImageData, film: ReceivedFilm) -> Bool {
         var invert = false
@@ -585,7 +585,7 @@ public struct FilmComposer: Sendable {
         if photometric == "MONOCHROME1" { invert.toggle() }
         if box.content.polarity == .reverse { invert.toggle() }
         switch film.presentationLUTShape {
-        case .inverse: invert.toggle()
+        case .inverseRendered: invert.toggle()
         // LIN OD is not a negation — it is the density curve applied in
         // ``linODTransfer(film:)``, whose low-P-is-dark orientation already
         // contains the reversal this switch used to fake with a toggle.
@@ -713,7 +713,8 @@ public struct FilmComposer: Sendable {
         let fontMillimeters = FilmIdentificationFooter.fontMillimeters(
             sheetHeightMillimeters: sheet.heightMillimeters)
         let fontSize = max(8, sheet.pixels(fromMillimeters: fontMillimeters))
-        let font = CTFontCreateWithName("Helvetica" as CFString, fontSize, nil)
+        let font = CTFontCreateWithName(
+            PrintAnnotationStyle.defaultFontFamily as CFString, fontSize, nil)
         let color = gray(background > 0.5 ? 0 : 1, isColor: isColor)
         let lineHeight = fontSize * FilmIdentificationFooter.lineFactor
         let margin = sheet.pixels(fromMillimeters: configuration.marginMillimeters)

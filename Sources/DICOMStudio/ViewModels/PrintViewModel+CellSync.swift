@@ -54,23 +54,53 @@ public struct PrintCellSyncOptions: OptionSet, Sendable, Hashable {
     /// Greyscale inversion.
     public static let invert = PrintCellSyncOptions(rawValue: 1 << 3)
 
-    public static let all: PrintCellSyncOptions = [.zoomPan, .window, .invert]
+    /// The pseudo-colour palette.
+    ///
+    /// Worth shutting more often than the geometry locks, though it opens with
+    /// the rest: a palette is a way of reading the film rather than a fact about
+    /// one image — a reader who colours the PET usually means "show this study
+    /// in colour", not "show this one slice in colour". The film-wide default in
+    /// the print sheet is the blunter way to say the same thing, and this lock
+    /// is for saying it from a cell.
+    public static let palette = PrintCellSyncOptions(rawValue: 1 << 2)
+
+    /// Rotation — the angle the cell is turned to.
+    ///
+    /// The angle alone, not the flips. A flip is a statement about laterality,
+    /// and mirroring a whole film because one image was marked from the far
+    /// side is a way to print a sheet nobody can read; a turn is how a run of
+    /// images is stood up the same way, which is exactly what a lock is for.
+    public static let rotate = PrintCellSyncOptions(rawValue: 1 << 4)
+
+    public static let all: PrintCellSyncOptions =
+        [.zoomPan, .window, .rotate, .invert, .palette]
 
     /// The switches in the order they are offered, with their labels.
     ///
-    /// The order matches the tool rail's — W/L, then zoom and pan, then invert —
-    /// so a lock sits in the same place in the list as the tool it holds
-    /// together. A lock list ordered differently from the tools above it makes
-    /// the reader search for "the one for the tool I am holding" every time.
+    /// The order matches the tool rail's — W/L, then zoom and pan, then rotate,
+    /// then invert — so a lock sits in the same place in the list as the tool it
+    /// holds together. A lock list ordered differently from the tools above it
+    /// makes the reader search for "the one for the tool I am holding" every
+    /// time.
     ///
-    /// Rotation and flip are deliberately absent. They are how a cell is put the
-    /// right way up, which is a fact about that image rather than a way of
-    /// looking at the film — turning every cell because one was upside down is
-    /// never what was meant.
+    /// Rotation is on the list, and its lock is open by default. Turning a cell
+    /// is often how *one* image is put the right way up — which is why it is not
+    /// carried unless asked — but a run of frames marked from the same series
+    /// comes off the scanner the same way round, and standing thirteen of them
+    /// up one drag at a time is the work a lock exists to remove. Open by
+    /// default, shut when the reader says so, exactly like the others.
+    ///
+    /// Flip is still absent: it states which side of the patient is which, and
+    /// there is no film on which mirroring every cell is what was meant.
     public static let catalog: [(option: PrintCellSyncOptions, title: String, symbol: String)] = [
-        (.window, "Window", "circle.lefthalf.filled"),
+        (.window, "Window", "sun.max"),
         (.zoomPan, "Zoom & Pan", "arrow.up.left.and.arrow.down.right"),
-        (.invert, "Invert", "circle.righthalf.filled")
+        (.rotate, "Rotate", "arrow.triangle.2.circlepath"),
+        (.invert, "Invert", "circle.righthalf.filled"),
+        // "CLUT" — the Palette Color LUT, spelled as the rail chip spells it.
+        // The film-wide Presentation LUT Shape under More is also a LUT, so a
+        // lock captioned merely "Colour" left the two indistinguishable.
+        (.palette, "CLUT", "paintpalette")
     ]
 }
 
@@ -267,6 +297,41 @@ extension PrintViewModel {
         }
     }
 
+    /// Copies the edited cell's angle onto its peers.
+    ///
+    /// The angle itself, absolutely — not the delta that was just applied. Two
+    /// cells that started at different angles and were then turned by the same
+    /// amount are still at different angles, which is the one thing a shut
+    /// rotate lock is meant to rule out: the point of turning a run together is
+    /// that they end up standing the same way round. It is the same rule the
+    /// zoom and pan lock follows, and for the same reason.
+    func propagateRotation(from itemID: String, cellSize: CGSize?) {
+        guard propagates(.rotate, from: itemID),
+              let source = selection.items.first(where: { $0.id == itemID })?.presentation
+        else { return }
+        for peer in editPeers(of: itemID) {
+            mutatePresentation(forItemID: peer.id, cellSize: cellSize) { presentation in
+                presentation.rotationDegrees = source.rotationDegrees
+            }
+        }
+    }
+
+    /// Copies the edited cell's palette onto its peers.
+    ///
+    /// The palette itself, not a delta: unlike a window, there is no sense in
+    /// which one cell's Hot Iron is "more" than another's, so the peers take the
+    /// same palette outright.
+    func propagatePalette(from itemID: String, cellSize: CGSize?) {
+        guard propagates(.palette, from: itemID),
+              let source = selection.items.first(where: { $0.id == itemID })?.presentation
+        else { return }
+        for peer in editPeers(of: itemID) {
+            mutatePresentation(forItemID: peer.id, cellSize: cellSize) { presentation in
+                presentation.palette = source.palette
+            }
+        }
+    }
+
     /// Copies the edited cell's inversion onto its peers.
     func propagateInversion(from itemID: String, cellSize: CGSize?) {
         guard propagates(.invert, from: itemID),
@@ -310,14 +375,18 @@ extension PrintViewModel {
     /// Copies a window onto the peers unchanged.
     ///
     /// Used for presets, which name a tissue rather than a nudge, and so mean
-    /// the same numbers everywhere they are applied.
-    func propagateWindowAbsolute(from itemID: String, window: WindowSettings) {
+    /// the same numbers everywhere they are applied. The space comes with the
+    /// numbers for the same reason: a preset's −600 HU written into a peer
+    /// still labelled "stored values" would wash that peer out instead.
+    func propagateWindowAbsolute(
+        from itemID: String, window: WindowSettings, space: PrintWindowSpace
+    ) {
         guard propagates(.window, from: itemID) else { return }
         for peer in editPeers(of: itemID) {
             selection.adjust(peer.with(
                 windowCenter: .some(window.center.rounded()),
                 windowWidth: .some(max(1, window.width.rounded())),
-                windowSpace: peer.windowSpace))
+                windowSpace: space))
         }
     }
 }

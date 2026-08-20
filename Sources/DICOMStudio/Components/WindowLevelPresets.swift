@@ -8,7 +8,12 @@ import Foundation
 /// A single window/level preset with descriptive metadata.
 public struct WindowLevelPreset: Sendable, Equatable, Identifiable, Hashable {
     /// Unique identifier.
-    public var id: String { name }
+    ///
+    /// Includes the modality: preset *names* repeat across modalities ("Bone"
+    /// is a CT, CR and DX preset), so a name alone is not an identity. A list
+    /// spanning modalities — the print screen's preset menu — fed duplicate
+    /// IDs to `ForEach`, and SwiftUI wired rows to the wrong actions.
+    public var id: String { "\(modality)/\(name)" }
 
     /// Display name for the preset (e.g., "Bone", "Lung").
     public let name: String
@@ -142,6 +147,14 @@ public enum WindowLevelPresets: Sendable {
         ctPresets + mrPresets + crPresets + dxPresets + mgPresets
             + ptPresets + nmPresets + xaPresets
     }
+
+    /// Every preset list, grouped and labelled by modality — for menus that
+    /// span modalities and want a submenu per modality rather than one long
+    /// run of prefixed names.
+    public static let presetsByModality: [(modality: String, presets: [WindowLevelPreset])] = [
+        ("CT", ctPresets), ("MR", mrPresets), ("CR", crPresets), ("DX", dxPresets),
+        ("MG", mgPresets), ("PT", ptPresets), ("NM", nmPresets), ("XA", xaPresets),
+    ]
 
     /// Finds a preset by name and modality.
     ///

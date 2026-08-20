@@ -385,6 +385,37 @@ final class PrintEmulatorEndToEndTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(films.first).isColor)
     }
 
+    /// The reported failure, end to end.
+    ///
+    /// A colour ultrasound sent raw keeps Samples per Pixel 3, and the job was
+    /// still configured GRAYSCALE — which the Basic Grayscale Image Box refuses
+    /// ("Samples per Pixel must be 1", 0x0106), so all three attempts failed and
+    /// nothing printed. Going through ``PrintWorkflow/execute`` the SOP class
+    /// now follows the pixels, and the film comes out in colour.
+    func testRawColorJobOnAGrayscaleRequestStillPrintsInColor() async throws {
+        let pixels = Data((0..<(16 * 16)).flatMap { _ in [UInt8(220), 30, 30] })
+        let descriptor = PrintImageData(
+            pixelData: pixels, rows: 16, columns: 16,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            samplesPerPixel: 3, pixelRepresentation: 0,
+            photometricInterpretation: "RGB")
+        let image = PreparedPrintImage(
+            descriptor: descriptor, sourcePath: nil, frameIndex: 0)
+
+        var request = PrintJobRequest()
+        request.colorMode = .grayscale
+        request.raw = true
+
+        let result = try await PrintWorkflow.execute(
+            configuration: configuration(colorMode: .grayscale),
+            request: request,
+            images: [image])
+
+        XCTAssertTrue(result.success, result.errorMessage ?? "")
+        let films = await screen.films
+        XCTAssertTrue(try XCTUnwrap(films.first).isColor)
+    }
+
     func testFilmAlsoReachesAFileSinkWhenComposed() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("emulator-e2e-\(UUID().uuidString)")

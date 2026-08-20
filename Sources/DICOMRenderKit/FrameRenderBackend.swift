@@ -40,16 +40,41 @@ public struct FrameRenderRequest: Sendable {
     /// Palette tables for PALETTE COLOR frames. Ignored otherwise.
     public let paletteLUT: PaletteColorLUT?
 
+    /// A pseudo-colour palette the reader chose, applied to monochrome frames
+    /// *after* the window. Ignored for colour and PALETTE COLOR frames.
+    ///
+    /// Not the same thing as ``paletteLUT``, and deliberately a separate field:
+    /// that one is the file's own colour table, a property of the pixels, while
+    /// this is a display choice laid over a grey image. They never both apply —
+    /// a palette-colour frame has its own colours and a pseudo-colour ramp has
+    /// nothing to say about them — but keeping them apart is what stops one
+    /// being mistaken for the other.
+    public let pseudoColorPalette: PseudoColorPalette?
+
     public init(
         pixelData: PixelData,
         frameIndex: Int = 0,
         window: WindowSettings? = nil,
-        paletteLUT: PaletteColorLUT? = nil
+        paletteLUT: PaletteColorLUT? = nil,
+        pseudoColorPalette: PseudoColorPalette? = nil
     ) {
         self.pixelData = pixelData
         self.frameIndex = frameIndex
         self.window = window
         self.paletteLUT = paletteLUT
+        self.pseudoColorPalette = pseudoColorPalette
+    }
+
+    /// The pseudo-colour palette that actually recolours this frame, if any.
+    ///
+    /// Grey is not a recolouring, and neither is a palette over a frame that
+    /// carries its own colours — both resolve to `nil` so the plain monochrome
+    /// kernel keeps its cheaper single-channel output.
+    public var effectivePseudoColorPalette: PseudoColorPalette? {
+        guard pixelData.descriptor.photometricInterpretation.isMonochrome,
+              let palette = pseudoColorPalette,
+              !palette.isGrayscale else { return nil }
+        return palette
     }
 
     /// Which kernel family this frame needs.

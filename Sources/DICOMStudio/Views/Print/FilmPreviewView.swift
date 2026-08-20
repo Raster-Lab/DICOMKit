@@ -34,6 +34,7 @@
 
 #if canImport(SwiftUI)
 import SwiftUI
+import DICOMCore
 import DICOMPrintKit
 import DICOMRenderKit
 
@@ -98,6 +99,30 @@ struct FilmPreviewView: View {
         return nil
     }
 
+    /// Why the armed pan tool is about to do nothing, said before the drag.
+    ///
+    /// A pan on film chooses which hidden part of the picture shows in the
+    /// cell; a fitted, unzoomed cell hides nothing, so the drag has nowhere to
+    /// go — the printer lays a fitted crop down centred, and the preview must
+    /// not show an arrangement the film cannot carry. That is correct and
+    /// utterly indistinguishable from a broken tool unless it is said out
+    /// loud: the viewer's pan works unzoomed because it only scrolls the
+    /// screen, so a reader arriving from the viewer has every reason to expect
+    /// the same here. Shown only while pan is armed and *no* visible cell has
+    /// travel; once any cell is zoomed — or the scaling crops — the tool works
+    /// and the line would be noise.
+    private var panHasNoTravelNotice: String? {
+        guard viewModel.cellTool == .pan,
+              toolsBlockedNotice == nil,
+              !visibleItems.isEmpty,
+              !visibleItems.contains(where: { viewModel.cellHasPanTravel($0) })
+        else { return nil }
+        return "Pan has nowhere to go yet: every cell is showing its whole image, "
+             + "and film prints a fitted cell centred. Zoom into a cell first — "
+             + "pan then chooses which part of the picture fills it. "
+             + "(Fill scaling crops every cell, so there pan works unzoomed.)"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if plan.filmCount == 0 {
@@ -127,6 +152,23 @@ struct FilmPreviewView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(Color.orange.opacity(0.12))
+                }
+                // Guidance, not a block — the tool is armed and healthy, it
+                // just has nothing to act on yet — so it wears the quiet grey
+                // of an explanation rather than the orange of a setting that
+                // is discarding the reader's work.
+                if let notice = panHasNoTravelNotice {
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle")
+                        Text(notice)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.secondary.opacity(0.08))
                 }
                 // The rail is back beside the film. The right-click menu is a
                 // fine place for the occasional command but a poor place for a
@@ -197,12 +239,11 @@ struct FilmPreviewView: View {
             // are: only what is on screen.
             refreshOverlayTexts()
         }
-        // The scaling mode decides which cache draws each cell — stretch is
-        // CPU-drawn, the rest come off the GPU — without changing a single
-        // mark. Switching to stretch therefore asks for thumbnails that were
-        // deliberately released while the GPU had the film, and nothing else
-        // re-requests them: every cell fell to a spinner and the whole preview
-        // read as dead until some unrelated edit happened to refresh it.
+        // Every scaling mode draws from the GPU now — stretch included — so a
+        // mode switch changes only the per-draw transform, not which cache
+        // holds the cell. The refresh stays for the cells that are CPU-drawn
+        // regardless (overlay planes, no Metal): their thumbnails follow the
+        // mode, and this is what re-requests them.
         .onChange(of: viewModel.scalingMode) { _, _ in refreshCells() }
         .onChange(of: items) { _, _ in
             viewModel.pruneFocus()
@@ -210,7 +251,20 @@ struct FilmPreviewView: View {
             // Annotations belong to marks; a mark that has been taken off the film
             // must not leave its arrows behind to reappear on a later one.
             viewModel.pruneAnnotations()
+            // Likewise the adopted saved views: a mark taken off the film must
+            // not leave the inspector naming a view for a cell that is gone.
+            viewModel.pruneAppliedSavedViews()
             refreshOverlayTexts()
+            // Marks added since the sheet opened have not been offered their
+            // images' saved views yet. Untouched cells only — see
+            // `adoptSavedViewsWhereUntouched()`.
+            //
+            // Through `adoptSavedViews()` so this replaces any pass already
+            // running instead of racing it. Adoption writes marks, a written
+            // mark changes `items`, and a changed `items` arrives back here —
+            // so a bare `Task` per change spawned a pass per cell per pass, and
+            // the film preview locked up on a job of any size.
+            viewModel.adoptSavedViews()
         }
         #endif
     }
@@ -236,6 +290,34 @@ struct FilmPreviewView: View {
                     }
                 }
 
+                // Straighten: the way back from a free-angle drag, on the
+                // focused cell. Beside Invert rather than among the tools
+                // because it arms nothing — it is one act on one cell, like
+                // Invert, and the rail's first group is what a *drag* does.
+                // Lit while the cell it would act on is actually askew, which is
+                // also the only time it does anything.
+                railButton(
+                    // The straightening glyph the platform already uses for
+                    // exactly this — not a half-filled square, which belongs to
+                    // the invert family sitting right underneath it.
+                    symbol: "rotate.left",
+                    caption: "Straighten",
+                    isOn: viewModel.focusedItemID.map { viewModel.isCellSkewed($0) } ?? false,
+                    help: viewModel.focusedItemID == nil
+                        ? "Straighten — squares a cell up to the nearest quarter turn. "
+                        + "Click a cell first to choose which."
+                        : "Straighten — squares the focused cell up to the nearest "
+                        + "quarter turn, keeping its window and its crop.  (.)\n\n"
+                        + "Worth doing before printing: a quarter turn is taken by moving "
+                        + "pixels, while any other angle is resampled and leaves the "
+                        + "corners of the picture outside the film's rectangle."
+                ) {
+                    if let id = viewModel.focusedItemID {
+                        viewModel.straightenCell(forItemID: id)
+                    }
+                }
+                .disabled(viewModel.focusedItemID.map { !viewModel.isCellSkewed($0) } ?? true)
+
                 // Invert is a switch on the focused cell, not a drag, so it does
                 // not arm anything — its lit state is the cell's, which is what
                 // "is this picture inverted" is asking. The film's own polarity
@@ -252,14 +334,20 @@ struct FilmPreviewView: View {
                         : "Invert — swaps black and white in the focused cell, the way a "
                         + "chest film is read either way round.  (V)\n\n"
                         + (viewModel.cellSync.contains(.invert)
-                           ? "The Invert lock is shut, so the other cells turn with it."
-                           : "Acts on this cell alone — shut the Invert lock to turn them together.")
+                           ? "The Lock Invert chip is shut, so the other cells turn with it."
+                           : "Acts on this cell alone — shut Lock Invert to turn them together.")
                 ) {
                     if let id = viewModel.focusedItemID {
                         viewModel.toggleCellInversion(forItemID: id)
                     }
                 }
                 .disabled(viewModel.focusedItemID == nil)
+
+                // Colour is a choice among many rather than a switch, so it is
+                // a menu where Invert is a button. Lit when the focused cell is
+                // actually coloured — the same question its neighbour answers:
+                // "is this picture being read that way".
+                cellPaletteMenu
 
                 Self.railSeparator()
 
@@ -402,9 +490,16 @@ struct FilmPreviewView: View {
             VStack(spacing: 3) {
                 Image(systemName: symbol)
                     .font(.system(size: 17, weight: isOn ? .semibold : .regular))
+                // Up to two lines: the lock chips caption themselves "Lock"
+                // over the noun, and a one-line limit would clip the noun —
+                // the half that says which lock. The tool chips are one word
+                // and are unaffected. Tight line spacing keeps a two-line
+                // caption inside the same 44-point chip as a one-line one.
                 Text(caption)
                     .font(.system(size: 10, weight: isOn ? .semibold : .regular))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .lineSpacing(-2)
+                    .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.7)
             }
             .frame(width: Self.railWidth - 8, height: 44)
@@ -430,6 +525,108 @@ struct FilmPreviewView: View {
         .accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 
+    /// The palette menu's contents, split out from the rail button so the type
+    /// checker is handed two small expressions rather than one large one.
+    @ViewBuilder
+    private func paletteMenuItems(
+        current: DICOMCore.PseudoColorPalette?
+    ) -> some View {
+        // "Film default" is the absence of a choice, which is a different thing
+        // from choosing grey — a cell set to Grayscale stays grey when the film
+        // is coloured, and this one does not.
+        Button {
+            setFocusedCellPalette(nil)
+        } label: {
+            if current == nil {
+                Label(filmDefaultTitle, systemImage: "checkmark")
+            } else {
+                Text(filmDefaultTitle)
+            }
+        }
+        Divider()
+        ForEach(DICOMCore.PseudoColorPalette.catalog, id: \.group) { entry in
+            Section(entry.group.title) {
+                ForEach(entry.palettes, id: \.self) { palette in
+                    Button {
+                        setFocusedCellPalette(palette)
+                    } label: {
+                        if current == palette {
+                            Label(palette.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(palette.displayName)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// What the film's own palette is called, for the menu's first entry.
+    private var filmDefaultTitle: String {
+        guard let film = viewModel.filmPalette else { return "Film default (grayscale)" }
+        return "Film default (\(film.displayName))"
+    }
+
+    private func setFocusedCellPalette(_ palette: DICOMCore.PseudoColorPalette?) {
+        guard let id = viewModel.focusedItemID else { return }
+        viewModel.setCellPalette(palette, forItemID: id)
+    }
+
+    /// The focused cell's palette, as a menu on the rail.
+    ///
+    /// A menu rather than a button because colour is a choice among two dozen,
+    /// and rather than living only in the settings column because the settings
+    /// column speaks for the whole film: this is how one cell is coloured while
+    /// the rest stay grey, which is what a PET beside its CT actually needs.
+    @ViewBuilder
+    private var cellPaletteMenu: some View {
+        let focused = viewModel.focusedItem
+        let current = focused?.presentation?.palette
+        let isColoured = current.map { !$0.isGrayscale } ?? false
+
+        Menu {
+            paletteMenuItems(current: current)
+        } label: {
+            VStack(spacing: 2) {
+                Image(systemName: "paintpalette")
+                    .font(.system(size: 15, weight: .medium))
+                // "CLUT" — the Palette Color LUT the cell is shown through.
+                // Not "Colour": the film's own polarity under More is a LUT
+                // too (the Presentation LUT Shape), and the two get talked
+                // about together often enough that the caption has to say
+                // which one it is. The tooltip spells the abbreviation out.
+                Text("CLUT")
+                    .font(.system(size: 9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(width: Self.railWidth - 8, height: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isColoured ? Color.accentColor : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .foregroundStyle(isColoured ? Color.white : Color.secondary)
+        .disabled(viewModel.focusedItemID == nil)
+        .help(focused == nil
+            ? "CLUT (Palette Color LUT) — shows one cell through a pseudo-colour "
+            + "palette. Click a cell first to choose which.\n\n"
+            + "For the whole film, use Colour palette under More."
+            : "CLUT (Palette Color LUT) — shows the focused cell through a "
+            + "pseudo-colour palette.\n\n"
+            + "Not the same LUT as the film's polarity under More: that one is "
+            + "the Presentation LUT Shape, which keeps the cell grey and only "
+            + "decides which end of the scale is black.\n\n"
+            + "Colour is baked into the pixels before they are sent: DICOM print "
+            + "has no way to name a palette to the printer, so a coloured cell "
+            + "prints at 8-bit RGB.\n\n"
+            + (viewModel.cellSync.contains(.palette)
+               ? "The Lock CLUT chip is shut, so the other cells take it too."
+               : "Acts on this cell alone — shut Lock CLUT to colour them together."))
+    }
+
     /// A tool's tooltip: the gesture, what it changes, its key — and, last, how
     /// many cells the next drag will actually move.
     ///
@@ -452,7 +649,14 @@ struct FilmPreviewView: View {
                  + "The scroll wheel zooms the cell under the pointer with any tool armed."
         case .pan:
             body = "Pan — drag to move the picture inside its cell. "
-                 + "Only travels as far as there is image hidden outside the cell."
+                 + "Only travels as far as there is image hidden outside the cell, "
+                 + "so on a fitted film zoom in first; under Fill scaling it "
+                 + "works unzoomed."
+        case .rotate:
+            body = "Rotate — drag around the middle of a cell and the picture "
+                 + "follows the pointer, either way, through the full circle. "
+                 + "Straighten on the rail squares a cell back up to the nearest "
+                 + "quarter turn."
         case .text:
             body = "Text — click a cell where the note should go, then type. "
                  + "Drag its handle to move it; Delete removes the selected note."
@@ -486,6 +690,17 @@ struct FilmPreviewView: View {
         case .zoomPan:
             what = "Zoom and pan travel as values: the cells end up at the same "
                  + "magnification over the same part of the picture."
+        case .rotate:
+            what = "The angle travels as a value, not as a turn: the cells end up "
+                 + "standing the same way round, whatever angle each of them "
+                 + "started at. Flip is never carried — which side of the patient "
+                 + "is which is a fact about the image, not a way of looking at "
+                 + "the film."
+        case .palette:
+            what = "The palette travels as a value: the cells end up read through "
+                 + "the same CLUT. It is a Palette Color LUT — colour — and not "
+                 + "the film's Presentation LUT Shape, which is set once for the "
+                 + "whole sheet under More and only decides polarity."
         default:
             what = "Inverting one cell inverts the others."
         }
@@ -494,7 +709,7 @@ struct FilmPreviewView: View {
             ? "Shut: adjusting one cell also adjusts the cells \(scope). Click to open it "
             + "and work on one cell alone."
             : "Open: each cell keeps its own. Click to shut it."
-        return "\(title) lock.  (\(key))\n\n\(state)\n\n\(what)"
+        return "Lock \(title).  (\(key))\n\n\(state)\n\n\(what)"
     }
 
     /// What the next drag with this tool reaches, in plain words.
@@ -516,7 +731,14 @@ struct FilmPreviewView: View {
                  + "the locks stand aside while a selection is in force."
         }
 
-        let option: PrintCellSyncOptions = (tool == .window) ? .window : .zoomPan
+        // Each tool asks about its own lock. Zoom and pan share one, so the
+        // remaining geometry tools fall to it.
+        let option: PrintCellSyncOptions
+        switch tool {
+        case .window: option = .window
+        case .rotate: option = .rotate
+        default:      option = .zoomPan
+        }
         guard viewModel.cellSync.contains(option) else {
             return "Acts on the one cell you drag — its lock is open."
         }
@@ -535,26 +757,54 @@ struct FilmPreviewView: View {
     ///
     /// Only over a cell with a picture in it: an empty cell has nothing for any
     /// of these to act on, and a magnifier over it promises otherwise.
-    private static func toolCursor(for tool: PrintViewModel.CellTool) -> NSCursor {
+    /// - Parameter isDragging: whether the tool's drag is running, so the pointer
+    ///   can confirm that the gesture took hold. The pan drag sets its own closed
+    ///   hand from inside `CellInteraction`, where the gesture lives; this
+    ///   parameter is what the other tools would use, and the resting shapes are
+    ///   what the overlay asks for.
+    @MainActor
+    private static func toolCursor(
+        for tool: PrintViewModel.CellTool, isDragging: Bool = false
+    ) -> NSCursor {
+        switch tool {
+        case .window, .zoom, .rotate:
+            // The tool's own glyph, drawn as the pointer — the same symbol the
+            // rail button and the viewer's toolbar carry, so the pointer, the
+            // rail and the viewer all name the armed tool with one picture.
+            // Windowing a cell and windowing an image are the same act, so
+            // they show the same shape on both screens.
+            return ToolSymbolCursor.cursor(
+                symbolName: symbolName(for: tool, isDragging: isDragging),
+                fallback: tool == .zoom ? .zoomIn : .crosshair)
+        case .pan:
+            // The system pair: open before the drag, closed while the cell's
+            // picture is actually being carried.
+            return isDragging ? .closedHand : .openHand
+        case .text:
+            return .iBeam
+        case .arrow:
+            // Drawing a new arrow, not adjusting the picture — the crosshair is
+            // the shape for placing a thing at a point, and it is what every
+            // other drawing tool on the platform uses.
+            return .crosshair
+        }
+    }
+
+    /// The symbol a cell tool's pointer draws, resting and mid-drag.
+    private static func symbolName(
+        for tool: PrintViewModel.CellTool, isDragging: Bool
+    ) -> String {
         switch tool {
         case .window:
-            // The plain arrow, matching the pointer glyph the rail's W/L button
-            // now carries: the button and the pointer say the same thing. It is
-            // also the right shape for the default tool — the film should look
-            // untouched until a tool is deliberately picked, and a heavier
-            // cursor sitting under the pointer all day is what makes a
-            // shape-changing pointer tiresome rather than useful.
-            return NSCursor.arrow
+            return isDragging ? "sun.max.fill" : "sun.max"
         case .zoom:
-            return NSCursor.zoomIn
-        case .pan:
-            // The open hand, not the closed one: closed says "you are dragging
-            // now", and this is the shape shown before the drag begins.
-            return NSCursor.openHand
-        case .text:
-            return NSCursor.iBeam
-        case .arrow:
-            return NSCursor.crosshair
+            return isDragging ? "magnifyingglass.circle.fill" : "magnifyingglass"
+        case .rotate:
+            return isDragging
+                ? "arrow.triangle.2.circlepath.circle.fill"
+                : "arrow.triangle.2.circlepath"
+        default:
+            return tool.symbolName
         }
     }
     #endif
@@ -581,16 +831,37 @@ struct FilmPreviewView: View {
         case .window: return "W/L"
         case .zoom:   return "Zoom"
         case .pan:    return "Pan"
+        case .rotate: return "Rotate"
         case .text:   return "Text"
         case .arrow:  return "Arrow"
         }
     }
 
     /// The word under a lock.
+    ///
+    /// Every one carries the "Lock" prefix. Without it the captions repeat the
+    /// tool captions a few points above — two buttons both saying "Invert", two
+    /// both saying "W/L" — and the reader has to work out from the padlock glyph
+    /// alone which of the pair *does* the thing and which *holds it together*.
+    /// The prefix puts the verb in the caption, where the tools already have
+    /// theirs.
+    ///
+    /// Two lines, not one: the chip is 60 points wide and "Lock Zoom+Pan" on a
+    /// single line shrinks to about seven points before it fits. "Lock" on its
+    /// own line above the noun costs nothing — the chip is 44 points tall and
+    /// the glyph shares the space — and the prefix is the part that repeats, so
+    /// it reads as a column heading down the group.
     private static func railCaption(for option: PrintCellSyncOptions) -> String {
-        if option == .zoomPan { return "Zoom+Pan" }
-        if option == .window { return "W/L" }
-        return "Invert"
+        if option == .zoomPan { return "Lock\nZoom+Pan" }
+        if option == .window { return "Lock\nW/L" }
+        if option == .rotate { return "Lock\nRotate" }
+        // The palette lock. "CLUT" rather than "Colour" for the same reason the
+        // rail button above it says CLUT: the film's own polarity, set by the
+        // Presentation LUT Shape under More, is also a LUT, and a caption
+        // reading merely "Colour" leaves the two indistinguishable in a
+        // conversation about what a film was printed with.
+        if option == .palette { return "Lock\nCLUT" }
+        return "Lock\nInvert"
     }
 
     private static func scopeCaption(_ scope: PrintCellSyncScope) -> String {
@@ -690,17 +961,16 @@ struct FilmPreviewView: View {
     #if canImport(Metal)
     /// The texture a cell is actually drawn from, if it is drawn from one.
     ///
-    /// A freely rotated cell is not: the shader draws the whole frame and lets
-    /// the view clip it, so the corners the film leaves black would come out as
-    /// the neighbouring anatomy instead. The film's own renderer answers those
-    /// cells, at the cost of a re-render per tool step on a rotated cell only.
+    /// Every arrangement takes the GPU now. Freely rotated cells used to fall
+    /// back to the CPU — the shader drew the whole frame, so the corners the
+    /// film leaves black came out as neighbouring anatomy — but the fragment
+    /// shader masks outside the film's crop today, so a rotate drag on any cell
+    /// is one matrix update rather than a CPU re-render per mouse delta. Stretch
+    /// likewise: the transform stretches the composed picture to the cell.
+    /// What still says no is the texture cache itself — overlay-plane frames
+    /// and machines without Metal — and those cells keep the CPU thumbnail.
     private func drawnTexture(for item: PrintSelectionItem) -> DisplayFrameTexture? {
-        guard item.presentation?.isQuarterTurn ?? true else { return nil }
-        // Stretch is not expressible as the shader's aspect-preserving
-        // transform; answering nil routes both the drawing and the thumbnail
-        // request to the CPU path, which can ignore the aspect.
-        guard viewModel.scalingMode != .stretch else { return nil }
-        return cellTextures.texture(for: item)
+        cellTextures.texture(for: item)
     }
     #endif
 
@@ -755,8 +1025,13 @@ struct FilmPreviewView: View {
     }
 
     /// Which film a mark sits on, by its position in film order.
+    ///
+    /// Position in `items` — the marks the films actually carry — not in the
+    /// raw selection: an active image range filters marks out of the layout
+    /// while leaving them in the selection, and an index into the wrong list
+    /// paged the preview to the wrong sheet.
     private func film(ofItemID itemID: String) -> Int? {
-        guard let index = viewModel.selection.items.firstIndex(where: { $0.id == itemID }),
+        guard let index = items.firstIndex(where: { $0.id == itemID }),
               plan.cellsPerFilm > 0 else { return nil }
         return index / plan.cellsPerFilm
     }
@@ -831,7 +1106,10 @@ struct FilmPreviewView: View {
     /// anyway. Nothing focused yet means "start at the first cell".
     @discardableResult
     private func moveFocus(by offset: Int) -> Bool {
-        let all = viewModel.selection.items
+        // Walked over the marks the films actually carry: with an image range
+        // in force the raw selection still holds the filtered-out marks, and
+        // stepping through those focused cells that are not on any sheet.
+        let all = items
         guard !all.isEmpty else { return false }
         guard let focusedID = viewModel.focusedItemID,
               let current = all.firstIndex(where: { $0.id == focusedID }) else {
@@ -894,7 +1172,7 @@ struct FilmPreviewView: View {
     private func focusedCell(among cells: [FilmCell]) -> FilmCell? {
         guard plan.cellsPerFilm > 0,
               let focusedID = viewModel.focusedItemID,
-              let index = viewModel.selection.items.firstIndex(where: { $0.id == focusedID })
+              let index = items.firstIndex(where: { $0.id == focusedID })
         else { return nil }
         let position = index % plan.cellsPerFilm + 1
         return cells.first { $0.position == position }
@@ -913,11 +1191,11 @@ struct FilmPreviewView: View {
     ///
     /// | Key | Does |
     /// |-----|------|
-    /// | `W` `Z` `P` `T` `R` | arm W/L, Zoom, Pan, Text, Arrow |
-    /// | `⇧W` `⇧Z` `⇧V` | shut or open the W/L, Zoom & Pan, Invert locks |
+    /// | `W` `Z` `P` `E` `T` `R` | arm W/L, Zoom, Pan, Rotate, Text, Arrow |
+    /// | `⇧W` `⇧Z` `⇧E` `⇧V` `⇧C` | shut or open the W/L, Zoom & Pan, Rotate, Invert, CLUT locks |
     /// | `S` | swap a shut lock's reach between Series and Film |
     /// | `A` | pick the run of cells from the focused one, or let a picked set go |
-    /// | `V` | invert the focused cell |
+    /// | `V` `.` | invert the focused cell, straighten it back to square |
     /// | `I` | show or hide the identification caption |
     /// | `0` `⇧0` | reset the focused cell, reset every cell |
     /// | `⌫` | delete the selected annotation, else the selected cells |
@@ -971,6 +1249,18 @@ struct FilmPreviewView: View {
                 }
             }
             .keyboardShortcut("v", modifiers: [])
+            // Straighten, on its own key rather than the rotate lock's: ⇧E
+            // shuts that lock, and the rail's pairing — a lock is its tool's key
+            // shifted — is worth more than putting two rotation acts on one
+            // letter. The full stop reads as squaring up, and nothing else here
+            // wants it.
+            Button("") {
+                if let id = viewModel.focusedItemID {
+                    viewModel.straightenCell(forItemID: id)
+                }
+            }
+            .keyboardShortcut(".", modifiers: [])
+
             Button("") { viewModel.resetFocusedCell() }
                 .keyboardShortcut("0", modifiers: [])
             // The sheet-wide way out, shifted: linked cells make a bad
@@ -1127,7 +1417,7 @@ struct FilmPreviewView: View {
         if let item {
             Divider()
 
-            Button("Apply This Window to All Cells") {
+            Button("Apply This Window to Every Cell on This Film") {
                 viewModel.focusCell(item.id)
                 viewModel.applyFocusedWindowToAllCells()
             }
@@ -1138,6 +1428,16 @@ struct FilmPreviewView: View {
                 viewModel.revertCell(forItemID: item.id)
             }
             .disabled(!viewModel.isCellAdjusted(item.id))
+
+            // Only where it can do something: a square cell has nothing to
+            // straighten, and an item that never does anything is an item the
+            // reader has to test to learn that about.
+            if viewModel.isCellSkewed(item.id) {
+                Button("Straighten This Cell  (.)") {
+                    viewModel.focusCell(item.id)
+                    viewModel.straightenCell(forItemID: item.id)
+                }
+            }
 
             Button(item.presentation?.invert == true
                    ? "Show This Cell the Right Way Round  (V)"
@@ -1324,7 +1624,11 @@ struct FilmPreviewView: View {
                    let text = overlayTexts.text(forPath: item.filePath), !text.isEmpty {
                     PatientIdentificationOverlayView(
                         corners: text.corners(including: viewModel.identificationFields),
-                        cellSize: cellSize)
+                        cellSize: cellSize,
+                        // The same style the run hands the burner, so a job that
+                        // sets its own caption face or size is previewed in it
+                        // rather than in the default.
+                        style: viewModel.identificationStyle)
                     .allowsHitTesting(false)
                 }
             }
@@ -1400,10 +1704,9 @@ struct FilmPreviewView: View {
             )
             // The pointer says what the next drag on this cell will do.
             //
-            // Not `.allowsHitTesting(false)`: a view excluded from hit testing
-            // is excluded from cursor tracking too, so `cursorUpdate` never
-            // fired and the shape only ever changed when the tool was switched
-            // under a stationary mouse. It is a zero-content NSView with no
+            // Not `.allowsHitTesting(false)`: SwiftUI's exclusion can detach
+            // the view from the window's tracking altogether, and the pointer
+            // then never changes at all. It is a zero-content NSView with no
             // gestures of its own, so leaving it hit-testable costs nothing —
             // the taps and drags are on the cell *behind* it, and SwiftUI still
             // delivers those because this overlay never consumes an event.
@@ -1424,6 +1727,13 @@ struct FilmPreviewView: View {
                 cellSize: picture,
                 pixelSize: item.flatMap { sourcePixelSize(for: $0) },
                 imageRect: item.map { imageRect(for: $0, in: picture) } ?? .zero))
+            // The focused cell reports its size, so the sidebar's saved-view
+            // picker — which has no cell geometry of its own — can restore a
+            // Displayed Area against the cell the picture will really print in.
+            // The focused one specifically: under a band layout the cells
+            // differ, and the inspector is always about the focused cell.
+            .modifier(FocusedCellSizeReporter(
+                isFocused: isFocused, cellSize: picture, viewModel: viewModel))
             // The tools live here now. Each item acts on the cell that was
             // right-clicked — it takes the cell first — so the menu is about the
             // picture under the pointer rather than about whichever cell
@@ -1535,7 +1845,13 @@ struct FilmPreviewView: View {
                     // view's size never follows the arrangement (see the mask
                     // comment above).
                     fillingCellOfSize: viewModel.scalingMode == .fillToFilm
-                        ? cellSize : nil))
+                        ? cellSize : nil,
+                    // Stretch keeps the fitted crop and pulls the composed
+                    // picture to the cell's edges in the transform instead.
+                    stretchingToCell: viewModel.scalingMode == .stretch,
+                    // The film-wide Presentation LUT, so the preview shows the
+                    // polarity the sheet will actually come out with.
+                    presentationLUTShape: viewModel.presentationLUTShape))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             cellCPUImage(item)
@@ -1545,9 +1861,10 @@ struct FilmPreviewView: View {
         #endif
     }
 
-    /// A cell drawn from a CPU-rendered still — the fallback, the only path on
-    /// a machine without Metal, and the path that draws stretch, which is not
-    /// expressible as the shader's aspect-preserving transform.
+    /// A cell drawn from a CPU-rendered still — the fallback: the moment before
+    /// a texture arrives, frames with overlay planes, and machines without
+    /// Metal. It composes every scaling mode the GPU path does, because a cell
+    /// must look the same whichever renderer answered.
     @ViewBuilder
     private func cellCPUImage(_ item: PrintSelectionItem?) -> some View {
         #if canImport(CoreGraphics)
@@ -1614,6 +1931,11 @@ struct FilmPreviewView: View {
         case .window: return "w"
         case .zoom:   return "z"
         case .pan:    return "p"
+        // E, as in the viewer: R is the arrow tool here and rotate needed a key
+        // that was not already spoken for. The letter is arbitrary either way,
+        // and one that means rotate on both screens is worth more than one that
+        // reads better on this screen alone.
+        case .rotate: return "e"
         case .text:   return "t"
         case .arrow:  return "r"
         }
@@ -1634,6 +1956,13 @@ struct FilmPreviewView: View {
     private static func shortcut(for option: PrintCellSyncOptions) -> Character {
         if option == .window { return "w" }
         if option == .zoomPan { return "z" }
+        if option == .rotate { return "e" }
+        // C for the CLUT lock. It had been falling through to V with the invert
+        // lock, so two of the rail's zero-sized buttons claimed ⇧V: the palette
+        // lock could not be reached from the keyboard at all, and which of the
+        // two ⇧V toggled was whichever SwiftUI resolved first. C is free on this
+        // screen.
+        if option == .palette { return "c" }
         return "v"
     }
 
@@ -1664,6 +1993,36 @@ struct FilmPreviewView: View {
     private static let cellSpacing: CGFloat = 4
 }
 
+// MARK: - Focused cell geometry
+
+/// Reports the focused cell's drawn size to the view model.
+///
+/// The sidebar's saved-view picker has no cell geometry of its own, and a
+/// stored Displayed Area only becomes a zoom against a viewport — so it has to
+/// be told the cell the picture will print in, or the crop comes back the shape
+/// of the viewer tile the mark was made in.
+///
+/// A modifier rather than three `onChange`s inline: the cell body is already at
+/// the limit of what the type-checker will take in one expression.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+private struct FocusedCellSizeReporter: ViewModifier {
+    let isFocused: Bool
+    let cellSize: CGSize
+    let viewModel: PrintViewModel
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear(perform: report)
+            .onChange(of: isFocused) { _, _ in report() }
+            .onChange(of: cellSize) { _, _ in report() }
+    }
+
+    private func report() {
+        guard isFocused else { return }
+        viewModel.recordCellSize(cellSize)
+    }
+}
+
 // MARK: - Cell interaction
 
 /// Click-to-focus and drag-to-adjust on one film cell.
@@ -1684,6 +2043,14 @@ private struct CellInteraction: ViewModifier {
     /// Whether a pan drag is in progress, so the hand closes once at its start
     /// rather than on every mouse event it delivers.
     @State private var isPanning = false
+
+    /// The bearing the rotate drag last saw, around the centre of the picture.
+    ///
+    /// The tool turns the cell by the *arc the pointer sweeps*, not by where it
+    /// is, so each event needs the one before it. Cleared when the drag ends, so
+    /// the next drag anchors afresh wherever it starts rather than snapping the
+    /// picture to the angle the last one finished at.
+    @State private var rotateBearing: Double?
 
     let cellSize: CGSize
 
@@ -1727,10 +2094,23 @@ private struct CellInteraction: ViewModifier {
                                 NSCursor.closedHand.set()
                             }
                             #endif
+                            // Rotate works in absolute locations rather than
+                            // in the running translation: the arc swept around
+                            // the picture's centre is what turns it, and a
+                            // translation says nothing about where the pointer
+                            // is relative to that centre.
+                            if viewModel.cellTool == .rotate {
+                                rotate(to: value.location, on: item)
+                                return
+                            }
                             apply(value.translation, to: item)
                         }
-                        .onEnded { _ in
+                        .onEnded { value in
+                            if viewModel.cellTool == .rotate {
+                                rotate(to: value.location, on: item)
+                            }
                             dragAnchor = .zero
+                            rotateBearing = nil
                             finishArrow(on: item)
                             #if os(macOS)
                             if isPanning {
@@ -1828,6 +2208,38 @@ private struct CellInteraction: ViewModifier {
         return PrintOverlayPoint(x: Double(x), y: Double(y))
     }
 
+    /// Turns the cell by the arc the pointer just swept around its picture.
+    ///
+    /// The pointer is a handle on the picture: drag round clockwise and the cell
+    /// follows clockwise, drag back and it unwinds, all the way round in either
+    /// direction with no quarter-turn snapping — the same gesture the viewer's
+    /// rotate tool answers to, so the act means one thing on both screens.
+    ///
+    /// The pivot is the centre of the *picture*, not of the cell. On a fitted
+    /// film the two differ by the letterbox margin, and turning about the cell's
+    /// centre would swing a picture that is not centred in it — the anatomy
+    /// would orbit rather than turn on the spot.
+    ///
+    /// Near the pivot a bearing is noise — a pixel of jitter there swings it
+    /// wildly — so ``GestureHelpers/dragBearing(x:y:pivotX:pivotY:minimumRadius:)``
+    /// stays silent until the pointer is far enough out, and the first bearing
+    /// after that only anchors the drag.
+    private func rotate(to location: CGPoint, on item: PrintSelectionItem) {
+        let pivot = imageRect.isEmpty
+            ? CGPoint(x: cellSize.width / 2, y: cellSize.height / 2)
+            : CGPoint(x: imageRect.midX, y: imageRect.midY)
+        guard let bearing = GestureHelpers.dragBearing(
+            x: Double(location.x), y: Double(location.y),
+            pivotX: Double(pivot.x), pivotY: Double(pivot.y)
+        ) else { return }
+        defer { rotateBearing = bearing }
+        guard let previous = rotateBearing else { return }
+        viewModel.rotateCell(
+            forItemID: item.id,
+            byDegrees: GestureHelpers.shortestAngleDelta(from: previous, to: bearing),
+            cellSize: cellSize)
+    }
+
     /// Turns the running translation into a per-frame delta and applies the tool.
     private func apply(_ translation: CGSize, to item: PrintSelectionItem) {
         let dx = translation.width - dragAnchor.width
@@ -1839,10 +2251,22 @@ private struct CellInteraction: ViewModifier {
             // Handled by the tap and the arrow drag; a drawing tool must not also
             // window the cell under it.
             return
+        case .rotate:
+            // Handled by `rotate(to:on:)`, which needs where the pointer is
+            // rather than how far it has come.
+            return
         case .window:
             // Horizontal widens, vertical raises the centre — the viewer's own
             // convention, so the gesture means the same thing on both screens.
             guard !viewModel.isCellWindowingOverridden else { return }
+            // A mark can be windowless while its cell stays focused — revert
+            // took the numbers away, or a seed is still being read — and a
+            // drag with no starting values adjusts nothing. Seed here so the
+            // drag comes alive the moment the values land.
+            guard viewModel.window(forItemID: item.id) != nil else {
+                Task { await viewModel.seedWindowIfNeeded(forItemID: item.id) }
+                return
+            }
             viewModel.adjustWindow(
                 forItemID: item.id,
                 deltaCenter: -Double(dy) * Self.windowSensitivity,

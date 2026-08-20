@@ -72,6 +72,26 @@ public struct PrintOverlayColor: Sendable, Equatable, Codable {
     }
 }
 
+/// Identity of the image an annotation is drawn on.
+///
+/// Annotations belong to the image, not to any particular film mark: the same
+/// frame can be marked onto more than one film cell, and a drawing made on it
+/// should show up wherever that frame appears — in every cell it is marked
+/// onto, and in the viewer, whether or not the print tray has ever been
+/// opened. `sopInstanceUID` is deliberately not part of this key: a
+/// multi-tile viewer layout leaves it `nil` for every tile that is not
+/// focused, so keying on it would silently drop annotations for those tiles.
+/// `filePath` + `frameIndex` is the one thing every caller always has.
+public struct ImageAnnotationKey: Hashable, Sendable, Codable {
+    public var filePath: String
+    public var frameIndex: Int
+
+    public init(filePath: String, frameIndex: Int) {
+        self.filePath = filePath
+        self.frameIndex = frameIndex
+    }
+}
+
 /// One thing a reader drew on one film cell.
 public struct PrintOverlayAnnotation: Sendable, Equatable, Identifiable, Codable {
 

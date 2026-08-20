@@ -742,15 +742,42 @@ public struct PrintImageData: Sendable, Equatable {
 /// Presentation LUT Shape (2050,0020) — the transformation applied to stored
 /// pixel values before printing.
 ///
-/// Reference: PS3.3 C.11.6.1. For a custom curve, send a
-/// ``PresentationLUTTable`` instead of a shape.
+/// Reference: PS3.3 **C.11.4** (Presentation LUT Module, the hardcopy one).
+/// That module enumerates exactly two values, `IDENTITY` and `LIN OD`;
+/// `INVERSE` belongs to C.11.6, the *softcopy* module, and is not legal on the
+/// wire in a print context — DCMTK's `isLegalPrintPresentationLUT` rejects it
+/// outright, so a printer is entitled to fail the N-CREATE.
+///
+/// ``inverseRendered`` therefore is not a shape at all: it is the request to
+/// invert the pixels before they are sent, which is how DCMTK's
+/// `dcmpsprt --inverse-plut` gets an inverted film out of a conformant
+/// printer. It carries ``wireValue`` `nil` for that reason — there is nothing
+/// legal to put in (2050,0020) for it.
+///
+/// For an arbitrary curve, send a ``PresentationLUTTable`` instead of a shape.
 public enum PresentationLUTShape: String, Sendable, Equatable, CaseIterable, Codable {
     /// No transformation — stored values map directly to P-Values (IDENTITY).
     case identity = "IDENTITY"
-    /// Inverse of IDENTITY (INVERSE).
-    case inverse = "INVERSE"
-    /// Linear optical density (LIN OD).
+    /// Linear optical density (LIN OD), bounded by Min/Max Density.
     case linearOpticalDensity = "LIN OD"
+    /// Inversion rendered into the pixels, with no shape sent (PS3.3 C.11.4
+    /// has no `INVERSE`). The film comes out inverted on any printer.
+    case inverseRendered = "INVERSE_RENDERED"
+
+    /// The string to put in Presentation LUT Shape (2050,0020), or `nil` when
+    /// this option is realised in the pixels instead of on the wire.
+    public var wireValue: String? {
+        switch self {
+        case .identity, .linearOpticalDensity: return rawValue
+        case .inverseRendered: return nil
+        }
+    }
+
+    /// Whether the sender must invert the pixels to honour this option.
+    public var invertsPixels: Bool { self == .inverseRendered }
+
+    /// Whether PS3.3 C.11.4 allows this as a Presentation LUT Shape on the wire.
+    public var isLegalPrintShape: Bool { wireValue != nil }
 }
 
 /// A custom Presentation LUT, sent as the Presentation LUT Sequence
@@ -2947,10 +2974,17 @@ public enum DICOMPrintService {
         let elements: [DataElement]
         if let table {
             elements = [table.sequenceElement()]
-        } else if let shape {
+        } else if let shape, let wireValue = shape.wireValue {
             elements = [
-                DataElement.string(tag: .presentationLUTShape, vr: .CS, value: shape.rawValue)
+                DataElement.string(tag: .presentationLUTShape, vr: .CS, value: wireValue)
             ]
+        } else if shape?.invertsPixels == true {
+            // Realised in the pixels by the preparer, so there is no SOP
+            // instance to create. Reaching here means a caller asked for one
+            // anyway; refusing beats emitting an INVERSE that C.11.4 forbids.
+            throw PrintError.invalidConfiguration(
+                reason: "Rendered inversion is applied to the pixels, "
+                    + "not sent as a Presentation LUT")
         } else {
             throw PrintError.invalidConfiguration(
                 reason: "A Presentation LUT needs a shape or a table")
@@ -3909,7 +3943,10 @@ public enum DICOMPrintService {
             // ── Step 1b: N-CREATE Presentation LUT (optional) ─────────────
             // Created once per association and referenced from each film box.
             var presentationLUTUID: String?
-            if options.presentationLUTShape != nil || options.presentationLUTTable != nil {
+            // A pixel-rendered inversion has nothing legal to send, so it must
+            // not trigger a Presentation LUT N-CREATE (PS3.3 C.11.4).
+            if options.presentationLUTShape?.isLegalPrintShape == true
+                || options.presentationLUTTable != nil {
                 var lutMessageID: UInt16 = 1000
                 presentationLUTUID = try await createPresentationLUTInstance(
                     association: association,

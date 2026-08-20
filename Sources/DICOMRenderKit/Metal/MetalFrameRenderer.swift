@@ -140,6 +140,19 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             // Reproducing that scan here would be a second implementation of a
             // policy decision, so the CPU keeps it.
             guard let window = request.window else { return nil }
+            // A pseudo-colour palette recolours the windowed level, so the two
+            // tables fold into one raw-sample → RGB lookup and the frame goes
+            // through the palette kernel instead. Same dispatch, same tables'
+            // shape, four bytes out rather than one — which is what lets a grey
+            // frame come off the GPU in colour without a shader that knows about
+            // palettes.
+            if let palette = request.effectivePseudoColorPalette {
+                let lut = PaletteDisplayLUT.make(
+                    window: WindowLUT.grayscale(
+                        descriptor: request.pixelData.descriptor, window: window),
+                    entries: palette.entries())
+                return renderPalette(request, lut: lut, destination: destination)
+            }
             return renderMonochrome(request, window: window, destination: destination)
         case .palette:
             guard let palette = request.paletteLUT else { return nil }
@@ -306,13 +319,25 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
     private func renderPalette(
         _ request: FrameRenderRequest, palette: PaletteColorLUT, destination: Destination
     ) -> RenderOutput? {
+        let lut = PaletteDisplayLUT.make(
+            descriptor: request.pixelData.descriptor, palette: palette)
+        return renderPalette(request, lut: lut, destination: destination)
+    }
+
+    /// The palette kernel over tables that are already built.
+    ///
+    /// Shared by the two things that end in a raw-sample → RGB lookup: a
+    /// PALETTE COLOR frame's own table, and a monochrome frame's window folded
+    /// together with a reader's pseudo-colour ramp.
+    private func renderPalette(
+        _ request: FrameRenderRequest, lut: PaletteDisplayLUT, destination: Destination
+    ) -> RenderOutput? {
         let descriptor = request.pixelData.descriptor
         guard let geometry = FrameGeometry(
             request,
             minimumPixelCount: destination == .texture ? 0 : minimumPixelCount
         ) else { return nil }
 
-        let lut = PaletteDisplayLUT.make(descriptor: descriptor, palette: palette)
         let stride = rowStride(pixelWidth: geometry.width, bytesPerPixel: 4, destination: destination)
 
         var params = PaletteParams(

@@ -12,6 +12,7 @@
 // screen pixels the monitor happened to show.
 
 import Foundation
+import DICOMCore
 
 // MARK: - Pixel Region
 
@@ -96,6 +97,24 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
     /// Whether the viewer was showing the frame inverted.
     public var invert: Bool
 
+    /// The pseudo-colour palette the frame is shown and printed through.
+    ///
+    /// `nil` and ``PseudoColorPalette/grayscale`` both mean "no colour", and
+    /// they mean it for different reasons: `nil` is a cell nobody has chosen a
+    /// palette for, while `.grayscale` is a cell somebody chose grey for. The
+    /// distinction matters when a film-wide default is applied — it fills in
+    /// the cells that never chose, and leaves alone the cell that chose grey on
+    /// purpose.
+    ///
+    /// A palette is a *display* choice: it recolours the windowed grey, and the
+    /// stored pixels are untouched. On film it costs something real, though —
+    /// PS3.3 Table C.13-5 allows only RGB in a Basic Color Image Sequence, so a
+    /// coloured cell is sent as 8-bit RGB and gives up both the deep-grayscale
+    /// bit depth and the Linear-OD density curve, neither of which has any
+    /// meaning once the pixels are colour. ``PrintImagePreparer`` is where that
+    /// widening is decided.
+    public var palette: PseudoColorPalette?
+
     public init(
         zoom: Double = 1.0,
         panX: Double = 0,
@@ -105,7 +124,8 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
         rotationDegrees: Double = 0,
         flipHorizontal: Bool = false,
         flipVertical: Bool = false,
-        invert: Bool = false
+        invert: Bool = false,
+        palette: PseudoColorPalette? = nil
     ) {
         self.zoom = zoom
         self.panX = panX
@@ -116,6 +136,7 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
         self.flipHorizontal = flipHorizontal
         self.flipVertical = flipVertical
         self.invert = invert
+        self.palette = palette
     }
 
     /// Normalizes any angle to 0–3 clockwise quarter turns.
@@ -133,8 +154,33 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
     }
 
     /// Whether this presentation leaves pixels untouched.
+    ///
+    /// Read by the render and print paths to skip the arranging work entirely,
+    /// so anything that changes pixels has to be counted here or the tool that
+    /// sets it does nothing at all — the drag lands, the state is written, and
+    /// the picture never moves. A palette recolours every pixel, so it counts.
     public var isIdentity: Bool {
-        rotationDegrees == 0 && !flipHorizontal && !flipVertical && !invert && !cropsAnything
+        rotationDegrees == 0 && !flipHorizontal && !flipVertical && !invert
+            && !cropsAnything && !colorizes
+    }
+
+    /// Whether a pseudo-colour palette is in force.
+    ///
+    /// Grey palettes do not colourize: choosing "Grayscale" explicitly is a
+    /// statement that this cell stays grey, and it must not push the film into
+    /// RGB — which would cost it bit depth and the density curve for no colour.
+    /// Inverse grey is a palette that *does* change pixels, but the existing
+    /// ``invert`` already carries that meaning through the whole pipeline
+    /// (including Polarity on the wire), so ``PrintImagePreparer`` maps it there
+    /// rather than colourizing.
+    public var colorizes: Bool {
+        guard let palette else { return false }
+        return !palette.isGrayscale
+    }
+
+    /// The palette actually applied, resolving "no choice" to plain grey.
+    public var effectivePalette: PseudoColorPalette {
+        palette ?? .grayscale
     }
 
     // MARK: - Rotation geometry
@@ -168,6 +214,28 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
         return (width * c + height * s, width * s + height * c)
     }
 
+    /// The box a rectangle occupies once turned, counting quarter turns only.
+    ///
+    /// The viewport's counterpart to ``turnedSize(width:height:)``, and the one
+    /// the *cell* is measured with. A freely turned picture keeps its scale and
+    /// loses its corners — the viewer's behaviour, chosen deliberately for film
+    /// — so the shader, the resampler and the CPU arranger all fit the region's
+    /// own rectangle at a free angle and swap the sides only at a quarter turn.
+    /// The viewport has to be read the same way or the cell asks for a bigger
+    /// crop than it draws: at 30° the full bounding box is 1.37× wider, which
+    /// is exactly how much magnification a zoom then failed to deliver.
+    ///
+    /// Kept separate from ``turnedSize(width:height:)`` because that one is
+    /// still the honest answer to a different question — how much room a turned
+    /// rectangle needs to keep every corner — which other callers do ask.
+    /// Mirrors `DisplayFrameTexture.quarterTurnedSize`.
+    public func quarterTurnedSize(
+        width: Double, height: Double
+    ) -> (width: Double, height: Double) {
+        guard isQuarterTurn else { return (width, height) }
+        return quarterTurns % 2 == 1 ? (height, width) : (width, height)
+    }
+
     /// Whether the zoom/pan combination could hide any of the image.
     private var cropsAnything: Bool {
         zoom > 1.0 || panX != 0 || panY != 0
@@ -182,16 +250,20 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
     ///
     /// ## Derivation
     ///
-    /// The viewer composes, from the inside out: fit-to-view scale, zoom, pan,
-    /// rotation, then flip — each about the viewport centre. A source point `p`
-    /// (relative to the image centre, in view points after fitting) lands at
-    /// `q = F · R · (zoom · p + t)`. It is visible when `q` is inside the
-    /// viewport rect `V`, so the visible set is `(R⁻¹ · F⁻¹ · V − t) / zoom`.
+    /// The viewer composes, from the inside out: fit-to-view scale, zoom,
+    /// rotation, flip, then pan — each about the viewport centre, with the pan
+    /// last so a drag moves the picture across the screen whatever way it is
+    /// turned or mirrored. A source point `p` (relative to the image centre, in
+    /// view points after fitting) lands at `q = F · R · (zoom · p) + t`. It is
+    /// visible when `q` is inside the viewport rect `V`, so the visible set is
+    /// `R⁻¹ · F⁻¹ · (V − t) / zoom`.
     ///
     /// `F⁻¹ · V = V`: mirroring a centred rectangle about its own centre gives
-    /// the same rectangle, which is why flips never change *which* pixels are
-    /// visible, only where they end up. `R⁻¹ · V` swaps width and height on odd
-    /// quarter turns.
+    /// the same rectangle, which is why an *unpanned* flip never changes which
+    /// pixels are visible, only where they end up. The pan vector is not so
+    /// lucky: `F⁻¹ · (V − t) = V − F⁻¹t`, so the flips mirror it on the way in,
+    /// exactly as the rotation un-rotates it. `R⁻¹ · V` swaps width and height
+    /// on odd quarter turns.
     /// - Parameter covers: whether the picture is laid in covering the whole
     ///   viewport — fill-to-film — rather than fitted inside it. A covering
     ///   picture is cropped by the viewport on its long axis at every zoom, so
@@ -218,10 +290,15 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
         let scale = baseScale * zoom
         guard scale > 0 else { return nil }
 
-        // The viewport as the image sees it, in source pixels: the box the
-        // un-rotated viewport rectangle needs. A quarter turn swaps the sides;
-        // an angle in between needs both of them.
-        let (visibleWidth, visibleHeight) = turnedSize(
+        // The viewport as the image sees it, in source pixels. A quarter turn
+        // swaps the sides; a free angle leaves the rectangle alone, because the
+        // picture turns about its centre at the scale it already had and the
+        // corners that swing outside the cell are cut — what the shader, the
+        // resampler and the CPU arranger all do. Asking for the full bounding
+        // box here instead requested a crop 1.37× wider than the cell draws at
+        // 30°, so a 2× zoom delivered 1.46× and the picture sat inside an
+        // inscribed rectangle rather than filling its cell.
+        let (visibleWidth, visibleHeight) = quarterTurnedSize(
             width: viewportWidth / scale, height: viewportHeight / scale)
 
         // Pan moves the image, so the viewport moves the opposite way over it.
@@ -236,8 +313,13 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
             x: panX, y: panY, imageWidth: imageWidth, imageHeight: imageHeight,
             covers: covers)
 
-        // Un-rotate the pan vector: it is applied before the rotation on screen.
-        let (unrotatedPanX, unrotatedPanY) = unrotate(x: heldPanX, y: heldPanY)
+        // Take the pan from screen space to image space: un-mirror, then
+        // un-rotate. On screen the pan is applied last — after the rotation
+        // *and* the flips — so the whole stack has to be inverted, in reverse
+        // order. Un-rotating alone read a flipped image's pan the wrong way
+        // round: the drag moved the picture opposite to the hand, and the film
+        // cropped the mirror image of the region the screen showed.
+        let (unrotatedPanX, unrotatedPanY) = viewToImage(x: heldPanX, y: heldPanY)
         let centerX = Double(imageWidth) / 2 - unrotatedPanX / scale
         let centerY = Double(imageHeight) / 2 - unrotatedPanY / scale
 
@@ -307,9 +389,13 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
         let scale = baseScale * zoom
         guard scale > 0 else { return (x, y) }
 
-        // The viewport as the image sees it: turned, so a quarter turn swaps its
-        // sides exactly as `visibleRegion` does.
-        let (acrossX, acrossY) = turnedSize(width: viewportWidth, height: viewportHeight)
+        // The viewport as the image sees it: turned exactly as `visibleRegion`
+        // turns it, quarter turns only. Taking the full bounding box here made
+        // a freely turned cell believe its viewport was larger than the picture
+        // it draws, which halved the pan's travel at 30° — the drag stopped
+        // with the anatomy still short of the cell's edge.
+        let (acrossX, acrossY) = quarterTurnedSize(
+            width: viewportWidth, height: viewportHeight)
 
         // How far the image can travel before its edge comes inside the
         // viewport, along each of the *image's* axes.
@@ -317,12 +403,37 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
         let limitY = max(0, (Double(imageHeight) * scale - acrossY) / 2)
 
         // Pan is stated in view points and the limits in the image's axes, so
-        // the vector is taken into image space, held there, and turned back.
-        let (unrotatedX, unrotatedY) = unrotate(x: x, y: y)
+        // the vector is taken into image space, held there, and taken back.
+        let (unrotatedX, unrotatedY) = viewToImage(x: x, y: y)
         let heldX = max(-limitX, min(limitX, unrotatedX))
         let heldY = max(-limitY, min(limitY, unrotatedY))
+        return imageToView(x: heldX, y: heldY)
+    }
+
+    /// Takes a view-space vector into image space: the screen applies rotate
+    /// then flip, so the inverse un-mirrors first and un-rotates second.
+    ///
+    /// This is the one mapping every reader of ``panX``/``panY`` must use. The
+    /// pan is applied on screen *after* both the rotation and the flips, so a
+    /// stored pan is a screen-space vector; un-rotating without un-mirroring
+    /// reversed the pan's direction over any flipped image.
+    private func viewToImage(x: Double, y: Double) -> (Double, Double) {
+        let mirroredX = flipHorizontal ? -x : x
+        let mirroredY = flipVertical ? -y : y
+        return unrotate(x: mirroredX, y: mirroredY)
+    }
+
+    /// Takes an image-space vector back to the screen: rotate, then mirror.
+    ///
+    /// Internal rather than private so `ViewerPresentationStateBridge` can
+    /// invert `visibleRegion` when restoring a presentation state — the pan it
+    /// recovers is an image-space offset that has to come back to screen space
+    /// through exactly this mapping.
+    func imageToView(x: Double, y: Double) -> (Double, Double) {
         let (cosine, sine) = rotationComponents
-        return (heldX * cosine - heldY * sine, heldX * sine + heldY * cosine)
+        let viewX = x * cosine - y * sine
+        let viewY = x * sine + y * cosine
+        return (flipHorizontal ? -viewX : viewX, flipVertical ? -viewY : viewY)
     }
 
     /// Rotates a view-space vector back into image space.

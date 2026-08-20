@@ -45,6 +45,15 @@ public struct PrintAnnotationStyle: Sendable, Equatable, Hashable, Codable {
     /// rather than to no caption.
     public var fontFamily: String
 
+    /// The face the caption is set in unless a job asks for another.
+    ///
+    /// Named rather than spelled out at each call site: the caption is drawn by
+    /// the burner on film, by `PatientIdentificationOverlayView` on screen, and
+    /// measured by both when deciding where a block has to shrink. Those are
+    /// three places a literal could drift apart, and the preview is only worth
+    /// looking at while they agree.
+    public static let defaultFontFamily = "Helvetica"
+
     /// Caption height as a fraction of the frame's height, or `nil` for the
     /// automatic size. Clamped to 0.02…0.10: below 2% the caption is
     /// illegible on any cell — the SRS's 8 pt floor, expressed relative to
@@ -55,7 +64,7 @@ public struct PrintAnnotationStyle: Sendable, Equatable, Hashable, Codable {
     /// Caption colour.
     public var foreground: Foreground
 
-    public init(fontFamily: String = "Helvetica",
+    public init(fontFamily: String = PrintAnnotationStyle.defaultFontFamily,
                 sizeFraction: Double? = nil,
                 foreground: Foreground = .automatic) {
         self.fontFamily = fontFamily
@@ -150,6 +159,56 @@ public enum ImageAnnotationBurner {
                 }
             }
         }
+    }
+
+    /// Rasterizes what the reader drew onto a transparent RGBA canvas, instead
+    /// of burning it into a prepared frame's own pixels.
+    ///
+    /// Same drawing routines as ``burning(overlays:into:)`` — the halo, the
+    /// arrowhead geometry, the anchor points — so a caller showing this
+    /// (the main viewer's GPU overlay) can never drift from what a print
+    /// job would have burned. The one difference is the destination: this
+    /// draws onto its own transparent buffer at the given dimensions rather
+    /// than into a `PreparedPrintImage`'s pixels, and always in plain RGB —
+    /// there is no photometric interpretation to flatten to here, unlike a
+    /// frame that is actually being sent to a printer.
+    ///
+    /// - Returns: `nil` only if the CoreGraphics context could not be built.
+    ///   An empty or entirely-blank `overlays` still returns bytes — all
+    ///   zero, i.e. fully transparent — rather than `nil`, so a caller does
+    ///   not need a separate "nothing to draw" branch.
+    public static func rasterizing(
+        overlays: [PrintOverlayAnnotation],
+        width: Int,
+        height: Int
+    ) -> (bytes: [UInt8], bytesPerRow: Int)? {
+        guard width > 0, height > 0 else { return nil }
+        let bytesPerRow = width * 4
+        var rgba = [UInt8](repeating: 0, count: height * bytesPerRow)
+
+        let drawn: Bool = rgba.withUnsafeMutableBytes { buffer -> Bool in
+            guard let base = buffer.baseAddress,
+                  let context = CGContext(
+                    data: base,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: bytesPerRow,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ) else { return false }
+            let canvas = Canvas(context: context, width: width, height: height,
+                                isInverted: false, isGrayscale: false)
+            for overlay in overlays where !overlay.isBlank {
+                switch overlay.kind {
+                case .text:  drawText(overlay, in: canvas)
+                case .arrow: drawArrow(overlay, in: canvas)
+                }
+            }
+            return true
+        }
+        guard drawn else { return nil }
+        return (rgba, bytesPerRow)
     }
 
     // MARK: - The pixel buffer
@@ -386,7 +445,7 @@ public enum ImageAnnotationBurner {
         trailing: Bool,
         foreground: CGColor,
         shadow: CGColor,
-        fontFamily: String = "Helvetica"
+        fontFamily: String = PrintAnnotationStyle.defaultFontFamily
     ) {
         // Plain, as the preview sets it: one weight for the whole block, because
         // nothing in the corners is a different kind of statement from anything
@@ -428,12 +487,41 @@ public enum ImageAnnotationBurner {
 
     /// Type size as a fraction of the frame, so a 512² CT and a 3000² CR carry
     /// a caption of the same apparent size.
-    static let heightFraction: Double = 0.035
-    static let widthFraction: Double = 0.030
-    static let minimumFontSize: Double = 9
+    ///
+    /// This is the *one* proportion the caption is set at, on film and in the
+    /// preview alike: `PatientIdentificationOverlayView` scales it by the cell
+    /// it draws in rather than keeping a second set of numbers. The two used to
+    /// disagree — 3.5% of the frame here against 2.3% of the cell there, capped
+    /// at 11 pt, so a full-sheet preview set the caption at well under half the
+    /// size the film printed it — and a preview whose type is a different size
+    /// from the film's is a preview that cannot be used to judge the film.
+    public static let heightFraction: Double = 0.035
+
+    /// The width bound, so a wide-and-short frame does not carry a caption
+    /// sized for its height. Applied against the *height* fraction, whichever
+    /// is smaller.
+    public static let widthFraction: Double = 0.030
+
+    /// Never below this, in the pixels of the frame being drawn into: a
+    /// caption smaller than this is unreadable at any viewing distance.
+    ///
+    /// The preview applies its own floor, in points, for the same reason — the
+    /// two are floors on different units and neither is the other's business.
+    public static let minimumFontSize: Double = 9
+
+    /// The share of the frame's width one corner block is allotted, so the two
+    /// blocks along an edge cannot collide. The preview allots the same share
+    /// of its cell.
+    public static let cornerWidthFraction: Double = 0.48
+
+    /// The floor the block-shrink stops at, as a multiple of the base size:
+    /// past this a line is truncated rather than dragging the patient's name
+    /// into illegibility with it. Shared with the preview so both step down to
+    /// the same size on the same line.
+    public static let minimumShrinkFactor: Double = 0.5
 
     /// The size the caption is set at on a frame of these dimensions.
-    static func captionFontSize(width: Int, height: Int) -> Double {
+    public static func captionFontSize(width: Int, height: Int) -> Double {
         max(minimumFontSize,
             min(Double(height) * heightFraction, Double(width) * widthFraction))
     }
@@ -442,7 +530,7 @@ public enum ImageAnnotationBurner {
     /// sets one (already clamped to the legible range by the style), else the
     /// automatic size. The floor still applies — a fraction of a tiny
     /// thumbnail must not become unreadable type.
-    static func captionFontSize(width: Int, height: Int, style: PrintAnnotationStyle) -> Double {
+    public static func captionFontSize(width: Int, height: Int, style: PrintAnnotationStyle) -> Double {
         guard let fraction = style.sizeFraction else {
             return captionFontSize(width: width, height: height)
         }
@@ -460,13 +548,13 @@ public enum ImageAnnotationBurner {
     /// the preview gives it, so the two blocks along an edge cannot collide.
     /// Never below half the base size: past that a line is cut off rather
     /// than dragging the patient's name into illegibility with it.
-    static func fittedCaptionFontSize(
+    public static func fittedCaptionFontSize(
         for corners: PrintCornerAnnotation,
         width: Int, height: Int,
         style: PrintAnnotationStyle = .automatic
     ) -> Double {
         let base = captionFontSize(width: width, height: height, style: style)
-        let available = Double(width) * 0.48
+        let available = Double(width) * cornerWidthFraction
         guard available > 0 else { return base }
         let font = CTFontCreateWithName(style.fontFamily as CFString, base, nil)
         let widest = corners.allLines.map { line -> Double in
@@ -477,12 +565,12 @@ public enum ImageAnnotationBurner {
                 CTLineCreateWithAttributedString(attributed), nil, nil, nil)
         }.max() ?? 0
         guard widest > available else { return base }
-        return base * max(0.5, available / widest)
+        return base * max(minimumShrinkFactor, available / widest)
     }
 
     /// How deep a corner block of this many lines is, in pixels — the room the
     /// text takes at the edge it is drawn against.
-    static func captionBlockHeight(lineCount: Int, width: Int, height: Int) -> Double {
+    public static func captionBlockHeight(lineCount: Int, width: Int, height: Int) -> Double {
         guard lineCount > 0 else { return 0 }
         let fontSize = captionFontSize(width: width, height: height)
         return fontSize * (captionMarginFactor + Double(lineCount) * captionLineFactor)
@@ -490,18 +578,44 @@ public enum ImageAnnotationBurner {
 
     // Must match the corner layout: a margin off the edge, then one line box per
     // line, running in towards the middle.
-    static let captionMarginFactor: Double = 0.6
-    static let captionLineFactor: Double = 1.3
+    public static let captionMarginFactor: Double = 0.6
+    public static let captionLineFactor: Double = 1.3
 
     // MARK: - Drawn annotations
+
+    /// The face a reader's own text is set in, wherever it is drawn.
+    ///
+    /// Bold, unlike the corner caption: the caption states what the picture is
+    /// and the reader's text points at something in it, so it is the one piece
+    /// of text on a film that is meant to carry emphasis.
+    ///
+    /// Named here because four renderers draw this same text — the burner for
+    /// the film and for the saved/downloaded copy, the viewer's Metal overlay
+    /// (which rasterizes through this file), and the print preview's own
+    /// SwiftUI layer, which cannot use CoreText and so names the family
+    /// itself. A literal in each was a promise kept by hand; this is the one
+    /// place to change the face and have every surface follow.
+    public static let overlayFontFamily = "Helvetica-Bold"
+
+    /// The size a drawn annotation's text is set at on an image of this height.
+    ///
+    /// The scale is a fraction of the image's height (see
+    /// ``PrintOverlayAnnotation/scale``), so the same annotation reads the same
+    /// on a 200-point preview cell and in a 3000-pixel frame. Shared so the
+    /// preview and the film apply the same floor as well as the same fraction
+    /// — the floors are in different units, points against pixels, but the
+    /// arithmetic above them must not differ.
+    public static func overlayFontSize(imageHeight: Double, scale: Double) -> Double {
+        max(minimumFontSize, imageHeight * scale)
+    }
 
     /// A line of the reader's own text, at the point they put it.
     ///
     /// The anchor is the text's top-left, which is where a caret sits when you
     /// click — a baseline anchor would make text appear above the click.
     private static func drawText(_ overlay: PrintOverlayAnnotation, in canvas: Canvas) {
-        let fontSize = max(Self.minimumFontSize, Double(canvas.height) * overlay.scale)
-        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, fontSize, nil)
+        let fontSize = overlayFontSize(imageHeight: Double(canvas.height), scale: overlay.scale)
+        let font = CTFontCreateWithName(overlayFontFamily as CFString, fontSize, nil)
         let x = overlay.start.x * Double(canvas.width)
         // Fractions run top-down, a bitmap context runs bottom-up, and the anchor
         // is the top of the type — so the baseline sits one ascent lower.

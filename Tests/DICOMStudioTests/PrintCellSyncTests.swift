@@ -89,19 +89,63 @@ struct PrintCellSyncTests {
         #expect(source?.panY == peer?.panY)
     }
 
-    @Test("Rotation is never linked — it is how one image is put the right way up")
-    func testRotationIsNotLinked() {
+    @Test("Rotation stays on the cell it was made on while its lock is open")
+    func testRotationIsNotLinkedWithTheLockOpen() {
         let viewModel = makeViewModel(items: mixedFilm)
         viewModel.cellSyncScope = .thisFilm
-        viewModel.cellSync = .all
+        // Every other lock shut: turning a cell must still be about that cell.
+        viewModel.cellSync = [.window, .zoomPan, .invert]
 
         viewModel.rotateCell(forItemID: "/ct1.dcm#0", cellSize: cell)
 
         #expect(viewModel.selection.items.first { $0.id == "/ct1.dcm#0" }?
             .presentation?.quarterTurns == 1)
         #expect(viewModel.selection.items.first { $0.id == "/mr1.dcm#0" }?.presentation == nil)
-        // And the switch is not offered.
-        #expect(!PrintCellSyncOptions.catalog.contains { $0.title.contains("Rotate") })
+    }
+
+    @Test("A shut rotate lock stands the other cells the same way round")
+    func testRotationIsLinked() {
+        let viewModel = makeViewModel(items: mixedFilm)
+        viewModel.cellSyncScope = .thisFilm
+        viewModel.toggleSync(.rotate)
+
+        viewModel.rotateCell(forItemID: "/ct1.dcm#0", byDegrees: 30, cellSize: cell)
+
+        #expect(viewModel.selection.items.first { $0.id == "/ct1.dcm#0" }?
+            .presentation?.rotationDegrees == 30)
+        #expect(viewModel.selection.items.first { $0.id == "/mr1.dcm#0" }?
+            .presentation?.rotationDegrees == 30)
+        // The switch is offered, like every other lock.
+        #expect(PrintCellSyncOptions.catalog.contains { $0.title == "Rotate" })
+    }
+
+    @Test("The angle is copied, not the turn: peers end up standing the same way")
+    func testRotationTravelsAsAValue() {
+        let viewModel = makeViewModel(items: mixedFilm)
+        viewModel.cellSyncScope = .thisFilm
+
+        // The two cells start at different angles, set with the lock open.
+        viewModel.rotateCell(forItemID: "/ct1.dcm#0", byDegrees: 90, cellSize: cell)
+        viewModel.rotateCell(forItemID: "/mr1.dcm#0", byDegrees: 10, cellSize: cell)
+
+        // Shut the lock and turn one of them: both end up at the same angle,
+        // rather than the peer keeping its 10° head start.
+        viewModel.toggleSync(.rotate)
+        viewModel.rotateCell(forItemID: "/ct1.dcm#0", byDegrees: 15, cellSize: cell)
+
+        #expect(viewModel.selection.items.first { $0.id == "/ct1.dcm#0" }?
+            .presentation?.rotationDegrees == 105)
+        #expect(viewModel.selection.items.first { $0.id == "/mr1.dcm#0" }?
+            .presentation?.rotationDegrees == 105)
+    }
+
+    @Test("Flip is never carried, however the locks are set")
+    func testFlipIsNeverLinked() {
+        let viewModel = makeViewModel(items: mixedFilm)
+        viewModel.cellSyncScope = .thisFilm
+        viewModel.cellSync = .all
+
+        #expect(!PrintCellSyncOptions.catalog.contains { $0.title.contains("Flip") })
     }
 
     @Test("Inversion travels on its own switch")
@@ -209,6 +253,10 @@ struct PrintCellSyncTests {
         let peer = viewModel.window(forItemID: "/mr1.dcm#0")
         #expect(peer?.center == source?.center)
         #expect(peer?.width == source?.width)
+        // The space comes with the numbers: −600 HU written into a peer still
+        // labelled "stored values" would wash that peer out to white.
+        #expect(viewModel.selection.items
+            .first { $0.id == "/mr1.dcm#0" }?.windowSpace == .outputUnits)
     }
 
     @Test("A job-wide window switches the cell link off — nothing per-cell prints")
