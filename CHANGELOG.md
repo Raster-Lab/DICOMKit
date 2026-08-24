@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — research adoption: selected-frame access, parser hardening, PS3.15 de-identification (2026-08-10/11)
+
+*Work in progress, not yet committed. Full plan and evidence:
+`RESEARCH_ADOPTION_PLAN.md`, `Documentation/ResearchAdoption/`.*
+
+A gap report comparing DICOMKit against the wider toolkit ecosystem
+(`ECOSYSTEM_COMPARISON.md`) found that decoding one frame of a multi-frame file cost
+the same as decoding the whole volume, that the parser had no depth/size limits, and
+that JPIP was advertised as working when every upstream retrieval path throws
+`notImplemented`. Milestones M0–M6 close those gaps one controlled change at a time,
+each with a before/after release-build measurement and the round-trip suite green.
+
+- **Selected-frame decode is now ~40× faster, not a full-volume decode.** New
+  `DICOMByteSource`/`InMemoryByteSource`/`FileByteSource`, a validated encapsulated
+  frame index (`EncapsulatedPixelData.makeFrameIndex`, EOT → BOT → 1:1, fail-closed
+  on malformed tables), and public `DICOMFile.pixelData(frame:)` /
+  `pixelFrameCount`. Measured on a 256×256×40 RLE synthetic (release, Mac16,13):
+  182.9 ms → **4.56 ms median**; transient memory growth ~10 MB → unmeasurable;
+  output byte-identical. Dead `DataSource`/`MemoryMappedDataSource`/
+  `LazyPixelDataLoader` deleted; `.lazyPixelData` re-honestly-worded.
+- **Caller-owned codec output removes a full-frame copy.** `ImageCodec.decodeFrame(into:)`
+  (RLE interleaves segments straight into the destination) and
+  `DICOMFile.alignedPixelData(frame:)` decode into page-aligned storage Metal wraps
+  via `bytesNoCopy` — no separate `pageAligned()` re-copy on the render path.
+- **Bounded parallel decode with cancellation.** `DICOMFile.pixelData(frames:maxInFlightBytes:)`
+  / `pixelDataParallel` windows concurrency by a byte budget, never task count;
+  `Task.checkCancellation()` at every frame boundary; `HTTPRequestPipeline`'s task
+  group is now windowed too. Measured: whole-volume decode 181.6 ms serial →
+  **34.1 ms parallel (5.3×)**, byte-identical.
+- **Progressive decode**: `DICOMFile.pixelDataProgressive(frame:coarseLevels:)` streams
+  J2KSwift's reduced-resolution decode as an `AsyncThrowingStream`, ending in a
+  full-fidelity frame proven byte-identical to a direct decode. Found and fixed a
+  real shipped writer bug along the way — `CompressionManager.buildBasicOffsetTable`
+  computed BOT offsets from unpadded fragment lengths, so every offset after an
+  odd-length fragment pointed one byte short.
+- **Parser and protocol hardening.** `ParsingOptions` gains `maxSequenceDepth` (64),
+  `maxElementLength`, `maxTotalElements`, `maxFragmentCount`; violations raise
+  `DICOMError.limitExceeded`/`DICOMNetworkError.limitExceeded` instead of trapping or
+  hanging; `PDUDecoder.maximumPDULength` guard added. A seeded mutation fuzz suite
+  (`ParserLimitTests`, `PDUFuzzTests`, `CodecFuzzTests`; 4×10⁵+ inputs) found and fixed
+  a real defect: `RLECodec` mixed slice-relative header reads with absolute
+  `subdata(in:)` indexing and trapped (`EXC_BREAKPOINT`, not a thrown error) on any
+  `Data` whose `startIndex` wasn't 0 — reachable through the public
+  `EncapsulatedPixelData` API. Two more instances of the same pattern were found and
+  fixed in `DICOMFile.read(from:)` and `TransferSyntaxConverter.transcode`, backed by
+  new `SliceIndependenceTests`. A static copy-path map
+  (`Documentation/ResearchAdoption/Copy_Path_Map_v0.1.0.md`) classifies the remaining
+  ~35 sites carrying the same relative/absolute mixing for a future sweep.
+  `DICOMBenchmark.measureDetailed` adds median/P90/P95/stddev and true high-water
+  resident memory sampling, with a committed baseline artifact.
+- **PS3.15 Annex E de-identification engine.** New `ConfidentialityProfile` (action
+  codes D/Z/X/K/C/U, ≥60-row curated direct-identifier table) and
+  `ConfidentialityEngine` (recursive sequence descent, consistent UID
+  regeneration, private-tag removal, E.3 retention options), exposed as
+  `Anonymizer.deidentify(file:options:uidMap:)` and `dicom-anon --profile ps315`.
+  Not a full ~530-row Table E.1-1 implementation — VR sweeps are the safety net for
+  the remainder; documented as such rather than overclaimed.
+- **Modality LUT Sequence precedence fixed** (PS3.3 C.11.1) — the pixel pipeline
+  applied Rescale Slope/Intercept unconditionally even when a Modality LUT Sequence
+  (0028,3000) was present (the fo-dicom #1986 class of bug); `DataSet.modalityLUT()`
+  and LUT-aware `rescale(_:)` added, malformed sequences fail open to linear.
+  `CrossToolkitMatrixTests` turns eight other toolkits' historical shipped bugs into
+  permanent regressions against DICOMKit's own pipeline.
+- **JPIP marked honestly unavailable rather than silently broken.** Every retrieval
+  path in the pinned upstream J2KSwift `JPIP` module throws `notImplemented`; the 39
+  passing `JPIPTests` never exercised retrieval. `DICOMJPIPClient`'s four fetch
+  methods and the two JPIP-backed `DICOMFile.openVolume` overloads are now
+  `@available(*, unavailable, message:)` with a new `DICOMJPIPError.retrievalUnavailable`
+  naming the upstream cause; `dicom-jpip fetch` and `dicom-viewer --jpip` fail loudly
+  with a pointer to `dicom-wado`/`dicom-retrieve` instead of hanging or silently
+  streaming empty. README/`ECOSYSTEM_COMPARISON.md` corrected to match.
+- **README limitations table corrected** to remove provably-wrong rows ("JPEG-LS not
+  supported", "7+ Transfer Syntaxes" — actually 29, "Storage Commitment not
+  implemented" — SCU+SCP shipped) and add the real open items (JPIP, MWL SCP, IPv6,
+  partial PS3.15 coverage).
+- **`ImageCache` is O(1) per hit** (monotonic access tick, O(n) only on eviction) with
+  `trim(toFraction:)` staged eviction; `FrameSourceCache`'s key now includes file
+  size+mtime (fixed a stale-pixels bug) plus an aggregate 192 MB ceiling.
+
+Verification throughout: full suite 7,312 tests / 730 suites green (3 consecutive
+runs), zero known issues (a permanent `withKnownIssue` on 12-bit J2K was replaced
+with a real test pinning the actual ImageIO behavior). Deferred: `BulkDataHandle` as
+an internal zero-copy representation (needs parser offset tracking — a bigger
+change, sequenced for later), an async `ImageCodec` variant to replace
+`J2KSwiftCodec`'s semaphore bridge, and the remaining ~35 copy-path sites the map
+identified but didn't sweep.
+
 ### Added — linked film cells: adjust one, adjust them all (2026-08-07)
 
 *Work in progress, not yet committed.*

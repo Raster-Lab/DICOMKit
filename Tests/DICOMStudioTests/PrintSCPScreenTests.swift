@@ -589,10 +589,14 @@ struct PrintSCPEndToEndTests {
             imageDescriptors: [descriptor])
         #expect(result.success)
 
-        // The film reaches the list through the sink's stream, so it lands a
-        // moment after the SCU's N-ACTION response.
+        // The view model exposes two independently-delivered signals: `films` (the
+        // record array, from the sink stream) and `filmCount` (the `.filmPrinted`
+        // counter). The earlier poll waited on `films` but the assertions also read
+        // `filmCount`, so under load the counter could still be 0 when the array was
+        // already populated — a fast, misleading failure. Poll until BOTH have landed
+        // (or the ceiling), so the wait matches everything the assertions check.
         var waited = 0
-        while viewModel.films.isEmpty, waited < 100 {
+        while (viewModel.films.isEmpty || viewModel.filmCount < 1), waited < 600 {
             try await Task.sleep(for: .milliseconds(50))
             waited += 1
         }

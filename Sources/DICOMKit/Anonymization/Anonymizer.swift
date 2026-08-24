@@ -388,6 +388,36 @@ public class Anonymizer {
         auditLog.append(entry)
     }
     
+    /// De-identifies a file with the PS3.15 Annex E Basic Application Level
+    /// Confidentiality Profile — the standards-grounded path.
+    ///
+    /// Unlike ``anonymize(file:filePath:)`` (which applies the legacy fixed tag lists),
+    /// this walks Table E.1-1 action codes, recurses into every sequence item, sweeps by
+    /// VR (all residual PN removed, all instance UIDs consistently regenerated, all
+    /// private tags removed), and records the de-identification method attributes.
+    ///
+    /// - Parameters:
+    ///   - file: The source file.
+    ///   - options: PS3.15 E.3 retention options; default is the strict Basic Profile.
+    ///   - uidMap: Optional shared UID map for cross-file consistency within a study.
+    /// - Returns: The de-identified file, a result summary, and the (possibly extended)
+    ///   UID map for reuse on sibling files.
+    public func deidentify(
+        file: DICOMFile,
+        options: ConfidentialityProfile.Options = .basic,
+        uidMap: [String: String] = [:]
+    ) -> (DICOMFile, AnonymizationResult, [String: String]) {
+        var engine = ConfidentialityEngine(options: options, uidMap: uidMap)
+        // Use the residual-PHI-reporting pass: pixels are out of scope for this engine,
+        // so burned-in annotation / overlay planes must reach the caller as warnings
+        // rather than being silently certified as de-identified.
+        let (scrubbed, changed, warnings) = engine.deidentifyReportingResidualPHI(file.dataSet)
+        let newFile = DICOMFile(fileMetaInformation: file.fileMetaInformation, dataSet: scrubbed)
+        let result = AnonymizationResult(
+            filePath: "", success: true, changedTags: changed, warnings: warnings)
+        return (newFile, result, engine.uidMap)
+    }
+
     public func getAuditLog() -> [AuditLogEntry] {
         return auditLog
     }
@@ -470,6 +500,26 @@ public enum AnonConsole {
     /// Verbose confirmation after the audit log is written.
     public static func auditLogLine(path: String) -> String {
         "Audit log written to: \(path)"
+    }
+
+    /// Verbose report of a pixel-redaction pass. States the basis for the region
+    /// choice, not just the rectangle — an operator has to be able to judge whether
+    /// the region was the right one, since no test can verify that for them.
+    public static func pixelRedactionLines(outcome: PixelRedactor.Outcome) -> String {
+        var out = "Cleaned pixel data (\(outcome.basis.rawValue)): \(outcome.note)\n"
+        for r in outcome.regions {
+            out += "  blanked (\(r.x),\(r.y)) \(r.width)x\(r.height)"
+            out += outcome.frameCount > 1 ? " on all \(outcome.frameCount) frames\n" : "\n"
+        }
+        if outcome.removedIconImage {
+            out += "  removed Icon Image Sequence (derived before cleaning)\n"
+        }
+        if outcome.removedOverlays {
+            out += "  removed overlay plane data (burned in by renderers)\n"
+        }
+        out += "  recorded DCM 113101 Clean Pixel Data Option; Burned In Annotation = NO\n"
+        out += "  ⚠️  Verify visually before release — region selection is not verifiable by test.\n"
+        return out
     }
 
     /// The end-of-run summary block (leading blank line, every line newline-terminated).

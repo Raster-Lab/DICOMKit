@@ -4,7 +4,15 @@ import Foundation
 ///
 /// Reference: PS3.8 Section 9 - Protocol Data Units
 public enum PDUDecoder {
-    
+
+    /// Maximum accepted declared PDU length (128 MB)
+    ///
+    /// A peer-supplied PDU length drives buffer allocation in the network
+    /// layer; without a ceiling, a hostile peer can declare a multi-gigabyte
+    /// PDU and force an allocation DoS. P-DATA-TF PDUs are normally bounded by
+    /// the negotiated Maximum Length; 128 MB is far above any legitimate PDU.
+    public static let maximumPDULength: UInt32 = 128 * 1024 * 1024
+
     // MARK: - Helper Methods for Reading Big Endian Values
     
     private static func readUInt16BigEndian(from data: Data, at offset: Data.Index) -> UInt16 {
@@ -37,7 +45,12 @@ public enum PDUDecoder {
         // Skip reserved byte (1 byte)
         // Read PDU Length (4 bytes, big endian)
         let pduLength = readUInt32BigEndian(from: data, at: data.startIndex + 2)
-        
+
+        guard pduLength <= Self.maximumPDULength else {
+            throw DICOMNetworkError.limitExceeded(
+                "Declared PDU length \(pduLength) exceeds maximum (\(Self.maximumPDULength))")
+        }
+
         let expectedTotalLength = 6 + Int(pduLength)
         guard data.count >= expectedTotalLength else {
             throw DICOMNetworkError.decodingFailed("PDU data too short: expected \(expectedTotalLength) bytes, got \(data.count)")
@@ -79,7 +92,12 @@ public enum PDUDecoder {
         }
         
         let pduLength = readUInt32BigEndian(from: data, at: data.startIndex + 2)
-        
+
+        guard pduLength <= Self.maximumPDULength else {
+            throw DICOMNetworkError.limitExceeded(
+                "Declared PDU length \(pduLength) exceeds maximum (\(Self.maximumPDULength))")
+        }
+
         return (pduType, pduLength)
     }
     

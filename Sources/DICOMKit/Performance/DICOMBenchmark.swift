@@ -12,16 +12,68 @@ import CoreFoundation
 public struct BenchmarkResult: Sendable {
     /// Name of the benchmark
     public let name: String
-    
+
     /// Duration in seconds
     public let duration: TimeInterval
-    
+
     /// Peak memory usage in bytes
+    ///
+    /// Note: from the legacy API this is a resident-size *delta* sampled after
+    /// each iteration returns. Prefer `peakResidentBytes` (true high-water,
+    /// sampled concurrently) for memory claims.
     public let peakMemoryUsage: Int64?
-    
+
     /// Number of iterations
     public let iterations: Int
-    
+
+    /// Per-iteration wall-clock samples in seconds (monotonic clock).
+    ///
+    /// Empty when produced by the legacy aggregate-only path.
+    public let samples: [TimeInterval]
+
+    /// True high-water resident set size in bytes over the measured region,
+    /// captured by a concurrent sampler thread (nil when memory tracking was off
+    /// or sampling unavailable). Unlike `peakMemoryUsage` this sees transient
+    /// peaks inside an iteration, and is absolute, not a delta.
+    public let peakResidentBytes: Int64?
+
+    /// Resident set size in bytes immediately before the measured region.
+    public let baselineResidentBytes: Int64?
+
+    /// Duration of the very first (cold) invocation, before warm-up, when the
+    /// measurement was configured to record it.
+    public let coldDuration: TimeInterval?
+
+    // MARK: Distribution statistics (empty-sample safe)
+
+    private var sortedSamples: [TimeInterval] { samples.sorted() }
+
+    /// Median (P50) per-iteration duration in seconds
+    public var medianDuration: TimeInterval? { percentile(50) }
+
+    /// Percentile of the per-iteration samples (nearest-rank), e.g. 90, 95.
+    public func percentile(_ p: Double) -> TimeInterval? {
+        let sorted = sortedSamples
+        guard !sorted.isEmpty else { return nil }
+        let rank = Int((p / 100.0 * Double(sorted.count)).rounded(.up))
+        return sorted[Swift.max(0, Swift.min(sorted.count - 1, rank - 1))]
+    }
+
+    /// Minimum per-iteration duration in seconds
+    public var minDuration: TimeInterval? { sortedSamples.first }
+
+    /// Maximum per-iteration duration in seconds
+    public var maxDuration: TimeInterval? { sortedSamples.last }
+
+    /// Sample standard deviation of the per-iteration durations in seconds
+    public var standardDeviation: TimeInterval? {
+        guard samples.count > 1 else { return nil }
+        let mean = samples.reduce(0, +) / Double(samples.count)
+        let variance = samples.reduce(0) { $0 + ($1 - mean) * ($1 - mean) }
+            / Double(samples.count - 1)
+        return variance.squareRoot()
+    }
+
     /// Average duration per iteration in seconds
     public var averageDuration: TimeInterval {
         duration / Double(iterations)
@@ -47,17 +99,132 @@ public struct BenchmarkResult: Sendable {
         name: String,
         duration: TimeInterval,
         peakMemoryUsage: Int64? = nil,
-        iterations: Int = 1
+        iterations: Int = 1,
+        samples: [TimeInterval] = [],
+        peakResidentBytes: Int64? = nil,
+        baselineResidentBytes: Int64? = nil,
+        coldDuration: TimeInterval? = nil
     ) {
         self.name = name
         self.duration = duration
         self.peakMemoryUsage = peakMemoryUsage
         self.iterations = iterations
+        self.samples = samples
+        self.peakResidentBytes = peakResidentBytes
+        self.baselineResidentBytes = baselineResidentBytes
+        self.coldDuration = coldDuration
+    }
+}
+
+/// Concurrent resident-memory high-water sampler
+///
+/// Polls the task's resident set size on a detached thread (~1 ms cadence) so
+/// transient allocation peaks *inside* an operation are captured — the shared
+/// benchmark baseline (§6.9) requires high-water marks over the complete
+/// operation, not point samples after it returns.
+final class ResidentMemorySampler: @unchecked Sendable {
+    private let lock = NSLock()
+    private var running = false
+    private var peak: Int64 = 0
+
+    /// Resident size at `start()`.
+    private(set) var baseline: Int64 = 0
+
+    func start() {
+        baseline = DICOMBenchmark.residentMemoryBytes()
+        lock.lock()
+        peak = baseline
+        running = true
+        lock.unlock()
+        Thread.detachNewThread { [weak self] in
+            while true {
+                guard let self else { return }
+                let current = DICOMBenchmark.residentMemoryBytes()
+                self.lock.lock()
+                if !self.running { self.lock.unlock(); return }
+                if current > self.peak { self.peak = current }
+                self.lock.unlock()
+                usleep(1000)
+            }
+        }
+    }
+
+    /// Stops sampling and returns the observed high-water mark (absolute bytes).
+    func stop() -> Int64 {
+        lock.lock()
+        running = false
+        let result = max(peak, DICOMBenchmark.residentMemoryBytes())
+        lock.unlock()
+        return result
     }
 }
 
 /// Benchmark harness for measuring DICOM operations performance
 public struct DICOMBenchmark {
+    /// Measures an operation with per-iteration samples, a monotonic clock,
+    /// concurrent high-water memory sampling, and optional cold-run capture.
+    ///
+    /// This is the M1 measurement path (RESEARCH_ADOPTION_PLAN.md): report
+    /// median and tail statistics from `BenchmarkResult.samples`, never only
+    /// the mean; use `peakResidentBytes` for memory claims.
+    ///
+    /// - Parameters:
+    ///   - name: Name of the benchmark
+    ///   - iterations: Number of measured iterations (default: 10)
+    ///   - warmup: Warm-up iterations before measurement (default: 3)
+    ///   - trackMemory: Run the concurrent resident-memory sampler (default: true)
+    ///   - recordCold: Time the very first invocation separately, before
+    ///     warm-up, as the cold-start figure (default: false)
+    ///   - operation: The operation to benchmark
+    public static func measureDetailed<T>(
+        name: String,
+        iterations: Int = 10,
+        warmup: Int = 3,
+        trackMemory: Bool = true,
+        recordCold: Bool = false,
+        operation: () throws -> T
+    ) rethrows -> BenchmarkResult {
+        var coldDuration: TimeInterval?
+        if recordCold {
+            let start = DispatchTime.now().uptimeNanoseconds
+            _ = try operation()
+            coldDuration = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9
+        }
+
+        for _ in 0..<warmup {
+            _ = try operation()
+        }
+
+        let sampler: ResidentMemorySampler? = trackMemory ? ResidentMemorySampler() : nil
+        sampler?.start()
+
+        var samples: [TimeInterval] = []
+        samples.reserveCapacity(iterations)
+        for _ in 0..<iterations {
+            let start = DispatchTime.now().uptimeNanoseconds
+            _ = try operation()
+            samples.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9)
+        }
+
+        let peakResident = sampler?.stop()
+
+        return BenchmarkResult(
+            name: name,
+            duration: samples.reduce(0, +),
+            peakMemoryUsage: peakResident.map { $0 - (sampler?.baseline ?? 0) },
+            iterations: iterations,
+            samples: samples,
+            peakResidentBytes: peakResident,
+            baselineResidentBytes: sampler?.baseline,
+            coldDuration: coldDuration
+        )
+    }
+
+    /// Current resident set size in bytes (0 where unavailable).
+    static func residentMemoryBytes() -> Int64 {
+        currentMemoryUsage()
+    }
+
     /// Measures the execution time of a synchronous operation
     ///
     /// - Parameters:

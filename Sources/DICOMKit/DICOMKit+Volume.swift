@@ -354,28 +354,14 @@ extension DICOMFile {
     ///   - jpipServerURL: Base URL of the JPIP server.
     /// - Returns: A ``DICOMVolume`` containing the fully fetched image as a single slice.
     /// - Throws: ``DICOMError`` if the file cannot be read, ``DICOMJPIPError`` if retrieval fails.
+    @available(*, unavailable, message: "JPIP retrieval is not implemented in the pinned J2KSwift JPIP module (11.0.2), so this cannot return data. Tracked as F1 in RESEARCH_ADOPTION_PLAN.md.")
     public static func openVolume(from url: URL, jpipServerURL: URL) async throws -> DICOMVolume {
-        let file = try DICOMFile.read(from: url)
-        let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID) ?? ""
-        let jpipURI = try DICOMJPIPClient.jpipURI(from: file.dataSet, transferSyntaxUID: tsUID)
-
-        let client = DICOMJPIPClient(serverURL: jpipServerURL)
-        let image = try await client.fetchImage(jpipURI: jpipURI)
-        try? await client.close()
-
-        return DICOMVolume(
-            width: image.width,
-            height: image.height,
-            depth: 1,
-            bitsAllocated: image.bitDepth <= 8 ? 8 : 16,
-            bitsStored: image.bitDepth,
-            isSigned: false,
-            pixelData: image.pixelData,
-            sourceTransferSyntax: TransferSyntax.from(uid: tsUID),
-            modality: file.dataSet.string(for: .modality),
-            seriesInstanceUID: file.dataSet.string(for: .seriesInstanceUID),
-            studyInstanceUID: file.dataSet.string(for: .studyInstanceUID)
-        )
+        // Unreachable: this API is @available(*, unavailable). The body is stubbed
+        // because Swift does not permit an unavailable function to call the
+        // (also unavailable) DICOMJPIPClient.fetchImage. The original implementation
+        // is recoverable from git history at de67c39 and should be restored when the
+        // upstream JPIP request path lands. F1 in RESEARCH_ADOPTION_PLAN.md.
+        throw DICOMJPIPError.retrievalUnavailable
     }
 
     /// Streams a multi-slice DICOM volume from a JPIP server progressively.
@@ -412,51 +398,16 @@ extension DICOMFile {
     ///   - sliceJPIPURIs: Ordered JPIP target URIs, one per slice, in Z order.
     ///   - qualityLayers: Number of progressive quality passes (default 4; 1 = single full fetch).
     /// - Returns: An `AsyncStream` of ``DICOMVolumeProgressiveUpdate`` values.
+    @available(*, unavailable, message: "JPIP retrieval is not implemented in the pinned J2KSwift JPIP module (11.0.2), so this cannot return data. Tracked as F1 in RESEARCH_ADOPTION_PLAN.md.")
     public static func openVolumeProgressively(
         serverURL: URL,
         sliceJPIPURIs: [URL],
         qualityLayers: Int = 4
     ) -> AsyncStream<DICOMVolumeProgressiveUpdate> {
-        AsyncStream { continuation in
-            Task {
-                guard !sliceJPIPURIs.isEmpty else {
-                    continuation.finish()
-                    return
-                }
-
-                let client = DICOMJPIPClient(serverURL: serverURL)
-                let totalSlices = sliceJPIPURIs.count
-                let clampedLayers = max(1, qualityLayers)
-
-                // Pass 1…N: fetch all slices at successively higher quality layers.
-                for layer in 1...clampedLayers {
-                    for (sliceIndex, jpipURI) in sliceJPIPURIs.enumerated() {
-                        guard let image = try? await client.fetchProgressiveQuality(
-                            jpipURI: jpipURI,
-                            layers: layer
-                        ) else {
-                            // Skip failed slices rather than aborting the stream.
-                            continue
-                        }
-
-                        let isLast = (layer == clampedLayers)
-                            && (sliceIndex == totalSlices - 1)
-
-                        continuation.yield(DICOMVolumeProgressiveUpdate(
-                            sliceIndex: sliceIndex,
-                            qualityLayer: layer,
-                            totalLayers: clampedLayers,
-                            sliceData: image.pixelData,
-                            width: image.width,
-                            height: image.height,
-                            isVolumeComplete: isLast
-                        ))
-                    }
-                }
-
-                try? await client.close()
-                continuation.finish()
-            }
-        }
+        // Unreachable: this API is @available(*, unavailable). Stubbed for the same
+        // reason as openVolume(from:jpipServerURL:) above — an unavailable function
+        // may not call the unavailable fetchProgressiveQuality. Original body at
+        // git de67c39; restore when upstream JPIP retrieval lands.
+        AsyncStream { $0.finish() }
     }
 }

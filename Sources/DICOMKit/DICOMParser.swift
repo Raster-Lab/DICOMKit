@@ -15,11 +15,37 @@ struct DICOMParser {
     private var data: Data
     private var offset: Int
     private let options: ParsingOptions
-    
+
+    /// Current sequence/item nesting depth; bounded by `options.maxSequenceDepth`
+    /// to prevent stack overflow on maliciously nested sequences.
+    private var sequenceDepth: Int = 0
+
+    /// Total elements parsed (including nested); bounded by `options.maxTotalElements`.
+    private var totalElementCount: Int = 0
+
     init(data: Data, options: ParsingOptions = .default) {
         self.data = data
         self.offset = 0
         self.options = options
+    }
+
+    // MARK: - Resource Limits
+
+    /// Counts one parsed element against the total-element budget.
+    private mutating func countElement() throws {
+        totalElementCount += 1
+        if let maxTotal = options.maxTotalElements, totalElementCount > maxTotal {
+            throw DICOMError.limitExceeded(
+                "Element count exceeds maxTotalElements (\(maxTotal))")
+        }
+    }
+
+    /// Validates a defined value length against the per-element ceiling.
+    private func checkElementLength(_ length: UInt32, tag: Tag) throws {
+        if let maxLength = options.maxElementLength, Int(length) > maxLength {
+            throw DICOMError.limitExceeded(
+                "Element \(tag) declares length \(length), exceeding maxElementLength (\(maxLength))")
+        }
     }
     
     /// Parses File Meta Information elements
@@ -176,6 +202,10 @@ struct DICOMParser {
             if isExplicitVR {
                 do {
                     element = try parseExplicitVRElement(byteOrder: byteOrder)
+                } catch DICOMError.limitExceeded(let message) {
+                    // Limit violations are structural safety failures, not
+                    // recoverable single-element corruption — never skip past them.
+                    throw DICOMError.limitExceeded(message)
                 } catch {
                     // Restore offset and try to skip the element
                     offset = savedOffset
@@ -187,6 +217,8 @@ struct DICOMParser {
             } else {
                 do {
                     element = try parseImplicitVRElement(byteOrder: byteOrder)
+                } catch DICOMError.limitExceeded(let message) {
+                    throw DICOMError.limitExceeded(message)
                 } catch {
                     offset = savedOffset
                     if trySkipElement(isExplicitVR: false, byteOrder: byteOrder) {
@@ -269,6 +301,7 @@ struct DICOMParser {
         // For encapsulated pixel data, the length should be undefined (0xFFFFFFFF)
         guard valueLength == 0xFFFFFFFF else {
             // Not actually encapsulated, treat as regular pixel data
+            try checkElementLength(valueLength, tag: tag)
             guard offset + Int(valueLength) <= data.count else {
                 throw DICOMError.unexpectedEndOfData
             }
@@ -331,11 +364,17 @@ struct DICOMParser {
                 throw DICOMError.unexpectedEndOfData
             }
             offset += 4
-            
+
+            try checkElementLength(fragmentLength, tag: tag)
+            if let maxFragments = options.maxFragmentCount, fragments.count >= maxFragments {
+                throw DICOMError.limitExceeded(
+                    "Encapsulated fragment count exceeds maxFragmentCount (\(maxFragments))")
+            }
+
             guard offset + Int(fragmentLength) <= data.count else {
                 throw DICOMError.unexpectedEndOfData
             }
-            
+
             let fragmentData = data.subdata(in: offset..<offset + Int(fragmentLength))
             fragments.append(fragmentData)
             offset += Int(fragmentLength)
@@ -614,14 +653,17 @@ struct DICOMParser {
                 isExplicitVR: false, byteOrder: byteOrder
             )
         }
-        
+
+        try countElement()
+        try checkElementLength(valueLength, tag: tag)
+
         guard offset + Int(valueLength) <= data.count else {
             throw DICOMError.unexpectedEndOfData
         }
-        
+
         let valueData = data.subdata(in: offset..<offset + Int(valueLength))
         offset += Int(valueLength)
-        
+
         return DataElement(tag: tag, vr: vr, length: valueLength, valueData: valueData, byteOrder: byteOrder)
     }
     
@@ -698,14 +740,17 @@ struct DICOMParser {
                 isExplicitVR: true, byteOrder: byteOrder
             )
         }
-        
+
+        try countElement()
+        try checkElementLength(valueLength, tag: tag)
+
         guard offset + Int(valueLength) <= data.count else {
             throw DICOMError.unexpectedEndOfData
         }
-        
+
         let valueData = data.subdata(in: offset..<offset + Int(valueLength))
         offset += Int(valueLength)
-        
+
         return DataElement(tag: tag, vr: vr, length: valueLength, valueData: valueData, byteOrder: byteOrder)
     }
     
@@ -719,6 +764,17 @@ struct DICOMParser {
     ///
     /// Reference: PS3.5 Section 7.5 - Nesting of Data Sets
     private mutating func parseSequenceElement(tag: Tag, vr: VR, valueLength: UInt32, isExplicitVR: Bool, byteOrder: ByteOrder) throws -> DataElement {
+        // Bound recursion: every nesting cycle (sequence → item → element →
+        // sequence) passes through here. Without this guard a crafted file with
+        // deeply nested (undefined-length) sequences overflows the stack.
+        sequenceDepth += 1
+        defer { sequenceDepth -= 1 }
+        if sequenceDepth > options.maxSequenceDepth {
+            throw DICOMError.limitExceeded(
+                "Sequence nesting depth exceeds maxSequenceDepth (\(options.maxSequenceDepth))")
+        }
+        try countElement()
+
         let startOffset = offset
         var sequenceItems: [SequenceItem] = []
         
@@ -726,13 +782,20 @@ struct DICOMParser {
             // Undefined length sequence - parse until Sequence Delimitation Item
             sequenceItems = try parseUndefinedLengthSequence(isExplicitVR: isExplicitVR, byteOrder: byteOrder)
         } else {
-            // Explicit length sequence
-            let endOffset = offset + Int(valueLength)
+            // Explicit length sequence. Clamp to the input bounds: a declared
+            // length larger than the remaining data would otherwise push
+            // `offset` past `data.count` and crash the raw-value subdata below.
+            let endOffset = min(offset + Int(valueLength), data.count)
             sequenceItems = try parseExplicitLengthSequence(endOffset: endOffset, isExplicitVR: isExplicitVR, byteOrder: byteOrder)
         }
         
-        // Get the raw value data (for completeness)
-        let valueData = data.subdata(in: startOffset..<offset)
+        // Get the raw value data (for completeness). Clamp both bounds: on
+        // truncated input the delimiter-skip paths can leave `offset` a few
+        // bytes past `data.count`, and an unclamped range would trap.
+        let rawEnd = min(offset, data.count)
+        let valueData = startOffset <= rawEnd
+            ? data.subdata(in: startOffset..<rawEnd)
+            : Data()
         
         return DataElement(
             tag: tag,
@@ -849,8 +912,10 @@ struct DICOMParser {
             // Undefined length item - parse until Item Delimitation Item
             elements = try parseUndefinedLengthItem(isExplicitVR: isExplicitVR, byteOrder: byteOrder)
         } else {
-            // Explicit length item
-            let itemEndOffset = offset + Int(itemLength)
+            // Explicit length item — clamp to input bounds (see
+            // parseSequenceElement): an oversized declared item length must
+            // not advance `offset` past `data.count`.
+            let itemEndOffset = min(offset + Int(itemLength), data.count)
             elements = try parseExplicitLengthItem(endOffset: itemEndOffset, isExplicitVR: isExplicitVR, byteOrder: byteOrder)
         }
         

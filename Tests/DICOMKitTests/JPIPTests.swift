@@ -361,36 +361,30 @@ struct DICOMVolumeProgressiveUpdateTests {
 @Suite("Progressive Volume API Surface Tests")
 struct ProgressiveVolumeAPISurfaceTests {
 
-    @Test("openVolumeProgressively with empty URI list finishes immediately")
-    func openVolumeProgressively_emptyURIs_finishesImmediately() async {
-        let stream = DICOMFile.openVolumeProgressively(
-            serverURL: URL(string: "http://localhost:8080")!,
-            sliceJPIPURIs: [],
-            qualityLayers: 4
-        )
-        var updateCount = 0
-        for await _ in stream {
-            updateCount += 1
-        }
-        #expect(updateCount == 0)
+    // The two tests that previously lived here called
+    // `DICOMFile.openVolumeProgressively(...)` and asserted that the stream terminated
+    // with zero updates. That was not an API-surface check — it was an assertion that a
+    // non-functional feature failed quietly, which is exactly the behaviour finding F1
+    // set out to remove. The API is now `@available(*, unavailable)`, so the calls no
+    // longer compile. Restore them alongside the implementation when the upstream JPIP
+    // request path lands (original bodies at git de67c39).
+
+    @Test("retrievalUnavailable explains why JPIP cannot fetch")
+    func retrievalUnavailable_describesUpstreamCause() {
+        let description = DICOMJPIPError.retrievalUnavailable.description
+        #expect(!description.isEmpty)
+        // The message must name the cause, not just say "unavailable" — an integrator
+        // hitting this needs to know it is upstream and not their configuration.
+        #expect(description.contains("J2KSwift"))
+        #expect(description.lowercased().contains("retrieval"))
     }
 
-    @Test("openVolumeProgressively qualityLayers clamped below 1 uses 1 layer")
-    func openVolumeProgressively_negativeQualityLayers_clampedToOne() async {
-        // Pass an unreachable server + 1 URI; since JPIP module is not available in CI,
-        // fetchProgressiveQuality will fail silently (skip) and the stream finishes with 0 updates.
-        let dummyURI = URL(string: "jpip://localhost:8080/slice0")!
-        let stream = DICOMFile.openVolumeProgressively(
-            serverURL: URL(string: "http://localhost:8080")!,
-            sliceJPIPURIs: [dummyURI],
-            qualityLayers: -5
-        )
-        // We cannot assert a specific count since JPIP module availability varies;
-        // the goal is to verify the call compiles and terminates rather than hanging.
-        var terminated = false
-        for await _ in stream { }
-        terminated = true
-        #expect(terminated)
+    @Test("retrievalUnavailable is distinct from jpipModuleUnavailable")
+    func retrievalUnavailable_isDistinctFromModuleUnavailable() {
+        // Different failures: the module may be linked (so not `jpipModuleUnavailable`)
+        // and still have no implemented request path.
+        #expect(DICOMJPIPError.retrievalUnavailable.description
+                != DICOMJPIPError.jpipModuleUnavailable.description)
     }
 
     @Test("DICOMVolumeProgressiveUpdate is Sendable")

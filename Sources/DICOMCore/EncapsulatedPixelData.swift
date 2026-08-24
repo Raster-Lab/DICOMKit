@@ -103,6 +103,132 @@ public struct EncapsulatedPixelData: Sendable, Equatable {
         !offsetTable.isEmpty
     }
     
+    // MARK: - Frame/Fragment Index (M2)
+
+    /// How a frame→fragment mapping was derived — reported for telemetry and
+    /// used by tests to assert the expected path.
+    public enum FrameIndexSource: String, Sendable {
+        case extendedOffsetTable
+        case basicOffsetTable
+        case oneFragmentPerFrame
+        case singleFrame
+    }
+
+    /// A validated frame → fragment mapping, built once and reused
+    ///
+    /// `fragmentsPerFrame[i]` lists the indices into `fragments` whose
+    /// concatenation is frame `i`'s complete codestream. Fragment payloads are
+    /// never copied during index construction.
+    public struct FrameIndex: Sendable, Equatable {
+        public let fragmentsPerFrame: [[Int]]
+        public let source: FrameIndexSource
+    }
+
+    /// Builds a validated frame index, failing closed on inconsistent mappings
+    ///
+    /// Resolution order (PS3.5 A.4 / C.7.6.3.1.8):
+    /// 1. Extended Offset Table when supplied — 64-bit byte offsets of each
+    ///    frame's first fragment within the (headerless) fragment stream.
+    /// 2. Basic Offset Table — 32-bit offsets including 8-byte item headers.
+    /// 3. One fragment per frame.
+    /// 4. Single frame — all fragments.
+    ///
+    /// Returns nil (fail closed) when offsets do not land exactly on fragment
+    /// boundaries, are non-monotonic, or the counts are inconsistent — decoding
+    /// the wrong frame silently is never acceptable.
+    ///
+    /// - Parameter extendedOffsets: values of (7FE0,0001) Extended Offset Table,
+    ///   when present: byte offsets *excluding* item headers.
+    public func makeFrameIndex(extendedOffsets: [UInt64]? = nil) -> FrameIndex? {
+        let frames = descriptor.numberOfFrames
+        guard frames > 0, !fragments.isEmpty else { return nil }
+
+        // 1. Extended Offset Table: offsets exclude the 8-byte item headers.
+        if let eot = extendedOffsets, eot.count >= frames {
+            if let map = groupFragments(byFrameStartOffsets: eot.prefix(frames).map { Int($0) },
+                                        headerBytesPerFragment: 0) {
+                return FrameIndex(fragmentsPerFrame: map, source: .extendedOffsetTable)
+            }
+            return nil // EOT present but inconsistent — fail closed
+        }
+
+        // 2. Basic Offset Table: offsets include 8-byte item headers.
+        if !offsetTable.isEmpty {
+            guard offsetTable.count >= frames else { return nil }
+            if let map = groupFragments(byFrameStartOffsets: offsetTable.prefix(frames).map { Int($0) },
+                                        headerBytesPerFragment: 8) {
+                return FrameIndex(fragmentsPerFrame: map, source: .basicOffsetTable)
+            }
+            return nil // BOT present but inconsistent — fail closed
+        }
+
+        // 3. One fragment per frame.
+        if fragments.count == frames {
+            return FrameIndex(fragmentsPerFrame: (0..<frames).map { [$0] },
+                              source: .oneFragmentPerFrame)
+        }
+
+        // 4. Single frame: all fragments belong to it.
+        if frames == 1 {
+            return FrameIndex(fragmentsPerFrame: [Array(fragments.indices)],
+                              source: .singleFrame)
+        }
+
+        return nil // multi-frame, no table, fragment count mismatch — ambiguous
+    }
+
+    /// Returns one frame's codestream using a prebuilt index
+    ///
+    /// Copies bytes only when a frame spans multiple fragments; the common
+    /// one-fragment case returns the fragment's storage directly.
+    public func frameData(at frameIndex: Int, using index: FrameIndex) -> Data? {
+        guard frameIndex >= 0, frameIndex < index.fragmentsPerFrame.count else { return nil }
+        let parts = index.fragmentsPerFrame[frameIndex]
+        guard !parts.isEmpty else { return nil }
+        if parts.count == 1 { return fragments[parts[0]] }
+        var combined = Data(capacity: parts.reduce(0) { $0 + fragments[$1].count })
+        for i in parts { combined.append(fragments[i]) }
+        return combined
+    }
+
+    /// Maps frame start offsets to whole-fragment groups
+    ///
+    /// Walks the fragment stream once; every frame offset must land exactly on
+    /// a fragment start and offsets must be strictly monotonic, else nil.
+    private func groupFragments(byFrameStartOffsets offsets: [Int],
+                                headerBytesPerFragment: Int) -> [[Int]]? {
+        guard offsets.first == 0 else { return nil }
+
+        // Stream offset of each fragment's payload start.
+        var fragmentStarts: [Int] = []
+        fragmentStarts.reserveCapacity(fragments.count)
+        var cursor = 0
+        for fragment in fragments {
+            fragmentStarts.append(cursor)
+            cursor += fragment.count + headerBytesPerFragment
+        }
+
+        var map: [[Int]] = []
+        map.reserveCapacity(offsets.count)
+        var fragmentCursor = 0
+        for (frame, start) in offsets.enumerated() {
+            if frame > 0 && start <= offsets[frame - 1] { return nil } // non-monotonic
+            guard fragmentCursor < fragmentStarts.count,
+                  fragmentStarts[fragmentCursor] == start else {
+                return nil // offset does not land on a fragment boundary
+            }
+            let next = frame + 1 < offsets.count ? offsets[frame + 1] : Int.max
+            var group: [Int] = []
+            while fragmentCursor < fragmentStarts.count, fragmentStarts[fragmentCursor] < next {
+                group.append(fragmentCursor)
+                fragmentCursor += 1
+            }
+            guard !group.isEmpty else { return nil }
+            map.append(group)
+        }
+        return map
+    }
+
     // MARK: - Private Helpers
     
     /// Extracts frame data using the offset table
