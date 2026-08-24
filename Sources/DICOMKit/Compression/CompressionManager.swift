@@ -762,8 +762,13 @@ public struct CompressionManager {
         var current: UInt32 = 0
         for fragment in fragments {
             offsets.append(current)
-            // 8 bytes for the Item tag + length, then the fragment bytes.
-            current = current &+ 8 &+ UInt32(fragment.count)
+            // 8 bytes for the Item tag + length, then the fragment bytes —
+            // padded to even length, exactly as the writer emits them (PS3.5
+            // §7.4/A.4). Using the unpadded length here made every offset after
+            // an odd-length fragment point one byte short (found by the M2
+            // fail-closed frame index).
+            let writtenLength = fragment.count + (fragment.count % 2)
+            current = current &+ 8 &+ UInt32(writtenLength)
         }
         return offsets
     }

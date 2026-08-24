@@ -29,9 +29,45 @@ struct DICOMAnon: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output file or directory path")
     var output: String?
     
-    @Option(name: .long, help: "Anonymization profile: basic, clinical-trial, research")
+    @Option(name: .long, help: "Anonymization profile: basic, clinical-trial, research, ps315 (PS3.15 Annex E)")
     var profile: String = "basic"
-    
+
+    // PS3.15 Annex E retention options (only apply to --profile ps315).
+    @Flag(name: .long, help: "PS3.15: Retain Longitudinal Temporal Information (keep/shift dates)")
+    var retainDates: Bool = false
+
+    @Flag(name: .long, help: "PS3.15: Retain Patient Characteristics (age/sex/size/weight)")
+    var retainCharacteristics: Bool = false
+
+    @Flag(name: .long, help: "PS3.15: Retain Device Identity")
+    var retainDevice: Bool = false
+
+    @Flag(name: .long, help: "PS3.15: Retain Institution Identity")
+    var retainInstitution: Bool = false
+
+    @Flag(name: .long, help: "PS3.15: Retain UIDs (do not regenerate)")
+    var retainUids: Bool = false
+
+    @Flag(name: .long, help: "PS3.15: Clean Descriptors (retain free-text rather than remove)")
+    var cleanDescriptors: Bool = false
+
+    @Flag(name: .long, help: """
+        PS3.15: Clean Pixel Data — blank burned-in identifiers out of the image itself. \
+        Chooses the region automatically (declared clinical region, else device template) \
+        and REFUSES rather than guessing when it cannot. Records code 113101 and sets \
+        Burned In Annotation = NO only when pixels were actually blanked.
+        """)
+    var cleanPixelData: Bool = false
+
+    @Option(name: .long, help: """
+        Region to blank as x,y,width,height (repeatable). Implies --clean-pixel-data \
+        and overrides automatic region selection.
+        """)
+    var redactRegion: [String] = []
+
+    @Option(name: .long, help: "Fill value for blanked pixels (default: 0 = black)")
+    var redactFill: Int?
+
     @Option(name: .long, help: "Number of days to shift dates (preserves intervals)")
     var shiftDates: Int?
     
@@ -61,7 +97,14 @@ struct DICOMAnon: ParsableCommand {
     
     @Flag(name: .long, help: "Force parsing of files without DICM prefix")
     var force: Bool = false
-    
+
+    @Flag(name: .long, help: """
+        Proceed even when the pixels may still carry PHI (Burned In Annotation = YES, \
+        or overlay planes present). Without this, such files are refused unwritten, \
+        because this tool de-identifies metadata only and never redacts pixels.
+        """)
+    var allowBurnedInPHI: Bool = false
+
     @Flag(name: .long, help: "Verbose output")
     var verbose: Bool = false
     
@@ -145,6 +188,10 @@ struct DICOMAnon: ParsableCommand {
             return .clinicalTrial
         case "research":
             return .research
+        case "ps315":
+            // The ps315 path bypasses the legacy engine (see anonymizeFile); this
+            // value is only used to build the shared Anonymizer instance.
+            return .basic
         default:
             throw AnonymizationError.invalidProfile
         }
@@ -253,11 +300,73 @@ struct DICOMAnon: ParsableCommand {
         anonymizer: Anonymizer
     ) throws -> AnonymizationResult {
         // Read DICOM file
-        let fileData = try Data(contentsOf: inputURL)
-        let dicomFile = try DICOMFile.read(from: fileData, force: force)
-        
-        // Anonymize
-        let (anonymizedFile, result) = try anonymizer.anonymize(file: dicomFile, filePath: inputURL.path)
+        var fileData = try Data(contentsOf: inputURL)
+        var dicomFile = try DICOMFile.read(from: fileData, force: force)
+
+        // --- Pixel cleaning runs FIRST, before any header de-identification. ---
+        // The region decision reads Modality / Manufacturer / model, which
+        // de-identification removes; planning afterwards would see a scrubbed data set
+        // and match nothing. Both CTP and Presidio document this same ordering
+        // dependency, so the order here is a correctness requirement, not a preference.
+        var pixelOutcome: PixelRedactor.Outcome?
+        if cleanPixelData || !redactRegion.isEmpty {
+            let editor = PixelEditor(verbose: false)
+            let explicit = try redactRegion.map { spec -> PixelRedactionPlan.Region in
+                let r = try editor.parseRegion(spec)
+                return PixelRedactionPlan.Region(x: r.x, y: r.y, width: r.width, height: r.height)
+            }
+            let plan = PixelRedactionPlan.plan(for: dicomFile.dataSet, explicitRegions: explicit)
+            if let (redacted, outcome) = try PixelRedactor().redact(
+                fileData: fileData, plan: plan, fillValue: redactFill) {
+                fileData = redacted
+                dicomFile = try DICOMFile.read(from: redacted, force: force)
+                pixelOutcome = outcome
+                if verbose {
+                    print(AnonConsole.pixelRedactionLines(outcome: outcome), terminator: "")
+                }
+            }
+        }
+
+        // Anonymize — PS3.15 Annex E engine or legacy profile.
+        let anonymizedFile: DICOMFile
+        let result: AnonymizationResult
+        if profile.lowercased() == "ps315" {
+            let options = ConfidentialityProfile.Options(
+                retainLongitudinalTemporal: retainDates,
+                retainPatientCharacteristics: retainCharacteristics,
+                retainDeviceIdentity: retainDevice,
+                retainInstitutionIdentity: retainInstitution,
+                retainUIDs: retainUids,
+                cleanDescriptors: cleanDescriptors,
+                dateOffsetDays: shiftDates)
+            let (file, res, _) = anonymizer.deidentify(file: dicomFile, options: options)
+            // Refuse to emit a file whose pixels may still identify the patient unless
+            // the operator explicitly accepts that. Writing it silently is the harmful
+            // case: the metadata looks clean, so the file reads as safe to release.
+            if !res.warnings.isEmpty && !allowBurnedInPHI {
+                throw ValidationError(
+                    """
+                    Refusing to anonymize \(inputURL.lastPathComponent): the pixel data may \
+                    still contain PHI.
+
+                    \(res.warnings.map { "  ⚠️  \($0)" }.joined(separator: "\n"))
+
+                    Without --clean-pixel-data this tool de-identifies the DATASET ONLY, \
+                    so burned-in text survives unchanged.
+
+                    Pass --clean-pixel-data to blank it (add --redact-region x,y,w,h if \
+                    the automatic region selection cannot resolve this device), or \
+                    --allow-burned-in-phi to write the metadata-scrubbed file anyway \
+                    (it will be marked Patient Identity Removed = NO).
+                    """)
+            }
+            anonymizedFile = file
+            result = AnonymizationResult(
+                filePath: inputURL.path, success: res.success,
+                changedTags: res.changedTags, warnings: res.warnings)
+        } else {
+            (anonymizedFile, result) = try anonymizer.anonymize(file: dicomFile, filePath: inputURL.path)
+        }
         
         // Write output if not dry-run
         if !dryRun, let outputURL = outputURL {

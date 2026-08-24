@@ -11,8 +11,12 @@ public struct ParsingOptions: Sendable {
         /// Significantly faster for queries and metadata extraction
         case metadataOnly
         
-        /// Parse tags up to pixel data, but don't load pixel data value
-        /// Allows accessing pixel data attributes without loading the actual pixels
+        /// Parse tags up to pixel data, but don't load pixel data value.
+        ///
+        /// **Warning:** this mode *discards* the pixel bytes — it retains no
+        /// offset handle, so pixels cannot be materialised from the parsed
+        /// file later. For selective access, parse fully and use
+        /// `DICOMFile.pixelData(frame:)`, which decodes exactly one frame.
         case lazyPixelData
     }
     
@@ -27,10 +31,41 @@ public struct ParsingOptions: Sendable {
     /// Useful for limiting memory usage on very large files
     public let maxElements: Int?
     
-    /// Whether to use memory-mapped file access for large files
-    /// More memory-efficient for files > 100MB
+    /// Whether to use memory-mapped file access (`.mappedIfSafe`) in
+    /// `DICOMFile.read(from url:)`. Pages fault in on demand rather than being
+    /// read eagerly. Choose per workload and measure — there is no universal
+    /// file-size threshold at which mapping wins.
     public let useMemoryMapping: Bool
-    
+
+    /// Maximum sequence/item nesting depth (default 64)
+    ///
+    /// Sequence parsing is recursive; without a bound, a crafted file with
+    /// deeply nested (undefined-length) sequences causes an uncatchable stack
+    /// overflow. Exceeding this depth throws `DICOMError.limitExceeded`.
+    /// The DICOM standard has no practical use for nesting anywhere near 64.
+    public let maxSequenceDepth: Int
+
+    /// Maximum declared value length in bytes for a single element (optional)
+    ///
+    /// When set, any element whose defined length exceeds this throws
+    /// `DICOMError.limitExceeded` before the value is materialised. Guards
+    /// against allocation abuse in constrained environments. `nil` (default)
+    /// bounds lengths only by the input size.
+    public let maxElementLength: Int?
+
+    /// Maximum total number of elements parsed, including elements nested
+    /// inside sequence items (optional)
+    ///
+    /// Unlike `maxElements` (which bounds only the top-level loop and stops
+    /// parsing quietly), exceeding this limit throws
+    /// `DICOMError.limitExceeded`. Guards against element-storm inputs.
+    public let maxTotalElements: Int?
+
+    /// Maximum number of encapsulated pixel-data fragments (optional)
+    ///
+    /// Exceeding this throws `DICOMError.limitExceeded`.
+    public let maxFragmentCount: Int?
+
     /// Default parsing options (full parsing)
     public static let `default` = ParsingOptions()
     
@@ -38,20 +73,30 @@ public struct ParsingOptions: Sendable {
     public static let metadataOnly = ParsingOptions(mode: .metadataOnly)
     
     /// Lazy pixel data parsing options
+    @available(*, deprecated, message: "Discards pixels rather than deferring them; use .metadataOnly, or full parse + DICOMFile.pixelData(frame:) for selective access")
     public static let lazyPixelData = ParsingOptions(mode: .lazyPixelData)
-    
-    /// Memory-mapped parsing options for large files
+
+    /// Memory-mapped parsing options for large files (.mappedIfSafe: pages
+    /// fault in on demand; do not modify the file while parsed data is alive)
     public static let memoryMapped = ParsingOptions(useMemoryMapping: true)
     
     public init(
         mode: Mode = .full,
         stopAfterTag: Tag? = nil,
         maxElements: Int? = nil,
-        useMemoryMapping: Bool = false
+        useMemoryMapping: Bool = false,
+        maxSequenceDepth: Int = 64,
+        maxElementLength: Int? = nil,
+        maxTotalElements: Int? = nil,
+        maxFragmentCount: Int? = nil
     ) {
         self.mode = mode
         self.stopAfterTag = stopAfterTag
         self.maxElements = maxElements
         self.useMemoryMapping = useMemoryMapping
+        self.maxSequenceDepth = maxSequenceDepth
+        self.maxElementLength = maxElementLength
+        self.maxTotalElements = maxTotalElements
+        self.maxFragmentCount = maxFragmentCount
     }
 }

@@ -39,7 +39,31 @@ actor FrameSourceCache {
     /// of holding it outweighs a re-decode nobody is doing at drag speed.
     private static let maximumBytes = 96 * 1024 * 1024
 
-    private var entries: [(path: String, source: FrameSource)] = []
+    /// Aggregate ceiling on resident decoded bytes (plan M6). The per-entry cap
+    /// alone allowed capacity × 96 MB; eviction now also honours this total.
+    private static let maximumTotalBytes = 192 * 1024 * 1024
+
+    /// Cache key: path plus file size and mtime, so an overwritten file is a
+    /// miss instead of stale pixels (plan M6 — the path-only key returned the
+    /// old decode after the file changed on disk).
+    private struct Key: Equatable {
+        let path: String
+        let size: UInt64
+        let mtime: TimeInterval
+
+        init(path: String) {
+            self.path = path
+            let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+            self.size = (attrs?[.size] as? UInt64) ?? 0
+            self.mtime = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        }
+    }
+
+    private var entries: [(key: Key, source: FrameSource)] = []
+
+    private var totalBytes: Int {
+        entries.reduce(0) { $0 + $1.source.pixelData.data.count }
+    }
 
     /// Whether decoded frames are worth page-aligning on this machine.
     ///
@@ -54,12 +78,15 @@ actor FrameSourceCache {
     /// caller has its own "this one failed" bookkeeping, and a file being
     /// written while it is read should not be poisoned forever.
     func source(forPath path: String) -> FrameSource? {
-        if let index = entries.firstIndex(where: { $0.path == path }) {
+        let key = Key(path: path)
+        if let index = entries.firstIndex(where: { $0.key == key }) {
             // Most recently used last, so eviction takes the coldest.
             let entry = entries.remove(at: index)
             entries.append(entry)
             return entry.source
         }
+        // Same path, different size/mtime: the file changed — drop stale pixels.
+        entries.removeAll { $0.key.path == path }
 
         guard let data = FileManager.default.contents(atPath: path),
               let file = try? DICOMFile.read(from: data, force: true),
@@ -80,8 +107,12 @@ actor FrameSourceCache {
             paletteLUT: file.dataSet.paletteColorLUT())
 
         if pixelData.data.count <= Self.maximumBytes {
-            entries.append((path, source))
+            entries.append((key, source))
             if entries.count > Self.capacity { entries.removeFirst() }
+            // Aggregate byte ceiling: evict coldest until under budget.
+            while totalBytes > Self.maximumTotalBytes && entries.count > 1 {
+                entries.removeFirst()
+            }
         }
         return source
     }

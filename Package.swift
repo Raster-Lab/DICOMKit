@@ -403,6 +403,25 @@ let package = Package(
                 // can reach both backends.)
                 "WindowLUTParityTests.swift",
                 "EncapsulatedPixelDataWriteTests.swift",
+                // RESEARCH_ADOPTION_PLAN.md M0: parser resource limits + mutation fuzz.
+                "ParserLimitTests.swift",
+                // RESEARCH_ADOPTION_PLAN.md copy map: slice-independence guards at the
+                // public Data boundary (parser); companion to DICOMCoreTests/CodecFuzzTests.
+                "SliceIndependenceTests.swift",
+                // PS3.3 C.11.1: Modality LUT Sequence precedence over slope/intercept.
+                "ModalityLUTPrecedenceTests.swift",
+                // PS3.15 Annex E Basic Application Level Confidentiality Profile engine.
+                "ConfidentialityProfileTests.swift",
+                // PS3.15 Annex E Clean Pixel Data Option (113101): region planning,
+                // blanking mechanism, and earned attestation.
+                "PixelRedactionTests.swift",
+                // ECOSYSTEM_COMPARISON.md §5 cross-toolkit bug-scenario matrix.
+                "CrossToolkitMatrixTests.swift",
+                // RESEARCH_ADOPTION_PLAN.md M2: selected-frame access + frame index.
+                "FrameAccessTests.swift",
+                // RESEARCH_ADOPTION_PLAN.md M1: benchmark baseline runner
+                // (skips unless DICOM_BENCHMARK_BASELINE=1).
+                "BenchmarkBaselineTests.swift",
                 "WaveformParseRegressionTests.swift",
                 "OutputPathResolverTests.swift",
                 "PerformanceTests/SIMDImageProcessorTests.swift"

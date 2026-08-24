@@ -347,6 +347,13 @@ public enum DICOMNetworkError: Error, Sendable {
     
     /// Decoding error when deserializing PDU
     case decodingFailed(String)
+
+    /// A declared size or count in a received PDU exceeds a protocol resource limit
+    ///
+    /// Structured counterpart of `DICOMError.limitExceeded` for the network layer:
+    /// distinguishes "the peer declared something absurdly large" (allocation-DoS
+    /// guard, e.g. `PDUDecoder.maximumPDULength`) from a merely malformed PDU.
+    case limitExceeded(String)
     
     /// Query operation failed with a DIMSE status
     case queryFailed(DIMSEStatus)
@@ -449,6 +456,8 @@ extension DICOMNetworkError: CustomStringConvertible {
             return "Encoding failed: \(message)"
         case .decodingFailed(let message):
             return "Decoding failed: \(message)"
+        case .limitExceeded(let message):
+            return "Protocol limit exceeded: \(message)"
         case .queryFailed(let status):
             return "Query failed: \(status)"
         case .retrieveFailed(let status):
@@ -554,6 +563,8 @@ extension DICOMNetworkError {
             return .protocol
         case .decodingFailed:
             return .protocol
+        case .limitExceeded:
+            return .protocol
         case .queryFailed:
             return .permanent
         case .retrieveFailed:
@@ -616,6 +627,7 @@ extension DICOMNetworkError {
              .invalidState,
              .encodingFailed,
              .decodingFailed,
+             .limitExceeded,
              .queryFailed,
              .retrieveFailed,
              .storeFailed,
@@ -673,6 +685,8 @@ extension DICOMNetworkError {
             return .contactAdministrator(reason: "PDU encoding failed: \(message)")
         case .decodingFailed(let message):
             return .checkConfiguration(details: "PDU decoding failed: \(message). Check protocol compatibility.")
+        case .limitExceeded(let message):
+            return .contactAdministrator(reason: "A protocol resource limit was exceeded: \(message). The peer may be misbehaving or hostile.")
         case .queryFailed(let status):
             return .noRecovery(reason: "Query failed with status: \(status)")
         case .retrieveFailed(let status):
@@ -743,6 +757,8 @@ extension DICOMNetworkError {
             return "Failed to encode the DICOM message for transmission. \(message)"
         case .decodingFailed(let message):
             return "Failed to decode the DICOM message received from the server. \(message)"
+        case .limitExceeded(let message):
+            return "The DICOM message declared a size beyond this implementation's limits. \(message)"
         case .queryFailed(let status):
             return "The query operation failed with DIMSE status: \(status)."
         case .retrieveFailed(let status):
@@ -1005,6 +1021,7 @@ extension DICOMNetworkError {
              .invalidState,
              .encodingFailed,
              .decodingFailed,
+             .limitExceeded,
              .queryFailed,
              .retrieveFailed,
              .storeFailed,

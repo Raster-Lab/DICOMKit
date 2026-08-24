@@ -384,6 +384,43 @@ private extension J2KSwiftCodec {
     // same risk exists on any real machine where Metal/the GPU driver stalls
     // mid-operation, so this bounds the wait and cancels the underlying task on
     // expiry rather than blocking indefinitely with no way to recover.
+    #if canImport(J2KCore) && canImport(J2KCodec)
+    /// Decodes one frame at a reduced resolution level (WP-H, plan M5)
+    ///
+    /// Uses J2KSwift's true partial-resolution decode (code-block filtering +
+    /// truncated inverse DWT), so a coarse preview costs a fraction of the full
+    /// decode. `level` 0 is full resolution; each level halves both dimensions.
+    /// Returns the packed samples plus the reduced dimensions.
+    ///
+    /// This is a *preview* product: measurements, exports and AI inputs must
+    /// use the full-fidelity decode.
+    public func decodeFrameAtResolution(
+        _ frameData: Data,
+        descriptor: PixelDataDescriptor,
+        level: Int
+    ) async throws -> (data: Data, rows: Int, columns: Int) {
+        let image = try await J2KDecoder().decodeResolution(
+            frameData,
+            options: J2KResolutionDecodingOptions(level: level))
+        guard image.width > 0, image.height > 0 else {
+            throw DICOMError.parsingFailed("Reduced-resolution decode returned empty image")
+        }
+        let reducedDescriptor = PixelDataDescriptor(
+            rows: image.height,
+            columns: image.width,
+            numberOfFrames: 1,
+            bitsAllocated: descriptor.bitsAllocated,
+            bitsStored: descriptor.bitsStored,
+            highBit: descriptor.highBit,
+            isSigned: descriptor.isSigned,
+            samplesPerPixel: descriptor.samplesPerPixel,
+            photometricInterpretation: descriptor.photometricInterpretation,
+            planarConfiguration: descriptor.planarConfiguration)
+        let packed = try Self.packPixels(from: image, descriptor: reducedDescriptor)
+        return (packed, image.height, image.width)
+    }
+    #endif
+
     static func awaitJ2KResult<T: Sendable>(
         timeout: TimeInterval = 60,
         _ operation: @escaping @Sendable () async throws -> T

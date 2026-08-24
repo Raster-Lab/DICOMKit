@@ -74,6 +74,14 @@ public struct DICOMFile: Sendable {
     /// - Returns: Parsed DICOM file
     /// - Throws: DICOMError if file is invalid or parsing fails
     public static func read(from data: Data, force: Bool = false, options: ParsingOptions) throws -> DICOMFile {
+        // Rebase sliced input once at the public boundary. The parse pipeline below
+        // (hasDICMPrefix, DICOMParser) mixes slice-relative reads (readUInt16LE et al.
+        // add `startIndex`) with absolute indexing (`subdata(in:)`, `data[128..<132]`);
+        // on a Data slice with a non-zero startIndex the two index spaces disagree —
+        // silent misreads or a trap (caught by SliceIndependenceTests). Free for the
+        // normal case: `Data(data)` only copies when the input actually is a slice.
+        // The zero-copy replacement is WP-B borrowed windows (copy map, §19).
+        let data = data.startIndex == 0 ? data : Data(data)
         // Check if this is a standard Part 10 file with DICM prefix
         if hasDICMPrefix(data) {
             return try readPart10File(from: data, options: options)
@@ -104,10 +112,11 @@ public struct DICOMFile: Sendable {
     /// - Returns: Parsed DICOM file
     /// - Throws: DICOMError if file is invalid or parsing fails
     public static func read(from url: URL, force: Bool = false, options: ParsingOptions = .default) throws -> DICOMFile {
-        // For memory-mapped access with large files, we could optimize further
-        // For now, load the data and pass options through
-        let data = try Data(contentsOf: url)
-        return try read(from: data, force: force, options: options)
+        // `useMemoryMapping` maps the file (.mappedIfSafe) so pages are faulted
+        // in on demand instead of read eagerly — the file must not be modified
+        // while the parsed structures are alive.
+        let source = try FileByteSource(url: url, mapped: options.useMemoryMapping)
+        return try read(from: source.wholeData(), force: force, options: options)
     }
     
     /// Checks if the data has a valid DICM prefix at offset 128

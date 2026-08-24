@@ -107,14 +107,16 @@ public actor ImageCache {
     private struct CacheEntry {
         let image: CGImage
         let estimatedSize: Int
-        var lastAccessed: Date
+        var accessTick: UInt64
     }
     
     // MARK: - Properties
     
     private let configuration: Configuration
     private var entries: [ImageCacheKey: CacheEntry] = [:]
-    private var accessOrder: [ImageCacheKey] = []
+    /// Monotonic access counter — O(1) LRU bookkeeping per hit (plan M6);
+    /// eviction scans for the minimum tick, paying O(n) only when evicting.
+    private var accessCounter: UInt64 = 0
     private var currentMemoryUsage: Int = 0
     private var hits: Int = 0
     private var misses: Int = 0
@@ -143,10 +145,10 @@ public actor ImageCache {
             return nil
         }
         
-        // Update access time and order
-        entry.lastAccessed = Date()
+        // Update access order — O(1)
+        accessCounter += 1
+        entry.accessTick = accessCounter
         entries[key] = entry
-        updateAccessOrder(key)
         
         hits += 1
         return entry.image
@@ -183,13 +185,13 @@ public actor ImageCache {
         }
         
         // Store entry
+        accessCounter += 1
         let entry = CacheEntry(
             image: image,
             estimatedSize: estimatedSize,
-            lastAccessed: Date()
+            accessTick: accessCounter
         )
         entries[key] = entry
-        accessOrder.append(key)
         currentMemoryUsage += estimatedSize
     }
     
@@ -198,13 +200,11 @@ public actor ImageCache {
     public func remove(_ key: ImageCacheKey) {
         guard let entry = entries.removeValue(forKey: key) else { return }
         currentMemoryUsage -= entry.estimatedSize
-        accessOrder.removeAll { $0 == key }
     }
     
     /// Removes all images from the cache
     public func clear() {
         entries.removeAll()
-        accessOrder.removeAll()
         currentMemoryUsage = 0
         // Preserve hit/miss stats
     }
@@ -228,16 +228,23 @@ public actor ImageCache {
     
     // MARK: - Private Methods
     
-    private func updateAccessOrder(_ key: ImageCacheKey) {
-        accessOrder.removeAll { $0 == key }
-        accessOrder.append(key)
-    }
-    
     private func evictLeastRecentlyUsed() {
-        guard !accessOrder.isEmpty else { return }
-        let key = accessOrder.removeFirst()
-        if let entry = entries.removeValue(forKey: key) {
+        guard let victim = entries.min(by: { $0.value.accessTick < $1.value.accessTick })?.key else {
+            return
+        }
+        if let entry = entries.removeValue(forKey: victim) {
             currentMemoryUsage -= entry.estimatedSize
+        }
+    }
+
+    /// Staged eviction for memory pressure (plan M6): evicts least-recently
+    /// used entries until usage is at or below `fraction` of the byte limit.
+    /// Prefer this over `clear()` on a memory warning — the working set
+    /// survives. `fraction` 0 clears everything.
+    public func trim(toFraction fraction: Double) {
+        let target = Int(Double(configuration.maxMemoryBytes) * max(0, min(1, fraction)))
+        while currentMemoryUsage > target && !entries.isEmpty {
+            evictLeastRecentlyUsed()
         }
     }
     
