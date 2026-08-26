@@ -91,7 +91,7 @@ struct DICOMViewer: ParsableCommand {
     var volume: Bool = false
 
     @Option(name: .long,
-            help: "Fetch and display image from a JPIP server URL (requires JPIP module).")
+            help: "Fetch and display image from a JPIP server URL (currently unavailable: upstream JPIP retrieval is unimplemented — see RESEARCH_ADOPTION_PLAN.md F1).")
     var jpip: String?
 
     mutating func validate() throws {
@@ -419,104 +419,22 @@ struct DICOMViewer: ParsableCommand {
             throw ExitCode.failure
         }
 
-        // Bridge the async JPIP client into the synchronous CLI context.
-        let jpipURLCopy = jpipURL
+        // JPIP retrieval is unavailable — DICOMJPIPClient's fetch methods are marked
+        // @available(*, unavailable) because every request path in the pinned upstream
+        // J2KSwift JPIP module (11.0.2) throws notImplemented. The rendering pipeline
+        // that consumed the fetched image is recoverable from git history at de67c39
+        // and should be restored when upstream lands. F1 in RESEARCH_ADOPTION_PLAN.md.
+        fputs("""
+            Error: JPIP rendering is not available in this build.
 
-        let sema = DispatchSemaphore(value: 0)
-        // The semaphore's signal->wait is a happens-before edge, so this manually
-        // synchronized capture is visible after sema.wait().
-        nonisolated(unsafe) var result: Result<DICOMJPIPImage, Error>?
+            Target: \(jpipURL.absoluteString)
 
-        Task { @MainActor in
-            let client = DICOMJPIPClient(serverURL: jpipURLCopy)
-            result = await Task { @MainActor in
-                try await client.fetchImage(jpipURI: jpipURLCopy)
-            }.result
-            sema.signal()
-        }
-        sema.wait()
+            Retrieving pixel data over JPIP requires an implemented request path; the
+            pinned J2KSwift JPIP module (11.0.2) has none. Render a local DICOM file
+            instead, or use dicom-wado / dicom-retrieve for remote sources.
 
-        if case .failure(let err) = result {
-            fputs("Error fetching JPIP image: \(err)\n", stderr)
-            throw ExitCode.failure
-        }
-        guard case .success(let result) = result else {
-            fputs("Error: no image returned from JPIP server\n", stderr)
-            throw ExitCode.failure
-        }
-
-        if verbose {
-            print("JPIP image: \(result.width)x\(result.height), "
-                  + "\(result.components) components, "
-                  + "\(result.qualityLayers) quality layers")
-        }
-
-        // Convert DICOMJPIPImage to NormalizedImage for rendering
-        let pixelCount = result.width * result.height
-        let maxVal = Double((1 << result.bitDepth) - 1)
-        var normalized = [Double](repeating: 0.0, count: pixelCount)
-
-        let bytesPerPixel = (result.bitDepth + 7) / 8
-        let pixelStride = result.components * bytesPerPixel
-
-        for i in 0..<pixelCount {
-            let offset = i * pixelStride
-            guard offset + bytesPerPixel - 1 < result.pixelData.count else { break }
-            var raw = 0
-            for b in 0..<bytesPerPixel {
-                raw |= Int(result.pixelData[offset + b]) << (b * 8)
-            }
-            var v = Double(raw) / maxVal
-            if invert { v = 1.0 - v }
-            normalized[i] = max(0.0, min(1.0, v))
-        }
-
-        var image = NormalizedImage(
-            pixels: normalized,
-            width: result.width,
-            height: result.height,
-            originalRows: result.height,
-            originalColumns: result.width
-        )
-
-        // Apply reduce / ROI if specified
-        if reduce > 0 {
-            let factor = 1 << reduce
-            image = TerminalRenderer.scaleImage(
-                image,
-                toWidth: max(1, image.width / factor),
-                toHeight: max(1, image.height / factor)
-            )
-        }
-        if let roiStr = roi {
-            let parts = roiStr.split(separator: ",").compactMap { Int($0) }
-            if parts.count == 4 {
-                image = TerminalRenderer.cropImage(
-                    image, x: parts[0], y: parts[1], width: parts[2], height: parts[3]
-                )
-            }
-        }
-
-        let termSize = TerminalSize.detect()
-        let fitSize = TerminalRenderer.fitToTerminal(
-            imageWidth: image.width,
-            imageHeight: image.height,
-            terminalWidth: termSize.width,
-            terminalHeight: termSize.height,
-            customWidth: width,
-            customHeight: height
-        )
-        let scaled = TerminalRenderer.scaleImage(image, toWidth: fitSize.width, toHeight: fitSize.height)
-
-        let output: String
-        switch mode {
-        case .ascii:  output = TerminalRenderer.renderASCII(scaled, quality: quality)
-        case .ansi:   output = TerminalRenderer.renderANSI(scaled, colorDepth: color)
-        case .iterm2: output = TerminalRenderer.renderITerm2(image, width: width, height: height)
-        case .kitty:  output = TerminalRenderer.renderKitty(image)
-        case .sixel:  output = TerminalRenderer.renderSixel(scaled)
-        }
-        print(output, terminator: "")
+            """, stderr)
+        throw ExitCode.failure
     }
 }
 

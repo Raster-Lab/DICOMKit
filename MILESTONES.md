@@ -4315,6 +4315,39 @@ These features may be considered for future development based on community needs
 
 ---
 
+## Milestone 25 — Research Adoption: Performance, Memory, Streaming & Codec Hand-off
+
+**Plan**: [RESEARCH_ADOPTION_PLAN.md](../RESEARCH_ADOPTION_PLAN.md)
+**Evidence**: [Documentation/ResearchAdoption/](../Documentation/ResearchAdoption/),
+[ECOSYSTEM_COMPARISON.md](../ECOSYSTEM_COMPARISON.md)
+**Status**: M0–M6 core scope complete 2026-08-10/11 (not yet committed); a few items
+explicitly deferred to future work (see plan)
+
+A comparison against the wider DICOM toolkit ecosystem found selected-frame decode
+cost the same as decoding an entire multi-frame volume, no parser depth/size limits,
+and JPIP advertised as working when upstream retrieval throws `notImplemented` on
+every call. Each milestone below shipped with a before/after release-build
+measurement and the round-trip suite green before the next began.
+
+| Milestone | Description | Status |
+|-----------|-------------|--------|
+| M0 | Parser & protocol hardening — depth/size/fragment limits, fail closed | ✅ |
+| M0.1 | Mutation fuzz over parser, PDU decoder, codecs — found & fixed an RLE slice-index trap | ✅ |
+| M0.2 | Copy-path map (74 sites classified); fixed 2 more publicly-reachable slice crashes | ✅ |
+| F1 | JPIP marked `unavailable` with a clear error instead of silently failing/hanging | ✅ |
+| F2–F8 | Modality LUT precedence, README honesty, Print SCP flake, PDU error type, 12-bit J2K test, PS3.15 engine, cross-toolkit regression suite | ✅ |
+| M1 | Benchmark baseline (median/P90/P95, true resident-memory high-water) | ✅ |
+| M2 | Byte source + selected-frame decode — 182.9 ms → 4.56 ms median (40×) | ✅ |
+| M3 | Caller-owned codec output — one fewer full-frame copy on the decode path | ✅ (bulk-data handle deferred) |
+| M4 | Bounded parallel decode + cancellation — 181.6 ms → 34.1 ms (5.3×) | ✅ (J2K async bridge deferred) |
+| M5 | Progressive (reduced-resolution) decode contract | ✅ core (quality-layer refinement deferred) |
+| M6 | O(1) `ImageCache`, `FrameSourceCache` correctness + memory ceiling | ✅ core (Span/InlineArray parser pass deferred) |
+
+Full suite 7,312 tests / 730 suites, green across 3 consecutive runs, zero known
+issues. See `CHANGELOG.md` "research adoption" entry for the itemized changes.
+
+---
+
 ## Release Cadence
 
 - **Minor releases** (0.x): Every 2-3 months with new features

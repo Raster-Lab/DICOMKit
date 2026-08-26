@@ -18,6 +18,10 @@ struct DICOMJpip: ParsableCommand {
             JPIP allows retrieving only the image region, resolution level, and quality
             layers needed, minimising bandwidth for large medical imaging datasets.
 
+            NOTE: `fetch` currently exits with an error — JPIP retrieval is not
+            implemented in the pinned J2KSwift JPIP module (11.0.2). `uri`, `serve`
+            and `info` work. Tracked as F1 in RESEARCH_ADOPTION_PLAN.md.
+
             Transfer Syntaxes:
               JPIP Referenced          1.2.840.10008.1.2.4.94
               JPIP Referenced Deflate  1.2.840.10008.1.2.4.95
@@ -57,7 +61,7 @@ extension DICOMJpip {
     struct FetchCommand: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "fetch",
-            abstract: "Fetch a DICOM image from a JPIP server",
+            abstract: "Fetch a DICOM image from a JPIP server (currently unavailable — see F1)",
             discussion: """
                 Connects to a JPIP server and retrieves a DICOM image progressively.
                 Use --layers to limit quality for faster previews, --region for ROI fetching,
@@ -119,58 +123,32 @@ extension DICOMJpip {
                 throw ExitCode.failure
             }
             let jpipURI = url.appendingPathComponent(image)
-            // Capture mutable state before Task to avoid 'escaping closure captures mutating self'
-            let capturedVerbose = verbose
-            let capturedRegion = region
-            let capturedLayers = layers
-            let capturedLevel = level
-            let capturedOutput = output
 
-            let task = Task {
-                let client = DICOMJPIPClient(serverURL: url)
-                defer { Task { try? await client.close() } }
-
-                if capturedVerbose {
-                    print("Server: \(url.absoluteString)")
-                    print("Image:  \(jpipURI.lastPathComponent)")
-                }
-
-                let fetchedImage: DICOMJPIPImage
-
-                if let regionStr = capturedRegion {
-                    let parts = regionStr.split(separator: ",").compactMap { Int($0) }
-                    let roi = DICOMJPIPRegion(x: parts[0], y: parts[1], width: parts[2], height: parts[3])
-                    let quality: DICOMJPIPQuality
-                    if let l = capturedLayers {
-                        quality = .layers(l)
-                    } else if let lv = capturedLevel {
-                        quality = .resolutionLevel(lv)
-                    } else {
-                        quality = .full
-                    }
-                    if capturedVerbose { print("Region: x=\(parts[0]) y=\(parts[1]) w=\(parts[2]) h=\(parts[3])") }
-                    fetchedImage = try await client.fetchRegion(jpipURI: jpipURI, region: roi, quality: quality)
-                } else if let l = capturedLayers {
-                    if capturedVerbose { print("Quality layers: \(l)") }
-                    fetchedImage = try await client.fetchProgressiveQuality(jpipURI: jpipURI, layers: l)
-                } else if let lv = capturedLevel {
-                    if capturedVerbose { print("Resolution level: \(lv)") }
-                    fetchedImage = try await client.fetchResolutionLevel(jpipURI: jpipURI, level: lv)
-                } else {
-                    fetchedImage = try await client.fetchImage(jpipURI: jpipURI)
-                }
-
-                print("Fetched: \(fetchedImage.width)×\(fetchedImage.height), \(fetchedImage.components) component(s), \(fetchedImage.bitDepth)-bit")
-                print("Pixel data: \(formatBytes(fetchedImage.pixelData.count))")
-
-                if let outputPath = capturedOutput {
-                    let outputURL = URL(fileURLWithPath: outputPath)
-                    try fetchedImage.pixelData.write(to: outputURL)
-                    print("Written: \(outputPath)")
-                }
+            // JPIP retrieval is unavailable: every request path in the pinned upstream
+            // J2KSwift JPIP module (11.0.2) throws notImplemented, and the DICOMKit
+            // wrappers are marked @available(*, unavailable) to say so at compile time.
+            // Argument parsing and JPIP target-URI construction above still run, so the
+            // command remains useful for validating a reference — but it must not claim
+            // to have fetched anything. Tracked as F1 in RESEARCH_ADOPTION_PLAN.md.
+            if verbose {
+                print("Server: \(url.absoluteString)")
+                print("Image:  \(jpipURI.lastPathComponent)")
+                print("Target: \(jpipURI.absoluteString)")
             }
+            fputs("""
+                Error: JPIP retrieval is not available in this build.
 
-            _ = try waitForTask(task)
+                The JPIP target URI resolves to:
+                  \(jpipURI.absoluteString)
+
+                Fetching pixel data requires an implemented JPIP request path; the pinned
+                J2KSwift JPIP module (11.0.2) has none — every request entry point throws
+                notImplemented. Transfer-syntax detection and JPIP URI extraction work.
+
+                Tracked as finding F1 in RESEARCH_ADOPTION_PLAN.md.
+
+                """, stderr)
+            throw ExitCode.failure
         }
     }
 }

@@ -1352,21 +1352,18 @@ public final class ImageViewerViewModel {
             return
         }
 
-        // Phase 1: fetch low-quality preview
-        jpipLoadingState = .fetchingPreview
-        let client = DICOMJPIPClient(serverURL: serverURL)
-        do {
-            let preview = try await client.fetchProgressiveQuality(jpipURI: jpipURI, layers: 1)
-            applyJPIPImage(preview, layers: 1)
-            jpipLoadingState = .refining(layers: 4)
-
-            // Phase 2: refine to full quality
-            let full = try await client.fetchImage(jpipURI: jpipURI)
-            applyJPIPImage(full, layers: 0)
-            jpipLoadingState = .loaded(layers: 0)
-        } catch {
-            jpipLoadingState = .failed(reason: error.localizedDescription)
-        }
+        // JPIP retrieval is unavailable: DICOMJPIPClient's fetch methods are marked
+        // @available(*, unavailable) because every request path in the pinned upstream
+        // J2KSwift JPIP module (11.0.2) throws notImplemented. The two-phase
+        // preview-then-refine flow (and its applyJPIPImage calls) is recoverable from git
+        // history at de67c39 and should be restored when upstream lands. Surfacing the
+        // real reason beats a spinner that never resolves.
+        // Tracked as F1 in RESEARCH_ADOPTION_PLAN.md.
+        _ = serverURL
+        _ = jpipURI
+        jpipLoadingState = .failed(
+            reason: DICOMJPIPError.retrievalUnavailable.description
+        )
     }
 
     // MARK: - Private Phase 8 Helpers

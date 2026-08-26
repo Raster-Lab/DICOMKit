@@ -589,16 +589,15 @@ struct PrintSCPEndToEndTests {
             imageDescriptors: [descriptor])
         #expect(result.success)
 
-        // The film reaches the list through the sink's stream, so it lands a
-        // moment after the SCU's N-ACTION response.
-        // The screen is fed by *two* independent streams — the sink's films and
-        // the server's protocol events, which carry the counters — so waiting on
-        // the film alone can arrive before the counter it is asserted against.
-        // Both are waited for, against a deadline rather than a fixed number of
-        // sleeps: under a loaded run the sleeps themselves are what get delayed,
-        // so a tick budget expires in far less wall-clock time than it reads as.
+        // The view model exposes two independently-delivered signals: `films` (the
+        // record array, from the sink stream) and `filmCount` (the `.filmPrinted`
+        // counter). Waiting on `films` alone can arrive before the counter it is
+        // asserted against, so both are waited for. The wait is against a deadline
+        // rather than a fixed number of sleeps: under a loaded run the sleeps
+        // themselves are what get delayed, so a tick budget expires in far less
+        // wall-clock time than it reads as.
         let deadline = ContinuousClock.now + .seconds(30)
-        while viewModel.films.isEmpty || viewModel.filmCount == 0,
+        while viewModel.films.isEmpty || viewModel.filmCount < 1,
               ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(50))
         }

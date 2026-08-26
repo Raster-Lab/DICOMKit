@@ -128,17 +128,6 @@ public struct GrayscaleLUT: Sendable, Equatable {
     }
 }
 
-// MARK: - Tags
-
-extension Tag {
-    /// LUT Descriptor (0028,3002)
-    static let lutDescriptor = Tag(group: 0x0028, element: 0x3002)
-    /// LUT Explanation (0028,3003)
-    static let lutExplanation = Tag(group: 0x0028, element: 0x3003)
-    /// LUT Data (0028,3006)
-    static let lutData = Tag(group: 0x0028, element: 0x3006)
-}
-
 // MARK: - Reading from a data set
 
 public extension DataSet {

@@ -303,6 +303,11 @@ public struct TransferSyntaxConverter: Sendable {
         from sourceSyntax: TransferSyntax,
         to targetSyntax: TransferSyntax
     ) throws -> TranscodingResult {
+        // Rebase sliced input once at the public boundary: the private element walkers
+        // below index with 0-based offsets (`subdata(in:)`, `data[offset]`), which are
+        // absolute in Data's index space — a slice with non-zero startIndex misreads or
+        // traps (SliceIndependenceTests). Copies only when the input actually is a slice.
+        let dataSetData = dataSetData.startIndex == 0 ? dataSetData : Data(dataSetData)
         // No transcoding needed if syntaxes match
         if sourceSyntax.uid == targetSyntax.uid {
             return TranscodingResult(

@@ -53,7 +53,31 @@ actor FrameSourceCache {
     /// neighbours a user flicks between must survive their own arrival.
     private static let minimumEntries = 3
 
-    private var entries: [(path: String, source: FrameSource)] = []
+    /// Aggregate ceiling on resident decoded bytes (plan M6). The per-entry cap
+    /// alone allowed capacity × 96 MB; eviction now also honours this total.
+    private static let maximumTotalBytes = 192 * 1024 * 1024
+
+    /// Cache key: path plus file size and mtime, so an overwritten file is a
+    /// miss instead of stale pixels (plan M6 — the path-only key returned the
+    /// old decode after the file changed on disk).
+    private struct Key: Equatable {
+        let path: String
+        let size: UInt64
+        let mtime: TimeInterval
+
+        init(path: String) {
+            self.path = path
+            let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+            self.size = (attrs?[.size] as? UInt64) ?? 0
+            self.mtime = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        }
+    }
+
+    private var entries: [(key: Key, source: FrameSource)] = []
+
+    private var totalBytes: Int {
+        entries.reduce(0) { $0 + $1.source.pixelData.data.count }
+    }
 
     /// Decodes in flight, by path.
     ///
@@ -81,12 +105,15 @@ actor FrameSourceCache {
     /// caller has its own "this one failed" bookkeeping, and a file being
     /// written while it is read should not be poisoned forever.
     func source(forPath path: String) async -> FrameSource? {
-        if let index = entries.firstIndex(where: { $0.path == path }) {
+        let key = Key(path: path)
+        if let index = entries.firstIndex(where: { $0.key == key }) {
             // Most recently used last, so eviction takes the coldest.
             let entry = entries.remove(at: index)
             entries.append(entry)
             return entry.source
         }
+        // Same path, different size/mtime: the file changed — drop stale pixels.
+        entries.removeAll { $0.key.path == path }
 
         let task: Task<FrameSource?, Never>
         if let existing = loading[path] {
@@ -101,7 +128,7 @@ actor FrameSourceCache {
         let source = await task.value
         loading[path] = nil
         guard let source else { return nil }
-        store(source, forPath: path)
+        store(source, forKey: key)
         return source
     }
 
@@ -129,16 +156,21 @@ actor FrameSourceCache {
 
     /// Keeps a decoded file, evicting the coldest until the cache is inside its
     /// budget again.
-    private func store(_ source: FrameSource, forPath path: String) {
+    private func store(_ source: FrameSource, forKey key: Key) {
         let bytes = source.pixelData.data.count
         guard bytes <= Self.maximumBytes else { return }
         // A second caller can have stored the same file while this one decoded.
-        guard !entries.contains(where: { $0.path == path }) else { return }
+        guard !entries.contains(where: { $0.key == key }) else { return }
 
-        entries.append((path, source))
+        entries.append((key, source))
         var total = entries.reduce(0) { $0 + $1.source.pixelData.data.count }
         while total > Self.budgetBytes, entries.count > Self.minimumEntries {
             total -= entries.removeFirst().source.pixelData.data.count
+        }
+        // Aggregate byte ceiling (plan M6): evict coldest until under budget,
+        // even below the minimum-entries floor above.
+        while totalBytes > Self.maximumTotalBytes, entries.count > 1 {
+            entries.removeFirst()
         }
     }
 

@@ -2,6 +2,15 @@
 
 This guide provides best practices and recommendations for optimizing performance when using DICOMKit.
 
+> **Corrective review (2026-08-10).** This guide was audited against the source tree
+> (see `Documentation/ResearchAdoption/Current_State_Reconciliation_and_Gap_Report_v0.1.0.md`).
+> Claims are now labelled: **[measured]** (named environment + dataset),
+> **[example]** (configuration illustration), **[heuristic]** (reasonable default,
+> unmeasured), **[hypothesis]** (requires a benchmark before being relied on), or
+> **[not implemented]** (the API exists but has no effect today). Unlabelled speed-up
+> figures from earlier revisions were unattributed and have been removed. Speed-up
+> multipliers from different layers must never be multiplied together.
+
 ## Table of Contents
 
 1. [Memory Optimization](#memory-optimization)
@@ -16,20 +25,54 @@ This guide provides best practices and recommendations for optimizing performanc
 
 ## Memory Optimization
 
-### Use Memory-Mapped Files for Large DICOM Files
+### Memory-Mapped Files — [example]
 
-For files larger than 100MB, use memory-mapped file access to reduce peak memory usage:
+`ParsingOptions.memoryMapped` is functional (since M2, 2026-08-10):
+`DICOMFile.read(from url:)` maps the file with `.mappedIfSafe`, so pages fault in
+on demand instead of being read eagerly.
 
 ```swift
-// Memory-mapped parsing (efficient for large files)
-let options = ParsingOptions.memoryMapped
-let file = try DICOMFile.read(from: fileURL, options: options)
+let file = try DICOMFile.read(from: fileURL, options: .memoryMapped)
 ```
 
-**Benefits:**
-- 50% reduction in memory usage for files >100MB
-- Allows working with files larger than available RAM
-- Minimal performance impact
+Do not modify the file while parsed data is alive. There is **no universal
+file-size threshold** at which mapping wins — choose per workload and measure
+(the earlier "50% reduction >100MB" claim was unattributed and remains
+withdrawn). The backing `DICOMByteSource` abstraction (in-memory + file today)
+is the seam where pooled-read and network sources will land.
+
+### Selected-Frame Access — [measured]
+
+`DICOMFile.pixelData(frame:)` decodes exactly one frame — via a validated
+frame/fragment index (Extended Offset Table → Basic Offset Table →
+one-fragment-per-frame → single-frame; malformed tables fail closed) for
+encapsulated syntaxes, or a byte-range slice for native ones.
+
+```swift
+let frameCount = file.pixelFrameCount ?? 1
+let frame = try file.pixelData(frame: 20)   // single-frame PixelData
+```
+
+Measured (release, Mac16,13, macOS 26.6, synthetic 256×256×40 RLE, 2026-08-10,
+20 iterations): selecting frame 20 via `pixelData()` + slice = median 182.9 ms
+(all 40 frames decoded, ~10 MB transient growth); via `pixelData(frame:)` =
+**median 4.56 ms, P95 4.63 ms** — 40× faster with no measurable resident-memory
+growth. Raw artifact: `Tests/Benchmarks/Artifacts/`. Output is byte-identical to
+the all-frames path (asserted in `FrameAccessTests`).
+
+Related APIs (same measurement session):
+- `alignedPixelData(frame:)` — [measured] median 4.55 ms: same speed, but the
+  frame decodes directly into page-aligned storage Metal wraps with
+  `makeBuffer(bytesNoCopy:)`, so the render path skips its `pageAligned()`
+  re-copy. RLE also decodes caller-owned (no intermediate output buffer).
+- `pixelDataParallel(maxInFlightBytes:)` — [measured] all 40 frames: 181.6 ms
+  serial → **34.1 ms** (5.3× on a 10-core machine), bounded by decoded-bytes
+  budget, cancellable between frames, byte-identical.
+- `pixelDataProgressive(frame:)` — [measured behaviour] for JPEG 2000/HTJ2K:
+  coarse reduced-resolution previews stream first, then the exact final frame
+  (byte-identical to a direct decode — asserted); other syntaxes emit the final
+  frame only. Coarse previews are for display; measurements/exports must use
+  the final update.
 
 ### Lazy Loading of Pixel Data
 
@@ -44,17 +87,20 @@ let file = try DICOMFile.read(from: data, options: options)
 let patientName = file.dataSet.string(for: .patientName)
 let studyDate = file.dataSet.string(for: .studyDate)
 // Pixel data is NOT loaded
-
-// Lazy pixel data (deferred loading)
-let options = ParsingOptions.lazyPixelData
-let file = try DICOMFile.read(from: data, options: options)
-// Pixel data tag exists but value not loaded until accessed
 ```
 
-**Performance Impact:**
-- Metadata-only: 2-10x faster for large images
-- Memory savings: Up to 90% for image-heavy files
-- Use for: Queries, browsing, metadata extraction
+**Caveats:**
+- `.metadataOnly` stops parsing at Pixel Data; any elements after (7FE0,0010) are
+  not represented in the resulting data set.
+- `ParsingOptions.lazyPixelData` — **[not implemented / do not use]**: it does not
+  defer pixel loading, it *discards* the pixel bytes (the parser skips fragments
+  and stores an empty value with no offset handle; `LazyPixelDataLoader` is never
+  wired in). A file read this way cannot yield pixels later.
+
+**Performance Impact — [hypothesis]:** skipping pixel data should reduce time and
+memory roughly in proportion to the pixel fraction of the file, but no attributed
+measurement exists yet. The former "2-10x faster / up to 90% memory" figures were
+unattributed and are withdrawn pending the benchmark baseline.
 
 ### Partial Parsing
 
@@ -92,15 +138,11 @@ Parsing performance varies by transfer syntax:
 | Deflated | Slower | Decompression overhead |
 | Compressed (JPEG, etc.) | Depends | Codec performance varies |
 
-### Streaming vs. In-Memory
+### Streaming vs. In-Memory — [not implemented]
 
-For files >50MB, consider streaming:
-
-```swift
-// Memory-mapped streaming (for large files)
-let options = ParsingOptions(useMemoryMapping: true)
-let file = try DICOMFile.read(from: url, options: options)
-```
+There is currently no streaming or memory-mapped parse path;
+`ParsingOptions(useMemoryMapping: true)` is a no-op (see above). All parsing is
+whole-file in-memory today.
 
 ### Reuse Parsed Data
 
@@ -204,31 +246,40 @@ let adjusted = SIMDImageProcessor.adjustContrast(
 )
 ```
 
-**Performance:**
-- 2-5x faster than scalar implementation
-- Handles 512x512 image in <1ms on modern devices
-- Automatically uses vector instructions (SIMD)
+**Performance — [hypothesis]:** vectorised window/level is expected to beat the
+scalar path, but the former "2-5x faster / <1ms" figures carried no device,
+dataset or statistic and are withdrawn pending the benchmark baseline. Note also
+that the GPU path (DICOMRenderKit) supersedes SIMD CPU windowing when Metal is
+available.
 
 ### Multi-Frame Images
 
-For multi-frame series, process frames concurrently:
+Note: DICOMKit itself currently decodes multi-frame pixel data **serially and
+eagerly** (`DICOMFile.pixelData()` decodes every frame into one buffer). If you
+parallelise rendering at the application layer, always **bound the concurrency** —
+an unbounded task group over a large series can hold every decoded frame in memory
+at once. Launching all frame tasks concurrently without a width/byte budget is an
+anti-pattern:
 
 ```swift
-// Process frames in parallel
-await withTaskGroup(of: CGImage?.self) { group in
-    for frameNumber in 0..<frameCount {
-        group.addTask {
-            // Each frame processed independently
-            return try? renderFrame(frameNumber)
-        }
+// Bounded concurrent rendering (width-limited task group)
+let maxConcurrent = 4
+var results = [Int: CGImage]()
+try await withThrowingTaskGroup(of: (Int, CGImage).self) { group in
+    var next = 0
+    func addTask(_ frame: Int) {
+        group.addTask { (frame, try renderFrame(frame)) }
     }
-    
-    // Collect results
-    for await image in group {
-        frames.append(image)
+    while next < min(maxConcurrent, frameCount) { addTask(next); next += 1 }
+    for try await (frame, image) in group {
+        results[frame] = image
+        if next < frameCount { addTask(next); next += 1 }
     }
 }
 ```
+
+A memory-budgeted decode scheduler inside DICOMKit is planned (work package G of
+the research-adoption instructions).
 
 ---
 
@@ -249,7 +300,7 @@ let backend = CodecRegistry.shared.activeBackend
 let config = CodecBackendPreference.require(.accelerate)
 ```
 
-### Decode Performance (macOS arm64, real clinical DICOM)
+### Decode Performance (macOS arm64, real clinical DICOM) — [measured]
 
 Measured on `instance_003317.dcm` — MR series, macOS arm64 (Apple Silicon), J2KSwift 11.0.0:
 
@@ -261,17 +312,21 @@ Measured on `instance_003317.dcm` — MR series, macOS arm64 (Apple Silicon), J2
 
 > Benchmark suite: `swift test --filter J2KSwiftCodecBenchmarkTests` — 3 tests, 125.9 s total on macOS arm64.
 
-### Backend Speedup Summary
+### Backend Speedup Summary — [hypothesis]
 
-| Backend | Typical uplift over scalar |
+| Backend | Reported uplift over scalar (unattributed — reproduce before relying on) |
 |---------|---------------------------|
-| Metal (J2KMetal, Apple GPU) | Up to 8–10× for large volumes |
+| Metal (J2KMetal, Apple GPU) | up to 8–10× for large volumes (no median/range/workload recorded) |
 | Apple Accelerate (SIMD / ARM Neon) | 2–4× |
 | Scalar (pure Swift) | 1× (baseline) |
 
-These multipliers are additive on top of the HTJ2K vs J2K codec gain, so HTJ2K + Metal can be ~40–50× faster than plain J2K scalar on Apple hardware.
+**Do not combine multipliers.** Codec-level gains (HTJ2K vs J2K) and backend-level
+gains (Metal/Accelerate vs scalar) are **not additive or multiplicative**; the
+earlier "~40–50× faster" combined claim was invalid reasoning and is withdrawn. Any
+end-to-end figure must come from an end-to-end measurement on named hardware and a
+named dataset.
 
-### JP3D Volumetric Decoding
+### JP3D Volumetric Decoding — [hypothesis: timings unattributed]
 
 JP3D encoding and decoding is performed by `JP3DCodec` wrapping `J2K3D`. Throughput scales with the number of CPU cores (the J2K3D engine parallelises slice decoding):
 
@@ -282,9 +337,12 @@ JP3D encoding and decoding is performed by `JP3DCodec` wrapping `J2K3D`. Through
 
 > JP3D is available via an experimental private SOP only; see [JPEG2000_GUIDE.md](Documentation/JPEG2000_GUIDE.md).
 
-### JPIP Progressive Streaming
+### JPIP Progressive Streaming — [hypothesis: latencies unattributed]
 
-JPIP (`DICOMJPIPClient`) delivers quality layers incrementally. First-tile latency is typically under 200 ms on a local 1 Gbps network; full quality converges within 1–3 s for a 512×512 CT frame.
+JPIP (`DICOMJPIPClient`) forwards per-call requests to J2KSwift's JPIP client; each
+call returns one finished image (there is no incremental refinement stream or
+session reuse across quality levels yet). The former "first tile <200 ms / 1–3 s
+convergence" figures carried no environment or corpus and are withdrawn.
 
 ```swift
 let client = DICOMJPIPClient(serverURL: jpipURL)
@@ -397,6 +455,7 @@ let comparison = BenchmarkComparison(
 )
 
 print(comparison.description)
+// Illustrative output format only — these are not measured DICOMKit figures.
 // Speed: 250.0% improvement
 // Memory: 87.0% reduction
 ```
@@ -468,14 +527,16 @@ let processed = SIMDImageProcessor.applyWindowLevel(
 
 ## Performance Recommendations Summary
 
-| Use Case | Recommended Approach | Performance Gain |
-|----------|---------------------|------------------|
-| Metadata queries | `ParsingOptions.metadataOnly` | 2-10x faster |
-| Large files (>100MB) | `ParsingOptions.memoryMapped` | 50% less memory |
-| Image rendering | `ImageCache` + `SIMDImageProcessor` | 2-5x faster |
-| Network operations | Connection pooling + caching | 3-10x faster |
-| Multi-frame series | Concurrent processing | Nx faster (N cores) |
-| Clinical workflows | Combine all optimizations | 10-50x overall |
+| Use Case | Recommended Approach | Status |
+|----------|---------------------|--------|
+| Metadata queries | `ParsingOptions.metadataOnly` | [heuristic] — avoids pixel parse; magnitude unmeasured |
+| Large files (>100MB) | ~~`ParsingOptions.memoryMapped`~~ | [not implemented] — no-op today |
+| Image rendering | `ImageCache` + GPU path (DICOMRenderKit) | [measured] for GPU path; see GPU_RENDERING_PLAN.md |
+| Network operations | Connection pooling + HTTP caching | [heuristic] — unmeasured |
+| Multi-frame series | Bounded concurrent rendering (app layer) | [heuristic] — bound width; library decode is serial |
+
+Combined "overall" multipliers are not published: layer speed-ups must not be
+multiplied together (see the corrective-review note at the top of this guide).
 
 ---
 
@@ -486,10 +547,10 @@ let processed = SIMDImageProcessor.applyWindowLevel(
 **Problem:** App crashes with large DICOM files
 
 **Solutions:**
-1. Use memory-mapped parsing
-2. Enable metadata-only mode
-3. Clear image cache periodically
-4. Process multi-frame series in batches
+1. Enable metadata-only mode when pixels aren't needed
+2. Clear image cache periodically
+3. Process multi-frame series in bounded batches
+4. (Memory-mapped parsing is not yet available — see work package A)
 
 ### Slow Parsing
 
@@ -533,5 +594,4 @@ let processed = SIMDImageProcessor.applyWindowLevel(
 
 ---
 
-*Last updated: 2026-04-21*
-*DICOMKit version: 1.2.7*
+*Last updated: 2026-08-10 (corrective review per Documentation/ResearchAdoption instructions §4)*

@@ -280,9 +280,14 @@ actor HTTPRequestPipeline {
             inflightRequests[hostQueue[i].id] = hostQueue[i]
         }
         
-        // Execute all requests concurrently
+        // Execute requests concurrently with a bounded window (plan M4): an
+        // unbounded group holds every response body in memory at once and can
+        // dispatch hundreds of connections in a burst. The window matches the
+        // per-host connection limit.
         await withTaskGroup(of: (UUID, Result<HTTPClient.Response, Error>).self) { group in
-            for request in hostQueue {
+            let width = 6 // matches HTTPConnectionPool's default maxConnectionsPerHost
+            var next = 0
+            func schedule(_ request: PipelinedRequest) {
                 group.addTask {
                     let result: Result<HTTPClient.Response, Error>
                     do {
@@ -294,11 +299,17 @@ actor HTTPRequestPipeline {
                     return (request.id, result)
                 }
             }
-            
-            // Collect responses
+            while next < min(width, hostQueue.count) {
+                schedule(hostQueue[next]); next += 1
+            }
+
+            // Collect responses, refilling the window as tasks finish
             var responses: [UUID: Result<HTTPClient.Response, Error>] = [:]
             for await (id, result) in group {
                 responses[id] = result
+                if next < hostQueue.count {
+                    schedule(hostQueue[next]); next += 1
+                }
             }
             
             // Resume continuations in order

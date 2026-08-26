@@ -852,59 +852,74 @@ struct NativeJPEG2000CodecEncoderTests {
         #expect(codec.canEncode(with: config, descriptor: descriptor) == true)
     }
 
-    @Test("Lossless 12-bit grayscale roundtrip decodes in stored-bit range")
+    @Test("12-bit grayscale JPEG 2000: deprecated ImageIO path corrupts, supported path round-trips")
     func testLossless12BitGrayscaleRoundtripDecodesInStoredBitRange() throws {
-        // `NativeJPEG2000Codec` is @available(*, deprecated) — Apple ImageIO
-        // cannot round-trip 12-bit grayscale JPEG 2000 (decodeFrame throws
-        // "Failed to decode JPEG 2000 image"). Tracked as a known issue; the
-        // supported path is `J2KSwiftCodec` / `HTJ2KCodec`. When ImageIO gains
-        // 12-bit support this `withKnownIssue` will start failing as a signal
-        // to re-enable the assertions.
-        withKnownIssue("ImageIO has no 12-bit grayscale JPEG 2000 support — see NativeJPEG2000Codec deprecation note") {
-            let codec = NativeJPEG2000Codec()
-            let descriptor = PixelDataDescriptor(
-                rows: 64,
-                columns: 64,
-                numberOfFrames: 1,
-                bitsAllocated: 16,
-                bitsStored: 12,
-                highBit: 11,
-                isSigned: false,
-                samplesPerPixel: 1,
-                photometricInterpretation: .monochrome2
-            )
+        // Previously a permanent `withKnownIssue`. Replaced 2026-08-11 with an
+        // assertion of the *actual* contract. The original note claimed ImageIO's
+        // decode throws; a probe showed it does NOT — it decodes 12-bit grayscale
+        // JPEG 2000 without error but silently collapses the samples into the 8-bit
+        // range (a value corruption, worse than a clean failure). That is the fixed
+        // platform limitation behind the `NativeJPEG2000Codec` deprecation; the
+        // supported `J2KSwiftCodec` round-trips 12-bit exactly. A suppressed failure
+        // told us nothing; this pins both facts and fails loudly if either changes.
+        let descriptor = PixelDataDescriptor(
+            rows: 64,
+            columns: 64,
+            numberOfFrames: 1,
+            bitsAllocated: 16,
+            bitsStored: 12,
+            highBit: 11,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
 
-            var frameData = Data(capacity: descriptor.rows * descriptor.columns * 2)
-            let totalPixels = descriptor.rows * descriptor.columns
-            for index in 0..<totalPixels {
-                let sample = UInt16((index * descriptor.maxPossibleValue) / max(totalPixels - 1, 1))
-                frameData.append(UInt8(sample & 0x00FF))
-                frameData.append(UInt8(sample >> 8))
-            }
-
-            let encoded = try codec.encodeFrame(
-                frameData,
-                descriptor: descriptor,
-                frameIndex: 0,
-                configuration: .lossless
-            )
-            let decoded = try codec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
-
-            #expect(decoded.count == frameData.count)
-
-            var decodedMax: UInt16 = 0
-            var decodedLast: UInt16 = 0
-            for offset in stride(from: 0, to: decoded.count - 1, by: 2) {
-                let value = UInt16(decoded[offset]) | (UInt16(decoded[offset + 1]) << 8)
-                if value > decodedMax {
-                    decodedMax = value
-                }
-                decodedLast = value
-            }
-
-            #expect(decodedMax <= UInt16(descriptor.maxPossibleValue))
-            #expect(decodedLast >= UInt16(descriptor.maxPossibleValue - 8))
+        var frameData = Data(capacity: descriptor.rows * descriptor.columns * 2)
+        let totalPixels = descriptor.rows * descriptor.columns
+        for index in 0..<totalPixels {
+            let sample = UInt16((index * descriptor.maxPossibleValue) / max(totalPixels - 1, 1))
+            frameData.append(UInt8(sample & 0x00FF))
+            frameData.append(UInt8(sample >> 8))
         }
+
+        // Supported path: J2KSwiftCodec must round-trip 12-bit lossless exactly.
+        let j2k = J2KSwiftCodec()
+        let encoded = try j2k.encodeFrame(
+            frameData, descriptor: descriptor, frameIndex: 0, configuration: .lossless)
+        let decoded = try j2k.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
+
+        #expect(decoded.count == frameData.count)
+        var decodedMax: UInt16 = 0
+        var decodedLast: UInt16 = 0
+        for offset in stride(from: 0, to: decoded.count - 1, by: 2) {
+            let value = UInt16(decoded[offset]) | (UInt16(decoded[offset + 1]) << 8)
+            if value > decodedMax { decodedMax = value }
+            decodedLast = value
+        }
+        #expect(decodedMax <= UInt16(descriptor.maxPossibleValue))
+        #expect(decodedLast >= UInt16(descriptor.maxPossibleValue - 8))
+
+        // Deprecated path: ImageIO cannot decode 12-bit grayscale JPEG 2000. Pin
+        // the limitation — if a future macOS gains support, this throws stops
+        // throwing and the test fails, signalling the codec can be un-deprecated.
+        // Deprecated path: ImageIO decodes 12-bit grayscale JPEG 2000 WITHOUT error,
+        // but silently collapses the samples into the 8-bit range (observed max/last
+        // ≈257 for a ramp whose true max is 4095). That value corruption — not a
+        // decode failure — is the reason `NativeJPEG2000Codec` is deprecated for
+        // >8-bit grayscale. Pin it: the decoded peak must stay well below the true
+        // 12-bit maximum. If a future macOS fixes ImageIO, this assertion fails and
+        // signals the codec can be reconsidered.
+        let native = NativeJPEG2000Codec()
+        let nativeEncoded = try native.encodeFrame(
+            frameData, descriptor: descriptor, frameIndex: 0, configuration: .lossless)
+        let nativeDecoded = try native.decodeFrame(nativeEncoded, descriptor: descriptor, frameIndex: 0)
+        var nativeMax: UInt16 = 0
+        for offset in stride(from: 0, to: nativeDecoded.count - 1, by: 2) {
+            let value = UInt16(nativeDecoded[offset]) | (UInt16(nativeDecoded[offset + 1]) << 8)
+            if value > nativeMax { nativeMax = value }
+        }
+        #expect(nativeMax < UInt16(descriptor.maxPossibleValue / 2),
+                "ImageIO is expected to collapse 12-bit samples toward the 8-bit range; if it now preserves them, re-evaluate the NativeJPEG2000Codec deprecation")
     }
 }
 #endif
