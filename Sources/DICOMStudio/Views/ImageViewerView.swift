@@ -6,6 +6,7 @@
 #if canImport(SwiftUI)
 import SwiftUI
 import UniformTypeIdentifiers
+import DICOMCore
 import DICOMNetwork
 import DICOMPrintKit
 import DICOMRenderKit
@@ -39,6 +40,9 @@ public struct ImageViewerView: View {
     /// Where the pointer is over the image area, or `nil` when it has left.
     @State private var hoverPoint: CGPoint?
 
+    /// Whether the on-image saved-views list is open. See `savedViewsBadge`.
+    @State private var isSavedViewListPresented = false
+
     #if canImport(Metal)
     /// Memoizes the GPU annotation overlay, rebuilt only on an actual edit —
     /// not on every pan/zoom-driven body re-evaluation. Outside `@Observable`
@@ -59,6 +63,12 @@ public struct ImageViewerView: View {
     /// rather than outlined — while it is being windowed, zoomed or turned.
     @State private var isToolDragging = false
 
+    /// The text annotation open for typing in the edit layer, if any. Held here
+    /// rather than in the layer so ``annotationOverlayTexture`` can leave that
+    /// annotation's words out of the GPU overlay while the editor shows them —
+    /// otherwise every committed keystroke would also render under the field.
+    @State private var editingAnnotationTextID: UUID?
+
     /// Turns scroll events into whole image steps — one per wheel notch.
     @State private var scrollSteps = ScrollStepAccumulator()
 
@@ -69,6 +79,10 @@ public struct ImageViewerView: View {
     /// Print screen, and job history are one shared state; created locally only
     /// when this view is used stand-alone.
     @State private var printViewModel: PrintViewModel?
+
+    /// True between "Download" being clicked on the size prompt and the save
+    /// dialog closing — what presents the `fileMover` that writes the ZIP.
+    @State private var isMovingStudyDownload = false
 
     /// Size of the window the print sheet was raised from, so the sheet opens at
     /// the same size as the screen behind it.
@@ -88,6 +102,44 @@ public struct ImageViewerView: View {
     /// trains — the darkest, quietest rectangle is the one being read, and here
     /// it is also the one whose title strip says how much of it prints.
     public var body: some View {
+        Group {
+            if viewModel.isPrintScreenEmbedded, let printViewModel {
+                // The print screen in the viewer's place, whole. Not a fourth
+                // column beside the panes: composing a film is the one job on
+                // screen while it lasts, and the panes' width — like their
+                // toolbar toggles, which leave with the reading area — is width
+                // the film can use. The panes are not collapsed, the column is
+                // swapped, so putting the film away brings every pane back
+                // exactly as the reader had it.
+                PrintSettingsView(viewModel: printViewModel,
+                                  presentation: .embedded,
+                                  onClose: { viewModel.isPrintScreenEmbedded = false })
+            } else {
+                viewerColumns
+            }
+        }
+        // On the swap's host, not inside the viewer columns: a print request —
+        // the toolbar's button, or the library's "Print…" — must stay heard
+        // while the print screen itself is standing in for the columns, or a
+        // request raised then would sit unanswered until the columns returned
+        // and answer twice on the way back.
+        .modifier(
+            PrintScreenPresenter(isRequested: $viewModel.isPrintSheetPresented,
+                                 prepare: preparePrintScreen,
+                                 embed: { viewModel.isPrintScreenEmbedded = true }) {
+                // Hosted rather than inlined: the print state has to be created
+                // by the sheet itself when the request came from the library.
+                PrintSheetHost(
+                    selection: viewModel.printSelection,
+                    printViewModel: $printViewModel,
+                    parentSize: parentWindowSize
+                )
+            })
+    }
+
+    /// Series pane, reading area, selection tray — the viewer as its three
+    /// columns, when the print screen has not taken the panel over.
+    private var viewerColumns: some View {
         HStack(spacing: 0) {
             // The study's series, when the viewer was opened from a study. Loose
             // files have no series to list, so the pane stays out of the way.
@@ -220,10 +272,6 @@ public struct ImageViewerView: View {
     /// of series description.
     private static let seriesPaneWidth: CGFloat = 190
 
-    /// Room the print checkbox takes in the top-right corner, which the
-    /// identification block starts below.
-    private static let printCheckboxInset: CGFloat = 34
-
     /// Chrome left visible around the image. Small on purpose: enough to read as
     /// a separate surface, not enough to cost the picture real room.
     private static let readingAreaGutter: CGFloat = 6
@@ -262,9 +310,14 @@ public struct ImageViewerView: View {
                 // a grid, and the grid decides where the live viewer sits.
                 Group {
                     if viewModel.isMultiCellLayout {
-                        ViewerTileGridView(viewModel: viewModel) { imageContent }
+                        // The edit layer rides on the focused tile's live
+                        // content, so its coordinates are the tile's — the same
+                        // space the drag tools measure in.
+                        ViewerTileGridView(viewModel: viewModel) {
+                            imageContent.overlay(annotationEditLayer)
+                        }
                     } else {
-                        imageContent
+                        imageContent.overlay(annotationEditLayer)
                     }
                 }
                     // Zoom and pan are drawn with `scaleEffect`/`offset`, which
@@ -312,10 +365,40 @@ public struct ImageViewerView: View {
                                ? "Hide Image Annotations" : "Show Image Annotations") {
                             viewModel.showImageAnnotations.toggle()
                         }
+                        // Laterality gets its own item rather than riding along
+                        // with the block above — see
+                        // `showOrientationLabels` for why the two are
+                        // different decisions.
+                        Button(viewModel.showOrientationLabels
+                               ? "Hide Orientation Markers" : "Show Orientation Markers") {
+                            viewModel.showOrientationLabels.toggle()
+                        }
                         if viewModel.isMonochrome {
                             Divider()
                             Button(viewModel.isInverted ? "Remove Inversion" : "Invert Grayscale") {
                                 viewModel.toggleInversion()
+                            }
+                            // The palette sits beside inversion because it is
+                            // the same kind of thing: a way of mapping the
+                            // windowed grey to what the eye sees, with the
+                            // stored pixels untouched. Nested rather than laid
+                            // out flat — twenty-odd ramps would bury the print
+                            // items below.
+                            Menu("Colour Palette") {
+                                Button("None (grayscale)") {
+                                    viewModel.applyPalette(nil)
+                                }
+                                .disabled(viewModel.palette == nil)
+                                ForEach(DICOMCore.PseudoColorPalette.catalog, id: \.group) { entry in
+                                    Section(entry.group.title) {
+                                        ForEach(entry.palettes, id: \.self) { palette in
+                                            Button(palette.displayName) {
+                                                viewModel.applyPalette(palette)
+                                            }
+                                            .disabled(palette == viewModel.palette)
+                                        }
+                                    }
+                                }
                             }
                         }
                         Divider()
@@ -404,18 +487,6 @@ public struct ImageViewerView: View {
         )
         .background(toolShortcuts)
         .focusedValue(\.imageViewerViewModel, viewModel)
-        .overlay(alignment: .bottomLeading) {
-            if viewModel.showMetadataOverlay && viewModel.hasImage && !viewModel.isWaveform {
-                ImageMetadataOverlayView(viewModel: viewModel)
-                    .padding(8)
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if viewModel.showPerformanceOverlay && viewModel.hasImage && !viewModel.isWaveform {
-                performanceOverlay
-                    .padding(8)
-            }
-        }
         // Reading annotations in the four corners, over the picture. In a grid
         // each tile draws its own, so this one is the 1×1 case only.
         .overlay {
@@ -429,8 +500,17 @@ public struct ImageViewerView: View {
                     state: viewModel.annotationViewportState(
                         viewSize: viewSize, cursor: cursorReadout),
                     cellSize: viewSize,
-                    // Clears the print checkbox in the same corner.
-                    topTrailingInset: Self.printCheckboxInset
+                    // No top-trailing inset: the print checkbox and the
+                    // saved-views badge that used to occupy that corner now sit
+                    // at the middle of the right edge, so the identification
+                    // block starts at the same height on every image.
+                    showOrientation: viewModel.showOrientationLabels,
+                    // Those controls are at the middle of the right edge, which
+                    // is where the right-hand orientation letter is centred —
+                    // the tick covered the "L". Enough room for the widest of
+                    // them, so the letter sits clear whether or not the badge
+                    // is showing.
+                    trailingControlsInset: Self.trailingControlsInset
                 )
             }
         }
@@ -452,17 +532,13 @@ public struct ImageViewerView: View {
                     .padding(.bottom, 40)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            // Print mark: an explicit checkbox on the image, unchecked until the
-            // user ticks it. Only ticked frames reach the print sheet.
-            // In a grid each tile carries its own checkbox, so this one would be
-            // ambiguous about which image it marks.
-            if viewModel.hasImage && !viewModel.isWaveform && !viewModel.isMultiCellLayout {
-                printMarkCheckbox
-                    .padding(8)
-            }
+        // The drawn-annotation styling strip, below the cine controls' spot so
+        // the two coexist on a multi-frame file.
+        .overlay(alignment: .bottom) {
+            annotationStyleBar
         }
-        // The pointer, last of all — and this position is the whole trick.
+        // The pointer, over everything the picture is made of — and this
+        // position is the whole trick.
         //
         // A cursor rect belongs to the topmost view under the pointer, and the
         // reading area is covered by things that sit above the picture: the
@@ -475,32 +551,91 @@ public struct ImageViewerView: View {
         //
         // Deaf to the mouse, so none of what it covers stops working.
         .overlay(toolCursorLayer)
+        // The image's own controls go *above* the cursor layer, which is the
+        // one thing they must outrank.
+        //
+        // Everything below this line is picture, and the picture wants the
+        // armed tool's pointer. These are not picture: they are a checkbox and
+        // a badge that happen to float on it, and under the tool cursor's rect
+        // they claimed the windowing sun or the zoom magnifier — a pointer that
+        // says "drag me to window this image" over a control that does nothing
+        // of the kind. Sitting above the cursor layer, their own `arrowPointer`
+        // rect is the topmost one at those few points and the arrow wins there,
+        // while the tool keeps every other pixel of the image.
+        .overlay(alignment: .trailing) {
+            // The image's own controls — the print mark, and the saved-views
+            // badge when there are any — down the middle of the right edge.
+            //
+            // They used to sit in the top-right corner, which is where the
+            // identification block's top-right corner also goes, so the block
+            // had to be pushed down past them by an inset that changed with
+            // what was showing: 34pt for the checkbox alone, more with the
+            // badge under it. The patient data therefore sat at a different
+            // height on an image with saved views than on one without, and the
+            // corner text is exactly the thing a reader expects to find in the
+            // same place every time. The middle of the edge is empty in the
+            // four-corner annotation scheme, so putting the controls there
+            // costs the text nothing and the inset disappears.
+            //
+            // In a grid each tile carries its own checkbox, so this one would be
+            // ambiguous about which image it marks.
+            if viewModel.hasImage && !viewModel.isWaveform && !viewModel.isMultiCellLayout {
+                VStack(alignment: .trailing, spacing: 6) {
+                    printMarkCheckbox
+                    if viewModel.hasSavedViews {
+                        savedViewsBadge
+                    }
+                }
+                .padding(8)
+                // The arrow over the controls themselves, beating the tool
+                // cursor's rect underneath. Inside the padding, so the rect
+                // covers the controls and not the gap around them — the picture
+                // right up to their edge keeps the tool's pointer.
+                #if os(macOS)
+                .arrowPointer()
+                #endif
+            }
+        }
         .toolbar {
             viewerToolbar
         }
-        // On macOS this opens the print window; elsewhere it raises the sheet.
-        // Either way `isPrintSheetPresented` is the request, and the preparation
-        // below runs first — the request also arrives from the library
-        // ("Print…"), which fires before this view has ever appeared.
-        .modifier(
-            PrintScreenPresenter(isRequested: $viewModel.isPrintSheetPresented,
-                                 prepare: preparePrintScreen) {
-                // Hosted rather than inlined: the print state has to be created
-                // by the sheet itself when the request came from the library.
-                PrintSheetHost(
-                    selection: viewModel.printSelection,
-                    printViewModel: $printViewModel,
-                    parentSize: parentWindowSize
-                )
-            })
         .sheet(isPresented: $viewModel.showDICOMInspector) {
             if let file = viewModel.dicomFile {
                 DICOMInspectorView(dicomFile: file)
             }
         }
+        // Image metadata, presented the way the tag inspector is rather than
+        // drawn into the picture's bottom-left corner. That corner already
+        // carries the reading annotations' zoom, image-number and compression
+        // lines, so the old block sat straight on top of them — the reader
+        // turned metadata on and lost the annotations they read the image by.
+        // A panel has room for the whole block at a legible size, leaves the
+        // picture alone, and makes the two "tell me about this file" surfaces
+        // open and close the same way.
+        .sheet(isPresented: $viewModel.showMetadataOverlay) {
+            ImageMetadataPanelView(viewModel: viewModel)
+        }
+        // The "A saved view exists for this image" sheet is HELD — no longer
+        // wired, so it cannot appear over the picture. Opening an image with
+        // saved views now applies the best one directly (series-wide first,
+        // else the image's first) and the on-image badge steps through the
+        // rest and the default. See `offerSavedViewsIfNeeded`, which no longer
+        // raises `savedViewPrompt`.
+        // The study-download confirmation and save dialog — one modifier so
+        // the (already large) body stays type-checkable.
+        .modifier(StudyDownloadPresenter(viewModel: viewModel,
+                                         isMoving: $isMovingStudyDownload))
     }
 
     // MARK: - Print
+
+    /// Room the right-edge controls take, which the orientation letter beside
+    /// them starts inside of.
+    ///
+    /// Measured against the widest of them — the ticked checkbox reading
+    /// "Print 12" — rather than what is showing at the moment, so the letter
+    /// does not shift sideways as the reader ticks and unticks.
+    private static let trailingControlsInset: CGFloat = 96
 
     /// On-image checkbox that marks the displayed frame for print.
     ///
@@ -528,10 +663,86 @@ public struct ImageViewerView: View {
             .background(.thinMaterial, in: Capsule())
         }
         .buttonStyle(.plain)
+        // Capsule-matching radius: the control already wears a material
+        // capsule, and a rounded rectangle behind it would show its corners.
+        .interactiveControl(cornerRadius: 16, horizontal: 3, vertical: 3)
         .accessibilityLabel(isMarked ? "Unmark image for print" : "Mark image for print")
         .accessibilityAddTraits(isMarked ? [.isSelected] : [])
         .help(isMarked ? "Marked for print — click to unmark (M)"
                        : "Mark this image for print (M)")
+    }
+
+    /// On-image badge saying this image has saved views (presentation states).
+    ///
+    /// The picker's glyph and purple, on the checkbox's capsule: the colour is
+    /// what says "presentation state" in the toolbar, and here it has to say
+    /// the same thing from the corner of the picture.
+    ///
+    /// The capsule names the reading now showing — the first PR is applied
+    /// automatically when the image opens (see `offerSavedViewsIfNeeded`) — and
+    /// clicking opens the list, where one click applies another view or the
+    /// default. So the badge answers "what am I looking at" at rest and is the
+    /// way to change it on click.
+    private var savedViewsBadge: some View {
+        Button {
+            isSavedViewListPresented.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "slider.horizontal.below.rectangle")
+                    .font(.caption.bold())
+                Text(savedViewsBadgeText)
+                    .font(.caption)
+                    .lineLimit(1)
+                    // No `.frame(maxWidth:)` here — a max-width frame is
+                    // greedy and took its full width whatever the text, so a
+                    // three-letter name sat at the left end of a long empty
+                    // capsule. The capsule hugs the text instead; a very long
+                    // name is shortened in `savedViewsBadgeText`, in the
+                    // string, so the layout never has to cut it.
+            }
+            .foregroundStyle(Color.purple)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(.thinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .interactiveControl(cornerRadius: 16, horizontal: 3, vertical: 3)
+        // The badge's own list. Closing goes through this view's binding,
+        // passed in — never `@Environment(\.dismiss)`, which cannot clear an
+        // `isPresented` its caller owns and left the list standing open over
+        // an image it had already changed.
+        .popover(isPresented: $isSavedViewListPresented, arrowEdge: .bottom) {
+            ViewerImageSavedViewList(viewModel: viewModel) {
+                isSavedViewListPresented = false
+            }
+        }
+        .accessibilityLabel("Saved views for this image")
+        .accessibilityValue(savedViewsBadgeText)
+        .help(savedViewsBadgeHelp)
+    }
+
+    /// What the badge's capsule says: the reading now showing, by name.
+    ///
+    /// The default view is named too — the capsule used to fall back to the
+    /// bare count of saved views ("1", "2"), which read as a mystery number
+    /// over the picture. "Default view" says what is actually on screen; how
+    /// many views there are is the list's job, one click away.
+    ///
+    /// Shortened in the string rather than by layout, so the capsule always
+    /// hugs what it shows: a truncating frame has to be given a width, and a
+    /// fixed width is exactly the long empty capsule this replaces.
+    private var savedViewsBadgeText: String {
+        let label = viewModel.selectedPresentationStateLabel
+            ?? ImageViewerViewModel.defaultViewLabel
+        guard label.count > 22 else { return label }
+        return label.prefix(21) + "…"
+    }
+
+    private var savedViewsBadgeHelp: String {
+        let count = viewModel.savedViewsForCurrentImage.count
+        let plural = count == 1 ? "1 saved view" : "\(count) saved views"
+        return "\(plural) — the first is applied when the image opens; "
+             + "click to list them and apply another, or the default view."
     }
 
     /// Records the size the focused image is displayed at.
@@ -573,10 +784,14 @@ public struct ImageViewerView: View {
         // Only the fields the switches ask for survive the reset (see
         // `resetCellToolsForNewFilm`), so this is safe when both are off — the
         // film still opens on the plain images.
-        if printViewModel?.useViewerWindow == true
-            || printViewModel?.useViewerPresentation == true {
-            viewModel.refreshMarksFromViewer()
-        }
+        //
+        // Read against the *defaults* the imminent reset will restore, not
+        // against the switches as the previous visit left them. Both default to
+        // on, so the sync is unconditional: testing the live values meant a
+        // reader who turned them off last visit got no refresh, while the reset
+        // turned the switches back on — a film that claimed to match the screen
+        // and was built from marks nobody had re-synced.
+        viewModel.refreshMarksFromViewer()
 
         // Where the study's saved views are read from. Handed over before the
         // reset so the fresh sheet can adopt them; the viewer owns the store,
@@ -588,8 +803,10 @@ public struct ImageViewerView: View {
         // been ordered and re-synced. Order matters: the reset is what puts a
         // cell back to the untouched frame, so anything that writes the
         // viewer's own window and arrangement into the marks has to happen
-        // before it, not after.
-        printViewModel?.resetForNewFilm()
+        // before it, not after. "If needed": a visit returning to the same
+        // marks is returning to a film in progress, and keeps it — only a
+        // changed tray or a finished job cuts a fresh sheet.
+        printViewModel?.resetForNewFilmIfNeeded()
 
         // Captured before the sheet exists, while the key window is still the
         // viewer's: the sheet opens at the size of the screen it came from. The
@@ -680,14 +897,36 @@ public struct ImageViewerView: View {
         guard let key = currentAnnotationKey,
               let texture = metalDisplayFrame,
               let device = MetalRenderDevice.shared?.device else { return nil }
+        // The annotation being typed into is the editor's to show, not the
+        // GPU's — see ``editingAnnotationTextID``.
+        let overlays = currentAnnotations.filter { $0.id != editingAnnotationTextID }
         return annotationTextureCache.texture(
-            for: key, overlays: currentAnnotations,
-            width: texture.width, height: texture.height, device: device)
+            for: key, overlays: overlays,
+            width: texture.width, height: texture.height, device: device,
+            orientation: annotationOrientation)
     }
     #else
     private var metalDisplayFrame: Never? { nil }
     private var livePresentation: Int { 0 }
     #endif
+
+    /// The turn and the mirrors the shader is about to apply to the overlay,
+    /// so the lettering can be rasterized level against them.
+    ///
+    /// Rotation and the flips only — deliberately no zoom, pan or viewport.
+    /// The shader moves the overlay with the picture, so the anchor needs no
+    /// help; the one thing it gets wrong is which way up the words come out,
+    /// and that is decided by the turn and the mirrors alone. Feeding the crop
+    /// in as well would move the anchor a second time.
+    private var annotationOrientation: PrintOverlayOrientation {
+        PrintOverlayOrientation(
+            presentation: ViewerPresentation(
+                rotationDegrees: viewModel.rotationAngle,
+                flipHorizontal: viewModel.isFlippedHorizontal,
+                flipVertical: viewModel.isFlippedVertical),
+            imageWidth: viewModel.imageColumns,
+            imageHeight: viewModel.imageRows)
+    }
 
     @ViewBuilder
     private var imageContent: some View {
@@ -772,6 +1011,135 @@ public struct ImageViewerView: View {
         #endif
     }
 
+    // MARK: - Drawn annotations
+
+    /// The editing surface for drawn text and arrows, over the live picture.
+    ///
+    /// Present whenever an image is — not only while a drawing tool is armed —
+    /// because existing annotations stay selectable and draggable under any
+    /// tool, exactly as they do on a film cell. Its own hit-testing rules keep
+    /// it out of the way of the drag tools; see the layer.
+    @ViewBuilder
+    private var annotationEditLayer: some View {
+        if viewModel.hasImage && !viewModel.isWaveform && !viewModel.isNonImageContent {
+            ViewerAnnotationEditLayer(
+                viewModel: viewModel,
+                tool: activeTool,
+                liveZoom: viewModel.zoomLevel * Double(magnifyBy),
+                livePanX: viewModel.panOffsetX + Double(dragOffset.width),
+                livePanY: viewModel.panOffsetY + Double(dragOffset.height),
+                editingTextID: $editingAnnotationTextID)
+        }
+    }
+
+    /// The drawn-annotation styling controls — the film inspector's swatches,
+    /// size and delete, condensed to a strip over the picture.
+    ///
+    /// Shown while a drawing tool is armed or something is selected: that is
+    /// exactly when a colour or size decision can land somewhere, and the rest
+    /// of the time the strip would sit over anatomy saying nothing.
+    @ViewBuilder
+    private var annotationStyleBar: some View {
+        if viewModel.hasImage && !viewModel.isWaveform && !viewModel.isNonImageContent
+            && (activeTool.isDrawing
+                || viewModel.printSelection.selectedAnnotationLocation != nil) {
+            HStack(spacing: 10) {
+                ForEach(Self.annotationSwatches, id: \.name) { swatch in
+                    annotationSwatchButton(swatch.color, name: swatch.name)
+                }
+
+                Divider().frame(height: 16)
+
+                Slider(value: annotationScaleBinding,
+                       in: PrintOverlayAnnotation.minimumScale...PrintOverlayAnnotation.maximumScale)
+                    .frame(width: 110)
+                    .accessibilityLabel("Annotation size")
+                Text(annotationSizeLabel)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, alignment: .trailing)
+
+                Divider().frame(height: 16)
+
+                Button {
+                    viewModel.removeSelectedDrawnAnnotation()
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.plain)
+                .interactiveControl(
+                    cornerRadius: 5, horizontal: 5, vertical: 3,
+                    isEnabled: viewModel.printSelection.selectedAnnotationLocation != nil)
+                .disabled(viewModel.printSelection.selectedAnnotationLocation == nil)
+                .accessibilityLabel("Delete selected annotation")
+                .help("Delete the selected annotation (⌫)")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: Capsule())
+            .padding(.bottom, 8)
+        }
+    }
+
+    /// The film's palette, name for name, so a colour picked on either screen
+    /// is the same colour on the other.
+    private static let annotationSwatches: [(name: String, color: PrintOverlayColor)] = [
+        ("Yellow", .yellow), ("White", .white), ("Red", .red),
+        ("Green", .green), ("Cyan", .cyan)
+    ]
+
+    private func annotationSwatchButton(
+        _ color: PrintOverlayColor, name: String
+    ) -> some View {
+        let current = viewModel.printSelection.selectedAnnotationLocation?
+            .annotation.color ?? viewModel.printSelection.annotationColor
+        return Button {
+            if let selected = viewModel.printSelection.selectedAnnotationLocation {
+                viewModel.printSelection.setAnnotationColor(
+                    color, id: selected.annotation.id, forKey: selected.key)
+            } else {
+                viewModel.printSelection.annotationColor = color
+            }
+        } label: {
+            Circle()
+                .fill(Color(red: color.red, green: color.green, blue: color.blue))
+                .frame(width: 14, height: 14)
+                .overlay(Circle().strokeBorder(
+                    current == color ? Color.accentColor : Color.primary.opacity(0.2),
+                    lineWidth: current == color ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+        .interactiveControl(cornerRadius: 11, horizontal: 3, vertical: 3)
+        .accessibilityLabel("\(name) annotation colour")
+        .accessibilityAddTraits(current == color ? [.isSelected] : [])
+        .help(name)
+    }
+
+    /// The selected annotation's size, or the size the next one will take.
+    private var annotationScaleBinding: Binding<Double> {
+        Binding(
+            get: {
+                viewModel.printSelection.selectedAnnotationLocation?.annotation.scale
+                    ?? viewModel.printSelection.annotationScale
+            },
+            set: { newValue in
+                if let selected = viewModel.printSelection.selectedAnnotationLocation {
+                    viewModel.printSelection.setAnnotationScale(
+                        newValue, id: selected.annotation.id, forKey: selected.key)
+                } else {
+                    viewModel.printSelection.annotationScale =
+                        PrintOverlayAnnotation.clampScale(newValue)
+                }
+            })
+    }
+
+    /// Percent of the image's height, as the film inspector states it.
+    private var annotationSizeLabel: String {
+        let scale = viewModel.printSelection.selectedAnnotationLocation?.annotation.scale
+            ?? viewModel.printSelection.annotationScale
+        return "\(Int((scale * 100).rounded()))%"
+    }
+
     // MARK: - Gestures
 
     /// Steps through the series with the scroll wheel.
@@ -835,6 +1203,12 @@ public struct ImageViewerView: View {
                     rotateByDrag(to: value.location)
                 case .pan:
                     dragOffset = value.translation
+                case .annotation:
+                    // The drawing tool's gestures live on the annotation
+                    // overlay, which sits above this one and consumes what it
+                    // uses. A drag that reaches here (the tool over the
+                    // letterbox, say) must not also move the picture.
+                    break
                 }
             }
             .onEnded { value in
@@ -851,6 +1225,8 @@ public struct ImageViewerView: View {
                     viewModel.panOffsetX += value.translation.width
                     viewModel.panOffsetY += value.translation.height
                     dragOffset = .zero
+                case .annotation:
+                    break
                 }
             }
     }
@@ -865,7 +1241,7 @@ public struct ImageViewerView: View {
     /// rather than listing every tool that could be armed.
     private var imageAccessibilityHint: String {
         "\(activeTool.displayName) tool armed. \(activeTool.guidance) "
-        + "Press W, Z, E or H to change tool; scroll to step through images."
+        + "Press W, Z, E, A or H to change tool; scroll to step through images."
     }
 
     /// Sets the pointer's shape over the reading area to match the armed tool.
@@ -935,6 +1311,12 @@ public struct ImageViewerView: View {
                 .keyboardShortcut("[", modifiers: [])
             Button("") { viewModel.flipVertical() }
                 .keyboardShortcut("]", modifiers: [])
+
+            // Deletes the selected drawn annotation, as on the film. Inert
+            // when nothing is selected — the viewer has no other use for the
+            // key, so there is nothing to swallow.
+            Button("") { viewModel.removeSelectedDrawnAnnotation() }
+                .keyboardShortcut(.delete, modifiers: [])
         }
         .opacity(0)
         .frame(width: 0, height: 0)
@@ -1004,26 +1386,27 @@ public struct ImageViewerView: View {
         .accessibilityLabel(label)
         .accessibilityAddTraits(isActive ? [.isSelected] : [])
         .help(help)
-        .background(
-            isActive ? Color.accentColor.opacity(0.25) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 6)
-        )
+        // Hover, press and armed all through the one modifier the rest of the
+        // app's controls use, rather than a bare accent wash of its own.
+        //
+        // The wash alone left this rail saying less than any other control in
+        // the app: nothing happened on hover, so a reader could not tell the
+        // four tool glyphs from the one-shot action glyphs beside them without
+        // clicking, and the armed tool was a soft tint with no edge — the
+        // weakest statement on screen for the question the rail exists to
+        // answer, which is "what will my next drag do".
+        // Inset, because this lives in a `ToolbarItemGroup`: the group lays its
+        // items to a fixed metric inside one shared bezel, so a highlight that
+        // *grows* the item draws outside that bezel and over the neighbouring
+        // group — which is exactly what the armed tool's border was doing.
+        //
+        // Inset it is instead: the plate is drawn a point inside the item's own
+        // bounds rather than several points outside them. A point, not the
+        // 5×4 the rail chips use — an inset that large would shrink the plate
+        // to less than the glyph it is supposed to sit behind.
+        .interactiveControl(cornerRadius: 5, horizontal: 1, vertical: 1,
+                            isSelected: isActive, isInset: true)
         .foregroundStyle(isActive ? Color.accentColor : Color.primary)
-    }
-
-    // MARK: - Performance Overlay
-
-    private var performanceOverlay: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            Text("Render: \(viewModel.renderTimeText)")
-            Text("Zoom: \(String(format: "%.0f%%", viewModel.zoomLevel * 100))")
-            Text(viewModel.windowLevelText)
-        }
-        .font(.system(size: StudioTypography.captionSize, design: .monospaced))
-        .foregroundStyle(.green)
-        .padding(6)
-        .background(.black.opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     // MARK: - Toolbar
@@ -1039,8 +1422,38 @@ public struct ImageViewerView: View {
         return "\(marked)|\(full)|\(viewModel.isInSeries)|\(viewModel.isMultiFrame)"
     }
 
+    /// The layout button's face: the grid, and what it is filled with.
+    ///
+    /// The fill is named only when there is a grid to fill — at 1×1 there is one
+    /// image and "1×1 Series" would be answering a question nobody asked.
+    private var layoutMenuLabel: String {
+        guard viewModel.isMultiCellLayout else { return viewModel.layout.displayName }
+        return "\(viewModel.layout.displayName) \(viewModel.layoutFill.displayName)"
+    }
+
     @ToolbarContentBuilder
     private var viewerToolbar: some ToolbarContent {
+        // The series pane toggle, ahead of everything else. It is the only
+        // item that acts on the window rather than on the picture — it opens
+        // and closes a whole column — and it is what a reader reaches for
+        // first, to find the series they mean before doing anything to it.
+        // Leading position keeps it off the overflow menu the tool run pushes
+        // items into on a narrow window, and puts it beside the pane it hides.
+        if !viewModel.studySeries.isEmpty {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    viewModel.isSeriesPaneVisible.toggle()
+                } label: {
+                    Image(systemName: viewModel.isSeriesPaneVisible
+                          ? "sidebar.left" : "sidebar.leading")
+                }
+                .keyboardShortcut("s", modifiers: [])
+                .accessibilityLabel(viewModel.isSeriesPaneVisible
+                                    ? "Hide series list" : "Show series list")
+                .help("Series pane (S) — every series in the study; drag one onto a tile to load it")
+            }
+        }
+
         // Series navigation — grouped in one item so it doesn't fragment the toolbar
         if viewModel.isInSeries {
             ToolbarItem(placement: .automatic) {
@@ -1101,25 +1514,28 @@ public struct ImageViewerView: View {
             }
         }
 
-        // Series pane
-        if !viewModel.studySeries.isEmpty {
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    viewModel.isSeriesPaneVisible.toggle()
-                } label: {
-                    Image(systemName: viewModel.isSeriesPaneVisible
-                          ? "sidebar.left" : "sidebar.leading")
-                }
-                .keyboardShortcut("s", modifiers: [])
-                .accessibilityLabel(viewModel.isSeriesPaneVisible
-                                    ? "Hide series list" : "Show series list")
-                .help("Series pane (S) — every series in the study; drag one onto a tile to load it")
-            }
-        }
-
         // Tile layout — the viewer grid, which is also the film grid
         ToolbarItem(placement: .automatic) {
             Menu {
+                // What the grid is a grid *of*, before its shape: the shapes
+                // below all mean something different depending on this answer,
+                // so it reads top-down as "a grid of images, three by three".
+                Section("Fill with") {
+                    ForEach(ViewerLayoutFill.allCases) { fill in
+                        Button {
+                            viewModel.applyLayoutFill(fill)
+                        } label: {
+                            if fill == viewModel.layoutFill {
+                                Label(fill.displayName, systemImage: "checkmark")
+                            } else {
+                                Label(fill.displayName, systemImage: fill.symbolName)
+                            }
+                        }
+                        .help(fill.note)
+                    }
+                }
+
+                Section("Grid") {
                 ForEach(ViewerTileLayout.allCases) { option in
                     Button {
                         viewModel.applyLayout(option)
@@ -1135,13 +1551,20 @@ public struct ImageViewerView: View {
                     // taking digits whose number means nothing.
                     .modifier(SquareLayoutShortcut(layout: option))
                 }
+                }
             } label: {
-                Label(viewModel.layout.displayName, systemImage: "square.grid.2x2")
+                Label(layoutMenuLabel, systemImage: "square.grid.2x2")
             }
             .disabled(!viewModel.hasImage)
-            .accessibilityLabel("Tile layout, currently \(viewModel.layout.displayName)")
+            // A fresh menu whenever the shape or the fill changes, for the same
+            // reason the print menu carries one: a toolbar `Menu` is bridged to
+            // an AppKit menu that is built once and re-used, so the ticks beside
+            // the items would otherwise keep the state they were born with.
+            .id("\(viewModel.layout.id)|\(viewModel.layoutFill.rawValue)")
+            .accessibilityLabel("Tile layout, currently \(layoutMenuLabel)")
             .help("Tile layout (⌘1–⌘4 for 1×1 to 4×4) — splits the reading area into tiles; "
-                  + "they map to film cells in the same order")
+                  + "they map to film cells in the same order. Fill them with one series "
+                  + "each, or with consecutive images of this series.")
         }
 
         // DICOM print — mark the current frame, then open the print sheet
@@ -1250,13 +1673,15 @@ public struct ImageViewerView: View {
             }
 
             if viewModel.isMonochrome {
-                // The square of the half-filled pair the windowing circle comes
-                // from, so the two never read alike.
+                // The half-filled circle — the lightbox glyph every viewer
+                // uses for invert. It had to be a square while the windowing
+                // tool wore the other half-filled circle; windowing is the sun
+                // now, so the circle reads unambiguously as invert again.
                 Button {
                     viewModel.toggleInversion()
                 } label: {
                     Image(systemName: viewModel.isInverted
-                          ? "square.lefthalf.filled" : "square.righthalf.filled")
+                          ? "circle.lefthalf.filled" : "circle.righthalf.filled")
                 }
                 .accessibilityLabel(viewModel.isInverted ? "Remove inversion" : "Invert grayscale")
                 // The key lives on the hidden button in `toolShortcuts`, not
@@ -1267,6 +1692,13 @@ public struct ImageViewerView: View {
                       ? "Remove grayscale inversion (V) — back to black-on-white as stored"
                       : "Invert grayscale (V) — swaps black and white, as on a lightbox")
             }
+
+            // Pseudo-colour palette — the CLUT the image is read through. In
+            // the tools group and next to inversion because it belongs to the
+            // same question those two answer: how the stored values are turned
+            // into what the reader sees. It is not a print setting; it only
+            // reaches the film because a mark carries whatever was on screen.
+            ViewerPalettePickerView(viewModel: viewModel)
 
             Button { viewModel.flipHorizontal() } label: {
                 Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right")
@@ -1293,19 +1725,23 @@ public struct ImageViewerView: View {
                 Image(systemName: "arrow.counterclockwise")
             }
             .accessibilityLabel("Reset to original image")
-            .help("Reset to original image (R) — undoes zoom, pan, rotation, flip, and windowing")
+            .help("Reset to original image (R) — undoes zoom, pan, rotation, flip, "
+                  + "windowing, inversion, colour, and drawn annotations")
             .keyboardShortcut("r", modifiers: [])
         }
 
         // Overlays & Panels menu — collapses toggles and panels into one button
         ToolbarItem(placement: .automatic) {
             Menu {
-                Toggle(isOn: Bindable(viewModel).showMetadataOverlay) {
-                    Label("Metadata Overlay", systemImage: "info.circle")
+                // Both open a panel now, so both are buttons rather than
+                // toggles: a tick beside an item that raises a window claims
+                // the window is a state of the picture, which it is not.
+                Button {
+                    viewModel.showMetadataOverlay = true
+                } label: {
+                    Label("Image Metadata", systemImage: "info.circle")
                 }
-                Toggle(isOn: Bindable(viewModel).showPerformanceOverlay) {
-                    Label("Performance Overlay", systemImage: "gauge.with.dots.needle.bottom.50percent")
-                }
+                .disabled(!viewModel.hasImage)
                 Divider()
                 Toggle(isOn: Bindable(viewModel).showDICOMInspector) {
                     Label("DICOM Tag Inspector", systemImage: "list.bullet.rectangle")
@@ -1314,8 +1750,30 @@ public struct ImageViewerView: View {
             } label: {
                 Image(systemName: "square.stack.3d.up")
             }
-            .help("Overlays and panels — patient and study text over the picture, "
-                  + "render timings, and the DICOM tag inspector")
+            .help("Panels — this image's pixel metadata, and the DICOM tag inspector")
+        }
+
+        // Study download — the whole study out as one ZIP: every series' files
+        // plus the saved presentation states. A standing tool of its own rather
+        // than a row inside the saved-view picker: gathering a study is not a
+        // reading of an image, and a control that comes and goes reads as
+        // belonging to whatever appeared with it. It stays in place and greys
+        // out when there is no single study to gather — loose files have no
+        // Study Instance UID to gather by — so its absence is never mistaken
+        // for the feature not existing.
+        //
+        // Fenced off on both sides. Two adjacent `ToolbarItem`s are separate
+        // items to SwiftUI and one continuous run of icons to a reader, so
+        // sitting it next to the shortcuts button made the two read as a pair —
+        // and these two have nothing to do with each other: one gathers a
+        // study, the other lists keys. The rules are what make it a tool on its
+        // own rather than the first or last of someone else's group.
+        //
+        // The archive is built and measured first, and a prompt then states its
+        // exact size; nothing is written anywhere of the reader's until they
+        // confirm.
+        ToolbarItem(placement: .automatic) {
+            studyDownloadButton
         }
 
         // The keys, where they can be found.
@@ -1323,6 +1781,54 @@ public struct ImageViewerView: View {
             KeyboardShortcutsButton(
                 title: "Viewer Shortcuts",
                 groups: KeyboardShortcutsLegendView.viewerGroups)
+        }
+    }
+}
+
+// MARK: - Study download
+
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+extension ImageViewerView {
+
+    /// The download button with a rule on either side of it.
+    ///
+    /// Extracted from the toolbar builder rather than written inline: the
+    /// builder is long enough that adding the two rules as their own
+    /// `ToolbarItem`s tipped it past what the type-checker will infer in one
+    /// expression. One item holding all three also keeps them together — a
+    /// rule that can be separated from the control it fences is not a fence.
+    @ViewBuilder
+    var studyDownloadButton: some View {
+        HStack(spacing: 8) {
+            Divider().frame(height: 16)
+
+            Button {
+                Task { await viewModel.prepareStudyDownload() }
+            } label: {
+                if viewModel.isPreparingStudyDownload {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.down.circle")
+                }
+            }
+            // No `.buttonStyle` of its own. The toolbar's default style is what
+            // sizes a glyph to the toolbar's control metric, and `.borderless`
+            // opts out of it — which drew this icon at plain text size while
+            // every tool beside it stayed at the larger toolbar size. A control
+            // that is the odd one out by a few points reads as broken rather
+            // than as distinct, and the rules either side already do the job of
+            // setting it apart.
+            .disabled(viewModel.isPreparingStudyDownload || !viewModel.canDownloadStudy)
+            .accessibilityLabel("Download study")
+            .help(viewModel.canDownloadStudy
+                  ? "Download study — the study's images and saved presentation "
+                    + "states as one ZIP. The ZIP's size is shown for confirmation "
+                    + "before anything is saved."
+                  : "Download study — unavailable until a study is open. Loose "
+                    + "files have no study to gather.")
+
+            Divider().frame(height: 16)
         }
     }
 }
@@ -1346,14 +1852,26 @@ enum ImageViewerDragTool: String, CaseIterable, Identifiable {
     case zoom
     case rotate
 
+    /// The one drawing tool: text and arrow merged, after Weasis's Annotation
+    /// graphic. A click places words; pressing on the thing and dragging pulls
+    /// a label out of it, arrow attached.
+    case annotation
+
     var id: String { rawValue }
+
+    /// Whether this tool draws annotations rather than arranging the picture —
+    /// the same distinction the film's `CellTool.isDrawing` makes, and for the
+    /// same reason: a drawing tool's clicks belong to the annotation overlay,
+    /// not to the image underneath it.
+    var isDrawing: Bool { self == .annotation }
 
     var displayName: String {
         switch self {
-        case .pan:       return "Pan"
-        case .windowing: return "Window/Level"
-        case .zoom:      return "Zoom"
-        case .rotate:    return "Rotate"
+        case .pan:        return "Pan"
+        case .windowing:  return "Window/Level"
+        case .zoom:       return "Zoom"
+        case .rotate:     return "Rotate"
+        case .annotation: return "Annotation"
         }
     }
 
@@ -1371,6 +1889,9 @@ enum ImageViewerDragTool: String, CaseIterable, Identifiable {
         // the picture the whole way round, either way, and a "90°" icon
         // promises the quarter turns that live in the Image menu.
         case .rotate:    return "arrow.triangle.2.circlepath"
+        // The letter A — annotation's initial and its shortcut key, so the
+        // button, the pointer and the key all say the same thing.
+        case .annotation: return "a.square"
         }
     }
 
@@ -1378,13 +1899,15 @@ enum ImageViewerDragTool: String, CaseIterable, Identifiable {
     ///
     /// R is the viewer's reset and T its print tray, so rotate takes E — the
     /// letter is arbitrary either way, and a key that already does something
-    /// else is worse than one that has to be learnt.
+    /// else is worse than one that has to be learnt. A is annotation, the one
+    /// drawing tool since text and arrow merged into it.
     var shortcut: Character {
         switch self {
-        case .pan:       return "h"
-        case .windowing: return "w"
-        case .zoom:      return "z"
-        case .rotate:    return "e"
+        case .pan:        return "h"
+        case .windowing:  return "w"
+        case .zoom:       return "z"
+        case .rotate:     return "e"
+        case .annotation: return "a"
         }
     }
 
@@ -1406,6 +1929,11 @@ enum ImageViewerDragTool: String, CaseIterable, Identifiable {
         case .rotate:
             return "Drag around the centre of the picture and it follows the pointer, "
                  + "either way, through the full circle."
+        case .annotation:
+            return "Click on the picture to place text, then type — or press on "
+                 + "the thing itself and drag the label out of it, arrow attached. "
+                 + "Double-click a label to edit the words; drag the handles of a "
+                 + "selected annotation to re-aim the arrow or move the label alone."
         }
     }
 
@@ -1443,7 +1971,7 @@ enum ImageViewerDragTool: String, CaseIterable, Identifiable {
             // The system pair: open before the drag, closed while the image is
             // actually being carried.
             return isDragging ? .closedHand : .openHand
-        case .windowing, .zoom, .rotate:
+        case .windowing, .zoom, .rotate, .annotation:
             return ToolSymbolCursor.cursor(
                 symbolName: isDragging ? activeSymbolName : symbolName,
                 fallback: fallbackCursor)
@@ -1455,10 +1983,13 @@ enum ImageViewerDragTool: String, CaseIterable, Identifiable {
     /// picture. Tools whose symbol has no filled form keep the one they have.
     private var activeSymbolName: String {
         switch self {
-        case .pan:       return symbolName
-        case .windowing: return "sun.max.fill"
-        case .zoom:      return "magnifyingglass.circle.fill"
-        case .rotate:    return "arrow.triangle.2.circlepath.circle.fill"
+        case .pan:        return symbolName
+        case .windowing:  return "sun.max.fill"
+        case .zoom:       return "magnifyingglass.circle.fill"
+        case .rotate:     return "arrow.triangle.2.circlepath.circle.fill"
+        // The same letter, filled — the committed counterpart of the
+        // resting square, as the other tools' filled forms are.
+        case .annotation: return "a.square.fill"
         }
     }
 
@@ -1466,10 +1997,11 @@ enum ImageViewerDragTool: String, CaseIterable, Identifiable {
     /// a pointer that failed to draw would be a pointer that is not there.
     private var fallbackCursor: NSCursor {
         switch self {
-        case .pan:       return .openHand
-        case .zoom:      return .zoomIn
-        case .windowing: return .crosshair
-        case .rotate:    return .crosshair
+        case .pan:        return .openHand
+        case .zoom:       return .zoomIn
+        case .windowing:  return .crosshair
+        case .rotate:     return .crosshair
+        case .annotation: return .crosshair
         }
     }
     #endif
@@ -1507,11 +2039,77 @@ private extension KeyEquivalent {
 
 /// Raises the print screen when the viewer asks for it.
 ///
-/// On macOS that is a window of its own (`StudioWindowID.printPreview`), so the
-/// film can be held up against the images it was made from — a sheet covers
-/// exactly the thing being compared, and only one screen can be looked at at a
-/// time. Everywhere else there are no windows to open, so it stays a sheet.
+/// On macOS it takes over the viewer's centre panel (see
+/// `isPrintScreenEmbedded`): the film composes in the room the images had, and
+/// closing it puts the columns back untouched — no separate window whose
+/// closing or re-raising could reset the sheet. The film can still be held up
+/// against the images on a second display through the print *window*
+/// (`StudioWindowID.printPreview`), which the Print Center and the Window menu
+/// keep reachable. Everywhere else there are no panels to take over, so it
+/// stays a sheet.
 ///
+/// The study-download confirmation and save dialog.
+///
+/// A modifier of its own rather than more lines on the viewer's body, which is
+/// already at the edge of what the type-checker will take. The flow it carries:
+/// the view model has built and measured the ZIP; the alert states the exact
+/// size and asks; "Download" raises the `fileMover`, whose move takes the
+/// temporary file to wherever the reader chose; every other way out — Cancel,
+/// esc, a failed or abandoned save — deletes the temporary file instead.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+private struct StudyDownloadPresenter: ViewModifier {
+    let viewModel: ImageViewerViewModel
+
+    /// True between "Download" on the size prompt and the save dialog closing.
+    @Binding var isMoving: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .alert(
+                "Download This Study?",
+                isPresented: Binding(
+                    get: { viewModel.studyDownloadPrompt != nil && !isMoving },
+                    set: { presented in
+                        // Dismissal without "Download" — esc, or the Cancel
+                        // button below — is a no; `isMoving` says otherwise.
+                        if !presented && !isMoving {
+                            viewModel.cancelStudyDownload()
+                        }
+                    }),
+                presenting: viewModel.studyDownloadPrompt
+            ) { _ in
+                Button("Download") { isMoving = true }
+                Button("Cancel", role: .cancel) { viewModel.cancelStudyDownload() }
+            } message: { prompt in
+                Text("The ZIP holds \(prompt.contentsLabel) and is "
+                     + "\(prompt.zipSizeLabel). Download it?"
+                     + (prompt.missingFilesLabel.isEmpty
+                        ? "" : "\n\n" + prompt.missingFilesLabel))
+            }
+            .fileMover(
+                isPresented: $isMoving,
+                file: viewModel.studyDownloadPrompt?.zipURL
+            ) { result in
+                switch result {
+                case .success:
+                    viewModel.finishStudyDownload()
+                case .failure:
+                    viewModel.cancelStudyDownload()
+                }
+            }
+            .alert(
+                "Study Download",
+                isPresented: Binding(
+                    get: { viewModel.studyDownloadError != nil },
+                    set: { if !$0 { viewModel.dismissStudyDownloadError() } })
+            ) {
+                Button("OK", role: .cancel) { viewModel.dismissStudyDownloadError() }
+            } message: {
+                Text(viewModel.studyDownloadError ?? "")
+            }
+    }
+}
+
 /// The request is a flag rather than a call because it also arrives from the
 /// library's "Print…", which fires while the viewer is still being built —
 /// hence `onAppear` as well as `onChange`.
@@ -1519,11 +2117,11 @@ private extension KeyEquivalent {
 private struct PrintScreenPresenter<SheetContent: View>: ViewModifier {
     @Binding var isRequested: Bool
     let prepare: () -> Void
+    /// Puts the print screen into the viewer's own panel (macOS). The shell
+    /// owns the flag this raises; the presenter only asks. Unused where the
+    /// screen is a sheet.
+    let embed: () -> Void
     @ViewBuilder let sheetContent: () -> SheetContent
-
-    #if os(macOS)
-    @Environment(\.openWindow) private var openWindow
-    #endif
 
     func body(content: Content) -> some View {
         #if os(macOS)
@@ -1542,12 +2140,17 @@ private struct PrintScreenPresenter<SheetContent: View>: ViewModifier {
     }
 
     #if os(macOS)
-    /// Prepares the print state, then raises the window — and lowers the flag,
-    /// which is a request, not the window's state. Leaving it raised would make
-    /// the next request no change at all, and nothing would happen.
+    /// Prepares the print state, then embeds the screen in the centre panel —
+    /// and lowers the flag, which is a request, not the screen's state. Leaving
+    /// it raised would make the next request no change at all, and nothing
+    /// would happen. The separate print *window* stays reachable from the
+    /// Print Center and the Window menu for reading the film beside the viewer
+    /// or on a second display; this in-panel takeover is what the viewer's own
+    /// print button asks for, and it cannot be reset by being re-raised — the
+    /// film survives the round trip (see `resetForNewFilmIfNeeded`).
     private func present() {
         prepare()
-        openWindow(id: StudioWindowID.printPreview)
+        embed()
         isRequested = false
     }
     #endif
@@ -1577,13 +2180,15 @@ private struct PrintSheetHost: View {
             if printViewModel == nil {
                 printViewModel = PrintViewModel(selection: selection)
             } else {
-                // The held film was composed on a previous visit: the range and
-                // the picked cells describe that sheet, and the cells wear its
-                // tool work. A launch opens on the marked images plainly.
+                // The held film may describe a previous visit's tray: if the
+                // marks have changed, the range and the picked cells answer for
+                // images no longer on the film. Same marks, though, and this is
+                // the same film — the reset below skips, and the sheet reopens
+                // on the work in progress.
                 printViewModel?.selection = selection
                 printViewModel?.loadPrinters()
             }
-            printViewModel?.resetForNewFilm()
+            printViewModel?.resetForNewFilmIfNeeded()
         }
     }
 }

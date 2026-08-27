@@ -289,7 +289,7 @@ struct SendCommand: ParsableCommand {
     @Option(name: .long, help: "Explicit VOI window width (requires --window-center)")
     var windowWidth: Double?
 
-    @Option(name: .long, help: "Grayscale output bit depth: 8, 12, or 16 (default: 8; >8 sends 16-bit-allocated P-Values)")
+    @Option(name: .long, help: "Grayscale output bit depth: 8 or 12 (default: 8). PS3.3 Table C.13-3 allows Bits Stored of 8 or 12 only; 12 sends 12-in-16 P-Values. A higher value is clamped, not refused.")
     var bitDepth: Int = 8
 
     @Option(name: .long, help: "Presentation LUT shape: identity, inverse, lin-od (default: none)")

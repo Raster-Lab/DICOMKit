@@ -15,6 +15,7 @@ import Foundation
 @testable import DICOMNetwork
 import DICOMKit
 import DICOMCore
+import DICOMPrintKit
 
 @MainActor
 @Suite("Print colour detection")
@@ -265,5 +266,92 @@ struct PrintColorDetectionTests {
         await model.refreshSourceColor()
         #expect(model.resolvedColorMode == .grayscale)
         #expect(!model.selectionHasColorImages)
+    }
+
+    // MARK: What the preview must show per cell
+
+    /// The switch the film obeys, the preview obeys: a colour cell flattens
+    /// when asked, comes straight back on uncheck, and takes a film palette
+    /// down with it — the same precedence the preparer applies.
+    @Test("Flattening tracks the toggle and drops the palette with it")
+    func flatteningTracksToggle() async throws {
+        let directory = try makeFixtureDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = try writeImage(named: "us.dcm", in: directory, color: true)
+        var mark = PrintSelectionItem(filePath: path)
+        mark = mark.with(presentation: .some(ViewerPresentation(palette: .hotIron)))
+
+        let (model, store) = try makeViewModel(items: [mark], printerColor: .color)
+        defer { try? FileManager.default.removeItem(at: store) }
+        await model.refreshSourceColor()
+        let item = try #require(model.printedItems.first)
+
+        #expect(!model.cellIsFlattenedToGrey(item))
+        #expect(model.cellPrintsInColor(item))
+        #expect(model.previewItem(for: item).presentation?.palette == .hotIron)
+
+        model.preservesSourceColor = false
+        #expect(model.cellIsFlattenedToGrey(item))
+        #expect(!model.cellPrintsInColor(item))
+        #expect(model.previewItem(for: item).presentation?.palette == nil)
+
+        // Raw sends stored pixels: no flatten, and the palette never applies.
+        model.sendRawPixels = true
+        #expect(!model.cellIsFlattenedToGrey(item))
+        #expect(model.cellPrintsInColor(item))
+        model.sendRawPixels = false
+
+        model.preservesSourceColor = true
+        #expect(!model.cellIsFlattenedToGrey(item))
+        #expect(model.previewItem(for: item).presentation?.palette == .hotIron)
+    }
+
+    /// Polarity flips every cell; the rendered inverse only the grey ones —
+    /// and the two compose, exactly as the composer draws the sheet.
+    @Test("Film-wide inversion composes polarity with the rendered inverse")
+    func filmWideInversionComposes() async throws {
+        let directory = try makeFixtureDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let grey = try writeImage(named: "ct.dcm", in: directory, color: false)
+        let colour = try writeImage(named: "us.dcm", in: directory, color: true)
+
+        let (model, store) = try makeViewModel(
+            items: [PrintSelectionItem(filePath: grey),
+                    PrintSelectionItem(filePath: colour)],
+            printerColor: .color)
+        defer { try? FileManager.default.removeItem(at: store) }
+        await model.refreshSourceColor()
+        let greyItem = try #require(model.printedItems.first)
+        let colourItem = try #require(model.printedItems.last)
+
+        #expect(!model.filmWideInversion(for: greyItem))
+
+        model.presentationLUTShape = .inverseRendered
+        #expect(model.filmWideInversion(for: greyItem))
+        // Colour keeps its polarity — inverting its luminance would change hue.
+        #expect(!model.filmWideInversion(for: colourItem))
+        // ...and that refusal is said out loud rather than left silent.
+        #expect(model.presentationLUTNotice != nil)
+
+        model.polarity = .reverse
+        // The two inversions cancel on grey cells, compose on colour ones.
+        #expect(!model.filmWideInversion(for: greyItem))
+        #expect(model.filmWideInversion(for: colourItem))
+
+        model.presentationLUTShape = nil
+        #expect(model.filmWideInversion(for: greyItem))
+        #expect(model.filmWideInversion(for: colourItem))
+
+        // Flattened to greys, a colour cell is grey on the wire and the
+        // rendered inverse reaches it again.
+        model.polarity = .normal
+        model.presentationLUTShape = .inverseRendered
+        model.preservesSourceColor = false
+        #expect(model.filmWideInversion(for: colourItem))
+
+        // Raw: the inverse cannot be rendered into stored pixels, and says so.
+        model.sendRawPixels = true
+        #expect(!model.filmWideInversion(for: greyItem))
+        #expect(model.presentationLUTNotice != nil)
     }
 }

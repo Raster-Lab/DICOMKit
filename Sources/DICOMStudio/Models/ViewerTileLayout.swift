@@ -9,8 +9,55 @@
 // window, so "the image as I arranged it" is per tile, not global.
 
 import Foundation
+import DICOMCore
 import DICOMPrintKit
 import DICOMRenderKit
+
+// MARK: - Fill mode
+
+/// What a grid of tiles is a grid *of*.
+///
+/// The same rows × columns can mean two different readings, and which one is
+/// wanted depends on the study rather than on the grid. A 2×2 of four series is
+/// a comparison — this reconstruction against that one; a 2×2 of four adjacent
+/// slices is a stack laid flat, which is how a reader walks a CT without
+/// scrolling. Neither is a special case of the other, so the grid asks which.
+public enum ViewerLayoutFill: String, Sendable, Hashable, CaseIterable, Codable, Identifiable {
+
+    /// One series per tile, starting from the series on screen.
+    case series
+
+    /// Consecutive images of one series, starting from the image on screen.
+    case image
+
+    public var id: String { rawValue }
+
+    /// The mode as shown to the reader.
+    public var displayName: String {
+        switch self {
+        case .series: return "Series"
+        case .image:  return "Image"
+        }
+    }
+
+    /// The menu icon: a stack of layers for series, a stack of frames for images.
+    public var symbolName: String {
+        switch self {
+        case .series: return "square.stack.3d.up"
+        case .image:  return "photo.stack"
+        }
+    }
+
+    /// A one-line note for the picker.
+    public var note: String {
+        switch self {
+        case .series:
+            return "Each tile takes the next series of the study — a comparison."
+        case .image:
+            return "Each tile takes the next image of this series — a stack laid flat."
+        }
+    }
+}
 
 // MARK: - Layout
 
@@ -95,6 +142,15 @@ public struct ViewerCellState: Sendable, Equatable, Identifiable {
     public var isFlippedVertical: Bool
     public var isInverted: Bool
 
+    /// The tile's pseudo-colour palette, or `nil` when nobody has chosen one.
+    ///
+    /// Held per tile for the same reason zoom is: a grid can hang a PET beside
+    /// its CT, and colouring the one that carries the uptake must not tint the
+    /// anatomy beside it. `nil` and ``PseudoColorPalette/grayscale`` both show
+    /// grey and mean different things — see ``ViewerPresentation/palette``,
+    /// which this feeds and which the film reads.
+    public var palette: DICOMCore.PseudoColorPalette?
+
     /// Size of this tile on screen, needed to resolve zoom/pan to a crop.
     public var viewportWidth: Double
     public var viewportHeight: Double
@@ -116,6 +172,7 @@ public struct ViewerCellState: Sendable, Equatable, Identifiable {
         isFlippedHorizontal: Bool = false,
         isFlippedVertical: Bool = false,
         isInverted: Bool = false,
+        palette: DICOMCore.PseudoColorPalette? = nil,
         viewportWidth: Double = 0,
         viewportHeight: Double = 0
     ) {
@@ -135,6 +192,7 @@ public struct ViewerCellState: Sendable, Equatable, Identifiable {
         self.isFlippedHorizontal = isFlippedHorizontal
         self.isFlippedVertical = isFlippedVertical
         self.isInverted = isInverted
+        self.palette = palette
         self.viewportWidth = viewportWidth
         self.viewportHeight = viewportHeight
     }
@@ -153,7 +211,8 @@ public struct ViewerCellState: Sendable, Equatable, Identifiable {
             rotationDegrees: rotationAngle,
             flipHorizontal: isFlippedHorizontal,
             flipVertical: isFlippedVertical,
-            invert: isInverted
+            invert: isInverted,
+            palette: palette
         )
     }
 

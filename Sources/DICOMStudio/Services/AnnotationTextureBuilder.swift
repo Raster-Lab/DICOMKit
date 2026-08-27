@@ -31,24 +31,79 @@ public enum AnnotationTextureBuilder {
     /// all-transparent texture is still returned, so a caller does not need
     /// a separate "nothing to draw" branch before binding it to the shader.
     /// `nil` only on a genuine failure to allocate or rasterize.
+    ///
+    /// - Parameter orientation: the arrangement the display shader will apply
+    ///   to this texture. It turns the overlay with the picture, which is what
+    ///   keeps an annotation stuck to the anatomy it was drawn on — and also
+    ///   what wrote the words backwards on a mirrored image, because the shader
+    ///   cannot tell a note from the anatomy. Passing the arrangement here
+    ///   turns the *lettering* back level; the anchor is left alone for the
+    ///   shader to move. `nil` for an unarranged picture.
     public static func build(
         overlays: [PrintOverlayAnnotation],
         width: Int,
         height: Int,
-        device: MTLDevice
+        device: MTLDevice,
+        orientation: PrintOverlayOrientation? = nil
     ) -> AnnotationOverlayTexture? {
+        let scale = supersamplingFactor(width: width, height: height)
+        let canvasWidth = width * scale
+        let canvasHeight = height * scale
+
         guard let (bytes, bytesPerRow) = ImageAnnotationBurner.rasterizing(
-            overlays: overlays, width: width, height: height) else { return nil }
+            overlays: overlays, width: canvasWidth, height: canvasHeight,
+            orientation: orientation) else { return nil }
 
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+            pixelFormat: .rgba8Unorm, width: canvasWidth, height: canvasHeight,
+            mipmapped: false)
         descriptor.usage = [.shaderRead]
         descriptor.storageMode = .shared
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
         texture.replace(
-            region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
+            region: MTLRegionMake2D(0, 0, canvasWidth, canvasHeight), mipmapLevel: 0,
             withBytes: bytes, bytesPerRow: bytesPerRow)
         return AnnotationOverlayTexture(texture: texture)
     }
+
+    /// How many overlay texels to rasterize per frame pixel.
+    ///
+    /// The overlay is addressed in the same 0...1 texture coordinates as the
+    /// frame, so a larger canvas costs nothing at draw time and changes no
+    /// geometry: every size in the burner — type size, line weight, arrowhead,
+    /// halo spread — is a fraction of the canvas height, so drawing on a canvas
+    /// `n` times taller scales the whole annotation by exactly `n` and it lands
+    /// in the same place.
+    ///
+    /// It is needed because the frame's pixel grid is the wrong resolution to
+    /// draw *type* at. A 512×512 CT fills a Retina viewport at roughly six
+    /// display pixels per frame pixel, so glyphs rasterized at frame resolution
+    /// were magnified six-fold before they reached the screen — legible, but
+    /// visibly soft and coarse next to every other piece of text in the app.
+    /// The frame itself has no such problem: its pixels are the data, and
+    /// magnifying them is exactly what a reader asked for.
+    ///
+    /// Capped by both a factor and an absolute canvas size, because this
+    /// allocates: the cost is `(width * scale) * (height * scale) * 4` bytes,
+    /// which grows quadratically. Small frames — the ones that actually needed
+    /// this — get the full factor; a frame already large enough to out-resolve
+    /// any display gets none, since magnification is not what it suffers from.
+    static func supersamplingFactor(width: Int, height: Int) -> Int {
+        guard width > 0, height > 0 else { return 1 }
+        for factor in stride(from: maximumSupersampling, through: 2, by: -1)
+        where max(width, height) * factor <= maximumCanvasDimension {
+            return factor
+        }
+        return 1
+    }
+
+    /// Enough to cover a 2× Retina panel showing a small frame zoomed in, and
+    /// past the point where more resolution is visible in antialiased type.
+    private static let maximumSupersampling = 4
+
+    /// 4096 is both a conservative floor for `MTLDevice` 2D texture limits and
+    /// the point past which a frame is already out-resolving the display: a
+    /// 4096-wide overlay costs 64 MB at RGBA8 and buys nothing on screen.
+    private static let maximumCanvasDimension = 4096
 }
 #endif

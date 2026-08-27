@@ -98,6 +98,13 @@ public struct PrintOverlayAnnotation: Sendable, Equatable, Identifiable, Codable
     public enum Kind: String, Sendable, Equatable, Codable {
         case text
         case arrow
+
+        /// A label with an arrow pointing from it at the anatomy — the viewer's
+        /// combined annotation tool, after Weasis's. `start` is the label's
+        /// top-left, `end` the anchor the arrow points at; either half may be
+        /// absent (no words yet, or anchor still under the label), so this one
+        /// kind covers plain text, plain arrow, and both together.
+        case annotation
     }
 
     public var id: UUID
@@ -146,12 +153,26 @@ public struct PrintOverlayAnnotation: Sendable, Equatable, Identifiable, Codable
     public var isBlank: Bool {
         switch kind {
         case .text:
-            return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return !hasWords
         case .arrow:
-            let dx = end.x - start.x
-            let dy = end.y - start.y
-            return (dx * dx + dy * dy).squareRoot() < Self.minimumArrowLength
+            return !hasArrow
+        case .annotation:
+            // Either half carries it: a label with no arrow is text, an arrow
+            // with no label is an arrow, and only both missing is nothing.
+            return !hasWords && !hasArrow
         }
+    }
+
+    /// Whether the text says anything once whitespace is stripped.
+    public var hasWords: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Whether the two ends are far enough apart to draw an arrow between.
+    public var hasArrow: Bool {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        return (dx * dx + dy * dy).squareRoot() >= Self.minimumArrowLength
     }
 
     /// This annotation moved bodily — both ends, so an arrow keeps its direction.
@@ -175,9 +196,10 @@ public struct PrintOverlayAnnotation: Sendable, Equatable, Identifiable, Codable
         return min(maximumScale, max(minimumScale, value))
     }
 
-    /// Roughly the size of the patient caption the print path already burns, so a
-    /// fresh annotation looks like it belongs on the film.
-    public static let defaultScale: Double = 0.04
+    /// Small enough to sit beside the anatomy rather than over it — the burner's
+    /// pixel floor still keeps it legible on any frame. Was 4%, the size of the
+    /// patient caption, which read as a headline once every annotation carried it.
+    public static let defaultScale: Double = 0.02
     public static let minimumScale: Double = 0.015
     public static let maximumScale: Double = 0.20
 

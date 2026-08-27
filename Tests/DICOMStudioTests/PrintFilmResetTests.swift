@@ -123,25 +123,104 @@ struct PrintFilmResetTests {
 
     // MARK: - What stays
 
-    @Test("The printer and the film settings are not forgotten between studies")
-    func testDepartmentSettingsSurvive() {
+    @Test("The printer survives, because it is infrastructure and not a film")
+    func testPrinterSurvives() {
         let viewModel = PrintViewModel(selection: makeSelection(count: 4, series: "1.2.3", prefix: "/a"))
         let printer = UUID()
         viewModel.selectedPrinterID = printer
+        viewModel.timeoutSeconds = 90
+        viewModel.retries = 3
+
+        viewModel.resetForNewFilm()
+
+        #expect(viewModel.selectedPrinterID == printer, "the printer is a department setting")
+        #expect(viewModel.timeoutSeconds == 90, "how to reach the printer is not a film setting")
+        #expect(viewModel.retries == 3)
+    }
+
+    /// The film's own description is *not* infrastructure. Left standing it
+    /// describes the previous sheet, and the reader has no way to tell a
+    /// carried-over choice from a deliberate one.
+    @Test("A launch gives back the default sheet, not the last film's")
+    func testFilmSettingsResetToDefaults() {
+        let viewModel = PrintViewModel(selection: makeSelection(count: 4, series: "1.2.3", prefix: "/a"))
         viewModel.filmSize = .size8InX10In
         viewModel.filmOrientation = .landscape
         viewModel.mediumType = .clearFilm
         viewModel.copies = 3
         viewModel.showPatientIdentification = false
+        viewModel.priority = .high
+        viewModel.trimOption = .yes
+        viewModel.sessionLabel = "LAST VISIT"
+        viewModel.scalingMode = .stretch
+        viewModel.cellAlignment = .topLeft
 
         viewModel.resetForNewFilm()
 
-        #expect(viewModel.selectedPrinterID == printer, "the printer is a department setting")
-        #expect(viewModel.filmSize == .size8InX10In)
-        #expect(viewModel.filmOrientation == .landscape)
-        #expect(viewModel.mediumType == .clearFilm)
-        #expect(viewModel.copies == 3)
-        #expect(viewModel.showPatientIdentification == false)
+        #expect(viewModel.filmSize == .size14InX17In)
+        #expect(viewModel.filmOrientation == .portrait)
+        #expect(viewModel.mediumType == .blueFilm)
+        #expect(viewModel.copies == 1)
+        #expect(viewModel.showPatientIdentification)
+        #expect(viewModel.priority == .medium)
+        #expect(viewModel.trimOption == .no)
+        #expect(viewModel.sessionLabel.isEmpty)
+        #expect(viewModel.scalingMode == .fitToFilm)
+        #expect(viewModel.cellAlignment == .center)
+    }
+
+    /// The two that prompted this: both silently restyle every cell on the
+    /// sheet, and a reader who sees a coloured or inverted film has no reason
+    /// to suspect a control three disclosure groups down.
+    @Test("A launch clears the palette and the presentation LUT")
+    func testRenderingSettingsResetToDefaults() {
+        let viewModel = PrintViewModel(selection: makeSelection(count: 4, series: "1.2.3", prefix: "/a"))
+        viewModel.applyFilmPalette(.hotIron)
+        viewModel.presentationLUTShape = .identity
+        viewModel.bitDepth = 12
+        viewModel.sendRawPixels = true
+        viewModel.useExplicitWindow = true
+        viewModel.explicitWindowCenter = 900
+        viewModel.explicitWindowWidth = 1800
+        viewModel.autoDetectColorMode = false
+        viewModel.colorMode = .color
+        viewModel.useViewerWindow = false
+        viewModel.useViewerPresentation = false
+
+        viewModel.resetForNewFilm()
+
+        #expect(viewModel.filmPalette == nil, "a new film is not the last film's colour")
+        for mark in viewModel.selection.items {
+            #expect(mark.presentation?.palette == nil, "and neither is any cell on it")
+        }
+        #expect(viewModel.presentationLUTShape == nil)
+        #expect(viewModel.bitDepth == 8)
+        #expect(!viewModel.sendRawPixels)
+        #expect(!viewModel.useExplicitWindow)
+        #expect(viewModel.explicitWindowCenter == 40)
+        #expect(viewModel.explicitWindowWidth == 400)
+        #expect(viewModel.autoDetectColorMode)
+        #expect(viewModel.colorMode == .grayscale)
+        #expect(viewModel.useViewerWindow)
+        #expect(viewModel.useViewerPresentation)
+    }
+
+    @Test("A launch resets the burned identification to its defaults")
+    func testIdentificationResetsToDefaults() {
+        let viewModel = PrintViewModel(selection: makeSelection(count: 2, series: "1.2.3", prefix: "/a"))
+        viewModel.identificationFields = [.accessionNumber]
+        viewModel.identificationUsesCustomSize = true
+        viewModel.identificationSizePercent = 9
+        viewModel.identificationForeground = .black
+        viewModel.burnDrawnAnnotations = false
+
+        viewModel.resetForNewFilm()
+
+        #expect(viewModel.identificationFields == [.birthDate, .institutionName])
+        #expect(!viewModel.identificationUsesCustomSize)
+        #expect(viewModel.identificationSizePercent == 3.5)
+        #expect(viewModel.identificationForeground == .automatic)
+        #expect(viewModel.burnDrawnAnnotations)
     }
 
     // MARK: - What the screen re-arms
@@ -232,10 +311,15 @@ struct PrintFilmResetTests {
     func testLaunchResetsToolActionsOnEveryMark() {
         let selection = makeViewerMarkedSelection()
         let viewModel = PrintViewModel(selection: selection)
+
+        // The switches are part of what a launch puts back to default (both
+        // default to on), so turning them off *before* the reset would only
+        // test the reset undoing itself. The real launch order is the same:
+        // the caller applies its own settings after the screen has been reset.
+        viewModel.resetForNewFilm()
         viewModel.useViewerWindow = false
         viewModel.useViewerPresentation = false
-
-        viewModel.resetForNewFilm()
+        viewModel.resetCellToolsForNewFilm()
 
         #expect(viewModel.selection.count == 5, "every marked image is still on the film")
         for mark in viewModel.selection.items {
@@ -283,19 +367,24 @@ struct PrintFilmResetTests {
     /// the reader's zoom is a legitimate film, and vice versa.
     @Test("Each viewer-matching switch is honoured on its own")
     func testLaunchHonoursEachMatchingSwitchIndependently() {
+        // Set after the launch reset, which restores both switches to on —
+        // the reset is what establishes the default, and these two films are
+        // about what each switch then does to the marks.
         let windowOnly = PrintViewModel(selection: makeViewerMarkedSelection(count: 2))
+        windowOnly.resetForNewFilm()
         windowOnly.useViewerWindow = true
         windowOnly.useViewerPresentation = false
-        windowOnly.resetForNewFilm()
+        windowOnly.resetCellToolsForNewFilm()
         for mark in windowOnly.selection.items {
             #expect(mark.windowCenter == 40, "the window is matched")
             #expect(mark.presentation == nil, "the arrangement is not")
         }
 
         let shapeOnly = PrintViewModel(selection: makeViewerMarkedSelection(count: 2))
+        shapeOnly.resetForNewFilm()
         shapeOnly.useViewerWindow = false
         shapeOnly.useViewerPresentation = true
-        shapeOnly.resetForNewFilm()
+        shapeOnly.resetCellToolsForNewFilm()
         for mark in shapeOnly.selection.items {
             #expect(mark.windowCenter == nil, "the window is not matched")
             #expect(mark.presentation?.zoom == 2.5, "the arrangement is")
@@ -380,5 +469,87 @@ struct PrintFilmResetTests {
                 "the mark follows the viewer again")
         #expect(kept?.windowCenter == nil, "the visit's windowing is gone")
         #expect(kept?.presentation == nil, "the visit's pan is gone")
+    }
+
+    // MARK: - When the reset runs at all
+
+    /// Opening the print screen is a request to see the film, not an order to
+    /// tear it up. `resetForNewFilmIfNeeded()` is what every open goes
+    /// through, and it cuts a fresh sheet only for a genuinely new film — a
+    /// changed tray, or a job that has finished.
+
+    @Test("Reopening on the same marks keeps the film in progress")
+    func testSameMarksKeepTheFilm() {
+        let viewModel = PrintViewModel(selection: makeSelection(count: 20, series: "1.2.3", prefix: "/a"))
+        viewModel.resetForNewFilmIfNeeded()  // first open: a fresh sheet
+
+        // Half a film's work: a range, a layout, copies.
+        viewModel.setImageRange(from: 5, to: 8)
+        viewModel.layoutOption = .layout3x3
+        viewModel.copies = 3
+
+        viewModel.resetForNewFilmIfNeeded()  // back to the viewer and in again
+
+        #expect(viewModel.isImageRangeActive, "the range is the visit's work, and the visit goes on")
+        #expect(viewModel.printedItems.count == 4)
+        #expect(viewModel.layoutOption == .layout3x3)
+        #expect(viewModel.copies == 3)
+    }
+
+    @Test("A changed tray cuts a fresh sheet")
+    func testChangedMarksReset() {
+        let viewModel = PrintViewModel(selection: makeSelection(count: 20, series: "1.2.3", prefix: "/a"))
+        viewModel.resetForNewFilmIfNeeded()
+        viewModel.setImageRange(from: 5, to: 8)
+
+        // The reader goes back and marks a different set.
+        viewModel.selection.replace(with: makeSelection(count: 12, series: "9.9.9", prefix: "/b").items)
+        viewModel.resetForNewFilmIfNeeded()
+
+        #expect(!viewModel.isImageRangeActive, "the old range filtered a tray that is gone")
+        #expect(viewModel.printedItems.count == 12)
+    }
+
+    @Test("One image added to the tray is a changed tray")
+    func testAddedMarkResets() {
+        let selection = makeSelection(count: 4, series: "1.2.3", prefix: "/a")
+        let viewModel = PrintViewModel(selection: selection)
+        viewModel.resetForNewFilmIfNeeded()
+        viewModel.copies = 5
+
+        viewModel.selection.add(PrintSelectionItem(
+            filePath: "/a/99.dcm", frameIndex: 0,
+            seriesInstanceUID: "1.2.3", instanceNumber: 99))
+        viewModel.resetForNewFilmIfNeeded()
+
+        #expect(viewModel.copies == 1, "the film described the old tray")
+    }
+
+    @Test("After a finished job the same marks still open a fresh sheet")
+    func testFinishedJobResets() {
+        let viewModel = PrintViewModel(selection: makeSelection(count: 4, series: "1.2.3", prefix: "/a"))
+        viewModel.resetForNewFilmIfNeeded()
+        viewModel.copies = 5
+        viewModel.phase = .finished(success: true)
+
+        viewModel.resetForNewFilmIfNeeded()
+
+        #expect(viewModel.copies == 1, "a printed film is done; the next visit is the next film")
+        if case .configuring = viewModel.phase {} else {
+            Issue.record("the next visit opens composing, not on the old job's result")
+        }
+    }
+
+    @Test("Reopening on a job still printing leaves the run alone")
+    func testRunningJobIsLeftAlone() {
+        let viewModel = PrintViewModel(selection: makeSelection(count: 4, series: "1.2.3", prefix: "/a"))
+        viewModel.resetForNewFilmIfNeeded()
+        viewModel.phase = .printing
+
+        viewModel.resetForNewFilmIfNeeded()
+
+        if case .printing = viewModel.phase {} else {
+            Issue.record("reopening the screen mid-print shows the run, it does not tear it down")
+        }
     }
 }

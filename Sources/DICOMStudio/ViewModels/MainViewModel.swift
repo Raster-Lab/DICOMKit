@@ -5,6 +5,8 @@
 
 import Foundation
 import Observation
+import DICOMKit
+import DICOMPrintKit
 
 /// Main ViewModel for DICOM Studio, managing top-level navigation
 /// and application state.
@@ -261,6 +263,122 @@ public final class MainViewModel {
             guard let self, self.imageViewerViewModel.studyInstanceUID == studyUID else { return }
             self.imageViewerViewModel.loadStudySeries(resolved, studyUID: studyUID)
         }
+    }
+
+    /// Files a just-published presentation-state series into the library.
+    ///
+    /// Publishing writes the GSPS objects next to the study's own files; the
+    /// library is an in-memory index built at import, so it does not know they
+    /// are there. Registering them directly rather than re-scanning the folder
+    /// is deliberate: a re-scan of a large study to pick up two small objects
+    /// would stall the viewer, and everything the index needs is already in the
+    /// published description.
+    ///
+    /// The series pane is refilled afterwards so the new "PR" series appears
+    /// without the reader having to reopen the study.
+    public func registerPublishedPresentationSeries(
+        _ published: PresentationStateStore.PublishedSeries
+    ) {
+        // A study the library does not hold is one opened from outside it — the
+        // objects are on disk beside their images either way, and the next
+        // import picks them up. There is simply no index entry to add them to.
+        guard library.studies[published.studyInstanceUID] != nil else { return }
+
+        library.addSeries(SeriesModel(
+            seriesInstanceUID: published.seriesInstanceUID,
+            studyInstanceUID: published.studyInstanceUID,
+            seriesNumber: published.seriesNumber,
+            modality: published.modality,
+            seriesDescription: published.seriesDescription,
+            numberOfInstances: published.instances.count))
+
+        for instance in published.instances {
+            let size = (try? FileManager.default.attributesOfItem(
+                atPath: instance.url.path)[.size] as? Int64) ?? nil
+            library.addInstance(InstanceModel(
+                sopInstanceUID: instance.sopInstanceUID,
+                sopClassUID: instance.sopClassUID,
+                seriesInstanceUID: published.seriesInstanceUID,
+                instanceNumber: instance.instanceNumber,
+                filePath: instance.url.path,
+                fileSize: size ?? 0,
+                transferSyntaxUID: PresentationStateStore.transferSyntaxUID))
+        }
+
+        // Publishing twice must not double the count: the series is shared, so
+        // its instance total is whatever the index now holds for it.
+        if var series = library.series[published.seriesInstanceUID] {
+            series.numberOfInstances =
+                library.instancesForSeries(published.seriesInstanceUID).count
+            library.addSeries(series)
+        }
+
+        try? libraryStorageService.save(library)
+        populateViewerSeriesPane(forFile: imageViewerViewModel.filePath)
+    }
+
+    /// Takes deleted presentation states back out of the library's index.
+    ///
+    /// The mirror of ``registerPublishedPresentationSeries(_:)``: the files are
+    /// already gone from the study's folder, and an index still listing them
+    /// would leave the series pane offering a card whose objects cannot be
+    /// opened. A series left with no instances is removed with them, so a study
+    /// whose only saved view was deleted stops showing an empty "PR" series.
+    public func unregisterPresentationStates(sopInstanceUIDs: [String]) {
+        guard !sopInstanceUIDs.isEmpty else { return }
+
+        // The study these objects belonged to, resolved before they are dropped
+        // from the index — afterwards there is nothing left to look them up by.
+        let studyUIDs = Set(sopInstanceUIDs.compactMap { uid -> String? in
+            guard let seriesUID = library.instances[uid]?.seriesInstanceUID else { return nil }
+            return library.series[seriesUID]?.studyInstanceUID
+        })
+
+        for uid in sopInstanceUIDs {
+            library.removeInstance(uid)
+        }
+
+        // Every presentation-state series of the affected studies, not only the
+        // ones these instances were indexed under. A study can carry more than
+        // one PR series — objects imported with the study on one, objects
+        // published here on another — and pruning only the series named by the
+        // deleted UIDs left the others behind as cards whose files are gone.
+        for studyUID in studyUIDs {
+            pruneEmptyPresentationSeries(inStudy: studyUID)
+        }
+
+        try? libraryStorageService.save(library)
+        populateViewerSeriesPane(forFile: imageViewerViewModel.filePath)
+    }
+
+    /// Drops a study's presentation-state series that no longer have any file
+    /// behind them.
+    ///
+    /// Emptiness is judged against the disk, not the index: the delete path
+    /// removes the `.dcm` files directly, and a series whose instances were
+    /// indexed by an import still lists them long after they stopped existing.
+    /// Only PR series are considered — an image series with a missing file is a
+    /// broken study to report, not a card to silently remove.
+    private func pruneEmptyPresentationSeries(inStudy studyUID: String) {
+        let fileManager = FileManager.default
+        for series in library.seriesForStudy(studyUID) {
+            let instances = library.instancesForSeries(series.seriesInstanceUID)
+            guard instances.allSatisfy({ Self.isPresentationState($0.sopClassUID) })
+            else { continue }
+            let missing = instances.filter { !fileManager.fileExists(atPath: $0.filePath) }
+            for instance in missing {
+                library.removeInstance(instance.sopInstanceUID)
+            }
+            if library.instancesForSeries(series.seriesInstanceUID).isEmpty {
+                library.removeSeries(series.seriesInstanceUID)
+            }
+        }
+    }
+
+    /// Whether a SOP Class is one of the presentation-state IODs this app writes.
+    static func isPresentationState(_ sopClassUID: String) -> Bool {
+        sopClassUID == GrayscalePresentationStateBuilder.sopClassUID
+            || sopClassUID == PseudoColorPresentationStateBuilder.sopClassUID
     }
 
     /// Opens the first retrieved file from CLI Workshop in the viewer.

@@ -204,7 +204,11 @@ extension PrintViewModel {
         // The drawings come with the view, exactly as they do in the viewer.
         // Replacing rather than merging: the saved view is a complete statement
         // about the image, so an arrow deleted before saving must not survive.
-        selection.cellAnnotations[item.annotationKey] = stored.annotations
+        // The cell shows one frame, so it takes that frame's drawings — an
+        // arrow on another frame of the same image belongs to that frame's
+        // cell, not this one.
+        selection.cellAnnotations[item.annotationKey] =
+            stored.annotations(forFrame: item.annotationKey.frameIndex)
 
         return true
     }
@@ -378,6 +382,14 @@ extension PrintViewModel {
             // rotation on the way out, so a restore is never flipped vertically.
             flipVertical: false,
             invert: restored.invert)
+
+        // The view's own palette when it recorded one — the sidecar carries it
+        // now, because a GSPS cannot say "coloured" (see the bridge — palettes
+        // are absent from its vocabulary). A view that recorded none stays
+        // silent about colour rather than against it, and the mark's palette
+        // survives: a saved window applied to a PET cell must not grey the
+        // cell out on the say-so of a view that never spoke of colour.
+        presentation.palette = stored.palette ?? existing?.palette
 
         Self.clampPan(of: &presentation,
                       pixelSize: pixelSize,

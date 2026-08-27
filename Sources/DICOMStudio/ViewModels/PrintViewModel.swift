@@ -382,6 +382,21 @@ public final class PrintViewModel {
     /// see ``applyFilmPalette(_:)``.
     public internal(set) var filmPalette: DICOMCore.PseudoColorPalette?
 
+    /// The cells that chose a palette of their own, by mark ID.
+    ///
+    /// Which cells the film-wide picker must leave alone. Held as explicit
+    /// bookkeeping rather than inferred by comparing each cell's palette against
+    /// the film's previous value: that inference is only sound while nothing
+    /// else can move a cell's palette, and reset, revert and saved-view adoption
+    /// all can. Once a cell drifted off the film's last value it was read as
+    /// having chosen for itself, and the film-wide picker went permanently dead
+    /// on it.
+    ///
+    /// Cleared with the rest of the per-film bookkeeping in
+    /// ``resetForNewFilm()``; a cell also leaves the set when it is reset,
+    /// reverted, or handed back to the film default.
+    var selfPalettedItemIDs: Set<String> = []
+
     public var presentationLUTShape: DICOMNetwork.PresentationLUTShape?
     public var sessionLabel: String = ""
     public var configurationInformation: String = ""
@@ -405,6 +420,11 @@ public final class PrintViewModel {
     public var identificationForeground: PrintAnnotationStyle.Foreground = .automatic
 
     /// The style the burner is handed for this job.
+    ///
+    /// Carries the layout as well as the typography: on a sheet cut into one
+    /// cell the caption is tapered (see ``PrintAnnotationStyle/singleImageFilm``),
+    /// and the flag has to be on the style so the burner and the preview — which
+    /// are both handed this same value — set the caption at one size.
     public var identificationStyle: PrintAnnotationStyle {
         PrintAnnotationStyle(
             fontFamily: identificationFontFamily.trimmingCharacters(in: .whitespaces)
@@ -412,6 +432,7 @@ public final class PrintViewModel {
             sizeFraction: identificationUsesCustomSize
                 ? identificationSizePercent / 100 : nil,
             foreground: identificationForeground)
+        .on(cellCount: plan.cellsPerFilm)
     }
 
     public var useViewerWindow: Bool = true
@@ -463,8 +484,9 @@ public final class PrintViewModel {
 
     // MARK: - Run state
 
-    /// Current phase of the flow.
-    public private(set) var phase: Phase = .configuring
+    /// Current phase of the flow. The setter is internal, not private, so
+    /// tests can stand a finished job up without running one.
+    public internal(set) var phase: Phase = .configuring
 
     /// Console lines, oldest first, rendered by the shared formatter.
     public private(set) var consoleLines: [ConsoleLine] = []
@@ -930,8 +952,39 @@ public final class PrintViewModel {
     /// the reader nothing, and a job with no colour in it has nothing to lose.
     public var colorDowngradeNotice: String? {
         guard selectionHasColorImages, !preservesSourceColor else { return nil }
-        return "\"Print colour images as greys\" is on, so these colour images "
-            + "will print as greys."
+        // Raw sends stored pixels untouched, so the flatten never runs — say
+        // so rather than promising greys the film will not show.
+        if sendRawPixels {
+            return "Raw pixels are being sent, so these colour images keep "
+                + "their colour despite \"Print colour images as greys\"."
+        }
+        var notice = "\"Print colour images as greys\" is on, so these colour "
+            + "images will print as greys."
+        // The greys are the picture's own: an explicit ask for greys outranks
+        // a film palette on colour images (monochrome cells keep theirs).
+        if filmPalette != nil {
+            notice += " The colour palette still applies to monochrome images only."
+        }
+        return notice
+    }
+
+    /// What the chosen Presentation LUT will visibly not do, if anything.
+    ///
+    /// The rendered inverse is realised in the pixels and only for cells that
+    /// leave as greys — inverting just the luminance of a colour cell would
+    /// change its hue — and it cannot be rendered into a raw job's stored
+    /// pixels at all. Both cases used to be silent; the film simply came out
+    /// unchanged and the picker looked dead.
+    public var presentationLUTNotice: String? {
+        guard presentationLUTShape?.invertsPixels == true else { return nil }
+        if sendRawPixels {
+            return "Raw pixels are being sent, so the rendered inverse cannot "
+                + "be applied. Cells will print with their stored polarity."
+        }
+        guard printedItems.contains(where: { cellPrintsInColor($0) }) else { return nil }
+        return "The rendered inverse applies to grayscale cells only — cells "
+            + "printing in colour keep their polarity, as inverting only their "
+            + "luminance would change their hue."
     }
 
     /// Whether this job will print colour images in colour.
@@ -941,7 +994,7 @@ public final class PrintViewModel {
     /// (``PrintWorkflow/execute``), so the printer's configured colour mode no
     /// longer decides this on its own.
     public var willPrintInColor: Bool {
-        selectionHasColorImages && preservesSourceColor
+        selectionHasColorImages && (preservesSourceColor || sendRawPixels)
     }
 
     /// Records what ``refreshSourceColor()`` read for one file.
@@ -1452,6 +1505,46 @@ public final class PrintViewModel {
         consoleLines = []
     }
 
+    /// The marks the film was last put back to a fresh sheet for, as
+    /// ``PrintSelectionItem/id``s in film order. What
+    /// ``resetForNewFilmIfNeeded()`` compares against; nil until the first
+    /// reset, so the first visit always starts clean.
+    ///
+    /// `@ObservationIgnored`: bookkeeping between visits, not screen state —
+    /// nothing draws from it.
+    @ObservationIgnored private var freshFilmMarkIDs: [String]?
+
+    /// Puts the film back to a fresh sheet — unless it is the *same* film.
+    ///
+    /// Opening the print screen is a request to see the film, not an order to
+    /// tear it up: a reader who half-composes a sheet, steps back to the viewer
+    /// to check something, and opens the screen again is returning to work in
+    /// progress, and wiping it on the way in is the "reset issue" — a film
+    /// lost to a click that meant only "show me the film".
+    ///
+    /// So the reset runs only when this visit is genuinely a *new* film:
+    ///
+    /// - The marks changed — images added, removed, or reordered since the
+    ///   sheet was last cut. The film described the old tray; tool work, ranges
+    ///   and cached numbers on it answer for images that are no longer there
+    ///   (or are there differently), which is exactly what
+    ///   ``resetForNewFilm()`` exists to take off.
+    /// - The last job finished. A printed film is done — its outcome is not
+    ///   the next film's outcome, and coming back to the screen after "Done"
+    ///   means starting the next sheet, not re-reading the old run.
+    ///
+    /// A job still on the wire is left alone either way when the marks stand:
+    /// reopening the screen mid-print shows the run, it does not tear it down.
+    public func resetForNewFilmIfNeeded() {
+        let markIDs = selection.items.map(\.id)
+        if case .finished = phase {
+            // Printed (or failed): the next visit is the next film.
+        } else if markIDs == freshFilmMarkIDs {
+            return
+        }
+        resetForNewFilm()
+    }
+
     /// Puts the film back to a fresh sheet, for a new set of marks.
     ///
     /// Every launch of the print screen starts from the tray as it stands: all
@@ -1473,12 +1566,24 @@ public final class PrintViewModel {
     /// Carried over, each of them silently prints something other than what was
     /// ticked.
     ///
-    /// What survives is what is not about these images: the chosen printer, film
-    /// size and medium, and the identification switch — department settings,
-    /// which a reader sets once and expects to find again. The tools and the
-    /// locks do not survive; see ``resetPreviewTools()``.
+    /// What survives is the printer: which device is selected, the profiles
+    /// themselves, and the connection settings that describe how to reach it.
+    /// That is infrastructure — the reader configured it once and would have to
+    /// re-pick it on every visit otherwise. *Everything else* goes back to its
+    /// default, including the film's own description (size, orientation, medium,
+    /// layout) and every rendering choice (palette, presentation LUT, window
+    /// switches, bit depth) — see ``resetJobSettingsToDefaults()``. A palette or
+    /// a LUT left over from the last visit recolours a film nobody asked to have
+    /// recoloured, and reads as the screen having remembered a decision that was
+    /// only ever about the previous sheet. The tools and the locks do not
+    /// survive either; see ``resetPreviewTools()``.
     public func resetForNewFilm() {
+        // The marks this fresh sheet is being cut for — what
+        // ``resetForNewFilmIfNeeded()`` compares the next visit against.
+        freshFilmMarkIDs = selection.items.map(\.id)
+
         resetPreviewTools()
+        resetJobSettingsToDefaults()
         // The ranges filter by numbers from the previous series.
         imageRanges = [:]
         imageNumbers.clear()
@@ -1542,6 +1647,105 @@ public final class PrintViewModel {
         // A finished job's outcome is not this film's outcome.
         reset()
         resetConsole()
+    }
+
+    /// Puts every basic and advanced job setting back to its default.
+    ///
+    /// The film screen is kept alive between visits, so each of these is a
+    /// value the *previous* visit chose. Carried over they are invisible
+    /// decisions: the reader opens the screen on a new study, sees a coloured
+    /// or inverted film, and has no reason to suspect a setting three
+    /// disclosure groups down is responsible — the images look wrong rather
+    /// than the settings looking changed. A launch is therefore a clean sheet.
+    ///
+    /// The printer is deliberately *not* reset — neither the selection, the
+    /// stored profiles, nor the connection settings. Which device the film goes
+    /// to is infrastructure the department configured, not a description of
+    /// this film, and clearing it would make every launch begin by re-picking a
+    /// printer. ``timeoutSeconds`` and ``retries`` belong to that same
+    /// connection story and stay with it.
+    ///
+    /// Values are written literally rather than by assigning a fresh
+    /// `PrintViewModel`: the screen's identity, its selection model and its
+    /// printer list all have to survive, and a property added later should show
+    /// up here as a deliberate decision about whether it describes the film or
+    /// the department.
+    func resetJobSettingsToDefaults() {
+        // Film description — what sheet this is.
+        copies = 1
+        // "Match the viewer" is not a preference the reader set on the last
+        // film — it is the launcher saying this film mirrors the grid on
+        // screen, and ``viewerLayout`` is that grid. Clearing the mode while
+        // the grid stands would throw away the arrangement the film was opened
+        // *for*. With no grid there is nothing to match, so it falls back.
+        if viewerLayout == nil {
+            layoutMode = .automatic
+        }
+        layoutOption = .layout2x2
+        templatePreset = .grid
+        customLayoutText = "ROW\\1,2"
+        filmSize = .size14InX17In
+        filmOrientation = .portrait
+        scalingMode = .fitToFilm
+        cellAlignment = .center
+
+        // Film session and image box.
+        priority = .medium
+        mediumType = .blueFilm
+        filmDestination = .magazine
+        magnificationType = .bilinear
+        trimOption = .no
+        borderDensity = "BLACK"
+        emptyImageDensity = "BLACK"
+        polarity = .normal
+        sessionLabel = ""
+        configurationInformation = ""
+        annotationTexts = []
+        annotationDisplayFormatID = ""
+
+        // Rendering. The palette and the presentation LUT are the two that
+        // prompted this: both silently restyle every cell on the sheet.
+        //
+        // The palette goes through ``applyFilmPalette(_:)`` so the cells are
+        // carried back with it. Ordering matters — this runs before
+        // `resetCellToolsForNewFilm()`, which clears the cell presentations and
+        // then re-reads `filmPalette` to decide what the fresh film claims.
+        applyFilmPalette(nil)
+        presentationLUTShape = nil
+        colorMode = .grayscale
+        autoDetectColorMode = true
+        preservesSourceColor = true
+        bitDepth = 8
+        useViewerWindow = true
+        useViewerPresentation = true
+        useExplicitWindow = false
+        explicitWindowCenter = 40
+        explicitWindowWidth = 400
+        sendRawPixels = false
+
+        // Identification: what gets burned into the film's corners.
+        showPatientIdentification = true
+        burnDrawnAnnotations = true
+        identificationFields = [.birthDate, .institutionName]
+        identificationFontFamily = PrintAnnotationStyle.defaultFontFamily
+        identificationUsesCustomSize = false
+        identificationSizePercent = 3.5
+        identificationForeground = .automatic
+
+        // Execution guards. Not the printer's connection settings — these say
+        // how carefully to approach a job, which is a per-film decision.
+        checkStatusBeforePrinting = true
+        verifyBeforePrinting = false
+        dryRun = false
+
+        // A previous visit's status reading describes a query made then, and
+        // the message beside it names an action nobody on this film took.
+        printerStatus = nil
+        printerQueryMessage = nil
+
+        // Colour detection is a cache keyed by file path, and the paths on the
+        // next film may not be these. Re-read on demand.
+        sourceIsColorByPath = [:]
     }
 
     /// Puts the preview's tools and locks back to how the screen opens.

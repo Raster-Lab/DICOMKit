@@ -144,12 +144,23 @@ struct PatientIdentificationOverlayView: View {
         // A job that states its own caption size states it as a fraction of the
         // picture's height, exactly as the burner reads it — so the preview
         // applies it to the cell the same way and the two stay one size.
-        if let fraction = style.sizeFraction {
+        //
+        // `resolvedSizeFraction`, not `sizeFraction`: the single-image taper is
+        // part of the size the film will carry, and reading the untapered
+        // fraction here would put the preview back out of step with the burner
+        // on exactly the layout the taper exists for.
+        if let fraction = style.resolvedSizeFraction {
             return max(cellSize.height * CGFloat(fraction), minimumSize)
         }
+        // The same taper the burner applies to the automatic size on a sheet cut
+        // into one cell — see ``PrintAnnotationStyle/singleImageFilm``. Applied
+        // before the floor, as there, so a tapered caption stops at the floor
+        // rather than below it.
+        let factor = style.singleImageFilm
+            ? CGFloat(PrintAnnotationStyle.singleImageFactor) : 1
         let byHeight = cellSize.height * heightFraction
         let byWidth = cellSize.width * widthFraction
-        return max(min(byHeight, byWidth), minimumSize)
+        return max(min(byHeight, byWidth) * factor, minimumSize)
     }
 
     /// The cell's type size, shrunk as one block until the widest line fits

@@ -39,6 +39,14 @@ public enum PrintScreenPresentation: Sendable {
     case sheet
     /// A window of its own, beside the viewer.
     case window
+    /// In the viewer's own column, in place of the images.
+    ///
+    /// The shell hands the print screen the whole centre panel and takes it
+    /// back when the film is printed or put away — there is no presentation to
+    /// lower, so an embedded screen closes through `onClose` rather than
+    /// `dismiss()`. Sized like a window: the panel is whatever the reader made
+    /// it, and only the floor the options band needs is imposed.
+    case embedded
 }
 
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
@@ -85,19 +93,37 @@ public struct PrintSettingsView: View {
     /// the same size as the screen behind it. Unused when it *is* a window.
     private let parentSize: CGSize?
 
-    /// Whether this is a sheet over the viewer or a window of its own — which
-    /// decides only how the screen is sized; the contents are the same either
-    /// way, and `dismiss()` closes whichever it is.
+    /// Whether this is a sheet over the viewer, a window of its own, or the
+    /// viewer's centre panel — which decides how the screen is sized and how
+    /// it closes; the contents are the same every way.
     private let presentation: PrintScreenPresentation
+
+    /// How an embedded screen is put away. A sheet or a window has a
+    /// presentation for `dismiss()` to lower; a screen sitting in the shell's
+    /// own panel does not, so the shell hands in the way back instead — see
+    /// ``close()``.
+    private let onClose: (() -> Void)?
 
     public init(
         viewModel: PrintViewModel,
         parentSize: CGSize? = nil,
-        presentation: PrintScreenPresentation = .sheet
+        presentation: PrintScreenPresentation = .sheet,
+        onClose: (() -> Void)? = nil
     ) {
         self.viewModel = viewModel
         self.parentSize = parentSize
         self.presentation = presentation
+        self.onClose = onClose
+    }
+
+    /// Puts the screen away, however it is on screen: through the shell's
+    /// hand-back when embedded, through `dismiss()` when presented.
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     public var body: some View {
@@ -292,7 +318,7 @@ public struct PrintSettingsView: View {
     private var actions: some View {
         switch viewModel.phase {
         case .configuring:
-            Button("Cancel") { dismiss() }
+            Button("Cancel") { close() }
                 .keyboardShortcut(.cancelAction)
             Button(viewModel.dryRun ? "Dry Run" : "Print") {
                 viewModel.print()
@@ -305,14 +331,14 @@ public struct PrintSettingsView: View {
             // A queued job runs whether or not this sheet is open, so closing is
             // not the same as cancelling and must not be the only way out.
             if viewModel.isWaitingOnQueue {
-                Button("Close") { dismiss() }
+                Button("Close") { close() }
                     .keyboardShortcut(.cancelAction)
                     .buttonStyle(.borderedProminent)
                     .help("Leave the job in the queue and close this window")
             }
         case .finished:
             Button("Print Again") { viewModel.reset() }
-            Button("Done") { dismiss() }
+            Button("Done") { close() }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
         }
@@ -1019,7 +1045,7 @@ public struct PrintSettingsView: View {
         let selected = viewModel.selectedAnnotation
 
         VStack(alignment: .leading, spacing: 8) {
-            if let selected, selected.annotation.kind == .text {
+            if let selected, selected.annotation.kind != .arrow {
                 stackedControl("Text") {
                     TextField("Type the annotation", text: annotationTextBinding(selected))
                         .focused($isAnnotationTextFocused)
@@ -1156,9 +1182,13 @@ public struct PrintSettingsView: View {
                 )
         }
         .buttonStyle(.plain)
+        .interactiveControl(cornerRadius: 12, horizontal: 3, vertical: 3)
         .accessibilityLabel(swatch.name)
         .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
-        .help(swatch.name)
+        // `.railTooltip`, not `.help`: a `.plain` button's tooltip lands on a
+        // wrapper the pointer never enters, so it stays silent until some
+        // bordered button elsewhere in the window has shown one.
+        .railTooltip(swatch.name)
     }
 
     private static let annotationSwatches: [(name: String, color: PrintOverlayColor)] = [
@@ -1713,6 +1743,19 @@ public struct PrintSettingsView: View {
                     stackedControl("Position in cell") {
                         alignmentGrid
                     }
+                    if viewModel.cellAlignment != .center {
+                        // Not silent: the live preview composes every cell
+                        // centred (its GPU transform has no anchor), so an
+                        // off-centre choice shows on the composed film — save,
+                        // emulator — and not on the sheet being edited here. A
+                        // real DICOM printer centres regardless.
+                        Text("Applies to saved and emulator film. The preview "
+                             + "shows cells centred, and a real DICOM printer "
+                             + "centres regardless.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 stackedControl("Magnification") {
                     Picker("Magnification", selection: $viewModel.magnificationType) {
@@ -1784,7 +1827,8 @@ public struct PrintSettingsView: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(viewModel.cellAlignment == alignment
                                          ? Color.accentColor : Color.secondary)
-                        .help(alignment.displayName)
+                        .interactiveControl(cornerRadius: 5, horizontal: 1, vertical: 1)
+                        .railTooltip(alignment.displayName)
                         .accessibilityLabel(alignment.displayName)
                     }
                 }
@@ -1871,11 +1915,14 @@ public struct PrintSettingsView: View {
                 stackedControl("Grayscale bit depth") {
                     Picker("Grayscale bit depth", selection: $viewModel.bitDepth) {
                         ForEach(PrintOptionCatalog.bitDepths, id: \.self) { depth in
-                            Text("\(depth)-bit").tag(depth)
+                            Text(PrintOptionCatalog.bitDepthLabel(depth)).tag(depth)
                         }
                     }
                     .labelsHidden()
                     .disabled(viewModel.sendRawPixels)
+                    .help("PS3.3 Table C.13-3 allows Bits Stored of 8 or 12 on the "
+                        + "Basic Grayscale Image Box. 12-bit shows smoother gradients "
+                        + "on film, but only where the printer supports it.")
                 }
 
                 stackedControl("Colour palette") {
@@ -1936,6 +1983,16 @@ public struct PrintSettingsView: View {
                         }
                     }
                     .labelsHidden()
+                }
+
+                // What the rendered inverse will visibly not do — a colour cell
+                // keeping its polarity, or a raw job it cannot touch at all —
+                // said here rather than discovered on the film.
+                if let notice = viewModel.presentationLUTNotice {
+                    Label(notice, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 savedPresentationStateControls
@@ -2035,7 +2092,10 @@ private struct PrintScreenSizing: ViewModifier {
         switch presentation {
         case .sheet:
             content.frame(width: sheetSize.width, height: sheetSize.height)
-        case .window:
+        case .window, .embedded:
+            // A window is sized by the user; an embedded screen by the panel
+            // it sits in. Either way only the floor is imposed — in the
+            // embedded case it flows up into the shell window's minimum size.
             content.frame(
                 minWidth: PrintSettingsView.minimumWidth,
                 minHeight: PrintSettingsView.minimumHeight)

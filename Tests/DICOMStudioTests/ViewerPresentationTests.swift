@@ -251,6 +251,70 @@ struct ViewerPresentationTests {
         #expect(abs(region.height - upright.height) <= 1)
     }
 
+    // MARK: - Feeding a turned cell's corners
+
+    @Test("A freely turned cell samples wider than it draws, so its corners have pixels")
+    func testTurnedCellSamplesTheSweptBox() throws {
+        // The rectangle the reader composed: 250 pixels at 4× zoom, turned 45°.
+        let presentation = square(zoom: 4.0, rotationDegrees: 45)
+        let drawn = try #require(
+            presentation.visibleRegion(imageWidth: 1000, imageHeight: 1000))
+
+        // The rectangle to read from. Turned 45°, a 250-square sweeps a box
+        // 250·(cos45+sin45) ≈ 353.6 on a side, and the frame is big enough to
+        // supply all of it.
+        let sampled = presentation.regionCoveringTurnedCell(
+            drawn, imageWidth: 1000, imageHeight: 1000)
+        #expect(abs(Double(sampled.width) - 353.6) <= 2)
+        #expect(abs(Double(sampled.height) - 353.6) <= 2)
+
+        // Concentric with what is drawn: the growth is margin on every side, so
+        // the anatomy does not move when the corners are fed.
+        let drawnCentreX = Double(drawn.x) + Double(drawn.width) / 2
+        let sampledCentreX = Double(sampled.x) + Double(sampled.width) / 2
+        #expect(abs(drawnCentreX - sampledCentreX) <= 1)
+
+        // And the drawn rectangle is unchanged — this is the whole point. The
+        // scale a free angle delivers is the scale it delivered before, so the
+        // rotate tool still does not resize the anatomy.
+        #expect(abs(drawn.width - 250) <= 1)
+    }
+
+    @Test("Upright and quarter-turned cells sample exactly what they draw")
+    func testSquareCellsAreNotGrown() throws {
+        for angle in [0.0, 90, 180, 270] {
+            let presentation = square(zoom: 4.0, rotationDegrees: angle)
+            let drawn = try #require(
+                presentation.visibleRegion(imageWidth: 1000, imageHeight: 1000))
+            #expect(
+                presentation.regionCoveringTurnedCell(
+                    drawn, imageWidth: 1000, imageHeight: 1000) == drawn,
+                "a \(angle)° cell covers itself; there is nothing to grow")
+        }
+    }
+
+    @Test("The growth stops at the frame's edge — there are no pixels beyond it")
+    func testGrowthIsHeldInsideTheFrame() throws {
+        // Panned hard into the top-left corner, so the swept box would run off
+        // two edges of the frame.
+        let presentation = ViewerPresentation(
+            zoom: 4.0, panX: 10_000, panY: 10_000,
+            viewportWidth: 500, viewportHeight: 500,
+            rotationDegrees: 30)
+        let drawn = try #require(
+            presentation.visibleRegion(imageWidth: 1000, imageHeight: 1000))
+        let sampled = presentation.regionCoveringTurnedCell(
+            drawn, imageWidth: 1000, imageHeight: 1000)
+
+        #expect(sampled.x >= 0)
+        #expect(sampled.y >= 0)
+        #expect(sampled.x + sampled.width <= 1000)
+        #expect(sampled.y + sampled.height <= 1000)
+        // Still at least what is drawn: growing must never take pixels away.
+        #expect(sampled.width >= drawn.width)
+        #expect(sampled.height >= drawn.height)
+    }
+
     // MARK: - Pan limits
 
     @Test("A fitted image has nothing hidden, so it cannot be panned")

@@ -100,8 +100,16 @@ final class ViewerPresentationStateBridgeTests: XCTestCase {
 
     // MARK: - Spatial transformation
 
-    func test_capture_omitsTransformationForUntouchedView() {
-        XCTAssertNil(captured(ViewerPresentation()).spatialTransformation)
+    /// An untouched view states its orientation rather than omitting it.
+    ///
+    /// Changed deliberately from omitting it: a saved view has to be able to
+    /// say "upright", because applying it to an image the reader has since
+    /// turned must put that image back. Silence could not say that — see
+    /// ``test_capture_statesAnUprightOrientationExplicitly``.
+    func test_capture_statesIdentityTransformationForUntouchedView() {
+        let result = captured(ViewerPresentation())
+        XCTAssertEqual(result.spatialTransformation?.rotation, 0)
+        XCTAssertEqual(result.spatialTransformation?.horizontalFlip, false)
     }
 
     func test_capture_recordsQuarterTurn() {
@@ -136,6 +144,32 @@ final class ViewerPresentationStateBridgeTests: XCTestCase {
     func test_roundTrip_preservesRotation() {
         let result = restored(ViewerPresentation(rotationDegrees: 270))
         XCTAssertEqual(result.rotationDegrees, 270)
+    }
+
+    /// Every quarter turn, not just the ones that happen to be non-zero.
+    ///
+    /// A full turn normalises to 0°, which is the same orientation the image
+    /// started in — so it has to round-trip as 0°, not as "no rotation stated".
+    func test_roundTrip_preservesEveryQuarterTurn() {
+        for degrees in [0.0, 90, 180, 270, 360] {
+            let result = restored(ViewerPresentation(rotationDegrees: degrees))
+            let expected = ViewerPresentation.normalized(degrees)
+            XCTAssertEqual(
+                result.rotationDegrees, expected,
+                "\(degrees)° must come back as \(expected)°")
+        }
+    }
+
+    /// An upright view is a statement, not an absence of one.
+    ///
+    /// This is what a saved view of an unrotated image has to do to an image
+    /// the reader has since turned: put it back upright. A capture that writes
+    /// no Spatial Transformation cannot say that.
+    func test_capture_statesAnUprightOrientationExplicitly() {
+        let result = captured(ViewerPresentation(rotationDegrees: 360))
+        XCTAssertEqual(
+            result.spatialTransformation?.rotation, 0,
+            "a full turn is upright, and upright is a rotation worth stating")
     }
 
     // MARK: - Inversion

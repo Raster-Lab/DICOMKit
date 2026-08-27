@@ -50,20 +50,36 @@ final class AnnotationTextureBuilderTests: XCTestCase {
         let texture = try XCTUnwrap(AnnotationTextureBuilder.build(
             overlays: [], width: 16, height: 16, device: device))
 
-        var bytes = [UInt8](repeating: 0, count: 16 * 16 * 4)
+        // Read back at the texture's own size, which may exceed the frame's.
+        let tw = texture.width, th = texture.height
+        var bytes = [UInt8](repeating: 0, count: tw * th * 4)
         bytes.withUnsafeMutableBytes { buffer in
-            texture.texture.getBytes(buffer.baseAddress!, bytesPerRow: 16 * 4,
-                                     from: MTLRegionMake2D(0, 0, 16, 16), mipmapLevel: 0)
+            texture.texture.getBytes(buffer.baseAddress!, bytesPerRow: tw * 4,
+                                     from: MTLRegionMake2D(0, 0, tw, th), mipmapLevel: 0)
         }
         XCTAssertTrue(bytes.allSatisfy { $0 == 0 }, "nothing drawn must mean nothing but zero bytes")
     }
 
-    func testTextureDimensionsMatchTheRequestedFrameSize() throws {
+    /// The overlay is addressed in the same 0...1 texture coordinates as the
+    /// frame, so its canvas need not be the frame's pixel grid — and for a
+    /// small frame it deliberately is not: type rasterized at frame resolution
+    /// arrives on screen magnified by whatever the viewer's zoom is, so the
+    /// canvas is a whole multiple of the grid (see
+    /// ``AnnotationTextureBuilder/supersamplingFactor(width:height:)``).
+    ///
+    /// What must hold is that it is the *same* multiple on both axes: an
+    /// overlay stretched on one axis would slide its annotations off the
+    /// anatomy they were drawn on.
+    func testTextureDimensionsAreAWholeMultipleOfTheFrameGrid() throws {
         let device = try requireDevice()
         let texture = try XCTUnwrap(AnnotationTextureBuilder.build(
             overlays: [], width: 37, height: 23, device: device))
-        XCTAssertEqual(texture.width, 37)
-        XCTAssertEqual(texture.height, 23)
+
+        let factor = AnnotationTextureBuilder.supersamplingFactor(width: 37, height: 23)
+        XCTAssertEqual(texture.width, 37 * factor)
+        XCTAssertEqual(texture.height, 23 * factor)
+        XCTAssertEqual(texture.width % 37, 0, "the canvas must be a whole multiple of the grid")
+        XCTAssertEqual(texture.height % 23, 0, "the canvas must be a whole multiple of the grid")
     }
 
     /// The texture's opaque pixels — where alpha is non-zero — land at the
@@ -86,24 +102,36 @@ final class AnnotationTextureBuilderTests: XCTestCase {
 
         let texture = try XCTUnwrap(AnnotationTextureBuilder.build(
             overlays: [overlay], width: width, height: height, device: device))
-        var textureBytes = [UInt8](repeating: 0, count: width * height * 4)
+        // The texture's own grid, which is a multiple of the frame's — so the
+        // comparison below is made in normalized coordinates rather than in
+        // either grid's pixels.
+        let tw = texture.width, th = texture.height
+        var textureBytes = [UInt8](repeating: 0, count: tw * th * 4)
         textureBytes.withUnsafeMutableBytes { buffer in
-            texture.texture.getBytes(buffer.baseAddress!, bytesPerRow: width * 4,
-                                     from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+            texture.texture.getBytes(buffer.baseAddress!, bytesPerRow: tw * 4,
+                                     from: MTLRegionMake2D(0, 0, tw, th), mipmapLevel: 0)
         }
 
-        // The arrow's shaft crosses y = 0.5 — row 32, a horizontal band
-        // around the frame's centre — and must be drawn (opaque) in both
-        // outputs, while a corner far from the arrow must be undrawn in
-        // both.
+        /// Alpha at a 0...1 point on the overlay canvas.
+        func textureAlpha(atX x: Double, y: Double) -> UInt8 {
+            let column = min(tw - 1, max(0, Int(x * Double(tw))))
+            let row = min(th - 1, max(0, Int(y * Double(th))))
+            return textureBytes[(row * tw + column) * 4 + 3]
+        }
+
+        // The arrow's shaft crosses y = 0.5 — a horizontal band across the
+        // frame's centre — and must be drawn (opaque) in both outputs, while a
+        // corner far from the arrow must be undrawn in both.
         let midRow = height / 2
         let shaftBurned = burnedBytes[midRow * width + width / 2]
         XCTAssertNotEqual(shaftBurned, 0, "the burner must have drawn something on the shaft")
 
-        let shaftAlpha = textureBytes[(midRow * width + width / 2) * 4 + 3]
+        let shaftAlpha = textureAlpha(atX: 0.5, y: 0.5)
         XCTAssertNotEqual(shaftAlpha, 0, "the texture must carry the same mark, alpha non-zero on the shaft")
 
-        let cornerAlpha = textureBytes[(2 * width + 2) * 4 + 3]
+        // Far from the arrow in both grids: the same normalized corner the
+        // burner leaves black.
+        let cornerAlpha = textureAlpha(atX: 2.0 / Double(width), y: 2.0 / Double(height))
         XCTAssertEqual(cornerAlpha, 0, "a corner far from the arrow must be untouched")
     }
 
@@ -119,10 +147,11 @@ final class AnnotationTextureBuilderTests: XCTestCase {
 
         let texture = try XCTUnwrap(AnnotationTextureBuilder.build(
             overlays: [overlay], width: 32, height: 32, device: device))
-        var bytes = [UInt8](repeating: 0, count: 32 * 32 * 4)
+        let tw = texture.width, th = texture.height
+        var bytes = [UInt8](repeating: 0, count: tw * th * 4)
         bytes.withUnsafeMutableBytes { buffer in
-            texture.texture.getBytes(buffer.baseAddress!, bytesPerRow: 32 * 4,
-                                     from: MTLRegionMake2D(0, 0, 32, 32), mipmapLevel: 0)
+            texture.texture.getBytes(buffer.baseAddress!, bytesPerRow: tw * 4,
+                                     from: MTLRegionMake2D(0, 0, tw, th), mipmapLevel: 0)
         }
         XCTAssertTrue(bytes.allSatisfy { $0 == 0 }, "a blank text box must draw nothing in the texture either")
     }

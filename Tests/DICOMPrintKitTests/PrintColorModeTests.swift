@@ -209,11 +209,39 @@ final class PrintPreparationColorModeTests: XCTestCase {
         XCTAssertEqual(mode, .grayscale)
     }
 
-    /// A colour-mode job is unaffected either way.
-    func testColorRequestStaysColor() {
+    /// The explicit ask for greys wins even on a colour-mode job: the colour
+    /// mode is the printer's channel (which SOP class the wire negotiates),
+    /// while "print colour images as greys" is the reader's word on the
+    /// pixels — and a grey frame rides in a colour box without contradiction,
+    /// where colour in a job that promised greys is the bug this fixes.
+    func testExplicitGreysWinOverAColorRequest() {
         let mode: DICOMKit.PrintColorMode = PrintImagePreparer.preparationColorMode(
             request(colorMode: .color, preservesSourceColor: false),
             sourceDescriptor: descriptor(samplesPerPixel: 3, photometric: .rgb))
-        XCTAssertEqual(mode, .color)
+        XCTAssertEqual(mode, .grayscale)
+    }
+
+    /// The regression behind the switch looking dead: a film-wide palette used
+    /// to force the cell back to colour past an explicit ask for greys. The
+    /// palette now loses on colour sources — and still colourises monochrome
+    /// ones, where it is a deliberate act the toggle does not speak to.
+    func testExplicitGreysWinOverAPaletteOnAColorSource() {
+        var withPalette = request(preservesSourceColor: false)
+        withPalette.palette = .hotIron
+        let colorSource = descriptor(samplesPerPixel: 3, photometric: .rgb)
+        XCTAssertEqual(
+            PrintImagePreparer.preparationColorMode(
+                withPalette, sourceDescriptor: colorSource),
+            .grayscale)
+        XCTAssertNil(PrintImagePreparer.preparationPalette(
+            withPalette, sourceDescriptor: colorSource))
+
+        let monochromeSource = descriptor(samplesPerPixel: 1, photometric: .monochrome2)
+        XCTAssertEqual(
+            PrintImagePreparer.preparationColorMode(
+                withPalette, sourceDescriptor: monochromeSource),
+            .color)
+        XCTAssertEqual(PrintImagePreparer.preparationPalette(
+            withPalette, sourceDescriptor: monochromeSource), .hotIron)
     }
 }

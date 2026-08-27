@@ -33,6 +33,17 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
     /// The series' files, in instance order — the tile's navigation list.
     public let filePaths: [String]
 
+    /// Instance Number of each image, keyed by SOP Instance UID.
+    ///
+    /// Carried on the entry because presentation states name their images by
+    /// UID, as the IOD requires, and the pane has to say *which slice* a saved
+    /// view is on. The library indexes the number at import; recovering it any
+    /// other way would mean reading the series' files back.
+    ///
+    /// An image the study does not number is simply absent, which the PR list
+    /// reports as a series without a slice rather than an invented position.
+    public let instanceNumbersBySOPUID: [String: Int]
+
     /// Total frames across the series, which is what a cine tile steps through.
     public let frameCount: Int
 
@@ -52,7 +63,8 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
         orientation: String? = nil,
         filePaths: [String],
         frameCount: Int,
-        contentKind: ViewerContentKind = .image
+        contentKind: ViewerContentKind = .image,
+        instanceNumbersBySOPUID: [String: Int] = [:]
     ) {
         self.seriesInstanceUID = seriesInstanceUID
         self.title = title
@@ -62,6 +74,7 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
         self.filePaths = filePaths
         self.frameCount = frameCount
         self.contentKind = contentKind
+        self.instanceNumbersBySOPUID = instanceNumbersBySOPUID
     }
 
     /// Objects in the series.

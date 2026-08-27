@@ -26,7 +26,20 @@ struct FilmCellAnnotationLayer: View {
     let itemID: String
 
     /// Where the image is actually drawn inside the cell, in cell points.
+    ///
+    /// The *arranged* picture's rectangle — the one the shader draws, sides
+    /// already swapped by a quarter turn. Annotations are stored against the
+    /// unarranged image, so `orientation` below is what gets them from one to
+    /// the other.
     let imageRect: CGRect
+
+    /// How this cell is turned, mirrored and cropped.
+    ///
+    /// Without it the layer laid an image-space fraction straight onto the
+    /// arranged rectangle, so every annotation on a turned or mirrored cell sat
+    /// somewhere other than where it was drawn — and somewhere other than where
+    /// the film burns it, which is the one thing this preview exists to promise.
+    let orientation: PrintOverlayOrientation
 
     /// Whether this cell accepts clicks. A cell only takes annotation edits while
     /// a drawing tool is active or something on it is already selected — otherwise
@@ -55,6 +68,7 @@ struct FilmCellAnnotationLayer: View {
                 switch annotation.kind {
                 case .text:  textAnnotation(annotation)
                 case .arrow: arrowAnnotation(annotation)
+                case .annotation: combinedAnnotation(annotation)
                 }
             }
         }
@@ -103,6 +117,14 @@ struct FilmCellAnnotationLayer: View {
                                       style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
                 )
                 .contentShape(Rectangle())
+                // Level, whatever the cell is doing — the same cancellation the
+                // burner applies to the film, so the preview reads as the film
+                // will. Rotated about the anchor (`.topLeading`), which is where
+                // the caret sat and where the burner sets the type from.
+                .rotationEffect(.degrees(orientation.textAngleDegrees),
+                                anchor: .topLeading)
+                .scaleEffect(x: orientation.textIsMirrored ? -1 : 1, y: 1,
+                             anchor: .topLeading)
                 .offset(x: position.x, y: position.y)
                 .gesture(moveGesture(annotation))
                 .onTapGesture(count: 2) {
@@ -221,6 +243,58 @@ struct FilmCellAnnotationLayer: View {
         .accessibilityLabel("Arrow annotation")
     }
 
+    // MARK: - Combined annotation (label + arrow, after Weasis)
+
+    /// The viewer's merged kind on a film cell: the label exactly as the text
+    /// kind renders it, and the arrow from the label's border to the anchor —
+    /// tail clipped by the same geometry the burner clips with, so the preview
+    /// shows what the film gets.
+    @ViewBuilder
+    private func combinedAnnotation(_ annotation: PrintOverlayAnnotation) -> some View {
+        let isSelected = viewModel.selectedAnnotationID == annotation.id
+        let tailNorm = PrintAnnotationLayout.leaderTail(
+            for: annotation,
+            imageWidth: Double(imageRect.width),
+            imageHeight: Double(imageRect.height))
+
+        ZStack(alignment: .topLeading) {
+            if let tailNorm {
+                let tail = point(tailNorm)
+                let head = point(annotation.end)
+                let metrics = ArrowMetrics(
+                    scale: annotation.scale, imageHeight: imageRect.height,
+                    tail: tail, head: head)
+
+                ArrowShape(metrics: metrics)
+                    .stroke(halo(annotation.color), lineWidth: metrics.haloWidth)
+                ArrowShape(metrics: metrics)
+                    .fill(color(annotation.color))
+                    .contentShape(ArrowShape(metrics: metrics).stroke(lineWidth: Self.grabWidth))
+                    .gesture(moveGesture(annotation))
+                    .onTapGesture { viewModel.selectAnnotation(annotation.id) }
+
+                if isSelected {
+                    handle(at: head) { newPoint in
+                        viewModel.moveArrowEnd(annotation.id, forItemID: itemID,
+                                               isHead: true, to: newPoint)
+                    }
+                }
+            }
+
+            textAnnotation(annotation)
+
+            // The label's own handle: the words move, the anchor stays put.
+            if isSelected, editingTextID != annotation.id, annotation.hasArrow {
+                handle(at: point(annotation.start)) { newPoint in
+                    viewModel.moveArrowEnd(annotation.id, forItemID: itemID,
+                                           isHead: false, to: newPoint)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Annotation: \(annotation.text)")
+    }
+
     /// A draggable end of a selected arrow.
     ///
     /// A ring, not a disc, and small: a handle is chrome for grabbing the arrow
@@ -259,27 +333,35 @@ struct FilmCellAnnotationLayer: View {
                 let dy = value.translation.height - dragAnchor.height
                 dragAnchor = value.translation
                 guard imageRect.width > 0, imageRect.height > 0 else { return }
+                // Through the arrangement as a delta: dragging right on a cell
+                // turned a quarter must move the annotation the way the hand
+                // went, which on the image beneath is a different axis.
+                let moved = orientation.imageDelta(
+                    dx: Double(dx) / imageRect.width,
+                    dy: Double(dy) / imageRect.height)
                 viewModel.moveAnnotation(annotation.id, forItemID: itemID,
-                                         dx: Double(dx) / imageRect.width,
-                                         dy: Double(dy) / imageRect.height)
+                                         dx: moved.dx, dy: moved.dy)
             }
             .onEnded { _ in dragAnchor = .zero }
     }
 
     // MARK: - Coordinates
 
-    /// A normalized point in cell points.
+    /// An image-space annotation point, in cell points — through the cell's
+    /// arrangement, so it lands where the film will burn it.
     private func point(_ overlayPoint: PrintOverlayPoint) -> CGPoint {
-        CGPoint(x: imageRect.minX + overlayPoint.x * imageRect.width,
-                y: imageRect.minY + overlayPoint.y * imageRect.height)
+        let arranged = orientation.point(overlayPoint)
+        return CGPoint(x: imageRect.minX + arranged.x * imageRect.width,
+                       y: imageRect.minY + arranged.y * imageRect.height)
     }
 
-    /// A point in cell points, back to a fraction of the image.
+    /// A point in cell points, back to a fraction of the image — the way a
+    /// click on a turned cell becomes an annotation on the anatomy under it.
     private func normalized(_ location: CGPoint) -> PrintOverlayPoint {
         guard imageRect.width > 0, imageRect.height > 0 else {
             return PrintOverlayPoint(x: 0, y: 0)
         }
-        return PrintOverlayPoint(
+        return orientation.imagePoint(
             x: Double((location.x - imageRect.minX) / imageRect.width),
             y: Double((location.y - imageRect.minY) / imageRect.height))
     }

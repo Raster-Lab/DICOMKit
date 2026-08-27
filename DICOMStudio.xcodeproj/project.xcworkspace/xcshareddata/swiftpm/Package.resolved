@@ -1,5 +1,5 @@
 {
-  "originHash" : "0ca4630ee84493846d355a808d2cecfa1b460d2fab8d0c5c8ad7db7289cedad6",
+  "originHash" : "37162897e0403a6177c6be890a2f32787ee2f2450673232072b3baedf6cca6ff",
   "pins" : [
     {
       "identity" : "compressionfamily",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Raster-Lab/J2KSwift.git",
       "state" : {
-        "revision" : "b1949084eeedaafb40bff8f1745bbab19e4bc36d",
-        "version" : "11.0.2"
+        "revision" : "768f6b53499b806fd0304962056e1fc7833f12e5",
+        "version" : "11.0.3"
       }
     },
     {

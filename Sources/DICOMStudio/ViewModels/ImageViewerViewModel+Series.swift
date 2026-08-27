@@ -26,9 +26,16 @@ extension ImageViewerViewModel {
         // see `ViewerSeriesCatalog.isOrderedBefore`.
         studySeries = entries.sorted(by: ViewerSeriesCatalog.isOrderedBefore)
         studyInstanceUID = studyUID
+        // The pane's saved-view badges, refreshed here because this is where
+        // the Study Instance UID the store files views under arrives.
+        refreshSavedViewSeriesUIDs()
         if let current = seriesEntry(containing: filePath) {
             currentSeriesUID = current.seriesInstanceUID
             visitedSeriesUIDs.insert(current.seriesInstanceUID)
+            // The image loaded before the study did, so its saved views could
+            // not be looked up then: the store files them under the Study
+            // Instance UID that has only just arrived.
+            offerSavedViewsIfNeeded()
             return
         }
         // Nothing of this study is on screen yet — open the pane on its first
@@ -55,6 +62,12 @@ extension ImageViewerViewModel {
         studySeries = []
         studyInstanceUID = nil
         currentSeriesUID = nil
+        savedViewSeriesUIDs = []
+        savedViewReferencesBySeries = [:]
+        // A prompt left standing belongs to the study being left, as do the
+        // readings its images were being held at.
+        savedViewPrompt = nil
+        appliedViewByImage = [:]
         visitedSeriesUIDs = []
         waveform = nil
         nonImageContent = nil
@@ -75,6 +88,11 @@ extension ImageViewerViewModel {
         // back to where it starts — out of the way until this study's first
         // image is marked.
         isPrintTrayVisible = false
+        // The tool arrangements of every series read, dropped with the study
+        // that owns them — cleared last, so the resets above cannot re-mark
+        // the series as touched.
+        toolStateBySeries = [:]
+        detachFromToolCache()
     }
 
     /// Hangs the first series of the study when the viewer has nothing to show.
@@ -123,9 +141,12 @@ extension ImageViewerViewModel {
 
     /// Hangs a series in a tile.
     ///
-    /// The tile starts at the series' first instance with a clean arrangement:
-    /// a zoom and pan chosen for a different series would be meaningless here,
-    /// and silently carrying it over would print a crop the user never composed.
+    /// The tile starts at the series' first instance, with *this series'*
+    /// remembered arrangement if the reader has one, and a clean arrangement
+    /// otherwise: a zoom and pan chosen for a different series would be
+    /// meaningless here, and silently carrying one over would print a crop the
+    /// user never composed — but the arrangement this series was left at is
+    /// exactly what coming back to it means. See ``SeriesToolState``.
     ///
     /// - Returns: `true` when the series was hung.
     @discardableResult
@@ -147,6 +168,10 @@ extension ImageViewerViewModel {
         cell.seriesUID = entry.seriesInstanceUID
         cell.seriesFiles = entry.filePaths
         cell.fileIndex = 0
+        // The series' cached arrangement, seeded into the tile so
+        // ``restoreArrangement(of:)`` puts it on screen rather than wiping the
+        // restore the file load just performed.
+        seedCellFromToolCache(&cell, seriesUID: entry.seriesInstanceUID)
         // The tile keeps the size it already occupies on screen.
         if cells.indices.contains(index) {
             cell.viewportWidth = cells[index].viewportWidth
@@ -168,6 +193,14 @@ extension ImageViewerViewModel {
     }
 
     /// Replaces the whole viewer with a series, for the 1×1 case.
+    ///
+    /// No reset of its own: the load path resets every tool to the file's
+    /// picture and then restores this series' cached arrangement over it —
+    /// see ``SeriesToolState``. The `resetTransformations()` that used to sit
+    /// here ran *after* that restore, which is why coming back to a rotated
+    /// series showed it upright: it wiped the restored tools and, being a
+    /// reader-visible mutation, re-snapshotted the wiped state over the good
+    /// cache entry on the next depart.
     private func hangInViewer(_ entry: ViewerSeriesEntry, firstFile: String) -> Bool {
         loadSeries(
             files: entry.filePaths,
@@ -175,7 +208,6 @@ extension ImageViewerViewModel {
             securityScopedParent: seriesSecurityScopedParent)
         currentSeriesUID = entry.seriesInstanceUID
         visitedSeriesUIDs.insert(entry.seriesInstanceUID)
-        resetTransformations()
         return true
     }
 

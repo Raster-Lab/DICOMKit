@@ -343,13 +343,9 @@ struct FilmPreviewView: View {
                 }
                 .disabled(viewModel.focusedItemID == nil)
 
-                // Colour is a choice among many rather than a switch, so it is
-                // a menu where Invert is a button. Lit when the focused cell is
-                // actually coloured — the same question its neighbour answers:
-                // "is this picture being read that way".
-                cellPaletteMenu
-
-                Self.railSeparator()
+                // Headed, not a bare rule: the five chips below say only what
+                // each lock holds, so the heading is what says they are locks.
+                Self.railGroupHeader("Lock")
 
                 // The locks. A closed one says this adjustment is held together
                 // across the cells; an open one says each cell keeps its own.
@@ -402,13 +398,16 @@ struct FilmPreviewView: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
                             .strokeBorder(scopeActive ? Color.accentColor : Color.clear, lineWidth: 1))
+                    .contentShape(Rectangle())
                     .foregroundStyle(scopeActive ? Color.white : Color.secondary)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .frame(width: Self.railWidth - 8)
                 .disabled(!viewModel.isCellSyncActive)
-                .help(viewModel.isCellSyncActive
+                // Disabled until a lock is shut, which is precisely the state
+                // the second half of this string explains. See `railTooltip`.
+                .railTooltip(viewModel.isCellSyncActive
                       ? "How far a shut lock reaches — now: \(viewModel.cellSyncScope.title).  (S)\n\n"
                       + "Series keeps a locked adjustment to cells from the same series, "
                       + "so a film mixing two studies does not re-window both at once. "
@@ -449,35 +448,95 @@ struct FilmPreviewView: View {
                 }
                 .disabled(!viewModel.hasCellSelection && viewModel.focusedItemID == nil)
 
-                Self.railSeparator()
-
-                railButton(symbol: "arrow.counterclockwise", caption: "Cell",
-                           isOn: false,
-                           help: "Reset Cell — puts the focused cell back to the untouched "
-                           + "frame: the image's own window, no zoom, no pan, not "
-                           + "inverted.  (0)\n\n"
-                           + "Text and arrows drawn on it are left alone. To go back to the "
-                           + "window you had set in the viewer instead, right-click the cell "
-                           + "and choose Revert.") {
-                    viewModel.resetFocusedCell()
-                }
-                .disabled(viewModel.focusedItem.map { !viewModel.isCellEdited($0) } ?? true)
-
-                railButton(symbol: "arrow.counterclockwise.circle", caption: "All",
-                           isOn: false,
-                           help: "Reset All — puts every cell on every sheet back to the "
-                           + "untouched frame.  (\u{21E7}0)\n\n"
-                           + "The way out when a shut lock has carried one drag across the "
-                           + "whole film. Job settings — printer, film size, layout — and "
-                           + "anything drawn are left alone.") {
-                    viewModel.resetAllCells()
-                }
-                .disabled(!viewModel.hasEditedCells)
             }
             .padding(.vertical, 8)
         }
-        .frame(width: Self.railWidth)
         .scrollBounceBehavior(.basedOnSize)
+        // The undo group is pinned below the scroll rather than carried along at
+        // the end of it. It was the last thing in a rail of nineteen chips, so on
+        // any window short of full height it sat below the fold: a reader looking
+        // for the way back out of an arrangement found the rail's *tools*, which
+        // is the opposite of reassuring. What undoes the work is the one group
+        // that must never need scrolling to.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 10) {
+                // Headed for the same reason the locks are: the four chips
+                // below distinguish themselves by scope — this cell or all of
+                // them — and the heading carries the word they would otherwise
+                // each repeat.
+                Self.railGroupHeader("Undo")
+                undoRail
+            }
+            .padding(.bottom, 8)
+            .background(.bar)
+        }
+        .frame(width: Self.railWidth)
+    }
+
+    /// The way back out: revert to what the viewer showed, or reset to the
+    /// untouched frame — each in both scopes, this cell and the whole film.
+    ///
+    /// The unscoped chip is the focused cell, and only the sheet-wide one says
+    /// "All". Captioning the pair "Revert Cell" / "Revert All" made "Cell" and
+    /// "All" the words the eye had to compare, which are equally short and
+    /// equally unremarkable; leaving the common case bare makes "All" the only
+    /// mark in the group, which is the thing worth being sure about before
+    /// clicking. The tooltips name both scopes in full.
+    ///
+    /// Revert first, and it is the one a reader usually wants. The print screen
+    /// is where a film is *composed*, and the thing that goes wrong is the
+    /// composing: a lock shut by accident carries one drag across every cell.
+    /// Revert takes back exactly that, leaving the window and arrangement the
+    /// reader set up in the viewer — which they did not do here, and did not ask
+    /// to lose. Reset goes further and throws that away too, which is right only
+    /// when the viewer's own arrangement is what is unwanted.
+    @ViewBuilder
+    private var undoRail: some View {
+        railButton(symbol: "arrow.uturn.backward", caption: "Revert",
+                   isOn: false,
+                   help: "Revert Cell — puts the focused cell back to the image as it "
+                   + "came from the viewer: the window, zoom, rotation and flip you "
+                   + "had set on screen.\n\n"
+                   + "Takes back only what was done here on the print screen. Text and "
+                   + "arrows drawn on the image are left alone. To go further and drop "
+                   + "the viewer's arrangement as well, use Reset Cell.") {
+            viewModel.revertFocusedCell()
+        }
+        .disabled(viewModel.focusedItemID.map { !viewModel.isCellAdjusted($0) } ?? true)
+
+        railButton(symbol: "arrow.uturn.backward.circle", caption: "Revert All",
+                   isOn: false,
+                   help: "Revert All — puts every cell on every sheet back to the images "
+                   + "as they came from the viewer.\n\n"
+                   + "The way out when a shut lock has carried one drag across the whole "
+                   + "film. Job settings — printer, film size, layout — and anything "
+                   + "drawn are left alone.") {
+            viewModel.revertAllCells()
+        }
+        .disabled(!viewModel.hasAdjustedCells)
+
+        railButton(symbol: "arrow.counterclockwise", caption: "Reset",
+                   isOn: false,
+                   help: "Reset Cell — puts the focused cell back to the untouched "
+                   + "frame: the image's own window, no zoom, no pan, not "
+                   + "inverted.  (0)\n\n"
+                   + "Text and arrows drawn on it are left alone. To keep the window and "
+                   + "arrangement you had set in the viewer and undo only what was done "
+                   + "here, use Revert Cell.") {
+            viewModel.resetFocusedCell()
+        }
+        .disabled(viewModel.focusedItem.map { !viewModel.isCellEdited($0) } ?? true)
+
+        railButton(symbol: "arrow.counterclockwise.circle", caption: "Reset All",
+                   isOn: false,
+                   help: "Reset All — puts every cell on every sheet back to the "
+                   + "untouched frame, dropping the viewer's window and arrangement "
+                   + "too.  (\u{21E7}0)\n\n"
+                   + "Job settings — printer, film size, layout — and anything drawn are "
+                   + "left alone.") {
+            viewModel.resetAllCells()
+        }
+        .disabled(!viewModel.hasEditedCells)
     }
 
     /// One rail button: a glyph, a word under it, and a tinted background when
@@ -490,17 +549,17 @@ struct FilmPreviewView: View {
             VStack(spacing: 3) {
                 Image(systemName: symbol)
                     .font(.system(size: 17, weight: isOn ? .semibold : .regular))
-                // Up to two lines: the lock chips caption themselves "Lock"
-                // over the noun, and a one-line limit would clip the noun —
-                // the half that says which lock. The tool chips are one word
-                // and are unaffected. Tight line spacing keeps a two-line
-                // caption inside the same 44-point chip as a one-line one.
+                // Up to two lines, for the few captions that need a second —
+                // the rest are one word and are unaffected. The leading used to
+                // be set to -2 to fit "Lock" over a noun inside the 44-point
+                // chip, which crushed the two lines into each other; now that
+                // the repeated word lives on the group heading instead, the
+                // captions that remain fit at natural leading.
                 Text(caption)
                     .font(.system(size: 10, weight: isOn ? .semibold : .regular))
                     .lineLimit(2)
-                    .lineSpacing(-2)
                     .multilineTextAlignment(.center)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.75)
             }
             .frame(width: Self.railWidth - 8, height: 44)
             // The armed tool is filled, not merely tinted. A wash of accent
@@ -520,111 +579,12 @@ struct FilmPreviewView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(isOn ? Color.white : Color.secondary)
-        .help(help)
+        // Outside the chip's own armed fill, so hover reads on an armed chip
+        // as well as an idle one.
+        .interactiveControl(cornerRadius: 7, horizontal: 2, vertical: 2)
+        .railTooltip(help)
         .accessibilityLabel(help)
         .accessibilityAddTraits(isOn ? [.isSelected] : [])
-    }
-
-    /// The palette menu's contents, split out from the rail button so the type
-    /// checker is handed two small expressions rather than one large one.
-    @ViewBuilder
-    private func paletteMenuItems(
-        current: DICOMCore.PseudoColorPalette?
-    ) -> some View {
-        // "Film default" is the absence of a choice, which is a different thing
-        // from choosing grey — a cell set to Grayscale stays grey when the film
-        // is coloured, and this one does not.
-        Button {
-            setFocusedCellPalette(nil)
-        } label: {
-            if current == nil {
-                Label(filmDefaultTitle, systemImage: "checkmark")
-            } else {
-                Text(filmDefaultTitle)
-            }
-        }
-        Divider()
-        ForEach(DICOMCore.PseudoColorPalette.catalog, id: \.group) { entry in
-            Section(entry.group.title) {
-                ForEach(entry.palettes, id: \.self) { palette in
-                    Button {
-                        setFocusedCellPalette(palette)
-                    } label: {
-                        if current == palette {
-                            Label(palette.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(palette.displayName)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// What the film's own palette is called, for the menu's first entry.
-    private var filmDefaultTitle: String {
-        guard let film = viewModel.filmPalette else { return "Film default (grayscale)" }
-        return "Film default (\(film.displayName))"
-    }
-
-    private func setFocusedCellPalette(_ palette: DICOMCore.PseudoColorPalette?) {
-        guard let id = viewModel.focusedItemID else { return }
-        viewModel.setCellPalette(palette, forItemID: id)
-    }
-
-    /// The focused cell's palette, as a menu on the rail.
-    ///
-    /// A menu rather than a button because colour is a choice among two dozen,
-    /// and rather than living only in the settings column because the settings
-    /// column speaks for the whole film: this is how one cell is coloured while
-    /// the rest stay grey, which is what a PET beside its CT actually needs.
-    @ViewBuilder
-    private var cellPaletteMenu: some View {
-        let focused = viewModel.focusedItem
-        let current = focused?.presentation?.palette
-        let isColoured = current.map { !$0.isGrayscale } ?? false
-
-        Menu {
-            paletteMenuItems(current: current)
-        } label: {
-            VStack(spacing: 2) {
-                Image(systemName: "paintpalette")
-                    .font(.system(size: 15, weight: .medium))
-                // "CLUT" — the Palette Color LUT the cell is shown through.
-                // Not "Colour": the film's own polarity under More is a LUT
-                // too (the Presentation LUT Shape), and the two get talked
-                // about together often enough that the caption has to say
-                // which one it is. The tooltip spells the abbreviation out.
-                Text("CLUT")
-                    .font(.system(size: 9))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .frame(width: Self.railWidth - 8, height: 44)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isColoured ? Color.accentColor : Color.clear))
-            .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .foregroundStyle(isColoured ? Color.white : Color.secondary)
-        .disabled(viewModel.focusedItemID == nil)
-        .help(focused == nil
-            ? "CLUT (Palette Color LUT) — shows one cell through a pseudo-colour "
-            + "palette. Click a cell first to choose which.\n\n"
-            + "For the whole film, use Colour palette under More."
-            : "CLUT (Palette Color LUT) — shows the focused cell through a "
-            + "pseudo-colour palette.\n\n"
-            + "Not the same LUT as the film's polarity under More: that one is "
-            + "the Presentation LUT Shape, which keeps the cell grey and only "
-            + "decides which end of the scale is black.\n\n"
-            + "Colour is baked into the pixels before they are sent: DICOM print "
-            + "has no way to name a palette to the printer, so a coloured cell "
-            + "prints at 8-bit RGB.\n\n"
-            + (viewModel.cellSync.contains(.palette)
-               ? "The Lock CLUT chip is shut, so the other cells take it too."
-               : "Acts on this cell alone — shut Lock CLUT to colour them together."))
     }
 
     /// A tool's tooltip: the gesture, what it changes, its key — and, last, how
@@ -696,11 +656,6 @@ struct FilmPreviewView: View {
                  + "started at. Flip is never carried — which side of the patient "
                  + "is which is a fact about the image, not a way of looking at "
                  + "the film."
-        case .palette:
-            what = "The palette travels as a value: the cells end up read through "
-                 + "the same CLUT. It is a Palette Color LUT — colour — and not "
-                 + "the film's Presentation LUT Shape, which is set once for the "
-                 + "whole sheet under More and only decides polarity."
         default:
             what = "Inverting one cell inverts the others."
         }
@@ -825,6 +780,39 @@ struct FilmPreviewView: View {
             .padding(.vertical, 2)
     }
 
+    /// A rule with the group's name on it.
+    ///
+    /// For the groups whose chips would otherwise each repeat the same word.
+    /// The locks are the case that forced it: five chips reading "Lock W/L",
+    /// "Lock Zoom+Pan", "Lock Rotate", "Lock Invert" spend their
+    /// wide first line on the word that is identical down the column and their
+    /// narrow second line on the noun that actually distinguishes them — so
+    /// "Zoom+Pan", the longest string in the rail, was the one being shrunk.
+    ///
+    /// Saying "Lock" once, as a heading, buys every chip its full width for the
+    /// noun. The prefix was there to stop the reader confusing the lock chips
+    /// with the tool chips a few points above (two saying "Invert", two saying
+    /// "W/L"); a heading over the group does that job better than a prefix on
+    /// each, because it also says the five belong together.
+    private static func railGroupHeader(_ title: String) -> some View {
+        HStack(spacing: 6) {
+            Rectangle()
+                .fill(Color.secondary.opacity(0.45))
+                .frame(height: 1)
+            Text(title)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            Rectangle()
+                .fill(Color.secondary.opacity(0.45))
+                .frame(height: 1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .accessibilityElement()
+        .accessibilityLabel("\(title) group")
+    }
+
     /// The word under a tool's glyph — short enough for the rail's width.
     private static func railCaption(for tool: PrintViewModel.CellTool) -> String {
         switch tool {
@@ -839,29 +827,26 @@ struct FilmPreviewView: View {
 
     /// The word under a lock.
     ///
-    /// Every one carries the "Lock" prefix. Without it the captions repeat the
-    /// tool captions a few points above — two buttons both saying "Invert", two
-    /// both saying "W/L" — and the reader has to work out from the padlock glyph
-    /// alone which of the pair *does* the thing and which *holds it together*.
-    /// The prefix puts the verb in the caption, where the tools already have
-    /// theirs.
+    /// The noun alone: what the lock holds together. The word "Lock" is said
+    /// once, on the group's heading rule (see ``railGroupHeader(_:)``), rather
+    /// than five times down the column.
     ///
-    /// Two lines, not one: the chip is 60 points wide and "Lock Zoom+Pan" on a
-    /// single line shrinks to about seven points before it fits. "Lock" on its
-    /// own line above the noun costs nothing — the chip is 44 points tall and
-    /// the glyph shares the space — and the prefix is the part that repeats, so
-    /// it reads as a column heading down the group.
+    /// It used to be prefixed on each chip and wrapped to two lines, to stop a
+    /// reader confusing these with the tool chips a few points above — two
+    /// reading "Invert", two reading "W/L". That reasoning holds; the execution
+    /// was what failed. The prefix took the chip's wide first line and left the
+    /// distinguishing noun on the narrow second, so "Zoom+Pan" — the longest
+    /// caption in the rail — shrank to near-illegibility while the identical
+    /// word above it sat at full size. One line, full width, under a heading
+    /// that names the group.
+    ///
+    /// "Zoom + Pan" with spaces: the chip has the width for it now, and the
+    /// spaced form breaks across the pair cleanly if it ever has to wrap.
     private static func railCaption(for option: PrintCellSyncOptions) -> String {
-        if option == .zoomPan { return "Lock\nZoom+Pan" }
-        if option == .window { return "Lock\nW/L" }
-        if option == .rotate { return "Lock\nRotate" }
-        // The palette lock. "CLUT" rather than "Colour" for the same reason the
-        // rail button above it says CLUT: the film's own polarity, set by the
-        // Presentation LUT Shape under More, is also a LUT, and a caption
-        // reading merely "Colour" leaves the two indistinguishable in a
-        // conversation about what a film was printed with.
-        if option == .palette { return "Lock\nCLUT" }
-        return "Lock\nInvert"
+        if option == .zoomPan { return "Zoom + Pan" }
+        if option == .window { return "W/L" }
+        if option == .rotate { return "Rotate" }
+        return "Invert"
     }
 
     private static func scopeCaption(_ scope: PrintCellSyncScope) -> String {
@@ -1000,9 +985,11 @@ struct FilmPreviewView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(isEnabled ? Color.primary : Color.secondary.opacity(0.3))
+        .interactiveControl(cornerRadius: 6, horizontal: 0, vertical: 0,
+                            isEnabled: isEnabled)
         .disabled(!isEnabled)
+        .railTooltip(step < 0 ? "Previous film (⌥←)" : "Next film (⌥→)")
         .accessibilityLabel(step < 0 ? "Previous film" : "Next film")
-        .help(step < 0 ? "Previous film (⌥←)" : "Next film (⌥→)")
     }
 
     private func canTurnPage(by step: Int) -> Bool {
@@ -1192,10 +1179,11 @@ struct FilmPreviewView: View {
     /// | Key | Does |
     /// |-----|------|
     /// | `W` `Z` `P` `E` `T` `R` | arm W/L, Zoom, Pan, Rotate, Text, Arrow |
-    /// | `⇧W` `⇧Z` `⇧E` `⇧V` `⇧C` | shut or open the W/L, Zoom & Pan, Rotate, Invert, CLUT locks |
+    /// | `⇧W` `⇧Z` `⇧E` `⇧V` | shut or open the W/L, Zoom & Pan, Rotate, Invert locks |
     /// | `S` | swap a shut lock's reach between Series and Film |
     /// | `A` | pick the run of cells from the focused one, or let a picked set go |
     /// | `V` `.` | invert the focused cell, straighten it back to square |
+    /// | `[` `]` | mirror the focused cell left-to-right, top-to-bottom |
     /// | `I` | show or hide the identification caption |
     /// | `0` `⇧0` | reset the focused cell, reset every cell |
     /// | `⌫` | delete the selected annotation, else the selected cells |
@@ -1429,6 +1417,11 @@ struct FilmPreviewView: View {
             }
             .disabled(!viewModel.isCellAdjusted(item.id))
 
+            Button("Revert Every Cell to the Viewer's Arrangement") {
+                viewModel.revertAllCells()
+            }
+            .disabled(!viewModel.hasAdjustedCells)
+
             // Only where it can do something: a square cell has nothing to
             // straighten, and an item that never does anything is an item the
             // reader has to test to learn that about.
@@ -1520,12 +1513,24 @@ struct FilmPreviewView: View {
         let identification = identification(onFilm: filmIndex)
         VStack(spacing: 3) {
             ZStack(alignment: .topLeading) {
-                Color.black
+                // The sheet's own ground is Border Density (2010,0100): the
+                // area between and around the image boxes, which the printer
+                // exposes to the chosen density. BLACK is the radiology
+                // default; WHITE is paper-like — and the preview showing it is
+                // what makes the picker under More visibly do something.
+                borderColor
                 ForEach(sheetCells(width: width, height: height),
                         id: \.position) { filmCell in
                     cell(filmCell: filmCell, range: range, identification: identification)
                         .frame(width: CGFloat(filmCell.width), height: CGFloat(filmCell.height))
                         .offset(x: CGFloat(filmCell.x), y: CGFloat(filmCell.y))
+                }
+                // Trim YES asks the printer for cut marks along the film's
+                // edge; the composer draws them on the emulator's sheet, so
+                // the preview shows the same corner ticks in the contrast
+                // colour, where NO leaves the border clean.
+                if viewModel.trimOption == .yes {
+                    trimMarks(width: width, height: height)
                 }
             }
             .frame(width: width, height: height)
@@ -1577,7 +1582,17 @@ struct FilmPreviewView: View {
         // marks list beside it, and in the accessibility label here. The focus
         // ring is chrome around the cell, not over it.
         RoundedRectangle(cornerRadius: 2)
-            .fill(isFilled ? Color.black : Color.white.opacity(0.05))
+            // Empty Image Density (2010,0110): what an unfilled image box — and
+            // the letterbox beside a fitted picture — is exposed to, exactly as
+            // the composer fills both. An unfilled slot keeps a faint ring so
+            // it still reads as a place a drag can land, whatever its density.
+            .fill(emptyCellColor)
+            .overlay {
+                if !isFilled {
+                    RoundedRectangle(cornerRadius: 2)
+                        .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+                }
+            }
             .overlay {
                 if isFilled {
                     cellImage(item, in: picture)
@@ -1609,6 +1624,7 @@ struct FilmPreviewView: View {
                         viewModel: viewModel,
                         itemID: item.id,
                         imageRect: imageRect(for: item, in: picture),
+                        orientation: annotationOrientation(for: item),
                         isInteractive: viewModel.cellTool.isDrawing
                             || !viewModel.annotations(forItemID: item.id).isEmpty)
                 }
@@ -1761,6 +1777,23 @@ struct FilmPreviewView: View {
     ///
     /// Annotations are anchored to this rect, not to the cell: the margin is
     /// not part of the picture and the printer has no pixels there.
+    /// How a cell's arrangement bears on the annotations drawn over it.
+    ///
+    /// The cell's own presentation, resolved the way the *film* resolves it —
+    /// through `previewItem(for:)`, so a job with the viewer's arrangement
+    /// switched off, or sending raw pixels, gets the identity here exactly as
+    /// it gets an unarranged picture. Measured against the source frame, which
+    /// is the space the annotations' fractions are in.
+    private func annotationOrientation(for item: PrintSelectionItem) -> PrintOverlayOrientation {
+        let resolved = viewModel.previewItem(for: item)
+        let pixels = sourcePixelSize(for: item)
+        return PrintOverlayOrientation(
+            presentation: resolved.presentation ?? ViewerPresentation(),
+            imageWidth: Int(pixels?.width ?? 0),
+            imageHeight: Int(pixels?.height ?? 0),
+            covers: viewModel.scalingMode == .fillToFilm)
+    }
+
     private func imageRect(for item: PrintSelectionItem, in cellSize: CGSize) -> CGRect {
         let cell = CGRect(origin: .zero, size: cellSize)
         // Fill and stretch put pixels in every point of the cell.
@@ -1850,8 +1883,18 @@ struct FilmPreviewView: View {
                     // picture to the cell's edges in the transform instead.
                     stretchingToCell: viewModel.scalingMode == .stretch,
                     // The film-wide Presentation LUT, so the preview shows the
-                    // polarity the sheet will actually come out with.
-                    presentationLUTShape: viewModel.presentationLUTShape))
+                    // polarity the sheet will actually come out with — but only
+                    // for cells leaving as greys: the preparer's rendered
+                    // inverse skips colour pixels (and never runs on raw), so
+                    // the preview must not invert what the film will not.
+                    presentationLUTShape: !viewModel.sendRawPixels
+                        && !viewModel.cellPrintsInColor(item)
+                        ? viewModel.presentationLUTShape : nil,
+                    // Polarity REVERSE flips every image box on the printer.
+                    polarityInverted: viewModel.polarity == .reverse,
+                    // "Print colour images as greys" shows the Rec.601 greys
+                    // the film will carry, and comes straight back on uncheck.
+                    desaturated: viewModel.cellIsFlattenedToGrey(item)))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             cellCPUImage(item)
@@ -1873,8 +1916,20 @@ struct FilmPreviewView: View {
             // printer performs — and deliberately ignored for stretch, which is
             // that mode's whole (non-diagnostic) point. Fill's overflow is cut
             // by the cell's own clip shape.
+            //
+            // The film-wide switches the GPU path composes in its shader are
+            // composed here as view effects, because a cell must look the same
+            // whichever renderer answered: "print colour images as greys" shows
+            // the flattened greys (the thumbnail itself stays colour — the
+            // effect reverts with the switch), and Polarity REVERSE / the
+            // rendered-inverse Presentation LUT flip the picture over the
+            // thumbnail's own baked-in cell invert — `contrast(-1)` is exactly
+            // `1 − x` per channel, the shader's own negation. Saturation before
+            // inversion, the wire's own order: flatten first, then the LUT.
             let base = Image(decorative: image, scale: 1.0, orientation: .up)
                 .resizable()
+                .saturation(viewModel.cellIsFlattenedToGrey(item) ? 0 : 1)
+                .contrast(viewModel.filmWideInversion(for: item) ? -1 : 1)
             switch viewModel.scalingMode {
             case .stretch:
                 base.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1896,6 +1951,57 @@ struct FilmPreviewView: View {
         #else
         Color.gray.opacity(0.35)
         #endif
+    }
+
+    // MARK: - Film box densities
+
+    /// Border Density (2010,0100) as the preview's sheet ground.
+    private var borderColor: Color {
+        Self.densityColor(viewModel.borderDensity)
+    }
+
+    /// Empty Image Density (2010,0110) as the unfilled-box and letterbox fill.
+    private var emptyCellColor: Color {
+        Self.densityColor(viewModel.emptyImageDensity)
+    }
+
+    /// A density value as the grey it prints: `BLACK`, `WHITE`, or a numeric
+    /// optical density in hundredths, interpolated over ordinary film stock's
+    /// 0.2–3.0 OD exactly as `FilmComposer.luminance(forDensity:)` reads it.
+    private static func densityColor(_ value: String) -> Color {
+        let text = value.trimmingCharacters(in: .whitespaces).uppercased()
+        switch text {
+        case "BLACK": return .black
+        case "WHITE": return .white
+        default:
+            guard let density = Double(text) else { return .black }
+            let normalized = max(0, min(1, (density - 20) / (300 - 20)))
+            // Higher optical density = darker on film.
+            return Color(white: 1 - normalized)
+        }
+    }
+
+    /// The four corner cut marks Trim YES asks the printer for, as the
+    /// composer draws them: L-shaped ticks inset from the sheet's corners, in
+    /// whichever of black or white contrasts with the border.
+    private func trimMarks(width: CGFloat, height: CGFloat) -> some View {
+        let inset: CGFloat = 6
+        let length: CGFloat = min(18, width * 0.04)
+        let contrast: Color = viewModel.borderDensity.uppercased() == "WHITE" ? .black : .white
+        return Path { path in
+            for (x, y, dx, dy): (CGFloat, CGFloat, CGFloat, CGFloat) in [
+                (inset, inset, 1, 1),
+                (width - inset, inset, -1, 1),
+                (inset, height - inset, 1, -1),
+                (width - inset, height - inset, -1, -1)
+            ] {
+                path.move(to: CGPoint(x: x + dx * length, y: y))
+                path.addLine(to: CGPoint(x: x, y: y))
+                path.addLine(to: CGPoint(x: x, y: y + dy * length))
+            }
+        }
+        .stroke(contrast, lineWidth: 1)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Geometry
@@ -1957,12 +2063,6 @@ struct FilmPreviewView: View {
         if option == .window { return "w" }
         if option == .zoomPan { return "z" }
         if option == .rotate { return "e" }
-        // C for the CLUT lock. It had been falling through to V with the invert
-        // lock, so two of the rail's zero-sized buttons claimed ⇧V: the palette
-        // lock could not be reached from the keyboard at all, and which of the
-        // two ⇧V toggled was whichever SwiftUI resolved first. C is free on this
-        // screen.
-        if option == .palette { return "c" }
         return "v"
     }
 

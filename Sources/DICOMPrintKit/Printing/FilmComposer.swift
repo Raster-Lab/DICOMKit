@@ -65,6 +65,25 @@ public struct FilmComposerConfiguration: Sendable, Hashable {
     /// Not for diagnostic use; local composition only.
     public let stretchToFill: Bool
 
+    /// A pseudo-colour palette laid over received image boxes when the sheet is
+    /// composed. Local rendering only, and `nil` — no recolouring — by default.
+    ///
+    /// This is a *viewing* control, in the same family as ``cellAlignment`` and
+    /// ``stretchToFill``: a local composition preference with no DICOM attribute
+    /// behind it. It has to be, because Print Management gives it nowhere to
+    /// live — "palette" does not appear in PS3.4 Annex H, and PS3.3 Table C.13-5
+    /// lets a Basic Color Image Box carry only `RGB`. An SCU therefore cannot
+    /// ask for one and cannot be told one was used.
+    ///
+    /// That is exactly why it must not touch the wire. The P-Values in an image
+    /// box are what the sending operator approved; recolouring them on the way
+    /// through would make the film disagree with the screen the study was signed
+    /// off on, and the SCU would never know. So this reaches the composed bitmap
+    /// and nothing else: ``FilmComposer`` applies it when rasterising, the
+    /// received ``PrintImageData`` keeps its original samples, and anything
+    /// re-sent or re-encoded from them is unaffected.
+    public let previewPalette: PseudoColorPalette?
+
     public init(
         dpi: Double = PrintSCPSettings.defaultDPI,
         densityMapping: DensityMapping = .paperDirect,
@@ -75,7 +94,8 @@ public struct FilmComposerConfiguration: Sendable, Hashable {
         drawTrimMarks: Bool = true,
         maximumPixelDimension: Int = 12000,
         cellAlignment: PrintCellAlignment = .center,
-        stretchToFill: Bool = false
+        stretchToFill: Bool = false,
+        previewPalette: PseudoColorPalette? = nil
     ) {
         // Clamped to the one range the whole app agrees on, so the settings UI
         // and the composer cannot drift apart on what a printable DPI is.
@@ -90,6 +110,10 @@ public struct FilmComposerConfiguration: Sendable, Hashable {
         self.maximumPixelDimension = max(256, maximumPixelDimension)
         self.cellAlignment = cellAlignment
         self.stretchToFill = stretchToFill
+        // Grey is not a recolouring, and carrying it would push mono boxes down
+        // the RGB path for nothing. Dropped here so every reader downstream can
+        // treat non-nil as "there are colours to apply".
+        self.previewPalette = previewPalette.flatMap { $0.isGrayscale ? nil : $0 }
     }
 
     /// This configuration with a different cell placement — how the simulator
@@ -107,7 +131,8 @@ public struct FilmComposerConfiguration: Sendable, Hashable {
             drawTrimMarks: drawTrimMarks,
             maximumPixelDimension: maximumPixelDimension,
             cellAlignment: alignment,
-            stretchToFill: stretch)
+            stretchToFill: stretch,
+            previewPalette: previewPalette)
     }
 
     /// Print-quality defaults (600 DPI, paper-direct density).
@@ -206,7 +231,13 @@ public struct FilmComposer: Sendable {
                 width: width, height: height, limit: configuration.maximumPixelDimension)
         }
 
-        let isColor = film.imageBoxes.contains { ($0.image?.samplesPerPixel ?? 1) > 1 }
+        // A palette makes colour out of grey, so it decides the sheet's depth
+        // as surely as a colour box does. Without this an all-grayscale film
+        // would compose into a grayscale context and throw the palette's colours
+        // away at the last step, which is precisely the failure that made a
+        // chosen palette look like it did nothing.
+        let isColor = configuration.previewPalette != nil
+            || film.imageBoxes.contains { ($0.image?.samplesPerPixel ?? 1) > 1 }
         let samplesPerPixel = isColor ? 3 : 1
 
         // A bitmap CGContext supports 8 bpp gray, but *not* 24 bpp RGB — colour
@@ -388,6 +419,52 @@ public struct FilmComposer: Sendable {
 
     // MARK: Pixels
 
+    /// Recolours 8-bit samples through a palette, returning interleaved RGB.
+    ///
+    /// Takes one or three samples per pixel and always returns three: a colour
+    /// box is reduced to Rec.601 luminance first — the same coefficients the
+    /// rest of the kit reduces colour with — because a palette indexes a single
+    /// scalar. Reducing a colour box does discard its original hue, which for a
+    /// colour-Doppler ultrasound is the velocity encoding; that is inherent to
+    /// asking for a palette over colour, and it is why this is off unless the
+    /// operator turns it on.
+    ///
+    /// Purely a function of its input. The caller's buffer is not modified.
+    static func palettise(
+        _ samples: Data, samplesPerPixel: Int, palette: PseudoColorPalette
+    ) -> Data {
+        let table = palette.entries()
+        let lastIndex = table.count - 1
+        let pixelCount = samples.count / max(1, samplesPerPixel)
+
+        var rgb = Data(count: pixelCount * 3)
+        rgb.withUnsafeMutableBytes { destination in
+            samples.withUnsafeBytes { source in
+                guard let dst = destination.bindMemory(to: UInt8.self).baseAddress,
+                      let src = source.bindMemory(to: UInt8.self).baseAddress else { return }
+                for pixel in 0..<pixelCount {
+                    let level: Double
+                    if samplesPerPixel == 3 {
+                        let offset = pixel * 3
+                        level = 0.299 * Double(src[offset])
+                            + 0.587 * Double(src[offset + 1])
+                            + 0.114 * Double(src[offset + 2])
+                    } else {
+                        level = Double(src[pixel])
+                    }
+                    let index = Swift.min(
+                        lastIndex, Int(level / 255.0 * Double(lastIndex) + 0.5))
+                    let entry = table[index]
+                    let base = pixel * 3
+                    dst[base] = entry.red
+                    dst[base + 1] = entry.green
+                    dst[base + 2] = entry.blue
+                }
+            }
+        }
+        return rgb
+    }
+
     /// Converts an image box's P-Values into an 8-bit `CGImage`.
     ///
     /// `transfer`, when present, is a 256-entry P-value → luminance curve
@@ -421,6 +498,24 @@ public struct FilmComposer: Sendable {
         }
         if let transfer, samplesPerPixel == 1 {
             samples = Data(samples.map { transfer[Int($0)] })
+        }
+
+        // The operator's palette, applied to the pixels on their way into the
+        // bitmap and nowhere else. `image` is not written back, so the received
+        // P-Values keep their original values for anything that re-reads them.
+        //
+        // Placed after the inversions and the density curve so the colour lands
+        // on the levels the sheet would actually have shown — the same ordering
+        // the viewer uses, where the palette follows the VOI rather than
+        // preceding it.
+        //
+        // Every photometric interpretation is eligible here, colour included: a
+        // three-sample box is reduced to Rec.601 luminance first, since a
+        // palette indexes one scalar and there is otherwise nothing to index.
+        if let palette = configuration.previewPalette {
+            samples = Self.palettise(
+                samples, samplesPerPixel: samplesPerPixel, palette: palette)
+            samplesPerPixel = 3
         }
 
         // A grayscale box on a colour film has to be widened to RGB so it can

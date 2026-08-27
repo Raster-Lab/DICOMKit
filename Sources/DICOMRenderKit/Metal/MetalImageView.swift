@@ -132,7 +132,8 @@ public final class MetalImageRenderer: NSObject, MTKViewDelegate {
                 imageWidth: frame.width, imageHeight: frame.height),
             invert: presentation.invert ? 1 : 0,
             isGrayscale: frame.isGrayscale ? 1 : 0,
-            linearFilter: presentation.linearFiltering ? 1 : 0
+            linearFilter: presentation.linearFiltering ? 1 : 0,
+            desaturate: presentation.desaturate ? 1 : 0
         )
 
         encoder.setRenderPipelineState(pipelineState)
@@ -209,10 +210,49 @@ public struct MetalImageView: PlatformViewRepresentable {
         renderer.frame = frame
         renderer.presentation = presentation
         renderer.annotationOverlay = annotationOverlay
+        Self.matchDrawableToTheDisplay(view)
         #if os(macOS)
         view.needsDisplay = true
         #else
         view.setNeedsDisplay()
+        #endif
+    }
+
+    /// Keeps the drawable at the display's real pixel count.
+    ///
+    /// `autoResizeDrawable` sizes the drawable from the layer's bounds *times its
+    /// `contentsScale`*, and that scale is only right once the view has joined a
+    /// window on a screen. A representable's view is built before that happens,
+    /// so on a Retina display the layer can still be at 1× when the first frames
+    /// are drawn — and a cell then renders at half its linear resolution and is
+    /// magnified back up by the compositor. That is a real, visible softness:
+    /// a quarter of the pixels, blurred over the area of all of them, on a screen
+    /// whose whole purpose is showing what the pixel data actually says.
+    ///
+    /// It is not self-correcting either. The layer's scale changes when the view
+    /// is added to a window or moved between screens of different densities, and
+    /// neither of those is a bounds change, so `autoResizeDrawable` has no reason
+    /// to recompute and the view stays soft until something else resizes it.
+    ///
+    /// So the scale is read from the window at every update — which is when the
+    /// picture is about to be drawn anyway — and both the layer and the drawable
+    /// are brought to it. Assigning only when the value actually differs: setting
+    /// `drawableSize` is what triggers `drawableSizeWillChange`, and writing the
+    /// same size back on every SwiftUI update would be a redraw per keystroke.
+    private static func matchDrawableToTheDisplay(_ view: MTKView) {
+        #if os(macOS)
+        // `backingScaleFactor` of the window it is in; a view not yet in one is
+        // left alone rather than guessed at, and picked up on the next update.
+        guard let scale = view.window?.backingScaleFactor, scale > 0 else { return }
+        if view.layer?.contentsScale != scale {
+            view.layer?.contentsScale = scale
+        }
+        let bounds = view.bounds.size
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let target = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        if view.drawableSize != target {
+            view.drawableSize = target
+        }
         #endif
     }
 

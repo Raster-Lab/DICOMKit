@@ -110,6 +110,28 @@ struct ViewerAnnotationTextTests {
         #expect(text.orientation == nil)
     }
 
+    @Test("The image's identity is carried alongside its drawn lines")
+    func testSOPInstanceUIDIsCarried() {
+        // The tile grid's saved-views badge asks "are there presentation states
+        // for *this* image", and the only header read a tile's file gets is the
+        // one that produced this value. Losing the UID here would mean either a
+        // second decode per tile or a badge that cannot be drawn at all.
+        let text = ViewerAnnotationText.make(
+            from: dataSet([(0x0008, 0x0018, "1.2.3.4.5", .UI)]),
+            transferSyntaxUID: "")
+        #expect(text.sopInstanceUID == "1.2.3.4.5")
+    }
+
+    @Test("A file with no identity offers none rather than an empty one")
+    func testMissingSOPInstanceUID() {
+        // `nil` and `""` mean different things to the badge: no UID means the
+        // question cannot be asked, whereas an empty string would be asked and
+        // would match nothing, quietly reporting "no saved views" for an image
+        // that may well have some.
+        let text = ViewerAnnotationText.make(from: DataSet(), transferSyntaxUID: "")
+        #expect(text.sopInstanceUID == nil)
+    }
+
     @Test("Ages shorten to the corner's form")
     func testShortAge() {
         #expect(ViewerAnnotationText.shortAge("066Y") == "66 y")
@@ -380,6 +402,56 @@ struct ViewerCursorReadoutTests {
         let readout = ViewerCursorReadout(column: 4, row: 9)
         #expect(readout.pixelText == "X: 4 px  Y: 9 px")
         #expect(readout.patientText.isEmpty)
+    }
+}
+
+@MainActor
+@Suite("Viewer Annotation Position Source Tests")
+struct ViewerAnnotationPositionSourceTests {
+
+    private func seriesViewModel() -> ImageViewerViewModel {
+        let viewModel = ImageViewerViewModel()
+        viewModel.filePath = "/s1-a.dcm"
+        viewModel.seriesFiles = ["/s1-a.dcm", "/s1-b.dcm", "/s1-c.dcm"]
+        viewModel.viewContentWidth = 800
+        viewModel.viewContentHeight = 800
+        return viewModel
+    }
+
+    @Test("The live viewport's Im: number follows navigation")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testLivePositionFollowsNavigation() {
+        let viewModel = seriesViewModel()
+        let size = CGSize(width: 800, height: 800)
+
+        #expect(viewModel.annotationViewportState(viewSize: size).imagePosition == 1)
+
+        viewModel.currentFileIndex = 2
+        #expect(viewModel.annotationViewportState(viewSize: size).imagePosition == 3,
+                "the number the reader is about to change must track the image on screen")
+        #expect(viewModel.annotationViewportState(viewSize: size).imageCount == 3)
+    }
+
+    @Test("A cell's Im: number is only as fresh as its last capture")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testCellPositionLagsUntilCaptured() {
+        // This is why the focused tile's annotation state is built from the view
+        // model rather than from its stored cell: navigation moves the live
+        // index and leaves the cell where it was hung, so a grid reading its
+        // cells showed "Im: 1/33" for the whole stack. See `viewportState(for:)`
+        // in `ViewerTileGridView`.
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+        viewModel.focusCell(0)
+
+        viewModel.currentFileIndex = 2
+
+        let cell = viewModel.cells[0]
+        #expect(viewModel.annotationViewportState(for: cell).imagePosition == 1,
+                "the un-captured cell is expected to lag — the view must not read it")
+
+        viewModel.captureFocusedCell()
+        #expect(viewModel.annotationViewportState(for: viewModel.cells[0]).imagePosition == 3)
     }
 }
 

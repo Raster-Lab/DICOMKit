@@ -49,11 +49,70 @@ extension PrintViewModel {
         // the mark's own window came off the viewer, which holds stored values.
         // Rendering one as the other puts the window nowhere near the pixels and
         // washes the cell out, so which it is travels with the numbers.
+        var presentation = useViewerPresentation ? item.presentation : nil
+        // "Print colour images as greys" drops the palette for colour sources
+        // before preparation (see `PrintImagePreparer.preparationPalette`), so
+        // the preview's texture must lose it too — a Hot-Iron thumbnail of a
+        // cell that prints as the picture's own greys is the preview lying.
+        if presentation?.palette != nil, cellIsFlattenedToGrey(item) {
+            presentation?.palette = nil
+        }
         return item.with(
             windowCenter: .some(center),
             windowWidth: .some(width),
             windowSpace: useExplicitWindow ? .outputUnits : item.windowSpace,
-            presentation: .some(useViewerPresentation ? item.presentation : nil))
+            presentation: .some(presentation))
+    }
+
+    /// Whether the job deliberately flattens this cell's colour to greys.
+    ///
+    /// True only for colour *sources* under "Print colour images as greys" on a
+    /// processed job: raw sends stored pixels untouched, and a monochrome cell
+    /// has no colour to flatten — a pseudo-colour palette on one is a deliberate
+    /// act the toggle does not speak to.
+    public func cellIsFlattenedToGrey(_ item: PrintSelectionItem) -> Bool {
+        !sendRawPixels && !preservesSourceColor
+            && (sourceIsColorByPath[item.filePath] ?? false)
+    }
+
+    /// Whether this cell's prepared pixels leave the app in colour.
+    ///
+    /// The per-cell truth behind ``willPrintInColor``: colour sources keep their
+    /// colour unless the job flattens them, and a non-grey pseudo-colour palette
+    /// puts colour into a monochrome cell. Mirrors
+    /// `PrintImagePreparer.preparationColorMode` so the preview and the film
+    /// agree cell by cell.
+    public func cellPrintsInColor(_ item: PrintSelectionItem) -> Bool {
+        let sourceIsColor = sourceIsColorByPath[item.filePath] ?? false
+        // Raw copies the source descriptor: colour stays colour, grey stays
+        // grey, and the palette never applies.
+        if sendRawPixels { return sourceIsColor }
+        if cellIsFlattenedToGrey(item) { return false }
+        if sourceIsColor { return true }
+        if useViewerPresentation, let palette = item.presentation?.palette,
+           !palette.isGrayscale { return true }
+        return false
+    }
+
+    /// The film-wide inversion composed over a cell's own invert.
+    ///
+    /// Two independent switches flip a cell beyond its invert tool, and they
+    /// compose (each flips the sense of the other) exactly as
+    /// `FilmComposer.shouldInvert` composes them on the sheet:
+    ///
+    ///   * Polarity REVERSE (2020,0020) — applied by the printer to every image
+    ///     box, colour and grey alike, raw included.
+    ///   * A rendered-inverse Presentation LUT — realised in the pixels by the
+    ///     preparer, which only inverts cells leaving as greys (inverting only
+    ///     the luminance of a colour cell would change its hue) and never runs
+    ///     on a raw job.
+    public func filmWideInversion(for item: PrintSelectionItem) -> Bool {
+        var inverts = polarity == .reverse
+        if !sendRawPixels, presentationLUTShape?.invertsPixels == true,
+           !cellPrintsInColor(item) {
+            inverts.toggle()
+        }
+        return inverts
     }
 
     /// Whether a job-wide window is overriding every cell's own window.
@@ -514,6 +573,40 @@ extension PrintViewModel {
         propagateRotation(from: itemID, cellSize: cellSize)
     }
 
+    /// Mirrors a cell left to right.
+    ///
+    /// Deliberately not propagated to the other cells, and deliberately not on
+    /// the lock list: a flip is a statement about laterality, not a way of
+    /// standing a run of images up the same way. Mirroring a whole film because
+    /// one image was marked from the far side prints a sheet nobody can read.
+    /// See ``PrintCellSyncOptions`` for the same rule stated from the lock side.
+    ///
+    /// - Parameter cellSize: the cell the picture is drawn in, when the caller
+    ///   knows it. Optional for the same reason inversion's is: a rail button
+    ///   has no cell to speak of, and re-basing the viewport on a guess would
+    ///   change the crop while claiming only to have mirrored the picture.
+    public func flipCellHorizontal(forItemID itemID: String, cellSize: CGSize? = nil) {
+        mutatePresentation(forItemID: itemID, cellSize: cellSize) { presentation in
+            presentation.flipHorizontal.toggle()
+        }
+    }
+
+    /// Mirrors a cell top to bottom. Same non-propagation rule as the
+    /// horizontal flip above.
+    public func flipCellVertical(forItemID itemID: String, cellSize: CGSize? = nil) {
+        mutatePresentation(forItemID: itemID, cellSize: cellSize) { presentation in
+            presentation.flipVertical.toggle()
+        }
+    }
+
+    /// Whether a cell is mirrored on either axis — what the rail's Flip buttons
+    /// light from, and what tells a reader the picture is not as it was sent.
+    public func isCellFlipped(_ itemID: String) -> Bool {
+        guard let presentation = selection.items
+            .first(where: { $0.id == itemID })?.presentation else { return false }
+        return presentation.flipHorizontal || presentation.flipVertical
+    }
+
     /// Whether a cell is turned to an angle that is not a quarter turn.
     ///
     /// What decides whether straightening has anything to do — and worth saying
@@ -545,18 +638,20 @@ extension PrintViewModel {
     /// per-cell choice, and quietly overwriting it would make the film-wide
     /// picker a destructive control.
     ///
+    /// Which cells those are is read from ``selfPalettedItemIDs`` rather than
+    /// inferred by comparing each cell against the film's previous value. The
+    /// comparison was only sound while the picker was the sole writer: reset,
+    /// revert and saved-view adoption all move a cell's palette too, and a cell
+    /// that drifted off the old value was then read as having chosen for itself
+    /// — so the film-wide picker went dead on it and never recovered.
+    ///
     /// - Parameter palette: the film's palette, or `nil` for a grey film. `nil`
     ///   clears the cells that were following the film and leaves the ones that
     ///   chose for themselves alone.
     public func applyFilmPalette(_ palette: DICOMCore.PseudoColorPalette?) {
-        let previous = filmPalette
         filmPalette = palette
-        for item in selection.items {
-            // "Following the film" means holding exactly what the film last
-            // said. A cell holding anything else made its own choice — including
-            // a cell holding grey on a coloured film, which is a choice too.
-            let current = item.presentation?.palette
-            guard current == previous else { continue }
+        for item in selection.items where !selfPalettedItemIDs.contains(item.id) {
+            guard item.presentation?.palette != palette else { continue }
             mutatePresentation(forItemID: item.id, cellSize: nil) { presentation in
                 presentation.palette = palette
             }
@@ -581,6 +676,15 @@ extension PrintViewModel {
     ) {
         mutatePresentation(forItemID: itemID, cellSize: cellSize) { presentation in
             presentation.palette = palette
+        }
+        // Picking the film's own colour by hand is not "choosing for yourself":
+        // the cell is where the film would have put it anyway, and marking it
+        // self-chosen would silently exclude it from the next film-wide pick.
+        // Anything else — including grey on a coloured film — is a real choice.
+        if palette == filmPalette {
+            selfPalettedItemIDs.remove(itemID)
+        } else {
+            selfPalettedItemIDs.insert(itemID)
         }
         propagatePalette(from: itemID, cellSize: cellSize)
     }
@@ -628,6 +732,8 @@ extension PrintViewModel {
         let restored: ViewerPresentation? = filmPalette.map {
             ViewerPresentation(palette: $0)
         }
+        // Back on the film default, so the film-wide picker reaches it again.
+        selfPalettedItemIDs.remove(itemID)
         selection.update(item.with(
             windowCenter: .some(seed?.center), windowWidth: .some(seed?.width),
             presentation: .some(restored)),
@@ -700,6 +806,43 @@ extension PrintViewModel {
             }
             selection.clearAdjustment(forID: item.id)
         }
+        // The film's palette is a property of the *sheet*, and the sheet is new.
+        // Left standing from the previous visit it desyncs from the cells this
+        // reset has just cleared, and ``applyFilmPalette(_:)`` — which carries
+        // the film's colour only to cells that still hold what the film last
+        // said — then finds nothing to carry it to and the picker reads dead.
+        // Written directly rather than through ``applyFilmPalette(_:)``: the
+        // cells above are already at the state this palette describes, and
+        // routing through the write-through would re-mark them as edited.
+        // No cell on a sheet just opened has chosen a palette by hand.
+        selfPalettedItemIDs = []
+        filmPalette = clearPresentation ? nil : inferredFilmPalette()
+    }
+
+    /// The palette a freshly opened film should claim as its own.
+    ///
+    /// Only asked when the marks' presentations survive the reset — that is,
+    /// when "match the viewer's arrangement" is on and the cells arrived
+    /// already wearing whatever the reader had them coloured with on screen.
+    /// The film's picker has to name something the cells actually hold, or the
+    /// first pick made from it lands on no cell at all.
+    ///
+    /// Unanimity is the test: a sheet whose cells agree on a colour *is* a film
+    /// of that colour, and the picker can say so honestly. A sheet that
+    /// disagrees has no single film colour to name, so the film claims none and
+    /// the first pick from the picker reaches every cell that has not chosen
+    /// for itself — which on a mixed sheet is the cells holding nothing.
+    private func inferredFilmPalette() -> DICOMCore.PseudoColorPalette? {
+        var found: DICOMCore.PseudoColorPalette?
+        for item in selection.items {
+            guard let palette = item.presentation?.palette else { return nil }
+            if let found {
+                guard found == palette else { return nil }
+            } else {
+                found = palette
+            }
+        }
+        return found
     }
 
     /// Whether any cell differs from the untouched frame, so a sheet-wide reset
@@ -718,12 +861,48 @@ extension PrintViewModel {
         // Reverting goes back to the mark as the viewer made it, which is not
         // the applied saved view either — see ``resetCell(forItemID:)``.
         appliedSavedViews.removeValue(forKey: itemID)
+        // The hand-made choice is exactly what revert takes back, so the cell
+        // follows the film again.
+        selfPalettedItemIDs.remove(itemID)
         selection.revertAdjustments(forID: itemID)
+    }
+
+    /// Takes back the adjustments made to the focused cell.
+    ///
+    /// The focus rather than a named cell, for the rail: the tool rail acts on
+    /// whatever the tools are on, which is the focused cell.
+    public func revertFocusedCell() {
+        guard let focusedItemID else { return }
+        revertCell(forItemID: focusedItemID)
+    }
+
+    /// Takes back every adjustment made on this screen, restoring every cell to
+    /// the arrangement it was marked with in the viewer.
+    ///
+    /// The sheet-wide counterpart of ``revertCell(forItemID:)``, and the way out
+    /// of a print-screen session that has gone wrong: the film goes back to
+    /// showing exactly what the viewer showed, without discarding the window and
+    /// arrangement the reader set on screen the way ``resetAllCells()`` would.
+    ///
+    /// Job settings — printer, film size, layout — are left alone: this undoes
+    /// what the tools did to the pictures, and how the job is set up is a
+    /// different decision. So is anything drawn: an arrow marking a finding is
+    /// about the anatomy under it, not about how the sheet was composed.
+    public func revertAllCells() {
+        for item in selection.items where selection.isAdjusted(item.id) {
+            revertCell(forItemID: item.id)
+        }
     }
 
     /// Whether a cell has been adjusted here and can be taken back.
     public func isCellAdjusted(_ itemID: String) -> Bool {
         selection.isAdjusted(itemID)
+    }
+
+    /// Whether any cell has been adjusted on this screen, so a sheet-wide revert
+    /// has something to take back.
+    public var hasAdjustedCells: Bool {
+        selection.items.contains { selection.isAdjusted($0.id) }
     }
 
     /// Whether a cell differs from the untouched frame.

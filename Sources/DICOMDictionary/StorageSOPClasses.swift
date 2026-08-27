@@ -106,6 +106,7 @@ public enum StorageSOPClass {
         // MARK: Presentation States
         "1.2.840.10008.5.1.4.1.1.11.1",     // Grayscale Softcopy Presentation State Storage
         "1.2.840.10008.5.1.4.1.1.11.2",     // Color Softcopy Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.3",     // Pseudo-Color Softcopy Presentation State Storage
 
         // MARK: Structured Reporting & Documents
         "1.2.840.10008.5.1.4.1.1.88.11",    // Basic Text SR Storage

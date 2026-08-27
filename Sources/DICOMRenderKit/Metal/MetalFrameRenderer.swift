@@ -155,9 +155,16 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             }
             return renderMonochrome(request, window: window, destination: destination)
         case .palette:
+            // A reader's ramp over a frame that already carries colours is a
+            // pass over the finished frame's luminance, which no kernel here
+            // does. Declining sends it to the CPU, which is exactly the
+            // contract `FrameRenderService` is built on — the GPU path stays
+            // narrow and exact rather than broad and approximate.
+            guard request.readerPalette == nil else { return nil }
             guard let palette = request.paletteLUT else { return nil }
             return renderPalette(request, palette: palette, destination: destination)
         case .color:
+            guard request.readerPalette == nil else { return nil }
             return renderColor(request, destination: destination)
         }
     }

@@ -111,6 +111,13 @@ extension KeyboardShortcutsLegendView {
         // reading about it cannot disagree. Everything below them is hand-written
         // like the rest of this file.
         KeyboardShortcutGroup("Choosing what a drag does", toolHints),
+        KeyboardShortcutGroup("Annotating", [
+            KeyboardShortcutHint("A", "Annotation tool — click to place text, or press "
+                                 + "on the target and drag the label out, arrow attached"),
+            KeyboardShortcutHint("Drag", "Move an annotation; a selected one's handles "
+                                 + "re-aim the arrow or move the label alone"),
+            KeyboardShortcutHint("⌫", "Delete the selected annotation"),
+        ]),
         KeyboardShortcutGroup("The image", [
             KeyboardShortcutHint("V", "Invert greys — monochrome images only"),
             KeyboardShortcutHint("[ / ]", "Flip left-to-right / top-to-bottom"),
@@ -148,6 +155,8 @@ extension KeyboardShortcutsLegendView {
             KeyboardShortcutHint("Z", "Zoom tool"),
             KeyboardShortcutHint("P", "Pan tool"),
             KeyboardShortcutHint("Scroll", "Zoom the cell under the pointer"),
+            KeyboardShortcutHint("V", "Invert the focused cell"),
+            KeyboardShortcutHint(".", "Straighten the focused cell"),
             KeyboardShortcutHint("0", "Reset the focused cell"),
         ]),
         KeyboardShortcutGroup("Annotating", [

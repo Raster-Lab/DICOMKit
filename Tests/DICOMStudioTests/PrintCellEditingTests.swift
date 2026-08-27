@@ -477,6 +477,61 @@ struct PrintCellEditingTests {
         #expect(viewModel.selection.items[0].presentation?.rotationDegrees == 340)
     }
 
+    @Test("Flipping a cell mirrors it, and mirrors it back")
+    func testFlipCell() {
+        let viewModel = makeViewModel(items: markedFrames)
+
+        viewModel.flipCellHorizontal(forItemID: "/a.dcm#0")
+        #expect(viewModel.selection.items[0].presentation?.flipHorizontal == true)
+        #expect(viewModel.isCellFlipped("/a.dcm#0"))
+
+        viewModel.flipCellVertical(forItemID: "/a.dcm#0")
+        #expect(viewModel.selection.items[0].presentation?.flipVertical == true)
+
+        viewModel.flipCellHorizontal(forItemID: "/a.dcm#0")
+        #expect(viewModel.selection.items[0].presentation?.flipHorizontal == false)
+        // Still mirrored on the other axis, so still flipped.
+        #expect(viewModel.isCellFlipped("/a.dcm#0"))
+
+        viewModel.flipCellVertical(forItemID: "/a.dcm#0")
+        #expect(!viewModel.isCellFlipped("/a.dcm#0"))
+    }
+
+    @Test("A flip stays on the cell it was made on — laterality is not carried")
+    func testFlipIsNeverPropagated() {
+        let viewModel = makeViewModel(items: markedFrames)
+        // Every lock shut, the widest reach: a flip still goes nowhere, because
+        // mirroring a whole film prints a sheet nobody can read.
+        viewModel.cellSync = .all
+        viewModel.cellSyncScope = .thisFilm
+
+        viewModel.flipCellHorizontal(forItemID: "/a.dcm#0")
+        viewModel.flipCellVertical(forItemID: "/a.dcm#0")
+
+        #expect(viewModel.selection.items[0].presentation?.flipHorizontal == true)
+        #expect(viewModel.selection.items[0].presentation?.flipVertical == true)
+        #expect(viewModel.selection.items[1].presentation?.flipHorizontal != true)
+        #expect(viewModel.selection.items[1].presentation?.flipVertical != true)
+    }
+
+    @Test("Flipping a cell keeps its window, zoom and angle")
+    func testFlipKeepsTheRestOfTheArrangement() {
+        let viewModel = makeViewModel(items: markedFrames)
+        let cell = CGSize(width: 200, height: 200)
+        viewModel.setWindow(forItemID: "/a.dcm#0", center: 300, width: 1500)
+        viewModel.adjustZoom(forItemID: "/a.dcm#0", factor: 2, cellSize: cell)
+        viewModel.rotateCell(forItemID: "/a.dcm#0", byDegrees: 90, cellSize: cell)
+
+        viewModel.flipCellHorizontal(forItemID: "/a.dcm#0", cellSize: cell)
+
+        let mark = viewModel.selection.items[0]
+        #expect(mark.presentation?.flipHorizontal == true)
+        #expect(mark.presentation?.zoom == 2)
+        #expect(mark.presentation?.rotationDegrees == 90)
+        #expect(mark.windowCenter == 300)
+        #expect(mark.windowWidth == 1500)
+    }
+
     @Test("Straighten squares a cell up without touching its window or crop")
     func testStraighten() {
         let viewModel = makeViewModel(items: markedFrames)
@@ -570,6 +625,60 @@ struct PrintCellEditingTests {
         #expect(viewModel.selection.update(fromViewer) == true)
     }
 
+    @Test("Revert All takes every cell back to what the viewer showed")
+    func testRevertAllCells() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.setWindow(forItemID: "/a.dcm#0", center: 300, width: 1500)
+        viewModel.setWindow(forItemID: "/b.dcm#0", center: 90, width: 60)
+        viewModel.adjustZoom(forItemID: "/a.dcm#0", factor: 2,
+                             cellSize: CGSize(width: 200, height: 200))
+        #expect(viewModel.hasAdjustedCells)
+
+        viewModel.revertAllCells()
+
+        #expect(!viewModel.hasAdjustedCells)
+        // The viewer's own window survives: revert takes back what *this
+        // screen* did, which is exactly the distinction from reset.
+        #expect(viewModel.window(forItemID: "/a.dcm#0")?.center == 40)
+        #expect(viewModel.window(forItemID: "/a.dcm#0")?.width == 400)
+        #expect(viewModel.selection.items[0].presentation == nil)
+        // A cell the viewer marked with no window of its own goes back to none,
+        // rather than keeping the one set here.
+        #expect(viewModel.window(forItemID: "/b.dcm#0") == nil)
+        // …and every cell follows the screen again.
+        #expect(viewModel.selection.update(PrintSelectionItem(
+            filePath: "/a.dcm", frameIndex: 0,
+            windowCenter: 55, windowWidth: 200)) == true)
+    }
+
+    @Test("Revert All is quiet when nothing has been adjusted")
+    func testRevertAllWithNothingToTakeBack() {
+        let viewModel = makeViewModel(items: markedFrames)
+        #expect(!viewModel.hasAdjustedCells)
+
+        viewModel.revertAllCells()
+
+        // The marks are untouched, and specifically the viewer's window is not
+        // cleared by a revert that had nothing to revert.
+        #expect(viewModel.window(forItemID: "/a.dcm#0")?.center == 40)
+        #expect(!viewModel.hasAdjustedCells)
+    }
+
+    @Test("Revert on the focused cell takes back that cell alone")
+    func testRevertFocusedCell() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.setWindow(forItemID: "/a.dcm#0", center: 300, width: 1500)
+        viewModel.setWindow(forItemID: "/b.dcm#0", center: 90, width: 60)
+        viewModel.focusCell("/a.dcm#0")
+
+        viewModel.revertFocusedCell()
+
+        #expect(viewModel.window(forItemID: "/a.dcm#0")?.center == 40)
+        #expect(viewModel.window(forItemID: "/b.dcm#0")?.center == 90,
+                "the cell that was not focused keeps its edit")
+        #expect(viewModel.hasAdjustedCells)
+    }
+
     @Test("Reset lets the cell follow the viewer again too")
     func testResetClearsAdjustment() {
         let viewModel = makeViewModel(items: markedFrames)
@@ -602,5 +711,82 @@ struct PrintCellEditingTests {
         viewModel.pruneFocus()
         #expect(viewModel.focusedItemID == nil)
         #expect(viewModel.focusedItem == nil)
+    }
+
+    // MARK: - Film palette across visits
+
+    @Test("Reopening the print screen gives back a grey film")
+    func testFilmPaletteResetsForNewFilm() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.applyFilmPalette(.hotIron)
+        #expect(viewModel.filmPalette == .hotIron)
+
+        // The screen is kept alive between visits, so the second launch runs
+        // the same reset the first one did.
+        viewModel.resetForNewFilm()
+        #expect(viewModel.filmPalette == nil)
+        for item in viewModel.selection.items {
+            #expect(item.presentation?.palette == nil)
+        }
+    }
+
+    @Test("The palette picker still colours the film on a second launch")
+    func testFilmPaletteAppliesAfterRelaunch() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.applyFilmPalette(.hotIron)
+        viewModel.resetForNewFilm()
+
+        // The bug: the stale film palette made every cell look self-chosen, so
+        // this pick reached none of them and the picker read dead.
+        viewModel.applyFilmPalette(.pet)
+        #expect(viewModel.filmPalette == .pet)
+        for item in viewModel.selection.items {
+            #expect(item.presentation?.palette == .pet)
+        }
+    }
+
+    @Test("A cell that chose its own palette keeps it through a film-wide pick")
+    func testSelfChosenPaletteSurvivesFilmPalette() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.setCellPalette(.pet, forItemID: "/a.dcm#0")
+
+        viewModel.applyFilmPalette(.hotIron)
+        #expect(viewModel.cellPalette(forItemID: "/a.dcm#0") == .pet)
+        #expect(viewModel.cellPalette(forItemID: "/b.dcm#0") == .hotIron)
+    }
+
+    @Test("Resetting a cell hands it back to the film's picker")
+    func testResetCellFollowsFilmAgain() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.applyFilmPalette(.hotIron)
+        viewModel.setCellPalette(.pet, forItemID: "/a.dcm#0")
+        viewModel.resetCell(forItemID: "/a.dcm#0")
+
+        // Reset gives the cell back to the film, so the next film-wide pick
+        // must reach it — the drift that previously stranded it for good.
+        #expect(viewModel.cellPalette(forItemID: "/a.dcm#0") == .hotIron)
+        viewModel.applyFilmPalette(.pet)
+        #expect(viewModel.cellPalette(forItemID: "/a.dcm#0") == .pet)
+    }
+
+    @Test("Picking the film's own colour by hand does not strand the cell")
+    func testHandPickingFilmColourStillFollows() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.applyFilmPalette(.hotIron)
+        viewModel.setCellPalette(.hotIron, forItemID: "/a.dcm#0")
+
+        viewModel.applyFilmPalette(.pet)
+        #expect(viewModel.cellPalette(forItemID: "/a.dcm#0") == .pet)
+    }
+
+    @Test("Grey chosen on a coloured film is a choice and is defended")
+    func testGreyIsAChoice() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.applyFilmPalette(.hotIron)
+        viewModel.setCellPalette(.grayscale, forItemID: "/a.dcm#0")
+
+        viewModel.applyFilmPalette(.pet)
+        #expect(viewModel.cellPalette(forItemID: "/a.dcm#0") == .grayscale)
+        #expect(viewModel.cellPalette(forItemID: "/b.dcm#0") == .pet)
     }
 }

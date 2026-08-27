@@ -339,6 +339,49 @@ public struct ViewerPresentation: Sendable, Equatable, Hashable, Codable {
         return region.covers(width: imageWidth, height: imageHeight) ? nil : region
     }
 
+    /// The region to *sample* so a freely turned cell's corners have pixels.
+    ///
+    /// ``visibleRegion(imageWidth:imageHeight:covers:)`` answers what the reader
+    /// composed — the rectangle the cell draws, at the scale they set. Off
+    /// square, that rectangle is turned about its centre and its corners swing
+    /// outside the cell, leaving wedges of cell with nothing over them. The
+    /// pixels that ought to fill those wedges are the ones just beyond the
+    /// region's edge, and the frame usually has them: a cell zoomed into the
+    /// middle of a CT has image in every direction.
+    ///
+    /// So this is the region to *read*, while `visibleRegion` stays the region
+    /// to *fit*. Keeping them separate is what lets the corners be filled
+    /// without the anatomy shrinking: growing the fitted rectangle instead
+    /// would hand the printer a bigger picture to fit into the same box, which
+    /// is the √2-at-45° shrink the free-angle scale contract forbids.
+    ///
+    /// Clamped to the frame — pixels outside it do not exist — so a cell already
+    /// against its image's edge gets what there is, and the wedge that remains
+    /// is honest background rather than a smear.
+    ///
+    /// Returns its input unchanged when upright or at a quarter turn, where the
+    /// turned rectangle covers the cell exactly and there is nothing to grow.
+    public func regionCoveringTurnedCell(
+        _ region: PixelRegion, imageWidth: Int, imageHeight: Int
+    ) -> PixelRegion {
+        guard !isQuarterTurn,
+              region.width > 0, region.height > 0,
+              imageWidth > 0, imageHeight > 0 else { return region }
+
+        let (sweptWidth, sweptHeight) = turnedSize(
+            width: Double(region.width), height: Double(region.height))
+        let centreX = Double(region.x) + Double(region.width) / 2
+        let centreY = Double(region.y) + Double(region.height) / 2
+
+        let x0 = max(0, Int((centreX - sweptWidth / 2).rounded(.down)))
+        let y0 = max(0, Int((centreY - sweptHeight / 2).rounded(.down)))
+        let x1 = min(imageWidth, Int((centreX + sweptWidth / 2).rounded(.up)))
+        let y1 = min(imageHeight, Int((centreY + sweptHeight / 2).rounded(.up)))
+        guard x1 > x0, y1 > y0 else { return region }
+
+        return PixelRegion(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
+    }
+
     // MARK: - Pan limits
 
     /// A pan held to what the image can actually cover.

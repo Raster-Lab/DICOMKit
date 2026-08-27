@@ -49,6 +49,43 @@ public struct SavedView: Sendable, Equatable, Identifiable {
         self.states = states
     }
 
+    /// The short identifier a reader can quote to name this view.
+    ///
+    /// A label is what a view is *called*; the reference ID is what it *is*.
+    /// The distinction matters the moment a saved view leaves the app — two
+    /// studies can each hold a "Lung window", and a report that says "see the
+    /// lung window" names nothing findable. The ID is derived from the Series
+    /// Instance UID the view's objects share and the label that groups them, so
+    /// it is stable across launches without a counter to keep on disk, and it
+    /// changes when the view is re-saved under a different name because that is
+    /// then a different view.
+    ///
+    /// Formatted as `PR-XXXXXXXX`: short enough to read aloud and type into a
+    /// report, long enough that two views of one study will not collide.
+    public var referenceID: String {
+        SavedView.referenceID(
+            seriesInstanceUID: states.first?.seriesInstanceUID ?? "",
+            label: label)
+    }
+
+    /// The ID for a view, from the two things that identify it.
+    ///
+    /// Exposed so a caller writing a view can state the ID it *will* have
+    /// before the objects exist, and get the same answer this does afterwards.
+    public static func referenceID(seriesInstanceUID: String, label: String) -> String {
+        // FNV-1a over the two identifying strings. A non-cryptographic hash is
+        // the right tool: this is a name, not a secret, and the property that
+        // matters is that it is the same every time it is computed — which
+        // Swift's own `hashValue` explicitly is not, being seeded per process.
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in Array("\(seriesInstanceUID)|\(label)".utf8) {
+            hash ^= UInt64(byte)
+            hash &*= 0x0000_0100_0000_01b3
+        }
+        let digits = String(hash, radix: 36, uppercase: true)
+        return "PR-" + String(digits.suffix(8))
+    }
+
     /// The state covering a given image, if this view has one.
     ///
     /// A view saved over three images has nothing to say about a fourth; the
@@ -61,6 +98,15 @@ public struct SavedView: Sendable, Equatable, Identifiable {
     public func covers(image sopInstanceUID: String) -> Bool {
         state(forImage: sopInstanceUID) != nil
     }
+
+    /// How many distinct images this view says something about.
+    ///
+    /// One for a view saved on a single image; the series' image count for a
+    /// view saved across it. This is how the pickers tell the two apart — the
+    /// label alone cannot, since a name says nothing about its reach.
+    public var coveredImageCount: Int {
+        Set(states.flatMap(\.referencedImageUIDs)).count
+    }
 }
 
 /// A presentation state as it sits on disk, with the file it came from.
@@ -72,13 +118,33 @@ public struct StoredPresentationState: Sendable, Equatable {
     /// Where it lives, so it can be deleted or rewritten.
     public let url: URL
 
-    /// The text and arrows the reader drew on this image.
+    /// The text and arrows the reader drew on this image, keyed by frame.
     ///
     /// Read from the sidecar beside the object rather than from the object
     /// itself — see ``AnnotationSidecar`` for why they are not written as a
     /// Graphic Annotation Sequence. Empty for the ordinary saved view, which
-    /// records a window and a zoom and nothing drawn.
-    public let annotations: [PrintOverlayAnnotation]
+    /// records a window and a zoom and nothing drawn. A single-frame image's
+    /// drawings sit under frame 0.
+    public let annotationsByFrame: [Int: [PrintOverlayAnnotation]]
+
+    /// The pseudo-colour palette the view was read through, if any.
+    ///
+    /// From the sidecar too: GSPS has no vocabulary for "coloured", so a view
+    /// saved off a pseudo-coloured image would otherwise restore grey.
+    public let palette: PseudoColorPalette?
+
+    /// Every drawing regardless of frame, in frame order.
+    ///
+    /// For callers that speak to the image as a whole — a film cell showing one
+    /// frame reads ``annotations(forFrame:)`` instead.
+    public var annotations: [PrintOverlayAnnotation] {
+        annotationsByFrame.sorted { $0.key < $1.key }.flatMap(\.value)
+    }
+
+    /// The drawings belonging to one frame of the image.
+    public func annotations(forFrame frameIndex: Int) -> [PrintOverlayAnnotation] {
+        annotationsByFrame[frameIndex] ?? []
+    }
 
     /// The reader's own wording, kept unfolded.
     ///
@@ -86,16 +152,35 @@ public struct StoredPresentationState: Sendable, Equatable {
     /// name shown in the picker comes from Content Description instead.
     private let displayLabel: String?
 
+    /// Series Number (0020,0011) of the presentation-state series this object
+    /// lives in.
+    ///
+    /// Read from the object rather than assumed to be
+    /// ``PresentationStateStore/presentationSeriesNumber``: a study can hold
+    /// presentation states written elsewhere, and the pane reports what the
+    /// file says.
+    public let seriesNumber: Int?
+
     public init(
         state: GrayscalePresentationState,
         url: URL,
         displayLabel: String? = nil,
-        annotations: [PrintOverlayAnnotation] = []
+        annotations: [PrintOverlayAnnotation] = [],
+        annotationsByFrame: [Int: [PrintOverlayAnnotation]]? = nil,
+        palette: PseudoColorPalette? = nil,
+        seriesInstanceUID: String = "",
+        seriesNumber: Int? = nil
     ) {
         self.state = state
         self.url = url
         self.displayLabel = displayLabel
-        self.annotations = annotations
+        // The flat `annotations` parameter is the single-frame spelling every
+        // caller used before frames were recorded: it means frame 0.
+        self.annotationsByFrame = annotationsByFrame
+            ?? (annotations.isEmpty ? [:] : [0: annotations])
+        self.palette = palette
+        self.seriesInstanceUID = seriesInstanceUID
+        self.seriesNumber = seriesNumber
     }
 
     /// Every image this state applies to.
@@ -107,6 +192,13 @@ public struct StoredPresentationState: Sendable, Equatable {
     public var label: String {
         displayLabel ?? state.presentationLabel ?? "Saved view"
     }
+
+    /// The presentation-state series this object was written into.
+    ///
+    /// Read from the file rather than from the parsed state: a
+    /// ``GrayscalePresentationState`` describes the *images* it applies to and
+    /// carries the series UIDs of those, not the series it itself belongs to.
+    public let seriesInstanceUID: String
 
     /// Compared by identity: a presentation state is a SOP Instance, so two
     /// values are the same state exactly when they carry the same UID and came
@@ -173,24 +265,93 @@ public struct PresentationStateStore: Sendable {
         /// The view to record for it.
         public let display: ViewerPresentationStateBridge.CapturedDisplay
 
-        /// What the reader drew on it, if anything.
+        /// What the reader drew on it, if anything, keyed by frame.
         ///
         /// Defaulted so every existing caller that saves a window and a zoom
         /// keeps compiling and keeps writing no sidecar.
-        public let annotations: [PrintOverlayAnnotation]
+        public let annotationsByFrame: [Int: [PrintOverlayAnnotation]]
+
+        /// The pseudo-colour palette the image was read through, if any.
+        ///
+        /// Recorded in the sidecar only — GSPS cannot say "coloured" — so a
+        /// view saved off a pseudo-coloured image restores coloured.
+        public let palette: PseudoColorPalette?
+
+        /// Every drawing regardless of frame, in frame order — what the
+        /// best-effort Graphic Annotation Sequence is written from.
+        public var annotations: [PrintOverlayAnnotation] {
+            annotationsByFrame.sorted { $0.key < $1.key }.flatMap(\.value)
+        }
+
+        /// The image's pixel dimensions, needed to state the drawn annotations
+        /// in the GSPS's own units — the overlays are fractions of the image,
+        /// and a Graphic Annotation Sequence speaks in pixels. Zero (the
+        /// default) writes the sidecar only, as every caller did before the
+        /// sequence was written at all.
+        public let imageWidth: Int
+        public let imageHeight: Int
+
+        /// The image's stored-pixel depth and signedness — what sizes the
+        /// Palette Color LUT of a coloured save. The table must hold one entry
+        /// per storable pixel value or a conforming viewer indexes past its
+        /// end and paints the film one colour. Zero (the default) falls back
+        /// to the 8-bit table, which is only right for 8-bit images.
+        public let bitsStored: Int
+        public let isSigned: Bool
+
+        /// The image's rescale, needed to turn the state's window — carried
+        /// in rescaled units — back into the stored-value domain the palette
+        /// table is baked over.
+        public let rescaleSlope: Double
+        public let rescaleIntercept: Double
+
+        /// How many frames the image has.
+        ///
+        /// What decides whether the written Graphic Annotation Sequence names
+        /// frames at all: a drawing on frame 3 of a cine has to say so, or a
+        /// conforming viewer shows it on all sixty. One frame — the default —
+        /// keeps the un-framed form, which is both correct for a single-frame
+        /// image and the exact bytes written before frames were stated.
+        public let numberOfFrames: Int
+
+        /// Whether frame numbers belong in this image's annotations.
+        var isMultiFrame: Bool { numberOfFrames > 1 }
 
         public init(
             sopClassUID: String,
             sopInstanceUID: String,
             seriesInstanceUID: String,
             display: ViewerPresentationStateBridge.CapturedDisplay,
-            annotations: [PrintOverlayAnnotation] = []
+            annotations: [PrintOverlayAnnotation] = [],
+            annotationsByFrame: [Int: [PrintOverlayAnnotation]]? = nil,
+            palette: PseudoColorPalette? = nil,
+            imageWidth: Int = 0,
+            imageHeight: Int = 0,
+            bitsStored: Int = 0,
+            isSigned: Bool = false,
+            rescaleSlope: Double = 1,
+            rescaleIntercept: Double = 0,
+            numberOfFrames: Int = 1
         ) {
             self.sopClassUID = sopClassUID
             self.sopInstanceUID = sopInstanceUID
             self.seriesInstanceUID = seriesInstanceUID
             self.display = display
-            self.annotations = annotations
+            // The flat `annotations` parameter is the single-frame spelling —
+            // it means frame 0, which is every frame a single-frame image has.
+            self.annotationsByFrame = annotationsByFrame
+                ?? (annotations.isEmpty ? [:] : [0: annotations])
+            self.palette = palette
+            self.imageWidth = imageWidth
+            self.imageHeight = imageHeight
+            self.bitsStored = bitsStored
+            self.isSigned = isSigned
+            self.rescaleSlope = rescaleSlope
+            self.rescaleIntercept = rescaleIntercept
+            // A file that says nothing about frames has one, and zero or a
+            // negative count is not a picture — either way the un-framed form
+            // is what gets written.
+            self.numberOfFrames = max(1, numberOfFrames)
         }
     }
 
@@ -232,8 +393,6 @@ public struct PresentationStateStore: Sendable {
         // the reader correcting the view, not adding another.
         try deleteView(label: label, studyInstanceUID: patient.studyInstanceUID)
 
-        let builder = GrayscalePresentationStateBuilder()
-
         var context = patient
         context.seriesDescription = Self.seriesDescription
 
@@ -250,8 +409,45 @@ public struct PresentationStateStore: Sendable {
         for (index, image) in images.enumerated() {
             let sopInstanceUID = UIDGenerator.generateSOPInstanceUID().value
 
+            // The drawings, in DICOM's own vocabulary as well as the sidecar's:
+            // the sequence is what another viewer can read, the sidecar is what
+            // our restore reads (see ``AnnotationSidecar`` for why both exist).
+            // Needs the pixel dimensions — callers that pass none keep writing
+            // sidecar-only objects.
+            //
+            // The series reference names the instance and no frame: the
+            // window, the zoom and the palette are statements about the whole
+            // multi-frame image, and a frame number here would narrow the
+            // state to one frame of a cine the reader adjusted entirely.
+            // Frames are named where they actually mean something — on the
+            // individual drawings below.
+            let referencedImage = ReferencedImage(
+                sopClassUID: image.sopClassUID,
+                sopInstanceUID: image.sopInstanceUID)
+            let graphicAnnotations = PrintOverlayAnnotationGSPS.graphicAnnotations(
+                from: image.annotationsByFrame,
+                imageWidth: image.imageWidth,
+                imageHeight: image.imageHeight,
+                referencedImage: referencedImage,
+                isMultiFrame: image.isMultiFrame)
+
+            // Which presentation state IOD this image needs. A non-grey
+            // palette has to leave in a Pseudo-Color object (…11.3) or it does
+            // not leave at all — GSPS has no colour vocabulary, which is why
+            // the palette used to survive only in the private sidecar and
+            // vanished from every exported study. Grey stays GSPS: same file
+            // another viewer already reads, no palette module carrying nothing.
+            let colourPalette: PseudoColorPalette? = {
+                guard let palette = image.palette, !palette.isGrayscale else { return nil }
+                return palette
+            }()
+            let sopClassUID = colourPalette == nil
+                ? GrayscalePresentationStateBuilder.sopClassUID
+                : PseudoColorPresentationStateBuilder.sopClassUID
+
             let state = GrayscalePresentationState(
                 sopInstanceUID: sopInstanceUID,
+                sopClassUID: sopClassUID,
                 instanceNumber: index + 1,
                 presentationLabel: label,
                 presentationCreationDate: creationDate,
@@ -260,27 +456,44 @@ public struct PresentationStateStore: Sendable {
                 referencedSeries: [
                     ReferencedSeries(
                         seriesInstanceUID: image.seriesInstanceUID,
-                        referencedImages: [
-                            ReferencedImage(
-                                sopClassUID: image.sopClassUID,
-                                sopInstanceUID: image.sopInstanceUID)
-                        ])
+                        referencedImages: [referencedImage])
                 ],
                 voiLUT: image.display.voiLUT,
                 presentationLUT: image.display.presentationLUT,
                 spatialTransformation: image.display.spatialTransformation,
-                displayedArea: image.display.displayedArea)
+                displayedArea: image.display.displayedArea,
+                graphicLayers: graphicAnnotations.isEmpty
+                    ? [] : PrintOverlayAnnotationGSPS.graphicLayers(for: image.annotations),
+                graphicAnnotations: graphicAnnotations)
 
-            let dataSet = builder.buildDataSet(
-                from: state,
-                patient: context,
-                seriesInstanceUID: seriesInstanceUID,
-                seriesNumber: Self.presentationSeriesNumber)
+            let dataSet: DataSet
+            if let colourPalette {
+                dataSet = PseudoColorPresentationStateBuilder().buildDataSet(
+                    from: state,
+                    palette: colourPalette,
+                    // The table must cover the image's stored range; with no
+                    // depth recorded the 8-bit shape is the only honest guess.
+                    pixelDomain: image.bitsStored > 0
+                        ? .init(
+                            bitsStored: image.bitsStored, isSigned: image.isSigned,
+                            rescaleSlope: image.rescaleSlope,
+                            rescaleIntercept: image.rescaleIntercept)
+                        : nil,
+                    patient: context,
+                    seriesInstanceUID: seriesInstanceUID,
+                    seriesNumber: Self.presentationSeriesNumber)
+            } else {
+                dataSet = GrayscalePresentationStateBuilder().buildDataSet(
+                    from: state,
+                    patient: context,
+                    seriesInstanceUID: seriesInstanceUID,
+                    seriesNumber: Self.presentationSeriesNumber)
+            }
 
             let url = directory.appendingPathComponent("\(sopInstanceUID).dcm")
             let file = DICOMFile.create(
                 dataSet: dataSet,
-                sopClassUID: GrayscalePresentationStateBuilder.sopClassUID,
+                sopClassUID: sopClassUID,
                 sopInstanceUID: sopInstanceUID,
                 transferSyntaxUID: Self.transferSyntaxUID)
             try file.write().write(to: url, options: [.atomic])
@@ -288,11 +501,21 @@ public struct PresentationStateStore: Sendable {
             // Written after the object, and non-fatally: a saved view that keeps
             // its window and loses its arrows is a poor outcome, but losing the
             // whole view because a sidecar could not be written is a worse one.
-            let drawn = image.annotations.filter { !$0.isBlank }
-            try? AnnotationSidecar.write(drawn, forStateAt: url)
+            var drawnByFrame: [Int: [PrintOverlayAnnotation]] = [:]
+            for (frame, annotations) in image.annotationsByFrame {
+                let drawn = annotations.filter { !$0.isBlank }
+                if !drawn.isEmpty { drawnByFrame[frame] = drawn }
+            }
+            let sidecar = AnnotationSidecar.Contents(
+                palette: image.palette, annotationsByFrame: drawnByFrame)
+            try? AnnotationSidecar.write(sidecar, forStateAt: url)
 
             stored.append(StoredPresentationState(
-                state: state, url: url, annotations: drawn))
+                state: state, url: url,
+                annotationsByFrame: drawnByFrame,
+                palette: image.palette,
+                seriesInstanceUID: seriesInstanceUID,
+                seriesNumber: Self.presentationSeriesNumber))
         }
 
         return SavedView(label: label, created: created, states: stored)
@@ -322,11 +545,40 @@ public struct PresentationStateStore: Sendable {
             // label a delete or a re-save is looking for.
             let displayLabel = file.dataSet.string(for: .presentationDescription)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            let sidecar = AnnotationSidecar.read(forStateAt: url)
+
+            // The palette, from whichever copy survived. The sidecar is
+            // authoritative when present — it records the reader's actual
+            // choice, grey choices included. When it did not travel (a study
+            // exported and re-imported carries only the DICOM), a Pseudo-Color
+            // object's own Palette Color LUT names the palette instead: that is
+            // the entire point of writing …11.3 rather than a sidecar alone.
+            var resolvedState = state
+            let palette: PseudoColorPalette?
+            if let fromSidecar = sidecar.palette {
+                palette = fromSidecar
+            } else if let match = Self.paletteMatch(in: file.dataSet) {
+                palette = match.palette
+                // An inverted view of this IOD has its inversion baked into the
+                // table — no Presentation LUT Shape to read — so the state is
+                // rebuilt saying INVERSE, or the restore would colour the view
+                // and quietly lose the flip.
+                if match.inverted, state.presentationLUT == nil {
+                    resolvedState = Self.replacingPresentationLUT(state, with: .inverse)
+                }
+            } else {
+                palette = nil
+            }
+
             stored.append(StoredPresentationState(
-                state: state,
+                state: resolvedState,
                 url: url,
                 displayLabel: (displayLabel?.isEmpty == false) ? displayLabel : nil,
-                annotations: AnnotationSidecar.read(forStateAt: url)))
+                annotationsByFrame: sidecar.annotationsByFrame,
+                palette: palette,
+                seriesInstanceUID: file.dataSet.string(for: .seriesInstanceUID) ?? "",
+                seriesNumber: file.dataSet.string(for: .seriesNumber)
+                    .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }))
         }
 
         // Grouping by label is what makes several objects one saved view. This
@@ -385,6 +637,213 @@ public struct PresentationStateStore: Sendable {
         try fileManager.removeItem(at: directory)
     }
 
+    // MARK: - Publishing into the study
+
+    /// One presentation-state object as it now sits in the study.
+    public struct PublishedInstance: Sendable, Equatable {
+
+        /// SOP Class and Instance UID of the presentation state itself.
+        public let sopClassUID: String
+        public let sopInstanceUID: String
+
+        /// Where it was written.
+        public let url: URL
+
+        /// Instance Number within the presentation-state series.
+        public let instanceNumber: Int
+
+        /// The images it describes, so a caller can say what it applies to.
+        public let referencedImageUIDs: [String]
+
+        public init(
+            sopClassUID: String,
+            sopInstanceUID: String,
+            url: URL,
+            instanceNumber: Int,
+            referencedImageUIDs: [String]
+        ) {
+            self.sopClassUID = sopClassUID
+            self.sopInstanceUID = sopInstanceUID
+            self.url = url
+            self.instanceNumber = instanceNumber
+            self.referencedImageUIDs = referencedImageUIDs
+        }
+    }
+
+    /// A saved view, published as a series of the study.
+    ///
+    /// Everything a library needs to file the series without re-reading the
+    /// objects: the identity of the series, what to call it, and its instances.
+    public struct PublishedSeries: Sendable, Equatable {
+
+        /// The study the series belongs to.
+        public let studyInstanceUID: String
+
+        /// Series Instance UID — the same one the store has been using for this
+        /// study's presentation states all along, so publishing twice adds
+        /// objects to one series rather than making a second.
+        public let seriesInstanceUID: String
+
+        /// Series Number and Description, matching what is in the objects.
+        public let seriesNumber: Int
+        public let seriesDescription: String
+
+        /// "PR", by definition of a presentation state.
+        public let modality: String
+
+        /// The reference ID a reader quotes to name this view.
+        public let referenceID: String
+
+        /// The view's own name.
+        public let label: String
+
+        /// The objects written, one per image the view covers.
+        public let instances: [PublishedInstance]
+
+        public init(
+            studyInstanceUID: String,
+            seriesInstanceUID: String,
+            seriesNumber: Int,
+            seriesDescription: String,
+            modality: String,
+            referenceID: String,
+            label: String,
+            instances: [PublishedInstance]
+        ) {
+            self.studyInstanceUID = studyInstanceUID
+            self.seriesInstanceUID = seriesInstanceUID
+            self.seriesNumber = seriesNumber
+            self.seriesDescription = seriesDescription
+            self.modality = modality
+            self.referenceID = referenceID
+            self.label = label
+            self.instances = instances
+        }
+    }
+
+    /// Publishes a saved view as a series of the study, at a chosen location.
+    ///
+    /// The objects the store already holds *are* conformant GSPS files sitting
+    /// in a "PR" series — what keeps them out of the study is only where they
+    /// live: an app-support directory the library does not index. Publishing is
+    /// therefore a copy, not a conversion, and deliberately so. Rebuilding the
+    /// objects here would mean two code paths that must agree on what a saved
+    /// view is, and the second one would drift.
+    ///
+    /// The destination is the caller's: a study imported from a folder gets the
+    /// series written beside its own files, which is what makes the pane show
+    /// it after the next scan. The store's own copy is left alone — publishing
+    /// hands the study a copy, it does not move the reader's saved view out of
+    /// the app.
+    ///
+    /// - Parameters:
+    ///   - label: The view to publish.
+    ///   - studyInstanceUID: The study it belongs to.
+    ///   - destination: Directory to write into. Created if it does not exist.
+    /// - Returns: The published series, or nil if there is no such view.
+    @discardableResult
+    public func publish(
+        label: String,
+        studyInstanceUID: String,
+        into destination: URL
+    ) throws -> PublishedSeries? {
+        guard let view = views(forStudy: studyInstanceUID)
+            .first(where: { $0.label == label }) else { return nil }
+        guard !view.states.isEmpty else { return nil }
+
+        try fileManager.createDirectory(
+            at: destination, withIntermediateDirectories: true)
+
+        // Objects of *this* view already in the study, from an earlier publish.
+        //
+        // They cannot be found by filename: saving under an existing label
+        // replaces the store's copy with freshly minted SOP Instance UIDs, so
+        // the new objects land beside the old ones rather than over them. They
+        // are found by reading what is there and keeping whatever carries this
+        // view's label, which is the same thing that groups a saved view
+        // everywhere else.
+        let superseded = publishedObjects(ofView: view.label, in: destination)
+
+        var instances: [PublishedInstance] = []
+
+        for state in view.states {
+            let sopInstanceUID = state.state.sopInstanceUID
+            let url = destination.appendingPathComponent("\(sopInstanceUID).dcm")
+
+            // Overwrite rather than skip: publishing the same view twice is a
+            // reader re-publishing after adjusting it, and a stale object left
+            // in place would be the one the study kept showing.
+            if fileManager.fileExists(atPath: url.path) {
+                try fileManager.removeItem(at: url)
+            }
+            try fileManager.copyItem(at: state.url, to: url)
+
+            // The sidecar travels with the object, so a published series
+            // restores the reader's arrows the same way the store's copy does.
+            AnnotationSidecar.copy(forStateAt: state.url, toStateAt: url)
+
+            instances.append(PublishedInstance(
+                // The state's own class: a coloured view published a
+                // Pseudo-Color object, and calling it GSPS here would misfile
+                // it in every index built from this record.
+                sopClassUID: state.state.sopClassUID,
+                sopInstanceUID: sopInstanceUID,
+                url: url,
+                instanceNumber: state.state.instanceNumber ?? (instances.count + 1),
+                referencedImageUIDs: state.referencedImageUIDs))
+        }
+
+        // Whatever the re-publish did not just write is a leftover of the view
+        // as it used to be. Removed last, so a failure partway through copying
+        // leaves the reader with both copies rather than neither.
+        let written = Set(instances.map(\.url.standardizedFileURL))
+        for url in superseded where !written.contains(url.standardizedFileURL) {
+            try? fileManager.removeItem(at: url)
+            AnnotationSidecar.delete(forStateAt: url)
+        }
+
+        return PublishedSeries(
+            studyInstanceUID: studyInstanceUID,
+            seriesInstanceUID: view.states.first?.seriesInstanceUID
+                ?? seriesUID(forStudy: studyInstanceUID),
+            seriesNumber: Self.presentationSeriesNumber,
+            seriesDescription: Self.seriesDescription,
+            modality: GrayscalePresentationStateBuilder.modality,
+            referenceID: view.referenceID,
+            label: view.label,
+            instances: instances)
+    }
+
+    /// The presentation states already in a study folder that carry a label.
+    ///
+    /// Reads the objects rather than trusting filenames: a re-saved view is
+    /// written under new SOP Instance UIDs, so the file that has to be replaced
+    /// is not the one the new object would be named after.
+    ///
+    /// Only presentation states are considered — the destination is the study's
+    /// own folder, full of images this must never touch.
+    private func publishedObjects(ofView label: String, in destination: URL) -> [URL] {
+        guard let urls = try? fileManager.contentsOfDirectory(
+            at: destination, includingPropertiesForKeys: nil) else { return [] }
+
+        return urls.filter { url in
+            guard url.pathExtension.lowercased() == "dcm",
+                  let file = try? DICOMFile.read(from: url),
+                  let sopClass = file.dataSet.string(for: .sopClassUID),
+                  sopClass == GrayscalePresentationStateBuilder.sopClassUID
+                      || sopClass == PseudoColorPresentationStateBuilder.sopClassUID
+            else { return false }
+            // Content Description holds the reader's own wording; Presentation
+            // Label is the CS-folded one. Matching either is what makes this
+            // agree with the grouping `views(forStudy:)` does.
+            let described = file.dataSet.string(for: .presentationDescription)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return described == label
+                || file.dataSet.string(for: .contentLabel)
+                    == GrayscalePresentationStateBuilder.contentLabel(from: label)
+        }
+    }
+
     // MARK: - Series identity
 
     /// The Series Instance UID this study's presentation states share.
@@ -406,6 +865,58 @@ public struct PresentationStateStore: Sendable {
             }
         }
         return UIDGenerator.generateSeriesInstanceUID().value
+    }
+
+    /// Reads the palette out of a Pseudo-Color presentation state's own data.
+    ///
+    /// UID first: Palette Color Lookup Table UID (0028,1199) names one of the
+    /// standard's eight palettes outright. Failing that, the table itself is
+    /// compared against the catalogue — which is how our computed palettes
+    /// (Viridis and friends, which have no UID to carry) come back by name.
+    /// `nil` for a grayscale object (no LUT to read) or a foreign table.
+    static func paletteMatch(in dataSet: DataSet) -> PseudoColorPalette.Match? {
+        guard dataSet.string(for: .sopClassUID)
+                == PseudoColorPresentationStateBuilder.sopClassUID else { return nil }
+
+        if let uid = dataSet.string(for: .paletteColorLookupTableUID)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           let palette = PseudoColorPalette.allCases.first(
+               where: { $0.wellKnownSOPInstanceUID == uid }) {
+            // The UID is only ever written uninverted — a reversed table is no
+            // longer the table the UID names — so inverted is false by
+            // construction here.
+            return PseudoColorPalette.Match(palette: palette, inverted: false)
+        }
+
+        guard let lut = dataSet.paletteColorLUT() else { return nil }
+        return PseudoColorPalette.matching(lut)
+    }
+
+    /// The same state with a different Presentation LUT — needed because the
+    /// model is immutable and the Pseudo-Color read path has to restore an
+    /// inversion it found baked into the palette table.
+    static func replacingPresentationLUT(
+        _ state: GrayscalePresentationState,
+        with presentationLUT: PresentationLUT
+    ) -> GrayscalePresentationState {
+        GrayscalePresentationState(
+            sopInstanceUID: state.sopInstanceUID,
+            sopClassUID: state.sopClassUID,
+            instanceNumber: state.instanceNumber,
+            presentationLabel: state.presentationLabel,
+            presentationDescription: state.presentationDescription,
+            presentationCreationDate: state.presentationCreationDate,
+            presentationCreationTime: state.presentationCreationTime,
+            presentationCreatorsName: state.presentationCreatorsName,
+            referencedSeries: state.referencedSeries,
+            modalityLUT: state.modalityLUT,
+            voiLUT: state.voiLUT,
+            presentationLUT: presentationLUT,
+            spatialTransformation: state.spatialTransformation,
+            displayedArea: state.displayedArea,
+            graphicLayers: state.graphicLayers,
+            graphicAnnotations: state.graphicAnnotations,
+            shutters: state.shutters)
     }
 
     private static func creationDate(_ stored: StoredPresentationState) -> Date? {
@@ -432,5 +943,5 @@ public struct PresentationStateStore: Sendable {
 
     /// Explicit VR Little Endian — what a GSPS is normally stored as, and what
     /// keeps the files readable by anything else.
-    static let transferSyntaxUID = "1.2.840.10008.1.2.1"
+    public static let transferSyntaxUID = "1.2.840.10008.1.2.1"
 }

@@ -319,6 +319,57 @@ final class MetalCPUEquivalenceTests: XCTestCase {
         }
     }
 
+    /// A reader's ramp applies to a frame that carries its own colours too.
+    ///
+    /// The bug behind "the palette is still disabled for US": a colour frame
+    /// used to have its ramp discarded by both backends, so the control was
+    /// greyed out to stop it claiming a colour nothing would draw. The ramp now
+    /// maps the frame's luminance instead — a display choice over what the
+    /// frame *shows*, since a colour frame has no raw sample to fold a table
+    /// into. This pins the three things that has to be true of it.
+    func testColourFrameTakesAReadersRamp() throws {
+        let descriptor = PixelDataDescriptor(
+            rows: 23, columns: 37,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 3,
+            photometricInterpretation: .rgb, planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: scatteredBytes(count: descriptor.bytesPerFrame),
+                                  descriptor: descriptor)
+        let plain = FrameRenderRequest(pixelData: pixelData)
+        let ramped = FrameRenderRequest(
+            pixelData: pixelData, pseudoColorPalette: .hotIron)
+
+        // The request routes it: a colour frame's ramp is the reader's, not the
+        // one that folds into a window.
+        XCTAssertNil(ramped.effectivePseudoColorPalette,
+                     "a colour frame has no window table to fold a ramp into")
+        XCTAssertEqual(ramped.readerPalette, .hotIron)
+        XCTAssertNil(plain.readerPalette, "no ramp chosen is no recolouring")
+
+        // The CPU actually recolours, rather than handing back the frame it was
+        // given. Comparing bytes rather than trusting the call not to no-op.
+        let cpu = CPUFrameRenderer()
+        let plainImage = try XCTUnwrap(cpu.renderFrame(plain))
+        let rampedImage = try XCTUnwrap(cpu.renderFrame(ramped))
+        XCTAssertEqual(rampedImage.width, plainImage.width)
+        XCTAssertEqual(rampedImage.height, plainImage.height)
+        XCTAssertNotEqual(
+            try XCTUnwrap(plainImage.dataProvider?.data) as Data,
+            try XCTUnwrap(rampedImage.dataProvider?.data) as Data,
+            "the ramp must change the pixels, or it is being discarded again")
+
+        // And Metal declines it, so `FrameRenderService` falls through to the
+        // CPU that does handle it. A GPU that rendered this without the ramp
+        // would silently win the race and show the un-ramped frame.
+        if let metal = try? requireMetal() {
+            XCTAssertNil(metal.renderFrame(ramped),
+                         "the GPU has no luminance-ramp kernel and must decline")
+            XCTAssertNotNil(metal.renderFrame(plain),
+                            "without a ramp the colour frame still belongs on the GPU")
+        }
+    }
+
     /// Concurrent renders at *different* windows must not window each other's frame.
     ///
     /// The regression this pins: the window table lived in one buffer shared by every

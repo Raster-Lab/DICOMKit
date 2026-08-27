@@ -62,8 +62,14 @@ public struct GrayscalePresentationStateParser: Sendable {
             )
         }
         
-        // Verify this is a Grayscale Softcopy Presentation State
-        guard sopClassUID == .grayscaleSoftcopyPresentationStateStorage else {
+        // Verify this is a presentation state this parser can read. Pseudo-Color
+        // (PS3.3 A.33.4) is the grayscale IOD's shape plus a Palette Color LUT
+        // module and minus the Presentation LUT — everything parsed here means
+        // the same thing in both, and the model records which class it was via
+        // `sopClassUID`. The palette itself is read separately, through the
+        // data set's own `paletteColorLUT()`, by callers that want it.
+        guard sopClassUID == .grayscaleSoftcopyPresentationStateStorage
+            || sopClassUID == .pseudoColorSoftcopyPresentationStateStorage else {
             throw ParseError.invalidSOPClassUID(sopClassUID)
         }
         
@@ -188,6 +194,25 @@ public struct GrayscalePresentationStateParser: Sendable {
     }
     
     private func parseVOILUT(from dataSet: DataSet) throws -> VOILUT? {
+        // The Softcopy VOI LUT Sequence (C.11.8) is where a presentation
+        // state's window actually lives — read it first. The top-level
+        // spelling below stays as the fallback that keeps files written by
+        // older builds (which wrote only top-level) restoring their window.
+        if let softcopySequence = dataSet.sequence(for: .softcopyVOILUTSequence),
+           let item = softcopySequence.first {
+            if let center = item.strings(for: .windowCenter)?.first.flatMap(Self.decimal),
+               let width = item.strings(for: .windowWidth)?.first.flatMap(Self.decimal) {
+                let explanation = item.string(for: .windowCenterWidthExplanation)
+                let function = VOILUTFunction.parse(item.string(for: .voiLUTFunction))
+                return .window(
+                    center: center, width: width,
+                    explanation: explanation, function: function)
+            }
+            if let lutItem = item[.voiLUTSequence]?.sequenceItems?.first {
+                return .lut(try parseLUTData(from: lutItem))
+            }
+        }
+
         // Check for LUT Sequence first
         if let lutSequence = dataSet.sequence(for: .voiLUTSequence),
            let firstItem = lutSequence.first {
@@ -210,6 +235,11 @@ public struct GrayscalePresentationStateParser: Sendable {
         return nil
     }
     
+    /// A DS value as the parser needs it: trimmed and numeric, or nil.
+    private static func decimal(_ raw: String) -> Double? {
+        Double(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     private func parsePresentationLUT(from dataSet: DataSet) throws -> PresentationLUT? {
         // Check for Presentation LUT Sequence
         if let lutSequence = dataSet.sequence(for: .presentationLUTSequence),
@@ -381,15 +411,23 @@ public struct GrayscalePresentationStateParser: Sendable {
         
         let filledString = item.string(for: .graphicFilled)
         let filled = filledString == "Y"
-        
-        let unitsString = item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
+
+        // Graphic Annotation Units (0070,0005) is the graphic object's own units
+        // attribute; the bounding-box tag is kept as a fallback for files this
+        // parser accepted before the distinction was made.
+        let unitsString = item.string(for: .graphicAnnotationUnits)
+            ?? item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
         let units = AnnotationUnits(rawValue: unitsString) ?? .pixel
-        
+
         return GraphicObject(type: type, data: data, filled: filled, units: units)
     }
     
     private func parseTextObject(from item: SequenceItem) -> TextObject? {
-        guard let text = item.string(for: .unformattedTextValue),
+        // (0070,0006) is the Text Object's own Unformatted Text Value; (0040,A160)
+        // is SR's Text Value, read as a fallback for files written when this
+        // parser used the wrong tag.
+        guard let text = item.string(for: .textObjectUnformattedTextValue)
+                ?? item.string(for: .unformattedTextValue),
               let topLeftValues = item[.boundingBoxTopLeftHandCorner]?.decimalStringValues?.map({ $0.value }),
               topLeftValues.count == 2,
               let bottomRightValues = item[.boundingBoxBottomRightHandCorner]?.decimalStringValues?.map({ $0.value }),

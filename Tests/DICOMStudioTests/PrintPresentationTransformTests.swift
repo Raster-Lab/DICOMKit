@@ -34,6 +34,61 @@ struct PrintPresentationTransformTests {
 
     private func values(_ image: PrintImageData) -> [UInt8] { [UInt8](image.pixelData) }
 
+    /// A uniformly bright image, so "did this pixel get any image at all" is a
+    /// question the value alone answers: every real pixel is 200, and anything
+    /// the transform could not fill stays 0.
+    private func brightImage(width: Int, height: Int) -> PrintImageData {
+        PrintImageData(
+            pixelData: Data([UInt8](repeating: 200, count: width * height)),
+            rows: UInt16(height), columns: UInt16(width),
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            samplesPerPixel: 1, pixelRepresentation: 0,
+            photometricInterpretation: "MONOCHROME2")
+    }
+
+    // MARK: - A turned cell's corners
+
+    @Test("A zoomed, freely turned cell fills its corners from outside the crop")
+    func testFreeAngleFillsCornersFromBeyondTheCrop() throws {
+        // A 400² frame, zoomed 2× into its middle and turned 30°. The crop the
+        // reader composed is the centre 200², and turning that about its centre
+        // swings its corners out of the cell — the wedges left behind used to be
+        // background, because the crop had been taken before the rotation and
+        // the pixels that belong in those wedges had been thrown away with it.
+        // They are well inside this frame, so every output pixel must be image.
+        let image = brightImage(width: 400, height: 400)
+        let presentation = ViewerPresentation(
+            zoom: 2.0, viewportWidth: 400, viewportHeight: 400,
+            rotationDegrees: 30)
+        let result = PrintPresentationTransform.apply(presentation, to: image)
+
+        // The picture keeps the size the crop had: turning must not resize it.
+        #expect(abs(Int(result.columns) - 200) <= 2)
+        #expect(abs(Int(result.rows) - 200) <= 2)
+
+        // And not one pixel of it is background.
+        let pixels = values(result)
+        #expect(pixels.allSatisfy { $0 > 0 },
+                "every pixel of a turned cell inside a larger frame is image")
+        #expect(pixels.contains { $0 > 150 }, "and it is the frame's own brightness")
+    }
+
+    @Test("At the frame's edge the wedge stays background — there is nothing to fill it with")
+    func testFreeAngleAtTheEdgeKeepsItsBackground() throws {
+        // The whole frame, turned: there is no image beyond it to swing in, so
+        // the corners are honestly empty. This is the other half of the contract
+        // — the fix must widen the crop where the pixels exist, not invent them.
+        let image = brightImage(width: 200, height: 200)
+        let presentation = ViewerPresentation(
+            zoom: 1.0, viewportWidth: 200, viewportHeight: 200,
+            rotationDegrees: 45)
+        let result = PrintPresentationTransform.apply(presentation, to: image)
+
+        let pixels = values(result)
+        #expect(pixels.contains { $0 == 0 },
+                "a 45° turn of a whole frame leaves real background at its corners")
+    }
+
     // MARK: - Identity
 
     @Test("An identity presentation returns the image untouched")

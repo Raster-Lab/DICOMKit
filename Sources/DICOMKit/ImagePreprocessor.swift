@@ -187,14 +187,16 @@ public actor ImagePreprocessor {
                 descriptor: descriptor,
                 dataSet: dataSet,
                 colorMode: colorMode,
-                frameIndex: frameIndex
+                frameIndex: frameIndex,
+                palette: palette
             )
         } else if photometric.isColor {
             return try await preprocessColorImage(
                 pixelData: pixelData,
                 descriptor: descriptor,
                 colorMode: colorMode,
-                frameIndex: frameIndex
+                frameIndex: frameIndex,
+                palette: palette
             )
         } else {
             throw ImagePreprocessingError.unsupportedPhotometricInterpretation(photometric.rawValue)
@@ -375,13 +377,95 @@ public actor ImagePreprocessor {
         )
     }
 
+    /// Recolours an already-RGB frame through a pseudo-colour palette.
+    ///
+    /// A palette indexes a *scalar*, and a colour frame has three samples per
+    /// pixel, so there is nothing to index until the samples are reduced to one.
+    /// That reduction is Rec.601 luminance — the same coefficients
+    /// ``convertRGBToGrayscale`` already uses, so a palettised colour frame and
+    /// a grey one agree about which pixels are bright.
+    ///
+    /// The source is never modified: `rgb` is read, a new buffer is returned,
+    /// and the caller's `PixelData` is untouched. Nothing is written back to the
+    /// data set, so the stored pixels a `--raw` job sends stay exactly as they
+    /// were on disk.
+    ///
+    /// This is lossy in a way the monochrome path is not, and deliberately so:
+    /// the original hue is gone from the *output*, which for a colour-Doppler
+    /// ultrasound means the velocity encoding no longer reads. Colour sources
+    /// therefore only reach here when a palette was explicitly chosen for the
+    /// job — never by default.
+    static func colorizeRGB(
+        _ rgb: Data,
+        palette: PseudoColorPalette,
+        width: Int,
+        height: Int
+    ) throws -> PreparedImage {
+        let totalPixels = width * height
+        guard rgb.count >= totalPixels * 3 else {
+            throw ImagePreprocessingError.insufficientPixelData
+        }
+
+        var levels = [Double](repeating: 0, count: totalPixels)
+        rgb.withUnsafeBytes { raw in
+            guard let bytes = raw.bindMemory(to: UInt8.self).baseAddress else { return }
+            for i in 0..<totalPixels {
+                let offset = i * 3
+                let luminance = 0.299 * Double(bytes[offset])
+                    + 0.587 * Double(bytes[offset + 1])
+                    + 0.114 * Double(bytes[offset + 2])
+                // `colorize` indexes a normalised [0, 1] level, and 8-bit
+                // samples are already the full range — no window applies to a
+                // colour frame, whose samples are display values by definition.
+                levels[i] = luminance / 255.0
+            }
+        }
+
+        return Self.colorize(levels, palette: palette, width: width, height: height)
+    }
+
+    /// Reduces a prepared RGB frame to 8-bit MONOCHROME2 P-Values.
+    ///
+    /// Deliberately independent of the source ``PixelDataDescriptor``: by this
+    /// point the frame is the palette's output, three samples per pixel,
+    /// whatever the source was. Driving the reduction from the source
+    /// descriptor would reject a PALETTE COLOR frame, which carries one sample
+    /// per pixel on disk and three here.
+    static func flattenToGrayscale(_ image: PreparedImage) throws -> PreparedImage {
+        let totalPixels = image.width * image.height
+        guard image.pixelData.count >= totalPixels * 3 else {
+            throw ImagePreprocessingError.insufficientPixelData
+        }
+        var gray = [UInt8](repeating: 0, count: totalPixels)
+        image.pixelData.withUnsafeBytes { raw in
+            guard let bytes = raw.bindMemory(to: UInt8.self).baseAddress else { return }
+            for i in 0..<totalPixels {
+                let offset = i * 3
+                let value = 0.299 * Double(bytes[offset])
+                    + 0.587 * Double(bytes[offset + 1])
+                    + 0.114 * Double(bytes[offset + 2])
+                gray[i] = UInt8(Swift.min(Swift.max(value, 0.0), 255.0))
+            }
+        }
+        return PreparedImage(
+            pixelData: Data(gray),
+            width: image.width,
+            height: image.height,
+            bitsAllocated: 8,
+            samplesPerPixel: 1,
+            photometricInterpretation: "MONOCHROME2",
+            bitsStored: 8
+        )
+    }
+
     // MARK: - Color Image Processing
     
     private func preprocessColorImage(
         pixelData: PixelData,
         descriptor: PixelDataDescriptor,
         colorMode: PrintColorMode,
-        frameIndex: Int = 0
+        frameIndex: Int = 0,
+        palette: PseudoColorPalette? = nil
     ) async throws -> PreparedImage {
         let width = descriptor.columns
         let height = descriptor.rows
@@ -421,6 +505,26 @@ public actor ImagePreprocessor {
                 }
                 frameData = Self.convertYBRFullToRGB(frameData)
             }
+        }
+
+        // A palette recolours the frame the moment the samples are RGB — after
+        // the YBR conversion above, so YBR and RGB sources take the same door,
+        // and before the grayscale branch below, which would otherwise flatten
+        // the very colours the palette just produced.
+        //
+        // Grey palettes fall through untouched, matching the monochrome path:
+        // they add no colour, so the ordinary colour handling is already right.
+        if let palette, !palette.isGrayscale {
+            let colorized = try Self.colorizeRGB(
+                try normalizeColorData(frameData: frameData, descriptor: descriptor),
+                palette: palette,
+                width: width,
+                height: height)
+            // A grayscale printer still cannot take the RGB the palette made;
+            // the film's own limit is applied on the wire, as it is for any
+            // other colour frame.
+            guard colorMode == .grayscale else { return colorized }
+            return try Self.flattenToGrayscale(colorized)
         }
 
         // For color images, we may need to convert based on printer capabilities
@@ -464,7 +568,8 @@ public actor ImagePreprocessor {
         descriptor: PixelDataDescriptor,
         dataSet: DataSet,
         colorMode: PrintColorMode,
-        frameIndex: Int = 0
+        frameIndex: Int = 0,
+        palette: PseudoColorPalette? = nil
     ) async throws -> PreparedImage {
         // Each stored value indexes the Red/Green/Blue Palette Color Lookup
         // Tables (PS3.3 C.7.6.3.1.5); the LUT module is required for PALETTE
@@ -503,6 +608,20 @@ public actor ImagePreprocessor {
             rgbBytes.append(r)
             rgbBytes.append(g)
             rgbBytes.append(b)
+        }
+
+        // A pseudo-colour palette replaces the file's own colours rather than
+        // compounding with them. The file's LUT has already run — that is what
+        // produced `rgbBytes` — so the reader's choice lands on the colours the
+        // image actually shows, and the two tables never stack.
+        //
+        // The file's LUT is not modified and nothing is written back: this is a
+        // display choice over a copy, exactly as it is for a monochrome source.
+        if let palette, !palette.isGrayscale {
+            let colorized = try Self.colorizeRGB(
+                Data(rgbBytes), palette: palette, width: width, height: height)
+            guard colorMode == .grayscale else { return colorized }
+            return try Self.flattenToGrayscale(colorized)
         }
 
         if colorMode == .grayscale {

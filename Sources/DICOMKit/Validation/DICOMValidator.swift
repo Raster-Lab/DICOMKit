@@ -298,6 +298,8 @@ public struct DICOMValidator {
             validator = SecondaryCaptureImageStorageValidator()
         case "grayscalesoftcopypresentationstate", "gsps":
             validator = GrayscaleSoftcopyPresentationStateValidator()
+        case "pseudocolorsoftcopypresentationstate":
+            validator = PseudoColorSoftcopyPresentationStateValidator()
         case "basictextsr", "enhancedsr", "comprehensivesr", "structuredreport", "sr":
             validator = StructuredReportValidator()
         default:
@@ -352,6 +354,8 @@ public struct DICOMValidator {
             return "SecondaryCapture ImageStorage"
         case "1.2.840.10008.5.1.4.1.1.11.1":
             return "GrayscaleSoftcopyPresentationState"
+        case "1.2.840.10008.5.1.4.1.1.11.3":
+            return "PseudoColorSoftcopyPresentationState"
         case "1.2.840.10008.5.1.4.1.1.88.11", "1.2.840.10008.5.1.4.1.1.88.22", "1.2.840.10008.5.1.4.1.1.88.33":
             return "StructuredReport"
         default:
@@ -759,6 +763,45 @@ struct GrayscaleSoftcopyPresentationStateValidator: IODValidator {
                 level: .warning,
                 message: "GSPS: Modality should be 'PR'",
                 tag: .modality
+            ))
+        }
+    }
+}
+
+/// Pseudo-Color Softcopy Presentation State validator
+///
+/// The grayscale checks plus the two modules that make this IOD what it is:
+/// the Palette Color Lookup Table (Type 1 — without it the object says
+/// "coloured" and cannot say how) and the ICC Profile (mandatory per PS3.3
+/// A.33.4).
+struct PseudoColorSoftcopyPresentationStateValidator: IODValidator {
+    func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
+        GrayscaleSoftcopyPresentationStateValidator()
+            .validate(dataSet: dataSet, errors: &errors, warnings: &warnings)
+
+        let paletteTags: [(Tag, String)] = [
+            (.redPaletteColorLookupTableDescriptor, "Red Palette Color LUT Descriptor"),
+            (.greenPaletteColorLookupTableDescriptor, "Green Palette Color LUT Descriptor"),
+            (.bluePaletteColorLookupTableDescriptor, "Blue Palette Color LUT Descriptor"),
+            (.redPaletteColorLookupTableData, "Red Palette Color LUT Data"),
+            (.greenPaletteColorLookupTableData, "Green Palette Color LUT Data"),
+            (.bluePaletteColorLookupTableData, "Blue Palette Color LUT Data")
+        ]
+        for (tag, name) in paletteTags {
+            if dataSet[tag] == nil {
+                errors.append(ValidationIssue(
+                    level: .error,
+                    message: "Pseudo-Color PS: Missing required attribute \(name)",
+                    tag: tag
+                ))
+            }
+        }
+
+        if dataSet[.iccProfile] == nil {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "Pseudo-Color PS: Missing required ICC Profile",
+                tag: .iccProfile
             ))
         }
     }

@@ -32,6 +32,88 @@ struct PatientIdentificationOverlaySizingTests {
         #expect(full > tile, "a bigger cell carries bigger type, as the film does")
     }
 
+    // MARK: - The single-image taper
+
+    /// The rule the taper exists for: at 1×1 the frame *is* the sheet, so the
+    /// fraction that reads as identification on a tile reads as a headline
+    /// across the anatomy. Every other layout divides the sheet enough that the
+    /// plain fraction lands where it should.
+    @Test("A single-image film carries smaller type than the same cell would tiled")
+    func testSingleImageTaper() {
+        let cell = CGSize(width: 1235, height: 1500)
+        let tiled = Overlay.fontSize(for: cell, style: .automatic)
+        let single = Overlay.fontSize(for: cell, style: PrintAnnotationStyle.automatic
+            .on(cellCount: 1))
+
+        #expect(single < tiled, "1×1 tapers the caption")
+        #expect(abs(Double(single / tiled)
+                    - PrintAnnotationStyle.singleImageFactor) < 0.001,
+                "and tapers it by exactly the shared factor")
+    }
+
+    /// Only the one extreme. A 1×2 sheet is already divided, and tapering it
+    /// would be a second, undocumented size rule.
+    @Test("Every layout but 1×1 keeps the plain fraction")
+    func testOnlySingleImageTapers() {
+        let cell = CGSize(width: 1235, height: 1500)
+        let plain = Overlay.fontSize(for: cell, style: .automatic)
+        for cells in [2, 4, 6, 9, 20] {
+            let style = PrintAnnotationStyle.automatic.on(cellCount: cells)
+            #expect(!style.singleImageFilm, "\(cells) cells is not a single-image film")
+            #expect(Overlay.fontSize(for: cell, style: style) == plain,
+                    "\(cells) cells keeps the plain fraction")
+        }
+    }
+
+    /// The invariant the rest of this suite guards, held across the taper: the
+    /// preview and the burner must set the caption at one size on a 1×1 film
+    /// too, or the taper has merely moved the disagreement it was meant to fix.
+    @Test("Preview and film agree on the tapered size as well")
+    func testTaperedPreviewMatchesTheFilm() {
+        let style = PrintAnnotationStyle.automatic.on(cellCount: 1)
+        for cell in [CGSize(width: 576, height: 700),
+                     CGSize(width: 1235, height: 1500)] {
+            let preview = Double(Overlay.fontSize(for: cell, style: style)) / Double(cell.height)
+            let frameWidth = 2800
+            let frameHeight = Int((Double(frameWidth) * Double(cell.height / cell.width)).rounded())
+            let film = ImageAnnotationBurner.captionFontSize(
+                width: frameWidth, height: frameHeight,
+                singleImageFilm: true) / Double(frameHeight)
+
+            #expect(abs(preview - film) < 0.0005,
+                    "cell \(cell): preview \(preview * 100)% vs film \(film * 100)%")
+        }
+    }
+
+    /// A reader who states a caption size states the size they have been
+    /// reading on tiled sheets; the sheet being cut into one cell does not
+    /// change what they meant, so the taper applies to their fraction too.
+    @Test("A stated caption size is tapered on a single-image film")
+    func testCustomSizeTapers() {
+        let stated = PrintAnnotationStyle(sizeFraction: 0.035)
+        #expect(stated.resolvedSizeFraction == 0.035)
+
+        let single = stated.on(cellCount: 1)
+        let expected = 0.035 * PrintAnnotationStyle.singleImageFactor
+        #expect(abs((single.resolvedSizeFraction ?? 0) - expected) < 1e-9)
+
+        let cell = CGSize(width: 1235, height: 1500)
+        #expect(Overlay.fontSize(for: cell, style: single)
+                < Overlay.fontSize(for: cell, style: stated))
+    }
+
+    /// The taper makes type smaller, never unreadable: the floors are applied
+    /// after it on both sides.
+    @Test("The taper stops at the floor rather than below it")
+    func testTaperRespectsTheFloor() {
+        let tiny = CGSize(width: 60, height: 48)
+        #expect(Overlay.fontSize(for: tiny, style: PrintAnnotationStyle.automatic
+            .on(cellCount: 1)) >= 5)
+        #expect(ImageAnnotationBurner.captionFontSize(
+            width: 60, height: 48, singleImageFilm: true)
+                >= ImageAnnotationBurner.minimumFontSize)
+    }
+
     @Test("A cell with no size yet still yields a usable type size")
     func testZeroCell() {
         let size = Overlay.fontSize(for: .zero)

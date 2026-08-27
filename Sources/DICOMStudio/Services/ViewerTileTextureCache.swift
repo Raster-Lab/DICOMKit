@@ -88,7 +88,8 @@ public final class ViewerTileTextureCache {
                     path: path,
                     frameIndex: cell.frameIndex,
                     windowCenter: cell.windowCenter,
-                    windowWidth: cell.windowWidth)
+                    windowWidth: cell.windowWidth,
+                    palette: cell.palette)
                 guard let self else { return }
                 self.inFlight.remove(key)
                 // The grid may have moved on while this rendered; a texture for a
@@ -109,11 +110,18 @@ public final class ViewerTileTextureCache {
     /// are the display shader's transform on this path, so including them would
     /// re-render a texture that did not need to change — the exact cost this path
     /// exists to remove.
+    ///
+    /// The palette *is* here, and is the one display choice that is: the shader
+    /// can turn and crop a tile but it cannot colour one, so a palette is decided
+    /// in the render. A key without it would hand back the previous colour's
+    /// texture and leave the tile grey after the reader chose a ramp — the same
+    /// bug `PrintCellTextureCache` records on the film side.
     private static func key(for cell: ViewerCellState) -> String? {
         guard let path = cell.filePath else { return nil }
         let centre = cell.windowCenter.map { String($0) } ?? "-"
         let width = cell.windowWidth.map { String($0) } ?? "-"
-        return "\(path)|\(cell.frameIndex)|\(centre)|\(width)"
+        let palette = cell.palette?.rawValue ?? "-"
+        return "\(path)|\(cell.frameIndex)|\(centre)|\(width)|\(palette)"
     }
 }
 #endif

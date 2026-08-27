@@ -207,14 +207,25 @@ public enum PrintCellDisplay {
     ///   covers the cell exactly — the fill happens in the source region, and
     ///   the view showing it never has to change size.
     /// - Parameter presentationLUTShape: the film's Presentation LUT. A
-    ///   rendered inverse flips the whole sheet, composing with the per-cell
-    ///   invert exactly as the two inversions compose on the printed film, so
-    ///   a cell already inverted comes back to normal polarity under it.
+    ///   rendered inverse flips the cell, composing with the per-cell invert
+    ///   exactly as the two inversions compose on the printed film, so a cell
+    ///   already inverted comes back to normal polarity under it. Pass `nil`
+    ///   for cells whose pixels leave as colour — the preparer's inversion
+    ///   only runs on greys, and the preview must not invert what the film
+    ///   will not.
+    /// - Parameter polarityInverted: the film box's Polarity (2020,0020) is
+    ///   REVERSE. Applied by the printer to every image box — colour, grey and
+    ///   raw alike — and composed here the same way.
+    /// - Parameter desaturated: the job flattens this colour cell to greys
+    ///   ("Print colour images as greys"), so the cell is shown as the Rec.601
+    ///   luminance the film will carry.
     public static func presentation(
         for item: PrintSelectionItem, imageWidth: Int, imageHeight: Int,
         fillingCellOfSize cellSize: CGSize? = nil,
         stretchingToCell: Bool = false,
-        presentationLUTShape: DICOMNetwork.PresentationLUTShape? = nil
+        presentationLUTShape: DICOMNetwork.PresentationLUTShape? = nil,
+        polarityInverted: Bool = false,
+        desaturated: Bool = false
     ) -> DisplayPresentation {
         let arrangement = item.presentation
         // A filling cell reads its region with the covering geometry: the crop
@@ -240,23 +251,68 @@ public enum PrintCellDisplay {
                     ViewerPresentation.quarterTurns(fromDegrees: $0.rotationDegrees)
                 } ?? 0)
         }
+        // Off-square, the cell's corners need pixels the fitted rectangle does
+        // not contain. Grow the sampled region to the turned bounding box —
+        // clamped to the frame, because pixels outside it do not exist — and
+        // hand the fitted rectangle along separately so the scale is still the
+        // upright one. Upright and at the quarter turns the two are identical
+        // and nothing about the geometry changes.
+        let sampled = Self.grownToCoverTurnedCell(
+            source, degrees: arrangement?.rotationDegrees ?? 0,
+            imageWidth: imageWidth, imageHeight: imageHeight)
         return DisplayPresentation(
             // The angle itself, not the nearest quarter turn: the viewer's
             // rotate tool turns freely and the film now follows it.
             rotationDegrees: arrangement?.rotationDegrees ?? 0,
             flipHorizontal: arrangement?.flipHorizontal ?? false,
             flipVertical: arrangement?.flipVertical ?? false,
-            invert: (arrangement?.invert ?? false)
-                != (presentationLUTShape?.invertsPixels ?? false),
+            invert: ((arrangement?.invert ?? false)
+                != (presentationLUTShape?.invertsPixels ?? false))
+                != polarityInverted,
+            desaturate: desaturated,
             // Bilinear: a film cell is judged as a picture on a panel-scaled
             // sheet, and its CPU-drawn neighbours are smoothed — the viewer's
             // pixel-exact nearest sampling belongs to the viewer.
             linearFiltering: true,
-            sourceRegion: source,
+            sourceRegion: sampled,
             // Stretch keeps the fitted region — it distorts, it does not crop —
             // and the shader pulls the composed picture out to the cell's edges.
-            stretchToFill: stretchingToCell
+            stretchToFill: stretchingToCell,
+            fittedRegion: source
         )
+    }
+
+    /// A region grown to the bounding box its own turned rectangle sweeps,
+    /// held inside the frame.
+    ///
+    /// What this buys is the corners. A freely turned cell keeps the scale it
+    /// had upright — the anatomy must not shrink as the rotate tool is dragged
+    /// — so the turned rectangle no longer covers the cell, and the wedges it
+    /// leaves had nothing over them but the shader's black. The frame very
+    /// often *has* those pixels, and this is what asks for them; because the
+    /// fit is still measured on the ungrown rectangle, the extra simply falls
+    /// outside the cell and is cropped.
+    ///
+    /// The growth itself is `ViewerPresentation.regionCoveringTurnedCell` — the
+    /// same call the print path makes, so the preview and the film crop alike.
+    /// This only carries it across the two rectangle types.
+    static func grownToCoverTurnedCell(
+        _ region: DisplayPresentation.SourceRegion,
+        degrees: Double, imageWidth: Int, imageHeight: Int
+    ) -> DisplayPresentation.SourceRegion {
+        guard region.width > 0, region.height > 0,
+              imageWidth > 0, imageHeight > 0 else { return region }
+        let pixels = PixelRegion(
+            x: Int(region.x.rounded(.down)), y: Int(region.y.rounded(.down)),
+            width: max(1, Int(region.width.rounded())),
+            height: max(1, Int(region.height.rounded())))
+        let grown = ViewerPresentation(rotationDegrees: degrees)
+            .regionCoveringTurnedCell(
+                pixels, imageWidth: imageWidth, imageHeight: imageHeight)
+        guard grown != pixels else { return region }
+        return DisplayPresentation.SourceRegion(
+            x: Double(grown.x), y: Double(grown.y),
+            width: Double(grown.width), height: Double(grown.height))
     }
 
     /// The centred crop of a source region that matches a cell's aspect —

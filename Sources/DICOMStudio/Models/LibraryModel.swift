@@ -156,6 +156,29 @@ public struct LibraryModel: Sendable {
         studies.removeValue(forKey: studyUID)
     }
 
+    /// Removes one instance, unlinking it from its series.
+    ///
+    /// The series itself is left in place even when this was its last instance:
+    /// an empty series is a valid intermediate state — the caller may be about
+    /// to add a replacement — and ``pruneEmptyStudies()`` is what clears the
+    /// ones that stay empty.
+    public mutating func removeInstance(_ sopInstanceUID: String) {
+        guard let instance = instances.removeValue(forKey: sopInstanceUID) else { return }
+        seriesInstances[instance.seriesInstanceUID]?.remove(sopInstanceUID)
+    }
+
+    /// Removes one series and every instance under it.
+    public mutating func removeSeries(_ seriesInstanceUID: String) {
+        if let instanceUIDs = seriesInstances.removeValue(forKey: seriesInstanceUID) {
+            for uid in instanceUIDs {
+                instances.removeValue(forKey: uid)
+            }
+        }
+        if let removed = series.removeValue(forKey: seriesInstanceUID) {
+            studySeries[removed.studyInstanceUID]?.remove(seriesInstanceUID)
+        }
+    }
+
     /// Drops studies and series that hold no instances.
     ///
     /// A study with nothing under it cannot be opened, printed or exported —

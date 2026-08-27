@@ -61,6 +61,17 @@ public struct DisplayPresentation: Equatable, Sendable {
     /// Grey inversion, applied in the fragment shader as `1 - x`. Exact on 8-bit.
     public var invert: Bool = false
 
+    /// Present a colour frame as its Rec.601 luminance greys.
+    ///
+    /// The print preview sets this when the job flattens colour sources
+    /// ("Print colour images as greys"): the texture stays colour — flattening
+    /// is a job setting, not a property of the frame, and must revert the
+    /// moment the switch does — so the reduction happens at display time, with
+    /// the same 0.299/0.587/0.114 weights `ImagePreprocessor.flattenToGrayscale`
+    /// bakes into the film. Applied before ``invert``, matching the wire, where
+    /// the flatten happens before the rendered Presentation LUT.
+    public var desaturate: Bool = false
+
     /// Bilinear magnification instead of the viewer's nearest-pixel default.
     ///
     /// The viewer stays nearest deliberately — reading pixel data calls for
@@ -91,6 +102,30 @@ public struct DisplayPresentation: Equatable, Sendable {
     /// cell. Without a region this flag does nothing.
     public var stretchToFill: Bool = false
 
+    /// The rectangle the fit is computed from, when it differs from
+    /// ``sourceRegion``.
+    ///
+    /// These are the same rectangle whenever a cell is upright, and they part
+    /// company the moment one is turned off-square. A freely turned picture
+    /// keeps the scale it had upright — that is a fixed contract, pinned by
+    /// `testFreeAngleKeepsTheUnrotatedScale`, and it is what stops the rotate
+    /// tool from reading as a zoom-out. But keeping that scale means the turned
+    /// picture no longer covers its cell: the corners the turn swings inward
+    /// leave wedges of cell with no pixels over them.
+    ///
+    /// The source image usually *has* those pixels — a zoomed, panned cell is
+    /// looking at the middle of a much larger frame — so the fix is to ask for
+    /// more of them without letting the extra change the fit. ``sourceRegion``
+    /// grows to the turned bounding box, which is what feeds the corners and
+    /// what the mask spares; this stays the upright rectangle, which is what
+    /// the scale is computed from. Set them equal, or leave this `nil`, and the
+    /// geometry is exactly what it was.
+    public var fittedRegion: SourceRegion?
+
+    /// The rectangle the fit is measured against: ``fittedRegion`` when the
+    /// caller set one, and otherwise the source region itself.
+    var regionToFit: SourceRegion? { fittedRegion ?? sourceRegion }
+
     /// A rectangle of source pixels, in the frame's own pixel coordinates with the
     /// origin at its top left.
     public struct SourceRegion: Equatable, Sendable {
@@ -112,9 +147,11 @@ public struct DisplayPresentation: Equatable, Sendable {
         rotationDegrees: Double = 0,
         flipHorizontal: Bool = false, flipVertical: Bool = false,
         invert: Bool = false,
+        desaturate: Bool = false,
         linearFiltering: Bool = false,
         sourceRegion: SourceRegion? = nil,
-        stretchToFill: Bool = false
+        stretchToFill: Bool = false,
+        fittedRegion: SourceRegion? = nil
     ) {
         self.zoom = zoom
         self.panX = panX
@@ -123,9 +160,11 @@ public struct DisplayPresentation: Equatable, Sendable {
         self.flipHorizontal = flipHorizontal
         self.flipVertical = flipVertical
         self.invert = invert
+        self.desaturate = desaturate
         self.linearFiltering = linearFiltering
         self.sourceRegion = sourceRegion
         self.stretchToFill = stretchToFill
+        self.fittedRegion = fittedRegion
     }
 
     /// The region as the shader's mask rectangle: (minU, minV, maxU, maxV).
@@ -168,6 +207,7 @@ struct DisplayShaderParams {
     var invert: UInt32
     var isGrayscale: UInt32
     var linearFilter: UInt32
+    var desaturate: UInt32
 }
 
 extension DisplayPresentation {
@@ -310,8 +350,17 @@ extension DisplayPresentation {
         // box* instead would keep those corners at the cost of the anatomy's
         // size: √2 smaller at 45°, and visibly smaller at the small angles used
         // to straighten a tilted head.
+        // Measured on the *fitted* rectangle, not on the region actually
+        // sampled. Off-square, the two differ: the region has been grown to the
+        // turned bounding box so the cell's corners have pixels over them, and
+        // fitting that grown box would shrink the anatomy by exactly the amount
+        // the growth added — which is the shrink `testFreeAngleKeepsTheUnrotatedScale`
+        // exists to forbid. The fit stays on the upright rectangle; the extra
+        // pixels spill past the cell's edges and are cropped, as they should be.
+        let fitted = (regionToFit?.width ?? 0) > 0 && (regionToFit?.height ?? 0) > 0
+            ? (regionToFit ?? region) : region
         let (turnedWidth, turnedHeight) = Self.quarterTurnedSize(
-            width: region.width, height: region.height, degrees: rotationDegrees)
+            width: fitted.width, height: fitted.height, degrees: rotationDegrees)
 
         // Points per source pixel: the fit the printer performs into its box.
         let scale = min(viewWidth / turnedWidth, viewHeight / turnedHeight)
@@ -328,8 +377,13 @@ extension DisplayPresentation {
         // Centre the region: shift the frame by how far the region's middle is
         // from the frame's, in points. Before the rotation, because the offset is
         // stated in the frame's own axes.
-        let offsetX = (Double(imageWidth) / 2 - (region.x + region.width / 2)) * scale
-        let offsetY = (Double(imageHeight) / 2 - (region.y + region.height / 2)) * scale
+        // Centred on the *fitted* rectangle. It is the picture the reader
+        // composed; the grown region around it is only the margin that keeps
+        // the turned cell's corners fed, and centring on that margin would
+        // shift the anatomy whenever clamping to the frame's edge made the
+        // growth lopsided.
+        let offsetX = (Double(imageWidth) / 2 - (fitted.x + fitted.width / 2)) * scale
+        let offsetY = (Double(imageHeight) / 2 - (fitted.y + fitted.height / 2)) * scale
         if offsetX != 0 || offsetY != 0 {
             var translation = matrix_identity_float4x4
             translation.columns.3 = SIMD4<Float>(

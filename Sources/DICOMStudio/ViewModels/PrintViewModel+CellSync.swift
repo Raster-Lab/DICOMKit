@@ -96,11 +96,13 @@ public struct PrintCellSyncOptions: OptionSet, Sendable, Hashable {
         (.window, "Window", "sun.max"),
         (.zoomPan, "Zoom & Pan", "arrow.up.left.and.arrow.down.right"),
         (.rotate, "Rotate", "arrow.triangle.2.circlepath"),
-        (.invert, "Invert", "circle.righthalf.filled"),
-        // "CLUT" — the Palette Color LUT, spelled as the rail chip spells it.
-        // The film-wide Presentation LUT Shape under More is also a LUT, so a
-        // lock captioned merely "Colour" left the two indistinguishable.
-        (.palette, "CLUT", "paintpalette")
+        (.invert, "Invert", "circle.righthalf.filled")
+        // No CLUT lock: the rail's per-cell palette menu was dropped (colour
+        // now lives with the film-wide picker under More), so a lock for edits
+        // no control can make would be dead chrome. `.palette` itself survives
+        // in the option set — saved views and the model API still carry
+        // per-cell palettes — and the chip returns with any future per-cell
+        // colour control.
     ]
 }
 
@@ -328,6 +330,15 @@ extension PrintViewModel {
         for peer in editPeers(of: itemID) {
             mutatePresentation(forItemID: peer.id, cellSize: cellSize) { presentation in
                 presentation.palette = source.palette
+            }
+            // A palette arriving through the CLUT lock is as hand-made as one
+            // picked on the cell itself, so the peer stops following the film
+            // for the same reason the source did — unless it has just landed
+            // back on the film's own colour.
+            if source.palette == filmPalette {
+                selfPalettedItemIDs.remove(peer.id)
+            } else {
+                selfPalettedItemIDs.insert(peer.id)
             }
         }
     }

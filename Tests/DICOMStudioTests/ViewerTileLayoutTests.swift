@@ -805,3 +805,134 @@ struct PreviewMatchesViewerTests {
         #expect(selection.isEmpty)
     }
 }
+
+// MARK: - Fill mode
+
+@MainActor
+@Suite("Viewer Layout Fill Tests")
+struct ViewerLayoutFillTests {
+
+    private func studyViewModel() -> ImageViewerViewModel {
+        let viewModel = ImageViewerViewModel()
+        viewModel.loadStudySeries([
+            ViewerSeriesEntry(seriesInstanceUID: "s1", title: "Topogram", seriesNumber: 1,
+                              filePaths: ["/s1-a.dcm", "/s1-b.dcm"], frameCount: 2),
+            ViewerSeriesEntry(seriesInstanceUID: "s2", title: "Brain 0.80", seriesNumber: 2,
+                              filePaths: ["/s2-a.dcm", "/s2-b.dcm", "/s2-c.dcm", "/s2-d.dcm"],
+                              frameCount: 4),
+            ViewerSeriesEntry(seriesInstanceUID: "s3", title: "Brain 3.00", seriesNumber: 3,
+                              filePaths: ["/s3-a.dcm"], frameCount: 1)
+        ], studyUID: "1.2")
+        return viewModel
+    }
+
+    @Test("Series is the default, so an untouched viewer behaves as it always did")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSeriesIsDefault() {
+        #expect(ImageViewerViewModel().layoutFill == .series)
+    }
+
+    @Test("Image fill hangs consecutive images of the series on screen")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testImageFillWalksTheStack() {
+        let viewModel = studyViewModel()
+        viewModel.selectSeries("s2")
+        viewModel.applyLayout(ViewerTileLayout(rows: 2, columns: 2), fill: .image)
+
+        // Four slices of one series — not one slice each of four series.
+        #expect(viewModel.cells.map(\.filePath)
+                == ["/s2-a.dcm", "/s2-b.dcm", "/s2-c.dcm", "/s2-d.dcm"])
+        #expect(viewModel.cells.allSatisfy { $0.seriesUID == "s2" })
+    }
+
+    @Test("Series fill hangs one series per tile, as before")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSeriesFillLeadsWithSeries() {
+        let viewModel = studyViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 3), fill: .series)
+
+        #expect(viewModel.cells.map(\.filePath) == ["/s1-a.dcm", "/s2-a.dcm", "/s3-a.dcm"])
+    }
+
+    @Test("An image grid starts from the image on screen, not the series' first")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testImageFillStartsFromCurrentImage() {
+        let viewModel = studyViewModel()
+        viewModel.selectSeries("s2")
+        // Step to the third slice, then lay the stack out from there.
+        viewModel.currentFileIndex = 2
+        viewModel.filePath = "/s2-c.dcm"
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2), fill: .image)
+
+        #expect(viewModel.cells.map(\.filePath) == ["/s2-c.dcm", "/s2-d.dcm"])
+    }
+
+    @Test("An image grid does not run off its series into the next one")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testImageFillStopsAtTheEndOfItsSeries() {
+        let viewModel = studyViewModel()
+        viewModel.selectSeries("s1")
+        viewModel.applyLayout(ViewerTileLayout(rows: 2, columns: 2), fill: .image)
+
+        // Two images in s1; the rest stay blank rather than borrowing s2's.
+        #expect(viewModel.cells.map(\.filePath) == ["/s1-a.dcm", "/s1-b.dcm", nil, nil])
+    }
+
+    @Test("Changing the mode re-fills the grid it is already showing")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSwitchingModeRefillsInPlace() {
+        let viewModel = studyViewModel()
+        viewModel.selectSeries("s2")
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 3))
+        // Series-led: s2, then s3, then — with the study's series exhausted —
+        // the fallback into the open stack.
+        #expect(viewModel.cells.map(\.filePath)
+                == ["/s2-a.dcm", "/s3-a.dcm", "/s2-c.dcm"])
+
+        viewModel.applyLayoutFill(.image)
+
+        // Same shape, different content — the reader picked "Image" and got it
+        // without having to re-choose the 1×3 they already chose.
+        #expect(viewModel.layout == ViewerTileLayout(rows: 1, columns: 3))
+        #expect(viewModel.layoutFill == .image)
+        #expect(viewModel.cells.map(\.filePath)
+                == ["/s2-a.dcm", "/s2-b.dcm", "/s2-c.dcm"])
+    }
+
+    @Test("At 1×1 the mode is remembered for the next grid but nothing moves")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testModeAtSingleLayoutIsRemembered() {
+        let viewModel = studyViewModel()
+        viewModel.selectSeries("s2")
+        viewModel.applyLayoutFill(.image)
+
+        #expect(viewModel.layoutFill == .image)
+        #expect(viewModel.layout == .single)
+
+        // …and the next grid is filled the way that choice says.
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+        #expect(viewModel.cells.map(\.filePath) == ["/s2-a.dcm", "/s2-b.dcm"])
+    }
+
+    @Test("A grid applied after a mode change keeps that mode")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testModePersistsAcrossGridChanges() {
+        let viewModel = studyViewModel()
+        viewModel.selectSeries("s2")
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2), fill: .image)
+        viewModel.applyLayout(ViewerTileLayout(rows: 2, columns: 2))
+
+        #expect(viewModel.layoutFill == .image)
+        #expect(viewModel.cells.map(\.filePath)
+                == ["/s2-a.dcm", "/s2-b.dcm", "/s2-c.dcm", "/s2-d.dcm"])
+    }
+
+    @Test("Both modes are offered, each with a name and an icon")
+    func testFillCatalogue() {
+        #expect(ViewerLayoutFill.allCases == [.series, .image])
+        #expect(ViewerLayoutFill.series.displayName == "Series")
+        #expect(ViewerLayoutFill.image.displayName == "Image")
+        #expect(ViewerLayoutFill.allCases.allSatisfy { !$0.symbolName.isEmpty })
+        #expect(ViewerLayoutFill.allCases.allSatisfy { !$0.note.isEmpty })
+    }
+}

@@ -59,15 +59,27 @@ extension Tag {
     
     /// Anchor Point Annotation Units (0070,0004)
     public static let anchorPointAnnotationUnits = Tag(group: 0x0070, element: 0x0004)
-    
-    // Note: Unformatted Text Value (0070,0006) is defined in Tag+Waveforms.swift as (0040,A160)
-    // For text annotations in GSPS, use that same tag
-    
+
+    /// Graphic Annotation Units (0070,0005) — the units of a Graphic Object's
+    /// Graphic Data, distinct from the bounding-box units a Text Object uses.
+    public static let graphicAnnotationUnits = Tag(group: 0x0070, element: 0x0005)
+
+    /// Unformatted Text Value (0070,0006) — the words of a Text Object.
+    ///
+    /// Named for its sequence: `Tag.unformattedTextValue` already exists as SR's
+    /// Text Value (0040,A160), which is a different attribute. GSPS text objects
+    /// are written with this one; the parser reads it first and falls back to
+    /// (0040,A160) for files written before the distinction was made here.
+    public static let textObjectUnformattedTextValue = Tag(group: 0x0070, element: 0x0006)
+
     /// Bounding Box Top Left Hand Corner (0070,0010)
     public static let boundingBoxTopLeftHandCorner = Tag(group: 0x0070, element: 0x0010)
-    
+
     /// Bounding Box Bottom Right Hand Corner (0070,0011)
     public static let boundingBoxBottomRightHandCorner = Tag(group: 0x0070, element: 0x0011)
+
+    /// Bounding Box Text Horizontal Justification (0070,0012)
+    public static let boundingBoxTextHorizontalJustification = Tag(group: 0x0070, element: 0x0012)
     
     /// Anchor Point (0070,0014)
     public static let anchorPoint = Tag(group: 0x0070, element: 0x0014)
@@ -75,6 +87,12 @@ extension Tag {
     /// Anchor Point Visibility (0070,0015)
     public static let anchorPointVisibility = Tag(group: 0x0070, element: 0x0015)
     
+    /// Graphic Dimensions (0070,0020)
+    public static let graphicDimensions = Tag(group: 0x0070, element: 0x0020)
+
+    /// Number of Graphic Points (0070,0021)
+    public static let numberOfGraphicPoints = Tag(group: 0x0070, element: 0x0021)
+
     /// Graphic Data (0070,0022)
     public static let graphicData = Tag(group: 0x0070, element: 0x0022)
     
@@ -171,6 +189,14 @@ extension Tag {
     // - rescaleSlope (0028,1053)
     // - rescaleType (0028,1054)
     
+    // MARK: - Softcopy VOI LUT Module (C.11.8)
+
+    /// Softcopy VOI LUT Sequence (0028,3110) — where a presentation state
+    /// carries its window. The Softcopy VOI LUT module has no top-level
+    /// Window Center/Width; a viewer reading a PR looks only inside this
+    /// sequence, which is why writing the values top-level loses the window.
+    public static let softcopyVOILUTSequence = Tag(group: 0x0028, element: 0x3110)
+
     // MARK: - VOI LUT Module (C.11.2)
     // Note: VOI LUT tags are defined in Tag+PixelData.swift
     // - voiLUTSequence (0028,3010)

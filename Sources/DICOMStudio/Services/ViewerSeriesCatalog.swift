@@ -65,7 +65,15 @@ public enum ViewerSeriesCatalog {
             // The first instance decides: a series is one SOP Class in
             // practice, and reading every instance to confirm it would make
             // opening a study proportional to its object count.
-            contentKind: ViewerContentKind.kind(forSOPClassUID: instances.first?.sopClassUID)
+            contentKind: ViewerContentKind.kind(forSOPClassUID: instances.first?.sopClassUID),
+            // What lets the pane say which slice a saved view is on: a
+            // presentation state names its image by UID, and only the library
+            // holds that image's Instance Number.
+            instanceNumbersBySOPUID: instances.reduce(into: [String: Int]()) { map, instance in
+                if let number = instance.instanceNumber {
+                    map[instance.sopInstanceUID] = number
+                }
+            }
         )
     }
 
@@ -94,7 +102,9 @@ public enum ViewerSeriesCatalog {
                     modality: entry.modality,
                     orientation: orientation,
                     filePaths: entry.filePaths,
-                    frameCount: entry.frameCount)
+                    frameCount: entry.frameCount,
+                    contentKind: entry.contentKind,
+                    instanceNumbersBySOPUID: entry.instanceNumbersBySOPUID)
             }
         }.value
     }

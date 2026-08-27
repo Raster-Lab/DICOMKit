@@ -111,6 +111,171 @@ public enum ViewerHoverGeometry {
         return (columnIndex, rowIndex)
     }
 
+    // MARK: - Continuous mapping, for the drawn-annotation overlay
+
+    /// A point in the image, as fractions of its width and height, under a view
+    /// point — `nil` only for degenerate input (no image, no viewport, a zoom
+    /// of zero).
+    ///
+    /// The continuous twin of ``imagePixel(atViewPoint:...)``: annotations are
+    /// stored as fractions of the image (see `PrintOverlayAnnotation`), so the
+    /// overlay that edits them needs the fraction itself, not the pixel it
+    /// rounds to. Unlike the pixel mapping this does *not* refuse points off
+    /// the picture — dragging an arrow's head, the pointer legitimately strays
+    /// past the edge and the fraction is clamped by the caller — so a caller
+    /// that means "on the picture only" checks 0…1 itself.
+    public static func normalizedImagePoint(
+        atViewPoint viewPoint: CGPoint,
+        viewSize: CGSize,
+        imageWidth: Int,
+        imageHeight: Int,
+        zoom: Double,
+        panX: Double,
+        panY: Double,
+        rotationDegrees: Double,
+        flipHorizontal: Bool,
+        flipVertical: Bool,
+        order: ViewerTransformOrder
+    ) -> (x: Double, y: Double)? {
+        guard imageWidth > 0, imageHeight > 0,
+              viewSize.width > 0, viewSize.height > 0,
+              zoom.isFinite, zoom > 0,
+              panX.isFinite, panY.isFinite else { return nil }
+
+        let fitScale = min(viewSize.width / Double(imageWidth),
+                           viewSize.height / Double(imageHeight))
+        guard fitScale > 0 else { return nil }
+
+        var x = Double(viewPoint.x) - Double(viewSize.width) / 2
+        var y = Double(viewPoint.y) - Double(viewSize.height) / 2
+
+        switch order {
+        case .panBeforeRotation:
+            if flipHorizontal { x = -x }
+            if flipVertical { y = -y }
+            (x, y) = rotate(x: x, y: y, degrees: -rotationDegrees)
+            x -= panX
+            y -= panY
+            x /= zoom
+            y /= zoom
+        case .panAfterRotation:
+            x -= panX
+            y -= panY
+            (x, y) = rotate(x: x, y: y, degrees: -rotationDegrees)
+            x /= zoom
+            y /= zoom
+            if flipHorizontal { x = -x }
+            if flipVertical { y = -y }
+        }
+
+        let nx = x / (fitScale * Double(imageWidth)) + 0.5
+        let ny = y / (fitScale * Double(imageHeight)) + 0.5
+        return (nx, ny)
+    }
+
+    /// Where a point of the image lands in the view — the forward mapping the
+    /// two inverses above undo. `x`/`y` are fractions of the image.
+    public static func viewPoint(
+        forNormalizedX nx: Double,
+        y ny: Double,
+        viewSize: CGSize,
+        imageWidth: Int,
+        imageHeight: Int,
+        zoom: Double,
+        panX: Double,
+        panY: Double,
+        rotationDegrees: Double,
+        flipHorizontal: Bool,
+        flipVertical: Bool,
+        order: ViewerTransformOrder
+    ) -> CGPoint {
+        let fitScale = min(viewSize.width / Double(max(1, imageWidth)),
+                           viewSize.height / Double(max(1, imageHeight)))
+        var x = (nx - 0.5) * Double(imageWidth) * fitScale
+        var y = (ny - 0.5) * Double(imageHeight) * fitScale
+
+        switch order {
+        case .panBeforeRotation:
+            // Fit → zoom → pan → rotate → flip, applied forwards.
+            x *= zoom
+            y *= zoom
+            x += panX
+            y += panY
+            (x, y) = rotate(x: x, y: y, degrees: rotationDegrees)
+            if flipHorizontal { x = -x }
+            if flipVertical { y = -y }
+        case .panAfterRotation:
+            // Fit → flip → zoom → rotate → pan, applied forwards.
+            if flipHorizontal { x = -x }
+            if flipVertical { y = -y }
+            x *= zoom
+            y *= zoom
+            (x, y) = rotate(x: x, y: y, degrees: rotationDegrees)
+            x += panX
+            y += panY
+        }
+
+        return CGPoint(x: x + Double(viewSize.width) / 2,
+                       y: y + Double(viewSize.height) / 2)
+    }
+
+    /// A view-space drag, as the normalized image delta it moves something by.
+    ///
+    /// The linear part of the inverse only — pan and centring cancel out of a
+    /// difference, but rotation, flips and scale do not, and skipping them
+    /// would move an annotation sideways on a turned image.
+    public static func normalizedDelta(
+        forViewDelta delta: CGSize,
+        viewSize: CGSize,
+        imageWidth: Int,
+        imageHeight: Int,
+        zoom: Double,
+        rotationDegrees: Double,
+        flipHorizontal: Bool,
+        flipVertical: Bool,
+        order: ViewerTransformOrder
+    ) -> (dx: Double, dy: Double) {
+        guard imageWidth > 0, imageHeight > 0,
+              viewSize.width > 0, viewSize.height > 0,
+              zoom.isFinite, zoom > 0 else { return (0, 0) }
+        let fitScale = min(viewSize.width / Double(imageWidth),
+                           viewSize.height / Double(imageHeight))
+        guard fitScale > 0 else { return (0, 0) }
+
+        var x = Double(delta.width)
+        var y = Double(delta.height)
+        switch order {
+        case .panBeforeRotation:
+            if flipHorizontal { x = -x }
+            if flipVertical { y = -y }
+            (x, y) = rotate(x: x, y: y, degrees: -rotationDegrees)
+            x /= zoom
+            y /= zoom
+        case .panAfterRotation:
+            (x, y) = rotate(x: x, y: y, degrees: -rotationDegrees)
+            x /= zoom
+            y /= zoom
+            if flipHorizontal { x = -x }
+            if flipVertical { y = -y }
+        }
+        return (x / (fitScale * Double(imageWidth)),
+                y / (fitScale * Double(imageHeight)))
+    }
+
+    /// How many view points one image pixel spans on screen right now — the
+    /// fitted scale times the zoom. What sizes overlay chrome so it tracks the
+    /// picture: a font that is 4% of the image's rows must grow as they do.
+    public static func displayScale(
+        viewSize: CGSize, imageWidth: Int, imageHeight: Int, zoom: Double
+    ) -> Double {
+        guard imageWidth > 0, imageHeight > 0,
+              viewSize.width > 0, viewSize.height > 0 else { return 1 }
+        let fitScale = min(viewSize.width / Double(imageWidth),
+                           viewSize.height / Double(imageHeight))
+        guard fitScale > 0, zoom.isFinite, zoom > 0 else { return 1 }
+        return fitScale * zoom
+    }
+
     /// Rotates a view-space vector. Positive degrees turn clockwise on screen,
     /// which in this y-down space is the ordinary rotation matrix.
     private static func rotate(x: Double, y: Double, degrees: Double) -> (Double, Double) {

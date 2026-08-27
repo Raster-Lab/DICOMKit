@@ -462,3 +462,148 @@ extension PseudoColorPalette {
         return UInt8(min(max((value * 255).rounded(), 0), 255))
     }
 }
+
+// MARK: - Recognition
+
+extension PseudoColorPalette {
+
+    /// What a stored colour table turned out to be, when it is one of ours.
+    ///
+    /// `inverted` is true when the table is one of our palettes written
+    /// back-to-front — the form a pseudo-colour presentation state takes when
+    /// the view it records was being read inverted, since that IOD has no
+    /// Presentation LUT to say INVERSE in and the reversal is baked into the
+    /// entries instead.
+    public struct Match: Sendable, Equatable {
+        public let palette: PseudoColorPalette
+        public let inverted: Bool
+
+        public init(palette: PseudoColorPalette, inverted: Bool) {
+            self.palette = palette
+            self.inverted = inverted
+        }
+    }
+
+    /// Recognises a parsed Palette Color LUT as one of this catalogue's
+    /// palettes, if it is one.
+    ///
+    /// This is how a presentation state written by us comes back as the palette
+    /// the reader chose rather than as an anonymous table: the file carries the
+    /// 256 RGB entries, and this walks the catalogue comparing them. Entries are
+    /// compared through the same high-byte normalisation ``PaletteColorLUT``
+    /// reads with, so a table that renders identically matches regardless of
+    /// whether it was stored as bytes or 16-bit words.
+    ///
+    /// `nil` for a foreign table — one some other viewer computed — which is a
+    /// correct answer, not a failure: such a state still parses, it just cannot
+    /// be named.
+    public static func matching(_ lut: PaletteColorLUT) -> Match? {
+        // Our tables are the 256 palette entries, possibly resampled by equal
+        // blocks to cover a deeper image's stored range (the builder writes
+        // 2^Bits Stored entries). So a candidate is ours only when its size is
+        // a whole multiple of 256 — anything else is foreign by shape.
+        let count = lut.redLUT.count
+        guard count >= Self.entryCount,
+              lut.greenLUT.count == count,
+              lut.blueLUT.count == count else { return nil }
+
+        // Normalise once: the high byte is the significant one for both 8- and
+        // 16-bit storage (PS3.3 C.7.6.3.1.5), and it is what rendering uses.
+        let red = lut.redLUT.map { UInt8($0 >> 8) }
+        let green = lut.greenLUT.map { UInt8($0 >> 8) }
+        let blue = lut.blueLUT.map { UInt8($0 >> 8) }
+
+        // Two passes, forwards before reversed — over the whole catalogue, not
+        // per palette. The catalogue contains its own mirror image once:
+        // `inverseGrayscale` *is* `grayscale` reversed, so an interleaved walk
+        // would report the inverse ramp as "grayscale, inverted" instead of
+        // by its name. A forward match is always the honest reading when one
+        // exists.
+        if count % Self.entryCount == 0 {
+            let scale = count / Self.entryCount
+            for palette in Self.allCases {
+                if matches(palette.entries(), red: red, green: green, blue: blue,
+                           scale: scale) {
+                    return Match(palette: palette, inverted: false)
+                }
+            }
+            for palette in Self.allCases {
+                if matches(Array(palette.entries().reversed()),
+                           red: red, green: green, blue: blue, scale: scale) {
+                    return Match(palette: palette, inverted: true)
+                }
+            }
+        }
+
+        // A window-baked table — flat below the window, the ramp across it,
+        // flat above — is not a block-resample of anything, but its colours
+        // are still the palette's, in the palette's order. The walk below
+        // names it without knowing the window that shaped it. Only for
+        // tables deeper than the palette: at exactly 256 entries a walk
+        // cannot tell a bake from a near-miss foreign table, and the exact
+        // block comparison above is the only honest reading.
+        guard count > Self.entryCount else { return nil }
+        for palette in Self.allCases {
+            if rampMatches(palette.entries(), red: red, green: green, blue: blue) {
+                return Match(palette: palette, inverted: false)
+            }
+        }
+        for palette in Self.allCases {
+            if rampMatches(Array(palette.entries().reversed()),
+                           red: red, green: green, blue: blue) {
+                return Match(palette: palette, inverted: true)
+            }
+        }
+        return nil
+    }
+
+    /// Whether the candidate table walks the palette monotonically: every
+    /// entry is a palette colour, consecutive entries only ever move forward
+    /// through the palette, and enough distinct colours appear to make the
+    /// walk meaningful. This is the shape a window bake produces for *any*
+    /// window, which is what lets recognition work without knowing the
+    /// window; the strictness — no colour outside the palette, no going
+    /// backwards — is what keeps a foreign ramp from being misnamed.
+    private static func rampMatches(
+        _ entries: [(red: UInt8, green: UInt8, blue: UInt8)],
+        red: [UInt8], green: [UInt8], blue: [UInt8]
+    ) -> Bool {
+        func equal(_ index: Int, _ entry: (red: UInt8, green: UInt8, blue: UInt8))
+        -> Bool {
+            red[index] == entry.red
+                && green[index] == entry.green
+                && blue[index] == entry.blue
+        }
+        guard var position = entries.indices.first(where: { equal(0, entries[$0]) })
+        else { return false }
+        var distinctSteps = 1
+        for index in 1..<red.count where !equal(index, entries[position]) {
+            var next = position + 1
+            while next < entries.count && !equal(index, entries[next]) { next += 1 }
+            guard next < entries.count else { return false }
+            position = next
+            distinctSteps += 1
+        }
+        // A meaningful ramp shows a real slice of the palette; two or three
+        // colours could be anyone's.
+        return distinctSteps >= 16
+    }
+
+    /// Whether the candidate table is exactly the palette resampled by equal
+    /// blocks: every entry `i` of the candidate must equal palette entry
+    /// `i / scale`. Comparing all entries — not one sample per block — is what
+    /// keeps a foreign table that merely agrees at the sampled points from
+    /// being misnamed as ours.
+    private static func matches(
+        _ entries: [(red: UInt8, green: UInt8, blue: UInt8)],
+        red: [UInt8], green: [UInt8], blue: [UInt8], scale: Int
+    ) -> Bool {
+        for index in red.indices {
+            let entry = entries[index / scale]
+            if red[index] != entry.red
+                || green[index] != entry.green
+                || blue[index] != entry.blue { return false }
+        }
+        return true
+    }
+}

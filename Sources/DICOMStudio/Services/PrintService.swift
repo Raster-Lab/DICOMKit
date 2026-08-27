@@ -161,7 +161,25 @@ public struct PrintService: Sendable {
             // because a film has no layer to carry them in.
             #if canImport(CoreGraphics)
             if !request.raw, let overlays = drawnAnnotations[item.id], !overlays.isEmpty {
-                arranged = arranged.map { ImageAnnotationBurner.burning(overlays: overlays, into: $0) }
+                // The frames handed to the burner have already been cropped,
+                // turned and mirrored, while the annotations are still in the
+                // *original* image's fractions — so the arrangement goes with
+                // them or the mark is burned wherever that fraction happens to
+                // land in the turned buffer. Measured against the frame as it
+                // arrived from the preparer, which is the space those fractions
+                // are in; `frames` is that, before `applying` above.
+                let orientation = frames.first.map {
+                    PrintOverlayOrientation(
+                        presentation: (applyViewerPresentation && !request.raw
+                                       ? item.presentation : nil) ?? ViewerPresentation(),
+                        imageWidth: Int($0.descriptor.columns),
+                        imageHeight: Int($0.descriptor.rows),
+                        covers: request.scalingMode == .fillToFilm)
+                }
+                arranged = arranged.map {
+                    ImageAnnotationBurner.burning(
+                        overlays: overlays, into: $0, orientation: orientation)
+                }
             }
             if !request.raw, let corners = annotations[item.id], !corners.isEmpty {
                 // Cells are consumed in film order, spilling over per film —

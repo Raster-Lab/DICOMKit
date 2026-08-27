@@ -40,15 +40,20 @@ public struct FrameRenderRequest: Sendable {
     /// Palette tables for PALETTE COLOR frames. Ignored otherwise.
     public let paletteLUT: PaletteColorLUT?
 
-    /// A pseudo-colour palette the reader chose, applied to monochrome frames
-    /// *after* the window. Ignored for colour and PALETTE COLOR frames.
+    /// A pseudo-colour palette the reader chose.
+    ///
+    /// Applied to a monochrome frame *after* the window, as part of the same
+    /// table; applied to a frame that carries its own colours as a pass over its
+    /// luminance. Either way it is a display choice and never a change to the
+    /// stored pixels — the same measurement under two ramps is one measurement
+    /// seen two ways.
     ///
     /// Not the same thing as ``paletteLUT``, and deliberately a separate field:
     /// that one is the file's own colour table, a property of the pixels, while
-    /// this is a display choice laid over a grey image. They never both apply —
-    /// a palette-colour frame has its own colours and a pseudo-colour ramp has
-    /// nothing to say about them — but keeping them apart is what stops one
-    /// being mistaken for the other.
+    /// this is the reader's. A palette-colour frame can carry both — the file's
+    /// table makes the picture, and the reader's ramp then re-maps what that
+    /// picture looks like — and keeping the two apart is what stops one being
+    /// mistaken for the other.
     public let pseudoColorPalette: PseudoColorPalette?
 
     public init(
@@ -67,11 +72,36 @@ public struct FrameRenderRequest: Sendable {
 
     /// The pseudo-colour palette that actually recolours this frame, if any.
     ///
-    /// Grey is not a recolouring, and neither is a palette over a frame that
-    /// carries its own colours — both resolve to `nil` so the plain monochrome
-    /// kernel keeps its cheaper single-channel output.
+    /// Monochrome only: for a grey frame the ramp folds into the window as one
+    /// raw-sample → RGB table, which is the cheap single-pass path both backends
+    /// take. Grey is not a recolouring, so a grayscale ramp resolves to `nil`
+    /// and the plain monochrome kernel keeps its cheaper single-channel output.
+    ///
+    /// A frame that carries its own colours has no raw sample to fold a ramp
+    /// into and is handled by ``readerPalette`` instead — see there for why the
+    /// reader still gets to apply one.
     public var effectivePseudoColorPalette: PseudoColorPalette? {
         guard pixelData.descriptor.photometricInterpretation.isMonochrome,
+              let palette = pseudoColorPalette,
+              !palette.isGrayscale else { return nil }
+        return palette
+    }
+
+    /// The reader's ramp for a frame that already carries colours, if any.
+    ///
+    /// The colour and palette-colour families arrive at the backend as RGB — the
+    /// file's own colours, whether they came from YBR samples or from the file's
+    /// palette table. There is no raw sample left to fold a ramp into, so the
+    /// ramp is applied to what the frame *shows*: its luminance. That is the
+    /// same display choice a ramp always is — the stored pixels are untouched,
+    /// and turning the ramp off brings the file's own colours straight back.
+    ///
+    /// Kept apart from ``effectivePseudoColorPalette`` because the two are
+    /// applied at different points and cost different amounts: one is a table
+    /// the window is already building, the other is a pass over the finished
+    /// frame. Exactly one of them is ever non-nil for a given request.
+    public var readerPalette: PseudoColorPalette? {
+        guard !pixelData.descriptor.photometricInterpretation.isMonochrome,
               let palette = pseudoColorPalette,
               !palette.isGrayscale else { return nil }
         return palette

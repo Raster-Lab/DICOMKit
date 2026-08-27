@@ -61,7 +61,6 @@ struct ImageViewerViewModelTests {
     func testInitialOverlays() {
         let vm = ImageViewerViewModel()
         #expect(vm.showMetadataOverlay == false)
-        #expect(vm.showPerformanceOverlay == false)
     }
 
     @Test("Initial metadata defaults")

@@ -450,6 +450,13 @@ public enum PrintServerEvent: Sendable {
     case filmBoxCreated(uid: String, layout: PrintLayout, imageBoxUIDs: [String])
     /// An image box was filled (N-SET).
     case imageBoxReceived(uid: String, position: UInt16, rows: UInt16, columns: UInt16)
+    /// An image box carried attributes the standard does not allow, and was
+    /// corrected rather than refused.
+    ///
+    /// The film still prints. This exists so the sender's mistake is visible to
+    /// whoever is watching the printer, since a corrected job otherwise looks
+    /// exactly like a correct one — see ``PrintPixelDepthConformance``.
+    case imageBoxCorrected(uid: String, position: UInt16, detail: String)
     /// A film was printed (N-ACTION) and handed to the delegate.
     case filmPrinted(ReceivedFilm)
     /// An object was deleted (N-DELETE).

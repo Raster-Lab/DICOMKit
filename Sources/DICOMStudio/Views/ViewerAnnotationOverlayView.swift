@@ -41,6 +41,25 @@ struct ViewerAnnotationOverlayView: View {
     /// through it makes both unreadable.
     var topLeadingInset: CGFloat = 0
 
+    /// Whether the patient-orientation letters are drawn at all.
+    ///
+    /// The reader's switch — see ``ImageViewerViewModel/showOrientationLabels``
+    /// for why laterality gets its own one rather than riding along with the
+    /// corner blocks.
+    var showOrientation: Bool = true
+
+    /// Room to leave at the middle of the right edge for the controls that sit
+    /// there — the print tick, and the saved-views badge under it.
+    ///
+    /// The right-edge letter is centred on that edge, which is exactly where
+    /// those controls are, so the tick was drawn straight over the "L" on an
+    /// axial slice. A hidden orientation letter is worse than an absent one:
+    /// absent, a reader knows to check; hidden, they read the picture as though
+    /// the marker had been looked at. So the letter moves in by the width of
+    /// the controls rather than the controls moving off the edge, which would
+    /// put them back in a corner the identification block wants.
+    var trailingControlsInset: CGFloat = 0
+
     var body: some View {
         let corners = ViewerAnnotationCorners.make(
             text: text,
@@ -62,7 +81,8 @@ struct ViewerAnnotationOverlayView: View {
                 block(corners.bottomRight, alignment: .trailing)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
 
-                if let orientation = corners.orientation, !orientation.isEmpty {
+                if showOrientation, let orientation = corners.orientation,
+                   !orientation.isEmpty {
                     edgeLabels(orientation)
                 }
             }
@@ -106,6 +126,7 @@ struct ViewerAnnotationOverlayView: View {
             edgeLabel(orientation.left)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             edgeLabel(orientation.right)
+                .padding(.trailing, trailingControlsInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         }
     }

@@ -132,6 +132,56 @@ struct PrintOverlayAnnotationTests {
         #expect(rows.allSatisfy { $0 < 43 })
     }
 
+    @Test("On a turned cell an annotation is burned where the anatomy went")
+    func testBurnFollowsAQuarterTurn() {
+        // The frame handed to the burner has already been turned, so an
+        // annotation drawn near the top-left of the *image* belongs near the
+        // top-right of the frame. Without the arrangement the burn used the
+        // raw fraction and put it back at the top-left, on different anatomy.
+        let original = frame()
+        let annotation = PrintOverlayAnnotation(
+            kind: .arrow,
+            start: PrintOverlayPoint(x: 0.1, y: 0.1),
+            end: PrintOverlayPoint(x: 0.1, y: 0.3))
+        let orientation = PrintOverlayOrientation(
+            presentation: ViewerPresentation(rotationDegrees: 90),
+            imageWidth: 128, imageHeight: 128)
+
+        let burned = ImageAnnotationBurner.burning(
+            overlays: [annotation], into: original, orientation: orientation)
+        let pixels = [UInt8](burned.descriptor.pixelData)
+
+        // A quarter turn clockwise sends the top-left of the image to the
+        // top-right of the frame, so that is the half the marks are in.
+        func drawn(columns: Range<Int>, rows: Range<Int>) -> Bool {
+            rows.contains { row in columns.contains { pixels[row * 128 + $0] != 0 } }
+        }
+        #expect(drawn(columns: 64..<128, rows: 0..<64))
+        #expect(!drawn(columns: 0..<40, rows: 0..<128))
+    }
+
+    @Test("An unturned cell burns exactly where it always did")
+    func testAnIdentityOrientationChangesNothing() {
+        // The arrangement is threaded through every burn now, so the common
+        // case — an untouched cell — has to come out byte for byte as before,
+        // or every existing film changes.
+        let original = frame()
+        let annotation = PrintOverlayAnnotation(
+            kind: .text,
+            start: PrintOverlayPoint(x: 0.1, y: 0.1),
+            text: "LAD",
+            scale: 0.1)
+
+        let withoutOrientation = ImageAnnotationBurner.burning(
+            overlays: [annotation], into: original)
+        let withIdentity = ImageAnnotationBurner.burning(
+            overlays: [annotation], into: original,
+            orientation: .identity(imageWidth: 128, imageHeight: 128))
+
+        #expect(withoutOrientation.descriptor.pixelData
+                == withIdentity.descriptor.pixelData)
+    }
+
     @Test("An arrow is burned along the line it was drawn on")
     func testArrowBurnsAlongItsLine() {
         let original = frame()
@@ -253,9 +303,12 @@ struct PrintOverlayAnnotationTests {
 
     @Test("An arrow burns pixels along its whole length, head included")
     func testArrowBurnsHeadAndShaft() {
+        // An explicit scale rather than the default: this pins the head/shaft
+        // geometry, and the default (now 2%) is thin enough on this small test
+        // frame that antialiasing levels the two sampled columns.
         let arrow = PrintOverlayAnnotation(
             kind: .arrow, start: .init(x: 0.2, y: 0.5), end: .init(x: 0.8, y: 0.5),
-            color: .white)
+            scale: 0.04, color: .white)
         let burned = ImageAnnotationBurner.burning(
             overlays: [arrow], into: frame(photometric: "MONOCHROME2", fill: 0))
         let pixels = [UInt8](burned.descriptor.pixelData)

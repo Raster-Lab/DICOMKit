@@ -23,6 +23,11 @@ struct ViewerSeriesPaneView: View {
     #if canImport(CoreGraphics)
     /// One thumbnail per series — the series' first instance, unarranged.
     @State private var thumbnails = FrameImageStore(maxDimension: 256)
+
+    /// The series whose presentation-state list is open, by Series Instance
+    /// UID. One at a time — the badges are small and adjacent, and two open
+    /// popovers over a scrolling pane cannot be told apart.
+    @State private var savedViewListSeriesUID: String?
     #endif
 
     var body: some View {
@@ -131,6 +136,55 @@ struct ViewerSeriesPaneView: View {
         #endif
     }
 
+    // MARK: - Saved-view badge
+
+    /// The badge saying this series' images carry presentation states, and the
+    /// list it opens.
+    ///
+    /// The glyph and the purple are the toolbar picker's, so a reader who has
+    /// met either recognises the other; it sits in the corner opposite the
+    /// series number so the two badges never crowd each other.
+    ///
+    /// A button rather than a label now: the badge answered "are there any?",
+    /// and the reader also wants "which images, and which objects?". Clicking
+    /// it opens that list; it does not change what is on screen.
+    @ViewBuilder
+    private func savedViewBadge(_ entry: ViewerSeriesEntry) -> some View {
+        let references = viewModel.savedViewReferences(forSeries: entry.seriesInstanceUID)
+
+        Button {
+            savedViewListSeriesUID =
+                savedViewListSeriesUID == entry.seriesInstanceUID
+                    ? nil : entry.seriesInstanceUID
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "slider.horizontal.below.rectangle")
+                // The count, so the pane answers "how many" without being
+                // opened. Suppressed at one: "PR 1" reads as an identifier.
+                if references.count > 1 {
+                    Text("\(references.count)")
+                        .font(.caption2.monospacedDigit().bold())
+                }
+            }
+            .font(.caption2.bold())
+            .foregroundStyle(Color.purple)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.6), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(4)
+        .help("Presentation states on this series' images — click to list them")
+        .accessibilityLabel("\(references.count) presentation states. Show the list.")
+        .popover(isPresented: Binding(
+            get: { savedViewListSeriesUID == entry.seriesInstanceUID },
+            set: { if !$0 { savedViewListSeriesUID = nil } }
+        )) {
+            ViewerSeriesSavedViewList(entry: entry, references: references)
+        }
+    }
+
     // MARK: - One series
 
     /// Ring around the card of the series on screen.
@@ -171,6 +225,15 @@ struct ViewerSeriesPaneView: View {
                             .padding(4)
                     }
                 }
+                .overlay(alignment: .topTrailing) {
+                    // Saved views exist for this series' images. The glyph and
+                    // the purple are the toolbar picker's, so a reader who has
+                    // met either recognises the other; the corner opposite the
+                    // series number, so the two badges never crowd each other.
+                    if viewModel.seriesHasSavedViews(entry.seriesInstanceUID) {
+                        savedViewBadge(entry)
+                    }
+                }
 
             if isCurrent {
                 Label("Current series", systemImage: "checkmark.circle.fill")
@@ -206,6 +269,20 @@ struct ViewerSeriesPaneView: View {
                               lineWidth: Self.currentCardRingWidth)
         }
         .contentShape(Rectangle())
+        // Hover, outside the card's own surface and ring: the ring says which
+        // series is *shown*, this says which one the pointer is on. Two
+        // different questions, so two different cues.
+        //
+        // Hover only — no press tracking. The card is `.draggable`, so the
+        // pointer-down window already belongs to a drag recogniser, and a
+        // second zero-distance `DragGesture` layered under it claimed the
+        // sequence and swallowed the tap: clicking a card stopped hanging its
+        // series. The press cue is not worth the click.
+        // And the card keeps its own `contentShape(Rectangle())` above: the
+        // whole card is the click target, corners included, which a rounded
+        // shape stamped over it would trim.
+        .interactiveControl(cornerRadius: 7, horizontal: 0, vertical: 0,
+                            tracksPress: false, extendsHitArea: false)
         // A click shows the series, from its first image. Reading is a matter of
         // moving between series constantly, so it is one click, not two; the
         // double-click and the drag still work for anyone expecting them.

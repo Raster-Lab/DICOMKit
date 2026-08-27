@@ -70,13 +70,27 @@ struct PrintPaletteTests {
             request(palette: .pet, bitDepth: depth)) == 8)
     }
 
-    @Test("A grey film keeps the depth it asked for", arguments: [8, 12, 16])
+    /// A grey film keeps every depth the standard actually allows. 16 is not
+    /// one of them — PS3.3 Table C.13-3 enumerates Bits Stored as 8 or 12 — so
+    /// it is tested separately, below, where it is clamped rather than kept.
+    @Test("A grey film keeps the depth it asked for", arguments: [8, 12])
     func greyKeepsDepth(_ depth: Int) {
         #expect(PrintImagePreparer.preparationBitDepth(
             request(bitDepth: depth)) == depth)
         // Explicit grey is still grey: it must not cost the depth either.
         #expect(PrintImagePreparer.preparationBitDepth(
             request(palette: .grayscale, bitDepth: depth)) == depth)
+    }
+
+    /// 16-bit *stored* is not a Basic Grayscale Image Box value, however
+    /// natural it looks beside a 16-bit source. It is clamped to the deepest
+    /// legal depth rather than refused, so the film still prints — see
+    /// `PrintBitDepthConformanceTests` for the full rule.
+    @Test("A grey film cannot ask for 16-bit")
+    func greyClampsSixteenBit() {
+        #expect(PrintImagePreparer.preparationBitDepth(request(bitDepth: 16)) == 12)
+        #expect(PrintImagePreparer.preparationBitDepth(
+            request(palette: .grayscale, bitDepth: 16)) == 12)
     }
 
     // MARK: Widening

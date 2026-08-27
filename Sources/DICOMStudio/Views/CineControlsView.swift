@@ -51,7 +51,9 @@ public struct CineControlsView: View {
                 } label: {
                     Image(systemName: "backward.end.fill")
                 }
-                .accessibilityLabel("First frame")
+                                .interactiveControl(cornerRadius: 5, horizontal: 4, vertical: 3,
+                                    isEnabled: viewModel.playbackState != .playing)
+.accessibilityLabel("First frame")
                 .help("Go to first frame (Home)")
                 .disabled(viewModel.playbackState == .playing)
                 .keyboardShortcut(.home, modifiers: [])
@@ -62,7 +64,9 @@ public struct CineControlsView: View {
                 } label: {
                     Image(systemName: "backward.frame.fill")
                 }
-                .accessibilityLabel("Previous frame")
+                                .interactiveControl(cornerRadius: 5, horizontal: 4, vertical: 3,
+                                    isEnabled: viewModel.playbackState != .playing)
+.accessibilityLabel("Previous frame")
                 .help("Previous frame (←)")
                 .disabled(viewModel.playbackState == .playing)
                 .keyboardShortcut(.leftArrow, modifiers: [])
@@ -73,7 +77,8 @@ public struct CineControlsView: View {
                 } label: {
                     Image(systemName: CinePlaybackHelpers.stateSystemImage(for: viewModel.playbackState))
                 }
-                .accessibilityLabel(viewModel.playbackState == .playing ? "Pause" : "Play")
+                                .interactiveControl(cornerRadius: 5, horizontal: 4, vertical: 3)
+.accessibilityLabel(viewModel.playbackState == .playing ? "Pause" : "Play")
                 .help("Play/Pause (Space)")
                 .keyboardShortcut(" ", modifiers: [])
 
@@ -83,7 +88,8 @@ public struct CineControlsView: View {
                 } label: {
                     Image(systemName: "stop.fill")
                 }
-                .accessibilityLabel("Stop playback")
+                                .interactiveControl(cornerRadius: 5, horizontal: 4, vertical: 3)
+.accessibilityLabel("Stop playback")
                 .help("Stop and reset to first frame")
 
                 // Step forward
@@ -92,7 +98,9 @@ public struct CineControlsView: View {
                 } label: {
                     Image(systemName: "forward.frame.fill")
                 }
-                .accessibilityLabel("Next frame")
+                                .interactiveControl(cornerRadius: 5, horizontal: 4, vertical: 3,
+                                    isEnabled: viewModel.playbackState != .playing)
+.accessibilityLabel("Next frame")
                 .help("Next frame (→)")
                 .disabled(viewModel.playbackState == .playing)
                 .keyboardShortcut(.rightArrow, modifiers: [])
@@ -103,7 +111,9 @@ public struct CineControlsView: View {
                 } label: {
                     Image(systemName: "forward.end.fill")
                 }
-                .accessibilityLabel("Last frame")
+                                .interactiveControl(cornerRadius: 5, horizontal: 4, vertical: 3,
+                                    isEnabled: viewModel.playbackState != .playing)
+.accessibilityLabel("Last frame")
                 .help("Go to last frame (End)")
                 .disabled(viewModel.playbackState == .playing)
                 .keyboardShortcut(.end, modifiers: [])

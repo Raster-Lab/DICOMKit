@@ -875,6 +875,15 @@ actor PrintSCPAssociation {
                 outcome.events = [.imageBoxReceived(
                     uid: sopInstance, position: parsed.content.imagePosition,
                     rows: image.rows, columns: image.columns)]
+                // Corrections are reported after the box itself, so the log
+                // reads in the order things happened: the box arrived, and then
+                // this is what had to be changed about it.
+                outcome.events.append(contentsOf: parsed.conformanceNotes.map {
+                    .imageBoxCorrected(
+                        uid: sopInstance,
+                        position: parsed.content.imagePosition,
+                        detail: $0)
+                })
             }
             return outcome
 

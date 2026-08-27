@@ -18,6 +18,9 @@ final class PresentationStateStoreTests: XCTestCase {
     private var root: URL!
     private var store: PresentationStateStore!
 
+    /// Study folders made by the publishing tests, removed in teardown.
+    private var published: [URL] = []
+
     private let studyUID = "1.2.3.4.5"
     private let seriesUID = "1.2.3.4.5.6"
     private let imageSOPClass = "1.2.840.10008.5.1.4.1.1.2"
@@ -33,6 +36,10 @@ final class PresentationStateStoreTests: XCTestCase {
         if let root, FileManager.default.fileExists(atPath: root.path) {
             try FileManager.default.removeItem(at: root)
         }
+        for url in published where FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+        published = []
         try super.tearDownWithError()
     }
 
@@ -75,6 +82,188 @@ final class PresentationStateStoreTests: XCTestCase {
     ) throws -> SavedView? {
         try store.save(
             images: images, label: label, patient: context(), created: created)
+    }
+
+
+    // MARK: - Publishing into the study
+
+    private func studyFolder() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PublishedStudy-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        published.append(url)
+        return url
+    }
+
+    func test_publish_writesOneObjectPerImageIntoTheStudy() throws {
+        try save([image("1.2.3.4.5.6.1"), image("1.2.3.4.5.6.2")], label: "Lung window")
+        let folder = try studyFolder()
+
+        let series = try store.publish(
+            label: "Lung window", studyInstanceUID: studyUID, into: folder)
+
+        XCTAssertEqual(series?.instances.count, 2)
+        for instance in series?.instances ?? [] {
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: instance.url.path),
+                "the published object is in the study's folder")
+        }
+    }
+
+    func test_publish_describesAPresentationStateSeries() throws {
+        try save([image("1.2.3.4.5.6.1")], label: "Lung window")
+        let folder = try studyFolder()
+
+        let series = try store.publish(
+            label: "Lung window", studyInstanceUID: studyUID, into: folder)
+
+        XCTAssertEqual(series?.modality, "PR")
+        XCTAssertEqual(series?.studyInstanceUID, studyUID)
+        XCTAssertEqual(series?.label, "Lung window")
+        XCTAssertEqual(
+            series?.seriesInstanceUID,
+            store.views(forStudy: studyUID).first?.states.first?.seriesInstanceUID,
+            "the study's series is the one the store has been using all along")
+    }
+
+    func test_publish_twoViews_shareOneSeries() throws {
+        try save([image("1.2.3.4.5.6.1")], label: "Lung window")
+        try save([image("1.2.3.4.5.6.1", windowCenter: 300)], label: "Bone window")
+        let folder = try studyFolder()
+
+        let lung = try store.publish(
+            label: "Lung window", studyInstanceUID: studyUID, into: folder)
+        let bone = try store.publish(
+            label: "Bone window", studyInstanceUID: studyUID, into: folder)
+
+        XCTAssertEqual(lung?.seriesInstanceUID, bone?.seriesInstanceUID)
+    }
+
+    func test_publish_twice_doesNotDuplicateObjects() throws {
+        try save([image("1.2.3.4.5.6.1")], label: "Lung window")
+        let folder = try studyFolder()
+
+        try store.publish(label: "Lung window", studyInstanceUID: studyUID, into: folder)
+        try store.publish(label: "Lung window", studyInstanceUID: studyUID, into: folder)
+
+        let objects = try FileManager.default
+            .contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "dcm" }
+        XCTAssertEqual(objects.count, 1, "re-publishing overwrites rather than adds")
+    }
+
+    func test_publish_leavesTheStoresOwnCopyInPlace() throws {
+        try save([image("1.2.3.4.5.6.1")], label: "Lung window")
+        let folder = try studyFolder()
+
+        try store.publish(label: "Lung window", studyInstanceUID: studyUID, into: folder)
+
+        XCTAssertEqual(
+            store.views(forStudy: studyUID).count, 1,
+            "publishing hands the study a copy; the picker keeps its view")
+    }
+
+    func test_publish_publishedObjectIsReadableAsAPresentationState() throws {
+        try save([image("1.2.3.4.5.6.1")], label: "Lung window")
+        let folder = try studyFolder()
+
+        let series = try store.publish(
+            label: "Lung window", studyInstanceUID: studyUID, into: folder)
+        let url = try XCTUnwrap(series?.instances.first?.url)
+
+        let file = try DICOMFile.read(from: url)
+        let state = try GrayscalePresentationStateParser().parse(dataSet: file.dataSet)
+        XCTAssertEqual(file.dataSet.string(for: .modality), "PR")
+        XCTAssertEqual(
+            state.referencedSeries.first?.referencedImages.first?.sopInstanceUID,
+            "1.2.3.4.5.6.1")
+    }
+
+    func test_publish_unknownLabel_returnsNil() throws {
+        try save([image("1.2.3.4.5.6.1")], label: "Lung window")
+        let folder = try studyFolder()
+
+        let series = try store.publish(
+            label: "Nothing saved under this", studyInstanceUID: studyUID, into: folder)
+
+        XCTAssertNil(series)
+    }
+
+    func test_publish_carriesAnnotationsAlongsideTheObject() throws {
+        try save([annotated("1.2.3.4.5.6.1", annotations: [arrow, label])],
+                 label: "Marked up")
+        let folder = try studyFolder()
+
+        let series = try store.publish(
+            label: "Marked up", studyInstanceUID: studyUID, into: folder)
+        let url = try XCTUnwrap(series?.instances.first?.url)
+
+        XCTAssertEqual(
+            AnnotationSidecar.read(forStateAt: url).flattened.count, 2,
+            "the drawings travel with the object into the study")
+    }
+
+    func test_reSavingUnderTheSameLabel_replacesThePublishedObjects() throws {
+        try save([image("1.2.3.4.5.6.1")], label: "Lung window")
+        let folder = try studyFolder()
+        try store.publish(label: "Lung window", studyInstanceUID: studyUID, into: folder)
+
+        // The reader adjusts the view and saves it under the same name. The
+        // store replaces its own copy — the study's must be replaced too.
+        try save([image("1.2.3.4.5.6.1", windowCenter: 300)], label: "Lung window")
+        try store.publish(label: "Lung window", studyInstanceUID: studyUID, into: folder)
+
+        let objects = try FileManager.default
+            .contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "dcm" }
+        XCTAssertEqual(
+            objects.count, 1,
+            "re-saving a view replaces its object in the study, it does not add one")
+    }
+
+    func test_reSaving_leavesNoOrphanedSidecar() throws {
+        try save([annotated("1.2.3.4.5.6.1", annotations: [arrow])], label: "Marked up")
+        let folder = try studyFolder()
+        try store.publish(label: "Marked up", studyInstanceUID: studyUID, into: folder)
+
+        try save([image("1.2.3.4.5.6.1")], label: "Marked up")
+        try store.publish(label: "Marked up", studyInstanceUID: studyUID, into: folder)
+
+        let sidecars = try FileManager.default
+            .contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasSuffix("annotations.json") }
+        XCTAssertTrue(
+            sidecars.isEmpty,
+            "the replaced view drew nothing, so no sidecar may survive it")
+    }
+
+    // MARK: - Reference ID
+
+    func test_referenceID_isStableAcrossReads() throws {
+        try save([image("1.2.3.4.5.6.1")], label: "Lung window")
+
+        let first = store.views(forStudy: studyUID).first?.referenceID
+        let second = store.views(forStudy: studyUID).first?.referenceID
+
+        XCTAssertNotNil(first)
+        XCTAssertEqual(first, second)
+    }
+
+    func test_referenceID_differsBetweenViewsOfOneStudy() throws {
+        try save([image("1.2.3.4.5.6.1")], label: "Lung window")
+        try save([image("1.2.3.4.5.6.1", windowCenter: 300)], label: "Bone window")
+
+        let views = store.views(forStudy: studyUID)
+        let ids = Set(views.map(\.referenceID))
+        XCTAssertEqual(ids.count, views.count, "each view is separately quotable")
+    }
+
+    func test_referenceID_isFormattedForAReport() throws {
+        try save([image("1.2.3.4.5.6.1")], label: "Lung window")
+
+        let id = try XCTUnwrap(store.views(forStudy: studyUID).first?.referenceID)
+        XCTAssertTrue(id.hasPrefix("PR-"))
+        XCTAssertLessThanOrEqual(id.count, 11)
     }
 
     // MARK: - Saving and loading

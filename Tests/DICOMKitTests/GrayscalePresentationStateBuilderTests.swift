@@ -173,6 +173,137 @@ final class GrayscalePresentationStateBuilderTests: XCTestCase {
         XCTAssertEqual(explanation, "Soft tissue")
     }
 
+    // MARK: - Annotations
+
+    private func annotatedState() -> GrayscalePresentationState {
+        GrayscalePresentationState(
+            sopInstanceUID: "1.2.3.4.5.99.2",
+            presentationLabel: "Marked up",
+            referencedSeries: [
+                ReferencedSeries(
+                    seriesInstanceUID: "1.2.3.4.5.6",
+                    referencedImages: [
+                        ReferencedImage(
+                            sopClassUID: imageSOPClassUID,
+                            sopInstanceUID: "1.2.3.4.5.6.1")
+                    ])
+            ],
+            graphicLayers: [
+                GraphicLayer(
+                    name: "DRAWINGS", order: 1,
+                    description: "Reader-drawn text and arrows",
+                    recommendedRGBValue: (red: 65535, green: 65535, blue: 0))
+            ],
+            graphicAnnotations: [
+                GraphicAnnotation(
+                    layer: "DRAWINGS",
+                    referencedImages: [
+                        ReferencedImage(
+                            sopClassUID: imageSOPClassUID,
+                            sopInstanceUID: "1.2.3.4.5.6.1")
+                    ],
+                    graphicObjects: [
+                        GraphicObject(
+                            type: .polyline,
+                            data: [10.5, 20.5, 100, 200],
+                            filled: false,
+                            units: .pixel)
+                    ],
+                    textObjects: [
+                        TextObject(
+                            text: "Nodule",
+                            boundingBoxTopLeft: (column: 30, row: 40),
+                            boundingBoxBottomRight: (column: 130, row: 60),
+                            anchorPoint: (column: 30, row: 40),
+                            anchorPointVisible: false,
+                            boundingBoxUnits: .pixel,
+                            anchorPointUnits: .pixel)
+                    ])
+            ])
+    }
+
+    func test_roundTrip_preservesGraphicLayer() throws {
+        let parsed = try roundTrip(annotatedState())
+
+        XCTAssertEqual(parsed.graphicLayers.count, 1)
+        let layer = try XCTUnwrap(parsed.graphicLayers.first)
+        XCTAssertEqual(layer.name, "DRAWINGS")
+        XCTAssertEqual(layer.order, 1)
+        XCTAssertEqual(layer.description, "Reader-drawn text and arrows")
+        XCTAssertEqual(layer.recommendedRGBValue?.red, 65535)
+        XCTAssertEqual(layer.recommendedRGBValue?.blue, 0)
+    }
+
+    func test_roundTrip_preservesGraphicObject() throws {
+        let parsed = try roundTrip(annotatedState())
+
+        let annotation = try XCTUnwrap(parsed.graphicAnnotations.first)
+        XCTAssertEqual(annotation.layer, "DRAWINGS")
+        XCTAssertEqual(annotation.referencedImages.map(\.sopInstanceUID), ["1.2.3.4.5.6.1"])
+        let graphic = try XCTUnwrap(annotation.graphicObjects.first)
+        XCTAssertEqual(graphic.type, .polyline)
+        XCTAssertEqual(graphic.data, [10.5, 20.5, 100, 200])
+        XCTAssertEqual(graphic.units, .pixel)
+        XCTAssertFalse(graphic.filled)
+    }
+
+    func test_roundTrip_preservesTextObject() throws {
+        let parsed = try roundTrip(annotatedState())
+
+        let text = try XCTUnwrap(parsed.graphicAnnotations.first?.textObjects.first)
+        XCTAssertEqual(text.text, "Nodule")
+        XCTAssertEqual(text.boundingBoxTopLeft.column, 30)
+        XCTAssertEqual(text.boundingBoxBottomRight.row, 60)
+        XCTAssertEqual(text.anchorPoint?.column, 30)
+        XCTAssertFalse(text.anchorPointVisible)
+        XCTAssertEqual(text.boundingBoxUnits, .pixel)
+    }
+
+    /// The words are written to the Text Object's own tag (0070,0006), not
+    /// SR's Text Value — but files written while the parser read the wrong tag
+    /// must keep parsing.
+    func test_parse_fallsBackToLegacyTextValueTag() throws {
+        var dataSet = GrayscalePresentationStateBuilder().buildDataSet(
+            from: annotatedState(),
+            patient: context(),
+            seriesInstanceUID: "1.2.3.4.5.900",
+            seriesNumber: 900)
+        XCTAssertNotNil(dataSet[.graphicAnnotationSequence])
+
+        // Rewrite the annotation's text object with the legacy tag only.
+        let annotationItems = try XCTUnwrap(dataSet[.graphicAnnotationSequence]?.sequenceItems)
+        let rebuilt = annotationItems.map { item -> SequenceItem in
+            var elements = item.elements.values.filter { $0.tag != .textObjectSequence }
+            elements.append(DataElement(
+                tag: .textObjectSequence, vr: .SQ, length: 0, valueData: Data(),
+                sequenceItems: [SequenceItem(elements: [
+                    DataElement.string(tag: .unformattedTextValue, vr: .ST, value: "Legacy"),
+                    DataElement.string(
+                        tag: .boundingBoxTopLeftHandCorner, vr: .DS, value: "1\\2"),
+                    DataElement.string(
+                        tag: .boundingBoxBottomRightHandCorner, vr: .DS, value: "3\\4")
+                ])]))
+            return SequenceItem(elements: elements)
+        }
+        dataSet[.graphicAnnotationSequence] = DataElement(
+            tag: .graphicAnnotationSequence, vr: .SQ, length: 0, valueData: Data(),
+            sequenceItems: rebuilt)
+
+        let parsed = try GrayscalePresentationStateParser().parse(dataSet: dataSet)
+        XCTAssertEqual(parsed.graphicAnnotations.first?.textObjects.first?.text, "Legacy")
+    }
+
+    func test_build_omitsAnnotationSequencesWhenNothingIsDrawn() {
+        let dataSet = GrayscalePresentationStateBuilder().buildDataSet(
+            from: state(),
+            patient: context(),
+            seriesInstanceUID: "1.2.3.4.5.900",
+            seriesNumber: 900)
+
+        XCTAssertNil(dataSet[.graphicLayerSequence])
+        XCTAssertNil(dataSet[.graphicAnnotationSequence])
+    }
+
     // MARK: - Content Label
 
     /// Content Label is type 1 and CS-valued. A reader typing an ordinary name

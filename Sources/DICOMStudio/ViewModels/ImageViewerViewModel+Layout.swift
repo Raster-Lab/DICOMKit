@@ -26,7 +26,29 @@ extension ImageViewerViewModel {
     /// The focused tile's file stays put and the rest follow it in series order,
     /// which is what makes a 2×2 read as "this image and the next three".
     public func applyLayout(_ newLayout: ViewerTileLayout) {
+        applyLayout(newLayout, fill: layoutFill)
+    }
+
+    /// Switches what the grid is a grid *of*, keeping its shape.
+    ///
+    /// Re-fills rather than merely recording the choice: the mode is the whole
+    /// of what a tile shows, so a reader who picks "Image" over a 2×2 of four
+    /// series expects four slices, not a setting that will apply next time they
+    /// touch the shape. At 1×1 there is nothing to fill, so the choice is
+    /// remembered for the next grid and nothing moves on screen.
+    public func applyLayoutFill(_ fill: ViewerLayoutFill) {
+        guard fill != layoutFill else { return }
+        guard isMultiCellLayout else {
+            layoutFill = fill
+            return
+        }
+        applyLayout(layout, fill: fill)
+    }
+
+    /// Switches the grid and how it is filled, in one step.
+    public func applyLayout(_ newLayout: ViewerTileLayout, fill: ViewerLayoutFill) {
         captureFocusedCell()
+        layoutFill = fill
 
         let previousCells = cells
         let anchorPath = cells.indices.contains(focusedCellIndex)
@@ -53,15 +75,23 @@ extension ImageViewerViewModel {
 
     /// The file a tile shows when a grid is applied.
     ///
-    /// With a study open, a grid is a comparison of *series*: each tile takes
-    /// the first image of the next series, starting from the one on screen, so a
-    /// 2×2 reads as "this series and the next three" rather than four adjacent
-    /// slices of one stack — which the wheel already gives, one tile at a time.
-    /// Grids larger than the study has series fall back to filling the rest from
-    /// the current stack, so no tile is left blank while there are images to put
-    /// in it.
+    /// In ``ViewerLayoutFill/series`` mode — the default — a grid is a
+    /// comparison of *series*: each tile takes the first image of the next
+    /// series, starting from the one on screen, so a 2×2 reads as "this series
+    /// and the next three" rather than four adjacent slices of one stack, which
+    /// the wheel already gives one tile at a time. Grids larger than the study
+    /// has series fall back to filling the rest from the current stack, so no
+    /// tile is left blank while there are images to put in it.
+    ///
+    /// In ``ViewerLayoutFill/image`` mode the stack *is* the point: tiles take
+    /// consecutive images of the series on screen, starting from the image on
+    /// screen, so a 4×5 lays twenty slices out at once. The study's other series
+    /// are not drawn on — an image grid that ran off the end of one series into
+    /// the next would put two anatomies in one grid without saying so.
     private func fileForCell(offset: Int, anchorIndex: Int) -> String? {
-        if let path = seriesLedFile(offset: offset) { return path }
+        if layoutFill == .series, let path = seriesLedFile(offset: offset) {
+            return path
+        }
         guard !seriesFiles.isEmpty else {
             return offset == 0 ? filePath : nil
         }
@@ -113,7 +143,13 @@ extension ImageViewerViewModel {
             frameIndex: 0,
             frameCount: 1,
             windowCenter: inheritedWindowCenter(for: filePath),
-            windowWidth: inheritedWindowWidth(for: filePath)
+            windowWidth: inheritedWindowWidth(for: filePath),
+            // The colour travels exactly as far as the window does, and for the
+            // same reason: a palette maps a windowed level to a hue, so carrying
+            // it onto a series windowed differently paints the same colour over
+            // different measurements. Within one series it is the reader's
+            // choice continuing; across one it is a coincidence of grey levels.
+            palette: windowTravels(to: filePath) ? palette : nil
         )
     }
 
@@ -192,6 +228,7 @@ extension ImageViewerViewModel {
         cell.isFlippedHorizontal = isFlippedHorizontal
         cell.isFlippedVertical = isFlippedVertical
         cell.isInverted = isInverted
+        cell.palette = palette
         cell.viewportWidth = viewContentWidth
         cell.viewportHeight = viewContentHeight
         cells[focusedCellIndex] = cell
@@ -204,6 +241,10 @@ extension ImageViewerViewModel {
 
     /// Restores a tile's arrangement onto the live view model.
     func restoreArrangement(of cell: ViewerCellState) {
+        // A restore, not a reader action: the tool observers must not mark
+        // the series as touched for state that merely moved between tiles.
+        restoringToolState = true
+        defer { restoringToolState = false }
         zoomLevel = cell.zoom
         panOffsetX = cell.panX
         panOffsetY = cell.panY
@@ -211,6 +252,10 @@ extension ImageViewerViewModel {
         isFlippedHorizontal = cell.isFlippedHorizontal
         isFlippedVertical = cell.isFlippedVertical
         isInverted = cell.isInverted
+        // The palette is pixels rather than geometry, so it has to be in place
+        // before the render below — restoring it afterwards would show the
+        // previous tile's colours for one frame.
+        palette = cell.palette
         // A tile with no window of its own reads at the image's VOI — the
         // previous tile's window must not follow the user across a hang.
         if let cellCenter = cell.windowCenter, let cellWidth = cell.windowWidth, cellWidth >= 1 {

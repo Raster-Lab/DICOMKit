@@ -132,6 +132,19 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             dataSet[.displayedAreaSelectionSequence] = Self.displayedAreaElement(area)
         }
 
+        // MARK: Annotations
+        //
+        // The reader's own text and arrows. A layer is required by C.10.5 for
+        // every annotation, so states carrying annotations without layers would
+        // be non-conformant — the caller composes both together.
+        if !state.graphicLayers.isEmpty {
+            dataSet[.graphicLayerSequence] = Self.graphicLayerElement(state.graphicLayers)
+        }
+        if !state.graphicAnnotations.isEmpty {
+            dataSet[.graphicAnnotationSequence] =
+                Self.graphicAnnotationElement(state.graphicAnnotations)
+        }
+
         // MARK: Presentation LUT
         //
         // Written as a shape rather than a table: INVERSE is how a GSPS says
@@ -206,13 +219,43 @@ public struct GrayscalePresentationStateBuilder: Sendable {
     private static func applyVOILUT(_ voiLUT: VOILUT, to dataSet: inout DataSet) {
         switch voiLUT {
         case .window(let center, let width, let explanation, let function):
+            // The window lives in the Softcopy VOI LUT Sequence (C.11.8) —
+            // the module the presentation state IODs actually contain. Viewers
+            // read a PR's window from inside this sequence only; the years
+            // this builder wrote the values top-level, every conforming viewer
+            // displayed the state with no window at all.
+            var itemElements: [DataElement] = [
+                DataElement.string(
+                    tag: .windowCenter, vr: .DS, value: Self.decimalString(center)),
+                DataElement.string(
+                    tag: .windowWidth, vr: .DS, value: Self.decimalString(width)),
+            ]
+            if let explanation {
+                itemElements.append(DataElement.string(
+                    tag: .windowCenterWidthExplanation, vr: .LO, value: explanation))
+            }
+            // LINEAR is the default and is left implicit, matching what the
+            // parser assumes when the tag is absent.
+            if function != .linear {
+                itemElements.append(DataElement.string(
+                    tag: .voiLUTFunction, vr: .CS, value: function.rawValue))
+            }
+            // No Referenced Image Sequence in the item: absent, the window
+            // applies to every referenced image (C.11.8.1), which is exactly
+            // this object's meaning — one state per image.
+            dataSet[.softcopyVOILUTSequence] = sequence(
+                tag: .softcopyVOILUTSequence,
+                items: [SequenceItem(elements: itemElements)])
+
+            // The same values top-level as well. Not part of the IOD, but a
+            // legal extension — and it is what our own parser read before the
+            // sequence existed, so files written now stay readable by builds
+            // from before it.
             dataSet.setString(Self.decimalString(center), for: .windowCenter, vr: .DS)
             dataSet.setString(Self.decimalString(width), for: .windowWidth, vr: .DS)
             if let explanation {
                 dataSet.setString(explanation, for: .windowCenterWidthExplanation, vr: .LO)
             }
-            // LINEAR is the default and is left implicit, matching what the
-            // parser assumes when the tag is absent.
             if function != .linear {
                 dataSet.setString(function.rawValue, for: .voiLUTFunction, vr: .CS)
             }
@@ -221,6 +264,132 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             // composed here.
             break
         }
+    }
+
+    private static func graphicLayerElement(_ layers: [GraphicLayer]) -> DataElement {
+        let items = layers.map { layer -> SequenceItem in
+            var elements: [DataElement] = [
+                DataElement.string(tag: .graphicLayer, vr: .CS, value: layer.name),
+                DataElement.string(
+                    tag: .graphicLayerOrder, vr: .IS, value: String(layer.order))
+            ]
+            if let description = layer.description {
+                elements.append(DataElement.string(
+                    tag: .graphicLayerDescription, vr: .LO, value: description))
+            }
+            // Written as IS rather than US for the same reason the displayed
+            // area corners are: it is the form the parser reads back, and an
+            // explicit-VR file carries its VR with it.
+            if let grayscale = layer.recommendedGrayscaleValue {
+                elements.append(DataElement.string(
+                    tag: .graphicLayerRecommendedDisplayGrayscaleValue, vr: .IS,
+                    value: String(grayscale)))
+            }
+            if let rgb = layer.recommendedRGBValue {
+                elements.append(DataElement.string(
+                    tag: .graphicLayerRecommendedDisplayRGBValue, vr: .IS,
+                    value: "\(rgb.red)\\\(rgb.green)\\\(rgb.blue)"))
+            }
+            return SequenceItem(elements: elements)
+        }
+        return sequence(tag: .graphicLayerSequence, items: items)
+    }
+
+    private static func graphicAnnotationElement(
+        _ annotations: [GraphicAnnotation]
+    ) -> DataElement {
+        let items = annotations.map { annotation -> SequenceItem in
+            var elements: [DataElement] = [
+                DataElement.string(tag: .graphicLayer, vr: .CS, value: annotation.layer)
+            ]
+
+            if !annotation.referencedImages.isEmpty {
+                let imageItems = annotation.referencedImages.map { image -> SequenceItem in
+                    var imageElements: [DataElement] = [
+                        DataElement.string(
+                            tag: .referencedSOPClassUID, vr: .UI, value: image.sopClassUID),
+                        DataElement.string(
+                            tag: .referencedSOPInstanceUID, vr: .UI,
+                            value: image.sopInstanceUID)
+                    ]
+                    if let frames = image.referencedFrameNumbers, !frames.isEmpty {
+                        imageElements.append(DataElement.string(
+                            tag: .referencedFrameNumber, vr: .IS,
+                            value: frames.map(String.init).joined(separator: "\\")))
+                    }
+                    return SequenceItem(elements: imageElements)
+                }
+                elements.append(sequence(tag: .referencedImageSequence, items: imageItems))
+            }
+
+            if !annotation.graphicObjects.isEmpty {
+                let graphicItems = annotation.graphicObjects.map(graphicObjectItem)
+                elements.append(sequence(tag: .graphicObjectSequence, items: graphicItems))
+            }
+            if !annotation.textObjects.isEmpty {
+                let textItems = annotation.textObjects.map(textObjectItem)
+                elements.append(sequence(tag: .textObjectSequence, items: textItems))
+            }
+
+            return SequenceItem(elements: elements)
+        }
+        return sequence(tag: .graphicAnnotationSequence, items: items)
+    }
+
+    private static func graphicObjectItem(_ object: GraphicObject) -> SequenceItem {
+        SequenceItem(elements: [
+            DataElement.string(
+                tag: .graphicAnnotationUnits, vr: .CS, value: object.units.rawValue),
+            // Always 2: Graphic Data here is (column, row) pairs.
+            DataElement(tag: .graphicDimensions, vr: .US, length: 2,
+                        valueData: Data([2, 0])),
+            DataElement(tag: .numberOfGraphicPoints, vr: .US, length: 2,
+                        valueData: Data([UInt8(object.pointCount & 0xFF),
+                                         UInt8((object.pointCount >> 8) & 0xFF)])),
+            // DS rather than FL, matching the displayed-area precedent: it is
+            // the form the parser reads back, and the explicit VR travels with
+            // the file.
+            DataElement.string(
+                tag: .graphicData, vr: .DS,
+                value: object.data.map(decimalString).joined(separator: "\\")),
+            DataElement.string(tag: .graphicType, vr: .CS, value: object.type.rawValue),
+            DataElement.string(
+                tag: .graphicFilled, vr: .CS, value: object.filled ? "Y" : "N")
+        ])
+    }
+
+    private static func textObjectItem(_ text: TextObject) -> SequenceItem {
+        var elements: [DataElement] = [
+            DataElement.string(
+                tag: .boundingBoxAnnotationUnits, vr: .CS,
+                value: text.boundingBoxUnits.rawValue),
+            DataElement.string(
+                tag: .textObjectUnformattedTextValue, vr: .ST, value: text.text),
+            DataElement.string(
+                tag: .boundingBoxTopLeftHandCorner, vr: .DS,
+                value: "\(decimalString(text.boundingBoxTopLeft.column))\\"
+                     + "\(decimalString(text.boundingBoxTopLeft.row))"),
+            DataElement.string(
+                tag: .boundingBoxBottomRightHandCorner, vr: .DS,
+                value: "\(decimalString(text.boundingBoxBottomRight.column))\\"
+                     + "\(decimalString(text.boundingBoxBottomRight.row))"),
+            // Type 1C once a bounding box is present. LEFT because that is how
+            // every renderer of this model draws — the anchor is the top-left.
+            DataElement.string(
+                tag: .boundingBoxTextHorizontalJustification, vr: .CS, value: "LEFT")
+        ]
+        if let anchor = text.anchorPoint {
+            elements.append(DataElement.string(
+                tag: .anchorPoint, vr: .DS,
+                value: "\(decimalString(anchor.column))\\\(decimalString(anchor.row))"))
+            elements.append(DataElement.string(
+                tag: .anchorPointVisibility, vr: .CS,
+                value: text.anchorPointVisible ? "Y" : "N"))
+            elements.append(DataElement.string(
+                tag: .anchorPointAnnotationUnits, vr: .CS,
+                value: text.anchorPointUnits.rawValue))
+        }
+        return SequenceItem(elements: elements)
     }
 
     private static func sequence(tag: Tag, items: [SequenceItem]) -> DataElement {
@@ -243,7 +412,7 @@ public struct GrayscalePresentationStateBuilder: Sendable {
     /// CS permits uppercase letters, digits, space and underscore, up to 16
     /// characters. A reader typing "Lung window" must not produce a
     /// non-conformant object, so the label is folded rather than rejected.
-    static func contentLabel(from label: String?) -> String {
+    public static func contentLabel(from label: String?) -> String {
         let fallback = "PRESENTATION"
         guard let label, !label.isEmpty else { return fallback }
 

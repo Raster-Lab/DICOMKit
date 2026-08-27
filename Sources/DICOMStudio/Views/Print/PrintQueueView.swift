@@ -217,6 +217,7 @@ public struct PrintQueueView: View {
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
+        .interactiveControl(cornerRadius: 5, horizontal: 4, vertical: 3)
         .help(help)
         .accessibilityLabel(title)
     }

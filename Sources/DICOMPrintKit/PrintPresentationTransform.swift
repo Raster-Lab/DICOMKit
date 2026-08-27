@@ -51,13 +51,34 @@ public enum PrintPresentationTransform {
         var pixels = [UInt8](image.pixelData.prefix(width * height * pixelStride))
 
         // 1. Crop to the region the viewport was showing.
+        //
+        // Off-square, the crop is taken wider than the picture that comes out
+        // of it. The rotation below turns about the centre at the scale the
+        // region already had, so the picture keeps its size and its corners
+        // swing outside — and the pixels that ought to swing *in* to replace
+        // them are the ones just past the crop's edge. Cropping tight threw
+        // those away before the resampler could reach them, and the corners
+        // came out as background wedges even where the frame plainly had image
+        // there. So the crop grows to the box the turned rectangle sweeps
+        // (clamped to the frame), the output stays the ungrown size, and the
+        // resampler — which reads backwards from each output pixel — finds real
+        // pixels where it used to find nothing. `printedSize` below is what
+        // keeps the output at the size the film expects.
         var currentWidth = width
         var currentHeight = height
+        var printedWidth: Int?
+        var printedHeight: Int?
         if let region = presentation.visibleRegion(
             imageWidth: width, imageHeight: height, covers: covers) {
-            pixels = crop(pixels, width: currentWidth, region: region, pixelStride: pixelStride)
-            currentWidth = region.width
-            currentHeight = region.height
+            let sampled = presentation.regionCoveringTurnedCell(
+                region, imageWidth: width, imageHeight: height)
+            pixels = crop(pixels, width: currentWidth, region: sampled, pixelStride: pixelStride)
+            currentWidth = sampled.width
+            currentHeight = sampled.height
+            if sampled != region {
+                printedWidth = region.width
+                printedHeight = region.height
+            }
         }
 
         // 2. Rotate, then flip — the order the viewer composes them in.
@@ -86,11 +107,17 @@ public enum PrintPresentationTransform {
             // worst at exactly the small angles a reader uses to straighten a
             // tilted head (86% at 10°). Matching the viewer is what was asked for:
             // the picture the reader turned is the size they turned it at.
+            // Out at the *printed* size — the region the reader composed —
+            // while reading from the grown crop around it.
+            let outWidth = printedWidth ?? currentWidth
+            let outHeight = printedHeight ?? currentHeight
             pixels = rotateResampling(
                 pixels, width: currentWidth, height: currentHeight,
-                outWidth: currentWidth, outHeight: currentHeight,
+                outWidth: outWidth, outHeight: outHeight,
                 presentation: presentation,
                 samples: samples, bytesPerSample: bytesPerSample)
+            currentWidth = outWidth
+            currentHeight = outHeight
         }
         if presentation.flipHorizontal {
             pixels = flipHorizontally(

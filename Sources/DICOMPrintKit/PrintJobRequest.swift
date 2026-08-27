@@ -217,7 +217,13 @@ public struct PrintJobRequest: Sendable, Codable {
     public var windowSettings: WindowSettings?
     /// The space ``windowSettings`` is stated in (see ``PrintWindowSpace``).
     public var windowSpace: PrintWindowSpace
-    /// Grayscale output bit depth: 8, 12, or 16.
+    /// Grayscale output bit depth: 8 or 12.
+    ///
+    /// PS3.3 Table C.13-3 enumerates Bits Stored as 8 or 12 for the Basic
+    /// Grayscale Image Box. 16 is still accepted here — earlier builds offered
+    /// it and it survives in saved settings — but it is clamped to 12 before it
+    /// reaches the wire, with a diagnostic, rather than producing an image box
+    /// no conforming printer may accept.
     public var bitDepth: Int
     /// A pseudo-colour palette to bake into the prepared pixels.
     ///
@@ -450,8 +456,14 @@ public struct PrintJobRequest: Sendable, Codable {
         if let width = windowSettings?.width, width < 1 {
             throw PrintRequestError("--window-width must be 1 or greater")
         }
+        // 16 is accepted and clamped rather than refused: it was offered by
+        // earlier builds and is stored in saved print settings, so failing on it
+        // would break jobs that used to run. `PrintImagePreparer` drops it to
+        // the deepest legal value and says so — see `preparationBitDepth`.
         guard [8, 12, 16].contains(bitDepth) else {
-            throw PrintRequestError("--bit-depth must be 8, 12, or 16")
+            throw PrintRequestError(
+                "--bit-depth must be 8 or 12 (PS3.3 Table C.13-3 enumerates Bits "
+                + "Stored as 8 or 12 for the Basic Grayscale Image Box)")
         }
         if raw && (windowSettings != nil || bitDepth != 8) {
             throw PrintRequestError(

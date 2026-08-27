@@ -203,10 +203,21 @@ public final class PrintSelectionModel {
 
     /// Size the next annotation is drawn at, as a fraction of the image's
     /// height. Changing a selected annotation's size adopts it here too.
-    public var annotationScale: Double = PrintOverlayAnnotation.defaultScale
+    ///
+    /// The smallest the size control offers, by request: a reader's note is a
+    /// margin note, and one that starts large is something to shrink on every
+    /// annotation rather than once. Anything bigger is still a drag away, and
+    /// the burner's own pixel floor keeps even this legible on a small frame.
+    public var annotationScale: Double = PrintOverlayAnnotation.minimumScale
 
     /// Colour the next annotation is drawn in.
-    public var annotationColor: PrintOverlayColor = .yellow
+    ///
+    /// White, which is what a reader marking a greyscale study expects to
+    /// write in — the yellow this used to be reads as a highlight rather than
+    /// a note, and on a colour or inverted frame it was the louder of the two.
+    /// Every other colour remains one click away in the annotation controls,
+    /// and choosing one adopts it for the annotations that follow.
+    public var annotationColor: PrintOverlayColor = .white
 
     public init() {}
 

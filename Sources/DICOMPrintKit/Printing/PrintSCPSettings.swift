@@ -191,6 +191,21 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
     /// Whether crop marks are drawn when Trim (2010,0140) is YES.
     public var drawTrimMarks: Bool
 
+    /// A pseudo-colour palette laid over received films when they are rendered.
+    ///
+    /// Off by default, and deliberately: an image box's P-Values are what the
+    /// sending operator approved, and Print Management has no way to ask for a
+    /// palette or to report that one was used ("palette" appears nowhere in
+    /// PS3.4 Annex H). Recolouring silently would make the emulator's film
+    /// disagree with the screen the study was signed off on.
+    ///
+    /// So this is a local viewing control and nothing more. It reaches the
+    /// composed sheet — the preview, and the auto-saved PNG/TIFF of it — while
+    /// the received P-Values are left exactly as they arrived. Nothing that goes
+    /// back on the wire is affected, which is what keeps the emulator conformant
+    /// with the palette switched on.
+    public var previewPalette: PseudoColorPalette?
+
     /// Sheet margin in millimetres on all four edges.
     public var marginMillimeters: Double
 
@@ -264,6 +279,7 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
         drawAnnotations: Bool = true,
         annotationEdge: FilmAnnotationEdge = .bottom,
         drawTrimMarks: Bool = true,
+        previewPalette: PseudoColorPalette? = nil,
         marginMillimeters: Double = 5,
         cellSpacingMillimeters: Double = 2,
         maximumPixelDimension: Int = 12000,
@@ -304,6 +320,7 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
         self.densityMapping = densityMapping
         self.drawAnnotations = drawAnnotations
         self.annotationEdge = annotationEdge
+        self.previewPalette = previewPalette
         self.drawTrimMarks = drawTrimMarks
         self.marginMillimeters = marginMillimeters
         self.cellSpacingMillimeters = cellSpacingMillimeters
@@ -378,6 +395,9 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
             annotationEdge: (try? container.decodeIfPresent(FilmAnnotationEdge.self, forKey: .annotationEdge))
                 .flatMap { $0 } ?? fallback.annotationEdge,
             drawTrimMarks: bool(.drawTrimMarks, fallback.drawTrimMarks),
+            previewPalette: (try? container.decodeIfPresent(
+                PseudoColorPalette.self, forKey: .previewPalette))
+                .flatMap { $0 } ?? fallback.previewPalette,
             marginMillimeters: double(.marginMillimeters, fallback.marginMillimeters),
             cellSpacingMillimeters: double(.cellSpacingMillimeters, fallback.cellSpacingMillimeters),
             maximumPixelDimension: int(.maximumPixelDimension, fallback.maximumPixelDimension),
@@ -503,7 +523,8 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
             drawAnnotations: drawAnnotations,
             annotationEdge: annotationEdge,
             drawTrimMarks: drawTrimMarks,
-            maximumPixelDimension: maximumPixelDimension)
+            maximumPixelDimension: maximumPixelDimension,
+            previewPalette: previewPalette)
     }
 }
 

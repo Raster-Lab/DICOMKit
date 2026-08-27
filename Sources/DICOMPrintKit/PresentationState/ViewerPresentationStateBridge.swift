@@ -131,9 +131,32 @@ public enum ViewerPresentationStateBridge {
             quarterTurns = (quarterTurns + 2) % 4
         }
 
-        let rotation = quarterTurns * 90
-        guard rotation != 0 || horizontalFlip else { return nil }
-        return SpatialTransformation(rotation: rotation, horizontalFlip: horizontalFlip)
+        // Stated even when it is upright and unmirrored. A saved view is a
+        // complete description of how to show the image, and "no Spatial
+        // Transformation" is not the same claim as "rotation 0": the first
+        // leaves whatever the reader last did to the image in place, so an
+        // upright view applied to a turned image left it turned. Writing the
+        // identity is what lets a view put an image back the right way up.
+        //
+        // Rotation 0 with no flip is a well-formed Spatial Transformation:
+        // Image Rotation (0070,0042) is US, Type 1, enumerated 0/90/180/270
+        // (PS3.3 C.10.6), and 0 is one of its values; Image Horizontal Flip
+        // (0070,0041) is Type 1 and "N".
+        //
+        // The module's usage in the GSPS IOD is Conditional — "required if
+        // rotation or flipping are to be applied" — so writing the identity is
+        // writing it where it is not strictly required. That is the deliberate
+        // trade: both attributes are present and correctly valued, so any
+        // reader takes it, and it buys the one thing the condition's literal
+        // reading cannot express — a saved view that restores an image the
+        // reader has since turned. Omitting it is indistinguishable from "this
+        // view says nothing about orientation", which is what left an upright
+        // view unable to put a rotated image back.
+        //
+        // Note 360° cannot be stored: it is not an enumerated value, which is
+        // why the angle is normalised to a quarter turn before it gets here.
+        return SpatialTransformation(
+            rotation: quarterTurns * 90, horizontalFlip: horizontalFlip)
     }
 
     // MARK: - Restore

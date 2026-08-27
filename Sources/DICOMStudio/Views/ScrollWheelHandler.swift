@@ -109,6 +109,85 @@ struct ScrollWheelHandler: NSViewRepresentable {
 // MARK: - Tool cursor (macOS)
 
 #if os(macOS)
+/// Gives the pointer back to the arrow over a control that sits on the image.
+///
+/// The reading area is covered edge to edge by `ToolCursor`, which is what puts
+/// the armed tool's glyph under the pointer wherever the picture is. The
+/// controls that float on top of the picture — the print checkbox, the
+/// saved-views badge — are inside that rect, so they inherited the tool's
+/// pointer: hovering the print tick showed the windowing sun or the zoom
+/// magnifier rather than an arrow, which says "drag me to window this image"
+/// over a thing that is actually a checkbox.
+///
+/// Restoring the arrow is a rect of its own, registered by a view *above*
+/// `ToolCursor` in the overlay order. The window resolves a cursor rect from
+/// the topmost view that registered one at that point, so a small rect over the
+/// badge beats the big one over the image without either knowing about the
+/// other — no geometry to keep in step, and a control that moves or comes and
+/// goes takes its rect with it.
+///
+/// Attach with ``SwiftUI/View/arrowPointer()``.
+struct ArrowPointer: NSViewRepresentable {
+
+    func makeNSView(context: Context) -> PointerView { PointerView() }
+
+    func updateNSView(_ nsView: PointerView, context: Context) {}
+
+    /// Restores the arrow on entry and hands the pointer back on exit.
+    ///
+    /// Deliberately *not* a cursor rect, which is what `ToolCursor` uses.
+    /// A rect is resolved by z-order — the topmost view that registered one at
+    /// that point wins — and these controls are not always on top: the tiles of
+    /// a grid are content, drawn below the viewer's tool-cursor overlay, so a
+    /// rect here would be outranked and the tool's glyph would keep the badge.
+    ///
+    /// Enter and exit events have no such ordering: they are dispatched to the
+    /// tracking area's owner whatever is layered over it, so this sets the
+    /// arrow the moment the pointer arrives on the control, wherever the
+    /// control sits in the hierarchy. On the way out the shape is left alone —
+    /// the cursor rect underneath re-resolves at the same crossing and puts the
+    /// tool's glyph back, and setting the arrow here would fight it.
+    final class PointerView: NSView {
+
+        /// Invisible to clicks, for the same reason `ToolCursor.CursorView` is:
+        /// this sits over a button and must not take the click meant for it.
+        /// Tracking areas do not need hit testing, so refusing it costs nothing.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func mouseEntered(with event: NSEvent) {
+            NSCursor.arrow.set()
+        }
+
+        /// A pointer that arrives without crossing the boundary — the control
+        /// appearing under a stationary mouse, a tile re-laid out beneath it —
+        /// gets the arrow too.
+        override func cursorUpdate(with event: NSEvent) {
+            NSCursor.arrow.set()
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(
+                rect: bounds,
+                options: [.activeAlways, .inVisibleRect,
+                          .mouseEnteredAndExited, .cursorUpdate],
+                owner: self))
+        }
+    }
+}
+
+@available(macOS 14.0, *)
+extension View {
+    /// Restores the arrow pointer over this control, above the image's tool
+    /// cursor. See ``ArrowPointer``.
+    func arrowPointer() -> some View {
+        overlay(ArrowPointer())
+    }
+}
+#endif
+
+#if os(macOS)
 /// Sets the pointer's shape over the view it is placed behind.
 ///
 /// Via the window's cursor rects rather than SwiftUI's `.onHover` with

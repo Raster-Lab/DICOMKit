@@ -145,6 +145,11 @@ public struct PrintImagePreparer: Sendable {
         let sourceDescriptor = pixelData.descriptor
         let label = sourcePath ?? "data set"
 
+        // Once per data set rather than once per frame: a 300-frame series
+        // would otherwise repeat the same sentence 300 times and bury the rest
+        // of the log.
+        if let note = Self.clampNote(request) { onProgress?(note) }
+
         let frameIndices: [Int]
         switch request.frameSelection {
         case .all:
@@ -208,9 +213,11 @@ public struct PrintImagePreparer: Sendable {
                     frameIndex: frameIndex,
                     colorMode: colorMode,
                     windowSettings: voi.window,
-                    outputBitDepth: Self.preparationBitDepth(request),
+                    outputBitDepth: Self.preparationBitDepth(
+                        request, sourceDescriptor: sourceDescriptor),
                     voiLUT: voi.lut,
-                    palette: Self.preparationPalette(request)
+                    palette: Self.preparationPalette(
+                        request, sourceDescriptor: sourceDescriptor)
                 )
                 guard image.width <= Int(UInt16.max),
                       image.height <= Int(UInt16.max) else {
@@ -294,13 +301,26 @@ public struct PrintImagePreparer: Sendable {
         _ request: PrintJobRequest,
         sourceDescriptor: PixelDataDescriptor
     ) -> DICOMKit.PrintColorMode {
-        if Self.preparationPalette(request) != nil { return .color }
-        guard request.preservesSourceColor else { return request.preprocessColorMode }
-        let photometric = sourceDescriptor.photometricInterpretation
-        let isColorSource = sourceDescriptor.samplesPerPixel > 1
+        // "Print colour images as greys" is the reader's explicit word on
+        // colour *sources*, and it outranks everything else that could put
+        // colour on this cell — the job's own colour mode and a lingering
+        // palette included. Before this check came first, a film-wide palette
+        // quietly forced the cell back to colour and the switch looked dead.
+        if Self.isColorSource(sourceDescriptor), !request.preservesSourceColor {
+            return .grayscale
+        }
+        if Self.preparationPalette(request, sourceDescriptor: sourceDescriptor) != nil {
+            return .color
+        }
+        return Self.isColorSource(sourceDescriptor) ? .color : request.preprocessColorMode
+    }
+
+    /// Whether a source's own pixels carry colour.
+    static func isColorSource(_ descriptor: PixelDataDescriptor) -> Bool {
+        let photometric = descriptor.photometricInterpretation
+        return descriptor.samplesPerPixel > 1
             || photometric.isColor
             || photometric.isPaletteColor
-        return isColorSource ? .color : request.preprocessColorMode
     }
 
     /// The palette actually applied to a job, or `nil` for a grey film.
@@ -312,8 +332,20 @@ public struct PrintImagePreparer: Sendable {
     ///
     /// Raw jobs never colourise. Raw means the stored values reach the printer
     /// untouched, and a palette is by definition a transformation of them.
-    static func preparationPalette(_ request: PrintJobRequest) -> PseudoColorPalette? {
+    ///
+    /// When the source is known, "print colour images as greys" also drops the
+    /// palette for colour sources: the reader asked for the picture's own greys,
+    /// not for a palette-shaped remap of them. Monochrome sources keep theirs —
+    /// colourising a grey CT is a deliberate act the toggle does not speak to.
+    static func preparationPalette(
+        _ request: PrintJobRequest,
+        sourceDescriptor: PixelDataDescriptor? = nil
+    ) -> PseudoColorPalette? {
         guard !request.raw, let palette = request.palette, !palette.isGrayscale else {
+            return nil
+        }
+        if let sourceDescriptor, Self.isColorSource(sourceDescriptor),
+           !request.preservesSourceColor {
             return nil
         }
         return palette
@@ -321,11 +353,52 @@ public struct PrintImagePreparer: Sendable {
 
     /// The bit depth a frame is prepared at.
     ///
-    /// Eight, whenever a palette is in force: PS3.3 Table C.13-5 fixes Bits
-    /// Allocated and Bits Stored at 8 for the Basic Color Image Box, so a
-    /// coloured frame has no deeper form to take.
-    static func preparationBitDepth(_ request: PrintJobRequest) -> Int {
-        Self.preparationPalette(request) == nil ? request.bitDepth : 8
+    /// Two rules, both from the standard rather than from preference:
+    ///
+    ///   * Eight, whenever a palette is in force: PS3.3 Table C.13-5 fixes Bits
+    ///     Allocated and Bits Stored at 8 for the Basic Color Image Box, so a
+    ///     coloured frame has no deeper form to take.
+    ///   * Otherwise the requested depth, clamped to what PS3.3 Table C.13-3
+    ///     enumerates for the Basic Grayscale Image Box — 8 or 12. A request for
+    ///     16 is dropped to 12 rather than refused: every pixel of it is
+    ///     meaningful and only the label is illegal, so the film is worth
+    ///     printing. The caller is told through ``clampNote`` so the setting
+    ///     gets corrected rather than silently tolerated forever.
+    static func preparationBitDepth(
+        _ request: PrintJobRequest,
+        sourceDescriptor: PixelDataDescriptor? = nil
+    ) -> Int {
+        guard Self.preparationPalette(request, sourceDescriptor: sourceDescriptor) == nil
+        else { return 8 }
+        return Self.clampedGrayscaleBitDepth(request.bitDepth)
+    }
+
+    /// The deepest legal grayscale depth not exceeding `requested`.
+    ///
+    /// Never rounds *up*: a sender asking for 8 gets 8, because manufacturing
+    /// precision nobody asked for is its own kind of wrong.
+    static func clampedGrayscaleBitDepth(_ requested: Int) -> Int {
+        let legal = PrintOptionCatalog.bitDepths.sorted()
+        return legal.last(where: { $0 <= requested }) ?? legal.first ?? 8
+    }
+
+    /// What to tell the operator when the requested depth could not be honoured.
+    ///
+    /// `nil` when the request was already legal, which is the ordinary case.
+    static func clampNote(_ request: PrintJobRequest) -> String? {
+        guard !request.raw else { return nil }
+
+        if Self.preparationPalette(request) != nil, request.bitDepth != 8 {
+            return "Requested \(request.bitDepth)-bit, but a pseudo-colour palette is in "
+                + "force and PS3.3 Table C.13-5 fixes the Basic Color Image Box at 8-bit "
+                + "RGB — preparing at 8-bit."
+        }
+
+        let effective = Self.clampedGrayscaleBitDepth(request.bitDepth)
+        guard effective != request.bitDepth else { return nil }
+        return "Requested \(request.bitDepth)-bit, which PS3.3 Table C.13-3 does not allow "
+            + "for the Basic Grayscale Image Box (Bits Stored must be 8 or 12) — "
+            + "preparing at \(effective)-bit instead."
     }
 
     // MARK: - Window resolution

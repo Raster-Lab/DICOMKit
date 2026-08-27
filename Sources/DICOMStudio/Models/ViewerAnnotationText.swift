@@ -167,6 +167,15 @@ public struct ViewerAnnotationText: Sendable, Equatable, Hashable {
     public let fileWindowCenter: Double?
     public let fileWindowWidth: Double?
 
+    /// The image's SOP Instance UID.
+    ///
+    /// Not drawn anywhere — it is here because this type is already the result
+    /// of the one header read a tile's file gets, and the saved-views badge
+    /// needs to ask the store "are there presentation states for *this* image".
+    /// Reading the header a second time per tile to recover a UID the first
+    /// read had in hand would be a decode per tile per redraw.
+    public let sopInstanceUID: String?
+
     public init(
         patientLine: String = "",
         studyLine: String = "",
@@ -178,7 +187,8 @@ public struct ViewerAnnotationText: Sendable, Equatable, Hashable {
         orientation: ViewerOrientationLabels? = nil,
         plane: ViewerImagePlane? = nil,
         fileWindowCenter: Double? = nil,
-        fileWindowWidth: Double? = nil
+        fileWindowWidth: Double? = nil,
+        sopInstanceUID: String? = nil
     ) {
         self.patientLine = patientLine
         self.studyLine = studyLine
@@ -191,6 +201,7 @@ public struct ViewerAnnotationText: Sendable, Equatable, Hashable {
         self.plane = plane
         self.fileWindowCenter = fileWindowCenter
         self.fileWindowWidth = fileWindowWidth
+        self.sopInstanceUID = sopInstanceUID
     }
 
     /// Whether there is anything to draw.
@@ -236,7 +247,8 @@ public struct ViewerAnnotationText: Sendable, Equatable, Hashable {
                 fromImageOrientationPatient: string(.imageOrientationPatient)),
             plane: ViewerImagePlane.make(from: dataSet),
             fileWindowCenter: number(.windowCenter),
-            fileWindowWidth: number(Tag(group: 0x0028, element: 0x1051)))
+            fileWindowWidth: number(Tag(group: 0x0028, element: 0x1051)),
+            sopInstanceUID: string(.sopInstanceUID))
     }
 
     // MARK: - Lines
