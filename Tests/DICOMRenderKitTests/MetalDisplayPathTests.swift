@@ -104,12 +104,13 @@ final class MetalDisplayPathTests: XCTestCase {
     /// The display path must not inherit the CPU-wins size threshold: a frame headed
     /// for a GPU texture has no cheaper route, whatever its size.
     func testDisplayTextureIgnoresTheSizeThreshold() throws {
-        guard let production = MetalFrameRenderer() else {
+        let syntheticThreshold = 1_000_000
+        guard let thresholded = MetalFrameRenderer(minimumPixelCount: syntheticThreshold) else {
             throw XCTSkip("No Metal device on this machine")
         }
-        let request = monochromeRequest(rows: 64, columns: 64)   // far under 1 MP
-        XCTAssertNil(production.renderFrame(request), "the CGImage path applies the threshold")
-        XCTAssertNotNil(production.renderDisplayTexture(request),
+        let request = monochromeRequest(rows: 64, columns: 64)
+        XCTAssertNil(thresholded.renderFrame(request), "the CGImage path applies the threshold")
+        XCTAssertNotNil(thresholded.renderDisplayTexture(request),
                         "the display path must not apply it")
     }
 

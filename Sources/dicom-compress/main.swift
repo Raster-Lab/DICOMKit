@@ -127,8 +127,9 @@ extension DICOMCompress {
                 // All console text comes from the shared CompressionConsole so the
                 // CLI and the Studio Workshop never drift.
                 if verbose {
-                    // Report the backend the encode will ACTUALLY use, not the best
-                    // available hardware — `auto` runs the CPU encoder for lossless.
+                    // Report the backend selected for this codec's encode step, not
+                    // merely the best available hardware. Auto uses Metal for both
+                    // lossy and lossless J2K/HTJ2K when Metal is available.
                     let resolvedBackend = CompressionConsole.compressBackend(
                         codec: codec, preference: backendPref)
                     fprint(CompressionConsole.compressPreamble(
