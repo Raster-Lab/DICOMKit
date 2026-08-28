@@ -341,12 +341,12 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         // and `makeEncodingConfiguration` share the same plan so the config and
         // the encode API can never disagree (see J2K_ROUTING_ARCHITECTURE.md).
         //
-        // --backend metal → the J2KSwift GPU encode path; every other preference
-        // (auto/accelerate/scalar) runs the default CPU encoder. The planner's
-        // GPU policy (`gpuEncodeEligible`) now permits lossy AND lossless — the
-        // reversible GPU path is bit-exact since J2KSwift v11.0.1 (verified by the
-        // library's own lossless byte-identity tests). The `verifyEncodedRoundTrip`
-        // guard below stays as an unconditional backstop for every lossless encode.
+        // --backend metal, or auto when Metal is available, selects the J2KSwift
+        // GPU encode path; accelerate/scalar select the CPU path. The planner's
+        // GPU policy (`gpuEncodeEligible`) permits lossy AND lossless — the reversible
+        // GPU path is bit-exact since J2KSwift v11.0.1 (verified by the library's own
+        // lossless byte-identity tests). The `verifyEncodedRoundTrip` guard below
+        // stays as an unconditional backstop for every lossless encode.
         let plan = J2KRoutePlanner.planEncode(
             transferSyntaxUID: encodingTransferSyntaxUID,
             configuration: configuration

@@ -162,11 +162,10 @@ public struct CodecBackendPreference: Sendable {
     ///
     /// If `forced` is set but unavailable, returns `bestAvailable`.
     ///
-    /// - Note: This reports the best *available* hardware, not the backend an
-    ///   encode will actually run on. For that use
-    ///   ``effectiveEncodeBackend(isLossless:isJPEG2000Family:)`` — `auto`
-    ///   resolves here to Metal on Apple Silicon, but the encoder only
-    ///   dispatches to the GPU when Metal is *explicitly* requested.
+    /// - Note: This reports the best *available* hardware, not the backend a
+    ///   particular encode will actually run on. Use
+    ///   ``effectiveEncodeBackend(isLossless:isJPEG2000Family:)`` to account for
+    ///   codec-family routing and automatic GPU selection.
     public var effective: CodecBackend {
         guard let f = forced else { return CodecBackendProbe.bestAvailable }
         return CodecBackendProbe.isAvailable(f) ? f : CodecBackendProbe.bestAvailable

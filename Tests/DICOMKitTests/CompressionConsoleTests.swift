@@ -131,29 +131,33 @@ final class CompressionConsoleTests: XCTestCase {
     }
 
     func testCompressBackendReporting() {
-        // `auto` must NOT claim Metal for a lossless J2K encode — it runs on CPU.
+        let metalAvailable = CodecBackendProbe.isAvailable(.metal)
+        let cpuBackend = CodecBackendProbe.availableBackends.first { $0 != .metal } ?? .scalar
+        let expectedJ2KBackend: CodecBackend = metalAvailable ? .metal : cpuBackend
+
+        // Auto uses Metal for lossless J2K/HTJ2K when available and CPU otherwise.
         let autoLossless = CompressionConsole.compressBackend(codec: "jpeg2000-lossless", preference: .auto)
-        XCTAssertNotEqual(autoLossless.displayName, "Metal (GPU)")
-        XCTAssertNil(autoLossless.note)   // no downgrade note unless metal was explicitly requested
+        XCTAssertEqual(autoLossless.displayName, expectedJ2KBackend.displayName)
+        XCTAssertNil(autoLossless.note)
 
-        // Same for HTJ2K lossless-only under auto.
-        XCTAssertNotEqual(
-            CompressionConsole.compressBackend(codec: "htj2k-lossless-only", preference: .auto).displayName,
-            "Metal (GPU)")
+        let autoHTJ2KLossless = CompressionConsole.compressBackend(
+            codec: "htj2k-lossless-only", preference: .auto)
+        XCTAssertEqual(autoHTJ2KLossless.displayName, expectedJ2KBackend.displayName)
+        XCTAssertNil(autoHTJ2KLossless.note)
 
-        // Explicit `--backend metal` on a LOSSLESS encode is downgraded to CPU with a note.
+        // Explicit Metal also supports lossless J2K, falling back only when unavailable.
         let metalLossless = CompressionConsole.compressBackend(codec: "jpeg2000-lossless", preference: .metal)
-        XCTAssertNotEqual(metalLossless.displayName, "Metal (GPU)")
-        XCTAssertNotNil(metalLossless.note)
+        XCTAssertEqual(metalLossless.displayName, expectedJ2KBackend.displayName)
+        XCTAssertEqual(metalLossless.note == nil, metalAvailable)
 
-        // A non-J2K codec never dispatches to the GPU regardless of backend.
-        XCTAssertNotEqual(
-            CompressionConsole.compressBackend(codec: "rle", preference: .metal).displayName,
-            "Metal (GPU)")
+        // A non-J2K codec always downgrades an explicit Metal request to CPU.
+        let rleMetal = CompressionConsole.compressBackend(codec: "rle", preference: .metal)
+        XCTAssertEqual(rleMetal.displayName, cpuBackend.displayName)
+        XCTAssertNotNil(rleMetal.note)
 
         // Explicit scalar is honoured and carries no downgrade note.
         let scalar = CompressionConsole.compressBackend(codec: "jpeg2000-lossless", preference: .scalar)
-        XCTAssertEqual(scalar.displayName, "Scalar (pure Swift)")
+        XCTAssertEqual(scalar.displayName, CodecBackend.scalar.displayName)
         XCTAssertNil(scalar.note)
     }
 
