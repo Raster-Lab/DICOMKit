@@ -2126,10 +2126,6 @@ public enum DICOMPrintService {
     public static func getPrinterStatus(
         configuration: PrintConfiguration
     ) async throws -> PrinterStatus {
-        let sopClassUID = configuration.colorMode == .color
-            ? basicColorPrintManagementMetaSOPClassUID
-            : basicGrayscalePrintManagementMetaSOPClassUID
-        
         // Propose the meta SOP Class *and* every individual one: printers that
         // support only the individual classes reject the meta context, and vice
         // versa (see PrintPresentationContexts).
@@ -2301,13 +2297,6 @@ public enum DICOMPrintService {
         )
     }
     
-    /// Helper: Selects the appropriate Print Management Meta SOP Class UID based on color mode
-    private static func selectPrintSOPClassUID(for colorMode: PrintColorMode) -> String {
-        return colorMode == .color
-            ? basicColorPrintManagementMetaSOPClassUID
-            : basicGrayscalePrintManagementMetaSOPClassUID
-    }
-    
     /// Helper: Creates an association configuration for print operations
     private static func createPrintAssociationConfiguration(
         _ configuration: PrintConfiguration
@@ -2348,8 +2337,6 @@ public enum DICOMPrintService {
         configuration: PrintConfiguration,
         session: FilmSession
     ) async throws -> String {
-        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
-        
         // Propose the meta SOP Class *and* every individual one: printers that
         // support only the individual classes reject the meta context, and vice
         // versa (see PrintPresentationContexts).
@@ -2491,8 +2478,6 @@ public enum DICOMPrintService {
         filmSessionUID: String,
         filmBox: FilmBox
     ) async throws -> FilmBoxResult {
-        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
-        
         // Propose the meta SOP Class *and* every individual one: printers that
         // support only the individual classes reject the meta context, and vice
         // versa (see PrintPresentationContexts).
@@ -2836,7 +2821,6 @@ public enum DICOMPrintService {
                 + "(Rows/Columns/BitsAllocated/PhotometricInterpretation are mandatory)")
         }
 
-        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
         let imageBoxSOPClassUID = configuration.colorMode == .color
             ? basicColorImageBoxSOPClassUID
             : basicGrayscaleImageBoxSOPClassUID
@@ -3032,8 +3016,6 @@ public enum DICOMPrintService {
         configuration: PrintConfiguration,
         filmBoxUID: String
     ) async throws -> String {
-        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
-        
         // Propose the meta SOP Class *and* every individual one: printers that
         // support only the individual classes reject the meta context, and vice
         // versa (see PrintPresentationContexts).
@@ -3059,9 +3041,6 @@ public enum DICOMPrintService {
                 colorMode: configuration.colorMode)
             let contextID = try contexts.contextID(for: basicFilmBoxSOPClassUID)
 
-            // Honor the negotiated transfer syntax for both directions (P1-3 full).
-            let explicitVR = contexts.usesExplicitVR(contextID)
-            
             // Send N-ACTION request for Film Box with Action Type ID = 1 (Print)
             // Note: N-ACTION Print typically does not include a data set
             let request = NActionRequest(
@@ -3136,8 +3115,6 @@ public enum DICOMPrintService {
         configuration: PrintConfiguration,
         filmSessionUID: String
     ) async throws {
-        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
-        
         // Propose the meta SOP Class *and* every individual one: printers that
         // support only the individual classes reject the meta context, and vice
         // versa (see PrintPresentationContexts).
@@ -3163,9 +3140,6 @@ public enum DICOMPrintService {
                 colorMode: configuration.colorMode)
             let contextID = try contexts.contextID(for: basicFilmSessionSOPClassUID)
 
-            // Honor the negotiated transfer syntax for both directions (P1-3 full).
-            let explicitVR = contexts.usesExplicitVR(contextID)
-            
             // Send N-DELETE request for Film Session
             let request = NDeleteRequest(
                 messageID: 1,
@@ -3229,8 +3203,6 @@ public enum DICOMPrintService {
         configuration: PrintConfiguration,
         printJobUID: String
     ) async throws -> PrintJobStatus {
-        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
-        
         // Propose the meta SOP Class *and* every individual one: printers that
         // support only the individual classes reject the meta context, and vice
         // versa (see PrintPresentationContexts).
@@ -3644,7 +3616,6 @@ public enum DICOMPrintService {
                 + "image-box attributes (Rows/Columns/BitsAllocated/PhotometricInterpretation) are mandatory")
         }
 
-        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
         let imageBoxSOPClassUID = configuration.colorMode == .color
             ? basicColorImageBoxSOPClassUID
             : basicGrayscaleImageBoxSOPClassUID

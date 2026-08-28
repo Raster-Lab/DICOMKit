@@ -278,6 +278,7 @@ final class FrameAccessTests: XCTestCase {
             updates.append(update)
         }
 
+        XCTAssertGreaterThan(updates.count, 1, "JPEG 2000 should emit at least one coarse update")
         let final = try XCTUnwrap(updates.last)
         XCTAssertTrue(final.isFinal)
         // §12 gate: progressive final must equal direct full decode exactly.
