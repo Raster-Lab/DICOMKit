@@ -29,6 +29,14 @@ public enum DICOMError: Error, Sendable {
     
     /// General parsing failure with description
     case parsingFailed(String)
+
+    /// A configured or built-in resource limit was exceeded while parsing
+    ///
+    /// Raised when input declares structures that exceed safety ceilings
+    /// (sequence nesting depth, element length, element count, fragment count).
+    /// This protects against malformed or hostile files causing stack overflow
+    /// or unbounded allocation. See `ParsingOptions` limit properties.
+    case limitExceeded(String)
 }
 
 extension DICOMError: CustomStringConvertible {
@@ -48,6 +56,8 @@ extension DICOMError: CustomStringConvertible {
             return "Invalid tag"
         case .parsingFailed(let message):
             return "Parsing failed: \(message)"
+        case .limitExceeded(let message):
+            return "Resource limit exceeded: \(message)"
         }
     }
 }

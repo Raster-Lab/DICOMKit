@@ -641,9 +641,9 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output Directory",
-                    parameterType: .outputPath, placeholder: "e.g. ~/Downloads/studies",
-                    helpText: "Directory where retrieved files will be saved",
-                    defaultValue: "."
+                    parameterType: .outputPath, placeholder: "Choose a folder… (defaults to ~/Downloads/DICOMStudio)",
+                    helpText: "Directory where retrieved files will be saved. Leave empty to use ~/Downloads/DICOMStudio.",
+                    defaultValue: ""
                 ),
                 CLIParameterDefinition(
                     id: "hierarchical", flag: "--hierarchical", displayName: "Hierarchical Output",
@@ -771,9 +771,9 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output Directory",
-                    parameterType: .outputPath, placeholder: "e.g. ~/Downloads/studies",
-                    helpText: "Directory where retrieved files will be saved",
-                    defaultValue: "."
+                    parameterType: .outputPath, placeholder: "Choose a folder… (defaults to ~/Downloads/DICOMStudio)",
+                    helpText: "Directory where retrieved files will be saved. Leave empty to use ~/Downloads/DICOMStudio.",
+                    defaultValue: ""
                 ),
                 CLIParameterDefinition(
                     id: "hierarchical", flag: "--hierarchical", displayName: "Hierarchical Output",
@@ -2523,10 +2523,10 @@ case "dicom-json":
         ),
         CLIParameterDefinition(
             id: "output", flag: "--output", displayName: "Output File",
-            parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/ExportedFile.json",
+            parameterType: .outputPath, placeholder: "Choose a location… (e.g. ExportedFile.json)",
             helpText: "Output file path. Defaults to the input name with .json (or .dcm when --reverse).",
             isRequired: false,
-            defaultValue: "/Users/raster/Desktop/DICOM_Output/ExportedFile.json"
+            defaultValue: ""
         ),
         CLIParameterDefinition(
             id: "reverse", flag: "--reverse", displayName: "Reverse (JSON -> DICOM)",
@@ -2601,9 +2601,9 @@ case "dicom-json":
                 ),
                 CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output File",
-                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/ExportedFile.xml",
+                    parameterType: .outputPath, placeholder: "Choose a location… (e.g. ExportedFile.xml)",
                     helpText: "Output file path. Defaults to the input name with .xml (or .dcm when --reverse).",
-                    defaultValue: "/Users/raster/Desktop/DICOM_Output/ExportedFile.xml"
+                    defaultValue: ""
                 ),
                 CLIParameterDefinition(
                     id: "reverse", flag: "--reverse", displayName: "Reverse (XML → DICOM)",
@@ -2714,9 +2714,9 @@ case "dicom-uid":
         ),
         CLIParameterDefinition(
             id: "file", flag: "--file", displayName: "DICOM File",
-            parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/MG/MG_01_MG_Study3_Mammogram_0012-0001.dcm",
+            parameterType: .filePath, placeholder: "Choose a location… (e.g. MG/MG_01_MG_Study3_Mammogram_0012-0001.dcm)",
             helpText: "Validate all UID (VR=UI) elements in a DICOM file",
-            defaultValue: "/Users/raster/Desktop/DICOM_Input/MG/MG_01_MG_Study3_Mammogram_0012-0001.dcm",
+            defaultValue: "",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["validate"])
         ),
         CLIParameterDefinition(
@@ -2756,17 +2756,17 @@ case "dicom-uid":
         // ----- regenerate -----
         CLIParameterDefinition(
             id: "inputPath", flag: "", displayName: "Input File(s)",
-            parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CT/CT_01_CT_Study1_0001-0001.dcm",
+            parameterType: .filePath, placeholder: "Choose a location… (e.g. CT/CT_01_CT_Study1_0001-0001.dcm)",
             helpText: "Input DICOM file(s) whose instance UIDs will be regenerated. Separate multiple paths with “ ; ” — cross-file UID mapping is maintained across them (like the CLI's variadic <inputs>).",
             isRepeatable: true,
-            defaultValue: "/Users/raster/Desktop/DICOM_Input/CT/CT_01_CT_Study1_0001-0001.dcm",
+            defaultValue: "",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
         ),
         CLIParameterDefinition(
             id: "output", flag: "--output", displayName: "Output File/Directory",
-            parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/CT_New.dcm",
+            parameterType: .outputPath, placeholder: "Choose a location… (e.g. CT_New.dcm)",
             helpText: "Output file path (single input) or directory (multiple inputs). Defaults to overwriting the input(s).",
-            defaultValue: "/Users/raster/Desktop/DICOM_Output/CT_New.dcm",
+            defaultValue: "",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
         ),
         CLIParameterDefinition(
@@ -2777,9 +2777,9 @@ case "dicom-uid":
         ),
         CLIParameterDefinition(
             id: "export-map", flag: "--export-map", displayName: "Export Mapping",
-            parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/uid_mapping.json",
+            parameterType: .outputPath, placeholder: "Choose a location… (e.g. uid_mapping.json)",
             helpText: "Export the old to new UID mapping to a JSON file",
-            defaultValue: "/Users/raster/Desktop/DICOM_Output/uid_mapping.json",
+            defaultValue: "",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
         ),
         CLIParameterDefinition(
@@ -2925,9 +2925,9 @@ case "dicom-pdf":
             flag: "--output",
             displayName: "Output",
             parameterType: .outputPath,
-            placeholder: "/Users/raster/Desktop/DICOM_Output/ExportedFile.pdf",
+            placeholder: "Choose a location… (e.g. ExportedFile.pdf)",
             helpText: "Output file or directory path. Auto-generated next to the input if omitted.",
-            defaultValue: "/Users/raster/Desktop/DICOM_Output/ExportedFile.pdf"
+            defaultValue: ""
         ),
         CLIParameterDefinition(
             id: "extract",
@@ -3067,10 +3067,10 @@ case "dicom-pixedit":
         ),
         CLIParameterDefinition(
             id: "output", flag: "--output", displayName: "Output File",
-            parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/ExportedFile.dcm",
+            parameterType: .outputPath, placeholder: "Choose a location… (e.g. ExportedFile.dcm)",
             helpText: "Destination path for the edited DICOM file",
             isRequired: true,
-            defaultValue: "/Users/raster/Desktop/DICOM_Output/ExportedFile.dcm"
+            defaultValue: ""
         ),
         CLIParameterDefinition(
             id: "mask-region", flag: "--mask-region", displayName: "Mask Region",
@@ -3567,18 +3567,18 @@ case "dicom-study":
                 // ----- organize -----
                 CLIParameterDefinition(
                     id: "input", flag: "", displayName: "Input Directory",
-                    parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CT/",
+                    parameterType: .filePath, placeholder: "Choose a folder… (e.g. CT)",
                     helpText: "Input directory containing DICOM files",
                     isRequired: true,
-                    defaultValue: "/Users/raster/Desktop/DICOM_Input/CT/",
+                    defaultValue: "",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize"])
                 ),
                 CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output Directory",
-                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/dicom-study/",
+                    parameterType: .outputPath, placeholder: "Choose a folder… (e.g. dicom-study)",
                     helpText: "Output directory for organized files",
                     isRequired: true,
-                    defaultValue: "/Users/raster/Desktop/DICOM_Output/dicom-study/",
+                    defaultValue: "",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize"])
                 ),
                 CLIParameterDefinition(
@@ -3600,10 +3600,10 @@ case "dicom-study":
                 // ----- summary -----
                 CLIParameterDefinition(
                     id: "path", flag: "", displayName: "Study Path",
-                    parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CT/",
+                    parameterType: .filePath, placeholder: "Choose a folder… (e.g. CT)",
                     helpText: "Study directory or single DICOM file",
                     isRequired: true,
-                    defaultValue: "/Users/raster/Desktop/DICOM_Input/CT/",
+                    defaultValue: "",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["summary", "check", "stats"])
                 ),
                 CLIParameterDefinition(
@@ -3632,9 +3632,9 @@ case "dicom-study":
                 ),
                 CLIParameterDefinition(
                     id: "report", flag: "--report", displayName: "Report File",
-                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/dicom-study/report/StudyReport.txt",
+                    parameterType: .outputPath, placeholder: "Choose a location… (e.g. dicom-study/report/StudyReport.txt)",
                     helpText: "Optional output report file path for detected issues",
-                    defaultValue: "/Users/raster/Desktop/DICOM_Output/dicom-study/report/StudyReport.txt",
+                    defaultValue: "",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["check"])
                 ),
 
@@ -3658,18 +3658,18 @@ case "dicom-study":
                 // ----- compare -----
                 CLIParameterDefinition(
                     id: "path1", flag: "", displayName: "Study 1",
-                    parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CT/",
+                    parameterType: .filePath, placeholder: "Choose a folder… (e.g. CT)",
                     helpText: "First study directory",
                     isRequired: true,
-                    defaultValue: "/Users/raster/Desktop/DICOM_Input/CT/",
+                    defaultValue: "",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compare"])
                 ),
                 CLIParameterDefinition(
                     id: "path2", flag: "", displayName: "Study 2",
-                    parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/MR/",
+                    parameterType: .filePath, placeholder: "Choose a folder… (e.g. MR)",
                     helpText: "Second study directory",
                     isRequired: true,
-                    defaultValue: "/Users/raster/Desktop/DICOM_Input/MR/",
+                    defaultValue: "",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compare"])
                 ),
                 CLIParameterDefinition(
@@ -3760,41 +3760,25 @@ case "dicom-script":
         }
     }
 
-    // MARK: - Default input/output paths (CLI Workshop testing convenience)
+    // MARK: - Input/output paths (CLI Workshop)
+    //
+    // Path fields start EMPTY — the user picks a file or folder with the field's
+    // Browse button (2026-08-03). Nothing is pre-filled any more.
+    //
+    // History: these fields used to be seeded with one developer's absolute paths
+    // (`/Users/raster/Desktop/DICOM_Input|DICOM_Output`), backed by
+    // `com.apple.security.temporary-exception.files.absolute-path.read-write`
+    // entitlements. The App Sandbox is now enabled and those exceptions are gone, so a
+    // pre-filled path could not be read anyway: a sandboxed app reaches a file only
+    // once the USER selects it, which is what grants the security-scoped access the
+    // Workshop stores in `securityScopedURLs`. Do not reintroduce seeded paths — an
+    // empty field plus Browse is both the correct sandbox flow and correct for any
+    // user on any machine.
 
-    /// Default DICOM input file pre-filled into file-input fields across the
-    /// CLI Workshop tools.
-    public static let defaultInputFilePath = "/Users/raster/Desktop/DICOM_Input/CT.dcm"
-    /// Default output directory pre-filled into output-path fields.
-    public static let defaultOutputDirectory = "/Users/raster/Desktop/DICOM_Output/"
-
-    /// Parameter ids that represent a primary input DICOM file.
-    private static let inputFileParameterIDs: Set<String> =
-        ["inputPath", "input", "filePath", "file1", "file2", "files", "inputs"]
-
-    /// Public catalog accessor. Returns the raw definitions with the default
-    /// input/output testing paths pre-filled (input files -> CT.dcm, output
-    /// paths -> DICOM_Output) when a parameter has no other default.
+    /// Public catalog accessor. Path fields are intentionally left empty; every other
+    /// parameter keeps whatever `defaultValue` its raw definition declares.
     public static func parameterDefinitions(for toolID: String) -> [CLIParameterDefinition] {
-        rawParameterDefinitions(for: toolID).map { def in
-            guard def.defaultValue.isEmpty else { return def }
-            var d = def
-            if def.parameterType == .filePath, inputFileParameterIDs.contains(def.id),
-               !isFileListParameter(toolID: toolID, paramID: def.id) {
-                d.defaultValue = defaultInputFilePath
-            } else if def.parameterType == .outputPath, def.id != "save-state" {
-                d.defaultValue = defaultOutputDirectory
-            }
-            return d
-        }
-    }
-
-    /// Parameters that take a TEXT FILE listing paths (one per line) rather than a
-    /// primary DICOM file, so they must NOT be pre-filled with the default CT.dcm
-    /// testing path — they start empty for the user to supply a list file.
-    /// Currently just `dicom-wado store --input` (the "Input File List" advanced field).
-    private static func isFileListParameter(toolID: String, paramID: String) -> Bool {
-        toolID == "dicom-stow" && paramID == "input"
+        rawParameterDefinitions(for: toolID)
     }
 }
 

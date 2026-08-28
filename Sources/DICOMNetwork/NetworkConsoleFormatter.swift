@@ -19,9 +19,10 @@ import DICOMCore
 ///    `ValidationError`s), so the combined-stream order matches the app's
 ///    single-stream append order.
 ///  - Volatile timing (round-trip time, duration, throughput) is rendered here in a
-///    fixed format and then masked by `CLIParityEngine.normalize`, since two
-///    separate network operations never take the exact same wall-clock time. Byte
-///    *counts* are deterministic (same files / same datasets) and are NOT masked.
+///    fixed format so a comparator can mask it (see
+///    `CLIToolTerminalCompare.normalize`), since two separate network operations
+///    never take the exact same wall-clock time. Byte *counts* are deterministic
+///    (same files / same datasets) and are NOT masked.
 public enum NetworkConsole {
 
     // MARK: - Shared value formatting

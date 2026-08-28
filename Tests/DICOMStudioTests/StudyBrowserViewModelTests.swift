@@ -33,40 +33,67 @@ struct StudyBrowserViewModelTests {
         #expect(vm.displayStudies.isEmpty)
     }
 
+
+    /// A study with one series and one instance under it — the shape a real
+    /// import produces, and the shape the browser will show.
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    private func populated(
+        _ library: inout LibraryModel,
+        studyUID: String,
+        studyID: String,
+        patientName: String? = nil,
+        modality: String
+    ) {
+        library.addStudy(StudyModel(
+            studyInstanceUID: studyUID,
+            studyID: studyID,
+            patientName: patientName,
+            modalitiesInStudy: [modality]
+        ))
+        library.addSeries(SeriesModel(
+            seriesInstanceUID: studyUID + ".1",
+            studyInstanceUID: studyUID,
+            modality: modality))
+        library.addInstance(InstanceModel(
+            sopInstanceUID: studyUID + ".1.1",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            seriesInstanceUID: studyUID + ".1",
+            instanceNumber: 1,
+            filePath: "/\(studyUID).dcm"))
+    }
+
     @Test("Display studies returns filtered studies")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testDisplayStudiesWithData() {
         var library = LibraryModel()
-        library.addStudy(StudyModel(
-            studyInstanceUID: "1.2.3",
-            studyID: "S1",
-            patientName: "DOE^JOHN",
-            modalitiesInStudy: ["CT"]
-        ))
-        library.addStudy(StudyModel(
-            studyInstanceUID: "1.2.4",
-            studyID: "S2",
-            patientName: "SMITH^JANE",
-            modalitiesInStudy: ["MR"]
-        ))
+        populated(&library, studyUID: "1.2.3", studyID: "S1",
+                  patientName: "DOE^JOHN", modality: "CT")
+        populated(&library, studyUID: "1.2.4", studyID: "S2",
+                  patientName: "SMITH^JANE", modality: "MR")
         let vm = StudyBrowserViewModel(library: library)
         #expect(vm.displayStudies.count == 2)
+    }
+
+    @Test("A study with no images under it is not listed")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testEmptyStudiesAreNotListed() {
+        var library = LibraryModel()
+        populated(&library, studyUID: "1.2.3", studyID: "S1", modality: "CT")
+        // The row a broken import used to leave behind: a study, no instances,
+        // nothing to open. It stays in storage but is not shown.
+        library.addStudy(StudyModel(studyInstanceUID: "ghost", studyID: "S2"))
+
+        let vm = StudyBrowserViewModel(library: library)
+        #expect(vm.displayStudies.map(\.studyInstanceUID) == ["1.2.3"])
+        #expect(vm.library.studies["ghost"] != nil, "storage is left alone")
     }
 
     @Test("Filter reduces displayed studies")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testFilterReducesStudies() {
         var library = LibraryModel()
-        library.addStudy(StudyModel(
-            studyInstanceUID: "1.2.3",
-            studyID: "S1",
-            modalitiesInStudy: ["CT"]
-        ))
-        library.addStudy(StudyModel(
-            studyInstanceUID: "1.2.4",
-            studyID: "S2",
-            modalitiesInStudy: ["MR"]
-        ))
+        populated(&library, studyUID: "1.2.3", studyID: "S1", modality: "CT")
+        populated(&library, studyUID: "1.2.4", studyID: "S2", modality: "MR")
         let vm = StudyBrowserViewModel(library: library)
         vm.filter.modalities = ["CT"]
         #expect(vm.displayStudies.count == 1)

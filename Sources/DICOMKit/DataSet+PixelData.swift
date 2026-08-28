@@ -320,9 +320,14 @@ extension DataSet {
     /// Used to convert stored pixel values to output units.
     /// Reference: PS3.3 C.11.1.1.2 - Rescale Intercept
     ///
-    /// - Returns: Rescale intercept (default 0.0 if not present)
+    /// When a Modality LUT Sequence is present it takes precedence and this
+    /// returns 0.0 — see ``rescaleSlope()`` for the rationale.
+    ///
+    /// - Returns: Rescale intercept (default 0.0 if not present; 0.0 when a
+    ///   Modality LUT Sequence is present)
     public func rescaleIntercept() -> Double {
-        decimalString(for: .rescaleIntercept)?.value ?? 0.0
+        guard modalityLUT() == nil else { return 0.0 }
+        return decimalString(for: .rescaleIntercept)?.value ?? 0.0
     }
     
     /// Returns the rescale slope value
@@ -330,20 +335,71 @@ extension DataSet {
     /// Used to convert stored pixel values to output units.
     /// Reference: PS3.3 C.11.1.1.2 - Rescale Slope
     ///
-    /// - Returns: Rescale slope (default 1.0 if not present)
-    public func rescaleSlope() -> Double {
-        decimalString(for: .rescaleSlope)?.value ?? 1.0
-    }
-    
-    /// Applies the rescale transformation to a pixel value
+    /// When a Modality LUT Sequence (0028,3000) is present it takes precedence over
+    /// Rescale Slope/Intercept (PS3.3 C.11.1: the two forms are mutually exclusive;
+    /// on malformed files carrying both, the sequence wins). In that case this
+    /// returns the identity slope so linear composition by callers cannot corrupt
+    /// LUT-mapped output; use ``rescale(_:)`` or ``modalityLUT()`` for the actual
+    /// transform.
     ///
-    /// OutputUnits = Rescale Slope * StoredValue + Rescale Intercept
-    /// Reference: PS3.3 C.11.1.1.2
+    /// - Returns: Rescale slope (default 1.0 if not present; 1.0 when a Modality
+    ///   LUT Sequence is present)
+    public func rescaleSlope() -> Double {
+        guard modalityLUT() == nil else { return 1.0 }
+        return decimalString(for: .rescaleSlope)?.value ?? 1.0
+    }
+
+    /// Returns the parsed Modality LUT, when a Modality LUT Sequence (0028,3000)
+    /// with a valid first item is present
+    ///
+    /// Reference: PS3.3 C.11.1 - Modality LUT Module. Descriptor (0028,3002) is
+    /// three values [entries (0 ⇒ 65536), first stored value mapped, bits per
+    /// entry]; data (0028,3006) is the table. Input values below/above the mapped
+    /// range clamp to the first/last entry (C.11.1.1.1).
+    ///
+    /// - Returns: The LUT, or nil if the sequence is absent or malformed
+    public func modalityLUT() -> LUTData? {
+        guard let item = sequence(for: .modalityLUTSequence)?.first else { return nil }
+
+        // Descriptor: US (binary) in conformant files; tolerate IS from
+        // JSON/XML-roundtripped or loosely written datasets.
+        let descriptor: [Int]
+        if let us = item[.lutDescriptor]?.uint16Values, us.count == 3 {
+            descriptor = us.map(Int.init)
+        } else if let is_ = item[.lutDescriptor]?.integerStringValues, is_.count == 3 {
+            descriptor = is_.map { $0.value }
+        } else {
+            return nil
+        }
+
+        // Data: US/OW little-endian 16-bit entries; same IS fallback.
+        let data: [Int]
+        if let us = item[.lutData]?.uint16Values, !us.isEmpty {
+            data = us.map(Int.init)
+        } else if let is_ = item[.lutData]?.integerStringValues, !is_.isEmpty {
+            data = is_.map { $0.value }
+        } else {
+            return nil
+        }
+
+        return LUTData.parse(descriptor: descriptor, data: data,
+                             explanation: item.string(for: .lutExplanation))
+    }
+
+    /// Applies the modality transformation to a pixel value
+    ///
+    /// When a Modality LUT Sequence is present, the value is mapped through the
+    /// LUT (with range clamping); otherwise
+    /// OutputUnits = Rescale Slope * StoredValue + Rescale Intercept.
+    /// Reference: PS3.3 C.11.1
     ///
     /// - Parameter storedValue: The stored pixel value
-    /// - Returns: The rescaled value in output units (e.g., Hounsfield Units for CT)
+    /// - Returns: The transformed value in output units (e.g., Hounsfield Units for CT)
     public func rescale(_ storedValue: Double) -> Double {
-        rescaleSlope() * storedValue + rescaleIntercept()
+        if let lut = modalityLUT() {
+            return lut.lookup(Int(storedValue.rounded()))
+        }
+        return rescaleSlope() * storedValue + rescaleIntercept()
     }
     
     // MARK: - Image Dimensions

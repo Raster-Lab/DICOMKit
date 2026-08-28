@@ -30,7 +30,6 @@ struct MainViewModelTests {
     func testDefaultState() {
         let vm = makeIsolatedMainViewModel()
         #expect(vm.selectedDestination == .library)
-        #expect(vm.isInspectorVisible == false)
         #expect(vm.searchText == "")
         #expect(vm.statusMessage == "Ready")
         #expect(vm.library.studyCount == 0)
@@ -42,17 +41,6 @@ struct MainViewModelTests {
         let vm = MainViewModel()
         vm.navigate(to: .viewer)
         #expect(vm.selectedDestination == .viewer)
-    }
-
-    @Test("Toggle inspector")
-    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testToggleInspector() {
-        let vm = MainViewModel()
-        #expect(vm.isInspectorVisible == false)
-        vm.toggleInspector()
-        #expect(vm.isInspectorVisible == true)
-        vm.toggleInspector()
-        #expect(vm.isInspectorVisible == false)
     }
 
     @Test("Primary destinations exclude settings")

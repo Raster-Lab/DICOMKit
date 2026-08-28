@@ -168,8 +168,49 @@ docker-compose -f docker-compose-print-test.yml ps
 - **orthanc-print-config.json** - Orthanc configuration template
 - **.gitignore** - Excludes Docker volumes
 
+## Automated Suites (no Docker required)
+
+```bash
+# SCU: unit + mock-SCP integration + spawned-binary end-to-end
+swift test --filter PrintServiceTests
+swift test --filter PrintSCPIntegrationTests
+swift test --filter PrintCLIEndToEndTests
+
+# SCP (printer emulator): parser, encoder, loopback SCU→SCP, status matrix (74 tests).
+# The filter is a regex over suite names, not the file name.
+swift test --filter 'PrintSCP|PrintDatasetReader|PrintImageDisplayFormat|PrintPresentationContext|DIMSENStatusClassification'
+
+# Film composition, output sinks, DCMTK interop (63 tests)
+swift test --filter DICOMPrintKitTests
+
+# Studio: marking, presentation-to-film, preview, tile grid, series pane
+swift test --filter DICOMStudioTests
+```
+
+## Test Against Our Own Printer Emulator
+
+`DICOMPrintServer` is a Print SCP, so a print job can be exercised end to end with no
+external server at all — point `dicom-print` at a running emulator, or drive it in-process as
+`PrintSCPLoopbackTests` does. See [DICOM_PRINT_SCP_PLAN.md](DICOM_PRINT_SCP_PLAN.md) and
+[PRINT_CONFORMANCE.md](PRINT_CONFORMANCE.md).
+
+## DCMTK Interoperability
+
+`Tests/DICOMPrintKitTests/DCMTKInteropTests.swift` runs both directions against **DCMTK
+3.7.0** and **skips automatically when DCMTK is not installed** (it looks in
+`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`):
+
+```bash
+brew install dcmtk        # then the interop cases stop skipping
+swift test --filter DCMTKInteropTests
+```
+
+- `dcmpsprt` + `dcmprscu` (DCMTK Print SCU) → our `DICOMPrintServer`
+- our `DICOMPrintService` → `dcmprscp` (DCMTK Print SCP, IHE Full profile)
+
 ## Documentation
 
+- [PRINT_CONFORMANCE.md](PRINT_CONFORMANCE.md) - Conformance statement (SCU and SCP)
 - [PrintServerSetup.md](Documentation/PrintServerSetup.md) - Complete setup guide
 - [PrintManagementGuide.md](Sources/DICOMNetwork/DICOMNetwork.docc/PrintManagementGuide.md) - API reference
 - [GettingStartedWithPrinting.md](Documentation/GettingStartedWithPrinting.md) - Tutorial
@@ -190,4 +231,4 @@ find Tests -name "*.dcm" -type f
 ---
 
 **Version**: v1.4.5  
-**Last Updated**: February 15, 2026
+**Last Updated**: July 29, 2026

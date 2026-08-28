@@ -22,9 +22,6 @@ public final class MainViewModel {
     /// the others collapse so the app presents as an imaging tool first.
     public var expandedCategories: Set<NavigationCategory> = [.imaging]
 
-    /// Whether the inspector panel is visible.
-    public var isInspectorVisible: Bool
-
     /// Whether the welcome sheet is shown.
     public var showWelcomeSheet: Bool
 
@@ -67,6 +64,17 @@ public final class MainViewModel {
     /// Persistent image viewer ViewModel — survives tab switches.
     public var imageViewerViewModel: ImageViewerViewModel
 
+    /// Persistent print ViewModel — printers and job history survive tab switches.
+    ///
+    /// Shares the viewer's mark list, so the standalone Print screen and the
+    /// viewer's print sheet always describe the same selection.
+    public var printViewModel: PrintViewModel
+
+    /// Persistent Print SCP ViewModel — the printer emulator's listener and the
+    /// films it has received must survive tab switches, or navigating away from
+    /// the screen would drop an association mid-job.
+    public var printSCPViewModel: PrintSCPViewModel
+
     /// Persistent standalone 3D MPR viewer ViewModel — survives tab switches.
     public var volumeViewerViewModel: DICOMVolumeViewerViewModel
 
@@ -103,13 +111,6 @@ public final class MainViewModel {
     /// Persistent Validation ViewModel (dicom-validate parity) — survives tab switches.
     public var validationViewModel: ValidationViewModel
 
-    /// Persistent CLI Automation Testing ViewModel — survives tab switches.
-    public var cliAutomationTestingViewModel: CLIAutomationTestingViewModel
-
-    /// Persistent CLI Parity Runner ViewModel (TESTING-ONLY App-vs-live-CLI batch
-    /// parity) — survives tab switches.
-    public var cliParityRunnerViewModel: CLIParityRunnerViewModel
-
     /// Persistent Network Utility ViewModel (general, non-DICOM network
     /// diagnostics) — survives tab switches.
     public var networkUtilityViewModel: NetworkUtilityViewModel
@@ -130,7 +131,6 @@ public final class MainViewModel {
         self.thumbnailService = thumbnailService ?? ThumbnailService(storageService: storageService)
         self.libraryStorageService = libraryStorageService
         self.selectedDestination = NavigationService.defaultDestination
-        self.isInspectorVisible = false
         self.showWelcomeSheet = settingsService.showWelcomeOnLaunch
         self.searchText = ""
         self.statusMessage = "Ready"
@@ -152,7 +152,11 @@ public final class MainViewModel {
             libraryStorageService: libraryStorageService
         )
 
-        self.imageViewerViewModel = ImageViewerViewModel()
+        let imageViewer = ImageViewerViewModel()
+        self.imageViewerViewModel = imageViewer
+        self.printViewModel = PrintViewModel(selection: imageViewer.printSelection)
+        self.printSCPViewModel = PrintSCPViewModel(
+            storage: PrintSCPSettingsStorageService(storageService: storageService))
         self.volumeViewerViewModel = DICOMVolumeViewerViewModel()
         self.jp3dComparisonViewModel = JP3DComparisonViewModel()
         self.volumeComparisonViewModel = JP3DVolumeComparisonViewModel()
@@ -170,8 +174,6 @@ public final class MainViewModel {
         self.gatewayViewModel = GatewayViewModel()
         self.archiveManagementViewModel = ArchiveManagementViewModel()
         self.validationViewModel = ValidationViewModel()
-        self.cliAutomationTestingViewModel = CLIAutomationTestingViewModel()
-        self.cliParityRunnerViewModel = CLIParityRunnerViewModel()
         self.networkUtilityViewModel = NetworkUtilityViewModel()
         // Share saved server profiles so CLI Workshop can pick from them.
         self.cliWorkshopViewModel.savedServerProfiles = networkingViewModel.serverProfiles
@@ -202,14 +204,58 @@ public final class MainViewModel {
         // Series callback (preferred): loads all files in the series with navigation.
         self.studyBrowserViewModel.onOpenSeriesInViewer = { [weak self] files, startIdx in
             guard let self else { return }
+            // A different study is a fresh read: the previous one's grid, zoom,
+            // window and series pane would otherwise still be on screen behind
+            // the new images.
+            self.imageViewerViewModel.prepareForNewStudy()
             self.imageViewerViewModel.loadSeries(files: files, startIndex: startIdx)
+            self.populateViewerSeriesPane(forFile: files.first)
             self.selectedDestination = .viewer
         }
         // Single-file fallback: kept for API consumers that only set onOpenInViewer.
         self.studyBrowserViewModel.onOpenInViewer = { [weak self] filePath in
             guard let self else { return }
+            self.imageViewerViewModel.prepareForNewStudy()
             self.imageViewerViewModel.loadFile(at: filePath)
+            self.populateViewerSeriesPane(forFile: filePath)
             self.selectedDestination = .viewer
+        }
+        // "Print…" from the library: mark the files, open the first one so the
+        // user has context, and raise the print sheet in the viewer.
+        //
+        // The library's files are *added* to the selection, never substituted for
+        // it: frames the user ticked in the viewer are deliberate choices and must
+        // survive this entry point. Files already marked are skipped, so their
+        // captured window/level and film position are preserved.
+        self.studyBrowserViewModel.onPrintFiles = { [weak self] files in
+            guard let self, !files.isEmpty else { return }
+            self.imageViewerViewModel.printSelection.add(
+                contentsOf: files.map { PrintSelectionItem(filePath: $0) })
+            self.imageViewerViewModel.revealPrintTray()
+            self.imageViewerViewModel.loadSeries(files: files, startIndex: 0)
+            self.selectedDestination = .viewer
+            self.imageViewerViewModel.isPrintSheetPresented = true
+        }
+    }
+
+    /// Fills the viewer's series pane with every series of the file's study.
+    ///
+    /// The pane is what lets a reader hang a different series in a tile, so it
+    /// follows the study rather than the one series that was opened. Orientation
+    /// is not indexed by the library, so it is read from disk afterwards and
+    /// folded in — the pane appears at once and settles a moment later.
+    func populateViewerSeriesPane(forFile filePath: String?) {
+        guard let filePath,
+              let studyUID = ViewerSeriesCatalog.studyUID(containing: filePath, in: library)
+        else { return }
+
+        let entries = ViewerSeriesCatalog.entries(forStudy: studyUID, in: library)
+        imageViewerViewModel.loadStudySeries(entries, studyUID: studyUID)
+
+        Task { [weak self] in
+            let resolved = await ViewerSeriesCatalog.resolvingOrientations(entries)
+            guard let self, self.imageViewerViewModel.studyInstanceUID == studyUID else { return }
+            self.imageViewerViewModel.loadStudySeries(resolved, studyUID: studyUID)
         }
     }
 
@@ -236,16 +282,19 @@ public final class MainViewModel {
         for series in seriesList {
             let instances = library.instancesForSeries(series.seriesInstanceUID)
             if let first = instances.first {
-                imageViewerViewModel.loadFile(at: first.filePath)
+                // Same fresh read as the browser's own callbacks: this is a study
+                // opened from the library, so nothing of the last one — including
+                // its print selection — carries over.
+                imageViewerViewModel.prepareForNewStudy()
+                // Load the whole first series, not just its first file: the
+                // viewer needs a navigation list, and the pane needs the study.
+                imageViewerViewModel.loadSeries(
+                    files: instances.map(\.filePath), startIndex: 0)
+                populateViewerSeriesPane(forFile: first.filePath)
                 selectedDestination = .viewer
                 return
             }
         }
-    }
-
-    /// Toggles the inspector panel.
-    public func toggleInspector() {
-        isInspectorVisible.toggle()
     }
 
     /// Returns the primary navigation destinations.

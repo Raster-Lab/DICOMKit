@@ -238,6 +238,74 @@ struct GestureHelpersTests {
         #expect(GestureHelpers.rotateCounterClockwise(from: 0) == 270)
     }
 
+    // MARK: - Free rotation (the rotate tool's drag)
+
+    @Test("Normalize rotation keeps the angle, only wraps it")
+    func testNormalizeRotation() {
+        #expect(GestureHelpers.normalizeRotation(37) == 37)
+        #expect(GestureHelpers.normalizeRotation(0) == 0)
+        #expect(GestureHelpers.normalizeRotation(360) == 0)
+        #expect(GestureHelpers.normalizeRotation(365) == 5)
+        #expect(GestureHelpers.normalizeRotation(-30) == 330)
+        #expect(GestureHelpers.normalizeRotation(-390) == 330)
+        #expect(GestureHelpers.normalizeRotation(.nan) == 0)
+    }
+
+    @Test("Drag bearing counts clockwise from straight up")
+    func testDragBearingCardinals() {
+        // Screen coordinates grow downwards, so "up" is a smaller y.
+        let up = GestureHelpers.dragBearing(x: 100, y: 20, pivotX: 100, pivotY: 100)
+        let right = GestureHelpers.dragBearing(x: 180, y: 100, pivotX: 100, pivotY: 100)
+        let down = GestureHelpers.dragBearing(x: 100, y: 180, pivotX: 100, pivotY: 100)
+        let left = GestureHelpers.dragBearing(x: 20, y: 100, pivotX: 100, pivotY: 100)
+        #expect(abs((up ?? .nan) - 0) < 0.001)
+        #expect(abs((right ?? .nan) - 90) < 0.001)
+        #expect(abs(abs(down ?? .nan) - 180) < 0.001)
+        #expect(abs((left ?? .nan) + 90) < 0.001)
+    }
+
+    @Test("Drag bearing is silent inside the dead zone at the pivot")
+    func testDragBearingDeadZone() {
+        #expect(GestureHelpers.dragBearing(
+            x: 103, y: 101, pivotX: 100, pivotY: 100) == nil)
+        #expect(GestureHelpers.dragBearing(
+            x: 100, y: 100, pivotX: 100, pivotY: 100) == nil)
+        #expect(GestureHelpers.dragBearing(
+            x: 103, y: 101, pivotX: 100, pivotY: 100, minimumRadius: 1) != nil)
+    }
+
+    @Test("Shortest angle delta takes the short arc, signed")
+    func testShortestAngleDelta() {
+        #expect(GestureHelpers.shortestAngleDelta(from: 10, to: 40) == 30)
+        #expect(GestureHelpers.shortestAngleDelta(from: 40, to: 10) == -30)
+        // Crossing the seam must not spin the long way back.
+        #expect(GestureHelpers.shortestAngleDelta(from: 359, to: 1) == 2)
+        #expect(GestureHelpers.shortestAngleDelta(from: 1, to: 359) == -2)
+        #expect(GestureHelpers.shortestAngleDelta(from: 0, to: 180) == 180)
+    }
+
+    @Test("A full clockwise sweep of bearings turns the image once round")
+    func testSweepAccumulatesFullTurn() {
+        // What the view does: fold each step's short arc into the angle.
+        var angle: Double = 0
+        var previous: Double?
+        for step in stride(from: 0.0, through: 360.0, by: 15.0) {
+            let radians = step * .pi / 180
+            // A point on a circle of radius 80 at `step` degrees clockwise from up.
+            let bearing = GestureHelpers.dragBearing(
+                x: 100 + 80 * sin(radians),
+                y: 100 - 80 * cos(radians),
+                pivotX: 100, pivotY: 100)
+            guard let bearing else { continue }
+            if let previous {
+                angle += GestureHelpers.shortestAngleDelta(from: previous, to: bearing)
+            }
+            previous = bearing
+        }
+        #expect(abs(angle - 360) < 0.001)
+        #expect(GestureHelpers.normalizeRotation(angle) < 0.001)
+    }
+
     // MARK: - windowLevelFromDrag
 
     @Test("Window level from positive drag")

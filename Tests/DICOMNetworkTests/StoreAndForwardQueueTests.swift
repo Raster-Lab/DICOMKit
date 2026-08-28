@@ -583,8 +583,11 @@ final class StoreAndForwardQueueTests: XCTestCase {
         let queue = try await StoreAndForwardQueue(configuration: config)
         
         try await queue.start()
+        // Block the processing loop on connectivity so the empty queue cannot
+        // finish draining (draining → stopped) before the enqueue below runs.
+        await queue.notifyConnectivityLost()
         await queue.drain()
-        
+
         let testData = Data(repeating: 0, count: 1024)
         
         do {

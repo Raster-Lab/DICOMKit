@@ -7,6 +7,7 @@ import Foundation
 import Observation
 import DICOMKit
 import DICOMCore
+import DICOMRenderKit
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -28,6 +29,21 @@ public final class ImageViewerViewModel {
     public var currentImage: CGImage?
     #endif
 
+    #if canImport(Metal)
+    /// The current frame as a GPU texture, when the display path can use one.
+    ///
+    /// Non-nil means zoom, pan, rotation, flip and inversion are applied by the
+    /// display shader instead of by CPU passes and SwiftUI modifiers — so changing
+    /// any of them redraws a textured quad and re-renders nothing. Nil means the
+    /// viewport falls back to `Image(decorative:)` over ``currentImage``, which is
+    /// what happens on a CPU-only machine and whenever a frame needs work the
+    /// display path does not do (see ``canUseDisplayTexture``).
+    ///
+    /// Produced by the same dispatch that produces ``currentImage``, over the same
+    /// output memory — having both costs nothing extra.
+    public var displayTexture: DisplayFrameTexture?
+    #endif
+
     /// File path of the currently loaded DICOM file.
     public var filePath: String?
 
@@ -45,6 +61,20 @@ public final class ImageViewerViewModel {
     /// Whether the currently loaded file is a waveform (ECG/hemodynamic/…) object
     /// with no displayable pixel data.
     public var isWaveform: Bool { waveform != nil }
+
+    /// Parsed content when the loaded file is not a picture: a structured
+    /// report, an encapsulated document, a key object selection, a presentation
+    /// state. Non-nil disables the pixel path and drives the document display.
+    public var nonImageContent: ViewerNonImageContent?
+
+    /// Whether the loaded file holds something other than pixels or a waveform.
+    public var isNonImageContent: Bool { nonImageContent != nil }
+
+    /// What kind of content the viewer is currently showing.
+    public var contentKind: ViewerContentKind {
+        if let nonImageContent { return nonImageContent.kind }
+        return isWaveform ? .waveform : .image
+    }
 
     /// Whether an image is currently loading.
     public var isLoading: Bool = false
@@ -93,13 +123,13 @@ public final class ImageViewerViewModel {
     // MARK: - Window/Level State
 
     /// Current window center value.
-    public var windowCenter: Double = 128.0
+    public var windowCenter: Double = 128.0 { didSet { printMarksFollowScreen() } }
 
     /// Current window width value.
-    public var windowWidth: Double = 256.0
+    public var windowWidth: Double = 256.0 { didSet { printMarksFollowScreen() } }
 
     /// Whether grayscale is inverted.
-    public var isInverted: Bool = false
+    public var isInverted: Bool = false { didSet { printMarksFollowScreen() } }
 
     /// Available window presets for the current modality.
     public var availablePresets: [WindowLevelPreset] = []
@@ -136,22 +166,22 @@ public final class ImageViewerViewModel {
     // MARK: - Zoom / Pan / Rotation
 
     /// Current zoom level (1.0 = 100%).
-    public var zoomLevel: Double = 1.0
+    public var zoomLevel: Double = 1.0 { didSet { printMarksFollowScreen() } }
 
     /// Pan offset X in points.
-    public var panOffsetX: Double = 0.0
+    public var panOffsetX: Double = 0.0 { didSet { printMarksFollowScreen() } }
 
     /// Pan offset Y in points.
-    public var panOffsetY: Double = 0.0
+    public var panOffsetY: Double = 0.0 { didSet { printMarksFollowScreen() } }
 
     /// Rotation angle in degrees.
-    public var rotationAngle: Double = 0.0
+    public var rotationAngle: Double = 0.0 { didSet { printMarksFollowScreen() } }
 
     /// Whether the image is flipped horizontally.
-    public var isFlippedHorizontal: Bool = false
+    public var isFlippedHorizontal: Bool = false { didSet { printMarksFollowScreen() } }
 
     /// Whether the image is flipped vertically.
-    public var isFlippedVertical: Bool = false
+    public var isFlippedVertical: Bool = false { didSet { printMarksFollowScreen() } }
 
     /// Whether the metadata overlay is visible.
     public var showMetadataOverlay: Bool = false
@@ -159,11 +189,25 @@ public final class ImageViewerViewModel {
     /// Whether the performance overlay is visible.
     public var showPerformanceOverlay: Bool = false
 
+    /// What the open file says, for the corner annotations.
+    ///
+    /// Read once when the file loads rather than on every draw: the values are a
+    /// header's worth of strings and none of them changes while the file is
+    /// open, whereas the viewport redraws on every mouse delta of a window drag.
+    /// See `ImageViewerViewModel+Annotations.swift`.
+    public internal(set) var annotationText = ViewerAnnotationText()
+
+    /// Whether the reading annotations are drawn in the viewport's corners.
+    ///
+    /// On by default: a workstation that does not say who the patient is, what
+    /// window the picture is under and where in the series it sits is not a
+    /// workstation. Film is a separate decision — it carries the identification
+    /// strip below the picture instead, and has its own switch.
+    /// See `ImageViewerViewModel+Annotations.swift`.
+    public var showImageAnnotations: Bool = true
+
     /// Whether the DICOM tag inspector sheet is visible.
     public var showDICOMInspector: Bool = false
-
-    /// Whether the file importer dialog is presented.
-    public var isFileImporterPresented: Bool = false
 
     // MARK: - Series / Multi-File Navigation
 
@@ -200,6 +244,87 @@ public final class ImageViewerViewModel {
 
     /// Last render time in seconds.
     public var lastRenderTime: Double = 0.0
+
+    // MARK: - DICOM Print
+
+    /// Frames marked for printing, in film-cell order.
+    ///
+    /// Marking happens here in the viewer; the print sheet consumes this list.
+    /// See `ImageViewerViewModel+Print.swift` for the marking API.
+    public var printSelection = PrintSelectionModel()
+
+    /// A request for the print screen — the sheet off macOS, the print preview
+    /// window on it. Raised by ⌘P and by the library's "Print…"; on macOS the
+    /// presenter lowers it again once the window is up, since a window's own
+    /// state is the window's, not this flag's.
+    public var isPrintSheetPresented: Bool = false
+
+    /// Bumped when the print screen has to come down with the study it belongs
+    /// to. A counter rather than a flag: a window is dismissed by an event, and
+    /// two studies opened in a row must send two of them.
+    ///
+    /// Off macOS ``isPrintSheetPresented`` going false closes the sheet on its
+    /// own; this is what reaches the separate window.
+    public private(set) var printScreenDismissRequests: Int = 0
+
+    /// Asks for the print screen to be closed.
+    public func requestPrintScreenDismissal() {
+        isPrintSheetPresented = false
+        printScreenDismissRequests += 1
+    }
+
+    /// Whether the tray of selected images is showing on the right.
+    ///
+    /// Out of the way until there is something in it. A reader opens the viewer
+    /// to read, and an empty column headed "On film" is a third of the chrome
+    /// spent saying "nothing yet"; the moment an image is marked the tray comes
+    /// up on its own — see ``revealPrintTray()``.
+    public var isPrintTrayVisible: Bool = false
+
+    // MARK: - Tile Layout
+
+    /// The viewer's tile grid. 1×1 by default — one image, as before.
+    ///
+    /// The grid mirrors the film: tile order is film-cell order. See
+    /// `ImageViewerViewModel+Layout.swift`.
+    public internal(set) var layout: ViewerTileLayout = .single
+
+    /// Per-tile state. Empty at 1×1, where the view model itself is the tile.
+    public internal(set) var cells: [ViewerCellState] = []
+
+    /// The tile currently receiving gestures and window/level.
+    public internal(set) var focusedCellIndex: Int = 0
+
+    // MARK: - Study Series
+
+    /// Every series of the open study, for the viewer's series pane.
+    ///
+    /// Populated by the shell from the library. Empty when the viewer was given
+    /// loose files rather than a study, in which case the pane stays hidden.
+    /// See `ImageViewerViewModel+Series.swift`.
+    public internal(set) var studySeries: [ViewerSeriesEntry] = []
+
+    /// Study Instance UID of the series in ``studySeries``.
+    public internal(set) var studyInstanceUID: String?
+
+    /// Series the focused tile is showing, for the pane's "Current series" mark.
+    public internal(set) var currentSeriesUID: String?
+
+    /// Series shown in a tile at some point this session.
+    ///
+    /// Tracked so the pane can distinguish what has been looked at from what has
+    /// not — the reading-completeness cue a "Not yet visited" card carries.
+    public internal(set) var visitedSeriesUIDs: Set<String> = []
+
+    /// Whether the series pane is showing.
+    public var isSeriesPaneVisible: Bool = true
+
+    /// Whether stepping past either end of the series wraps round to the other.
+    ///
+    /// On by default: a tile is scrolled through with the wheel, and stopping
+    /// dead at the last image reads as a stuck viewer rather than as the end of
+    /// the series. See `ImageViewerViewModel+ImageNavigation.swift`.
+    public var isRepeatNavigationEnabled: Bool = true
 
     // MARK: - Codec Inspector (Phase 8)
 
@@ -257,29 +382,6 @@ public final class ImageViewerViewModel {
     }
 
     // MARK: - File Loading
-
-    /// Loads a DICOM file from a security-scoped URL.
-    ///
-    /// Use this overload when opening files from a file importer or drag-and-drop,
-    /// where the URL carries sandbox access rights.
-    ///
-    /// - Parameter url: A security-scoped URL to the DICOM file.
-    public func loadFile(from url: URL) {
-        clearSeriesState()
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let data = try Data(contentsOf: url)
-            try loadDICOMData(data, path: url.path)
-        } catch {
-            errorMessage = "Failed to load file: \(error.localizedDescription)"
-            isLoading = false
-        }
-    }
 
     /// Loads a DICOM file for viewing.
     ///
@@ -344,7 +446,12 @@ public final class ImageViewerViewModel {
     /// Internal file loader that does NOT reset series state.
     /// Used by both the public loadFile methods (after they clear series state)
     /// and by series navigation methods.
-    private func loadFileInternal(at path: String, securityScopedParent: URL?) {
+    /// Loads a file *without* touching series state.
+    ///
+    /// Internal rather than private so tile focus can move between files of the
+    /// loaded series: `loadFile(at:)` clears the series, which would throw away
+    /// navigation the moment the user clicked a second tile.
+    func loadFileInternal(at path: String, securityScopedParent: URL?) {
         if let scopedURL = securityScopedParent {
             isLoading = true
             errorMessage = nil
@@ -388,8 +495,9 @@ public final class ImageViewerViewModel {
     /// Shared implementation for loading parsed DICOM data.
     private func loadDICOMData(_ data: Data, path: String) throws {
         // Clear any prior waveform so a failed/non-waveform load can't leave a stale
-        // tracing on screen.
+        // tracing on screen. The same holds for a report or document.
         self.waveform = nil
+        self.nonImageContent = nil
 
         let file: DICOMFile
         do {
@@ -400,6 +508,11 @@ public final class ImageViewerViewModel {
         }
 
         self.dicomFile = file
+        // The decoded pixels belong to the *previous* file. Anything that assigns
+        // `dicomFile` must clear them, or the viewport shows the last image's pixels
+        // under the new one's window. This is the only assignment site; keep it that
+        // way, or move the call next to the new one.
+        invalidateDecodedPixels()
         self.filePath = path
         self.sopInstanceUID = file.dataSet.string(for: .sopInstanceUID)
 
@@ -413,6 +526,7 @@ public final class ImageViewerViewModel {
             ?? ""
         self.transferSyntaxUID = tsUID
         self.transferSyntaxName = ImageMetadataHelpers.transferSyntaxLabel(for: tsUID)
+        self.annotationText = ViewerAnnotationText.make(from: ds, transferSyntaxUID: tsUID)
 
         // Waveform IODs (ECG, hemodynamic, EP, audio, …) carry a Waveform Sequence
         // instead of Pixel Data. Detect and parse them here so the viewer can render
@@ -422,6 +536,21 @@ public final class ImageViewerViewModel {
            let parsed = try? WaveformParser.parse(from: ds),
            !parsed.multiplexGroups.isEmpty {
             self.waveform = parsed
+            self.currentImage = nil
+            self.numberOfFrames = 1
+            self.currentFrameIndex = 0
+            self.errorMessage = nil
+            self.isLoading = false
+            return
+        }
+
+        // Reports, encapsulated documents, key object selections and
+        // presentation states carry no Pixel Data. They are classified by SOP
+        // Class before the pixel path runs: falling through would report a
+        // perfectly valid SR as an image that failed to decode.
+        if let content = ViewerNonImageContentReader.content(
+            of: ds, sopClassUID: ds.string(for: .sopClassUID)) {
+            self.nonImageContent = content
             self.currentImage = nil
             self.numberOfFrames = 1
             self.currentFrameIndex = 0
@@ -473,26 +602,7 @@ public final class ImageViewerViewModel {
         self.rescaleIntercept = intercept
 
         // Extract window settings from header
-        headerWindowSettings = file.allWindowSettings()
-        if let firstWindow = headerWindowSettings.first {
-            // Header window settings are in output units (post-rescale).
-            // Convert to stored-value space since the renderer operates on raw stored values.
-            if slope != 0 {
-                windowCenter = (firstWindow.center - intercept) / slope
-                windowWidth = firstWindow.width / abs(slope)
-            } else {
-                windowCenter = firstWindow.center
-                windowWidth = firstWindow.width
-            }
-            voiLUTFunction = firstWindow.function.rawValue
-        } else {
-            // No header window settings — auto-calculate from actual pixel data range
-            if let pixData = file.pixelData(),
-               let range = pixData.pixelRange(forFrame: 0) {
-                windowCenter = Double(range.min + range.max) / 2.0
-                windowWidth = max(1.0, Double(range.max - range.min))
-            }
-        }
+        applyDefaultWindow(for: file, slope: slope, intercept: intercept)
 
         // Load modality presets
         let modality = file.dataSet.string(for: .modality) ?? ""
@@ -530,6 +640,120 @@ public final class ImageViewerViewModel {
         startProgressiveDecode()
     }
 
+    // MARK: - Decoded pixel cache
+
+    /// The decoded pixels behind the focused viewport, held across re-windows.
+    ///
+    /// ``renderCurrentFrame()`` runs on **every** window/level delta, and it used to
+    /// reach the pixels through `DICOMFile.tryRenderFrame` → `tryPixelData()`, which
+    /// decodes from scratch each call. So a drag re-ran the codec once per mouse
+    /// event. Measured on a 2048×2500 CR (Apple M4, release), per drag step:
+    ///
+    /// | Transfer syntax | decoding each step | cached |
+    /// |---|---|---|
+    /// | Uncompressed | 2.319 ms | 0.570 ms |
+    /// | JPEG 2000 lossless | 16.161 ms | 0.558 ms |
+    /// | JPEG-LS lossless | 74.120 ms | 0.589 ms |
+    /// | RLE lossless | 354.986 ms | 0.526 ms |
+    ///
+    /// RLE was under three frames a second. Note the uncompressed row: its decode is
+    /// 0.001 ms, so the 1.7 ms it still saves is `PixelData.frameData(at:)` copying
+    /// the frame out on every call. That is why this caches **both** compressed and
+    /// uncompressed sources rather than only the expensive-looking case.
+    ///
+    /// The tile and film path has done this since `FrameSourceCache` was written;
+    /// the focused viewport simply never got the same treatment.
+    @ObservationIgnored private var decodedPixels: PixelData?
+    @ObservationIgnored private var decodedPalette: PaletteColorLUT?
+    @ObservationIgnored private var decodeFailure: (any Error)?
+    @ObservationIgnored private var decodeAttempted = false
+
+    /// Whether to page-align cached pixels so the GPU can read them in place.
+    /// Resolved once — the backend cannot change during a run.
+    @ObservationIgnored
+    private static let alignsForGPU = FrameRenderService.shared.prefersAlignedPixelData
+
+    /// Forgets the decoded pixels. **Must** be called whenever `dicomFile` changes,
+    /// or the viewport would keep showing the previous image's pixels.
+    private func invalidateDecodedPixels() {
+        decodedPixels = nil
+        decodedPalette = nil
+        decodeFailure = nil
+        decodeAttempted = false
+    }
+
+    /// The decoded pixels for the loaded file, decoding on first use.
+    ///
+    /// A failed decode is cached too: without that, a file with no usable pixel data
+    /// would re-attempt — and re-fail — the full decode on every render, which is the
+    /// same per-event cost this cache exists to remove.
+    private func decodedPixelSource(for file: DICOMFile) throws -> (PixelData, PaletteColorLUT?) {
+        if let decodedPixels { return (decodedPixels, decodedPalette) }
+        if decodeAttempted, let decodeFailure { throw decodeFailure }
+
+        decodeAttempted = true
+        do {
+            let decoded = try file.tryPixelData()
+            // Aligned once, here — never per render.
+            let prepared = Self.alignsForGPU ? decoded.pageAligned() : decoded
+            decodedPixels = prepared
+            decodedPalette = file.dataSet.paletteColorLUT()
+            return (prepared, decodedPalette)
+        } catch {
+            decodeFailure = error
+            throw error
+        }
+    }
+
+    /// The stored value of one pixel of the current frame, or `nil` when the
+    /// pixels cannot be read.
+    ///
+    /// Reads the same decoded pixels the viewport is drawn from — the ones
+    /// already held above — so a cursor moving across the image costs a lookup
+    /// rather than a decode. Colour images answer their three samples instead.
+    func storedPixelValue(column: Int, row: Int) -> (gray: Int?, rgb: (Int, Int, Int)?) {
+        guard let file = dicomFile,
+              let source = try? decodedPixelSource(for: file) else { return (nil, nil) }
+        let pixels = source.0
+        if samplesPerPixel >= 3 {
+            let colour = pixels.colorValue(row: row, column: column, frame: currentFrameIndex)
+            return (nil, colour)
+        }
+        return (pixels.pixelValue(row: row, column: column, frame: currentFrameIndex), nil)
+    }
+
+    // MARK: - GPU display path
+
+    #if canImport(Metal)
+    /// Whether this frame can be shown straight from a GPU texture.
+    ///
+    /// The one thing the display path does not do is burn overlay planes. Those are
+    /// drawn *over* the image rather than into it, and some Secondary Captures —
+    /// Siemens' Patient Protocol is the standing example — carry all-zero pixel data
+    /// with their entire content in a 1-bit overlay. Showing the texture for one of
+    /// those would present a black square where a page of text belongs, so frames
+    /// with drawable overlays keep the CPU-burned `CGImage`.
+    private func canUseDisplayTexture(for file: DICOMFile) -> Bool {
+        !OverlayPlaneRenderer.hasOverlay(file.dataSet, forFrame: currentFrameIndex)
+    }
+
+    /// The tool state, as the display shader's geometry.
+    ///
+    /// Reading this rather than re-rendering is what makes zoom, pan, rotation, flip
+    /// and inversion cost a redraw instead of a pass over every pixel.
+    public var displayPresentation: DisplayPresentation {
+        DisplayPresentation(
+            zoom: zoomLevel,
+            panX: panOffsetX,
+            panY: panOffsetY,
+            rotationDegrees: rotationAngle,
+            flipHorizontal: isFlippedHorizontal,
+            flipVertical: isFlippedVertical,
+            invert: isInverted
+        )
+    }
+    #endif
+
     // MARK: - Rendering
 
     /// Renders the current frame with the current window/level settings.
@@ -542,10 +766,35 @@ public final class ImageViewerViewModel {
         let start = Date()
         var image: CGImage?
         var detailedError: String?
+        var source: (pixelData: PixelData, palette: PaletteColorLUT?)?
+
+        #if canImport(Metal)
+        displayTexture = nil
+        #endif
 
         do {
+            let decoded = try decodedPixelSource(for: file)
+            source = (decoded.0, decoded.1)
             let window = WindowSettings(center: windowCenter, width: windowWidth)
-            image = try file.tryRenderFrame(currentFrameIndex, window: window)
+            let request = FrameRenderRequest(
+                pixelData: decoded.0, frameIndex: currentFrameIndex,
+                window: window, paletteLUT: decoded.1)
+
+            #if canImport(Metal)
+            // The GPU display path, when this frame qualifies: one dispatch yields
+            // both the texture the viewport draws and the image everything else
+            // expects, over the same output memory.
+            if canUseDisplayTexture(for: file),
+               let metal = FrameRenderService.shared.displayRenderer,
+               let rendered = metal.renderForDisplay(request) {
+                displayTexture = rendered.texture
+                image = rendered.image
+            } else {
+                image = FrameRenderService.shared.renderFrame(request)
+            }
+            #else
+            image = FrameRenderService.shared.renderFrame(request)
+            #endif
         } catch let e as PixelDataError {
             detailedError = e.description
         } catch {
@@ -556,21 +805,52 @@ public final class ImageViewerViewModel {
         // This recovers from a degenerate explicit window far more usefully than the
         // raw stored window, which — for modalities with a large Rescale Intercept
         // (e.g. CT) — clips almost everything to black and looks like a blank image.
-        if image == nil, let auto = try? file.tryRenderFrame(currentFrameIndex) {
+        //
+        // A nil window means "auto-window", which the CPU renderer resolves from the
+        // frame's pixel range — the same thing `tryRenderFrame(_:)` did here before.
+        if image == nil, let source,
+           let auto = FrameRenderService.shared.renderFrame(FrameRenderRequest(
+               pixelData: source.pixelData, frameIndex: currentFrameIndex,
+               window: nil, paletteLUT: source.palette)) {
             image = auto
             detailedError = nil
         }
 
         // Fallback 2: the header's stored window, as a last resort.
-        if image == nil {
-            do {
-                image = try file.tryRenderFrameWithStoredWindow(currentFrameIndex)
+        if image == nil, let source {
+            if let stored = FrameRenderService.shared.renderFrame(FrameRenderRequest(
+                pixelData: source.pixelData, frameIndex: currentFrameIndex,
+                window: file.windowSettings(), paletteLUT: source.palette)) {
+                image = stored
                 detailedError = nil
-            } catch let e as PixelDataError {
-                if detailedError == nil { detailedError = e.description }
-            } catch {
-                if detailedError == nil { detailedError = error.localizedDescription }
             }
+        }
+
+        // Anything the modality drew *over* the image rather than into it.
+        // Some Secondary Captures — Siemens' Patient Protocol is the standing
+        // example — carry pixel data that is entirely zero and put their whole
+        // content in a 1-bit overlay plane, so a viewer that renders only Pixel
+        // Data shows a black square where a page of text should be.
+        if let rendered = image {
+            image = OverlayPlaneRenderer.burningOverlays(
+                of: file.dataSet, onto: rendered, frameIndex: currentFrameIndex)
+        }
+
+        // Inversion is applied to the rendered frame rather than the window: the
+        // renderer has no invert option, and negating the window would clip
+        // differently for signed and rescaled modalities.
+        //
+        // On the GPU display path this is skipped: inversion is a fragment-stage
+        // `1 - x` in the display shader, which is exact on 8-bit and free, and the
+        // texture is what the viewport actually draws. Toggling it then costs a
+        // redraw rather than a full-frame CPU pass.
+        #if canImport(Metal)
+        let invertOnGPU = displayTexture != nil
+        #else
+        let invertOnGPU = false
+        #endif
+        if isInverted, !invertOnGPU, let rendered = image {
+            image = ImageInversion.inverted(rendered) ?? rendered
         }
 
         lastRenderTime = Date().timeIntervalSince(start)
@@ -600,6 +880,47 @@ public final class ImageViewerViewModel {
     }
 
     // MARK: - Window/Level
+
+    /// Adopts a file's own presentation: its header VOI, or the pixel range when
+    /// it declares none.
+    ///
+    /// The renderer works in stored-value space, so header values (which are in
+    /// output units) are converted through the rescale pair.
+    /// The numbers come from ``DICOMImageExporter/determineWindowSettings`` — the
+    /// one window-resolution policy shared with export, the tile cache and the
+    /// film — so a tile and the viewport showing the same image cannot disagree.
+    func applyDefaultWindow(for file: DICOMFile, slope: Double, intercept: Double) {
+        headerWindowSettings = file.allWindowSettings()
+        if let firstWindow = headerWindowSettings.first {
+            voiLUTFunction = firstWindow.function.rawValue
+        }
+        guard let pixData = file.pixelData() else {
+            // No pixels to measure: the header VOI is all there is to go on.
+            guard let firstWindow = headerWindowSettings.first else { return }
+            if slope != 0 {
+                windowCenter = (firstWindow.center - intercept) / slope
+                windowWidth = firstWindow.width / abs(slope)
+            } else {
+                windowCenter = firstWindow.center
+                windowWidth = firstWindow.width
+            }
+            return
+        }
+        let window = DICOMImageExporter.determineWindowSettings(
+            from: file, pixelData: pixData, frameIndex: 0,
+            windowCenter: nil, windowWidth: nil)
+        windowCenter = window.center
+        windowWidth = window.width
+    }
+
+    /// Re-adopts the loaded file's default window, discarding any adjustment.
+    ///
+    /// Used when a tile has no window of its own — a freshly hung series must
+    /// read at its own VOI, not at whatever the previous image was set to.
+    func resetWindowToFileDefault() {
+        guard let file = dicomFile else { return }
+        applyDefaultWindow(for: file, slope: rescaleSlope, intercept: rescaleIntercept)
+    }
 
     /// Applies a window/level preset.
     ///
@@ -659,6 +980,12 @@ public final class ImageViewerViewModel {
     /// Toggles grayscale inversion.
     public func toggleInversion() {
         isInverted.toggle()
+        #if canImport(Metal)
+        // On the GPU display path inversion is part of the presentation, so the
+        // view redraws with a different flag and nothing is re-rendered. The CPU
+        // path has no such option and must run its full-frame pass.
+        if displayTexture != nil { return }
+        #endif
         renderCurrentFrame()
     }
 
@@ -746,9 +1073,13 @@ public final class ImageViewerViewModel {
         updateROIOnZoom()
     }
 
-    /// Resets zoom, pan, and rotation to defaults.
+    /// Resets the image back to how it looked when it was first opened: zoom,
+    /// pan, rotation, flip, window/level, and inversion all undone.
     public func resetView() {
         resetTransformations()
+        autoWindowLevel()
+        isInverted = false
+        renderCurrentFrame()
     }
 
     /// Resets all image transforms: zoom, pan, rotation, and flip.
@@ -794,6 +1125,17 @@ public final class ImageViewerViewModel {
     /// Rotates the image 90° counter-clockwise.
     public func rotateCounterClockwise() {
         rotationAngle = GestureHelpers.rotateCounterClockwise(from: rotationAngle)
+    }
+
+    /// Turns the image by an arbitrary angle, clockwise for a positive delta.
+    ///
+    /// This is the rotate *tool*'s path: a drag turns the picture continuously
+    /// through the full circle either way, where the toolbar's quarter-turn
+    /// actions above snap back to the orthogonal angles.
+    ///
+    /// - Parameter degrees: Signed rotation to add, in degrees.
+    public func rotate(byDegrees degrees: Double) {
+        rotationAngle = GestureHelpers.normalizeRotation(rotationAngle + degrees)
     }
 
     /// Flips the image horizontally.
@@ -894,21 +1236,18 @@ public final class ImageViewerViewModel {
             return
         }
 
-        // Phase 1: fetch low-quality preview
-        jpipLoadingState = .fetchingPreview
-        let client = DICOMJPIPClient(serverURL: serverURL)
-        do {
-            let preview = try await client.fetchProgressiveQuality(jpipURI: jpipURI, layers: 1)
-            applyJPIPImage(preview, layers: 1)
-            jpipLoadingState = .refining(layers: 4)
-
-            // Phase 2: refine to full quality
-            let full = try await client.fetchImage(jpipURI: jpipURI)
-            applyJPIPImage(full, layers: 0)
-            jpipLoadingState = .loaded(layers: 0)
-        } catch {
-            jpipLoadingState = .failed(reason: error.localizedDescription)
-        }
+        // JPIP retrieval is unavailable: DICOMJPIPClient's fetch methods are marked
+        // @available(*, unavailable) because every request path in the pinned upstream
+        // J2KSwift JPIP module (11.0.2) throws notImplemented. The two-phase
+        // preview-then-refine flow (and its applyJPIPImage calls) is recoverable from git
+        // history at de67c39 and should be restored when upstream lands. Surfacing the
+        // real reason beats a spinner that never resolves.
+        // Tracked as F1 in RESEARCH_ADOPTION_PLAN.md.
+        _ = serverURL
+        _ = jpipURI
+        jpipLoadingState = .failed(
+            reason: DICOMJPIPError.retrievalUnavailable.description
+        )
     }
 
     // MARK: - Private Phase 8 Helpers

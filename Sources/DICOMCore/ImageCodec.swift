@@ -258,6 +258,37 @@ public protocol ImageCodec: Sendable {
     func decodeFrame(_ frameData: Data, descriptor: PixelDataDescriptor, frameIndex: Int) throws -> Data
 }
 
+// MARK: - Caller-Owned Frame Decoding (WP-F, plan M3)
+
+extension ImageCodec {
+    /// Decodes a single frame into caller-owned storage, returning bytes written
+    ///
+    /// This default decodes into a codec-owned buffer and copies once into
+    /// `destination`; codecs that can assemble output in place (e.g. RLE)
+    /// override it to skip that intermediate full-frame buffer. `destination`
+    /// must hold at least `descriptor.bytesPerFrame` bytes. Used by
+    /// `DICOMFile.alignedPixelData(frame:)` so decoded samples land directly in
+    /// page-aligned storage that Metal reads via `makeBuffer(bytesNoCopy:)`.
+    public func decodeFrame(
+        _ frameData: Data,
+        descriptor: PixelDataDescriptor,
+        frameIndex: Int,
+        into destination: UnsafeMutableRawBufferPointer
+    ) throws -> Int {
+        let decoded = try decodeFrame(frameData, descriptor: descriptor, frameIndex: frameIndex)
+        guard decoded.count <= destination.count, let base = destination.baseAddress else {
+            throw DICOMError.limitExceeded(
+                "Caller-owned destination too small: \(destination.count) bytes for \(decoded.count)-byte frame")
+        }
+        decoded.withUnsafeBytes { source in
+            if let src = source.baseAddress {
+                base.copyMemory(from: src, byteCount: decoded.count)
+            }
+        }
+        return decoded.count
+    }
+}
+
 // MARK: - Image Encoder Protocol
 
 /// Protocol for DICOM image compression encoders

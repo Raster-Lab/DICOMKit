@@ -174,6 +174,100 @@ struct ImageViewerViewModelTests {
         #expect(vm.currentFrameIndex == 0)
     }
 
+    // MARK: - Arrow-Key Image Navigation
+
+    @Test("Right arrow steps to the next frame of a multi-frame image")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testNextImageStepsFrame() {
+        let vm = ImageViewerViewModel()
+        vm.numberOfFrames = 10
+        vm.currentFrameIndex = 3
+        #expect(vm.canGoNextImage)
+        #expect(vm.navigateToNextImage() == true)
+        #expect(vm.currentFrameIndex == 4)
+    }
+
+    @Test("Left arrow steps to the previous frame")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testPreviousImageStepsFrame() {
+        let vm = ImageViewerViewModel()
+        vm.numberOfFrames = 10
+        vm.currentFrameIndex = 3
+        #expect(vm.canGoPreviousImage)
+        #expect(vm.navigateToPreviousImage() == true)
+        #expect(vm.currentFrameIndex == 2)
+    }
+
+    @Test("Image navigation repeats at the ends: past the last is the first")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testImageNavigationWrapsWhenRepeating() {
+        let vm = ImageViewerViewModel()
+        vm.numberOfFrames = 10
+
+        vm.currentFrameIndex = 9
+        #expect(vm.canGoNextImage == false, "there is no *next* image — it wraps instead")
+        #expect(vm.navigateToNextImage() == true)
+        #expect(vm.currentFrameIndex == 0)
+
+        #expect(vm.canGoPreviousImage == false)
+        #expect(vm.navigateToPreviousImage() == true)
+        #expect(vm.currentFrameIndex == 9)
+    }
+
+    @Test("With repeat off, image navigation stops at the ends")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testImageNavigationDoesNotWrapWhenRepeatIsOff() {
+        let vm = ImageViewerViewModel()
+        vm.numberOfFrames = 10
+        vm.isRepeatNavigationEnabled = false
+
+        vm.currentFrameIndex = 9
+        #expect(vm.navigateToNextImage() == false)
+        #expect(vm.currentFrameIndex == 9)
+
+        vm.currentFrameIndex = 0
+        #expect(vm.navigateToPreviousImage() == false)
+        #expect(vm.currentFrameIndex == 0)
+    }
+
+    @Test("Single-frame image with no series has nowhere to go")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testImageNavigationSingleFrameNoSeries() {
+        let vm = ImageViewerViewModel()
+        #expect(vm.canGoNextImage == false)
+        #expect(vm.canGoPreviousImage == false)
+    }
+
+    @Test("Stepping past the last frame rolls onto the next file")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testNextImageRollsOntoNextFile() {
+        let vm = ImageViewerViewModel()
+        vm.seriesFiles = ["/a.dcm", "/b.dcm"]
+        vm.currentFileIndex = 0
+        vm.numberOfFrames = 4
+        vm.currentFrameIndex = 3
+
+        #expect(vm.canGoNextImage)
+        vm.navigateToNextImage()
+        // The load fails (no such file), but navigation moved on regardless.
+        #expect(vm.currentFileIndex == 1)
+    }
+
+    @Test("Stepping by hand pauses cine playback without rewinding")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testManualStepPausesPlayback() {
+        let vm = ImageViewerViewModel()
+        vm.numberOfFrames = 10
+        vm.currentFrameIndex = 2
+        vm.togglePlayback()
+        #expect(vm.playbackState == .playing)
+
+        vm.navigateToNextImage()
+        #expect(vm.playbackState == .paused)
+        // Paused, not stopped: stopping would rewind to frame 0.
+        #expect(vm.currentFrameIndex == 3)
+    }
+
     // MARK: - Cine Playback
 
     @Test("Toggle playback from stopped")
@@ -300,6 +394,23 @@ struct ImageViewerViewModelTests {
         let vm = ImageViewerViewModel()
         vm.rotateCounterClockwise()
         #expect(vm.rotationAngle == 270)
+    }
+
+    @Test("Rotate freely by any angle, either way, wrapping at the full turn")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testRotateByDegrees() {
+        let vm = ImageViewerViewModel()
+        vm.rotate(byDegrees: 37.5)
+        #expect(vm.rotationAngle == 37.5)
+        // Accumulates rather than snapping — this is the drag path.
+        vm.rotate(byDegrees: 10)
+        #expect(vm.rotationAngle == 47.5)
+        // Anticlockwise past zero comes out the other side.
+        vm.rotate(byDegrees: -60)
+        #expect(abs(vm.rotationAngle - 347.5) < 0.001)
+        // And clockwise past the full turn keeps going.
+        vm.rotate(byDegrees: 20)
+        #expect(abs(vm.rotationAngle - 7.5) < 0.001)
     }
 
     // MARK: - Display Text Helpers

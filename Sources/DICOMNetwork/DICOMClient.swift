@@ -1057,7 +1057,7 @@ public final class DICOMClient: Sendable {
             return result == .rejectedTransient
         case .invalidAETitle, .invalidState, .noPresentationContextAccepted,
              .sopClassNotSupported, .unexpectedPDUType, .invalidPDU,
-             .encodingFailed, .decodingFailed, .pduTooLarge,
+             .encodingFailed, .decodingFailed, .limitExceeded, .pduTooLarge,
              .associationAborted, .queryFailed, .retrieveFailed,
              .circuitBreakerOpen, .storeFailed, .partialFailure,
              .printOperationFailed, .unexpectedResponse:
@@ -1088,7 +1088,7 @@ public final class DICOMClient: Sendable {
             return true
         case .invalidAETitle, .invalidState, .noPresentationContextAccepted,
              .sopClassNotSupported, .unexpectedPDUType, .invalidPDU,
-             .encodingFailed, .decodingFailed, .pduTooLarge:
+             .encodingFailed, .decodingFailed, .limitExceeded, .pduTooLarge:
             // Protocol/configuration errors - don't retry
             return false
         case .associationAborted, .queryFailed, .retrieveFailed, .storeFailed,

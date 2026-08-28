@@ -71,28 +71,23 @@ struct DICOMSplit: AsyncParsableCommand {
     mutating func run() async throws {
         // Validate input
         guard FileManager.default.fileExists(atPath: input) else {
-            throw ValidationError("Input path does not exist: \(input)")
+            throw ValidationError(SplitConsole.inputNotFoundMessage(path: input))
         }
-        
+
         // Create output directory
         try createOutputDirectory(output)
-        
+
+        // Banner via the shared SplitConsole — the exact lines DICOMStudio's
+        // Workshop emits (see Sources/DICOMKit/Splitting/SplitConsole.swift).
         if verbose {
-            fprintln("DICOM Split Tool v1.1.2")
-            fprintln("========================")
-            fprintln("Input: \(input)")
-            fprintln("Output: \(output)")
-            fprintln("Format: \(format)")
-            if let frames = frames {
-                fprintln("Frames: \(frames)")
+            for line in SplitConsole.headerLines(
+                input: input, output: output, format: format, frames: frames,
+                applyWindow: applyWindow, windowCenter: windowCenter, windowWidth: windowWidth
+            ) {
+                fprintln(line)
             }
-            if applyWindow {
-                fprintln("Window Center: \(windowCenter ?? 0)")
-                fprintln("Window Width: \(windowWidth ?? 0)")
-            }
-            fprintln("")
         }
-        
+
         // Create splitter (shared DICOMKit engine; verbose output routed to stderr)
         let splitter = FrameSplitter(
             outputPath: output,
@@ -105,8 +100,12 @@ struct DICOMSplit: AsyncParsableCommand {
             log: { fprintln($0) }
         )
 
-        // Parse frame ranges
-        let frameIndices = try frames.map { try parseFrameRange($0) }
+        // Parse frame ranges through the shared parser (one copy of the grammar
+        // and its error text for both surfaces).
+        let frameIndices = try frames.map { spec -> Set<Int> in
+            do { return try SplitConsole.parseFrameSelection(spec) }
+            catch let e as SplitConsole.FrameSelectionError { throw ValidationError(e.description) }
+        }
 
         // Process files
         var isDirectory: ObjCBool = false
@@ -121,7 +120,7 @@ struct DICOMSplit: AsyncParsableCommand {
             result = single
         }
 
-        fprintln("\nSplit complete! Processed: \(result.processedFiles), extracted: \(result.extracted), skipped: \(result.skippedFiles), failed: \(result.failed)")
+        for line in SplitConsole.completionLines(result: result) { fprintln(line) }
 
         // Surface real extraction failures through the exit code so scripts can detect
         // them. Skips (non-DICOM or single-frame files) are not failures and keep exit 0.
@@ -136,41 +135,11 @@ struct DICOMSplit: AsyncParsableCommand {
         
         if fileManager.fileExists(atPath: path, isDirectory: &isDirectory) {
             if !isDirectory.boolValue {
-                throw ValidationError("Output path exists but is not a directory: \(path)")
+                throw ValidationError(SplitConsole.outputNotDirectoryMessage(path: path))
             }
         } else {
             try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true)
         }
-    }
-    
-    func parseFrameRange(_ rangeString: String) throws -> Set<Int> {
-        var indices = Set<Int>()
-        
-        let parts = rangeString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        
-        for part in parts {
-            if part.contains("-") {
-                // Range like "5-10"
-                let bounds = part.split(separator: "-").map { $0.trimmingCharacters(in: .whitespaces) }
-                guard bounds.count == 2,
-                      let start = Int(bounds[0]),
-                      let end = Int(bounds[1]),
-                      start <= end else {
-                    throw ValidationError("Invalid frame range: \(part)")
-                }
-                for i in start...end {
-                    indices.insert(i)
-                }
-            } else {
-                // Single number
-                guard let index = Int(part) else {
-                    throw ValidationError("Invalid frame number: \(part)")
-                }
-                indices.insert(index)
-            }
-        }
-        
-        return indices
     }
 }
 

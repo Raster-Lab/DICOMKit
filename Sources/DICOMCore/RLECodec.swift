@@ -57,27 +57,122 @@ public struct RLECodec: ImageCodec, ImageEncoder, Sendable {
         
         // Decode each segment
         var decodedSegments: [Data] = []
+        // Header offsets are frame-relative; `subdata(in:)` indexes absolutely.
+        // See `decodeSegments` for the same rebasing and why it matters.
+        let base = frameData.startIndex
         for i in 0..<numberOfSegments {
             let segmentStart = segmentOffsets[i]
             let segmentEnd: Int
-            
+
             if i + 1 < numberOfSegments {
                 segmentEnd = segmentOffsets[i + 1]
             } else {
                 segmentEnd = frameData.count
             }
-            
+
             guard segmentStart < segmentEnd && segmentEnd <= frameData.count else {
                 throw DICOMError.parsingFailed("Invalid RLE segment boundaries")
             }
-            
-            let segmentData = frameData.subdata(in: segmentStart..<segmentEnd)
+
+            let segmentData = frameData.subdata(in: (base + segmentStart)..<(base + segmentEnd))
             let decoded = try decodeRLESegment(segmentData, expectedLength: pixelsPerFrame)
             decodedSegments.append(decoded)
         }
         
         // Interleave segments to form output
         return interleaveSegments(decodedSegments, descriptor: descriptor)
+    }
+
+    /// Caller-owned decode: interleaves the decoded segments directly into
+    /// `destination`, skipping the intermediate full-frame output buffer the
+    /// `Data`-returning path allocates (WP-F, plan M3).
+    public func decodeFrame(
+        _ frameData: Data,
+        descriptor: PixelDataDescriptor,
+        frameIndex: Int,
+        into destination: UnsafeMutableRawBufferPointer
+    ) throws -> Int {
+        let bytesPerFrame = descriptor.bytesPerFrame
+        guard destination.count >= bytesPerFrame, let base = destination.baseAddress else {
+            throw DICOMError.limitExceeded(
+                "Caller-owned destination too small: \(destination.count) bytes for \(bytesPerFrame)-byte frame")
+        }
+        let segments = try decodeSegments(frameData, descriptor: descriptor)
+        interleaveSegments(segments, descriptor: descriptor,
+                           into: base.assumingMemoryBound(to: UInt8.self),
+                           capacity: destination.count)
+        return bytesPerFrame
+    }
+
+    /// Parses the RLE header and PackBits-decodes every segment (shared by the
+    /// `Data`-returning and caller-owned paths).
+    private func decodeSegments(_ frameData: Data, descriptor: PixelDataDescriptor) throws -> [Data] {
+        guard frameData.count >= 64 else {
+            throw DICOMError.parsingFailed("RLE data too short for header")
+        }
+        let numberOfSegments = Int(frameData.readUInt32LE(at: 0) ?? 0)
+        guard numberOfSegments >= 1 && numberOfSegments <= 15 else {
+            throw DICOMError.parsingFailed("Invalid RLE segment count: \(numberOfSegments)")
+        }
+        var segmentOffsets: [Int] = []
+        for i in 0..<numberOfSegments {
+            segmentOffsets.append(Int(frameData.readUInt32LE(at: 4 + i * 4) ?? 0))
+        }
+        let expectedSegments = descriptor.bytesPerSample * descriptor.samplesPerPixel
+        guard numberOfSegments == expectedSegments else {
+            throw DICOMError.parsingFailed(
+                "Unexpected number of RLE segments: \(numberOfSegments), expected \(expectedSegments)")
+        }
+        var decodedSegments: [Data] = []
+        // Segment offsets in the RLE header are relative to the start of the frame,
+        // but `subdata(in:)` indexes absolutely. `frameData` may be a slice with a
+        // non-zero `startIndex` (any caller that avoids a copy — which is the whole
+        // direction of the byte-source work — produces one), so rebase before slicing.
+        let base = frameData.startIndex
+        for i in 0..<numberOfSegments {
+            let segmentStart = segmentOffsets[i]
+            let segmentEnd = i + 1 < numberOfSegments ? segmentOffsets[i + 1] : frameData.count
+            guard segmentStart < segmentEnd && segmentEnd <= frameData.count else {
+                throw DICOMError.parsingFailed("Invalid RLE segment boundaries")
+            }
+            let segmentData = frameData.subdata(in: (base + segmentStart)..<(base + segmentEnd))
+            decodedSegments.append(try decodeRLESegment(segmentData, expectedLength: descriptor.pixelsPerFrame))
+        }
+        return decodedSegments
+    }
+
+    /// Pointer-destination variant of `interleaveSegments` (same traversal).
+    private func interleaveSegments(
+        _ segments: [Data],
+        descriptor: PixelDataDescriptor,
+        into output: UnsafeMutablePointer<UInt8>,
+        capacity: Int
+    ) {
+        let bytesPerSample = descriptor.bytesPerSample
+        let samplesPerPixel = descriptor.samplesPerPixel
+        let pixelsPerFrame = descriptor.pixelsPerFrame
+
+        for pixelIndex in 0..<pixelsPerFrame {
+            for sampleIndex in 0..<samplesPerPixel {
+                for byteIndex in 0..<bytesPerSample {
+                    let segmentIndex = sampleIndex * bytesPerSample + (bytesPerSample - 1 - byteIndex)
+                    guard segmentIndex < segments.count else { continue }
+                    let segment = segments[segmentIndex]
+                    guard pixelIndex < segment.count else { continue }
+
+                    let outputOffset: Int
+                    if descriptor.planarConfiguration == 0 || samplesPerPixel == 1 {
+                        outputOffset = (pixelIndex * samplesPerPixel + sampleIndex) * bytesPerSample + byteIndex
+                    } else {
+                        let planeSize = pixelsPerFrame * bytesPerSample
+                        outputOffset = sampleIndex * planeSize + pixelIndex * bytesPerSample + byteIndex
+                    }
+                    if outputOffset < capacity {
+                        output[outputOffset] = segment[segment.startIndex + pixelIndex]
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Encoding

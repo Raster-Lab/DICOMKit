@@ -26,6 +26,30 @@ public enum StudioColors: Sendable {
     public static let backgroundGreen: Double = 0.07
     public static let backgroundBlue: Double = 0.10
 
+    /// Neutral grey for the mount the reading area is set into — the gutter
+    /// between the image and the panes flanking it.
+    ///
+    /// Deliberately lighter than the image area, which is pure black: on a
+    /// reporting station the darkest thing on screen must be the picture, so the
+    /// chrome reads as furniture and the eye lands on the anatomy without being
+    /// told to. Neutral grey rather than tinted — a colour cast next to a
+    /// greyscale image shifts how its own greys are judged.
+    public static let viewerChromeWhite: Double = 0.10
+
+    /// Surface of the panes flanking the reading area — the series list on the
+    /// left, the selection tray on the right.
+    ///
+    /// A clear step lighter than the gutter, because the three columns used to
+    /// sit at one tone and read as a single dark field: which of them held the
+    /// images that were about to print was a question the screen did not answer.
+    /// Lighter panes, a darker mount and a black picture put the columns on
+    /// three separate planes, and the reading area is the one that recedes.
+    public static let viewerPanelWhite: Double = 0.19
+
+    /// Header strip at the top of a pane — a step lighter again, so each column
+    /// is titled and the titles sit on a surface of their own.
+    public static let viewerPanelHeaderWhite: Double = 0.25
+
     /// Soft white for text on dark backgrounds.
     public static let textOnDarkRed: Double = 0.92
     public static let textOnDarkGreen: Double = 0.93
@@ -92,6 +116,56 @@ extension StudioColors {
     /// Radiology-mode background color.
     public static var radiologyBackground: Color {
         Color(red: backgroundRed, green: backgroundGreen, blue: backgroundBlue)
+    }
+
+    /// The mount the reading area is set into: the gutter around the image.
+    public static var viewerChrome: Color {
+        Color(white: viewerChromeWhite)
+    }
+
+    /// Surface of the panes flanking the reading area.
+    public static var viewerPanel: Color {
+        Color(white: viewerPanelWhite)
+    }
+
+    /// Surface of a pane's title strip.
+    public static var viewerPanelHeader: Color {
+        Color(white: viewerPanelHeaderWhite)
+    }
+
+    /// Hairline along the edge where a pane meets the gutter.
+    public static var viewerPanelEdge: Color {
+        Color.black.opacity(0.55)
+    }
+
+    /// Fill behind the selected study in the library.
+    ///
+    /// A dimmed, desaturated version of the accent rather than the accent
+    /// itself: selection has to be obvious at a glance without competing with
+    /// the row's own text, and a full-strength tint behind a list of studies is
+    /// tiring to read against on a dark window.
+    public static var selectionFill: Color {
+        Color(red: primaryRed * selectionDim,
+              green: primaryGreen * selectionDim,
+              blue: primaryBlue * selectionDim)
+        .opacity(0.35)
+    }
+
+    /// Edge of the selected study, a little brighter than its fill so the row's
+    /// extent is readable where the fill meets the background.
+    public static var selectionBorder: Color {
+        Color(red: primaryRed * selectionDim,
+              green: primaryGreen * selectionDim,
+              blue: primaryBlue * selectionDim)
+        .opacity(0.75)
+    }
+
+    /// How far the accent is knocked back for selection surfaces.
+    private static let selectionDim: Double = 0.62
+
+    /// Hairline that frames the reading area against the chrome.
+    public static var readingAreaBorder: Color {
+        Color.white.opacity(0.14)
     }
 
     /// Text color for dark backgrounds.

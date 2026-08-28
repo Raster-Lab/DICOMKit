@@ -1,5 +1,0 @@
-{
-  "_comment": "Tier-2 output-parity gate allowlist. Each entry is a KNOWN, triaged DIFFERS scenario the gate tolerates. Under PARITY_STRICT=1 the harness fails on any DIFFERS NOT listed here (new drift, or a regression of a fixed bug). To retire an entry: fix the Studio reimplementation so it MATCHES, then delete the line. As of the Wave 1+2 engine-sharing migration all prior entries (F4, F5, F9, F10, F14) are retired — their tools now call the shared DICOMKit engines and MATCH the CLI. See Scripts/CLI-PARITY-TIER2-PLAN.md §7.",
-  "schemaVersion": 1,
-  "allow": {}
-}

@@ -255,7 +255,13 @@ public enum DICOMImageExporter {
         if let center = windowCenter, let width = windowWidth {
             return toStored(center: center, width: width)
         }
-        if let windowFromFile = file.windowSettings() {
+        // A file may declare several VOI pairs — CT routinely carries a lung and a
+        // soft-tissue window in one multi-valued element (`-600\50` / `1200\350`).
+        // The first pair is the default presentation, so read the multi-valued
+        // form first: ``DICOMFile/windowSettings()`` parses a *single* DS and
+        // returns nil for those files, which would drop a perfectly good VOI on
+        // the floor and auto-stretch the full pixel range instead.
+        if let windowFromFile = file.allWindowSettings().first ?? file.windowSettings() {
             return toStored(center: windowFromFile.center, width: windowFromFile.width)
         }
         if let range = pixelData.pixelRange(forFrame: frameIndex) {

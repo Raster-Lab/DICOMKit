@@ -10,7 +10,15 @@ public struct PixelData: Sendable {
     
     /// Descriptor containing pixel data attributes
     public let descriptor: PixelDataDescriptor
-    
+
+    /// Page-aligned backing for ``data``, when it has one.
+    ///
+    /// Non-nil only for pixel data produced by ``pageAligned()``. Its presence is
+    /// what lets a Metal renderer read these bytes without copying them; every CPU
+    /// consumer goes on using ``data`` and neither knows nor cares.
+    /// See `GPU_RENDERING_PLAN.md` M2b.
+    public let alignedStorage: AlignedPixelBuffer?
+
     /// Creates a new PixelData instance
     /// - Parameters:
     ///   - data: Raw pixel data bytes
@@ -18,6 +26,17 @@ public struct PixelData: Sendable {
     public init(data: Data, descriptor: PixelDataDescriptor) {
         self.data = data
         self.descriptor = descriptor
+        self.alignedStorage = nil
+    }
+
+    /// Creates pixel data backed by page-aligned storage.
+    ///
+    /// ``data`` is a no-copy view of `alignedStorage`, so the CPU and the GPU read
+    /// the same bytes.
+    public init(alignedStorage: AlignedPixelBuffer, descriptor: PixelDataDescriptor) {
+        self.data = alignedStorage.data
+        self.descriptor = descriptor
+        self.alignedStorage = alignedStorage
     }
     
     // MARK: - Frame Access

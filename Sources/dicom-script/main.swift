@@ -18,7 +18,7 @@ private func processCommandRunner(_ tool: String, _ arguments: [String]) throws 
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     return (String(data: data, encoding: .utf8) ?? "", process.terminationStatus)
     #else
-    throw ScriptError.executionError("Command execution is not supported on this platform: \(tool)")
+    throw ScriptError.executionError(ScriptConsole.unsupportedRunnerMessage(tool: tool))
     #endif
 }
 
@@ -75,7 +75,8 @@ extension DICOMScript {
                 throw ScriptError.scriptNotFound(scriptPath)
             }
             
-            let parsedVariables = try parseVariables(variables)
+            // Shared KEY=VALUE parser (one copy of the grammar + its error text).
+            let parsedVariables = try ScriptConsole.parseVariables(variables)
             
             // Route the shared engine's output to STDOUT so the CLI and DICOMStudio
             // (which renders it in-console) are text-exact.
@@ -88,18 +89,6 @@ extension DICOMScript {
                 dryRun: dryRun,
                 logPath: log
             )
-        }
-        
-        private func parseVariables(_ vars: [String]) throws -> [String: String] {
-            var result: [String: String] = [:]
-            for varStr in vars {
-                let parts = varStr.split(separator: "=", maxSplits: 1)
-                guard parts.count == 2 else {
-                    throw ScriptError.invalidVariable(varStr)
-                }
-                result[String(parts[0])] = String(parts[1])
-            }
-            return result
         }
     }
 }
@@ -127,15 +116,9 @@ extension DICOMScript {
             let validator = ScriptValidator(log: { print($0) })
             let issues = try validator.validate(scriptPath: scriptPath, verbose: verbose)
 
-            if issues.isEmpty {
-                print("✓ Script is valid")
-            } else {
-                print("✗ Script has \(issues.count) issue(s):")
-                for issue in issues {
-                    print("  - \(issue)")
-                }
-                throw ExitCode.failure
-            }
+            // Verdict block via the shared ScriptConsole — same lines in-app.
+            for line in ScriptConsole.validationLines(issues: issues) { print(line) }
+            if !issues.isEmpty { throw ExitCode.failure }
         }
     }
 }

@@ -56,6 +56,13 @@ public enum DICOMJPIPError: Error, Sendable, CustomStringConvertible {
     case serverError(Int, String)
     /// JPIP module is not available (compiled without JPIP support).
     case jpipModuleUnavailable
+    /// JPIP retrieval is not implemented in the pinned upstream codec module.
+    ///
+    /// Distinct from ``jpipModuleUnavailable``: the module *is* present and linked,
+    /// but every request entry point in J2KSwift's `JPIP` (11.0.2) throws
+    /// `notImplemented`, so no bytes can be retrieved. See `RESEARCH_ADOPTION_PLAN.md`
+    /// finding F1.
+    case retrievalUnavailable
 
     public var description: String {
         switch self {
@@ -69,6 +76,12 @@ public enum DICOMJPIPError: Error, Sendable, CustomStringConvertible {
             return "JPIP server error \(code): \(detail)"
         case .jpipModuleUnavailable:
             return "JPIP module is not available in this build"
+        case .retrievalUnavailable:
+            return """
+                JPIP retrieval is not available: the pinned J2KSwift JPIP module (11.0.2) \
+                has no implemented request path. Transfer-syntax detection and JPIP URI \
+                extraction work; fetching pixel data does not.
+                """
         }
     }
 }
@@ -154,18 +167,24 @@ public struct DICOMJPIPImage: Sendable {
 /// JPIP reference transfer syntaxes (`1.2.840.10008.1.2.4.94` and `.4.95`) to
 /// interactive progressive image requests.
 ///
-/// ## Usage
+/// ## Retrieval is currently unavailable
+///
+/// > Warning: The four retrieval methods (`fetchImage`, `fetchRegion`,
+/// > `fetchProgressiveQuality`, `fetchResolutionLevel`) are marked
+/// > `@available(*, unavailable)`. Every request entry point in the pinned upstream
+/// > J2KSwift `JPIP` module (11.0.2) throws `notImplemented`, so no pixel data can be
+/// > retrieved. They are annotated rather than deleted so the API shape survives for
+/// > when upstream lands. Tracked as finding F1 in `RESEARCH_ADOPTION_PLAN.md`.
+///
+/// ## What does work
+///
+/// Recognising the JPIP transfer syntaxes and extracting the target URI from Pixel Data:
 ///
 /// ```swift
-/// // Connect to a JPIP server
-/// let client = DICOMJPIPClient(serverURL: URL(string: "http://pacs.example.com:8080")!)
-///
-/// // Fetch the full image
-/// let image = try await client.fetchImage(jpipURI: jpipURL)
-///
-/// // Or fetch a region at a specific quality
-/// let roi = DICOMJPIPRegion(x: 256, y: 256, width: 512, height: 512)
-/// let partial = try await client.fetchRegion(jpipURI: jpipURL, region: roi, quality: .layers(4))
+/// let uri = try DICOMJPIPClient.jpipURI(
+///     from: file.dataSet,
+///     transferSyntaxUID: file.fileMetaInformation.string(for: .transferSyntaxUID) ?? ""
+/// )
 /// ```
 ///
 /// ## JPIP Transfer Syntaxes
@@ -200,6 +219,7 @@ public actor DICOMJPIPClient {
     /// - Parameter jpipURI: The JPIP target URI extracted from the DICOM Pixel Data element.
     /// - Returns: A ``DICOMJPIPImage`` containing decoded pixel data.
     /// - Throws: ``DICOMJPIPError`` if retrieval or decoding fails.
+    @available(*, unavailable, message: "JPIP retrieval is not implemented in the pinned J2KSwift JPIP module (11.0.2) — every upstream request path throws notImplemented. Transfer-syntax detection and DICOMJPIPClient.jpipURI(from:transferSyntaxUID:) still work. Tracked as F1 in RESEARCH_ADOPTION_PLAN.md.")
     public func fetchImage(jpipURI: URL) async throws -> DICOMJPIPImage {
         #if canImport(JPIP)
         let imageID = jpipURI.lastPathComponent
@@ -217,6 +237,7 @@ public actor DICOMJPIPClient {
     ///   - region: The rectangular region to retrieve.
     ///   - quality: How many quality layers to fetch. Defaults to `.full`.
     /// - Returns: A ``DICOMJPIPImage`` for the requested region.
+    @available(*, unavailable, message: "JPIP retrieval is not implemented in the pinned J2KSwift JPIP module (11.0.2) — every upstream request path throws notImplemented. Transfer-syntax detection and DICOMJPIPClient.jpipURI(from:transferSyntaxUID:) still work. Tracked as F1 in RESEARCH_ADOPTION_PLAN.md.")
     public func fetchRegion(
         jpipURI: URL,
         region: DICOMJPIPRegion,
@@ -224,16 +245,16 @@ public actor DICOMJPIPClient {
     ) async throws -> DICOMJPIPImage {
         #if canImport(JPIP)
         let imageID = jpipURI.lastPathComponent
+        // NOTE: the upstream `requestRegion` takes no quality argument, so `quality` is
+        // not yet honoured on the wire. Reporting `quality`'s layer count here would
+        // label the result with a fidelity that was never requested — §12 requires the
+        // refinement state to be truthful, so report 0 ("unknown") until the upstream
+        // API carries the layer limit.
         let j2kImage = try await jpipClient.requestRegion(
             imageID: imageID,
             region: (x: region.x, y: region.y, width: region.width, height: region.height)
         )
-        let fetchedLayers: Int
-        switch quality {
-        case .layers(let n): fetchedLayers = n
-        default: fetchedLayers = 0
-        }
-        return j2kImage.toDICOMJPIPImage(sourceURI: jpipURI, qualityLayers: fetchedLayers)
+        return j2kImage.toDICOMJPIPImage(sourceURI: jpipURI, qualityLayers: 0)
         #else
         throw DICOMJPIPError.jpipModuleUnavailable
         #endif
@@ -247,6 +268,7 @@ public actor DICOMJPIPClient {
     ///   - jpipURI: The JPIP target URI.
     ///   - layers: Number of quality layers to retrieve (1 = fastest/lowest quality).
     /// - Returns: A ``DICOMJPIPImage`` at the requested quality level.
+    @available(*, unavailable, message: "JPIP retrieval is not implemented in the pinned J2KSwift JPIP module (11.0.2) — every upstream request path throws notImplemented. Transfer-syntax detection and DICOMJPIPClient.jpipURI(from:transferSyntaxUID:) still work. Tracked as F1 in RESEARCH_ADOPTION_PLAN.md.")
     public func fetchProgressiveQuality(jpipURI: URL, layers: Int) async throws -> DICOMJPIPImage {
         #if canImport(JPIP)
         let imageID = jpipURI.lastPathComponent
@@ -266,6 +288,7 @@ public actor DICOMJPIPClient {
     ///   - level: Resolution level (0 = full).
     ///   - layers: Optional quality layer limit.
     /// - Returns: A ``DICOMJPIPImage`` at the requested resolution.
+    @available(*, unavailable, message: "JPIP retrieval is not implemented in the pinned J2KSwift JPIP module (11.0.2) — every upstream request path throws notImplemented. Transfer-syntax detection and DICOMJPIPClient.jpipURI(from:transferSyntaxUID:) still work. Tracked as F1 in RESEARCH_ADOPTION_PLAN.md.")
     public func fetchResolutionLevel(jpipURI: URL, level: Int, layers: Int? = nil) async throws -> DICOMJPIPImage {
         #if canImport(JPIP)
         let imageID = jpipURI.lastPathComponent

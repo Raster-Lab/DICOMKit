@@ -121,11 +121,18 @@ let package = Package(
             name: "dicom-echo",
             targets: ["dicom-echo"]
         ),
-        // Phase 1 scope: exclude dicom-print because it is outside JPEG 2000 validation.
-        // .executable(
-        //     name: "dicom-print",
-        //     targets: ["dicom-print"]
-        // ),
+        // Re-enabled 2026-07-22 (owner approved) after the print enhancement plan
+        // Milestones A–C/E brought the tool to production-grade; previously excluded
+        // under Phase-1 (JPEG 2000 validation) scope.
+        .executable(
+            name: "dicom-print",
+            targets: ["dicom-print"]
+        ),
+        // The receiving half of dicom-print: the printer emulator, headless.
+        .executable(
+            name: "dicom-printscp",
+            targets: ["dicom-printscp"]
+        ),
         .executable(
             name: "dicom-mwl",
             targets: ["dicom-mwl"]
@@ -201,6 +208,14 @@ let package = Package(
         //     name: "dicom-server",
         //     targets: ["dicom-server"]
         // ),
+        .library(
+            name: "DICOMRenderKit",
+            targets: ["DICOMRenderKit"]
+        ),
+        .library(
+            name: "DICOMPrintKit",
+            targets: ["DICOMPrintKit"]
+        ),
         .library(
             name: "DICOMStudio",
             targets: ["DICOMStudio"]
@@ -287,6 +302,44 @@ let package = Package(
         .target(
             name: "DICOMToolbox"
         ),
+        // GPU frame rendering (GPU_RENDERING_PLAN.md). A separate target so the
+        // headless dicom-* executables never link Metal and CI without a GPU is
+        // unaffected — only DICOMStudio depends on it. Sits above DICOMKit
+        // because the CPU fallback IS PixelDataRenderer.
+        .target(
+            name: "DICOMRenderKit",
+            dependencies: ["DICOMCore", "DICOMKit"],
+            // The shader ships as a resource and is compiled once per process,
+            // NOT as a source file. This toolchain's SwiftPM silently ignores
+            // `.metal` in a target's sources: it emits no `default.metallib` and
+            // no resource bundle at all (verified with a minimal probe package).
+            // Declaring it here is what creates `Bundle.module`, and it keeps one
+            // source of truth for the kernels. See MetalRenderDevice.loadLibrary.
+            //
+            // The `.txt` suffix is load-bearing. Xcode's build system does NOT
+            // share command-line SwiftPM's indifference to `.metal`: it applies
+            // its CompileMetalFile rule on extension alone, even to a file
+            // declared here as a resource, and then fails the build outright when
+            // the separately-downloadable Metal Toolchain component is absent
+            // ("cannot execute tool 'metal'"). Naming the file so no build rule
+            // matches keeps `swift build`, `xcodebuild` and CI on the identical
+            // runtime-compile path and leaves the toolchain download optional.
+            resources: [.copy("Metal/FrameRender.metal.txt")]
+        ),
+        // Shared DICOM Print core: image preparation, job options, workflow
+        // orchestration, and console formatting used by BOTH the dicom-print CLI
+        // and DICOMStudio. It sits above DICOMKit (pixel decode/preprocess) and
+        // DICOMNetwork (Print SCU DIMSE), which is why it is its own target —
+        // DICOMKit itself must not gain a networking dependency.
+        .target(
+            name: "DICOMPrintKit",
+            dependencies: [
+                "DICOMCore",
+                "DICOMDictionary",
+                "DICOMKit",
+                "DICOMNetwork"
+            ]
+        ),
         .testTarget(
             name: "DICOMCoreTests",
             dependencies: [
@@ -341,20 +394,48 @@ let package = Package(
                 "CompressionManagerMetricsTests.swift",
                 "CompressionManagerJPEGEngineTests.swift",
                 "CompressionManagerPhotometricInterpretationTests.swift",
+                "DICOMFilePixelDataYBRDecodeTests.swift",
                 "LossyImageCompressionAttributesTests.swift",
                 "CompressedPreviewRenderParityTests.swift",
                 "CompressionConsoleTests.swift",
                 "ExportWindowParityTests.swift",
+                // GPU_RENDERING_PLAN.md M1: the WindowLUT ⇄ scalar-chain equality
+                // gate. (The benchmark harness lives in DICOMRenderKitTests, which
+                // can reach both backends.)
+                "WindowLUTParityTests.swift",
                 "EncapsulatedPixelDataWriteTests.swift",
+                // RESEARCH_ADOPTION_PLAN.md M0: parser resource limits + mutation fuzz.
+                "ParserLimitTests.swift",
+                // RESEARCH_ADOPTION_PLAN.md copy map: slice-independence guards at the
+                // public Data boundary (parser); companion to DICOMCoreTests/CodecFuzzTests.
+                "SliceIndependenceTests.swift",
+                // PS3.3 C.11.1: Modality LUT Sequence precedence over slope/intercept.
+                "ModalityLUTPrecedenceTests.swift",
+                // PS3.15 Annex E Basic Application Level Confidentiality Profile engine.
+                "ConfidentialityProfileTests.swift",
+                // PS3.15 Annex E Clean Pixel Data Option (113101): region planning,
+                // blanking mechanism, and earned attestation.
+                "PixelRedactionTests.swift",
+                // ECOSYSTEM_COMPARISON.md §5 cross-toolkit bug-scenario matrix.
+                "CrossToolkitMatrixTests.swift",
+                // RESEARCH_ADOPTION_PLAN.md M2: selected-frame access + frame index.
+                "FrameAccessTests.swift",
+                // RESEARCH_ADOPTION_PLAN.md M1: benchmark baseline runner
+                // (skips unless DICOM_BENCHMARK_BASELINE=1).
+                "BenchmarkBaselineTests.swift",
                 "WaveformParseRegressionTests.swift",
                 "OutputPathResolverTests.swift",
                 "PerformanceTests/SIMDImageProcessorTests.swift"
             ]
         ),
-        // .testTarget(
-        //     name: "DICOMNetworkTests",
-        //     dependencies: ["DICOMNetwork"]
-        // ),
+        .testTarget(
+            name: "DICOMNetworkTests",
+            dependencies: ["DICOMNetwork", "DICOMCore", "DICOMKit"],
+            // PACSIntegrationTests requires a live PACS and has drifted from the
+            // current DICOMCore API (Tag(group:element:) labels, DataSet, audit
+            // logger types). Quarantined from the unit-test target until ported.
+            exclude: ["PACSIntegrationTests.swift"]
+        ),
         // Security-critical, no-network regression coverage stays enabled even
         // while the broader legacy DICOMNetworkTests target remains out of scope.
         .testTarget(
@@ -364,6 +445,12 @@ let package = Package(
         .testTarget(
             name: "DICOMWebTests",
             dependencies: ["DICOMWeb", "DICOMKit"]
+        ),
+        // Film composition and output sinks (Print SCP Milestones C/D), plus
+        // the emulator end-to-end: SCU → Print SCP → composer → sink.
+        .testTarget(
+            name: "DICOMPrintKitTests",
+            dependencies: ["DICOMPrintKit", "DICOMNetwork", "DICOMCore"]
         ),
         .testTarget(
             name: "DICOMToolboxTests",
@@ -644,18 +731,33 @@ let package = Package(
             path: "Sources/dicom-echo",
             exclude: ["README.md"]
         ),
-        // Phase 1 scope: exclude dicom-print because it is outside JPEG 2000 validation.
-        // .executableTarget(
-        //     name: "dicom-print",
-        //     dependencies: [
-        //         "DICOMKit",
-        //         "DICOMCore",
-        //         "DICOMNetwork",
-        //         .product(name: "ArgumentParser", package: "swift-argument-parser")
-        //     ],
-        //     path: "Sources/dicom-print",
-        //     exclude: ["README.md"]
-        // ),
+        // Re-enabled 2026-07-22 (owner approved) — see the matching product entry above.
+        .executableTarget(
+            name: "dicom-print",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMNetwork",
+                "DICOMPrintKit",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-print",
+            exclude: ["README.md"]
+        ),
+        // Milestone F of DICOM_PRINT_SCP_PLAN.md — a thin shell over the same
+        // DICOMPrintKit types DICOM Studio's Print SCP screen runs.
+        .executableTarget(
+            name: "dicom-printscp",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMNetwork",
+                "DICOMPrintKit",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-printscp",
+            exclude: ["README.md"]
+        ),
         .executableTarget(
             name: "dicom-mwl",
             dependencies: [
@@ -864,51 +966,28 @@ let package = Package(
                 "DICOMCore",
                 "DICOMDictionary",
                 "DICOMNetwork",
+                "DICOMPrintKit",
+                // GPU frame rendering, with the CPU renderer as the fallback.
+                "DICOMRenderKit",
                 "DICOMWeb"
             ],
             path: "Sources/DICOMStudio",
-            exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"],
-            resources: [
-                // Bundled CLI-parity data read by the in-app CLI Automation
-                // Testing screen (Swift-native, no runtime exec).
-                // Regenerate with: swift run cli-parity-gen
-                .copy("Resources/CLIParity")
-            ]
+            exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"]
         ),
-        // Developer tool (not shipped): dumps the Studio CLI Workshop tool
-        // catalog to JSON for the CLI parity harness (Scripts/cli-parity.sh).
-        .executableTarget(
-            name: "studio-cli-introspect",
-            dependencies: ["DICOMStudio"],
-            path: "Sources/studio-cli-introspect"
-        ),
-        // Developer tool (not shipped): emits a per-tool CLI↔DICOMStudio parity
-        // matrix (docs/cli-parity/<tool>.md) — every flag's input-contract parity
-        // + output-behavior success/drift/coverage — computed in-process from the
-        // bundled CLIContracts.json + goldens (no binary dumping). See the plan.
-        .executableTarget(
-            name: "cli-parity-docs",
-            dependencies: ["DICOMStudio"],
-            path: "Sources/cli-parity-docs"
-        ),
-        // Developer tool (not shipped): regenerates the bundled CLI-parity data
-        // (CLIContracts.json, fixture.dcm, goldens.json) read by the in-app
-        // CLI Automation Testing screen. See Scripts/CLI-PARITY-README.md.
-        .executableTarget(
-            name: "cli-parity-gen",
-            dependencies: ["DICOMKit", "DICOMCore", "DICOMStudio"],
-            path: "Sources/cli-parity-gen"
+        .testTarget(
+            name: "DICOMRenderKitTests",
+            dependencies: ["DICOMRenderKit", "DICOMCore", "DICOMKit"]
         ),
         .testTarget(
             name: "DICOMStudioTests",
-            dependencies: ["DICOMStudio", "DICOMWeb"]
-        ),
-        // Tier-2 output-parity harness: drives the in-app Studio reimplementations
-        // (CLIWorkshopViewModel.executeCommand) headlessly against the bundled
-        // CLI goldens and diffs the normalized output. See Scripts/CLI-PARITY-TIER2-PLAN.md.
-        .testTarget(
-            name: "StudioParityTests",
-            dependencies: ["DICOMStudio"]
+            // DICOMPrintKit: the viewer-presentation geometry and film-pixel
+            // transform the print path bakes into marks.
+            dependencies: ["DICOMStudio", "DICOMWeb", "DICOMPrintKit", "DICOMNetwork"],
+            resources: [
+                // Small synthetic DICOM the print tests render (see
+                // StudioTestFixtures). PHI-free — generated, not patient data.
+                .copy("Fixtures")
+            ]
         ),
         .testTarget(
             name: "dicom-j2kTests",

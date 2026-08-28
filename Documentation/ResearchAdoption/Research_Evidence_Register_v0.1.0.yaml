@@ -1,0 +1,326 @@
+title: DICOM and Medical Imaging Performance, Memory and Compression Research Evidence Register
+version: 0.1.0
+status: Supporting evidence register — proposed; human review required
+controlled_date: '2026-08-09'
+language: en-GB
+rules:
+- Published speed-ups and compression ratios are not additive and are not forecasts for Raster Images
+  projects.
+- Normative DICOM and codec requirements take precedence over implementation research.
+- Lossy or approximate representations may not supply diagnostic pixels, measurements, AI inputs or evidence-bearing
+  captures without separate validation and authorisation.
+- Every implementation claim must identify the exact dataset, host, build, toolchain, iteration method
+  and statistical summary.
+evidence:
+- id: E01
+  title: 'Residency Octree: A Hybrid Approach for Scalable Web-Based Multi-Volume Rendering'
+  year: 2023
+  type: peer-reviewed/preprint research
+  evidence_class: direct for WebGPU volume rendering; transferable to Metal
+  url: https://arxiv.org/abs/2309.04393
+  adoption: Multiresolution bricks, resolution-independent spatial hierarchy, bounded residency, lower-resolution
+    substitution, adaptive sampling and empty-space skipping.
+  caveat: Published results are workload- and implementation-specific; dense volumes may benefit less
+    than sparse or multichannel volumes.
+- id: E02
+  title: Fast Compressed Segmentation Volumes for Scientific Visualization
+  year: 2023
+  type: peer-reviewed/preprint research
+  evidence_class: direct for label-volume storage and GPU visualisation
+  url: https://arxiv.org/abs/2308.16619
+  adoption: Lossless brick-local label compression, bounded decoded-brick cache and on-demand decompression.
+  caveat: Reported ratios compare against dense expanded labels; already bit-packed DICOM SEG objects
+    are a different baseline.
+- id: E03
+  title: Speculative Progressive Raycasting for Memory Constrained Isosurface Visualization of Massive
+    Volumes
+  year: 2023
+  type: peer-reviewed/preprint research
+  evidence_class: direct for memory-constrained GPU isosurface rendering
+  url: https://arxiv.org/abs/2309.10212
+  adoption: Progressive implicit isosurface rendering from compressed blocks without first materialising
+    a complete surface mesh.
+  caveat: Use for interactive preview; exported geometry and measurements still require deterministic
+    full-resolution processing.
+- id: E04
+  title: Towards Resource-Efficient Streaming of Large-Scale Medical Image Datasets for Deep Learning
+  year: 2025
+  type: medical-imaging research
+  evidence_class: direct for progressive medical-image transport; adjacent to diagnostic viewers
+  url: https://arxiv.org/abs/2307.00438
+  adoption: Progressive HTJ2K subresolution delivery and a single high-resolution authoritative source.
+  caveat: The study targets dataset access, not diagnostic viewer qualification; its speed and bandwidth
+    figures are not viewer forecasts.
+- id: E05
+  title: DICOM PS3.5 §8.2.14 — High-Throughput JPEG 2000 Image Compression
+  year: 2026
+  type: normative standard
+  evidence_class: normative
+  url: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_8.2.14.html
+  adoption: Lossless HTJ2K, lossless RPCL progressive-display syntax and potentially lossy HTJ2K transfer
+    syntax governance.
+  caveat: Clinical acceptability of lossy compression is outside the DICOM Standard and requires product-specific
+    governance.
+- id: E06
+  title: DICOM PS3.5 §8.2.15 — JPEG XL Image Compression
+  year: 2026
+  type: normative standard
+  evidence_class: normative
+  url: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_8.2.15.html
+  adoption: JPEG XL lossless, reversible JPEG recompression and potentially lossy JPEG XL transfer syntaxes.
+  caveat: Transfer-syntax attributes and codestream characteristics must remain consistent; lossy use
+    needs separate clinical policy.
+- id: E07
+  title: 'Llamas on the Web: Memory-Efficient, Performance-Portable, and Multi-Precision LLM Inference
+    with WebGPU'
+  year: 2026
+  type: systems research
+  evidence_class: adjacent WebGPU evidence
+  url: https://arxiv.org/abs/2605.20706
+  adoption: Static lifetime planning, preallocated arenas, tunable kernels and device-specific execution
+    profiles.
+  caveat: The workload is LLM inference; published percentages must not be transferred to imaging.
+- id: E08
+  title: 'Terascale Query Processing in the Browser: Rethinking GPU Acceleration'
+  year: 2026
+  type: systems research
+  evidence_class: adjacent WebGPU evidence
+  url: https://arxiv.org/abs/2607.17571
+  adoption: GPU-generated work, compacted queues and indirect dispatch to remove repeated GPU-to-host
+    synchronisation.
+  caveat: The workload is database processing; only the scheduling and synchronisation pattern is transferable.
+- id: E09
+  title: 'Apple vs. Oranges: Evaluating the Apple Silicon M-Series SoCs for HPC Performance and Efficiency'
+  year: 2025
+  type: platform performance research
+  evidence_class: direct Apple Silicon architecture evidence
+  url: https://arxiv.org/abs/2502.05317
+  adoption: Treat unified memory as shared bandwidth; select CPU, Accelerate and Metal by arithmetic intensity,
+    locality, precision and concurrency.
+  caveat: Synthetic STREAM/SGEMM results do not predict medical-imaging kernels; Apple GPU FP64 limitations
+    require explicit precision policy.
+- id: E10
+  title: 'BaseRT: Best-in-Class LLM Inference on Apple Silicon via Native Metal'
+  year: 2026
+  type: systems research
+  evidence_class: adjacent Metal evidence
+  url: https://arxiv.org/abs/2607.00501
+  adoption: Native Metal execution, chip-aware dispatch, kernel fusion and unified-memory-aware scheduling.
+  caveat: The workload is LLM inference; reported throughput gains are not imaging forecasts.
+- id: E11
+  title: 'From 8 Seconds to 370 ms: Kernel-Fused SAR Imaging on Apple Silicon via Single-Dispatch FFT
+    Pipelines'
+  year: 2026
+  type: imaging/systems research
+  evidence_class: adjacent imaging evidence on Metal
+  url: https://arxiv.org/abs/2604.03585
+  adoption: Measure fusion where intermediate arrays can remain in registers or threadgroup memory and
+    device-memory traffic dominates.
+  caveat: Its single workload and 22× result are not transferable; fusion can regress performance through
+    occupancy and reuse loss.
+- id: E12
+  title: 'SE-0447 — Span: Safe Access to Contiguous Storage'
+  year: 2025
+  type: official Swift language evolution
+  evidence_class: platform
+  url: https://github.com/swiftlang/swift-evolution/blob/main/proposals/0447-span-access-shared-contiguous-storage.md
+  adoption: Borrowed, bounds-checked access to contiguous parsing and codec buffers without creating arrays
+    or Data slices.
+  caveat: Lifetime and deployment constraints must be respected; unchecked access remains unsafe and must
+    be isolated.
+- id: E13
+  title: SE-0453 — InlineArray, a fixed-size array
+  year: 2025
+  type: official Swift language evolution
+  evidence_class: platform
+  url: https://github.com/swiftlang/swift-evolution/blob/main/proposals/0453-vector.md
+  adoption: Fixed-size tables and small codec/parser state without implicit heap allocation.
+  caveat: Do not use very large inline values or introduce accidental copies; confirm generated code and
+    stack pressure.
+- id: E14
+  title: Improve memory usage and performance with Swift — WWDC25
+  year: 2025
+  type: official Apple engineering guidance
+  evidence_class: platform
+  url: https://developer.apple.com/videos/play/wwdc2025/312/
+  adoption: Algorithm-first optimisation, allocation reduction, ownership control, Span and InlineArray.
+  caveat: Measure all changes with release builds and Instruments; language features are tools, not automatic
+    speed-ups.
+- id: E15
+  title: Streaming large images with Metal sparse textures
+  year: 2026
+  type: official Apple documentation
+  evidence_class: platform
+  url: https://developer.apple.com/documentation/metal/streaming-large-images-with-metal-sparse-textures
+  adoption: Fine-grained texture residency and fixed-budget streaming for very large images and volumes.
+  caveat: Availability and placement-sparse support vary by GPU family and OS; maintain a portable atlas
+    fallback.
+- id: E16
+  title: Simplifying GPU resource management with residency sets
+  year: 2026
+  type: official Apple documentation
+  evidence_class: platform
+  url: https://developer.apple.com/documentation/metal/simplifying-gpu-resource-management-with-residency-sets
+  adoption: Group and prepare buffers, textures and heaps for GPU residency without per-resource critical-path
+    churn.
+  caveat: Use only after feature detection and profiling; fewer, larger sets are generally preferable
+    to excessive churn.
+- id: E17
+  title: Loading textures and models using Metal fast resource loading
+  year: 2026
+  type: official Apple documentation
+  evidence_class: platform
+  url: https://developer.apple.com/documentation/metal/loading-textures-and-models-using-metal-fast-resource-loading
+  adoption: Evaluate direct storage-to-Metal-resource loading for derived brick caches on supported macOS
+    systems.
+  caveat: This is not a universal path across all Apple platforms; retain a validated CPU staging path.
+- id: E18
+  title: High Throughput Block Coding in the HTJ2K Compression Standard
+  year: 2019
+  type: codec research
+  evidence_class: direct JPEG 2000 codec evidence
+  url: https://doi.org/10.1109/ICIP.2019.8803774
+  adoption: HT block-coder implementation, code-block parallelism and reversible transcoding between legacy
+    and HT block coding where permitted.
+  caveat: Interoperability, progression order and exact codestream semantics remain normative.
+- id: E19
+  title: Cache-Efficient Wavelet Lifting in JPEG 2000
+  year: 2002
+  type: codec performance research
+  evidence_class: direct but older JPEG 2000 evidence
+  url: https://congres.cran.univ-lorraine.fr/2002/ICME_2002/icme2002/Papers/cr1484250933280.pdf
+  adoption: Line/stripe processing, cache-aware layouts, loop tiling and reduced intermediate working
+    sets for DWT.
+  caveat: Older hardware results are not forecasts, but memory-locality principles remain relevant.
+- id: E20
+  title: Benchmarking JPEG XL lossy/lossless image compression
+  year: 2020
+  type: codec research
+  evidence_class: direct JPEG XL evidence
+  url: https://research.google/pubs/benchmarking-jpeg-xl-lossylossless-image-compression/
+  adoption: Multicore/SIMD-oriented task decomposition, group-level scheduling and benchmark parity against
+    libjxl.
+  caveat: Reference implementation architecture does not automatically map to pure Swift or Metal; standards
+    compliance is primary.
+- id: E21
+  title: 'Recoil: Parallel rANS Decoding with Decoder-Adaptive Scalability'
+  year: 2023
+  type: entropy-coding research
+  evidence_class: adjacent rANS evidence
+  url: https://arxiv.org/abs/2306.12141
+  adoption: Investigate adaptive parallel decoding only at codestream boundaries or with metadata that
+    remains standards-compatible.
+  caveat: Do not modify a standard JPEG XL codestream or add private metadata merely to copy the paper;
+    first exploit existing independent groups and streams.
+- id: E22
+  title: Multi-volume rendering using depth buffers for surgical planning in virtual reality
+  year: 2025
+  type: medical visualisation research
+  evidence_class: direct for independently transformable medical volumes
+  url: https://doi.org/10.1007/s11548-025-03432-y
+  adoption: Depth-termination exchange between consecutive volume passes to avoid repeated resampling
+    of independently movable structures.
+  caveat: Most useful when volumes move independently; fixed co-registered channels may be faster in one
+    traversal.
+- id: E23
+  title: Quantifying Energy Reduction of Foveated Volume Visualization
+  year: 2025
+  type: visualisation research
+  evidence_class: direct for foveated volume rendering energy
+  url: https://doi.org/10.1145/3715669.3725881
+  adoption: Measure whole-system energy and frame-time effects of variable-rate or sparse peripheral sampling.
+  caveat: Eye-tracker cost, latency, clinical target visibility and capture semantics must be included.
+- id: E24
+  title: Towards Understanding Depth Perception in Foveated Rendering
+  year: 2025
+  type: perceptual research
+  evidence_class: adjacent to spatial medical visualisation
+  url: https://arxiv.org/abs/2501.18635
+  adoption: Use perceptually bounded foveation as a hypothesis for interactive spatial exploration.
+  caveat: The study is not diagnostic validation; clinical annotations, measurements and evidence captures
+    require full-quality presentation.
+- id: E25
+  title: Random Access Segmentation Volume Compression for Efficient Visualization and Processing
+  year: 2025
+  type: visualisation research
+  evidence_class: direct for label-volume random access
+  url: https://doi.org/10.1111/cgf.70116
+  adoption: True voxel-level random access over compressed segmentation volumes where workloads need finer
+    access than brick decompression.
+  caveat: Compare against brick-local CSGV on real DICOM SEG workloads; complexity may not justify universal
+    adoption.
+- id: E26
+  title: GPU Volume Rendering with Hierarchical Compression Using VDB
+  year: 2025
+  type: visualisation research
+  evidence_class: research-only for diagnostic products
+  url: https://arxiv.org/abs/2504.04564
+  adoption: Borrow hierarchy and on-demand decompression concepts for exact derived caches.
+  caveat: The proposed representation is lossy and must not become the diagnostic source substrate.
+- id: E27
+  title: 'NeuralVDB: High-resolution Sparse Volume Representation using Hierarchical Neural Networks'
+  year: 2024
+  type: visualisation/compression research
+  evidence_class: research-only for diagnostic products
+  url: https://doi.org/10.1145/3641817
+  adoption: Monitor for cinematic preview, education or constrained remote collaboration.
+  caveat: Approximate reconstruction and training make it unsuitable for diagnostic pixels, measurements,
+    AI inputs or evidence-bearing captures.
+- id: E28
+  title: 'Volume Encoding Gaussians: Transfer Function-Agnostic 3D Gaussians for Volume Rendering'
+  year: 2026
+  type: visualisation research
+  evidence_class: research-only for diagnostic products
+  url: https://arxiv.org/abs/2504.13339
+  adoption: Monitor transfer-function-independent approximate scene representations for non-diagnostic
+    preview.
+  caveat: It remains an approximate trained representation, not an exact medical voxel store.
+- id: E29
+  title: JPEG-LS — ISO/IEC 14495 / ITU-T T.87 and T.870 overview
+  year: 2026
+  type: official JPEG committee standards overview
+  evidence_class: normative-adjacent standards overview
+  url: https://jpeg.org/jpegls/
+  adoption: Preserve causal prediction, adaptive contexts, run mode and exact lossless/near-lossless semantics
+    while optimising storage and conformant independent boundaries.
+  caveat: The overview does not define a software parallelisation strategy; the standards remain normative.
+- id: E30
+  title: Parallel design of JPEG-LS encoder on graphics processing units
+  year: 2012
+  type: codec/GPU research
+  evidence_class: direct but older JPEG-LS parallelisation evidence
+  url: https://doi.org/10.1117/1.JRS.6.061508
+  adoption: Evaluate independent block or restart-segment processing, batched memory access and explicit
+    output compaction costs.
+  caveat: The paper changes block organisation and reports a compression-ratio trade-off; its CUDA speed-up
+    is not transferable to Apple Silicon or a standard DICOM codestream.
+- id: E31
+  title: 'UH-JLS: A Parallel Ultra-High Throughput JPEG-LS Encoding Architecture for Lossless Image Compression'
+  year: 2021
+  type: codec/hardware architecture research
+  evidence_class: adjacent JPEG-LS scheduling evidence
+  url: https://doi.org/10.1109/ICCD53106.2021.00060
+  adoption: Borrow dependency-aware pipelining, compact fixed state and bounded in-flight work as software
+    hypotheses.
+  caveat: An FPGA pixel pipeline is not a direct Swift or CPU/GPU implementation; standards and supported
+    bit-depth/component profiles must be checked independently.
+- id: E32
+  title: The JPEG XL Image Coding System
+  year: 2025
+  type: codec architecture research
+  evidence_class: direct JPEG XL format and implementation evidence
+  url: https://arxiv.org/abs/2506.05987
+  adoption: Use existing DC/AC groups, passes and tables of contents for standards-preserving parallel,
+    progressive and region-selective processing.
+  caveat: Reference implementation techniques must be reconciled with pure Swift, conformance and current
+    JXLSwift feature completeness.
+- id: E33
+  title: Accelerating JPEG Decompression on GPUs
+  year: 2021
+  type: codec/GPU research
+  evidence_class: direct for a supported subset of Huffman JPEG; adjacent to Apple Metal
+  url: https://arxiv.org/abs/2111.09219
+  adoption: Research chunk discovery and GPU entropy decode only as a controlled subset experiment after
+    safer restart and transform parallelism.
+  caveat: The implementation targets NVIDIA GPUs and an important subset of JPEG; reported speed-ups do
+    not predict JLISwift or complete JPEG/DICOM workloads.

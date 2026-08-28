@@ -188,13 +188,33 @@ public enum DIMSEStatus: Sendable, Hashable {
              .failedMoveDestinationUnknown:
             return true
         case .unknown(let code):
-            // Status codes 0x0001-0x00FF and 0xA000-0xAFFF are failures
-            return (code >= 0x0001 && code <= 0x00FF) || (code >= 0xA000 && code <= 0xAFFF)
+            // 0x0001-0x00FF and 0xA000-0xAFFF are failures, except 0x0001,
+            // which PS3.7 C.4.3 defines as a warning ("Requested optional
+            // Attributes are not supported").
+            //
+            // 0x0100-0x0FFF is the DIMSE-N failure block (PS3.7 Annex C:
+            // 0x0105 no such attribute, 0x0106 invalid attribute value,
+            // 0x0110 processing failure, 0x0112 no such SOP Instance,
+            // 0x0117 invalid object instance, 0x0120 missing attribute …),
+            // minus the two warnings carved out in `isWarning`.
+            if code == 0x0001 { return false }
+            if code >= 0x0001 && code <= 0x00FF { return true }
+            if code >= 0x0100 && code <= 0x0FFF { return !Self.dimseNWarningCodes.contains(code) }
+            return code >= 0xA000 && code <= 0xAFFF
         default:
             return false
         }
     }
-    
+
+    /// DIMSE-N status codes in the 0x01xx block that are warnings, not failures.
+    ///
+    /// Reference: PS3.7 Annex C — 0x0107 Attribute List Error, 0x0116 Attribute
+    /// Value Out of Range. Everything else in the block is a failure; in
+    /// particular **0x0106 (Invalid Attribute Value) is a failure**, and treating
+    /// it as a warning made an SCU sail past a printer's rejection of, say, an
+    /// unsupported Medium Type and fail confusingly two operations later.
+    private static let dimseNWarningCodes: Set<UInt16> = [0x0107, 0x0116]
+
     /// Whether this is a warning status
     public var isWarning: Bool {
         switch self {
@@ -202,11 +222,12 @@ public enum DIMSEStatus: Sendable, Hashable {
              .warningElementsDiscarded:
             return true
         case .unknown(let code):
-            // Status codes 0xB000-0xBFFF are warnings
-            // Status codes 0x0001, 0x0106, 0x0107 are DIMSE-N warnings
-            // (PS3.7 Table CC.2.8-2: Attribute Value Out of Range, Attribute List Error)
+            // 0xB000-0xBFFF are warnings, plus the DIMSE-N warnings
+            // 0x0001 (optional attributes not supported), 0x0107 (attribute
+            // list error) and 0x0116 (attribute value out of range).
             return (code >= 0xB000 && code <= 0xBFFF)
-                || code == 0x0001 || code == 0x0106 || code == 0x0107
+                || code == 0x0001
+                || Self.dimseNWarningCodes.contains(code)
         default:
             return false
         }

@@ -6,6 +6,7 @@
 #if canImport(SwiftUI)
 import SwiftUI
 import DICOMCore
+import DICOMRenderKit
 
 // MARK: - J2KTestingView
 
@@ -86,6 +87,7 @@ public struct J2KTestingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 backendsSection
+                renderBackendsSection
                 syntaxMatrixSection
                 Divider()
                 codecInspectorSection
@@ -119,6 +121,48 @@ public struct J2KTestingView: View {
             }
         } label: {
             Label("Codec Backends", systemImage: "cpu").font(.headline)
+        }
+    }
+
+    /// The *display* render backend, beside the codec one.
+    ///
+    /// Two different questions that both matter when a support call starts with
+    /// "it's slow" or "the picture looks wrong": which backend decompressed the
+    /// pixels, and which one windowed them for the screen. They are chosen
+    /// independently — a file can be decoded on the GPU and rendered on the CPU, or
+    /// the reverse — so showing only the codec backend answers half of it.
+    private var renderBackendsSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(RenderBackend.allCases, id: \.self) { backend in
+                    let available = backend.isAvailable
+                    let isActive = backend == FrameRenderService.shared.activeBackend
+                    HStack(spacing: 8) {
+                        Image(systemName: available ? "checkmark.circle.fill" : "xmark.circle")
+                            .foregroundStyle(available ? .green : .secondary)
+                        Text(backend.displayName)
+                            .font(.system(size: StudioTypography.captionSize + 1))
+                        if isActive && available {
+                            Text("ACTIVE")
+                                .font(.system(size: StudioTypography.captionSize - 1, weight: .bold))
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Color.green.opacity(0.2))
+                                .clipShape(Capsule())
+                                .foregroundStyle(.green)
+                        }
+                        Spacer()
+                    }
+                }
+                Text("Every frame the GPU can render goes to the GPU, at any size. "
+                     + "YBR colour and auto-windowed frames render on the CPU, as do "
+                     + "all frames when there is no Metal device. "
+                     + "Set DICOMKIT_RENDER_BACKEND=cpu to force it.")
+                    .font(.system(size: StudioTypography.captionSize - 1))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } label: {
+            Label("Render Backends", systemImage: "photo.on.rectangle.angled").font(.headline)
         }
     }
 

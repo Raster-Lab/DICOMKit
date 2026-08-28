@@ -533,19 +533,30 @@ public final class Association: @unchecked Sendable {
         _ = stateMachine.handleEvent(.localReleaseRequest)
         
         // Wait for A-RELEASE-RP with ARTIM timer
-        let responsePDU: any PDU
-        do {
-            responsePDU = try await receiveWithARTIMTimer(conn: conn)
-        } catch let error as DICOMNetworkError where error.isARTIMExpired {
-            _ = stateMachine.handleEvent(.artimTimerExpired)
-            // Send abort and close connection
-            let abortPDU = AbortPDU(source: .serviceProvider, reason: AbortReason.notSpecified.rawValue)
-            try? await conn.send(pdu: abortPDU)
-            conn.abort()
-            _ = stateMachine.handleEvent(.transportConnectionClosed)
-            throw error
+        var responsePDU: any PDU
+        while true {
+            do {
+                responsePDU = try await receiveWithARTIMTimer(conn: conn)
+            } catch let error as DICOMNetworkError where error.isARTIMExpired {
+                _ = stateMachine.handleEvent(.artimTimerExpired)
+                // Send abort and close connection
+                let abortPDU = AbortPDU(source: .serviceProvider, reason: AbortReason.notSpecified.rawValue)
+                try? await conn.send(pdu: abortPDU)
+                conn.abort()
+                _ = stateMachine.handleEvent(.transportConnectionClosed)
+                throw error
+            }
+
+            // P-DATA arriving in the release window (e.g. a late N-EVENT-REPORT
+            // pushed by a Print SCP) is legal — the acceptor may keep sending
+            // until it responds to the release. PS3.8 §7.2: the requestor
+            // discards such messages and keeps waiting for A-RELEASE-RP.
+            if responsePDU is DataTransferPDU {
+                continue
+            }
+            break
         }
-        
+
         switch responsePDU {
         case _ as ReleaseResponsePDU:
             _ = stateMachine.handleEvent(.releaseResponseReceived)

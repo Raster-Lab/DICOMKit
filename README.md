@@ -95,7 +95,12 @@ DICOMKit integrated **J2KSwift** as its primary JPEG 2000 codec stack in April 2
 - ✅ **J2KSwiftCodec** — Pure-Swift JPEG 2000 (`.90`/`.91`), Part 2 (`.92`/`.93`) encoding and decoding; cross-platform including Linux.
 - ✅ **HTJ2KCodec** — HTJ2K Lossless (`.201`), HTJ2K RPCL Lossless (`.202`), HTJ2K Lossy (`.203`); fast-path transcoder achieves **5.4× decode speedup** over J2K on macOS arm64.
 - ✅ **JP3DCodec** — ISO/IEC 15444-10 volumetric encoding for multi-frame CT/MR/PET series.
-- ✅ **JPIP streaming** — Progressive 2D and 3D tile streaming (`.94`/`.95`) via `DICOMJPIPClient`.
+- ⚠️ **JPIP streaming** — `.94`/`.95` transfer syntaxes are recognised and the JPIP target URI is
+  extracted from Pixel Data, but **retrieval is not yet functional**: every request path in the
+  upstream J2KSwift `JPIP` module (11.0.2) currently throws `notImplemented`, so
+  `DICOMJPIPClient.fetchImage` / `fetchRegion` / `fetchProgressiveQuality` /
+  `fetchResolutionLevel` — and therefore `dicom-jpip` — fail at runtime. Tracked in
+  `RESEARCH_ADOPTION_PLAN.md`.
 - ✅ **Hardware acceleration** — `CodecBackend` enum selects Metal (Apple GPU), Accelerate (SIMD), or scalar automatically.
 - ✅ **`dicom-j2k` CLI tool** — 8 subcommands: `info`, `validate`, `transcode`, `reduce`, `roi`, `benchmark`, `compare`, `completions`.
 - ✅ **DICOMStudio** — Progressive decoding (`.quarter → .half → .complete`), ROI on pinch-zoom, JP3D MPR views, JPIP quality-layer slider.
@@ -117,7 +122,7 @@ DICOMKit integrated **J2KSwift** as its primary JPEG 2000 codec stack in April 2
 | **📱 Demo Applications** | Production-ready viewers for iOS, macOS, and visionOS |
 | **⚡ Performance** | SIMD acceleration, memory mapping, connection pooling, and caching |
 | **🔒 Security** | TLS 1.2/1.3, OAuth2 support, audit logging, and HIPAA-compliant anonymization |
-| **✅ Thoroughly Tested** | 2,180+ unit tests with Swift 6 strict concurrency compliance |
+| **✅ Thoroughly Tested** | 7,300+ unit tests with Swift 6 strict concurrency compliance |
 
 ---
 
@@ -214,7 +219,7 @@ Each data element has:
 2. **Apple Platform Optimized**: Uses Accelerate framework, Metal-ready, supports all Apple platforms
 3. **Modern Concurrency**: Built from the ground up with Swift 6 strict concurrency
 4. **Complete Solution**: Single library for files, networking, web services, and CLI tools
-5. **Production Ready**: 2,180+ tests, comprehensive documentation, real-world validated
+5. **Production Ready**: 7,300+ tests, comprehensive documentation, real-world validated
 
 ## Features (v1.0)
 
@@ -1382,8 +1387,8 @@ Each data element has:
   - ✅ JPEG 2000 Lossy - 1.2.840.10008.1.2.4.91
   - ✅ JPEG 2000 Part 2 Lossless - 1.2.840.10008.1.2.4.92
   - ✅ JPEG 2000 Part 2 Lossy - 1.2.840.10008.1.2.4.93
-  - ✅ JPIP Referenced - 1.2.840.10008.1.2.4.94
-  - ✅ JPIP Referenced Deflate - 1.2.840.10008.1.2.4.95
+  - ⚠️ JPIP Referenced - 1.2.840.10008.1.2.4.94 (URI extraction only; retrieval not functional)
+  - ⚠️ JPIP Referenced Deflate - 1.2.840.10008.1.2.4.95 (URI extraction only; retrieval not functional)
   - ✅ HTJ2K Lossless - 1.2.840.10008.1.2.4.201
   - ✅ HTJ2K RPCL Lossless - 1.2.840.10008.1.2.4.202
   - ✅ HTJ2K Lossy - 1.2.840.10008.1.2.4.203
@@ -1500,26 +1505,27 @@ The following features have known limitations or are not yet implemented:
 | Category | Limitation | Status |
 |----------|------------|--------|
 | **Character Sets** | Extended character set conversion is read-only | ⚠️ Partial support via v1.0.9 |
-| **Transfer Syntaxes** | JPEG-LS not supported | ❌ Not planned |
 | **HTJ2K Lossy (`.203`)** | Partially validated; some edge cases unconfirmed | ⚠️ Non-blocking |
-| **DICOM Print** | Complete Print Management Service Class | ✅ v1.4.5 complete (all phases) |
-| **DICOM Storage Commitment** | Not implemented | ❌ Planned |
-| **DICOM Worklist Push** | Not implemented | ❌ Planned |
+| **JPIP (`.94`/`.95`)** | URI extraction only; retrieval unavailable (upstream J2KSwift JPIP stubs) | ❌ Blocked upstream — see RESEARCH_ADOPTION_PLAN.md F1 |
 | **Query/Retrieve Relational** | Basic Q/R only | ⚠️ No relational queries |
+| **Modality Worklist SCP** | SCU (`dicom-mwl`) only; no worklist server role | ❌ Planned |
+| **De-identification** | Profile removes a limited tag set, not the full PS3.15 Annex E table | ⚠️ In progress |
+| **IPv6** | DIMSE networking is IPv4-only | ❌ Planned |
 
 ### What Works Well
 
 ✅ **Fully Supported:**
 - All 31 DICOM Value Representations (VR)
-- 7+ Transfer Syntaxes including JPEG, JPEG2000, RLE
+- 29 Transfer Syntaxes including JPEG, JPEG-LS, JPEG 2000 (Part 1 & 2), HTJ2K, JPEG XL, JP3D, RLE
 - Complete DIMSE services (C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE)
+- Storage Commitment (SCU and SCP)
 - DICOMweb (QIDO-RS, WADO-RS, STOW-RS, UPS-RS)
 - Structured Reporting with 8 specialized builders
 - RT Structure Sets, Segmentation Objects, Parametric Maps
-- Presentation States (GSPS), Hanging Protocols
+- Presentation States (GSPS), Hanging Protocols, Modality LUT
 - TLS 1.2/1.3 with client certificates
-- Memory-mapped large file handling
-- 2,180+ comprehensive unit tests
+- Selected-frame and progressive decoding for large multi-frame objects
+- 7,300+ comprehensive unit tests
 
 These features may be added in future versions. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
 
@@ -2596,7 +2602,44 @@ let annotatedData = try await annotator.addAnnotations(
 )
 ```
 
+#### Print SCP — Printer Emulator (2026-07)
+
+DICOMKit also implements the **SCP** half of Print Management: `DICOMPrintServer`
+(`DICOMNetwork`) accepts print jobs from any Print SCU — modality, workstation or third-party
+tool — and `FilmComposer` (`DICOMPrintKit`) composes the finished film, which is delivered to
+one or more output sinks.
+
+```swift
+import DICOMNetwork
+import DICOMPrintKit
+
+let screen = ScreenSink()                       // live films, for on-screen display
+let handler = FilmComposingPrintHandler(
+    sink: CompositePrintSink([screen, PDFSink(directory: filmsURL)])
+)
+
+let server = DICOMPrintServer(
+    configuration: PrintSCPConfiguration(aeTitle: "DCMPRINT", port: 11112),
+    delegate: handler
+)
+try await server.start()
+
+for await film in await screen.filmStream() {
+    let info = film.info
+    print("\(info.filledImageBoxCount) images on \(info.filmSize) from \(info.callingAETitle)")
+}
+```
+
+- Full N-service support (N-CREATE / N-SET / N-GET / N-ACTION / N-DELETE / N-EVENT-REPORT)
+  across Film Session, Film Box, Grayscale/Color Image Box, Printer, Print Job, Presentation
+  LUT and Basic Annotation Box, with the PS3.4 H.4 lifecycle.
+- Explicit **and** Implicit VR Little Endian, including sequences and image-box `PixelData`.
+- Sinks: `ScreenSink`, `PDFSink`, `ImageSink` (PNG/TIFF), `PaperPrinterSink` (CUPS, opt-in),
+  composable via `CompositePrintSink`.
+- Verified against **DCMTK 3.7.0** in both directions.
+
 **Print Management Resources:**
+- 📄 [PRINT_CONFORMANCE.md](PRINT_CONFORMANCE.md) - Print conformance statement (SCU **and** SCP)
 - 📖 [Print Management Guide](Sources/DICOMNetwork/DICOMNetwork.docc/PrintManagementGuide.md) - Complete API reference
 - 📚 [Getting Started with Printing](Documentation/GettingStartedWithPrinting.md) - Beginner-friendly tutorial
 - 🔧 [Print Best Practices](Documentation/PrintWorkflowBestPractices.md) - Production patterns
@@ -5157,7 +5200,7 @@ DICOMKit implements the **DICOM Standard 2026a** published by NEMA. Below is a d
 | Part | Title | Coverage | Notes |
 |------|-------|----------|-------|
 | **PS3.3** | Information Object Definitions | ✅ Comprehensive | SR, GSPS, RT, Segmentation, Parametric Maps |
-| **PS3.5** | Data Structures and Encoding | ✅ Full | All VRs, 7+ Transfer Syntaxes |
+| **PS3.5** | Data Structures and Encoding | ✅ Full | All VRs, 29 Transfer Syntaxes |
 | **PS3.6** | Data Dictionary | ⚠️ Essential | Common tags + extensible dictionary |
 | **PS3.7** | Message Exchange | ✅ Full | All DIMSE-C and DIMSE-N services |
 | **PS3.8** | Network Communication | ✅ Full | Upper Layer Protocol, Presentation Contexts |
@@ -5181,8 +5224,8 @@ DICOMKit implements the **DICOM Standard 2026a** published by NEMA. Below is a d
 | 1.2.840.10008.1.2.4.91 | JPEG 2000 | ✅ | ✅ |
 | 1.2.840.10008.1.2.4.92 | JPEG 2000 Part 2 Lossless | ✅ | ✅ |
 | 1.2.840.10008.1.2.4.93 | JPEG 2000 Part 2 Lossy | ✅ | ✅ |
-| 1.2.840.10008.1.2.4.94 | JPIP Referenced | ✅ | ✅ |
-| 1.2.840.10008.1.2.4.95 | JPIP Referenced Deflate | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.94 | JPIP Referenced | ⚠️ URI only | ⚠️ URI only |
+| 1.2.840.10008.1.2.4.95 | JPIP Referenced Deflate | ⚠️ URI only | ⚠️ URI only |
 | 1.2.840.10008.1.2.4.201 | HTJ2K Lossless | ✅ | ✅ |
 | 1.2.840.10008.1.2.4.202 | HTJ2K RPCL Lossless | ✅ | ✅ |
 | 1.2.840.10008.1.2.4.203 | HTJ2K Lossy | ✅ | ⚠️ |
@@ -5225,7 +5268,7 @@ DICOMKit implements the **DICOM Standard 2026a** published by NEMA. Below is a d
 **Other Services:**
 - Verification SOP Class (C-ECHO)
 - Modality Performed Procedure Step (N-CREATE, N-SET)
-- Storage Commitment (planned)
+- Storage Commitment (N-ACTION / N-EVENT-REPORT, SCU and SCP)
 
 </details>
 

@@ -63,6 +63,29 @@ final class ExportWindowParityTests: XCTestCase {
         XCTAssertEqual(explicit.width, 400, accuracy: 0.001)
     }
 
+    /// A CT that declares two VOI pairs in one multi-valued element (a lung and a
+    /// soft-tissue window, `-600\50` / `1200\350`) must present at the first pair.
+    /// `windowSettings()` parses only a single DS and returns nil for these files,
+    /// so reading it alone silently discarded the VOI and auto-stretched the full
+    /// pixel range instead — a flat render that disagreed with the viewer.
+    func testFirstOfSeveralWindowsIsUsed() throws {
+        var els = ctElements().filter { $0.tag != .windowCenter && $0.tag != .windowWidth }
+        els.append(.string(tag: .windowCenter, vr: .DS, value: "-600\\50"))
+        els.append(.string(tag: .windowWidth, vr: .DS, value: "1200\\350"))
+        let data = try DICOMFile.create(dataSet: DataSet(elements: els),
+                                        transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid).write()
+        let file = try DICOMFile.read(from: data)
+        let pd = try XCTUnwrap(file.pixelData())
+
+        XCTAssertNil(file.windowSettings(), "precondition: the single-DS accessor cannot read a multi-valued VOI")
+
+        let window = DICOMImageExporter.determineWindowSettings(
+            from: file, pixelData: pd, frameIndex: 0, windowCenter: nil, windowWidth: nil)
+        // −600 HU through the −1024 intercept → stored 424.
+        XCTAssertEqual(window.center, 424, accuracy: 0.001, "the first VOI pair is the default presentation")
+        XCTAssertEqual(window.width, 1200, accuracy: 0.001)
+    }
+
     /// The exported raster (default + apply-window) must equal the viewer's render
     /// (file VOI window, rescale-adjusted).
     func testExportMatchesViewerRender() throws {
