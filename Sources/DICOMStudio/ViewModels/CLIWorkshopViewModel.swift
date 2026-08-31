@@ -3016,10 +3016,10 @@ private func executeDicomCompressCompress() async {
     let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
     // Shared backend resolution (same helper the CLI uses) — the preference is
     // both displayed AND forwarded into the engine (J2K/HTJ2K honor metal→GPU).
-    // Report the backend the encode will ACTUALLY use (not the best available
-    // hardware): `auto` runs the CPU encoder for lossless, so it must not claim
-    // "Metal (GPU)". A `--backend metal` lossless request is downgraded to CPU
-    // with an explanatory note.
+    // Report the backend selected for this codec's encode step, not merely the
+    // best available hardware. Auto uses Metal for lossy and lossless J2K/HTJ2K
+    // when Metal is available; forced Metal is downgraded only when unavailable
+    // or when the target codec has no GPU encode path.
     let backendPref = CompressionConsole.backendPreference(for: backendRaw)
     let resolvedBackend = CompressionConsole.compressBackend(codec: codec, preference: backendPref)
     let backendName = resolvedBackend.displayName

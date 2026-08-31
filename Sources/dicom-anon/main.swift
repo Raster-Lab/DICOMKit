@@ -308,7 +308,6 @@ struct DICOMAnon: ParsableCommand {
         // de-identification removes; planning afterwards would see a scrubbed data set
         // and match nothing. Both CTP and Presidio document this same ordering
         // dependency, so the order here is a correctness requirement, not a preference.
-        var pixelOutcome: PixelRedactor.Outcome?
         if cleanPixelData || !redactRegion.isEmpty {
             let editor = PixelEditor(verbose: false)
             let explicit = try redactRegion.map { spec -> PixelRedactionPlan.Region in
@@ -320,7 +319,6 @@ struct DICOMAnon: ParsableCommand {
                 fileData: fileData, plan: plan, fillValue: redactFill) {
                 fileData = redacted
                 dicomFile = try DICOMFile.read(from: redacted, force: force)
-                pixelOutcome = outcome
                 if verbose {
                     print(AnonConsole.pixelRedactionLines(outcome: outcome), terminator: "")
                 }

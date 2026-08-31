@@ -254,7 +254,7 @@ actor ServeSession {
         pendingReason = reason
         Task { [reason] in
             try? await Task.sleep(nanoseconds: Self.releaseGraceSeconds * 1_000_000_000)
-            await self.finish(reason: reason)
+            self.finish(reason: reason)
         }
     }
 

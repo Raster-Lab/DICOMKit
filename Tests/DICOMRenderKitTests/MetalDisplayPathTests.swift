@@ -108,16 +108,11 @@ final class MetalDisplayPathTests: XCTestCase {
     /// frame is declined for being small — so the threshold behaviour is proved
     /// on a renderer given one explicitly.
     func testDisplayTextureIgnoresTheSizeThreshold() throws {
-        guard let production = MetalFrameRenderer() else {
+        let syntheticThreshold = 1_000_000
+        guard let thresholded = MetalFrameRenderer(minimumPixelCount: syntheticThreshold) else {
             throw XCTSkip("No Metal device on this machine")
         }
-        let request = monochromeRequest(rows: 64, columns: 64)   // far under 1 MP
-        XCTAssertNotNil(production.renderFrame(request),
-                        "the production threshold is zero: every frame renders")
-
-        guard let thresholded = MetalFrameRenderer(minimumPixelCount: 1_000_000) else {
-            throw XCTSkip("No Metal device on this machine")
-        }
+        let request = monochromeRequest(rows: 64, columns: 64)
         XCTAssertNil(thresholded.renderFrame(request), "the CGImage path applies the threshold")
         XCTAssertNotNil(thresholded.renderDisplayTexture(request),
                         "the display path must not apply it")

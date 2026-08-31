@@ -125,14 +125,14 @@ public enum CompressionConsole {
     /// under `preference`, plus a note when an explicit `--backend metal` request
     /// is downgraded to the CPU.
     ///
-    /// GPU (Metal) encode is bit-exact only for *lossy* JPEG 2000 / HTJ2K; lossless
-    /// encodes and every non-J2K codec run on the CPU, and `auto` never dispatches
-    /// to the GPU — only an explicit `--backend metal` does. This mirrors
-    /// `J2KSwiftCodec.encodeFrame`'s GPU gate (via
+    /// GPU (Metal) encode supports lossy and lossless JPEG 2000 / HTJ2K. When
+    /// Metal is available, `auto` dispatches those codecs to the GPU; every
+    /// non-J2K codec and explicit `accelerate` / `scalar` request runs on the CPU.
+    /// An explicit `--backend metal` request is downgraded only when the codec is
+    /// not in the JPEG 2000 family or Metal is unavailable. This mirrors
+    /// `J2KSwiftCodec.encodeFrame`'s routing policy (via
     /// `CodecBackendPreference.effectiveEncodeBackend`) so the reported "Backend:"
-    /// line never disagrees with the path taken. Previously the preamble showed
-    /// `preference.effective.displayName` — the best *available* hardware — so
-    /// `auto` advertised "Metal (GPU)" even though the lossless encode ran on CPU.
+    /// line never disagrees with the path taken.
     public static func compressBackend(
         codec: String, preference: CodecBackendPreference
     ) -> (displayName: String, note: String?) {

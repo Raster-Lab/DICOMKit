@@ -153,4 +153,29 @@ final class J2KCodestreamInspectorTests: XCTestCase {
             XCTAssertTrue(reason.contains("multi-component transform"))
         }
     }
+
+    func test_decodeFrameAtResolution_refusesPart2MCTBeforePreview() async {
+        let descriptor = PixelDataDescriptor(
+            rows: 4,
+            columns: 4,
+            numberOfFrames: 1,
+            bitsAllocated: 8,
+            bitsStored: 8,
+            highBit: 7,
+            isSigned: false,
+            samplesPerPixel: 3,
+            photometricInterpretation: .rgb
+        )
+        let codec = J2KSwiftCodec(encodingTransferSyntaxUID: TransferSyntax.jpeg2000Part2.uid)
+        let data = Self.codestream(mainHeaderExtras: Self.mctSegment)
+
+        do {
+            _ = try await codec.decodeFrameAtResolution(data, descriptor: descriptor, level: 1)
+            XCTFail("expected reduced-resolution decode to reject Part-2 MCT")
+        } catch DICOMError.unsupportedTransferSyntax(let reason) {
+            XCTAssertTrue(reason.contains("multi-component transform"))
+        } catch {
+            XCTFail("expected unsupportedTransferSyntax, got \(error)")
+        }
+    }
 }

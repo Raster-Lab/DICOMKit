@@ -341,12 +341,12 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         // and `makeEncodingConfiguration` share the same plan so the config and
         // the encode API can never disagree (see J2K_ROUTING_ARCHITECTURE.md).
         //
-        // --backend metal → the J2KSwift GPU encode path; every other preference
-        // (auto/accelerate/scalar) runs the default CPU encoder. The planner's
-        // GPU policy (`gpuEncodeEligible`) now permits lossy AND lossless — the
-        // reversible GPU path is bit-exact since J2KSwift v11.0.1 (verified by the
-        // library's own lossless byte-identity tests). The `verifyEncodedRoundTrip`
-        // guard below stays as an unconditional backstop for every lossless encode.
+        // --backend metal, or auto when Metal is available, selects the J2KSwift
+        // GPU encode path; accelerate/scalar select the CPU path. The planner's
+        // GPU policy (`gpuEncodeEligible`) permits lossy AND lossless — the reversible
+        // GPU path is bit-exact since J2KSwift v11.0.1 (verified by the library's own
+        // lossless byte-identity tests). The `verifyEncodedRoundTrip` guard below
+        // stays as an unconditional backstop for every lossless encode.
         let plan = J2KRoutePlanner.planEncode(
             transferSyntaxUID: encodingTransferSyntaxUID,
             configuration: configuration
@@ -367,23 +367,7 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         throw DICOMError.unsupportedTransferSyntax("JPEG 2000 encoding requires J2KSwift support in this build")
         #endif
     }
-}
 
-private extension J2KSwiftCodec {
-    final class AsyncResultBox<T>: @unchecked Sendable {
-        var result: Result<T, Error>?
-    }
-
-    #if canImport(J2KCore) && canImport(J2KCodec)
-    // Every J2K encode/decode call (CPU or GPU) bridges through this synchronous
-    // DispatchSemaphore.wait(), which would otherwise block forever if
-    // `operation()` never completes. Confirmed on CI: the GPU forward 5/3 DWT
-    // path (`encodeGPU`) never returns on a virtualized macOS runner without a
-    // functional GPU, hanging the whole process (see
-    // J2KGPUEncodeRoundTripTests.part1_lossless_gray16_large, gated off CI). The
-    // same risk exists on any real machine where Metal/the GPU driver stalls
-    // mid-operation, so this bounds the wait and cancels the underlying task on
-    // expiry rather than blocking indefinitely with no way to recover.
     #if canImport(J2KCore) && canImport(J2KCodec)
     /// Decodes one frame at a reduced resolution level (WP-H, plan M5)
     ///
@@ -399,6 +383,14 @@ private extension J2KSwiftCodec {
         descriptor: PixelDataDescriptor,
         level: Int
     ) async throws -> (data: Data, rows: Int, columns: Int) {
+        // Reduced-resolution previews must fail closed for the same Part-2
+        // transforms as every full-resolution decode path. J2KSwift skips these
+        // markers instead of inverting them, which would otherwise emit a
+        // silently incorrect preview before the exact decode fails.
+        if let reason = J2KRoutePlanner.unsupportedDecodeReason(frameData: frameData) {
+            throw DICOMError.unsupportedTransferSyntax(reason)
+        }
+
         let image = try await J2KDecoder().decodeResolution(
             frameData,
             options: J2KResolutionDecodingOptions(level: level))
@@ -420,7 +412,23 @@ private extension J2KSwiftCodec {
         return (packed, image.height, image.width)
     }
     #endif
+}
 
+private extension J2KSwiftCodec {
+    final class AsyncResultBox<T>: @unchecked Sendable {
+        var result: Result<T, Error>?
+    }
+
+    #if canImport(J2KCore) && canImport(J2KCodec)
+    // Every J2K encode/decode call (CPU or GPU) bridges through this synchronous
+    // DispatchSemaphore.wait(), which would otherwise block forever if
+    // `operation()` never completes. Confirmed on CI: the GPU forward 5/3 DWT
+    // path (`encodeGPU`) never returns on a virtualized macOS runner without a
+    // functional GPU, hanging the whole process (see
+    // J2KGPUEncodeRoundTripTests.part1_lossless_gray16_large, gated off CI). The
+    // same risk exists on any real machine where Metal/the GPU driver stalls
+    // mid-operation, so this bounds the wait and cancels the underlying task on
+    // expiry rather than blocking indefinitely with no way to recover.
     static func awaitJ2KResult<T: Sendable>(
         timeout: TimeInterval = 60,
         _ operation: @escaping @Sendable () async throws -> T
