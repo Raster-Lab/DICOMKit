@@ -20,6 +20,7 @@
 // them; paging to another film releases the last one's.
 
 import Foundation
+import DICOMNetwork
 import DICOMPrintKit
 import DICOMRenderKit
 
@@ -127,7 +128,8 @@ public final class PrintCellTextureCache {
                     frameIndex: item.frameIndex,
                     windowCenter: item.windowCenter,
                     windowWidth: item.windowWidth,
-                    windowSpace: item.windowSpace)
+                    windowSpace: item.windowSpace,
+                    palette: item.presentation?.palette)
                 guard let self else { return }
                 self.inFlight.remove(key)
                 // The film this cell was on may have been paged away, or the
@@ -171,11 +173,17 @@ public final class PrintCellTextureCache {
     /// a texture that did not need to change — the exact cost this path exists to
     /// remove. The window *space* is in the key because the same two numbers are
     /// two different pictures in stored values and in output units.
+    ///
+    /// The palette is pixels, not arrangement, and so it *is* here: the shader
+    /// has no colour table, the render bakes the ramp into the texture, and a
+    /// key without it served the previous palette's texture back after every
+    /// change — which looked exactly like the picker doing nothing.
     static func key(for item: PrintSelectionItem) -> String {
         let centre = item.windowCenter.map { String($0) } ?? "-"
         let width = item.windowWidth.map { String($0) } ?? "-"
         let space = item.windowCenter == nil ? "-" : item.windowSpace.rawValue
-        return "\(item.filePath)|\(item.frameIndex)|\(centre)|\(width)|\(space)"
+        let palette = item.presentation?.palette?.rawValue ?? "-"
+        return "\(item.filePath)|\(item.frameIndex)|\(centre)|\(width)|\(space)|\(palette)"
     }
 }
 
@@ -193,26 +201,148 @@ public final class PrintCellTextureCache {
 public enum PrintCellDisplay {
 
     /// The shader geometry for a mark over a frame of the given size.
+    ///
+    /// - Parameter fillingCellOfSize: when set, the region is cropped to the
+    ///   cell's aspect (SRS FR-003 fill-to-film) so the shader's centred fit
+    ///   covers the cell exactly — the fill happens in the source region, and
+    ///   the view showing it never has to change size.
+    /// - Parameter presentationLUTShape: the film's Presentation LUT. A
+    ///   rendered inverse flips the cell, composing with the per-cell invert
+    ///   exactly as the two inversions compose on the printed film, so a cell
+    ///   already inverted comes back to normal polarity under it. Pass `nil`
+    ///   for cells whose pixels leave as colour — the preparer's inversion
+    ///   only runs on greys, and the preview must not invert what the film
+    ///   will not.
+    /// - Parameter polarityInverted: the film box's Polarity (2020,0020) is
+    ///   REVERSE. Applied by the printer to every image box — colour, grey and
+    ///   raw alike — and composed here the same way.
+    /// - Parameter desaturated: the job flattens this colour cell to greys
+    ///   ("Print colour images as greys"), so the cell is shown as the Rec.601
+    ///   luminance the film will carry.
     public static func presentation(
-        for item: PrintSelectionItem, imageWidth: Int, imageHeight: Int
+        for item: PrintSelectionItem, imageWidth: Int, imageHeight: Int,
+        fillingCellOfSize cellSize: CGSize? = nil,
+        stretchingToCell: Bool = false,
+        presentationLUTShape: DICOMNetwork.PresentationLUTShape? = nil,
+        polarityInverted: Bool = false,
+        desaturated: Bool = false
     ) -> DisplayPresentation {
         let arrangement = item.presentation
-        let region = arrangement?.visibleRegion(imageWidth: imageWidth, imageHeight: imageHeight)
+        // A filling cell reads its region with the covering geometry: the crop
+        // is smaller than the image even unzoomed, and the pan chooses which
+        // part shows. Read as fitted, the region came back "the whole image",
+        // the fill crop below re-centred it, and the pan a filled cell stored
+        // never moved anything on screen.
+        let region = arrangement?.visibleRegion(
+            imageWidth: imageWidth, imageHeight: imageHeight,
+            covers: cellSize != nil)
+        // No region means the whole frame is on the film — which the transform
+        // states as the frame's own rectangle rather than as a special case.
+        var source = DisplayPresentation.SourceRegion(
+            x: Double(region?.x ?? 0),
+            y: Double(region?.y ?? 0),
+            width: Double(region?.width ?? imageWidth),
+            height: Double(region?.height ?? imageHeight))
+        if let cellSize, cellSize.width > 0, cellSize.height > 0 {
+            source = fillCrop(
+                of: source,
+                cellAspect: Double(cellSize.width / cellSize.height),
+                quarterTurns: arrangement.map {
+                    ViewerPresentation.quarterTurns(fromDegrees: $0.rotationDegrees)
+                } ?? 0)
+        }
+        // Off-square, the cell's corners need pixels the fitted rectangle does
+        // not contain. Grow the sampled region to the turned bounding box —
+        // clamped to the frame, because pixels outside it do not exist — and
+        // hand the fitted rectangle along separately so the scale is still the
+        // upright one. Upright and at the quarter turns the two are identical
+        // and nothing about the geometry changes.
+        let sampled = Self.grownToCoverTurnedCell(
+            source, degrees: arrangement?.rotationDegrees ?? 0,
+            imageWidth: imageWidth, imageHeight: imageHeight)
         return DisplayPresentation(
             // The angle itself, not the nearest quarter turn: the viewer's
             // rotate tool turns freely and the film now follows it.
             rotationDegrees: arrangement?.rotationDegrees ?? 0,
             flipHorizontal: arrangement?.flipHorizontal ?? false,
             flipVertical: arrangement?.flipVertical ?? false,
-            invert: arrangement?.invert ?? false,
-            // No region means the whole frame is on the film — which the transform
-            // states as the frame's own rectangle rather than as a special case.
-            sourceRegion: DisplayPresentation.SourceRegion(
-                x: Double(region?.x ?? 0),
-                y: Double(region?.y ?? 0),
-                width: Double(region?.width ?? imageWidth),
-                height: Double(region?.height ?? imageHeight))
+            invert: ((arrangement?.invert ?? false)
+                != (presentationLUTShape?.invertsPixels ?? false))
+                != polarityInverted,
+            desaturate: desaturated,
+            // Bilinear: a film cell is judged as a picture on a panel-scaled
+            // sheet, and its CPU-drawn neighbours are smoothed — the viewer's
+            // pixel-exact nearest sampling belongs to the viewer.
+            linearFiltering: true,
+            sourceRegion: sampled,
+            // Stretch keeps the fitted region — it distorts, it does not crop —
+            // and the shader pulls the composed picture out to the cell's edges.
+            stretchToFill: stretchingToCell,
+            fittedRegion: source
         )
+    }
+
+    /// A region grown to the bounding box its own turned rectangle sweeps,
+    /// held inside the frame.
+    ///
+    /// What this buys is the corners. A freely turned cell keeps the scale it
+    /// had upright — the anatomy must not shrink as the rotate tool is dragged
+    /// — so the turned rectangle no longer covers the cell, and the wedges it
+    /// leaves had nothing over them but the shader's black. The frame very
+    /// often *has* those pixels, and this is what asks for them; because the
+    /// fit is still measured on the ungrown rectangle, the extra simply falls
+    /// outside the cell and is cropped.
+    ///
+    /// The growth itself is `ViewerPresentation.regionCoveringTurnedCell` — the
+    /// same call the print path makes, so the preview and the film crop alike.
+    /// This only carries it across the two rectangle types.
+    static func grownToCoverTurnedCell(
+        _ region: DisplayPresentation.SourceRegion,
+        degrees: Double, imageWidth: Int, imageHeight: Int
+    ) -> DisplayPresentation.SourceRegion {
+        guard region.width > 0, region.height > 0,
+              imageWidth > 0, imageHeight > 0 else { return region }
+        let pixels = PixelRegion(
+            x: Int(region.x.rounded(.down)), y: Int(region.y.rounded(.down)),
+            width: max(1, Int(region.width.rounded())),
+            height: max(1, Int(region.height.rounded())))
+        let grown = ViewerPresentation(rotationDegrees: degrees)
+            .regionCoveringTurnedCell(
+                pixels, imageWidth: imageWidth, imageHeight: imageHeight)
+        guard grown != pixels else { return region }
+        return DisplayPresentation.SourceRegion(
+            x: Double(grown.x), y: Double(grown.y),
+            width: Double(grown.width), height: Double(grown.height))
+    }
+
+    /// The centred crop of a source region that matches a cell's aspect —
+    /// fill-to-film, stated in source pixels.
+    ///
+    /// The comparison happens on the region as it will be *after* turning: a
+    /// quarter turn makes a wide crop a tall one, so the aspect the cell must
+    /// be matched against swaps with it. The crop is centred; a non-centre
+    /// alignment shows in the composed film, where the fitter places it.
+    static func fillCrop(
+        of region: DisplayPresentation.SourceRegion,
+        cellAspect: Double,
+        quarterTurns: Int
+    ) -> DisplayPresentation.SourceRegion {
+        guard region.width > 0, region.height > 0, cellAspect > 0 else { return region }
+        let odd = quarterTurns % 2 == 1
+        // The aspect the *unturned* region must have for its turned form to
+        // match the cell.
+        let target = odd ? 1 / cellAspect : cellAspect
+        let aspect = region.width / region.height
+        var cropped = region
+        if aspect > target {
+            // Too wide: narrow it, keeping the centre.
+            cropped.width = region.height * target
+            cropped.x += (region.width - cropped.width) / 2
+        } else if aspect < target {
+            cropped.height = region.width / target
+            cropped.y += (region.height - cropped.height) / 2
+        }
+        return cropped
     }
 
     /// The size, in source pixels, of the picture this cell actually prints:
@@ -229,10 +359,12 @@ public enum PrintCellDisplay {
         let width = region?.width ?? imageWidth
         let height = region?.height ?? imageHeight
         guard let arrangement else { return (width, height) }
-        // The turned box, so a freely rotated cell reports the shape the film
-        // actually carries — corners of background included.
-        let turned = arrangement.turnedSize(width: Double(width), height: Double(height))
-        return (max(1, Int(turned.width.rounded())), max(1, Int(turned.height.rounded())))
+        // Quarter turns swap the axes; a free angle does not change the shape at
+        // all. The picture turns about its centre at the size it already had and
+        // the corners that leave the cell are cut — on screen and on film alike
+        // — so the rectangle the film carries is still the region's own.
+        guard arrangement.isQuarterTurn else { return (width, height) }
+        return arrangement.quarterTurns % 2 == 1 ? (height, width) : (width, height)
     }
 }
 #endif

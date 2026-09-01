@@ -137,9 +137,9 @@ struct ViewerPresentationTests {
 
     // MARK: - Flips
 
-    @Test("Flipping does not change which pixels are visible")
-    func testFlipsDoNotAffectTheRegion() throws {
-        let plain = square(zoom: 2.0, panX: 60, panY: -40)
+    @Test("Flipping an unpanned image does not change which pixels are visible")
+    func testFlipsAloneDoNotAffectTheRegion() throws {
+        let plain = square(zoom: 2.0)
         var flipped = plain
         flipped.flipHorizontal = true
         flipped.flipVertical = true
@@ -147,6 +147,45 @@ struct ViewerPresentationTests {
         let a = try #require(plain.visibleRegion(imageWidth: 1000, imageHeight: 1000))
         let b = try #require(flipped.visibleRegion(imageWidth: 1000, imageHeight: 1000))
         #expect(a == b, "a mirror of a centred viewport is the same viewport")
+    }
+
+    @Test("A pan over a flipped image is mirrored into image space")
+    func testFlipsMirrorThePan() throws {
+        // The pan is applied on screen after the flip, so a screen pan of +60
+        // over a horizontally mirrored image reveals pixels on the image's
+        // *right*, where an unflipped image would have revealed its left. The
+        // film crops what the screen showed, so the regions must mirror; before
+        // they did, a flipped cell's pan printed the wrong side of the anatomy
+        // and the pan tool dragged the picture opposite to the hand.
+        let plain = try #require(
+            square(zoom: 2.0, panX: 60, panY: -40)
+                .visibleRegion(imageWidth: 1000, imageHeight: 1000))
+        var flipped = square(zoom: 2.0, panX: 60, panY: -40)
+        flipped.flipHorizontal = true
+        flipped.flipVertical = true
+        let mirrored = try #require(
+            flipped.visibleRegion(imageWidth: 1000, imageHeight: 1000))
+
+        // Scale is 1: a 60-point pan is 60 pixels off centre, mirrored about it.
+        #expect(plain == PixelRegion(x: 190, y: 290, width: 500, height: 500))
+        #expect(mirrored == PixelRegion(x: 310, y: 210, width: 500, height: 500))
+    }
+
+    @Test("The clamped pan of a flipped image stays on the drag's own axis")
+    func testClampedPanIsFlipStable() {
+        // Clamping takes the pan into image space and back; on a flipped image
+        // both trips must mirror, or a legal pan would come back negated and
+        // the drag would fight itself.
+        var presentation = square(zoom: 2.0)
+        presentation.flipHorizontal = true
+        let inside = presentation.clampedPan(
+            x: 100, y: -80, imageWidth: 1000, imageHeight: 1000)
+        #expect(inside.x == 100)
+        #expect(inside.y == -80)
+
+        let outside = presentation.clampedPan(
+            x: 400, y: 0, imageWidth: 1000, imageHeight: 1000)
+        #expect(outside.x == 250, "held at the edge, on the same side the drag went")
     }
 
     // MARK: - Free angles
@@ -183,16 +222,97 @@ struct ViewerPresentationTests {
         #expect(swapped.height == 300)
     }
 
-    @Test("A free angle crops the box the viewport sweeps, not a swapped rectangle")
+    @Test("A free angle crops the rectangle the cell draws, keeping the zoom's scale")
     func testVisibleRegionAtAFreeAngle() throws {
         // Fit 0.5 × zoom 4 = 2 points per pixel, so the 500-point viewport sees
-        // 250 pixels upright. Turned 45° it needs 250·(cos45+sin45) ≈ 354.
+        // 250 pixels upright — and 250 turned, too. A freely turned picture keeps
+        // its scale and loses its corners (the viewer's behaviour, chosen for film
+        // in `DisplayFrameTexture.quarterTurnedSize` and matched by the resampler
+        // and the CPU arranger), so the region is the cell's own rectangle.
+        //
+        // Asking for the swept bounding box instead — 250·(cos45+sin45) ≈ 354 —
+        // is what made zoom under-deliver after a rotate: the cell requested 1.41×
+        // more pixels than it drew, so a 4× zoom showed 2.8× and the anatomy sat
+        // inside an inscribed rectangle instead of filling the cell.
         let presentation = square(zoom: 4.0, rotationDegrees: 45)
         let region = try #require(
             presentation.visibleRegion(imageWidth: 1000, imageHeight: 1000))
-        #expect(abs(region.width - 354) <= 1)
-        #expect(abs(region.height - 354) <= 1)
+        #expect(abs(region.width - 250) <= 1)
+        #expect(abs(region.height - 250) <= 1)
         #expect(region.x == region.y, "centred, so it is inset equally on both axes")
+
+        // The scale a quarter turn delivers is the scale a free angle delivers:
+        // the whole point of the change is that turning a cell does not resize
+        // the anatomy in it.
+        let upright = try #require(
+            square(zoom: 4.0, rotationDegrees: 0)
+                .visibleRegion(imageWidth: 1000, imageHeight: 1000))
+        #expect(abs(region.width - upright.width) <= 1)
+        #expect(abs(region.height - upright.height) <= 1)
+    }
+
+    // MARK: - Feeding a turned cell's corners
+
+    @Test("A freely turned cell samples wider than it draws, so its corners have pixels")
+    func testTurnedCellSamplesTheSweptBox() throws {
+        // The rectangle the reader composed: 250 pixels at 4× zoom, turned 45°.
+        let presentation = square(zoom: 4.0, rotationDegrees: 45)
+        let drawn = try #require(
+            presentation.visibleRegion(imageWidth: 1000, imageHeight: 1000))
+
+        // The rectangle to read from. Turned 45°, a 250-square sweeps a box
+        // 250·(cos45+sin45) ≈ 353.6 on a side, and the frame is big enough to
+        // supply all of it.
+        let sampled = presentation.regionCoveringTurnedCell(
+            drawn, imageWidth: 1000, imageHeight: 1000)
+        #expect(abs(Double(sampled.width) - 353.6) <= 2)
+        #expect(abs(Double(sampled.height) - 353.6) <= 2)
+
+        // Concentric with what is drawn: the growth is margin on every side, so
+        // the anatomy does not move when the corners are fed.
+        let drawnCentreX = Double(drawn.x) + Double(drawn.width) / 2
+        let sampledCentreX = Double(sampled.x) + Double(sampled.width) / 2
+        #expect(abs(drawnCentreX - sampledCentreX) <= 1)
+
+        // And the drawn rectangle is unchanged — this is the whole point. The
+        // scale a free angle delivers is the scale it delivered before, so the
+        // rotate tool still does not resize the anatomy.
+        #expect(abs(drawn.width - 250) <= 1)
+    }
+
+    @Test("Upright and quarter-turned cells sample exactly what they draw")
+    func testSquareCellsAreNotGrown() throws {
+        for angle in [0.0, 90, 180, 270] {
+            let presentation = square(zoom: 4.0, rotationDegrees: angle)
+            let drawn = try #require(
+                presentation.visibleRegion(imageWidth: 1000, imageHeight: 1000))
+            #expect(
+                presentation.regionCoveringTurnedCell(
+                    drawn, imageWidth: 1000, imageHeight: 1000) == drawn,
+                "a \(angle)° cell covers itself; there is nothing to grow")
+        }
+    }
+
+    @Test("The growth stops at the frame's edge — there are no pixels beyond it")
+    func testGrowthIsHeldInsideTheFrame() throws {
+        // Panned hard into the top-left corner, so the swept box would run off
+        // two edges of the frame.
+        let presentation = ViewerPresentation(
+            zoom: 4.0, panX: 10_000, panY: 10_000,
+            viewportWidth: 500, viewportHeight: 500,
+            rotationDegrees: 30)
+        let drawn = try #require(
+            presentation.visibleRegion(imageWidth: 1000, imageHeight: 1000))
+        let sampled = presentation.regionCoveringTurnedCell(
+            drawn, imageWidth: 1000, imageHeight: 1000)
+
+        #expect(sampled.x >= 0)
+        #expect(sampled.y >= 0)
+        #expect(sampled.x + sampled.width <= 1000)
+        #expect(sampled.y + sampled.height <= 1000)
+        // Still at least what is drawn: growing must never take pixels away.
+        #expect(sampled.width >= drawn.width)
+        #expect(sampled.height >= drawn.height)
     }
 
     // MARK: - Pan limits
@@ -219,6 +339,38 @@ struct ViewerPresentationTests {
                                              imageWidth: 1000, imageHeight: 1000)
         #expect(beyond.x == 250)
         #expect(beyond.y == -250)
+    }
+
+    @Test("A freely turned cell pans as far as an upright one")
+    func testPanTravelSurvivesAFreeAngle() {
+        // Fit 0.5 × zoom 2 = 1, so 250 points are hidden either side whichever
+        // way the picture is turned: a free angle keeps the picture's scale, so
+        // it hides exactly as much as it did upright.
+        //
+        // Measuring the viewport by the box its corners sweep instead made the
+        // cell believe it was larger than the picture it draws, and the drag
+        // stopped roughly halfway — the anatomy came to rest short of the cell's
+        // edge and the pan tool looked as though it had run out of image.
+        let upright = square(zoom: 2.0).clampedPan(
+            x: 10_000, y: 0, imageWidth: 1000, imageHeight: 1000)
+        #expect(upright.x == 250)
+
+        // The clamp is a box along the *image's* axes, so a hard drag lands on
+        // its corner and comes back to screen space as a longer, tilted vector.
+        // What must match upright is the travel measured where the limit lives:
+        // 250 pixels' worth on each of the image's own axes.
+        let turned = square(zoom: 2.0, rotationDegrees: 30)
+        let held = turned.clampedPan(x: 10_000, y: 0,
+                                     imageWidth: 1000, imageHeight: 1000)
+        let radians = 30.0 * .pi / 180
+        let alongImageX = held.x * cos(radians) + held.y * sin(radians)
+        let alongImageY = -held.x * sin(radians) + held.y * cos(radians)
+        #expect(abs(abs(alongImageX) - 250) <= 1)
+        #expect(abs(abs(alongImageY) - 250) <= 1)
+
+        // And the drag must actually reach the edge rather than stopping short:
+        // the bounding-box viewport halved this to ~125 on each axis.
+        #expect(abs(alongImageX) > 200)
     }
 
     @Test("The clamped pan is exactly the pan that still crops nothing away")

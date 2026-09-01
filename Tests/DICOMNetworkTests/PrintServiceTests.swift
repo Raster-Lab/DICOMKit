@@ -2431,7 +2431,7 @@ final class PrintServiceTests: XCTestCase {
 
     func testPresentationLUTShapeRawValues() {
         XCTAssertEqual(PresentationLUTShape.identity.rawValue, "IDENTITY")
-        XCTAssertEqual(PresentationLUTShape.inverse.rawValue, "INVERSE")
+        XCTAssertEqual(PresentationLUTShape.inverseRendered.rawValue, "INVERSE_RENDERED")
         XCTAssertEqual(PresentationLUTShape.linearOpticalDensity.rawValue, "LIN OD")
         XCTAssertEqual(PresentationLUTShape.allCases.count, 3)
     }

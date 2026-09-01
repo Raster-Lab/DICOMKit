@@ -103,6 +103,10 @@ final class MetalDisplayPathTests: XCTestCase {
 
     /// The display path must not inherit the CPU-wins size threshold: a frame headed
     /// for a GPU texture has no cheaper route, whatever its size.
+    ///
+    /// The production threshold is zero by policy (`minimumGPUPixelCount`) — no
+    /// frame is declined for being small — so the threshold behaviour is proved
+    /// on a renderer given one explicitly.
     func testDisplayTextureIgnoresTheSizeThreshold() throws {
         let syntheticThreshold = 1_000_000
         guard let thresholded = MetalFrameRenderer(minimumPixelCount: syntheticThreshold) else {
@@ -156,6 +160,192 @@ final class MetalDisplayPathTests: XCTestCase {
         XCTAssertTrue(drew, "a sized drawable must produce a draw")
         XCTAssertFalse(renderer.lastDrawHadZeroSizedDrawable)
         XCTAssertEqual(renderer.drawCount, 1)
+    }
+
+    // MARK: - Annotation compositing
+
+    /// A texture built directly with `MTLTexture.replace`, bypassing
+    /// `AnnotationTextureBuilder` (which lives in `DICOMStudio`, above this
+    /// module) — this suite only needs to prove the shader samples and
+    /// blends whatever texture is bound at index 1.
+    private func makeAnnotationTexture(
+        device: MetalRenderDevice, width: Int, height: Int, rgba: [UInt8]
+    ) throws -> MTLTexture {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.shaderRead]
+        descriptor.storageMode = .shared
+        let texture = try XCTUnwrap(device.device.makeTexture(descriptor: descriptor))
+        texture.replace(
+            region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
+            withBytes: rgba, bytesPerRow: width * 4)
+        return texture
+    }
+
+    /// No annotation set: the renderer still draws (the placeholder texture
+    /// stands in), and the frame is shown untouched.
+    func testNoAnnotationOverlayLeavesTheFrameUntouched() throws {
+        guard let renderer = MetalImageRenderer(), let device = MetalRenderDevice.shared else {
+            throw XCTSkip("No Metal device on this machine")
+        }
+        renderer.frame = try requireRenderer().renderDisplayTexture(
+            monochromeRequest(rows: 8, columns: 8, value: 30_000))
+        XCTAssertNil(renderer.annotationOverlay)
+
+        let target = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: MetalImageRenderer.colorPixelFormat,
+            width: 32, height: 32, mipmapped: false)
+        target.usage = [.renderTarget, .shaderRead]
+        target.storageMode = .shared
+        let texture = try XCTUnwrap(device.device.makeTexture(descriptor: target))
+
+        let descriptor = MTLRenderPassDescriptor()
+        descriptor.colorAttachments[0].texture = texture
+        descriptor.colorAttachments[0].loadAction = .clear
+        descriptor.colorAttachments[0].storeAction = .store
+
+        XCTAssertTrue(renderer.render(size: CGSize(width: 32, height: 32),
+                                      descriptor: descriptor, drawable: nil))
+    }
+
+    /// The overlay's colour and alpha reach the screen: a fully opaque red
+    /// annotation texture composited over a bright frame must read back as
+    /// red, not the frame's own grey.
+    func testAnnotationOverlayIsComposited() throws {
+        guard let renderer = MetalImageRenderer(), let device = MetalRenderDevice.shared else {
+            throw XCTSkip("No Metal device on this machine")
+        }
+        renderer.frame = try requireRenderer().renderDisplayTexture(
+            monochromeRequest(rows: 8, columns: 8, value: 30_000))
+
+        // A fully opaque red texture, the frame's own dimensions.
+        let overlayTexture = try makeAnnotationTexture(
+            device: device, width: 8, height: 8,
+            rgba: Array(repeating: [255, 0, 0, 255], count: 64).flatMap { $0 })
+        renderer.annotationOverlay = AnnotationOverlayTexture(texture: overlayTexture)
+
+        let target = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: MetalImageRenderer.colorPixelFormat,
+            width: 32, height: 32, mipmapped: false)
+        target.usage = [.renderTarget, .shaderRead]
+        target.storageMode = .shared
+        let texture = try XCTUnwrap(device.device.makeTexture(descriptor: target))
+
+        let descriptor = MTLRenderPassDescriptor()
+        descriptor.colorAttachments[0].texture = texture
+        descriptor.colorAttachments[0].loadAction = .clear
+        descriptor.colorAttachments[0].storeAction = .store
+
+        XCTAssertTrue(renderer.render(size: CGSize(width: 32, height: 32),
+                                      descriptor: descriptor, drawable: nil))
+
+        let fence = try XCTUnwrap(device.commandQueue.makeCommandBuffer())
+        fence.commit()
+        fence.waitUntilCompleted()
+
+        var bytes = [UInt8](repeating: 0, count: 32 * 32 * 4)
+        bytes.withUnsafeMutableBytes { buffer in
+            texture.getBytes(buffer.baseAddress!, bytesPerRow: 32 * 4,
+                             from: MTLRegionMake2D(0, 0, 32, 32), mipmapLevel: 0)
+        }
+        // BGRA: red shows as a high byte 2 (R), zero byte 0 (B).
+        let centre = (16 * 32 + 16) * 4
+        XCTAssertEqual(bytes[centre + 2], 255, "the annotation's red must reach the screen")
+        XCTAssertEqual(bytes[centre], 0, "a fully opaque annotation must fully replace the frame's colour")
+    }
+
+    // MARK: - The film's crop mask
+
+    /// Renders offscreen and reads the pixels back, so the fragment shader's
+    /// masking can be asserted rather than trusted.
+    private func renderedPixels(
+        presentation: DisplayPresentation, size: Int = 128
+    ) throws -> (bytes: [UInt8], width: Int) {
+        guard let renderer = MetalImageRenderer(),
+              let device = MetalRenderDevice.shared else {
+            throw XCTSkip("No Metal device on this machine")
+        }
+        // A uniformly bright frame: any pixel the mask spares is visibly grey,
+        // any pixel it paints is exactly black, and nothing else varies.
+        renderer.frame = try requireRenderer().renderDisplayTexture(
+            monochromeRequest(rows: 64, columns: 64, value: 30_000))
+        renderer.presentation = presentation
+
+        let target = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: MetalImageRenderer.colorPixelFormat,
+            width: size, height: size, mipmapped: false)
+        target.usage = [.renderTarget, .shaderRead]
+        target.storageMode = .shared   // readable from the CPU below
+        let texture = try XCTUnwrap(device.device.makeTexture(descriptor: target))
+
+        let descriptor = MTLRenderPassDescriptor()
+        descriptor.colorAttachments[0].texture = texture
+        descriptor.colorAttachments[0].loadAction = .clear
+        descriptor.colorAttachments[0].storeAction = .store
+        descriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+
+        XCTAssertTrue(renderer.render(size: CGSize(width: size, height: size),
+                                      descriptor: descriptor, drawable: nil))
+
+        // The render's command buffer was committed inside `render`; the queue
+        // is serial, so an empty buffer waited on here fences it.
+        let fence = try XCTUnwrap(device.commandQueue.makeCommandBuffer())
+        fence.commit()
+        fence.waitUntilCompleted()
+
+        var bytes = [UInt8](repeating: 0, count: size * size * 4)
+        bytes.withUnsafeMutableBytes { buffer in
+            texture.getBytes(buffer.baseAddress!, bytesPerRow: size * 4,
+                             from: MTLRegionMake2D(0, 0, size, size), mipmapLevel: 0)
+        }
+        return (bytes, size)
+    }
+
+    /// The blue channel at a pixel — first byte of BGRA, and for these grey
+    /// frames equal to the other channels.
+    private func luminance(_ pixels: (bytes: [UInt8], width: Int), x: Int, y: Int) -> Int {
+        Int(pixels.bytes[(y * pixels.width + x) * 4])
+    }
+
+    /// A cropped cell must not spill the rest of the frame into its letterbox.
+    ///
+    /// The quad is always the whole frame; before the mask, a fitted crop's
+    /// surroundings showed the neighbouring anatomy the crop was meant to
+    /// remove — which is why freely rotated and zoomed cells were exiled to the
+    /// CPU renderer. A *wide* crop in a square view letterboxes above and
+    /// below; the frame rows the quad carries there are outside the crop and
+    /// must come back black, while the crop itself stays the frame's grey.
+    func testMaskPaintsTheLetterboxBlack() throws {
+        let pixels = try renderedPixels(presentation: DisplayPresentation(
+            linearFiltering: true,
+            sourceRegion: .init(x: 16, y: 24, width: 32, height: 16)))
+
+        let centre = luminance(pixels, x: 64, y: 64)
+        XCTAssertGreaterThan(centre, 20, "the crop itself must be the frame's grey")
+        // 32×16 fitted to 128×128 spans the full width and rows 32..96; the
+        // bands above and below are letterbox, and the quad has frame content
+        // there — rows 8..24 and 40..56 of the source, all outside the crop.
+        for (x, y) in [(4, 8), (64, 16), (123, 24), (4, 119), (64, 111), (123, 103)] {
+            XCTAssertEqual(luminance(pixels, x: x, y: y), 0,
+                           "letterbox (\(x),\(y)) is outside the crop — unexposed film, black")
+        }
+    }
+
+    /// The corners a free rotation leaves empty are film background — the exact
+    /// case that used to force those cells onto the CPU. At 45° the turned crop
+    /// is a diamond; the view's corners lie outside it and must be black, while
+    /// the diamond's centre is still the frame's grey.
+    func testMaskBlacksTheCornersOfAFreelyRotatedCrop() throws {
+        let pixels = try renderedPixels(presentation: DisplayPresentation(
+            rotationDegrees: 45,
+            linearFiltering: true,
+            sourceRegion: .init(x: 16, y: 16, width: 32, height: 32)))
+
+        XCTAssertGreaterThan(luminance(pixels, x: 64, y: 64), 20)
+        for (x, y) in [(4, 4), (123, 4), (4, 123), (123, 123)] {
+            XCTAssertEqual(luminance(pixels, x: x, y: y), 0,
+                           "corner (\(x),\(y)) of a 45° cell is unexposed film")
+        }
     }
 
     /// A renderer with no frame must not draw — and must not claim the drawable was
@@ -230,6 +420,81 @@ final class MetalDisplayPathTests: XCTestCase {
         let vertical = try XCTUnwrap(transform(DisplayPresentation(flipVertical: true)))
         XCTAssertEqual(vertical.columns.0.x, 1, accuracy: 1e-6)
         XCTAssertEqual(vertical.columns.1.y, -1, accuracy: 1e-6)
+    }
+
+    /// The mirror is applied *after* the turn, which is what the film, the
+    /// `CGContext` path and ``DisplayPresentation/sourceRegionTransform`` all do.
+    ///
+    /// Flip and rotation were each tested alone above, and both passed while the
+    /// two together were wrong: the viewer folded the mirror into the fit scale,
+    /// which put it *before* the rotation. The orders agree only at 0°, so
+    /// nothing caught it until an image was turned and then flipped — on a
+    /// quarter turn the two differ by a half turn, so the flip buttons appeared
+    /// to rotate the image rather than mirror it, and the print preview, which
+    /// composed in the other order, disagreed with the screen it was previewing.
+    ///
+    /// Checked against the composition directly rather than against copied-out
+    /// numbers: `flip · rotate` is the claim, and it is what is asserted.
+    func testFlipIsAppliedAfterRotation() throws {
+        for (flipH, flipV) in [(true, false), (false, true), (true, true)] {
+            for angle in [90.0, 180.0, 270.0, 45.0] {
+                let combined = try XCTUnwrap(transform(DisplayPresentation(
+                    rotationDegrees: angle,
+                    flipHorizontal: flipH, flipVertical: flipV)))
+                let turnOnly = try XCTUnwrap(transform(
+                    DisplayPresentation(rotationDegrees: angle)))
+                let mirror = simd_float4x4(diagonal: SIMD4<Float>(
+                    flipH ? -1 : 1, flipV ? -1 : 1, 1, 1))
+                let expected = mirror * turnOnly
+
+                for column in 0..<4 {
+                    for row in 0..<4 {
+                        XCTAssertEqual(
+                            combined[column][row], expected[column][row], accuracy: 1e-5,
+                            "flipH=\(flipH) flipV=\(flipV) at \(angle)° — the mirror "
+                            + "must come after the turn, not before it")
+                    }
+                }
+            }
+        }
+    }
+
+    /// The viewer and the film agree about a turned, flipped image.
+    ///
+    /// The two transforms are built by different code for different jobs — the
+    /// viewer fits and pans, the film fits a region the way a printer does — but
+    /// a preview that showed a different picture from the viewer is the bug the
+    /// screenshots caught. Their *orientation* has to match even where their
+    /// framing does not, so this compares what each does to the image's axes.
+    func testViewerAndFilmOrientTurnedFlippedImagesAlike() throws {
+        for (flipH, flipV) in [(true, false), (false, true), (true, true)] {
+            for angle in [90.0, 180.0, 270.0] {
+                let viewer = try XCTUnwrap(transform(DisplayPresentation(
+                    rotationDegrees: angle,
+                    flipHorizontal: flipH, flipVertical: flipV)))
+                let film = try XCTUnwrap(DisplayPresentation(
+                    rotationDegrees: angle,
+                    flipHorizontal: flipH, flipVertical: flipV,
+                    sourceRegion: .init(x: 0, y: 0, width: 100, height: 100)
+                ).transform(imageWidth: 100, imageHeight: 100,
+                            viewWidth: 200, viewHeight: 200))
+
+                // Where each sends the image's own right-hand and downward axes.
+                // Normalised, because the two scale differently by design.
+                for axis in [SIMD4<Float>(1, 0, 0, 0), SIMD4<Float>(0, 1, 0, 0)] {
+                    let viewerAxis = viewer * axis
+                    let filmAxis = film * axis
+                    let v = simd_normalize(SIMD2<Float>(viewerAxis.x, viewerAxis.y))
+                    let f = simd_normalize(SIMD2<Float>(filmAxis.x, filmAxis.y))
+                    XCTAssertEqual(v.x, f.x, accuracy: 1e-4,
+                                   "viewer and film disagree at \(angle)° "
+                                   + "flipH=\(flipH) flipV=\(flipV)")
+                    XCTAssertEqual(v.y, f.y, accuracy: 1e-4,
+                                   "viewer and film disagree at \(angle)° "
+                                   + "flipH=\(flipH) flipV=\(flipV)")
+                }
+            }
+        }
     }
 
     /// A quarter turn swaps the axes. Sign matters: it fixes the rotation direction,

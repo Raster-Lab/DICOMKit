@@ -26,9 +26,29 @@ extension ImageViewerViewModel {
         // see `ViewerSeriesCatalog.isOrderedBefore`.
         studySeries = entries.sorted(by: ViewerSeriesCatalog.isOrderedBefore)
         studyInstanceUID = studyUID
+        // The pane's saved-view badges, refreshed here because this is where
+        // the Study Instance UID the store files views under arrives.
+        refreshSavedViewSeriesUIDs()
         if let current = seriesEntry(containing: filePath) {
             currentSeriesUID = current.seriesInstanceUID
             visitedSeriesUIDs.insert(current.seriesInstanceUID)
+            // The navigation list may predate an instance-order repair: the
+            // series was handed over in the index's stale order, and the
+            // repaired entry now asserts the study's own. Same files in a new
+            // order is that repair arriving — adopt it, keeping the image on
+            // screen exactly where it is so nothing jumps under the reader.
+            if current.filePaths != seriesFiles,
+               Set(current.filePaths) == Set(seriesFiles) {
+                seriesFiles = current.filePaths
+                if let path = filePath,
+                   let index = current.filePaths.firstIndex(of: path) {
+                    currentFileIndex = index
+                }
+            }
+            // The image loaded before the study did, so its saved views could
+            // not be looked up then: the store files them under the Study
+            // Instance UID that has only just arrived.
+            offerSavedViewsIfNeeded()
             return
         }
         // Nothing of this study is on screen yet — open the pane on its first
@@ -48,6 +68,27 @@ extension ImageViewerViewModel {
     /// "start over", so the selected-images panel starts over with it; the
     /// library's own "Print…" does not come through here, so the files it marks
     /// survive.
+    /// Clears the viewer completely, including the image on screen.
+    ///
+    /// `prepareForNewStudy()` leaves the current file loaded because a new one
+    /// is about to replace it. When a study is *deleted* there is no
+    /// replacement: its files are gone, so the image, the navigation list and
+    /// the decoded pixels behind them all have to go too, or the viewer keeps
+    /// displaying a study that no longer exists.
+    public func closeStudy() {
+        prepareForNewStudy()
+        seriesFiles = []
+        currentFileIndex = 0
+        filePath = nil
+        sopInstanceUID = nil
+        dicomFile = nil
+        #if canImport(CoreGraphics)
+        currentImage = nil
+        displayTexture = nil
+        #endif
+        isLoading = false
+    }
+
     public func prepareForNewStudy() {
         layout = .single
         cells = []
@@ -55,6 +96,12 @@ extension ImageViewerViewModel {
         studySeries = []
         studyInstanceUID = nil
         currentSeriesUID = nil
+        savedViewSeriesUIDs = []
+        savedViewReferencesBySeries = [:]
+        // A prompt left standing belongs to the study being left, as do the
+        // readings its images were being held at.
+        savedViewPrompt = nil
+        appliedViewByImage = [:]
         visitedSeriesUIDs = []
         waveform = nil
         nonImageContent = nil
@@ -70,11 +117,23 @@ extension ImageViewerViewModel {
         // their film positions, and the print screen itself if it was still up —
         // the film on it was composed from the study being left behind.
         printSelection.clear()
+        // And the drawings: text and arrows are tool state like window and
+        // zoom, and they reset with the study the same way. Drawings worth
+        // keeping have a home already — saving a view writes them into the
+        // presentation state — so what is left here is the scratch work of a
+        // read that is over. Kept per image rather than per mark, so `clear()`
+        // above does not reach them.
+        printSelection.clearAllAnnotations()
         requestPrintScreenDismissal()
         // And the panel that held them: with nothing on the film, the tray is
         // back to where it starts — out of the way until this study's first
         // image is marked.
         isPrintTrayVisible = false
+        // The tool arrangements of every series read, dropped with the study
+        // that owns them — cleared last, so the resets above cannot re-mark
+        // the series as touched.
+        toolStateBySeries = [:]
+        detachFromToolCache()
     }
 
     /// Hangs the first series of the study when the viewer has nothing to show.
@@ -96,6 +155,17 @@ extension ImageViewerViewModel {
     @discardableResult
     public func selectSeries(_ uid: String) -> Bool {
         assignSeriesToFocusedCell(uid)
+    }
+
+    /// Shows a series starting at one of its objects.
+    ///
+    /// The path from a card's per-object previews: a series of several cines
+    /// shows one preview per object, and clicking the second loop is a request
+    /// to read *that* recording, not to start over at the first.
+    @discardableResult
+    public func selectSeries(_ uid: String, startingAtFile filePath: String) -> Bool {
+        assignSeries(uid, toCell: cells.isEmpty ? 0 : focusedCellIndex,
+                     startingAtFile: filePath)
     }
 
     /// The series pane entry a file belongs to, if any.
@@ -123,30 +193,44 @@ extension ImageViewerViewModel {
 
     /// Hangs a series in a tile.
     ///
-    /// The tile starts at the series' first instance with a clean arrangement:
-    /// a zoom and pan chosen for a different series would be meaningless here,
-    /// and silently carrying it over would print a crop the user never composed.
+    /// The tile starts at the series' first instance, with *this series'*
+    /// remembered arrangement if the reader has one, and a clean arrangement
+    /// otherwise: a zoom and pan chosen for a different series would be
+    /// meaningless here, and silently carrying one over would print a crop the
+    /// user never composed — but the arrangement this series was left at is
+    /// exactly what coming back to it means. See ``SeriesToolState``.
     ///
     /// - Returns: `true` when the series was hung.
     @discardableResult
-    public func assignSeries(_ uid: String, toCell index: Int) -> Bool {
+    public func assignSeries(
+        _ uid: String, toCell index: Int, startingAtFile startFile: String? = nil
+    ) -> Bool {
         guard let entry = seriesEntry(uid: uid),
-              let firstFile = entry.firstFilePath else { return false }
+              entry.firstFilePath != nil else { return false }
+
+        // The requested object, when it is actually the series' — a stale path
+        // falls back to the top of the stack rather than refusing the series.
+        let fileIndex = startFile.flatMap { entry.filePaths.firstIndex(of: $0) } ?? 0
+        let file = entry.filePaths[fileIndex]
 
         // At 1×1 there are no tiles until a layout is applied; hang the series
         // in the viewer itself.
         guard cells.indices.contains(index) else {
             guard index == 0 else { return false }
-            return hangInViewer(entry, firstFile: firstFile)
+            return hangInViewer(entry, startIndex: fileIndex)
         }
 
         captureFocusedCell()
 
         var cell = ViewerCellState(index: index)
-        cell.filePath = firstFile
+        cell.filePath = file
         cell.seriesUID = entry.seriesInstanceUID
         cell.seriesFiles = entry.filePaths
-        cell.fileIndex = 0
+        cell.fileIndex = fileIndex
+        // The series' cached arrangement, seeded into the tile so
+        // ``restoreArrangement(of:)`` puts it on screen rather than wiping the
+        // restore the file load just performed.
+        seedCellFromToolCache(&cell, seriesUID: entry.seriesInstanceUID)
         // The tile keeps the size it already occupies on screen.
         if cells.indices.contains(index) {
             cell.viewportWidth = cells[index].viewportWidth
@@ -168,14 +252,21 @@ extension ImageViewerViewModel {
     }
 
     /// Replaces the whole viewer with a series, for the 1×1 case.
-    private func hangInViewer(_ entry: ViewerSeriesEntry, firstFile: String) -> Bool {
+    ///
+    /// No reset of its own: the load path resets every tool to the file's
+    /// picture and then restores this series' cached arrangement over it —
+    /// see ``SeriesToolState``. The `resetTransformations()` that used to sit
+    /// here ran *after* that restore, which is why coming back to a rotated
+    /// series showed it upright: it wiped the restored tools and, being a
+    /// reader-visible mutation, re-snapshotted the wiped state over the good
+    /// cache entry on the next depart.
+    private func hangInViewer(_ entry: ViewerSeriesEntry, startIndex: Int) -> Bool {
         loadSeries(
             files: entry.filePaths,
-            startIndex: 0,
+            startIndex: startIndex,
             securityScopedParent: seriesSecurityScopedParent)
         currentSeriesUID = entry.seriesInstanceUID
         visitedSeriesUIDs.insert(entry.seriesInstanceUID)
-        resetTransformations()
         return true
     }
 

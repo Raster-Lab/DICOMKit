@@ -62,8 +62,22 @@ public struct GrayscalePresentationStateParser: Sendable {
             )
         }
         
-        // Verify this is a Grayscale Softcopy Presentation State
-        guard sopClassUID == .grayscaleSoftcopyPresentationStateStorage else {
+        // Verify this is a presentation state this parser can read. Pseudo-Color
+        // (PS3.3 A.33.4) is the grayscale IOD's shape plus a Palette Color LUT
+        // module and minus the Presentation LUT — everything parsed here means
+        // the same thing in both, and the model records which class it was via
+        // `sopClassUID`. The palette itself is read separately, through the
+        // data set's own `paletteColorLUT()`, by callers that want it.
+        // Color Softcopy (A.33.3) is read too: it has no Modality, VOI or
+        // Presentation LUT module — every LUT parse below returns nil for it
+        // — and carries an ICC profile this model does not hold, but its
+        // spatial transformation, displayed area, shutters and graphic
+        // annotations are the same modules and mean the same thing. A CSPS
+        // shipped with a colour ultrasound is how another viewer's
+        // measurements on it arrive, and refusing the file loses them.
+        guard sopClassUID == .grayscaleSoftcopyPresentationStateStorage
+            || sopClassUID == .pseudoColorSoftcopyPresentationStateStorage
+            || sopClassUID == .colorSoftcopyPresentationStateStorage else {
             throw ParseError.invalidSOPClassUID(sopClassUID)
         }
         
@@ -188,6 +202,25 @@ public struct GrayscalePresentationStateParser: Sendable {
     }
     
     private func parseVOILUT(from dataSet: DataSet) throws -> VOILUT? {
+        // The Softcopy VOI LUT Sequence (C.11.8) is where a presentation
+        // state's window actually lives — read it first. The top-level
+        // spelling below stays as the fallback that keeps files written by
+        // older builds (which wrote only top-level) restoring their window.
+        if let softcopySequence = dataSet.sequence(for: .softcopyVOILUTSequence),
+           let item = softcopySequence.first {
+            if let center = item.strings(for: .windowCenter)?.first.flatMap(Self.decimal),
+               let width = item.strings(for: .windowWidth)?.first.flatMap(Self.decimal) {
+                let explanation = item.string(for: .windowCenterWidthExplanation)
+                let function = VOILUTFunction.parse(item.string(for: .voiLUTFunction))
+                return .window(
+                    center: center, width: width,
+                    explanation: explanation, function: function)
+            }
+            if let lutItem = item[.voiLUTSequence]?.sequenceItems?.first {
+                return .lut(try parseLUTData(from: lutItem))
+            }
+        }
+
         // Check for LUT Sequence first
         if let lutSequence = dataSet.sequence(for: .voiLUTSequence),
            let firstItem = lutSequence.first {
@@ -210,6 +243,11 @@ public struct GrayscalePresentationStateParser: Sendable {
         return nil
     }
     
+    /// A DS value as the parser needs it: trimmed and numeric, or nil.
+    private static func decimal(_ raw: String) -> Double? {
+        Double(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     private func parsePresentationLUT(from dataSet: DataSet) throws -> PresentationLUT? {
         // Check for Presentation LUT Sequence
         if let lutSequence = dataSet.sequence(for: .presentationLUTSequence),
@@ -252,7 +290,7 @@ public struct GrayscalePresentationStateParser: Sendable {
     }
     
     private func parseSpatialTransformation(from dataSet: DataSet) -> SpatialTransformation? {
-        let rotation = dataSet.integerString(for: .imageRotation)?.value ?? 0
+        let rotation = dataSet[.imageRotation]?.integerValueTolerant ?? 0
         let flipString = dataSet.string(for: .imageHorizontalFlip)
         let horizontalFlip = flipString == "Y"
         
@@ -269,9 +307,9 @@ public struct GrayscalePresentationStateParser: Sendable {
             return nil
         }
         
-        guard let topLeftValues = firstItem[.displayedAreaTopLeftHandCorner]?.integerStringValues?.map({ $0.value }),
+        guard let topLeftValues = firstItem[.displayedAreaTopLeftHandCorner]?.integerValuesTolerant,
               topLeftValues.count == 2,
-              let bottomRightValues = firstItem[.displayedAreaBottomRightHandCorner]?.integerStringValues?.map({ $0.value }),
+              let bottomRightValues = firstItem[.displayedAreaBottomRightHandCorner]?.integerValuesTolerant,
               bottomRightValues.count == 2 else {
             return nil
         }
@@ -297,10 +335,10 @@ public struct GrayscalePresentationStateParser: Sendable {
             }
             
             let description = item.string(for: .graphicLayerDescription)
-            let grayscaleValue = item[.graphicLayerRecommendedDisplayGrayscaleValue]?.integerStringValue?.value
+            let grayscaleValue = item[.graphicLayerRecommendedDisplayGrayscaleValue]?.integerValueTolerant
             
             var rgbValue: (red: Int, green: Int, blue: Int)? = nil
-            if let rgbValues = item[.graphicLayerRecommendedDisplayRGBValue]?.integerStringValues?.map({ $0.value }),
+            if let rgbValues = item[.graphicLayerRecommendedDisplayRGBValue]?.integerValuesTolerant,
                rgbValues.count == 3 {
                 rgbValue = (red: rgbValues[0], green: rgbValues[1], blue: rgbValues[2])
             }
@@ -375,24 +413,32 @@ public struct GrayscalePresentationStateParser: Sendable {
     private func parseGraphicObject(from item: SequenceItem) throws -> GraphicObject? {
         guard let typeString = item.string(for: .graphicType),
               let type = PresentationGraphicType(rawValue: typeString),
-              let data = item[.graphicData]?.decimalStringValues?.map({ $0.value }) else {
+              let data = item[.graphicData]?.realValuesTolerant else {
             return nil
         }
         
         let filledString = item.string(for: .graphicFilled)
         let filled = filledString == "Y"
-        
-        let unitsString = item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
+
+        // Graphic Annotation Units (0070,0005) is the graphic object's own units
+        // attribute; the bounding-box tag is kept as a fallback for files this
+        // parser accepted before the distinction was made.
+        let unitsString = item.string(for: .graphicAnnotationUnits)
+            ?? item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
         let units = AnnotationUnits(rawValue: unitsString) ?? .pixel
-        
+
         return GraphicObject(type: type, data: data, filled: filled, units: units)
     }
     
     private func parseTextObject(from item: SequenceItem) -> TextObject? {
-        guard let text = item.string(for: .unformattedTextValue),
-              let topLeftValues = item[.boundingBoxTopLeftHandCorner]?.decimalStringValues?.map({ $0.value }),
+        // (0070,0006) is the Text Object's own Unformatted Text Value; (0040,A160)
+        // is SR's Text Value, read as a fallback for files written when this
+        // parser used the wrong tag.
+        guard let text = item.string(for: .textObjectUnformattedTextValue)
+                ?? item.string(for: .unformattedTextValue),
+              let topLeftValues = item[.boundingBoxTopLeftHandCorner]?.realValuesTolerant,
               topLeftValues.count == 2,
-              let bottomRightValues = item[.boundingBoxBottomRightHandCorner]?.decimalStringValues?.map({ $0.value }),
+              let bottomRightValues = item[.boundingBoxBottomRightHandCorner]?.realValuesTolerant,
               bottomRightValues.count == 2 else {
             return nil
         }
@@ -401,7 +447,7 @@ public struct GrayscalePresentationStateParser: Sendable {
         let bottomRight = (column: bottomRightValues[0], row: bottomRightValues[1])
         
         var anchorPoint: (column: Double, row: Double)? = nil
-        if let anchorValues = item[.anchorPoint]?.decimalStringValues?.map({ $0.value }),
+        if let anchorValues = item[.anchorPoint]?.realValuesTolerant,
            anchorValues.count == 2 {
             anchorPoint = (column: anchorValues[0], row: anchorValues[1])
         }

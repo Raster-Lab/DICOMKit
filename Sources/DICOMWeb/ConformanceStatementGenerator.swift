@@ -381,7 +381,8 @@ public enum ConformanceStatementGenerator {
             "1.2.840.10008.5.1.4.1.1.88.22": ("Enhanced SR Storage", "Structured Report"),
             "1.2.840.10008.5.1.4.1.1.88.33": ("Comprehensive SR Storage", "Structured Report"),
             "1.2.840.10008.5.1.4.1.1.66.4": ("Segmentation Storage", "Annotation"),
-            "1.2.840.10008.5.1.4.1.1.11.1": ("Grayscale Softcopy Presentation State Storage", "Presentation State")
+            "1.2.840.10008.5.1.4.1.1.11.1": ("Grayscale Softcopy Presentation State Storage", "Presentation State"),
+            "1.2.840.10008.5.1.4.1.1.11.3": ("Pseudo-Color Softcopy Presentation State Storage", "Presentation State")
         ]
         
         if let info = sopClasses[uid] {

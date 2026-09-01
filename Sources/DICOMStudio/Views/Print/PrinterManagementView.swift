@@ -53,12 +53,7 @@ struct PrinterManagementView: View {
             Divider()
 
             HStack {
-                if let message = viewModel.printerQueryMessage {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
+                probeResult
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
@@ -66,6 +61,7 @@ struct PrinterManagementView: View {
             .padding()
         }
         .frame(minWidth: 560, minHeight: 420)
+        .onDisappear { viewModel.clearPrinterProbeResult() }
         .sheet(item: $editing) { profile in
             PrinterEditorView(profile: profile, isCreating: isCreating) { saved in
                 viewModel.save(saved)
@@ -73,11 +69,44 @@ struct PrinterManagementView: View {
         }
     }
 
+    /// The footer's probe feedback.
+    ///
+    /// Prefers the structured status over `printerQueryMessage`: that message is
+    /// `PrintConsoleFormatter` output, a console block whose first two lines are
+    /// a title and a `====` rule, so rendering it truncated showed the header and
+    /// never the status itself.
+    @ViewBuilder
+    private var probeResult: some View {
+        if viewModel.isQueryingPrinter {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Querying the printer…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else if let status = viewModel.printerStatus {
+            Label(
+                PrinterStatusPresentation.summary(for: status),
+                systemImage: PrinterStatusPresentation.symbol(for: status.severity)
+            )
+            .font(.caption)
+            .foregroundStyle(PrinterStatusPresentation.color(for: status.severity))
+            .lineLimit(2)
+            .textSelection(.enabled)
+        } else if let message = viewModel.printerQueryMessage {
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .textSelection(.enabled)
+        }
+    }
+
     @ViewBuilder
     private func row(for printer: PrinterProfile) -> some View {
         HStack {
             Image(systemName: printer.status.sfSymbol)
-                .foregroundStyle(printer.status == .online ? .green : .secondary)
+                .foregroundStyle(PrinterStatusPresentation.connectionColor(for: printer.status))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(printer.name.isEmpty ? "Untitled printer" : printer.name)
@@ -93,6 +122,13 @@ struct PrinterManagementView: View {
                 Text("\(printer.host):\(printer.port) · \(printer.remoteAETitle) · \(printer.colorMode.displayName)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if printer.isMonitoringEnabled, let detail = printer.lastStatusDetail {
+                    Label(detail, systemImage: "dot.radiowaves.left.and.right")
+                        .font(.caption2)
+                        .foregroundStyle(
+                            PrinterStatusPresentation.connectionColor(for: printer.status))
+                        .lineLimit(1)
+                }
             }
             Spacer()
             Button("Edit") {
@@ -105,10 +141,12 @@ struct PrinterManagementView: View {
                     viewModel.selectedPrinterID = printer.id
                     Task { await viewModel.testConnection() }
                 }
+                .disabled(viewModel.isQueryingPrinter)
                 Button("Query Status") {
                     viewModel.selectedPrinterID = printer.id
                     Task { await viewModel.queryPrinterStatus() }
                 }
+                .disabled(viewModel.isQueryingPrinter)
                 Divider()
                 Button("Remove", role: .destructive) { viewModel.delete(printer) }
             } label: {
@@ -161,6 +199,25 @@ private struct PrinterEditorView: View {
                     Text("Timeout: \(Int(profile.timeoutSeconds))s")
                 }
                 Toggle("Default printer", isOn: $profile.isDefault)
+
+                Section("Status monitoring") {
+                    Toggle("Check this printer in the background",
+                           isOn: $profile.isMonitoringEnabled)
+                    Stepper(
+                        value: $profile.monitoringIntervalSeconds,
+                        in: PrinterProfile.monitoringIntervalRange,
+                        step: 10
+                    ) {
+                        Text("Every \(Int(profile.monitoringIntervalSeconds))s")
+                    }
+                    .disabled(!profile.isMonitoringEnabled)
+
+                    Text("Opens a short association on the printer to read its "
+                         + "status. Backs off automatically when the printer "
+                         + "cannot be reached.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
 

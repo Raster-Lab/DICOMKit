@@ -169,9 +169,22 @@ public enum PrintSCPParser {
         public var content: ImageBoxContent
         public var image: PrintImageData?
 
-        public init(content: ImageBoxContent, image: PrintImageData?) {
+        /// What had to be changed to make the received pixels conformant.
+        ///
+        /// Empty for the ordinary image box. A non-empty list means the film
+        /// was still printed — see ``PixelDepthConformance`` for why clamping
+        /// beats rejecting — but the SCU sent something PS3.3 Table C.13-3 or
+        /// C.13-5 does not allow, and it is told so in the log.
+        public var conformanceNotes: [String]
+
+        public init(
+            content: ImageBoxContent,
+            image: PrintImageData?,
+            conformanceNotes: [String] = []
+        ) {
             self.content = content
             self.image = image
+            self.conformanceNotes = conformanceNotes
         }
     }
 
@@ -218,8 +231,15 @@ public enum PrintSCPParser {
             return ParsedImageBox(content: content, image: nil)
         }
 
-        let image = try parsePixelModule(item, isColor: isColor, configuration: configuration)
-        return ParsedImageBox(content: content, image: image)
+        let parsed = try parsePixelModule(item, isColor: isColor, configuration: configuration)
+        return ParsedImageBox(
+            content: content, image: parsed.image, conformanceNotes: parsed.notes)
+    }
+
+    /// A decoded pixel module, with any conformance corrections applied.
+    struct ParsedPixelModule {
+        var image: PrintImageData
+        var notes: [String]
     }
 
     /// Decodes the pixel module of a Preformatted Image Sequence item.
@@ -227,7 +247,7 @@ public enum PrintSCPParser {
         _ item: PrintAttributeSet,
         isColor: Bool,
         configuration: PrintSCPConfiguration
-    ) throws -> PrintImageData {
+    ) throws -> ParsedPixelModule {
         guard let rows = item.uint16(for: .rows), rows > 0 else {
             throw PrintSCPFailure(.missingAttribute, comment: "Rows (0028,0010) is required")
         }
@@ -289,17 +309,73 @@ public enum PrintSCPParser {
                     + "\(columns)x\(rows)x\(samplesPerPixel) at \(bitsAllocated) bits")
         }
 
-        return PrintImageData(
-            pixelData: pixelData,
+        // Depth last, because it is the one attribute we correct rather than
+        // reject: a sender asking for 16 bits stored gets a printed film at the
+        // deepest legal depth and a line in the log, not a failed job. See
+        // ``PrintPixelDepthConformance``.
+        let depth = PrintPixelDepthConformance.resolve(
+            bitsStored: bitsStored, bitsAllocated: bitsAllocated, isColor: isColor)
+
+        var samples = pixelData
+        if depth.bitsStored != bitsStored {
+            // Relabelling alone would be a lie: a value filling 16 bits read as
+            // a 12-bit value is four times too bright. The samples are scaled
+            // down so the picture on film is the picture that was sent.
+            samples = rescale(
+                pixelData,
+                from: bitsStored,
+                to: depth.bitsStored,
+                bitsAllocated: bitsAllocated)
+        }
+
+        let image = PrintImageData(
+            pixelData: samples,
             rows: rows,
             columns: columns,
             bitsAllocated: bitsAllocated,
-            bitsStored: bitsStored,
-            highBit: highBit,
+            bitsStored: depth.bitsStored,
+            highBit: depth.highBit,
             samplesPerPixel: samplesPerPixel,
             pixelRepresentation: pixelRepresentation,
             photometricInterpretation: photometric
         )
+        return ParsedPixelModule(image: image, notes: depth.notes)
+    }
+
+    /// Scales samples from one stored depth to a shallower one.
+    ///
+    /// A right shift rather than a multiply: the depths involved are all powers
+    /// of two apart in range, the shift is exact for the top bits that survive,
+    /// and it cannot overflow. Samples wider than the container are left alone —
+    /// the caller has already clamped Bits Stored to Bits Allocated.
+    static func rescale(
+        _ pixelData: Data,
+        from source: UInt16,
+        to target: UInt16,
+        bitsAllocated: UInt16
+    ) -> Data {
+        guard source > target, source > 0 else { return pixelData }
+        let shift = UInt16(source - target)
+
+        if bitsAllocated == 8 {
+            return Data(pixelData.map { $0 >> UInt8(min(shift, 7)) })
+        }
+
+        // 16-bit samples are little-endian on the wire, matching how the SCU
+        // writes them and how `PrintImageData` is read everywhere else.
+        var output = Data(capacity: pixelData.count)
+        var index = pixelData.startIndex
+        while index + 1 < pixelData.endIndex {
+            let value = UInt16(pixelData[index]) | (UInt16(pixelData[index + 1]) << 8)
+            let scaled = value >> shift
+            output.append(UInt8(scaled & 0xFF))
+            output.append(UInt8(scaled >> 8))
+            index += 2
+        }
+        // An odd trailing byte cannot be a whole sample; it is carried through
+        // untouched rather than dropped, so the buffer length is preserved.
+        if index < pixelData.endIndex { output.append(pixelData[index]) }
+        return output
     }
 
     // MARK: - Presentation LUT / Annotation Box
@@ -311,6 +387,14 @@ public enum PrintSCPParser {
     /// shape is honored during composition.
     public static func presentationLUTShape(in attributes: PrintAttributeSet) throws -> PresentationLUTShape? {
         guard let shape = attributes.string(for: .presentationLUTShape) else { return nil }
+        // Be liberal in what we accept: PS3.3 C.11.4 does not list INVERSE, but
+        // senders that borrow the softcopy module's value do emit it, and
+        // failing the N-CREATE over it would be a worse outcome than printing
+        // the inverted film they plainly asked for.
+        let normalized = shape
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+            .uppercased()
+        if normalized == "INVERSE" { return .inverseRendered }
         return try enumeration(PresentationLUTShape.self, shape, tag: "Presentation LUT Shape")
     }
 

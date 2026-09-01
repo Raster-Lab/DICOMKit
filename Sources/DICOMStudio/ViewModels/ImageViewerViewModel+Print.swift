@@ -52,7 +52,13 @@ extension ImageViewerViewModel {
             rotationDegrees: rotationAngle,
             flipHorizontal: isFlippedHorizontal,
             flipVertical: isFlippedVertical,
-            invert: isInverted
+            invert: isInverted,
+            // The colour goes onto the film with the mark, because the reader
+            // marked the picture they were looking at. It costs something real
+            // there — a coloured cell is sent as 8-bit RGB and gives up the
+            // deep-grayscale depth — which is the film's business to decide, not
+            // the viewer's to pre-empt by dropping the choice on the way over.
+            palette: palette
         )
     }
 

@@ -162,14 +162,49 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
     /// Rasterization resolution of the composed sheet.
     public var dpi: Double
 
+    /// The resolution a fresh install composes at, and what "Reset" restores.
+    ///
+    /// 600 DPI is the native resolution of the common dry-imager families
+    /// (DryPix, DryView, Drystar), so a sheet composed at it maps one composed
+    /// pixel to one printed dot with no resampling on the way out.
+    public static let defaultDPI: Double = 600
+
+    /// The range the composer accepts; values outside it are clamped there.
+    ///
+    /// The ceiling is 650: film imagers top out around there — 600 DPI is the
+    /// native resolution of the common dry-imager families and the highest any
+    /// of them addresses, so anything beyond it is resolution the film cannot
+    /// hold. Composing higher only costs memory (a 14×17 in sheet grows with
+    /// the square of DPI) and is resampled back down at the printer.
+    public static let dpiRange: ClosedRange<Double> = 36...650
+
     /// How optical density is interpreted when the film is rendered.
     public var densityMapping: DensityMapping
 
     /// Whether Basic Annotation Box text is drawn on the sheet.
     public var drawAnnotations: Bool
 
+    /// Which edge of the sheet the annotation band occupies (FR-006:
+    /// footer, header, side, or drawn over the images).
+    public var annotationEdge: FilmAnnotationEdge
+
     /// Whether crop marks are drawn when Trim (2010,0140) is YES.
     public var drawTrimMarks: Bool
+
+    /// A pseudo-colour palette laid over received films when they are rendered.
+    ///
+    /// Off by default, and deliberately: an image box's P-Values are what the
+    /// sending operator approved, and Print Management has no way to ask for a
+    /// palette or to report that one was used ("palette" appears nowhere in
+    /// PS3.4 Annex H). Recolouring silently would make the emulator's film
+    /// disagree with the screen the study was signed off on.
+    ///
+    /// So this is a local viewing control and nothing more. It reaches the
+    /// composed sheet — the preview, and the auto-saved PNG/TIFF of it — while
+    /// the received P-Values are left exactly as they arrived. Nothing that goes
+    /// back on the wire is affected, which is what keeps the emulator conformant
+    /// with the palette switched on.
+    public var previewPalette: PseudoColorPalette?
 
     /// Sheet margin in millimetres on all four edges.
     public var marginMillimeters: Double
@@ -239,10 +274,12 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
         softwareVersion: String = "1.0",
         printerStatus: EmulatedPrinterStatus = .normal,
         printerStatusInfo: String = "",
-        dpi: Double = 300,
+        dpi: Double = PrintSCPSettings.defaultDPI,
         densityMapping: DensityMapping = .paperDirect,
         drawAnnotations: Bool = true,
+        annotationEdge: FilmAnnotationEdge = .bottom,
         drawTrimMarks: Bool = true,
+        previewPalette: PseudoColorPalette? = nil,
         marginMillimeters: Double = 5,
         cellSpacingMillimeters: Double = 2,
         maximumPixelDimension: Int = 12000,
@@ -282,6 +319,8 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
         self.dpi = dpi
         self.densityMapping = densityMapping
         self.drawAnnotations = drawAnnotations
+        self.annotationEdge = annotationEdge
+        self.previewPalette = previewPalette
         self.drawTrimMarks = drawTrimMarks
         self.marginMillimeters = marginMillimeters
         self.cellSpacingMillimeters = cellSpacingMillimeters
@@ -353,7 +392,12 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
             densityMapping: (try? container.decodeIfPresent(DensityMapping.self, forKey: .densityMapping))
                 .flatMap { $0 } ?? fallback.densityMapping,
             drawAnnotations: bool(.drawAnnotations, fallback.drawAnnotations),
+            annotationEdge: (try? container.decodeIfPresent(FilmAnnotationEdge.self, forKey: .annotationEdge))
+                .flatMap { $0 } ?? fallback.annotationEdge,
             drawTrimMarks: bool(.drawTrimMarks, fallback.drawTrimMarks),
+            previewPalette: (try? container.decodeIfPresent(
+                PseudoColorPalette.self, forKey: .previewPalette))
+                .flatMap { $0 } ?? fallback.previewPalette,
             marginMillimeters: double(.marginMillimeters, fallback.marginMillimeters),
             cellSpacingMillimeters: double(.cellSpacingMillimeters, fallback.cellSpacingMillimeters),
             maximumPixelDimension: int(.maximumPixelDimension, fallback.maximumPixelDimension),
@@ -477,8 +521,10 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
             marginMillimeters: marginMillimeters,
             cellSpacingMillimeters: cellSpacingMillimeters,
             drawAnnotations: drawAnnotations,
+            annotationEdge: annotationEdge,
             drawTrimMarks: drawTrimMarks,
-            maximumPixelDimension: maximumPixelDimension)
+            maximumPixelDimension: maximumPixelDimension,
+            previewPalette: previewPalette)
     }
 }
 

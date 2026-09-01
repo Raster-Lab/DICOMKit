@@ -33,8 +33,28 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
     /// The series' files, in instance order — the tile's navigation list.
     public let filePaths: [String]
 
+    /// Instance Number of each image, keyed by SOP Instance UID.
+    ///
+    /// Carried on the entry because presentation states name their images by
+    /// UID, as the IOD requires, and the pane has to say *which slice* a saved
+    /// view is on. The library indexes the number at import; recovering it any
+    /// other way would mean reading the series' files back.
+    ///
+    /// An image the study does not number is simply absent, which the PR list
+    /// reports as a series without a slice rather than an invented position.
+    public let instanceNumbersBySOPUID: [String: Int]
+
     /// Total frames across the series, which is what a cine tile steps through.
     public let frameCount: Int
+
+    /// Frames per object, keyed by file path.
+    ///
+    /// What lets the card show one preview per cine: an echo series is
+    /// routinely several separate multi-frame objects — two loops of 76 and 92
+    /// frames are two recordings, not one — and a single thumbnail of the
+    /// first file claims the series is one picture. An object the library did
+    /// not count is read as single-frame.
+    public let frameCountsByFilePath: [String: Int]
 
     /// What the series holds: images, a report, a document, and so on.
     ///
@@ -52,7 +72,9 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
         orientation: String? = nil,
         filePaths: [String],
         frameCount: Int,
-        contentKind: ViewerContentKind = .image
+        contentKind: ViewerContentKind = .image,
+        instanceNumbersBySOPUID: [String: Int] = [:],
+        frameCountsByFilePath: [String: Int] = [:]
     ) {
         self.seriesInstanceUID = seriesInstanceUID
         self.title = title
@@ -62,16 +84,46 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
         self.filePaths = filePaths
         self.frameCount = frameCount
         self.contentKind = contentKind
+        self.instanceNumbersBySOPUID = instanceNumbersBySOPUID
+        self.frameCountsByFilePath = frameCountsByFilePath
     }
 
     /// Objects in the series.
     public var objectCount: Int { filePaths.count }
 
-    /// "715 objects, 715 frames" — the counts line on a card.
+    /// "715 images", "1 image, 358 frames" — the counts line on a card.
+    ///
+    /// Objects first, because "how many pictures is this series" is what a
+    /// reader is asking, and DICOM answers it with the object count: a
+    /// 715-slice CT is 715 images, not one 715-frame recording. Frames are the
+    /// second dimension — how many pictures live *inside* those objects — so
+    /// the frame half is stated only when the series actually has more frames
+    /// than objects, which is exactly when it is a cine. Saying "715 objects,
+    /// 715 frames" on a plain stack invites the reader to wonder which of the
+    /// two numbers is the one they wanted.
+    ///
+    /// Non-image series are counted in their own noun: a report is a report,
+    /// and calling it an image is wrong before the count even matters.
     public var countsLabel: String {
-        let objects = "\(objectCount) object\(objectCount == 1 ? "" : "s")"
+        let objects = "\(objectCount) \(objectNoun)\(objectCount == 1 ? "" : "s")"
+        guard frameCount > objectCount else { return objects }
         let frames = "\(frameCount) frame\(frameCount == 1 ? "" : "s")"
         return "\(objects), \(frames)"
+    }
+
+    /// What one object of this series is called: an image, a report, a
+    /// document. Singular — `countsLabel` pluralises it.
+    private var objectNoun: String {
+        switch contentKind {
+        case .image:              return "image"
+        case .waveform:           return "waveform"
+        case .report:             return "report"
+        case .keyObjectSelection: return "key object selection"
+        case .document:           return "document"
+        case .presentationState:  return "presentation state"
+        case .rawData:            return "raw data object"
+        case .other:              return "object"
+        }
     }
 
     /// The orientation line, which is worth stating even when unknown — an
@@ -99,4 +151,41 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
 
     /// Whether this series is shown as pixels.
     public var isImageSeries: Bool { contentKind.isImage }
+
+    // MARK: - Per-object previews
+
+    /// The card's previews when the series is several cines: one per
+    /// multi-frame object, in instance order.
+    ///
+    /// Empty everywhere else — a single object needs no strip, and a stack of
+    /// single-frame slices (a 715-object CT) is one acquisition that would be
+    /// misrepresented, and the pane buried, by 715 previews. The rule is
+    /// "more than one object AND at least one of them is a cine": that is the
+    /// series whose single thumbnail hides whole recordings, and it is the
+    /// case Horos answers with one preview per object.
+    public var objectPreviews: [SeriesObjectPreview] {
+        guard isImageSeries, filePaths.count > 1 else { return [] }
+        let previews = filePaths.map {
+            SeriesObjectPreview(filePath: $0, frameCount: frameCountsByFilePath[$0] ?? 1)
+        }
+        guard previews.contains(where: { $0.frameCount > 1 }) else { return [] }
+        return previews
+    }
+}
+
+/// One object of a multi-cine series, as the card previews it.
+public struct SeriesObjectPreview: Identifiable, Hashable, Sendable {
+
+    /// The object's file — the preview's picture, and what clicking it opens.
+    public let filePath: String
+
+    /// Its frames, so the caption can tell a 76-frame loop from a 92-frame one.
+    public let frameCount: Int
+
+    public var id: String { filePath }
+
+    /// "92 frames" — the caption under the preview.
+    public var frameCountLabel: String {
+        "\(frameCount) frame\(frameCount == 1 ? "" : "s")"
+    }
 }

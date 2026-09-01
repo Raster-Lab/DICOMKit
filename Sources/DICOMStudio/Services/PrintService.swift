@@ -48,35 +48,73 @@ public struct PrintService: Sendable {
     ///     Cropping and permutation happen on the full-resolution decoded frame,
     ///     so a zoomed print keeps the modality's detail. Ignored for `raw`
     ///     requests, whose whole point is untouched stored pixels.
-    ///   - annotations: Lines of identification to burn into each frame's
-    ///     pixels, keyed by mark ID. Empty leaves the pixels alone. Burning is
-    ///     how film carries a patient's name reliably: a DICOM printer draws
-    ///     annotation boxes to its own layout, and many ignore them entirely.
+    ///   - annotations: Identification to burn into each frame's corners, keyed
+    ///     by mark ID. Empty leaves the pixels alone. Burning is how film carries
+    ///     a patient's name reliably: a DICOM printer draws annotation boxes to
+    ///     its own layout, and many ignore them entirely.
     ///
-    ///     Per mark rather than per file, because whether a mark carries its own
-    ///     caption is a question about the *film* it lands on: one sheet of a
-    ///     single study states the patient once at its foot, while the next
-    ///     sheet — mixing studies — captions every image, and the same file can
-    ///     be marked onto both.
-    ///   - drawnAnnotations: The text and arrows a reader drew on each film cell,
-    ///     keyed by mark ID — per mark rather than per file, because two marks can
-    ///     be different frames of the same file and each carries its own drawing.
+    ///     Per mark rather than per file, because the same file can be marked
+    ///     onto two films and each mark is captioned on its own.
+    ///   - drawnAnnotations: The text and arrows a reader drew, keyed by mark
+    ///     ID — per mark rather than per file, because the same image can be
+    ///     marked onto two films. Burned into the pixels here, which is the
+    ///     one place they become pixels: on screen they are a separate,
+    ///     editable layer (`PrintSelectionModel/cellAnnotations`), but a film
+    ///     has nothing to carry a layer in, so what is sent has to hold them.
+    ///     Empty leaves the pixels alone — which is what the print sheet
+    ///     passes when the reader has turned burning off.
     ///   - onProgress: Optional per-frame diagnostic line.
     public func prepare(
         items: [PrintSelectionItem],
         request: PrintJobRequest,
         useViewerWindow: Bool = true,
         applyViewerPresentation: Bool = true,
-        annotations: [String: [String]] = [:],
+        annotations: [String: PrintCornerAnnotation] = [:],
+        annotationStyle: PrintAnnotationStyle = .automatic,
         drawnAnnotations: [String: [PrintOverlayAnnotation]] = [:],
         onProgress: PrintImagePreparer.ProgressHandler? = nil
     ) async throws -> [PreparedPrintImage] {
         var prepared: [PreparedPrintImage] = []
+
+        // The corner caption is held to the corners of the film *cell*, as the
+        // preview draws it; on the wire the image box is all there is to draw
+        // into. A fitted frame is therefore letterboxed to its cell's shape
+        // before the caption is burned — the picture lands exactly where the
+        // printer's own letterbox would have put it, and the caption falls at
+        // the cell's corners rather than floating against the picture's edge.
+        // Fit scaling only: fill and stretch cover the cell, so there is no
+        // letterbox to cross, and padding a true-size frame would change the
+        // physical size the film was asked to hold.
+        let cellShapes: [FilmCell]
+        if !request.raw, request.scalingMode == .fitToFilm, !annotations.isEmpty {
+            let sheet = FilmSheet(filmSize: request.effectiveFilmSize,
+                                  orientation: request.effectiveFilmOrientation,
+                                  dpi: 25.4)
+            cellShapes = request.plan(forImageCount: items.count).cells(
+                onSheetOfWidth: sheet.widthMillimeters,
+                height: sheet.heightMillimeters)
+        } else {
+            cellShapes = []
+        }
+
         // Files are re-read per mark rather than cached: marks routinely span
         // whole series, and holding every decoded frame would dwarf the film.
-        for item in items {
+        for (itemIndex, item) in items.enumerated() {
             var itemRequest = request
             itemRequest.frameSelection = .single(item.frameIndex + 1)
+            // The cell's own palette, since colour is a per-cell choice like the
+            // window: a film can hold a colourised PET beside a grey CT, and
+            // each cell is prepared with what it was given. The film-wide
+            // default has already been folded into the marks by the sheet, so
+            // there is nothing to resolve here.
+            //
+            // Only when the film is applying viewer presentations at all — with
+            // that switch off the arrangement is deliberately dropped, and
+            // colouring the cell anyway would apply half of a state the rest of
+            // the film is ignoring.
+            if applyViewerPresentation, !request.raw {
+                itemRequest.palette = item.presentation?.palette
+            }
             if request.windowSettings == nil, useViewerWindow, !request.raw,
                let center = item.windowCenter, let width = item.windowWidth, width >= 1 {
                 // A mark carries the viewer's window, which is in stored values:
@@ -98,7 +136,13 @@ public struct PrintService: Sendable {
             var arranged: [PreparedPrintImage]
             if applyViewerPresentation, !request.raw,
                let presentation = item.presentation, !presentation.isIdentity {
-                arranged = frames.map { $0.applying(presentation, onProgress: onProgress) }
+                // The film reads the crop with the geometry the job scales by,
+                // so a filled cell prints the panned crop the preview shows.
+                arranged = frames.map {
+                    $0.applying(presentation,
+                                covers: request.scalingMode == .fillToFilm,
+                                onProgress: onProgress)
+                }
             } else {
                 arranged = frames
             }
@@ -108,13 +152,50 @@ public struct PrintService: Sendable {
             // half-rotated patient name is worse than none. The reader's own
             // drawing goes on first and the identification caption over it — the
             // caption is the one thing on the film that must stay legible, and an
-            // arrow drawn across the bottom would otherwise cover it.
+            // arrow drawn into a corner would otherwise cover it.
+            //
+            // Burning is the *output* path only. On screen — the viewer and the
+            // film preview — the same annotations are a separate layer over the
+            // picture, so they stay editable; see `PrintSelectionModel
+            // .cellAnnotations`. Film and file are where they become pixels,
+            // because a film has no layer to carry them in.
             #if canImport(CoreGraphics)
             if !request.raw, let overlays = drawnAnnotations[item.id], !overlays.isEmpty {
-                arranged = arranged.map { ImageAnnotationBurner.burning(overlays: overlays, into: $0) }
+                // The frames handed to the burner have already been cropped,
+                // turned and mirrored, while the annotations are still in the
+                // *original* image's fractions — so the arrangement goes with
+                // them or the mark is burned wherever that fraction happens to
+                // land in the turned buffer. Measured against the frame as it
+                // arrived from the preparer, which is the space those fractions
+                // are in; `frames` is that, before `applying` above.
+                let orientation = frames.first.map {
+                    PrintOverlayOrientation(
+                        presentation: (applyViewerPresentation && !request.raw
+                                       ? item.presentation : nil) ?? ViewerPresentation(),
+                        imageWidth: Int($0.descriptor.columns),
+                        imageHeight: Int($0.descriptor.rows),
+                        covers: request.scalingMode == .fillToFilm)
+                }
+                arranged = arranged.map {
+                    ImageAnnotationBurner.burning(
+                        overlays: overlays, into: $0, orientation: orientation)
+                }
             }
-            if !request.raw, let lines = annotations[item.id], !lines.isEmpty {
-                arranged = arranged.map { ImageAnnotationBurner.burning(lines, into: $0) }
+            if !request.raw, let corners = annotations[item.id], !corners.isEmpty {
+                // Cells are consumed in film order, spilling over per film —
+                // the same order the SCU fills image boxes in — so a ROW/COL
+                // layout pads each frame to its *own* cell's shape.
+                if !cellShapes.isEmpty {
+                    let cell = cellShapes[itemIndex % cellShapes.count]
+                    if !cell.isEmpty {
+                        arranged = arranged.map {
+                            $0.padded(toCellAspectRatio: cell.width / cell.height)
+                        }
+                    }
+                }
+                arranged = arranged.map {
+                    ImageAnnotationBurner.burning(corners: corners, into: $0, style: annotationStyle)
+                }
             }
             #endif
 
@@ -159,7 +240,7 @@ public struct PrintService: Sendable {
 
     /// C-ECHO the printer AE (the "Test Connection" action).
     public func verify(profile: PrinterProfile) async throws -> Bool {
-        let config = profile.printConfiguration()
+        let config = profile.printConfiguration(probe: true)
         return try await DICOMVerificationService.verify(
             host: config.host,
             port: config.port,
@@ -179,7 +260,8 @@ public struct PrintService: Sendable {
 
     /// N-GET the printer's status.
     public func printerStatus(profile: PrinterProfile) async throws -> PrinterStatus {
-        try await PrintWorkflow.printerStatus(configuration: profile.printConfiguration())
+        try await PrintWorkflow.printerStatus(
+            configuration: profile.printConfiguration(probe: true))
     }
 
     /// N-GET the execution status of a submitted print job.
@@ -190,3 +272,13 @@ public struct PrintService: Sendable {
         )
     }
 }
+
+// MARK: - Job status seam
+
+/// Answers print-job status queries — the seam that lets the history pane's
+/// re-query be tested without a printer on the network.
+public protocol PrintJobStatusQuerying: Sendable {
+    func jobStatus(profile: PrinterProfile, printJobUID: String) async throws -> DICOMNetwork.PrintJobStatus
+}
+
+extension PrintService: PrintJobStatusQuerying {}

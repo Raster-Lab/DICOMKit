@@ -274,7 +274,7 @@ Promote `MockPrintSCP` into the library and make it stateful.
   `PrintSCPStatus` enum next to `DIMSEStatus`.
 - **N-EVENT-REPORT push** — on printer state change (e.g. out of film/paper), push to any SCU
   that negotiated the Printer SOP Class, reusing `PrinterEventType`
-  ([PrintService.swift:467](Sources/DICOMNetwork/PrintService.swift#L467)). Push logic already
+  ([PrintService.swift:569](Sources/DICOMNetwork/PrintService.swift#L569)). Push logic already
   demonstrated at [MockPrintSCP.swift:432](Tests/DICOMNetworkTests/MockPrintSCP.swift#L432).
 
 ### Milestone B — `PrintSCPParser` (~350 lines)

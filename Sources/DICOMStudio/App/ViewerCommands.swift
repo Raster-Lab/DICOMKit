@@ -45,15 +45,9 @@ struct ViewerCommands: Commands {
 
             Divider()
 
-            Toggle("Metadata Overlay", isOn: Binding(
+            Toggle("Image Metadata", isOn: Binding(
                 get: { viewModel?.showMetadataOverlay ?? false },
                 set: { viewModel?.showMetadataOverlay = $0 }
-            ))
-            .disabled(!hasImage)
-
-            Toggle("Performance Overlay", isOn: Binding(
-                get: { viewModel?.showPerformanceOverlay ?? false },
-                set: { viewModel?.showPerformanceOverlay = $0 }
             ))
             .disabled(!hasImage)
 

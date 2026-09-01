@@ -21,6 +21,7 @@ import SwiftUI
 #if canImport(AppKit)
 import AppKit
 #endif
+import DICOMCore
 import DICOMNetwork
 import DICOMPrintKit
 #if canImport(UniformTypeIdentifiers)
@@ -38,6 +39,14 @@ public enum PrintScreenPresentation: Sendable {
     case sheet
     /// A window of its own, beside the viewer.
     case window
+    /// In the viewer's own column, in place of the images.
+    ///
+    /// The shell hands the print screen the whole centre panel and takes it
+    /// back when the film is printed or put away — there is no presentation to
+    /// lower, so an embedded screen closes through `onClose` rather than
+    /// `dismiss()`. Sized like a window: the panel is whatever the reader made
+    /// it, and only the floor the options band needs is imposed.
+    case embedded
 }
 
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
@@ -84,19 +93,37 @@ public struct PrintSettingsView: View {
     /// the same size as the screen behind it. Unused when it *is* a window.
     private let parentSize: CGSize?
 
-    /// Whether this is a sheet over the viewer or a window of its own — which
-    /// decides only how the screen is sized; the contents are the same either
-    /// way, and `dismiss()` closes whichever it is.
+    /// Whether this is a sheet over the viewer, a window of its own, or the
+    /// viewer's centre panel — which decides how the screen is sized and how
+    /// it closes; the contents are the same every way.
     private let presentation: PrintScreenPresentation
+
+    /// How an embedded screen is put away. A sheet or a window has a
+    /// presentation for `dismiss()` to lower; a screen sitting in the shell's
+    /// own panel does not, so the shell hands in the way back instead — see
+    /// ``close()``.
+    private let onClose: (() -> Void)?
 
     public init(
         viewModel: PrintViewModel,
         parentSize: CGSize? = nil,
-        presentation: PrintScreenPresentation = .sheet
+        presentation: PrintScreenPresentation = .sheet,
+        onClose: (() -> Void)? = nil
     ) {
         self.viewModel = viewModel
         self.parentSize = parentSize
         self.presentation = presentation
+        self.onClose = onClose
+    }
+
+    /// Puts the screen away, however it is on screen: through the shell's
+    /// hand-back when embedded, through `dismiss()` when presented.
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     public var body: some View {
@@ -119,16 +146,27 @@ public struct PrintSettingsView: View {
         }
         // The screen can be opened onto a job already running — the window
         // outlives any one visit to it — and then the log is wanted at once.
-        .onAppear { showConsole = (viewModel.phase != .configuring) }
-        // Text placed on a cell is created empty, so the caret goes to its field:
-        // clicking to place text and then having to click again to type it is one
-        // click too many for something done a dozen times a film.
-        .onChange(of: viewModel.selectedAnnotationID) { _, _ in
-            if let selected = viewModel.selectedAnnotation,
-               selected.annotation.kind == .text, selected.annotation.text.isEmpty {
-                isAnnotationTextFocused = true
-            }
+        .onAppear {
+            showConsole = (viewModel.phase != .configuring)
+            // Every visit starts with the same tool armed and no locks shut.
+            // The caller that opened the screen normally resets it too, but the
+            // window can be reopened from the Print Center and by ⌘-tabbing back
+            // to one that was closed, and neither goes through that path — while
+            // an armed pan tool is invisible until the first drag has already
+            // moved the wrong thing. Cheap enough to do twice; not doing it once
+            // is what costs.
+            if viewModel.phase == .configuring { viewModel.resetPreviewTools() }
         }
+        // Whether the marked images carry colour decides the SOP class the job
+        // goes out on, and it can only be known by reading the files. Keyed to
+        // the marks so it runs when the screen opens and again whenever the
+        // selection changes; already-read files are skipped inside.
+        .task(id: viewModel.selection.items.map(\.filePath)) {
+            await viewModel.refreshSourceColor()
+        }
+        // Text placed on a cell opens its own editor on the cell — typing lands
+        // there, not in this sidebar (which may not even be open). Grabbing
+        // focus here as well would fight the inline box for the keyboard.
         // A fixed size, not a range: given only a range, the sheet settles on
         // whatever its content asks for — which is the minimum — and the options
         // band ends up clipped with the film in a small square in the middle.
@@ -280,7 +318,7 @@ public struct PrintSettingsView: View {
     private var actions: some View {
         switch viewModel.phase {
         case .configuring:
-            Button("Cancel") { dismiss() }
+            Button("Cancel") { close() }
                 .keyboardShortcut(.cancelAction)
             Button(viewModel.dryRun ? "Dry Run" : "Print") {
                 viewModel.print()
@@ -290,9 +328,17 @@ public struct PrintSettingsView: View {
             .disabled(!viewModel.canPrint)
         case .preparing, .printing:
             Button("Cancel Job", role: .destructive) { viewModel.cancel() }
+            // A queued job runs whether or not this sheet is open, so closing is
+            // not the same as cancelling and must not be the only way out.
+            if viewModel.isWaitingOnQueue {
+                Button("Close") { close() }
+                    .keyboardShortcut(.cancelAction)
+                    .buttonStyle(.borderedProminent)
+                    .help("Leave the job in the queue and close this window")
+            }
         case .finished:
             Button("Print Again") { viewModel.reset() }
-            Button("Done") { dismiss() }
+            Button("Done") { close() }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
         }
@@ -514,10 +560,17 @@ public struct PrintSettingsView: View {
                     }
                     .labelsHidden()
                     .frame(width: 220)
+                    .help("Which printer the film is sent to. Manage the list under "
+                          + "More ▸ Printers.")
                 }
             }
 
-            labeledControl("Film") {
+            // "Film Size", spelled out in front of the menu. "Film" alone read
+            // as a heading for the whole bar — everything here is about the film
+            // — and left the menu's own numbers ("14in x 17in") to say what the
+            // control was for, which they only do if you already know sheets are
+            // named by their inches.
+            labeledControl("Film Size") {
                 Picker("Film size", selection: $viewModel.filmSize) {
                     ForEach(PrintOptionCatalog.filmSizes, id: \.cliToken) { entry in
                         Text(entry.label).tag(entry.value)
@@ -526,6 +579,10 @@ public struct PrintSettingsView: View {
                 .labelsHidden()
                 .frame(width: 130)
                 .disabled(viewModel.layoutMode == .template)
+                .help(viewModel.layoutMode == .template
+                      ? "The template sets the sheet size — switch off the template to choose it."
+                      : "Size of the sheet the printer loads. Must match the film in the "
+                      + "printer's magazine, or the printer refuses the job.")
             }
 
             Picker("Orientation", selection: $viewModel.filmOrientation) {
@@ -537,6 +594,10 @@ public struct PrintSettingsView: View {
             .labelsHidden()
             .frame(width: 170)
             .disabled(viewModel.layoutMode == .template)
+            .help(viewModel.layoutMode == .template
+                  ? "The template sets the orientation — switch off the template to choose it."
+                  : "Which way round the sheet is used. Portrait is taller than wide; "
+                  + "landscape turns it, and the layout's cells turn with it.")
 
             labeledControl("Copies") {
                 Stepper(value: $viewModel.copies, in: 1...99) {
@@ -544,17 +605,21 @@ public struct PrintSettingsView: View {
                         .monospacedDigit()
                         .frame(minWidth: 18, alignment: .trailing)
                 }
+                .help("How many identical sets of film to print, 1 to 99. "
+                      + "The printer makes the copies; the job is sent once.")
             }
 
             Button {
                 showLayoutGallery.toggle()
             } label: {
-                Label(layoutButtonTitle, systemImage: "square.grid.2x2")
+                Label("Layout: \(layoutButtonTitle)", systemImage: "square.grid.2x2")
             }
-            .help("Choose the film's grid")
+            .help("Choose the film's layout — how many cells the sheet is divided into")
             .popover(isPresented: $showLayoutGallery, arrowEdge: .bottom) {
                 FilmLayoutGalleryView(viewModel: viewModel, isPresented: $showLayoutGallery)
             }
+
+            imageRangeControl
 
             Spacer(minLength: 4)
 
@@ -578,6 +643,200 @@ public struct PrintSettingsView: View {
     /// Whether the layout gallery popover is up.
     @State private var showLayoutGallery = false
 
+    /// Whether the image-range popover is up.
+    @State private var showImageRange = false
+
+    /// What the popover's fields hold before "Apply" — a draft per series,
+    /// keyed by series key, so typing does not filter the film mid-keystroke.
+    @State private var imageRangeDraftStarts: [String: Int] = [:]
+    @State private var imageRangeDraftEnds: [String: Int] = [:]
+
+    /// Printing a run of each series rather than all of it — "images 60 to 140".
+    ///
+    /// A filter, not an edit: the marks it holds back keep their windowing and
+    /// come straight back when the range is widened or "Load All" is pressed.
+    /// Image numbers restart in every series, so the popover offers one range
+    /// per marked series — a single-series film gets the one row it always had.
+    @ViewBuilder
+    private var imageRangeControl: some View {
+        if viewModel.canRangeImages {
+            Button {
+                showImageRange.toggle()
+            } label: {
+                Label(imageRangeButtonTitle, systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .help("Filter the film by image number — print only a run of each series, "
+                  + "with the rest still marked")
+            .popover(isPresented: $showImageRange, arrowEdge: .bottom) {
+                imageRangePopover
+                    // The numbers are read from the files, once, when the
+                    // control is actually opened: a reader who never ranges the
+                    // film should not pay a header read per mark for it.
+                    .task {
+                        await viewModel.loadImageNumbers()
+                        seedImageRangeDrafts()
+                    }
+            }
+        }
+    }
+
+    /// What the control says it does, not what it holds.
+    ///
+    /// "Images: 1–25" reads as a count of what is on the film; the control is a
+    /// filter over the marked images, and the title has to say so before it is
+    /// opened. Once a range is set the useful part is what is printing — the
+    /// run itself for one series, and the count of what survives when several
+    /// series each have their own run.
+    private var imageRangeButtonTitle: String {
+        guard viewModel.isImageRangeActive else { return "Filter Images" }
+        let series = viewModel.markedSeriesRanges
+        if series.count == 1, let sole = series.first,
+           let range = viewModel.imageRange(forSeries: sole.key) {
+            return "Filter: \(range.lowerBound)–\(range.upperBound)"
+        }
+        return "Filter: \(viewModel.printedItems.count) of \(viewModel.selection.count)"
+    }
+
+    private var imageRangePopover: some View {
+        let series = viewModel.markedSeriesRanges
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Filter Images by Number")
+                .font(.headline)
+
+            if viewModel.imageNumbers.isLoading {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Reading image numbers…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text(series.count == 1
+                     ? "Image numbers \(series.first.map { "\($0.bounds.lowerBound)–\($0.bounds.upperBound)" } ?? "") are marked. "
+                       + "Narrowing this prints only that run; the rest stay marked and keep "
+                       + "their windowing."
+                     : "Each series filters by its own image numbers. Narrowing a range "
+                       + "prints only that run of the series; the rest stay marked and keep "
+                       + "their windowing.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 280, alignment: .leading)
+            }
+
+            ForEach(series) { entry in
+                imageRangeRow(for: entry, showsLabel: series.count > 1)
+            }
+            // Typing a range against half-read numbers would filter against the
+            // fallback and print a run nobody asked for.
+            .disabled(viewModel.imageNumbers.isLoading)
+
+            if viewModel.isImageRangeActive {
+                Text("\(viewModel.imagesHeldBackByRange) of \(viewModel.selection.count) "
+                     + "marked images are held back.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Button("Clear Filter") {
+                    viewModel.loadAllImages()
+                    seedImageRangeDrafts()
+                    showImageRange = false
+                }
+                .disabled(!viewModel.isImageRangeActive)
+
+                Spacer()
+
+                Button("Apply") { applyImageRange(); showImageRange = false }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14)
+        .frame(width: 330)
+    }
+
+    /// One series' row: its name and marked run, and the fields for its range.
+    private func imageRangeRow(
+        for entry: PrintViewModel.MarkedSeriesRange,
+        showsLabel: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if showsLabel {
+                Text("\(entry.label) (\(entry.bounds.lowerBound)–\(entry.bounds.upperBound))")
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            HStack(spacing: 8) {
+                Text("From")
+                TextField("", value: imageRangeDraftBinding($imageRangeDraftStarts,
+                                                            key: entry.key,
+                                                            fallback: entry.bounds.lowerBound),
+                          format: .number)
+                    .frame(width: 60)
+                    .onSubmit { applyImageRange() }
+                Text("to")
+                TextField("", value: imageRangeDraftBinding($imageRangeDraftEnds,
+                                                            key: entry.key,
+                                                            fallback: entry.bounds.upperBound),
+                          format: .number)
+                    .frame(width: 60)
+                    .onSubmit { applyImageRange() }
+                if showsLabel {
+                    Button("All") {
+                        imageRangeDraftStarts[entry.key] = entry.bounds.lowerBound
+                        imageRangeDraftEnds[entry.key] = entry.bounds.upperBound
+                        viewModel.loadAllImages(forSeries: entry.key)
+                    }
+                    .controlSize(.small)
+                    .disabled(!viewModel.isImageRangeActive(forSeries: entry.key))
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    /// A field binding into the draft dictionaries, reading the series' own
+    /// bound until the reader types something.
+    private func imageRangeDraftBinding(
+        _ drafts: Binding<[String: Int]>,
+        key: String,
+        fallback: Int
+    ) -> Binding<Int> {
+        Binding(
+            get: { drafts.wrappedValue[key] ?? fallback },
+            set: { drafts.wrappedValue[key] = $0 }
+        )
+    }
+
+    /// Fills the drafts from what is actually in force, so the popover opens
+    /// saying what the film is doing.
+    private func seedImageRangeDrafts() {
+        var starts: [String: Int] = [:]
+        var ends: [String: Int] = [:]
+        for entry in viewModel.markedSeriesRanges {
+            let range = viewModel.imageRange(forSeries: entry.key) ?? entry.bounds
+            starts[entry.key] = range.lowerBound
+            ends[entry.key] = range.upperBound
+        }
+        imageRangeDraftStarts = starts
+        imageRangeDraftEnds = ends
+    }
+
+    private func applyImageRange() {
+        for entry in viewModel.markedSeriesRanges {
+            viewModel.setImageRange(
+                from: imageRangeDraftStarts[entry.key] ?? entry.bounds.lowerBound,
+                to: imageRangeDraftEnds[entry.key] ?? entry.bounds.upperBound,
+                forSeries: entry.key)
+        }
+        // The model clamps typos back inside each series; the fields should
+        // show what was actually applied.
+        seedImageRangeDrafts()
+    }
+
     /// What the layout button says it will do — the layout actually in force.
     private var layoutButtonTitle: String {
         let layout = viewModel.plan.layout
@@ -590,9 +849,6 @@ public struct PrintSettingsView: View {
         case .custom:      return viewModel.customLayoutFormat?.raw ?? "Custom"
         }
     }
-
-    /// Widest a picker in the sidebar grows to.
-    private static let controlWidth: CGFloat = 180
 
     // MARK: Printer
 
@@ -651,13 +907,11 @@ public struct PrintSettingsView: View {
 
                 if let status = viewModel.printerStatus {
                     Label(
-                        "Printer status: \(status.status)"
-                            + (status.statusInfo.map { " (\($0))" } ?? ""),
-                        systemImage: status.isNormal
-                            ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                        "Printer status: \(PrinterStatusPresentation.summary(for: status))",
+                        systemImage: PrinterStatusPresentation.symbol(for: status.severity)
                     )
                     .font(.caption)
-                    .foregroundStyle(status.isNormal ? .green : .orange)
+                    .foregroundStyle(PrinterStatusPresentation.color(for: status.severity))
                     .lineLimit(2)
                 } else if let message = viewModel.printerQueryMessage {
                     Text(message)
@@ -699,11 +953,18 @@ public struct PrintSettingsView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         HStack(spacing: 6) {
+            // The caption must neither wrap nor be crushed when the bar runs
+            // out of width — a wrapped "Printer" reads as three words.
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
+            // No maxWidth clamp here: each caller sets its control's own
+            // width, and a clamp narrower than that width does not shrink the
+            // control — SwiftUI frames don't clip — it just lets the control
+            // spill under the next caption.
             content()
-                .frame(maxWidth: Self.controlWidth, alignment: .leading)
                 .fixedSize(horizontal: true, vertical: false)
         }
     }
@@ -784,7 +1045,7 @@ public struct PrintSettingsView: View {
         let selected = viewModel.selectedAnnotation
 
         VStack(alignment: .leading, spacing: 8) {
-            if let selected, selected.annotation.kind == .text {
+            if let selected, selected.annotation.kind != .arrow {
                 stackedControl("Text") {
                     TextField("Type the annotation", text: annotationTextBinding(selected))
                         .focused($isAnnotationTextFocused)
@@ -856,6 +1117,46 @@ public struct PrintSettingsView: View {
                     .controlSize(.small)
                 }
             }
+
+            if viewModel.hasAnnotations {
+                Divider()
+                burnAnnotationsControl
+            }
+        }
+    }
+
+    /// Whether the drawn marks travel with the film.
+    ///
+    /// Only shown once something has been drawn: it is a decision about the
+    /// annotations on this film, and offering it over an unmarked film is
+    /// offering a choice about nothing.
+    ///
+    /// On screen the marks are a layer over the picture either way — this is
+    /// about the pixels that leave. Film has nothing to carry a layer in, so a
+    /// mark either becomes pixels here or does not reach the reader holding
+    /// the sheet.
+    @ViewBuilder
+    private var burnAnnotationsControl: some View {
+        Toggle("Include annotations on film", isOn: $viewModel.burnDrawnAnnotations)
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .help("Burn the drawn text and arrows into the printed and saved "
+                  + "pixels. Off sends the picture without them.")
+
+        Text(viewModel.burnDrawnAnnotations
+             ? "The film and any saved file carry the marks as drawn."
+             : "The marks stay on screen only — the film carries the picture "
+               + "without them.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+        if viewModel.burnDrawnAnnotations, viewModel.request.raw {
+            Text("Raw pixels are being sent, so nothing can be burned in — "
+                 + "the film will not carry the marks.")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -881,9 +1182,13 @@ public struct PrintSettingsView: View {
                 )
         }
         .buttonStyle(.plain)
+        .interactiveControl(cornerRadius: 12, horizontal: 3, vertical: 3)
         .accessibilityLabel(swatch.name)
         .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
-        .help(swatch.name)
+        // `.railTooltip`, not `.help`: a `.plain` button's tooltip lands on a
+        // wrapper the pointer never enters, so it stays silent until some
+        // bordered button elsewhere in the window has shown one.
+        .railTooltip(swatch.name)
     }
 
     private static let annotationSwatches: [(name: String, color: PrintOverlayColor)] = [
@@ -986,17 +1291,13 @@ public struct PrintSettingsView: View {
                     }
 
                     Menu("Presets") {
-                        ForEach(WindowLevelPresets.allPresets) { preset in
-                            Button("\(preset.modality) \(preset.name)  "
-                                   + "\(Int(preset.center))/\(Int(preset.width))") {
-                                viewModel.applyWindowPreset(preset, toItemID: focused.id)
-                            }
-                        }
+                        presetMenuItems(for: focused)
                     }
                     .frame(maxWidth: .infinity)
 
                     Button("Apply to All") { viewModel.applyFocusedWindowToAllCells() }
-                        .help("Give every image on film this window")
+                        .help("Give every cell on this film the same window — "
+                              + "other films are left as they are")
                         .disabled(viewModel.window(forItemID: focused.id) == nil)
 
                     Button("Revert") { viewModel.revertCell(forItemID: focused.id) }
@@ -1009,6 +1310,8 @@ public struct PrintSettingsView: View {
                 }
                 .controlSize(.small)
                 .disabled(viewModel.isCellWindowingOverridden)
+
+                savedViewPicker(for: focused)
 
                 if let reason = viewModel.cellWindowingBlockedReason {
                     Label(reason, systemImage: "exclamationmark.triangle.fill")
@@ -1035,6 +1338,13 @@ public struct PrintSettingsView: View {
                 arrangementToggle
                 identificationControls
             }
+            // The preset menu offers this cell's modality first, and the
+            // modality comes off the file — a mark made without opening the
+            // file does not carry one. Header-only, once per file, kept in the
+            // same cache the range control reads.
+            .task(id: focused.id) {
+                await viewModel.imageNumbers.load(paths: [focused.filePath])
+            }
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Click a film cell to window or arrange it.")
@@ -1050,32 +1360,219 @@ public struct PrintSettingsView: View {
         }
     }
 
-    /// Whether the film names its patient, and where it says so.
+    /// The saved views one cell can be given, if its image has any.
     ///
-    /// The two halves of one decision, together: a caption under every image is
-    /// the right answer for a sheet that mixes studies and repetitive noise on a
-    /// sheet that does not, and the reader can only judge that with the film in
-    /// front of them — which is where this panel is.
+    /// Shown per cell as well as job-wide because the two answer different
+    /// questions: the job-wide control says how the sheet should generally
+    /// relate to what was saved, and this says what *this* slice should show —
+    /// a reader comparing a lung window against a bone window on one film needs
+    /// to set them cell by cell.
+    ///
+    /// Placed outside the windowing group's `.disabled`: a saved view is not
+    /// only a window, and an explicit job-wide window does not stop it carrying
+    /// the zoom, rotation and inversion that were saved with it.
+    @ViewBuilder
+    private func savedViewPicker(for item: PrintSelectionItem) -> some View {
+        let views = viewModel.savedViews(for: item)
+        if !views.isEmpty {
+            Divider()
+
+            labeledControl("View") {
+                Picker("View", selection: Binding(
+                    get: { viewModel.savedViewSelectionLabel(forItemID: item.id) },
+                    set: { label in
+                        if label == PrintViewModel.defaultViewLabel {
+                            viewModel.clearSavedView(forItemID: item.id)
+                        } else {
+                            Task {
+                                // The cell the preview is drawing, so the
+                                // stored Displayed Area is restored against the
+                                // shape it will print in rather than against
+                                // the viewer tile the mark was made in.
+                                await viewModel.applySavedView(
+                                    label: label, toItemID: item.id,
+                                    cellSize: viewModel.lastCellSize)
+                            }
+                        }
+                    }
+                )) {
+                    Text(PrintViewModel.defaultViewLabel)
+                        .tag(PrintViewModel.defaultViewLabel)
+                    ForEach(views) { view in
+                        Text(view.label).tag(view.label)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 140)
+            }
+            .controlSize(.small)
+            .disabled(!viewModel.savedViewsCanReachTheFilm)
+            .help("Print this image with a view saved for it in the viewer")
+
+            // A view can be applied in full and still be discarded by a
+            // job-wide setting before it reaches a pixel. Said out loud, or
+            // picking one is indistinguishable from a dead control.
+            if let reason = viewModel.savedViewBlockedReason {
+                Label(reason, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// The preset menu's rows for one cell.
+    ///
+    /// The cell's own modality first, flat, because those are the presets a
+    /// reader printing a CT actually reaches for — a CT "Lung" applied to an MR
+    /// names a tissue the numbers cannot find. Every other modality stays
+    /// reachable behind one submenu, for the file whose header lied or was
+    /// never read.
+    @ViewBuilder
+    private func presetMenuItems(for focused: PrintSelectionItem) -> some View {
+        let matched = viewModel.imageNumbers.modality(forPath: focused.filePath)
+            .map { WindowLevelPresets.presets(for: $0) } ?? []
+        if matched.isEmpty {
+            // Modality unknown (not read yet, or one with no presets): offer
+            // everything, grouped so "Bone" says which Bone it is.
+            presetGroups(excludingModality: nil, for: focused)
+        } else {
+            ForEach(matched) { preset in
+                presetButton(preset, showModality: false, for: focused)
+            }
+            Divider()
+            Menu("Other Modalities") {
+                presetGroups(excludingModality: matched.first?.modality, for: focused)
+            }
+        }
+    }
+
+    /// One submenu per modality, minus the one already shown flat.
+    @ViewBuilder
+    private func presetGroups(
+        excludingModality excluded: String?, for focused: PrintSelectionItem
+    ) -> some View {
+        ForEach(WindowLevelPresets.presetsByModality.filter { $0.modality != excluded },
+                id: \.modality) { group in
+            Menu(group.modality) {
+                ForEach(group.presets) { preset in
+                    presetButton(preset, showModality: false, for: focused)
+                }
+            }
+        }
+    }
+
+    private func presetButton(
+        _ preset: WindowLevelPreset, showModality: Bool, for focused: PrintSelectionItem
+    ) -> some View {
+        Button((showModality ? "\(preset.modality) " : "") + preset.name
+               + "  \(Int(preset.center))/\(Int(preset.width))") {
+            viewModel.applyWindowPreset(preset, toItemID: focused.id)
+        }
+    }
+
+    /// Whether the film names its patient.
+    ///
+    /// One switch, because there is one answer: the caption goes under the image
+    /// it belongs to. It carries what made that picture as well as who it is of
+    /// — modality, image number, slice thickness on a CT — and those differ from
+    /// cell to cell, so there is nothing a single line at the foot of the sheet
+    /// could say for all of them.
     @ViewBuilder
     private var identificationControls: some View {
         Toggle("Patient identification", isOn: $viewModel.showPatientIdentification)
             .toggleStyle(.checkbox)
             .controlSize(.small)
-            .help("Print the patient, ID, study date and description on the film")
+            .help("Print the patient, ID, study date, description and technique "
+                  + "under each image")
 
-        Picker("Caption", selection: $viewModel.identificationPlacement) {
-            ForEach(PrintIdentificationPlacement.allCases, id: \.self) { placement in
-                Text(placement.title).tag(placement)
-            }
-        }
-        .controlSize(.small)
-        .disabled(!viewModel.showPatientIdentification)
-        .help(viewModel.identificationPlacement.help)
-
-        Text(viewModel.identificationPlacement.help)
+        Text("A caption under each image: patient, ID and study date, the study "
+             + "description, then what made the picture.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+
+        if viewModel.showPatientIdentification {
+            identificationFieldToggles
+            identificationTypography
+        }
+    }
+
+    /// FR-006's optional fields. Each off by default: the standard caption is
+    /// the caption today's films carry, and every extra line is a line of type
+    /// over the picture.
+    @ViewBuilder
+    private var identificationFieldToggles: some View {
+        identificationFieldToggle(
+            "Birth date", .birthDate,
+            help: "Burned into the pixels, a birth date survives later "
+                + "de-identification of the file. For clinical film only.")
+        identificationFieldToggle(
+            "Accession number", .accessionNumber,
+            help: "\"Acc:\" under the study description")
+        identificationFieldToggle(
+            "Institution", .institutionName,
+            help: "Under the study date")
+        identificationFieldToggle(
+            "Series description", .seriesDescription,
+            help: "Under the study description")
+    }
+
+    private func identificationFieldToggle(
+        _ title: String,
+        _ field: PrintIdentificationFields,
+        help: String
+    ) -> some View {
+        Toggle(title, isOn: Binding(
+            get: { viewModel.identificationFields.contains(field) },
+            set: { on in
+                if on { viewModel.identificationFields.insert(field) }
+                else { viewModel.identificationFields.remove(field) }
+            }
+        ))
+        .toggleStyle(.checkbox)
+        .controlSize(.mini)
+        .padding(.leading, 16)
+        .help(help)
+    }
+
+    /// FR-006 typography. Automatic is the default and stays the
+    /// recommendation — it sizes to the frame and flips for MONOCHROME1;
+    /// the overrides exist for sites whose protocol dictates a look.
+    @ViewBuilder
+    private var identificationTypography: some View {
+        Toggle("Custom caption size", isOn: $viewModel.identificationUsesCustomSize)
+            .toggleStyle(.checkbox)
+            .controlSize(.mini)
+            .padding(.leading, 16)
+            .help("Size as a percentage of the image height, "
+                  + "instead of the automatic size")
+        if viewModel.identificationUsesCustomSize {
+            HStack(spacing: 6) {
+                Slider(value: $viewModel.identificationSizePercent, in: 2...10)
+                    .frame(width: 110)
+                Text(String(format: "%.1f%%", viewModel.identificationSizePercent))
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.leading, 32)
+        }
+        HStack(spacing: 6) {
+            Text("Color")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker("Caption color", selection: $viewModel.identificationForeground) {
+                Text("Auto").tag(PrintAnnotationStyle.Foreground.automatic)
+                Text("White").tag(PrintAnnotationStyle.Foreground.white)
+                Text("Black").tag(PrintAnnotationStyle.Foreground.black)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.mini)
+            .frame(width: 140)
+        }
+        .padding(.leading, 16)
     }
 
     /// Arrangement is a job-wide switch, not a windowing control, so a window
@@ -1220,6 +1717,46 @@ public struct PrintSettingsView: View {
     private var imageAdvanced: some View {
         subsection("Film box & image box") {
             VStack(alignment: .leading, spacing: 8) {
+                stackedControl("Scaling") {
+                    Picker("Scaling", selection: $viewModel.scalingMode) {
+                        ForEach(PrintScalingMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }.labelsHidden()
+                }
+                if viewModel.scalingMode == .trueSize {
+                    Text("Prints at physical size from the image's pixel spacing. "
+                         + "Images without spacing fall back to Fit, with a warning. "
+                         + "For projection X-ray this is detector-plane size, not anatomy.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if viewModel.scalingMode == .stretch {
+                    Text("Stretch distorts anatomy — not for diagnostic use. "
+                         + "Applies to composed film only; a DICOM printer will fit instead.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if viewModel.scalingMode != .stretch {
+                    stackedControl("Position in cell") {
+                        alignmentGrid
+                    }
+                    if viewModel.cellAlignment != .center {
+                        // Not silent: the live preview composes every cell
+                        // centred (its GPU transform has no anchor), so an
+                        // off-centre choice shows on the composed film — save,
+                        // emulator — and not on the sheet being edited here. A
+                        // real DICOM printer centres regardless.
+                        Text("Applies to saved and emulator film. The preview "
+                             + "shows cells centred, and a real DICOM printer "
+                             + "centres regardless.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
                 stackedControl("Magnification") {
                     Picker("Magnification", selection: $viewModel.magnificationType) {
                         ForEach(PrintOptionCatalog.magnificationTypes, id: \.cliToken) { entry in
@@ -1267,6 +1804,41 @@ public struct PrintSettingsView: View {
         }
     }
 
+    /// A 3×3 grid of anchors — reads as the cell it positions within, where a
+    /// nine-item dropdown reads as a list of words (SRS FR-003).
+    private var alignmentGrid: some View {
+        let rows: [[PrintCellAlignment]] = [
+            [.topLeft, .topCenter, .topRight],
+            [.centerLeft, .center, .centerRight],
+            [.bottomLeft, .bottomCenter, .bottomRight],
+        ]
+        return VStack(spacing: 2) {
+            ForEach(rows, id: \.self) { row in
+                HStack(spacing: 2) {
+                    ForEach(row, id: \.self) { alignment in
+                        Button {
+                            viewModel.cellAlignment = alignment
+                        } label: {
+                            Image(systemName: viewModel.cellAlignment == alignment
+                                  ? "circle.inset.filled" : "circle")
+                                .font(.system(size: 9))
+                                .frame(width: 22, height: 18)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(viewModel.cellAlignment == alignment
+                                         ? Color.accentColor : Color.secondary)
+                        .interactiveControl(cornerRadius: 5, horizontal: 1, vertical: 1)
+                        .railTooltip(alignment.displayName)
+                        .accessibilityLabel(alignment.displayName)
+                    }
+                }
+            }
+        }
+        .padding(3)
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.quaternary))
+        .fixedSize()
+    }
+
     /// A caption above its control, for the settings column — a label beside the
     /// control needs width the column does not have.
     @ViewBuilder
@@ -1286,7 +1858,9 @@ public struct PrintSettingsView: View {
     private var renderingAdvanced: some View {
         subsection("Rendering") {
             VStack(alignment: .leading, spacing: 8) {
-                Toggle("Auto-detect color mode from the printer", isOn: $viewModel.autoDetectColorMode)
+                Toggle("Auto-detect colour mode", isOn: $viewModel.autoDetectColorMode)
+                    .help("Prints in colour when the marked images carry colour "
+                          + "pixels and the printer is set up to accept them.")
                 if !viewModel.autoDetectColorMode {
                     stackedControl("Color mode") {
                         Picker("Color mode", selection: $viewModel.colorMode) {
@@ -1296,6 +1870,26 @@ public struct PrintSettingsView: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                    }
+                }
+
+                // Offered only when there is colour to lose. Colour sources
+                // now keep their colour by default, so this is the switch that
+                // deliberately gives it up — for monochrome film stock, where a
+                // flattened grey is what the sheet can actually show.
+                if viewModel.selectionHasColorImages {
+                    Toggle("Print colour images as greys",
+                           isOn: Binding(
+                            get: { !viewModel.preservesSourceColor },
+                            set: { viewModel.preservesSourceColor = !$0 }))
+                        .help("Flattens colour images to greys before sending. "
+                              + "Off, they print in colour.")
+
+                    if let notice = viewModel.colorDowngradeNotice {
+                        Label(notice, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
@@ -1321,11 +1915,64 @@ public struct PrintSettingsView: View {
                 stackedControl("Grayscale bit depth") {
                     Picker("Grayscale bit depth", selection: $viewModel.bitDepth) {
                         ForEach(PrintOptionCatalog.bitDepths, id: \.self) { depth in
-                            Text("\(depth)-bit").tag(depth)
+                            Text(PrintOptionCatalog.bitDepthLabel(depth)).tag(depth)
                         }
                     }
                     .labelsHidden()
                     .disabled(viewModel.sendRawPixels)
+                    .help("PS3.3 Table C.13-3 allows Bits Stored of 8 or 12 on the "
+                        + "Basic Grayscale Image Box. 12-bit shows smoother gradients "
+                        + "on film, but only where the printer supports it.")
+                }
+
+                stackedControl("Colour palette") {
+                    Picker("Colour palette", selection: Binding(
+                        get: { viewModel.filmPalette },
+                        set: { viewModel.applyFilmPalette($0) }
+                    )) {
+                        Text("None (grayscale)")
+                            .tag(DICOMCore.PseudoColorPalette?.none)
+                        // Grouped, because the list is long and the groups are
+                        // the part that matters: the DICOM heading is a promise
+                        // that those eight mean the same thing on any conforming
+                        // system, which none of the others can make.
+                        ForEach(DICOMCore.PseudoColorPalette.catalog, id: \.group) { entry in
+                            Section(entry.group.title) {
+                                ForEach(entry.palettes, id: \.self) { palette in
+                                    Text(palette.displayName)
+                                        .tag(DICOMCore.PseudoColorPalette?.some(palette))
+                                }
+                            }
+                        }
+                    }
+                    .labelsHidden()
+                    .disabled(viewModel.sendRawPixels)
+                    .help("Recolours the film. Cells that were given their own "
+                        + "palette keep it.")
+                }
+
+                // What colour costs, said before the job is sent rather than
+                // discovered afterwards. Both of these are the standard's rules,
+                // not ours: PS3.3 Table C.13-5 fixes the colour image box at
+                // 8 bits per sample and allows only RGB in it, so a coloured
+                // film has no deeper form and no density curve to apply.
+                if viewModel.filmPalette?.isGrayscale == false, !viewModel.sendRawPixels {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if viewModel.bitDepth > 8 {
+                            Label(
+                                "Colour prints at 8-bit; the \(viewModel.bitDepth)-bit "
+                                + "depth applies to grayscale film only.",
+                                systemImage: "info.circle")
+                        }
+                        if viewModel.presentationLUTShape == .linearOpticalDensity {
+                            Label(
+                                "Linear optical density applies to grayscale film "
+                                + "only and is not applied to colour.",
+                                systemImage: "info.circle")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
 
                 stackedControl("Presentation LUT") {
@@ -1338,11 +1985,76 @@ public struct PrintSettingsView: View {
                     .labelsHidden()
                 }
 
+                // What the rendered inverse will visibly not do — a colour cell
+                // keeping its polarity, or a raw job it cannot touch at all —
+                // said here rather than discovered on the film.
+                if let notice = viewModel.presentationLUTNotice {
+                    Label(notice, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                savedPresentationStateControls
+
                 Toggle("Send stored pixels unprocessed (raw)", isOn: $viewModel.sendRawPixels)
                     .help("No rescale, window, or inversion. Compressed sources are still decoded.")
             }
             .padding(4)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// The job-wide saved-view controls.
+    ///
+    /// Hidden entirely when the study has nothing saved for any marked image: a
+    /// toggle that cannot change the film is worse than no toggle, because it
+    /// invites the reader to look for an effect that was never possible.
+    @ViewBuilder
+    private var savedPresentationStateControls: some View {
+        if viewModel.hasSavedViewsForAnyCell {
+            Divider()
+
+            Toggle("Apply saved presentation state (PR)",
+                   isOn: $viewModel.applySavedPresentationStates)
+                .help("Each image prints with the view saved for it in the viewer")
+
+            if viewModel.applySavedPresentationStates {
+                stackedControl("Saved view") {
+                    Picker("Saved view", selection: $viewModel.defaultSavedViewLabel) {
+                        Text("Most recent").tag(String?.none)
+                        // The count says how many cells the label can reach. A
+                        // label saved over part of a series is still worth
+                        // offering, but a reader who picks it must be able to
+                        // see that it lands on four cells of twenty rather than
+                        // discovering it by staring at the other sixteen.
+                        ForEach(viewModel.savedViewLabelsOnFilm, id: \.self) { label in
+                            let covered = viewModel.cellCountCovered(byLabel: label)
+                            Text("\(label) — \(covered) "
+                                 + (covered == 1 ? "cell" : "cells"))
+                                .tag(Optional(label))
+                        }
+                    }
+                    .labelsHidden()
+                }
+
+                let withViews = viewModel.cellCountWithSavedViews
+                let total = viewModel.printedItems.count
+                Text(withViews == total
+                     ? "Cells you have adjusted here keep your changes."
+                     : "\(withViews) of \(total) cells have a saved view; the rest print "
+                       + "as marked. Cells you have adjusted here keep your changes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let reason = viewModel.savedViewBlockedReason {
+                    Label(reason, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
@@ -1380,7 +2092,10 @@ private struct PrintScreenSizing: ViewModifier {
         switch presentation {
         case .sheet:
             content.frame(width: sheetSize.width, height: sheetSize.height)
-        case .window:
+        case .window, .embedded:
+            // A window is sized by the user; an embedded screen by the panel
+            // it sits in. Either way only the floor is imposed — in the
+            // embedded case it flows up into the shell window's minimum size.
             content.frame(
                 minWidth: PrintSettingsView.minimumWidth,
                 minHeight: PrintSettingsView.minimumHeight)

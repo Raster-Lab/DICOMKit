@@ -162,6 +162,23 @@ struct PrintCellAnnotationTests {
         #expect(viewModel.hasAnnotations)
     }
 
+    @Test("Turning the marks off for a job leaves them on screen but off the film")
+    func testBurnToggleGatesOnlyTheOutput() {
+        let viewModel = makeViewModel(items: markedFrames)
+        let id = viewModel.addTextAnnotation(forItemID: "/a.dcm#0", at: point(0.5, 0.5))
+        viewModel.setAnnotationText("LAD", id: id, forItemID: "/a.dcm#0")
+
+        #expect(viewModel.burnDrawnAnnotations, "film carries what was drawn, by default")
+
+        viewModel.burnDrawnAnnotations = false
+        // The store is untouched: the marks are still on screen, still
+        // editable, and still there if the switch goes back on.
+        #expect(viewModel.annotations(forItemID: "/a.dcm#0").count == 1)
+        #expect(viewModel.hasAnnotations)
+        #expect(viewModel.annotationsForPrinting["/a.dcm#0"]?.count == 1,
+                "the switch gates what the job is given, not what is drawn")
+    }
+
     // MARK: - Removing
 
     @Test("Delete removes what is selected, and nothing else")
@@ -210,6 +227,29 @@ struct PrintCellAnnotationTests {
         #expect(viewModel.annotations(forItemID: "/a.dcm#0").isEmpty)
         #expect(viewModel.selectedAnnotationID == nil)
         #expect(viewModel.annotationsForPrinting.isEmpty)
+    }
+
+    @Test("Annotations are shared by image identity, not owned by one mark")
+    func testAnnotationsSharedByImageIdentity() {
+        // Two marks that, despite carrying different mark IDs were the film
+        // arranged with duplicate cells, point at the very same file and
+        // frame — the case that matters for the main viewer, which has no
+        // notion of "which mark", only "which image".
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.addArrowAnnotation(forItemID: "/a.dcm#0",
+                                     from: point(0.1, 0.1), to: point(0.5, 0.5))
+
+        // A second mark pointing at the same image, added after the first is
+        // unmarked, sees the same drawing — it is the image's annotation,
+        // not the mark's.
+        viewModel.selection.remove(filePath: "/a.dcm", frameIndex: 0)
+        viewModel.pruneAnnotations()
+        #expect(viewModel.annotations(forItemID: "/a.dcm#0").isEmpty,
+                "pruning drops annotations once no mark points at the image")
+
+        viewModel.selection.add(PrintSelectionItem(filePath: "/a.dcm", frameIndex: 0))
+        viewModel.addTextAnnotation(forItemID: "/a.dcm#0", at: point(0.2, 0.2))
+        #expect(viewModel.annotations(forItemID: "/a.dcm#0").count == 1)
     }
 
     @Test("Clearing the film clears every cell")

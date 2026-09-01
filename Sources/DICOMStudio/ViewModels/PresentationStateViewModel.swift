@@ -22,7 +22,7 @@ public final class PresentationStateViewModel {
     public var availableGSPS: [GSPSModel] = []
 
     /// Available pseudo-color palettes.
-    public var availablePalettes: [PseudoColorPalette] = PseudoColorPalette.allCases
+    public var availablePalettes: [PresentationStatePalette] = PresentationStatePalette.allCases
 
     // MARK: - Active State
 
@@ -33,7 +33,7 @@ public final class PresentationStateViewModel {
     public var activeStateType: PresentationStateType?
 
     /// Current pseudo-color palette.
-    public var activePalette: PseudoColorPalette = .hotIron
+    public var activePalette: PresentationStatePalette = .hotIron
 
     /// Current blending opacity.
     public var blendingOpacity: Double = BlendingHelpers.defaultOpacity
@@ -172,7 +172,7 @@ public final class PresentationStateViewModel {
     /// Sets the active pseudo-color palette.
     ///
     /// - Parameter palette: Palette to activate.
-    public func setPalette(_ palette: PseudoColorPalette) {
+    public func setPalette(_ palette: PresentationStatePalette) {
         activePalette = palette
         activeStateType = .pseudoColor
     }

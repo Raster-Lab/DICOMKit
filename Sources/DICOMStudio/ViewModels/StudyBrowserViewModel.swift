@@ -44,6 +44,16 @@ public final class StudyBrowserViewModel {
     /// The library storage service.
     public let libraryStorageService: LibraryStorageService
 
+    /// Reclaims the files a deleted study leaves in the app's storage.
+    ///
+    /// Optional so that a ViewModel built without one — a preview, a test that
+    /// only cares about the index — deletes rows and nothing else, exactly as
+    /// it did before. The app always supplies one.
+    public let fileCleanup: StudyFileCleanup?
+
+    /// What the last delete reclaimed, for the UI to report.
+    public var lastCleanupOutcome: StudyFileCleanup.Outcome?
+
     /// Current import progress, if importing.
     public var importProgress: ImportProgress?
 
@@ -71,15 +81,29 @@ public final class StudyBrowserViewModel {
     /// whole study or series from here skips the mark-in-the-viewer step.
     public var onPrintFiles: (([String]) -> Void)?
 
+    /// Callback invoked after a study's files have been removed.
+    ///
+    /// The parameter is the deleted Study Instance UID. Deleting a study is
+    /// the one moment the rest of the app has to let go of it: a viewer still
+    /// showing its images, caches still holding its pixels, a queued print job
+    /// still pointing at files that no longer exist.
+    ///
+    /// Carries the file paths the study held, because by the time this runs the
+    /// index no longer knows them and the files themselves are gone.
+    public var onStudyRemoved: ((String, [String]) -> Void)?
+
     /// Creates a study browser ViewModel.
     public init(
         library: LibraryModel = LibraryModel(),
         importService: ImportService = ImportService(),
-        libraryStorageService: LibraryStorageService = LibraryStorageService()
+        libraryStorageService: LibraryStorageService = LibraryStorageService(),
+        fileCleanup: StudyFileCleanup? = nil
     ) {
         self.library = library
         self.importService = importService
         self.libraryStorageService = libraryStorageService
+        self.fileCleanup = fileCleanup
+        self.lastCleanupOutcome = nil
         self.filter = .none
         self.sortField = .date
         self.sortDirection = .descending
@@ -93,6 +117,7 @@ public final class StudyBrowserViewModel {
         self.onOpenInViewer = nil
         self.onOpenSeriesInViewer = nil
         self.onPrintFiles = nil
+        self.onStudyRemoved = nil
     }
 
     /// Returns the filtered and sorted studies for display.
@@ -205,10 +230,24 @@ public final class StudyBrowserViewModel {
         }
     }
 
-    /// Removes a study from the library.
+    /// Removes a study from the library, and the files the app copied for it.
+    ///
+    /// Import copies every file into the app's own storage, so deleting the
+    /// index entry alone left that copy behind: invisible to the browser, but
+    /// still holding the images and the patient's identity. Delete removes
+    /// both halves — the row and the bytes — which is what a user pressing
+    /// Delete on a study is asking for.
+    ///
+    /// Files stored outside the app's import directory are never touched. An
+    /// instance the library points at in place belongs to the user, and losing
+    /// a row in our index is not a reason to delete it.
     ///
     /// - Parameter studyUID: The Study Instance UID to remove.
     public func removeStudy(_ studyUID: String) {
+        // Collect the paths before the index forgets them: once the study is
+        // out of the library there is nothing left to say which files were its.
+        let paths = filePaths(forStudy: studyUID)
+
         library.removeStudy(studyUID)
         if selectedStudyUID == studyUID {
             selectedStudyUID = nil
@@ -219,14 +258,30 @@ public final class StudyBrowserViewModel {
         } catch {
             lastError = "Failed to save library: \(error.localizedDescription)"
         }
+
+        // Reclaim last, and only after the index is safely saved: a crash
+        // between the two should leave a listed study whose files are gone
+        // rather than orphaned files no screen can reach.
+        guard let fileCleanup else { return }
+        let outcome = fileCleanup.removeFiles(forStudy: studyUID, knownPaths: paths)
+        lastCleanupOutcome = outcome
+        logger.info(
+            "removeStudy: deleted \(outcome.filesDeleted) file(s), reclaimed \(outcome.bytesReclaimed) byte(s)")
+        if !outcome.externalPathsKept.isEmpty {
+            logger.info(
+                "removeStudy: kept \(outcome.externalPathsKept.count) file(s) stored outside the library")
+        }
+        onStudyRemoved?(studyUID, paths)
     }
 
-    /// Removes every imported study from the library.
-    ///
-    /// Only the library index is discarded — the imported files themselves stay
-    /// where they are on disk, exactly as `removeStudy(_:)` leaves them.
+    /// Removes every imported study from the library, and their files with them.
     public func removeAllStudies() {
         logger.info("removeAllStudies: clearing \(self.library.studyCount) study/studies from library")
+        let studyUIDs = Array(library.studies.keys)
+        let pathsByStudy = studyUIDs.reduce(into: [String: [String]]()) {
+            $0[$1] = filePaths(forStudy: $1)
+        }
+
         library.clear()
         selectedStudyUID = nil
         selectedSeriesUID = nil
@@ -235,6 +290,51 @@ public final class StudyBrowserViewModel {
         } catch {
             lastError = "Failed to save library: \(error.localizedDescription)"
         }
+
+        guard let fileCleanup else { return }
+        var total = StudyFileCleanup.Outcome()
+        for uid in studyUIDs {
+            let outcome = fileCleanup.removeFiles(
+                forStudy: uid, knownPaths: pathsByStudy[uid] ?? [])
+            total.filesDeleted += outcome.filesDeleted
+            total.bytesReclaimed += outcome.bytesReclaimed
+            total.externalPathsKept.append(contentsOf: outcome.externalPathsKept)
+            total.savedViewsDeleted = total.savedViewsDeleted || outcome.savedViewsDeleted
+            onStudyRemoved?(uid, pathsByStudy[uid] ?? [])
+        }
+        lastCleanupOutcome = total
+        logger.info(
+            "removeAllStudies: deleted \(total.filesDeleted) file(s), reclaimed \(total.bytesReclaimed) byte(s)")
+    }
+
+    /// Deletes managed folders for studies the library no longer lists.
+    ///
+    /// Studies deleted before delete reclaimed its files left folders that
+    /// nothing references. This reclaims them in one pass.
+    ///
+    /// - Returns: The number of folders removed and the bytes reclaimed.
+    @discardableResult
+    public func removeOrphanedStudyFiles() -> (folders: Int, bytes: Int64) {
+        guard let fileCleanup else { return (0, 0) }
+        let (outcome, uids) = fileCleanup.removeOrphanedStudies(
+            knownStudyUIDs: Set(library.studies.keys))
+        lastCleanupOutcome = outcome
+        logger.info(
+            "removeOrphanedStudyFiles: swept \(uids.count) folder(s), \(outcome.bytesReclaimed) byte(s)")
+        return (uids.count, outcome.bytesReclaimed)
+    }
+
+    /// What an orphan sweep would reclaim, without reclaiming it.
+    public func orphanedStudyFileSize() -> (folders: Int, bytes: Int64) {
+        guard let fileCleanup else { return (0, 0) }
+        return fileCleanup.orphanedStudySize(knownStudyUIDs: Set(library.studies.keys))
+    }
+
+    /// Every file path the index holds for a study.
+    private func filePaths(forStudy studyUID: String) -> [String] {
+        library.seriesForStudy(studyUID)
+            .flatMap { library.instancesForSeries($0.seriesInstanceUID) }
+            .map(\.filePath)
     }
 
     /// Clears all filters.

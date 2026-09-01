@@ -23,6 +23,11 @@ struct ViewerSeriesPaneView: View {
     #if canImport(CoreGraphics)
     /// One thumbnail per series — the series' first instance, unarranged.
     @State private var thumbnails = FrameImageStore(maxDimension: 256)
+
+    /// The series whose presentation-state list is open, by Series Instance
+    /// UID. One at a time — the badges are small and adjacent, and two open
+    /// popovers over a scrolling pane cannot be told apart.
+    @State private var savedViewListSeriesUID: String?
     #endif
 
     var body: some View {
@@ -131,6 +136,55 @@ struct ViewerSeriesPaneView: View {
         #endif
     }
 
+    // MARK: - Saved-view badge
+
+    /// The badge saying this series' images carry presentation states, and the
+    /// list it opens.
+    ///
+    /// The glyph and the purple are the toolbar picker's, so a reader who has
+    /// met either recognises the other; it sits in the corner opposite the
+    /// series number so the two badges never crowd each other.
+    ///
+    /// A button rather than a label now: the badge answered "are there any?",
+    /// and the reader also wants "which images, and which objects?". Clicking
+    /// it opens that list; it does not change what is on screen.
+    @ViewBuilder
+    private func savedViewBadge(_ entry: ViewerSeriesEntry) -> some View {
+        let references = viewModel.savedViewReferences(forSeries: entry.seriesInstanceUID)
+
+        Button {
+            savedViewListSeriesUID =
+                savedViewListSeriesUID == entry.seriesInstanceUID
+                    ? nil : entry.seriesInstanceUID
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "slider.horizontal.below.rectangle")
+                // The count, so the pane answers "how many" without being
+                // opened. Suppressed at one: "PR 1" reads as an identifier.
+                if references.count > 1 {
+                    Text("\(references.count)")
+                        .font(.caption2.monospacedDigit().bold())
+                }
+            }
+            .font(.caption2.bold())
+            .foregroundStyle(Color.purple)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.6), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(4)
+        .help("Presentation states on this series' images — click to list them")
+        .accessibilityLabel("\(references.count) presentation states. Show the list.")
+        .popover(isPresented: Binding(
+            get: { savedViewListSeriesUID == entry.seriesInstanceUID },
+            set: { if !$0 { savedViewListSeriesUID = nil } }
+        )) {
+            ViewerSeriesSavedViewList(entry: entry, references: references)
+        }
+    }
+
     // MARK: - One series
 
     /// Ring around the card of the series on screen.
@@ -171,6 +225,15 @@ struct ViewerSeriesPaneView: View {
                             .padding(4)
                     }
                 }
+                .overlay(alignment: .topTrailing) {
+                    // Saved views exist for this series' images. The glyph and
+                    // the purple are the toolbar picker's, so a reader who has
+                    // met either recognises the other; the corner opposite the
+                    // series number, so the two badges never crowd each other.
+                    if viewModel.seriesHasSavedViews(entry.seriesInstanceUID) {
+                        savedViewBadge(entry)
+                    }
+                }
 
             if isCurrent {
                 Label("Current series", systemImage: "checkmark.circle.fill")
@@ -206,6 +269,20 @@ struct ViewerSeriesPaneView: View {
                               lineWidth: Self.currentCardRingWidth)
         }
         .contentShape(Rectangle())
+        // Hover, outside the card's own surface and ring: the ring says which
+        // series is *shown*, this says which one the pointer is on. Two
+        // different questions, so two different cues.
+        //
+        // Hover only — no press tracking. The card is `.draggable`, so the
+        // pointer-down window already belongs to a drag recogniser, and a
+        // second zero-distance `DragGesture` layered under it claimed the
+        // sequence and swallowed the tap: clicking a card stopped hanging its
+        // series. The press cue is not worth the click.
+        // And the card keeps its own `contentShape(Rectangle())` above: the
+        // whole card is the click target, corners included, which a rounded
+        // shape stamped over it would trim.
+        .interactiveControl(cornerRadius: 7, horizontal: 0, vertical: 0,
+                            tracksPress: false, extendsHitArea: false)
         // A click shows the series, from its first image. Reading is a matter of
         // moving between series constantly, so it is one click, not two; the
         // double-click and the drag still work for anyone expecting them.
@@ -249,6 +326,11 @@ struct ViewerSeriesPaneView: View {
                     .foregroundStyle(.white.opacity(0.55))
                     .multilineTextAlignment(.center)
             }
+        } else if entry.objectPreviews.count > 1 {
+            // Several cines under one series: one preview per object, the way
+            // Horos shows them. A single thumbnail of the first file would
+            // claim the series is one recording when it holds two.
+            objectStrip(entry)
         } else {
             imageThumbnail(entry)
         }
@@ -256,33 +338,122 @@ struct ViewerSeriesPaneView: View {
 
     @ViewBuilder
     private func imageThumbnail(_ entry: ViewerSeriesEntry) -> some View {
-        #if canImport(CoreGraphics)
         if let path = entry.firstFilePath {
-            let key = FrameImageStore.Request(path: path).key
-            if let image = thumbnails.image(forKey: key) {
-                Image(decorative: image, scale: 1.0, orientation: .up)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else if thumbnails.didFail(key) {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-            } else {
-                ProgressView().controlSize(.small)
-            }
+            frameThumbnail(path)
         } else {
             Image(systemName: "square.dashed")
                 .foregroundStyle(.white.opacity(0.2))
+        }
+    }
+
+    @ViewBuilder
+    private func frameThumbnail(_ path: String) -> some View {
+        #if canImport(CoreGraphics)
+        let key = FrameImageStore.Request(path: path).key
+        if let image = thumbnails.image(forKey: key) {
+            Image(decorative: image, scale: 1.0, orientation: .up)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+        } else if thumbnails.didFail(key) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+        } else {
+            ProgressView().controlSize(.small)
         }
         #else
         Color.black
         #endif
     }
 
+    // MARK: - Per-object previews
+
+    /// Previews drawn on a multi-cine card before the strip resorts to a
+    /// "+N" tile. Three keeps each preview wide enough to read; a series with
+    /// more objects shows two and says how many the card cannot fit — the
+    /// remaining loops are one click away, through the series itself.
+    private static let objectStripCapacity = 3
+
+    /// One preview per multi-frame object, side by side.
+    @ViewBuilder
+    private func objectStrip(_ entry: ViewerSeriesEntry) -> some View {
+        let previews = entry.objectPreviews
+        let shown = previews.count > Self.objectStripCapacity
+            ? Array(previews.prefix(Self.objectStripCapacity - 1))
+            : previews
+        let hidden = previews.count - shown.count
+
+        HStack(spacing: 4) {
+            ForEach(shown) { preview in
+                objectPreviewTile(entry, preview: preview)
+            }
+            if hidden > 0 {
+                overflowTile(entry, hidden: hidden)
+            }
+        }
+        .padding(4)
+    }
+
+    /// One object: its first frame over its loop length, opening that object.
+    ///
+    /// A button of its own, above the card's tap: clicking the 92-frame loop
+    /// is a request to read that recording, and landing the reader on the
+    /// series' first object instead would show them the other one.
+    private func objectPreviewTile(
+        _ entry: ViewerSeriesEntry, preview: SeriesObjectPreview
+    ) -> some View {
+        Button {
+            viewModel.selectSeries(
+                entry.seriesInstanceUID, startingAtFile: preview.filePath)
+        } label: {
+            VStack(spacing: 2) {
+                frameThumbnail(preview.filePath)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Text(preview.frameCountLabel)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "Object with \(preview.frameCountLabel). Show it in the selected tile.")
+    }
+
+    /// The objects the strip has no room for, still one click from view.
+    private func overflowTile(_ entry: ViewerSeriesEntry, hidden: Int) -> some View {
+        Button {
+            viewModel.selectSeries(entry.seriesInstanceUID)
+        } label: {
+            VStack(spacing: 2) {
+                Image(systemName: "square.stack")
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.6))
+                Text("+\(hidden)")
+                    .font(.caption2.monospacedDigit().bold())
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(hidden) more objects. Show the series.")
+    }
+
     #if canImport(CoreGraphics)
     private func refreshThumbnails() {
-        thumbnails.refresh(viewModel.studySeries.compactMap { entry in
-            guard entry.isImageSeries else { return nil }
-            return entry.firstFilePath.map { FrameImageStore.Request(path: $0) }
+        thumbnails.refresh(viewModel.studySeries.flatMap { entry -> [FrameImageStore.Request] in
+            guard entry.isImageSeries else { return [] }
+            let previews = entry.objectPreviews
+            if previews.count > 1 {
+                // Only the strip's visible tiles: decoding every loop of a
+                // long echo study for tiles that draw as "+N" is wasted disk.
+                let shown = previews.count > Self.objectStripCapacity
+                    ? previews.prefix(Self.objectStripCapacity - 1)
+                    : previews.prefix(previews.count)
+                return shown.map { FrameImageStore.Request(path: $0.filePath) }
+            }
+            return entry.firstFilePath.map { [FrameImageStore.Request(path: $0)] } ?? []
         })
     }
     #endif

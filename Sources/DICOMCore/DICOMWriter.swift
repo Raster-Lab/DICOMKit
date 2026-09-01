@@ -534,6 +534,18 @@ extension DataElement {
         return DataElement(tag: tag, vr: .SS, length: UInt32(valueData.count), valueData: valueData)
     }
     
+    /// Creates a data element with multiple Int16 values
+    ///
+    /// - Parameters:
+    ///   - tag: The data element tag
+    ///   - values: Array of Int16 values
+    /// - Returns: A new data element with SS VR
+    public static func int16s(tag: Tag, values: [Int16]) -> DataElement {
+        let writer = DICOMWriter()
+        let valueData = writer.serializeInt16s(values)
+        return DataElement(tag: tag, vr: .SS, length: UInt32(valueData.count), valueData: valueData)
+    }
+    
     /// Creates a data element with an Int32 value
     ///
     /// - Parameters:
@@ -543,6 +555,18 @@ extension DataElement {
     public static func int32(tag: Tag, value: Int32) -> DataElement {
         let writer = DICOMWriter()
         let valueData = writer.serializeInt32(value)
+        return DataElement(tag: tag, vr: .SL, length: UInt32(valueData.count), valueData: valueData)
+    }
+    
+    /// Creates a data element with multiple Int32 values
+    ///
+    /// - Parameters:
+    ///   - tag: The data element tag
+    ///   - values: Array of Int32 values
+    /// - Returns: A new data element with SL VR
+    public static func int32s(tag: Tag, values: [Int32]) -> DataElement {
+        let writer = DICOMWriter()
+        let valueData = writer.serializeInt32s(values)
         return DataElement(tag: tag, vr: .SL, length: UInt32(valueData.count), valueData: valueData)
     }
     
@@ -558,6 +582,18 @@ extension DataElement {
         return DataElement(tag: tag, vr: .FL, length: UInt32(valueData.count), valueData: valueData)
     }
     
+    /// Creates a data element with multiple Float32 values
+    ///
+    /// - Parameters:
+    ///   - tag: The data element tag
+    ///   - values: Array of Float32 values
+    /// - Returns: A new data element with FL VR
+    public static func float32s(tag: Tag, values: [Float32]) -> DataElement {
+        let writer = DICOMWriter()
+        let valueData = writer.serializeFloat32s(values)
+        return DataElement(tag: tag, vr: .FL, length: UInt32(valueData.count), valueData: valueData)
+    }
+    
     /// Creates a data element with a Float64 value
     ///
     /// - Parameters:
@@ -567,6 +603,18 @@ extension DataElement {
     public static func float64(tag: Tag, value: Float64) -> DataElement {
         let writer = DICOMWriter()
         let valueData = writer.serializeFloat64(value)
+        return DataElement(tag: tag, vr: .FD, length: UInt32(valueData.count), valueData: valueData)
+    }
+    
+    /// Creates a data element with multiple Float64 values
+    ///
+    /// - Parameters:
+    ///   - tag: The data element tag
+    ///   - values: Array of Float64 values
+    /// - Returns: A new data element with FD VR
+    public static func float64s(tag: Tag, values: [Float64]) -> DataElement {
+        let writer = DICOMWriter()
+        let valueData = writer.serializeFloat64s(values)
         return DataElement(tag: tag, vr: .FD, length: UInt32(valueData.count), valueData: valueData)
     }
     

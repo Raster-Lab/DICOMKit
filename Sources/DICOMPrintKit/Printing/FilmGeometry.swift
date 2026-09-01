@@ -104,6 +104,35 @@ public struct FilmCell: Sendable, Equatable {
     public var isEmpty: Bool { width <= 0 || height <= 0 }
 }
 
+/// Which edge of the sheet a film-wide annotation band occupies.
+///
+/// SRS FR-006 names header, footer, side and overlay positions. The band is
+/// carved out of the picture area on the named edge; `.overlay` reserves
+/// nothing and the text is drawn over the pictures instead.
+public enum FilmAnnotationEdge: String, CaseIterable, Sendable, Codable {
+    /// A strip along the bottom — the footer, and the default.
+    case bottom
+    /// A strip along the top — the header.
+    case top
+    /// A strip along the left edge; the text runs top-to-bottom (spine-wise).
+    case left
+    /// A strip along the right edge; the text runs bottom-to-top.
+    case right
+    /// No strip: the text is drawn over the bottom of the pictures.
+    case overlay
+
+    /// Menu title.
+    public var title: String {
+        switch self {
+        case .bottom:  return "Footer"
+        case .top:     return "Header"
+        case .left:    return "Left edge"
+        case .right:   return "Right edge"
+        case .overlay: return "Over the images"
+        }
+    }
+}
+
 /// Lays out the cells an Image Display Format defines on a sheet.
 public enum FilmCellLayout {
 
@@ -119,27 +148,36 @@ public enum FilmCellLayout {
     ///   - sheet: the film sheet.
     ///   - margin: sheet margin in millimetres, applied on all four edges.
     ///   - spacing: gap between adjacent cells in millimetres.
-    ///   - footer: a strip in millimetres kept clear along the bottom of the
-    ///     sheet, below the margin, for film-wide text. The cells are laid out
-    ///     in what is left, so a footer never lands on the bottom row's anatomy.
+    ///   - footer: a strip in millimetres kept clear along `edge`, inside the
+    ///     margin, for film-wide text. The cells are laid out in what is left,
+    ///     so the band never lands on an edge row's anatomy. (The parameter
+    ///     keeps its historical name from when the bottom was the only edge.)
+    ///   - edge: which edge the strip comes off. `.overlay` reserves nothing.
     public static func cells(
         for format: PrintImageDisplayFormat,
         on sheet: FilmSheet,
         marginMillimeters margin: Double = 5,
         spacingMillimeters spacing: Double = 2,
-        footerMillimeters footer: Double = 0
+        footerMillimeters footer: Double = 0,
+        annotationEdge edge: FilmAnnotationEdge = .bottom
     ) -> [FilmCell] {
         let inset = max(0, sheet.pixels(fromMillimeters: margin))
         let gap = max(0, sheet.pixels(fromMillimeters: spacing))
-        let originX = inset
-        let originY = inset
-        let usableWidth = max(0, Double(sheet.pixelWidth) - 2 * inset)
-        // The footer eats into the picture's height, never into its own
-        // clearance: a strip deeper than the sheet can spare would leave no
-        // cells at all, so it is capped at a third of what the margins left.
-        let available = max(0, Double(sheet.pixelHeight) - 2 * inset)
-        let reserved = min(max(0, sheet.pixels(fromMillimeters: footer)), available / 3)
-        let usableHeight = available - reserved
+        // The band eats into the picture area, never into its own clearance:
+        // a strip deeper than the sheet can spare would leave no cells at
+        // all, so it is capped at a third of what the margins left on its axis.
+        let availableWidth = max(0, Double(sheet.pixelWidth) - 2 * inset)
+        let availableHeight = max(0, Double(sheet.pixelHeight) - 2 * inset)
+        let onSide = edge == .left || edge == .right
+        let axis = onSide ? availableWidth : availableHeight
+        let reserved = edge == .overlay
+            ? 0
+            : min(max(0, sheet.pixels(fromMillimeters: footer)), axis / 3)
+
+        let originX = inset + (edge == .left ? reserved : 0)
+        let originY = inset + (edge == .top ? reserved : 0)
+        let usableWidth = availableWidth - (onSide ? reserved : 0)
+        let usableHeight = availableHeight - (onSide ? 0 : reserved)
 
         switch format.kind {
         case .standard(let rows, let columns):
@@ -242,16 +280,38 @@ public enum FilmImageFitter {
     ///     desired *width* of the printed image, when the SCU asked for one.
     ///   - behavior: Requested Decimate/Crop Behavior (2020,0040).
     ///   - sheet: the sheet, for millimetre → pixel conversion.
+    ///   - alignment: where the image sits when it does not fill the cell —
+    ///     placement of the picture inside its letterbox, or of the crop
+    ///     window over the source (SRS FR-003). Centred by default, which is
+    ///     what every printer does and what every existing call site expects.
+    ///   - stretch: fill the cell exactly, aspect ratio ignored. Overrides
+    ///     `behavior`; local composition only, no wire form.
     public static func fit(
         imageWidth: Double,
         imageHeight: Double,
         in cell: FilmCell,
         requestedSizeMillimeters: Double?,
         behavior: DecimateCropBehavior,
-        sheet: FilmSheet
+        sheet: FilmSheet,
+        alignment: PrintCellAlignment = .center,
+        stretch: Bool = false
     ) -> FilmFitResult {
         guard imageWidth > 0, imageHeight > 0, !cell.isEmpty else {
             return .failed(reason: "Empty image or cell")
+        }
+
+        if stretch {
+            // The whole image onto the whole cell; x and y scale independently.
+            return .placed(
+                destination: cell,
+                sourceX: 0, sourceY: 0, sourceWidth: imageWidth, sourceHeight: imageHeight)
+        }
+
+        /// The destination for `width` × `height` content, placed by alignment.
+        func placed(width: Double, height: Double) -> FilmCell {
+            let origin = alignment.origin(forContentWidth: width, height: height, in: cell)
+            return FilmCell(position: cell.position,
+                            x: origin.x, y: origin.y, width: width, height: height)
         }
 
         // A requested physical width pins the scale; otherwise fit the cell.
@@ -267,25 +327,28 @@ public enum FilmImageFitter {
             } else {
                 scale = min(cell.width / imageWidth, cell.height / imageHeight)
             }
-            let width = imageWidth * scale
-            let height = imageHeight * scale
             return .placed(
-                destination: FilmCell(
-                    position: cell.position,
-                    x: cell.x + (cell.width - width) / 2,
-                    y: cell.y + (cell.height - height) / 2,
-                    width: width, height: height),
+                destination: placed(width: imageWidth * scale, height: imageHeight * scale),
                 sourceX: 0, sourceY: 0, sourceWidth: imageWidth, sourceHeight: imageHeight)
 
         case .crop:
-            // Fill the cell and crop the overflow, centred.
-            let scale = max(cell.width / imageWidth, cell.height / imageHeight)
+            // Print at the requested size when one was asked for — PS3.4 H.4.3:
+            // CROP means "at the requested size, cropping what does not fit" —
+            // and fill the cell when none was. Either way the overflow is
+            // cropped, with the crop window placed by alignment so "top" keeps
+            // the top of the anatomy.
+            let scale: Double
+            if let requested = requestedPixels, requested > 0 {
+                scale = requested / imageWidth
+            } else {
+                scale = max(cell.width / imageWidth, cell.height / imageHeight)
+            }
             let visibleWidth = min(imageWidth, cell.width / scale)
             let visibleHeight = min(imageHeight, cell.height / scale)
             return .placed(
-                destination: cell,
-                sourceX: (imageWidth - visibleWidth) / 2,
-                sourceY: (imageHeight - visibleHeight) / 2,
+                destination: placed(width: visibleWidth * scale, height: visibleHeight * scale),
+                sourceX: (imageWidth - visibleWidth) * alignment.horizontalFraction,
+                sourceY: (imageHeight - visibleHeight) * alignment.verticalFraction,
                 sourceWidth: visibleWidth, sourceHeight: visibleHeight)
 
         case .failOver:
@@ -300,11 +363,7 @@ public enum FilmImageFitter {
                     width, height, cell.width, cell.height))
             }
             return .placed(
-                destination: FilmCell(
-                    position: cell.position,
-                    x: cell.x + (cell.width - width) / 2,
-                    y: cell.y + (cell.height - height) / 2,
-                    width: width, height: height),
+                destination: placed(width: width, height: height),
                 sourceX: 0, sourceY: 0, sourceWidth: imageWidth, sourceHeight: imageHeight)
         }
     }

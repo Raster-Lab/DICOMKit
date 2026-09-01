@@ -26,7 +26,18 @@ public final class PrintThumbnailCache {
     /// megabytes, but the cells are now where windowing is judged and adjusted —
     /// at 256 the grey levels a user is tuning are half-lost to downscaling — so
     /// the cap sits above a full-sheet cell rather than at a thumbnail's size.
-    private static let maxDimension = 512
+    ///
+    /// 1024 rather than 512, because a cell is not a thumbnail any more. A 1×1
+    /// film on a Retina panel is well over a thousand device pixels tall, and the
+    /// arrangement is baked in *before* the downscale — so a cell zoomed 4× into
+    /// its frame had its crop reduced to 512 and then magnified back over the
+    /// whole sheet, which is the blockiness the reader sees while a texture is on
+    /// its way and permanently on frames the GPU will not take (overlay planes,
+    /// YBR pixels, machines without Metal). Matching the tile cache's 1024 costs
+    /// four times the bytes per cached cell and only for the film on screen —
+    /// the cache already holds one film at a time — which is the right trade for
+    /// the surface the film is actually judged on.
+    private static let maxDimension = 1024
 
     private let store = FrameImageStore(maxDimension: maxDimension)
 

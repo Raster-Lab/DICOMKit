@@ -11,19 +11,49 @@ import Foundation
 @Suite("Viewer Series Entry Tests")
 struct ViewerSeriesEntryTests {
 
-    @Test("Counts distinguish objects from frames")
+    @Test("Counts name images, and add frames only for a cine")
     func testCountsLabel() {
-        // A cine: one object, many frames.
+        // A cine: one object, many frames. Both numbers are worth stating,
+        // because the frames are the thing the tile steps through.
         let cine = ViewerSeriesEntry(
             seriesInstanceUID: "1.1", title: "ThorHR",
             filePaths: ["/a.dcm"], frameCount: 358)
-        #expect(cine.countsLabel == "1 object, 358 frames")
+        #expect(cine.countsLabel == "1 image, 358 frames")
 
-        // A stack: many objects, one frame each.
+        // A stack: many objects, one frame each. "715 images" is the whole
+        // answer — repeating it as "715 frames" only asks the reader which of
+        // the two numbers they were meant to read.
         let stack = ViewerSeriesEntry(
             seriesInstanceUID: "1.2", title: "THIN LUNG",
             filePaths: (0..<715).map { "/\($0).dcm" }, frameCount: 715)
-        #expect(stack.countsLabel == "715 objects, 715 frames")
+        #expect(stack.countsLabel == "715 images")
+
+        // A single classic image is one image, not one frame.
+        let single = ViewerSeriesEntry(
+            seriesInstanceUID: "1.3", title: "SCOUT",
+            filePaths: ["/a.dcm"], frameCount: 1)
+        #expect(single.countsLabel == "1 image")
+
+        // Several loops: the frame total is across the objects.
+        let echo = ViewerSeriesEntry(
+            seriesInstanceUID: "1.4", title: "US series 1",
+            filePaths: ["/loop1.dcm", "/loop2.dcm"], frameCount: 168,
+            frameCountsByFilePath: ["/loop1.dcm": 76, "/loop2.dcm": 92])
+        #expect(echo.countsLabel == "2 images, 168 frames")
+    }
+
+    @Test("A series that is not pictures is counted in its own noun")
+    func testCountsLabelForNonImageSeries() {
+        let report = ViewerSeriesEntry(
+            seriesInstanceUID: "1.1", title: "Radiology Report",
+            filePaths: ["/sr.dcm"], frameCount: 1, contentKind: .report)
+        #expect(report.countsLabel == "1 report")
+
+        let docs = ViewerSeriesEntry(
+            seriesInstanceUID: "1.2", title: "Scanned Forms",
+            filePaths: ["/a.dcm", "/b.dcm"], frameCount: 2,
+            contentKind: .document)
+        #expect(docs.countsLabel == "2 documents")
     }
 
     @Test("The card shows the series number, and omits it when there is none")
@@ -39,6 +69,61 @@ struct ViewerSeriesEntryTests {
             filePaths: ["/a.dcm"], frameCount: 1)
         #expect(unnumbered.seriesNumberLabel == nil)
         #expect(unnumbered.spokenLabel == "Patient Protocol")
+    }
+
+    @Test("A series of several cines previews each object, like Horos")
+    func testObjectPreviewsForMultiCineSeries() {
+        // The echo case: two recordings under one series, 76 and 92 frames.
+        let echo = ViewerSeriesEntry(
+            seriesInstanceUID: "1.1", title: "US series 1",
+            filePaths: ["/loop1.dcm", "/loop2.dcm"], frameCount: 168,
+            frameCountsByFilePath: ["/loop1.dcm": 76, "/loop2.dcm": 92])
+
+        let previews = echo.objectPreviews
+        #expect(previews.map(\.filePath) == ["/loop1.dcm", "/loop2.dcm"])
+        #expect(previews.map(\.frameCount) == [76, 92])
+        #expect(previews.map(\.frameCountLabel) == ["76 frames", "92 frames"])
+    }
+
+    @Test("A single object, however many frames, needs no strip")
+    func testSingleCineHasNoPreviews() {
+        let cine = ViewerSeriesEntry(
+            seriesInstanceUID: "1.1", title: "ThorHR",
+            filePaths: ["/a.dcm"], frameCount: 358,
+            frameCountsByFilePath: ["/a.dcm": 358])
+        #expect(cine.objectPreviews.isEmpty)
+    }
+
+    @Test("A stack of single-frame slices is one acquisition, not many previews")
+    func testSingleFrameStackHasNoPreviews() {
+        let paths = (0..<715).map { "/\($0).dcm" }
+        let stack = ViewerSeriesEntry(
+            seriesInstanceUID: "1.2", title: "THIN LUNG",
+            filePaths: paths, frameCount: 715,
+            frameCountsByFilePath: Dictionary(
+                uniqueKeysWithValues: paths.map { ($0, 1) }))
+        #expect(stack.objectPreviews.isEmpty)
+    }
+
+    @Test("One cine among single-frame objects still previews them all")
+    func testMixedSeriesPreviewsEveryObject() {
+        // A still plus a loop is still two recordings; hiding either behind
+        // the other's thumbnail misstates the series either way.
+        let mixed = ViewerSeriesEntry(
+            seriesInstanceUID: "1.3", title: "US",
+            filePaths: ["/still.dcm", "/loop.dcm"], frameCount: 93,
+            frameCountsByFilePath: ["/still.dcm": 1, "/loop.dcm": 92])
+        #expect(mixed.objectPreviews.map(\.frameCount) == [1, 92])
+    }
+
+    @Test("A non-image series never previews objects")
+    func testDocumentSeriesHasNoPreviews() {
+        let documents = ViewerSeriesEntry(
+            seriesInstanceUID: "1.4", title: "Report",
+            filePaths: ["/r1.dcm", "/r2.dcm"], frameCount: 4,
+            contentKind: .document,
+            frameCountsByFilePath: ["/r1.dcm": 2, "/r2.dcm": 2])
+        #expect(documents.objectPreviews.isEmpty)
     }
 
     @Test("An unknown orientation says so rather than being left blank")
@@ -173,6 +258,31 @@ struct ViewerSeriesCatalogTests {
         let entry = ViewerSeriesCatalog.entries(forStudy: "s", in: model).first
         #expect(entry?.objectCount == 1)
         #expect(entry?.frameCount == 358)
+    }
+
+    @Test("The catalog carries each object's own frame count onto the entry")
+    func testPerObjectFrameCounts() async {
+        var model = LibraryModel()
+        model.addStudy(StudyModel(studyInstanceUID: "s"))
+        model.addSeries(SeriesModel(seriesInstanceUID: "u", studyInstanceUID: "s",
+                                    modality: "US"))
+        model.addInstance(InstanceModel(
+            sopInstanceUID: "i-1", sopClassUID: "1.2.840.10008.5.1.4.1.1.3.1",
+            seriesInstanceUID: "u", instanceNumber: 1,
+            filePath: "/loop1.dcm", numberOfFrames: 76))
+        model.addInstance(InstanceModel(
+            sopInstanceUID: "i-2", sopClassUID: "1.2.840.10008.5.1.4.1.1.3.1",
+            seriesInstanceUID: "u", instanceNumber: 2,
+            filePath: "/loop2.dcm", numberOfFrames: 92))
+
+        let entry = ViewerSeriesCatalog.entries(forStudy: "s", in: model).first
+        #expect(entry?.frameCountsByFilePath
+                == ["/loop1.dcm": 76, "/loop2.dcm": 92])
+        #expect(entry?.objectPreviews.count == 2)
+
+        // And orientation resolution must not drop the counts on the floor.
+        let resolved = await ViewerSeriesCatalog.resolvingOrientations([entry!])
+        #expect(resolved.first?.frameCountsByFilePath == entry?.frameCountsByFilePath)
     }
 }
 
@@ -354,6 +464,46 @@ struct HangingSeriesInTilesTests {
         viewModel.focusCell(0)
         #expect(viewModel.seriesFiles == topogram.filePaths)
         #expect(viewModel.currentSeriesUID == "series-1")
+    }
+
+    @Test("Clicking an object's preview opens the series at that object")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSelectSeriesStartingAtObject() {
+        let viewModel = viewerWithSeries()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+        viewModel.focusCell(1)
+
+        #expect(viewModel.selectSeries("series-2", startingAtFile: "/lung2.dcm"))
+        #expect(viewModel.cells[1].seriesUID == "series-2")
+        #expect(viewModel.cells[1].filePath == "/lung2.dcm",
+                "the second recording, not the top of the stack")
+        #expect(viewModel.cells[1].fileIndex == 1,
+                "navigation continues from the object shown")
+    }
+
+    @Test("At 1×1 an object preview replaces the viewer at that object")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSelectObjectAtSingleLayout() {
+        let viewModel = viewerWithSeries()
+        #expect(viewModel.cells.isEmpty)
+
+        #expect(viewModel.selectSeries("series-2", startingAtFile: "/lung3.dcm"))
+        #expect(viewModel.seriesFiles == lung.filePaths)
+        #expect(viewModel.currentFileIndex == 2)
+        #expect(viewModel.currentSeriesUID == "series-2")
+    }
+
+    @Test("A stale object path falls back to the series' first file")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testStaleObjectPathFallsBack() {
+        let viewModel = viewerWithSeries()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+        viewModel.focusCell(1)
+
+        #expect(viewModel.selectSeries("series-2", startingAtFile: "/moved.dcm"),
+                "the series is still readable even if the object path went stale")
+        #expect(viewModel.cells[1].filePath == "/lung1.dcm")
+        #expect(viewModel.cells[1].fileIndex == 0)
     }
 
     @Test("An unknown series is refused rather than blanking the tile")

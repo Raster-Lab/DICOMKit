@@ -100,6 +100,14 @@ extension Tag {
     /// VR: UI, VM: 1
     /// Retired
     public static let largePaletteColorLookupTableUID = Tag(group: 0x0028, element: 0x1214)
+
+    /// Palette Color Lookup Table UID (0028,1199)
+    /// VR: UI, VM: 1
+    ///
+    /// Names a Well-known Color Palette (PS3.6 Annex B) when the LUT is one of
+    /// the standard's own, so a reader can recognise the palette without
+    /// diffing tables.
+    public static let paletteColorLookupTableUID = Tag(group: 0x0028, element: 0x1199)
     
     // MARK: - ICC Profile
     

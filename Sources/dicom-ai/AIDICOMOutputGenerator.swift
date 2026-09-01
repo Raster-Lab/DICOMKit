@@ -356,8 +356,21 @@ struct AIDICOMOutputGenerator {
             let w = detection.bbox.width
             let h = detection.bbox.height
             // 5 points: top-left, top-right, bottom-right, bottom-left, top-left (closed)
-            let pointsString = "\(x)\\\(y)\\\(x + w)\\\(y)\\\(x + w)\\\(y + h)\\\(x)\\\(y + h)\\\(x)\\\(y)"
-            graphicItem.setString(pointsString, for: Tag(group: 0x0070, element: 0x0022), vr: .FL)  // Graphic Data
+            // Graphic Data (0070,0022) is FL — binary floats, not a backslash
+            // string; a text payload under an FL VR decodes as garbage.
+            let points: [Float32] = [
+                Float32(x), Float32(y),
+                Float32(x + w), Float32(y),
+                Float32(x + w), Float32(y + h),
+                Float32(x), Float32(y + h),
+                Float32(x), Float32(y)
+            ]
+            graphicItem[Tag(group: 0x0070, element: 0x0022)] =
+                DataElement.float32s(tag: Tag(group: 0x0070, element: 0x0022), values: points)
+            // Graphic Dimensions (0070,0020) and Number of Graphic Points
+            // (0070,0021) are both Type 1 alongside Graphic Data.
+            graphicItem.setUInt16(2, for: Tag(group: 0x0070, element: 0x0020))
+            graphicItem.setUInt16(UInt16(points.count / 2), for: Tag(group: 0x0070, element: 0x0021))
 
             graphicItem.setString("PIXEL", for: Tag(group: 0x0070, element: 0x0005), vr: .CS)  // Annotation Units
             annotationItem.setSequence(
@@ -375,10 +388,12 @@ struct AIDICOMOutputGenerator {
 
             // Position text above the bounding box (with bounds checking)
             let textTop = max(0, y - 10)
-            let topLeftString = "\(x)\\\(textTop)"
-            let bottomRightString = "\(x + w)\\\(y)"
-            textItem.setString(topLeftString, for: .boundingBoxTopLeftHandCorner, vr: .FL)
-            textItem.setString(bottomRightString, for: .boundingBoxBottomRightHandCorner, vr: .FL)
+            textItem[.boundingBoxTopLeftHandCorner] = DataElement.float32s(
+                tag: .boundingBoxTopLeftHandCorner,
+                values: [Float32(x), Float32(textTop)])
+            textItem[.boundingBoxBottomRightHandCorner] = DataElement.float32s(
+                tag: .boundingBoxBottomRightHandCorner,
+                values: [Float32(x + w), Float32(y)])
             textItem.setString("PIXEL", for: Tag(group: 0x0070, element: 0x0005), vr: .CS)
 
             annotationItem.setSequence(

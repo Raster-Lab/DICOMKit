@@ -700,8 +700,29 @@ struct PrintSCPSettingsSheet: View {
                           format: .number.precision(.fractionLength(0)))
                     .frame(width: 70)
                     .multilineTextAlignment(.trailing)
+                    // The composer clamps anyway; clamping here too means the
+                    // field never shows a number the film will not be composed
+                    // at, which would otherwise read as the setting being ignored.
+                    .onSubmit { clampResolution() }
                 Text("DPI").foregroundStyle(.secondary)
+                Button {
+                    viewModel.settings.dpi = PrintSCPSettings.defaultDPI
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.settings.dpi == PrintSCPSettings.defaultDPI)
+                .help("Reset to \(Int(PrintSCPSettings.defaultDPI)) DPI")
+                .accessibilityLabel("Reset resolution to default")
             }
+            .help("Composed pixels per inch of film, "
+                  + "\(Int(PrintSCPSettings.dpiRange.lowerBound))–"
+                  + "\(Int(PrintSCPSettings.dpiRange.upperBound)). A 14×17 in sheet is "
+                  + "\(Int(14 * PrintSCPSettings.defaultDPI))×"
+                  + "\(Int(17 * PrintSCPSettings.defaultDPI)) px at "
+                  + "\(Int(PrintSCPSettings.defaultDPI)) DPI. Match the printer's "
+                  + "native resolution so no resampling happens on the way out; "
+                  + "film imagers do not address beyond about 600.")
             Picker("Density mapping", selection: $viewModel.settings.densityMapping) {
                 ForEach(DensityMapping.allCases, id: \.self) { mapping in
                     Text(mapping.displayName).tag(mapping)
@@ -710,6 +731,16 @@ struct PrintSCPSettingsSheet: View {
             .help("Paper renders P-Values straight. Film emulation inverts the sheet, "
                   + "so dense areas read dark as they would on a lightbox.")
             Toggle("Draw annotation box text", isOn: $viewModel.settings.drawAnnotations)
+            if viewModel.settings.drawAnnotations {
+                Picker("Annotation position", selection: $viewModel.settings.annotationEdge) {
+                    ForEach(FilmAnnotationEdge.allCases, id: \.self) { edge in
+                        Text(edge.title).tag(edge)
+                    }
+                }
+                .help("Where the film-wide text band sits: a footer or header strip, "
+                      + "a rotated strip up either side, or drawn over the images "
+                      + "without reserving space.")
+            }
             Toggle("Draw trim marks when Trim is YES", isOn: $viewModel.settings.drawTrimMarks)
         }
     }
@@ -764,6 +795,21 @@ struct PrintSCPSettingsSheet: View {
             .help("A 14×17 in sheet at 300 DPI is about 21 MB. Older films are released "
                   + "once the retained sheets exceed this.")
         }
+    }
+
+    /// Brings a typed resolution into the range the composer will honor.
+    ///
+    /// NaN compares false against everything, so it cannot be clamped and falls
+    /// back to the default rather than reaching the composer as a garbage sheet
+    /// size.
+    private func clampResolution() {
+        let dpi = viewModel.settings.dpi
+        guard !dpi.isNaN else {
+            viewModel.settings.dpi = PrintSCPSettings.defaultDPI
+            return
+        }
+        viewModel.settings.dpi = min(max(dpi, PrintSCPSettings.dpiRange.lowerBound),
+                                     PrintSCPSettings.dpiRange.upperBound)
     }
 
     private func chooseOutputDirectory() {

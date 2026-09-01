@@ -27,10 +27,32 @@ public struct PreparedPrintImage: Sendable {
     /// 0-based frame index within the source.
     public let frameIndex: Int
 
-    public init(descriptor: PrintImageData, sourcePath: String?, frameIndex: Int) {
+    /// The physical height of one pixel row in millimetres, when the source
+    /// records it (see ``PrintPhysicalSize/pixelSpacing(from:)``).
+    public let rowSpacingMillimeters: Double?
+
+    /// The physical width of one pixel column in millimetres, when the source
+    /// records it. What true-size printing (FR-003) multiplies by
+    /// ``PrintImageData/columns`` — so a crop that narrows the frame narrows
+    /// the requested size with it, for free.
+    public let columnSpacingMillimeters: Double?
+
+    public init(descriptor: PrintImageData, sourcePath: String?, frameIndex: Int,
+                rowSpacingMillimeters: Double? = nil,
+                columnSpacingMillimeters: Double? = nil) {
         self.descriptor = descriptor
         self.sourcePath = sourcePath
         self.frameIndex = frameIndex
+        self.rowSpacingMillimeters = rowSpacingMillimeters
+        self.columnSpacingMillimeters = columnSpacingMillimeters
+    }
+
+    /// The width this frame prints at 1:1, in millimetres — `nil` when the
+    /// source recorded no spacing, in which case true size is undefined.
+    public var physicalWidthMillimeters: Double? {
+        guard let spacing = columnSpacingMillimeters, spacing > 0,
+              descriptor.columns > 0 else { return nil }
+        return Double(descriptor.columns) * spacing
     }
 
     /// One-line summary, e.g. "512x512 MONOCHROME2 8-bit".
@@ -123,6 +145,11 @@ public struct PrintImagePreparer: Sendable {
         let sourceDescriptor = pixelData.descriptor
         let label = sourcePath ?? "data set"
 
+        // Once per data set rather than once per frame: a 300-frame series
+        // would otherwise repeat the same sentence 300 times and bury the rest
+        // of the log.
+        if let note = Self.clampNote(request) { onProgress?(note) }
+
         let frameIndices: [Int]
         switch request.frameSelection {
         case .all:
@@ -135,6 +162,9 @@ public struct PrintImagePreparer: Sendable {
             }
             frameIndices = [frameNumber - 1]
         }
+
+        // Read once per source: every frame of a file shares its spacing.
+        let pixelSpacing = PrintPhysicalSize.pixelSpacing(from: dataSet)
 
         var prepared: [PreparedPrintImage] = []
         for frameIndex in frameIndices {
@@ -160,13 +190,34 @@ public struct PrintImagePreparer: Sendable {
                     photometricInterpretation: sourceDescriptor.photometricInterpretation.rawValue
                 )
             } else {
+                let voi = Self.resolvedVOI(request, dataSet: dataSet)
+                // A colour source keeps its colour unless the job says otherwise.
+                //
+                // Handing the preprocessor GRAYSCALE is what makes it flatten
+                // RGB to luminance, and that is a decision about the *source*,
+                // not about the printer: a raw job of the same ultrasound comes
+                // out in colour, so a processed one coming out grey is a
+                // surprise nobody asked for. The printer's own limits are
+                // applied later, on the wire, where the prepared pixels are
+                // known — see `PrintWorkflow.reconcilingColorMode`.
+                let colorMode = Self.preparationColorMode(
+                    request, sourceDescriptor: sourceDescriptor)
+                // A coloured frame is fixed at 8 bits per sample by the
+                // standard, so asking for 12- or 16-bit greys alongside a
+                // palette is a contradiction; the palette wins and the depth is
+                // dropped rather than silently producing a frame the colour
+                // image box cannot describe.
                 let image = try await preprocessor.prepareForPrint(
                     pixelData: pixelData,
                     dataSet: dataSet,
                     frameIndex: frameIndex,
-                    colorMode: request.preprocessColorMode,
-                    windowSettings: Self.resolvedWindow(request, dataSet: dataSet),
-                    outputBitDepth: request.bitDepth
+                    colorMode: colorMode,
+                    windowSettings: voi.window,
+                    outputBitDepth: Self.preparationBitDepth(
+                        request, sourceDescriptor: sourceDescriptor),
+                    voiLUT: voi.lut,
+                    palette: Self.preparationPalette(
+                        request, sourceDescriptor: sourceDescriptor)
                 )
                 guard image.width <= Int(UInt16.max),
                       image.height <= Int(UInt16.max) else {
@@ -180,7 +231,7 @@ public struct PrintImagePreparer: Sendable {
                 // without it is a black sheet that disagrees with the screen it
                 // was approved on. Not for `--raw`, which sends stored pixels
                 // untouched by definition.
-                let samples = OverlayPlaneRenderer.burningOverlays(
+                var samples = OverlayPlaneRenderer.burningOverlays(
                     of: dataSet,
                     into: image.pixelData,
                     width: image.width,
@@ -190,6 +241,21 @@ public struct PrintImagePreparer: Sendable {
                     samplesPerPixel: image.samplesPerPixel,
                     photometricInterpretation: image.photometricInterpretation,
                     frameIndex: frameIndex)
+
+                // The Presentation LUT, for the one option the printer cannot
+                // apply for us. IDENTITY and LIN OD go on the wire as a shape
+                // and are the printer's job — applying them here too would
+                // double them. A rendered inverse has no legal shape to send
+                // (PS3.3 C.11.4), so the inversion has to happen in the pixels.
+                if request.presentationLUTShape?.invertsPixels == true,
+                   let curve = PresentationLUTTransform.curve(
+                       for: request.presentationLUTShape) {
+                    samples = PresentationLUTTransform.apply(
+                        curve: curve,
+                        to: samples,
+                        samplesPerPixel: image.samplesPerPixel,
+                        bitsStored: image.bitsStored)
+                }
                 descriptor = PrintImageData(
                     pixelData: samples,
                     rows: UInt16(image.height),
@@ -210,11 +276,129 @@ public struct PrintImagePreparer: Sendable {
             prepared.append(PreparedPrintImage(
                 descriptor: descriptor,
                 sourcePath: sourcePath,
-                frameIndex: frameIndex
+                frameIndex: frameIndex,
+                rowSpacingMillimeters: pixelSpacing?.row,
+                columnSpacingMillimeters: pixelSpacing?.column
             ))
         }
 
         return prepared
+    }
+
+    // MARK: - Colour preparation
+
+    /// The colour mode the *preprocessor* is driven with for one source.
+    ///
+    /// Colour is preserved when the source has it and the request allows it;
+    /// everything else keeps the request's own mode. Note this only ever widens
+    /// the result — a monochrome source stays monochrome whatever is asked for,
+    /// since there is no colour in it to keep.
+    ///
+    /// A pseudo-colour palette is the one thing that *does* put colour into a
+    /// monochrome source, so it widens too. Without this a palettised cell would
+    /// be prepared as grey and the chosen colours would never reach the film.
+    static func preparationColorMode(
+        _ request: PrintJobRequest,
+        sourceDescriptor: PixelDataDescriptor
+    ) -> DICOMKit.PrintColorMode {
+        // "Print colour images as greys" is the reader's explicit word on
+        // colour *sources*, and it outranks everything else that could put
+        // colour on this cell — the job's own colour mode and a lingering
+        // palette included. Before this check came first, a film-wide palette
+        // quietly forced the cell back to colour and the switch looked dead.
+        if Self.isColorSource(sourceDescriptor), !request.preservesSourceColor {
+            return .grayscale
+        }
+        if Self.preparationPalette(request, sourceDescriptor: sourceDescriptor) != nil {
+            return .color
+        }
+        return Self.isColorSource(sourceDescriptor) ? .color : request.preprocessColorMode
+    }
+
+    /// Whether a source's own pixels carry colour.
+    static func isColorSource(_ descriptor: PixelDataDescriptor) -> Bool {
+        let photometric = descriptor.photometricInterpretation
+        return descriptor.samplesPerPixel > 1
+            || photometric.isColor
+            || photometric.isPaletteColor
+    }
+
+    /// The palette actually applied to a job, or `nil` for a grey film.
+    ///
+    /// Grey palettes are dropped here rather than carried down: the preprocessor
+    /// would fall through to the grayscale path anyway, and dropping them early
+    /// keeps ``preparationColorMode`` and ``preparationBitDepth`` from treating
+    /// "the reader chose grey" as a reason to spend the film's bit depth.
+    ///
+    /// Raw jobs never colourise. Raw means the stored values reach the printer
+    /// untouched, and a palette is by definition a transformation of them.
+    ///
+    /// When the source is known, "print colour images as greys" also drops the
+    /// palette for colour sources: the reader asked for the picture's own greys,
+    /// not for a palette-shaped remap of them. Monochrome sources keep theirs —
+    /// colourising a grey CT is a deliberate act the toggle does not speak to.
+    static func preparationPalette(
+        _ request: PrintJobRequest,
+        sourceDescriptor: PixelDataDescriptor? = nil
+    ) -> PseudoColorPalette? {
+        guard !request.raw, let palette = request.palette, !palette.isGrayscale else {
+            return nil
+        }
+        if let sourceDescriptor, Self.isColorSource(sourceDescriptor),
+           !request.preservesSourceColor {
+            return nil
+        }
+        return palette
+    }
+
+    /// The bit depth a frame is prepared at.
+    ///
+    /// Two rules, both from the standard rather than from preference:
+    ///
+    ///   * Eight, whenever a palette is in force: PS3.3 Table C.13-5 fixes Bits
+    ///     Allocated and Bits Stored at 8 for the Basic Color Image Box, so a
+    ///     coloured frame has no deeper form to take.
+    ///   * Otherwise the requested depth, clamped to what PS3.3 Table C.13-3
+    ///     enumerates for the Basic Grayscale Image Box — 8 or 12. A request for
+    ///     16 is dropped to 12 rather than refused: every pixel of it is
+    ///     meaningful and only the label is illegal, so the film is worth
+    ///     printing. The caller is told through ``clampNote`` so the setting
+    ///     gets corrected rather than silently tolerated forever.
+    static func preparationBitDepth(
+        _ request: PrintJobRequest,
+        sourceDescriptor: PixelDataDescriptor? = nil
+    ) -> Int {
+        guard Self.preparationPalette(request, sourceDescriptor: sourceDescriptor) == nil
+        else { return 8 }
+        return Self.clampedGrayscaleBitDepth(request.bitDepth)
+    }
+
+    /// The deepest legal grayscale depth not exceeding `requested`.
+    ///
+    /// Never rounds *up*: a sender asking for 8 gets 8, because manufacturing
+    /// precision nobody asked for is its own kind of wrong.
+    static func clampedGrayscaleBitDepth(_ requested: Int) -> Int {
+        let legal = PrintOptionCatalog.bitDepths.sorted()
+        return legal.last(where: { $0 <= requested }) ?? legal.first ?? 8
+    }
+
+    /// What to tell the operator when the requested depth could not be honoured.
+    ///
+    /// `nil` when the request was already legal, which is the ordinary case.
+    static func clampNote(_ request: PrintJobRequest) -> String? {
+        guard !request.raw else { return nil }
+
+        if Self.preparationPalette(request) != nil, request.bitDepth != 8 {
+            return "Requested \(request.bitDepth)-bit, but a pseudo-colour palette is in "
+                + "force and PS3.3 Table C.13-5 fixes the Basic Color Image Box at 8-bit "
+                + "RGB — preparing at 8-bit."
+        }
+
+        let effective = Self.clampedGrayscaleBitDepth(request.bitDepth)
+        guard effective != request.bitDepth else { return nil }
+        return "Requested \(request.bitDepth)-bit, which PS3.3 Table C.13-3 does not allow "
+            + "for the Basic Grayscale Image Box (Bits Stored must be 8 or 12) — "
+            + "preparing at \(effective)-bit instead."
     }
 
     // MARK: - Window resolution
@@ -249,6 +433,30 @@ public struct PrintImagePreparer: Sendable {
         return dataSet.allWindowSettings().first ?? dataSet.windowSettings()
     }
 
+    /// The full VOI resolution, table LUTs included (SRS FR-004).
+    ///
+    /// PS3.3 C.11.2 precedence, highest first:
+    ///
+    /// 1. The request's explicit window — the user (or the viewer the film
+    ///    must match) asked for it, so it beats everything, the file's own
+    ///    table included.
+    /// 2. The file's VOI LUT Sequence (0028,3010), which the standard puts
+    ///    above Window Center/Width: a file carrying both means the table.
+    /// 3. Window Center/Width from the header.
+    /// 4. Nothing — the preprocessor auto-stretches.
+    static func resolvedVOI(
+        _ request: PrintJobRequest,
+        dataSet: DataSet
+    ) -> (window: WindowSettings?, lut: GrayscaleLUT?) {
+        if request.windowSettings != nil {
+            return (windowInOutputUnits(request, dataSet: dataSet), nil)
+        }
+        if let lut = dataSet.voiLUT() {
+            return (nil, lut)
+        }
+        return (dataSet.allWindowSettings().first ?? dataSet.windowSettings(), nil)
+    }
+
     /// The request's window in the units ``ImagePreprocessor`` windows in.
     ///
     /// The preprocessor rescales before it windows, so it expects output units.
@@ -261,7 +469,12 @@ public struct PrintImagePreparer: Sendable {
         dataSet: DataSet
     ) -> WindowSettings? {
         guard let window = request.windowSettings else { return nil }
-        guard request.windowSpace == .storedValues else { return window }
+        let function = resolvedFunction(for: window, dataSet: dataSet)
+        guard request.windowSpace == .storedValues else {
+            return WindowSettings(
+                center: window.center, width: window.width,
+                explanation: window.explanation, function: function)
+        }
 
         let slope = dataSet.rescaleSlope()
         guard slope != 0 else { return window }
@@ -270,7 +483,24 @@ public struct PrintImagePreparer: Sendable {
             center: window.center * slope + intercept,
             width: window.width * abs(slope),
             explanation: window.explanation,
-            function: window.function)
+            function: function)
+    }
+
+    /// The VOI LUT Function the window is applied with.
+    ///
+    /// PS3.3 C.11.2.1.3: the function belongs to the *image* — (0028,1056)
+    /// says how any Window Center/Width is to be interpreted for it. A window
+    /// carried off a viewer mark arrives as two bare numbers whose `function`
+    /// defaulted to linear, so a SIGMOID image would print with linear
+    /// contrast, silently, while the screen showed sigmoid. `.linear` is the
+    /// "nothing was said" default, so it defers to the file; an explicit
+    /// LINEAR_EXACT or SIGMOID on the request is a real choice and stands.
+    static func resolvedFunction(
+        for window: WindowSettings,
+        dataSet: DataSet
+    ) -> VOILUTFunction {
+        guard window.function == .linear else { return window.function }
+        return VOILUTFunction.parse(dataSet.string(for: .voiLUTFunction))
     }
 }
 

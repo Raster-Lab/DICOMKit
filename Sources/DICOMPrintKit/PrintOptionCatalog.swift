@@ -17,7 +17,7 @@ import DICOMNetwork
 /// viewer hangs images in, deliberately: film order is viewer order, and a grid
 /// a reader can arrange on screen but not print would break that promise the
 /// moment they tried to print it.
-public enum PrintLayoutOption: String, CaseIterable, Sendable, Identifiable {
+public enum PrintLayoutOption: String, CaseIterable, Sendable, Identifiable, Codable {
     case layout1x1 = "1x1"
     case layout1x2 = "1x2"
     case layout1x3 = "1x3"
@@ -122,7 +122,7 @@ public enum PrintBandLayout: String, CaseIterable, Sendable, Identifiable {
 // MARK: - Template presets
 
 /// A layout preset that also fixes film size and orientation.
-public enum PrintTemplatePreset: String, CaseIterable, Sendable, Identifiable {
+public enum PrintTemplatePreset: String, CaseIterable, Sendable, Identifiable, Codable {
     case single
     case comparison
     case grid
@@ -237,10 +237,15 @@ public enum PrintOptionCatalog {
     ]
 
     /// Presentation LUT shapes (plus "none", represented by `nil`).
+    ///
+    /// Only Identity and LIN OD are Presentation LUT Shapes on the wire — PS3.3
+    /// C.11.4 enumerates no others. "Inverse (rendered)" is offered because
+    /// users want inverted film, and is realised by inverting the pixels, the
+    /// same answer DCMTK gives with `dcmpsprt --inverse-plut`.
     public static let presentationLUTShapes: [(value: PresentationLUTShape, cliToken: String, label: String)] = [
         (.identity,               "identity", "Identity"),
-        (.inverse,                "inverse",  "Inverse"),
-        (.linearOpticalDensity,   "lin-od",   "Linear optical density")
+        (.linearOpticalDensity,   "lin-od",   "Linear optical density (LIN OD)"),
+        (.inverseRendered,        "inverse",  "Inverse (rendered into pixels)")
     ]
 
     /// Color modes.
@@ -249,8 +254,24 @@ public enum PrintOptionCatalog {
         (.color,     "color",     "Color")
     ]
 
-    /// Grayscale output bit depths.
-    public static let bitDepths: [Int] = [8, 12, 16]
+    /// Grayscale output bit depths the Basic Grayscale Image Box allows.
+    ///
+    /// Eight and twelve, and nothing else: PS3.3 Table C.13-3 enumerates Bits
+    /// Stored as 8 or 12. Sixteen *bits allocated* is legal and is how 12-bit
+    /// film travels, but 16 bits *stored* is not a value the table lists, so it
+    /// is not offered here. A request that still asks for it is clamped rather
+    /// than refused — see `PrintImagePreparer.preparationBitDepth`.
+    public static let bitDepths: [Int] = [8, 12]
+
+    /// How a depth is described to the reader, since the trade-off is not
+    /// obvious from the number alone.
+    public static func bitDepthLabel(_ depth: Int) -> String {
+        switch depth {
+        case 8:  return "8-bit (widest printer support)"
+        case 12: return "12-bit (deep grayscale — the printer must support it)"
+        default: return "\(depth)-bit"
+        }
+    }
 
     /// Border / empty-image density values.
     public static let densities: [String] = ["BLACK", "WHITE"]

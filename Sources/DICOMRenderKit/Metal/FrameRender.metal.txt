@@ -237,9 +237,23 @@ kernel void render_palette(
 
 struct DisplayParams {
     float4x4 transform;    // image quad → normalised device coordinates
+    // The film's crop, in texture coordinates: (minU, minV, maxU, maxV).
+    // Fragments outside it are painted black rather than sampled — the quad is
+    // always the *whole* frame, and on a film only the cropped region exists;
+    // everything around it is unexposed film. Without this, the corners of a
+    // freely rotated cell and the letterbox beside a zoomed one showed the
+    // neighbouring anatomy the crop was supposed to remove. (0,0,1,1) — the
+    // whole frame — turns the mask off; the viewer always passes that.
+    float4   sourceRegion;
     uint     invert;       // 1 → present inverted (white ↔ black)
     uint     isGrayscale;  // 1 → splat .r across RGB; the texture is r8Unorm
+    uint     linearFilter; // 1 → bilinear magnification (print preview cells)
+    uint     desaturate;   // 1 → Rec.601 luminance greys (print "colour as greys")
 };
+
+// The annotation layer is always bound — a 1×1 fully transparent texture
+// stands in when nothing is drawn — so the fragment function has no
+// conditional resource binding to reason about.
 
 struct DisplayVertex {
     float4 position [[position]];
@@ -263,18 +277,71 @@ vertex DisplayVertex display_vertex(uint vertexID [[vertex_id]],
 
 fragment float4 display_fragment(DisplayVertex in [[stage_in]],
                                  constant DisplayParams& p [[buffer(0)]],
-                                 texture2d<float> frame [[texture(0)]])
+                                 texture2d<float> frame [[texture(0)]],
+                                 texture2d<float> annotations [[texture(1)]])
 {
-    // Nearest, not linear. The existing viewer builds its CGImage with
+    // Nearest by default. The existing viewer builds its CGImage with
     // `shouldInterpolate: false`, so a zoomed-in image shows its actual pixels
     // rather than a smoothed guess — which is what reading pixel data calls for.
-    // Switching to linear here would silently change what is on screen.
+    // Switching the viewer to linear would silently change what is on screen.
+    //
+    // The print preview asks for bilinear instead: its cells are judged as
+    // pictures on a panel-scaled sheet, its CPU-drawn cells are smoothed by
+    // the platform image view, and a cell must not change texture when its
+    // GPU texture arrives.
     constexpr sampler nearest(filter::nearest, mag_filter::nearest, address::clamp_to_edge);
+    constexpr sampler bilinear(filter::linear, mag_filter::linear, address::clamp_to_edge);
 
-    float4 colour = frame.sample(nearest, in.texCoord);
+    // Outside the film's crop there is no image — only unexposed film. Black,
+    // not clamped-edge smear: `clamp_to_edge` would stretch the crop's border
+    // pixels across the whole corner.
+    if (in.texCoord.x < p.sourceRegion.x || in.texCoord.y < p.sourceRegion.y ||
+        in.texCoord.x > p.sourceRegion.z || in.texCoord.y > p.sourceRegion.w) {
+        return float4(0.0, 0.0, 0.0, 1.0);
+    }
+
+    float4 colour = p.linearFilter != 0
+        ? frame.sample(bilinear, in.texCoord)
+        : frame.sample(nearest, in.texCoord);
     float3 rgb = p.isGrayscale != 0 ? float3(colour.r) : colour.rgb;
+    // "Print colour images as greys": the same Rec.601 weights the print
+    // preparer flattens with, before the inversion — the wire order.
+    if (p.desaturate != 0) {
+        rgb = float3(dot(rgb, float3(0.299, 0.587, 0.114)));
+    }
     if (p.invert != 0) {
         rgb = 1.0 - rgb;
     }
+
+    // A reader's drawn text and arrows, composited last so they read at their
+    // own colour whether or not the image beneath them is inverted — a
+    // yellow annotation stays yellow on an inverted frame. The texture is
+    // premultiplied alpha (a `CGContext` requirement for its own drawing to
+    // composite correctly), so `annot.rgb` already carries the alpha factor
+    // and "over" compositing is a straight add, not a lerp.
+    //
+    // Bilinear, unlike the frame — and that difference is the point. The
+    // frame is sampled nearest because a reader zoomed into pixel data wants
+    // the actual pixels, not a smoothed guess. An annotation is the opposite
+    // kind of thing: vector artwork CoreText and CoreGraphics already
+    // antialiased, rasterized at the *frame's* pixel dimensions and then
+    // magnified by whatever the viewer's zoom happens to be. Sampled nearest
+    // it was magnified by point-replication, which threw away that
+    // antialiasing and turned every glyph edge and every diagonal arrow shaft
+    // into hard stair-steps that crawled as the picture was panned. Bilinear
+    // cannot soften the anatomy — this sampler only ever reads the annotation
+    // layer — so the frame's contract is untouched.
+    //
+    // Premultiplied is also what makes the filtered sample correct: filtering
+    // straight (unassociated) alpha would drag colour out of the transparent
+    // pixels surrounding a glyph and fringe it. Premultiplied values
+    // interpolate cleanly, which is why the halo survives magnification as a
+    // halo rather than as a dark rim.
+    float4 annot = annotations.sample(bilinear, in.texCoord);
+    // Guard the round-off: a filtered premultiplied texel can come back a
+    // hair above its own alpha, and the add would then lift the result past
+    // 1.0 and clip to a bright speckle along a glyph edge.
+    rgb = rgb * (1.0 - annot.a) + min(annot.rgb, float3(annot.a));
+
     return float4(rgb, 1.0);
 }

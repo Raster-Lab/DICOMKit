@@ -161,4 +161,43 @@ public struct PaletteDisplayLUT: Sendable, Equatable {
         }
         return PaletteDisplayLUT(red: red, green: green, blue: blue)
     }
+
+    /// Builds the display tables for a *windowed monochrome* frame shown through
+    /// a pseudo-colour palette.
+    ///
+    /// The palette a reader picks is not the file's own PALETTE COLOR LUT: it
+    /// recolours the *displayed level*, after the window, exactly as
+    /// `ImagePreprocessor.colorize` does on the print path and
+    /// `FrameRenderer.colorized` does on the CPU preview path. That makes it a
+    /// composition of two tables that are both indexed by the raw assembled
+    /// sample — window (raw → grey byte) then palette (grey byte → RGB) — so it
+    /// folds into the same three byte tables the palette kernel already indexes,
+    /// and a monochrome frame can take the GPU path in colour with no new shader
+    /// and no second implementation of the lookup.
+    ///
+    /// - Parameters:
+    ///   - window: the grayscale table the monochrome kernel would have used.
+    ///   - entries: the palette's 256 RGB triples, in index order.
+    public static func make(
+        window: WindowLUT,
+        entries: [(red: UInt8, green: UInt8, blue: UInt8)]
+    ) -> PaletteDisplayLUT {
+        guard let last = entries.indices.last else {
+            let grey = window.table
+            return PaletteDisplayLUT(red: grey, green: grey, blue: grey)
+        }
+        let count = window.table.count
+        var red = [UInt8](repeating: 0, count: count)
+        var green = [UInt8](repeating: 0, count: count)
+        var blue = [UInt8](repeating: 0, count: count)
+        for rawValue in 0..<count {
+            // Clamped the same way the CPU counterpart clamps it, so a palette
+            // with fewer than 256 entries lands on the same colour on both paths.
+            let entry = entries[min(last, Int(window.table[rawValue]))]
+            red[rawValue] = entry.red
+            green[rawValue] = entry.green
+            blue[rawValue] = entry.blue
+        }
+        return PaletteDisplayLUT(red: red, green: green, blue: blue)
+    }
 }

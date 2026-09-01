@@ -65,6 +65,7 @@ public struct MainView: View {
         .onChange(of: viewModel.selectedDestination) { _, destination in
             columnVisibility = destination == .viewer ? .detailOnly : .all
         }
+        .modifier(PresentationSeriesLibrarySync(viewModel: viewModel))
         #if os(macOS)
         // Opening a study clears the print marks, and the print preview window
         // was composed from the study being left — so it comes down with them
@@ -139,4 +140,35 @@ public struct MainView: View {
         }
     }
 }
+
+
+/// Keeps the library's index in step with the study's presentation-state series.
+///
+/// Saving a view in the viewer writes GSPS objects into the study's folder, and
+/// deleting one removes them; the library is an in-memory index built at import
+/// and knows about neither until it is told. Watched at the shell rather than in
+/// the viewer because the library is the shell's, not the viewer's.
+///
+/// A modifier rather than two `.onChange`s inline on `MainView.body`: the body
+/// is already a large view expression, and adding them to it directly pushed the
+/// type-checker past its limit.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+private struct PresentationSeriesLibrarySync: ViewModifier {
+    @Bindable var viewModel: MainViewModel
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: viewModel.imageViewerViewModel.presentationSeriesPublishRequests) { _, _ in
+                guard let published =
+                    viewModel.imageViewerViewModel.publishedPresentationSeries else { return }
+                viewModel.registerPublishedPresentationSeries(published)
+            }
+            .onChange(of: viewModel.imageViewerViewModel.presentationSeriesRemovalRequests) { _, _ in
+                viewModel.unregisterPresentationStates(
+                    sopInstanceUIDs:
+                        viewModel.imageViewerViewModel.unpublishedPresentationStateUIDs)
+            }
+    }
+}
+
 #endif

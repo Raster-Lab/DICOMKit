@@ -308,7 +308,55 @@ public struct PixelDataRenderer: Sendable {
         
         return createRGBACGImage(from: outputBytes, width: width, height: height)
     }
-    
+
+    /// Renders a monochrome frame through display tables indexed by the raw
+    /// assembled sample — the shape a pseudo-colour palette takes once its ramp
+    /// has been folded into the window.
+    ///
+    /// The bit handling the palette-colour path performs is already baked into
+    /// the tables (the window table was built over raw values), so this reads a
+    /// sample and indexes, and nothing else. Deliberately the same loop shape,
+    /// the same short-frame `break` and the same initial 255 fill as
+    /// ``renderPaletteColorFrame(_:)``, so the two agree on the pixels past the
+    /// end of a truncated frame — which is what the GPU equality tests compare.
+    public func renderMonochromeFrame(
+        _ frameIndex: Int = 0, displayLUT lut: PaletteDisplayLUT
+    ) -> CGImage? {
+        let descriptor = pixelData.descriptor
+        guard descriptor.photometricInterpretation.isMonochrome,
+              let frameData = pixelData.frameData(at: frameIndex) else { return nil }
+
+        let width = descriptor.columns
+        let height = descriptor.rows
+        let totalPixels = width * height
+        guard width > 0, height > 0, lut.count > 0 else { return nil }
+
+        var outputBytes = [UInt8](repeating: 255, count: totalPixels * 4)
+        let bytesPerSample = descriptor.bytesPerSample
+        let lastEntry = lut.count - 1
+
+        for pixelIndex in 0..<totalPixels {
+            let offset = pixelIndex * bytesPerSample
+            guard offset + bytesPerSample <= frameData.count else { break }
+
+            let rawValue: Int
+            if bytesPerSample == 1 {
+                rawValue = Int(frameData[offset])
+            } else {
+                rawValue = Int(frameData[offset]) | (Int(frameData[offset + 1]) << 8)
+            }
+            let index = min(lastEntry, rawValue)
+
+            let outputOffset = pixelIndex * 4
+            outputBytes[outputOffset] = lut.red[index]
+            outputBytes[outputOffset + 1] = lut.green[index]
+            outputBytes[outputOffset + 2] = lut.blue[index]
+            outputBytes[outputOffset + 3] = 255
+        }
+
+        return createRGBACGImage(from: outputBytes, width: width, height: height)
+    }
+
     // MARK: - Private Helpers
     
     /// Creates a grayscale CGImage from pixel bytes

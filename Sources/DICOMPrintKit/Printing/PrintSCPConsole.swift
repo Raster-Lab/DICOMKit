@@ -127,6 +127,11 @@ public enum PrintSCPConsole {
         case .imageBoxReceived(_, let position, let rows, let columns):
             return entry(.info, "Image box \(position) filled — \(columns)×\(rows) px")
 
+        case .imageBoxCorrected(_, let position, let detail):
+            // A warning rather than a notice: the film prints, but the sender
+            // is non-conformant and whoever runs the printer should know.
+            return entry(.warning, "Image box \(position) corrected — \(detail)")
+
         case .filmPrinted(let film):
             return entry(.filmReceived,
                          "Film printed — \(film.layout.rows)×\(film.layout.columns), "

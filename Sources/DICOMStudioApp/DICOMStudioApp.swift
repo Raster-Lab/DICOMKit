@@ -20,6 +20,11 @@ struct DICOMStudioApp: App {
             MainView(viewModel: viewModel)
         }
         .defaultSize(width: 1200, height: 800)
+        // The emulator and the preview are suppressed at launch and not
+        // restored, so macOS never reopens them on its own — a Dock click
+        // brings back only this window. These commands are how both stay
+        // reachable once they have been closed or buried.
+        .commands { StudioWindowCommands() }
 
         // The printer emulator is watched while a print is being sent from the
         // main window, so it is a window rather than a detail pane. A single

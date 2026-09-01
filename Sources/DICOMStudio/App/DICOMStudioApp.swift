@@ -26,6 +26,11 @@ public struct DICOMStudioApp: App {
         // ultrawide. `.contentMinSize` keeps only the lower bound enforced.
         .windowResizability(.contentMinSize)
         .commands { ViewerCommands() }
+        // The emulator and the preview are suppressed at launch and not
+        // restored, so macOS never reopens them on its own — a Dock click
+        // brings back only this window. These commands are how both stay
+        // reachable once they have been closed or buried.
+        .commands { StudioWindowCommands() }
 
         #if os(macOS)
         // The printer emulator is watched while a print is being sent from the

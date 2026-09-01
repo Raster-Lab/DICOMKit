@@ -68,7 +68,7 @@ struct ColorLUTPaletteTests {
 
     @Test("Palette lookup for all types")
     func testPaletteLookup() {
-        for paletteType in PseudoColorPalette.allCases {
+        for paletteType in PresentationStatePalette.allCases {
             let palette = ColorLUTHelpers.palette(for: paletteType)
             #expect(palette.count == 256, "Palette \(paletteType) should have 256 entries")
         }

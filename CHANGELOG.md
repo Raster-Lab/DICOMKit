@@ -7,6 +7,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — a study's own presentation states are adopted, drawn, and printed (2026-08-31)
+
+*Work in progress, not yet committed.*
+
+A study exported from a PACS or saved out of Weasis carries its PR objects
+with it. They were indexed like any other series — the pane could name them,
+and nothing could show them, because the viewer's saved views came from
+`PresentationStateStore` and the store listed only what this app had itself
+saved. The reader's workflow is "the presentation state arrives with the
+study, apply it, print it", and that path did not exist.
+
+- **Adoption on study open.** `StudyPresentationStateAdoption.adopt`, called
+  from `MainViewModel.populateViewerSeriesPane` before the viewer is told
+  about the study, offers every GSPS, CSPS and Pseudo-Color object the library
+  indexes for the study to the store, which copies the ones it does not
+  already hold. Keyed on SOP Instance UID, so reopening a study is a no-op.
+  Cheap when there is nothing to do: a study with no PR series touches no
+  file, and one with them reads a header per referenced image, never the whole
+  study.
+
+- **In the picker, marked *imported*, and the first one applied on arrival**,
+  as Weasis does. Window, zoom, pan, rotation, flip, inversion and palette go
+  onto the image; a Modality LUT rescale carried by the state is used to
+  interpret its window (`RestoredDisplay.rescaleSlope`/`rescaleIntercept`).
+
+- **What the other viewer drew is drawn here.** The Graphic Annotation
+  Sequence — POLYLINE, INTERPOLATED, CIRCLE, ELLIPSE and POINT objects with
+  their text — becomes `PrintOverlayAnnotation` shapes per image and frame in
+  the sidecar, stroked in the layer's recommended colour. Display shutters
+  become `.shutter` overlays, drawn first with an even-odd fill so everything
+  outside the open region is masked. Three surfaces share one geometry:
+  `ImageAnnotationBurner.shapePath` for the film, a GPU texture in the viewer,
+  and `ImportedShapeView` for the print preview and the non-Metal fallback.
+
+- **Imported views are locked, not editable.** There is no measuring tool here
+  that could recompute a "42.3 mm" label, so a shape read out of somebody
+  else's state is shown and printed exactly as stated and cannot be moved or
+  reworded. The whole view can be taken off; deleting one writes a
+  `<uid>.declined` tombstone so it is not adopted again on the next open.
+
+- **On film.** A marked image burns the same shapes and shutter into the
+  pixels, oriented with the cell, so the Print SCP receives them in the image
+  box rather than as an overlay the printer may ignore.
+
+- **Not carried:** a state's VOI LUT *table* (a window is), bitmap shutters
+  that reference an overlay group, and a CSPS's ICC profile.
+
+### Fixed — presentation states are written with the VRs the standard gives them (2026-08-31)
+
+*Work in progress, not yet committed.*
+
+`dcmpschk` rejected a saved view at the first attribute it checked. The
+builder had hardcoded `vr: .IS` on seven binary attributes — Image Rotation
+(US), the Displayed Area corners (SL), the Graphic Layer recommended display
+values (US), and Graphic Data, Bounding Box corners and Anchor Point (FL) —
+and the parser read back the same wrong forms, so every round-trip test passed
+against a file no other toolkit would accept. **A round trip can never catch a
+wrong VR; only a dictionary check or an external validator can.**
+
+- **The VR now comes from the dictionary, not the call site.**
+  `DataSet+DictionaryVR.swift` adds `setInteger(s)`, `setReals` and
+  `setStringFromDictionary`, which read the VR from `DataElementDictionary` —
+  DICOMKit already ships the full PS3.6 table. A call site can no longer
+  disagree with the standard. `DataElement.int16s`/`int32s`/`float32s` fill in
+  the multi-valued binary constructors these need.
+
+- **Objects written before the fix still open.**
+  `DataElement.integerValuesTolerant`/`realValuesTolerant` read a number
+  whatever VR it was stored under, so a view saved by an older build restores
+  its zoom, pan and layer colours instead of coming back blank.
+
+- **Guarded by a sweep, not by an assertion.** `PublishedStateDictionaryVRTests`
+  walks every element of a published object, recursing into sequences, and
+  compares each VR to the dictionary — skipping the tags whose real VR depends
+  on Pixel Representation or transfer syntax, which the flattened resource
+  file would report as broken. Validated externally with `dcmpschk`.
+
+### Fixed — image ordering, study deletion, and drawings that outlived their study (2026-08-31)
+
+*Work in progress, not yet committed.*
+
+- **Two viewers no longer disagree about which image is "17 of 31".** A window
+  saved on image 17 here showed on 4/31 in Weasis — on the *same pixels* both
+  times; only the ordinals differed. Instance Number is an IS, text, and was
+  read as binary until 2026-07-30, so any library indexed before then holds
+  nils forever: re-imports are deduplicated by SOP Instance UID and never
+  refresh metadata, leaving the series in file-system order.
+  `ViewerSeriesCatalog.resolvingInstanceOrder` repairs it at open time, off
+  the main actor, reading only the series actually missing numbers and writing
+  what it recovers back into the library so the files are read once rather than
+  once per open. `loadStudySeries` adopts the repaired order without moving the
+  image on screen.
+
+- **Deleting a study now reclaims its files.** Import copies every file into
+  `Imports/<StudyInstanceUID>/`; removing the index row left that copy behind,
+  invisible to the browser and still holding pixel data and patient
+  identification. `StudyFileCleanup` removes both halves, and checks every path
+  is inside the import directory first — a library entry pointing at a file the
+  user picked in place is never touched. The index is saved before anything is
+  deleted, so a crash between the two leaves a listed study with missing files
+  rather than orphaned files no screen can reach. `onStudyRemoved` lets the
+  viewer, the caches and the print queue let go of the study at that moment.
+
+- **Drawn annotations reset with the study.** Window, zoom and rotation were
+  already dropped on a study switch; the drawings were the one tool state that
+  stayed behind, keyed to the previous study's file paths, and reappeared the
+  next time that study was opened.
+
 ### Added — research adoption: selected-frame access, parser hardening, PS3.15 de-identification (2026-08-10/11)
 
 *Work in progress, not yet committed. Full plan and evidence:
@@ -94,9 +202,921 @@ change, sequenced for later), an async `ImageCodec` variant to replace
 `J2KSwiftCodec`'s semaphore bridge, and the remaining ~35 copy-path sites the map
 identified but didn't sweep.
 
-### Added — linked film cells: adjust one, adjust them all (2026-08-07)
+### Added — pseudo-colour palettes, from the picker to the printed film (2026-08-19)
 
 *Work in progress, not yet committed.*
+
+A reader can now colourise a monochrome image — the "LUT" dropdown other viewers
+show — per cell or across a whole film, and print it. The palettes are one
+shared type rather than a table restated in every renderer:
+`PseudoColorPalette` (DICOMCore) carries 23 palettes in five groups, and every
+consumer — the CPU renderer, the Metal renderer, the print preprocessor, both
+pickers and the CLI — reads that one list.
+
+- **The palettes and where they come from.** Eight are the standard's own
+  (PS3.6 Annex B: Hot Iron, PET, Hot Metal Blue, PET 20 Step, Spring, Summer,
+  Fall, Winter), transcribed with their Content Label and well-known SOP
+  Instance UID — the segmented streams expanded at transcription time, so
+  there is no runtime segmented-LUT decoder to get wrong. Four are the CC0
+  perceptual maps (Viridis, Inferno, Magma, Plasma) at full 256-entry
+  resolution. The rest are formula-defined spectra and single-hue ramps. Each
+  records its `Provenance`, so the audit line can say where a colour came
+  from. Other viewers were referenced for *which* palettes to offer and what
+  to call them; no ramp data or code was copied from them.
+
+- **One table, so the GPU and the CPU cannot disagree.**
+  `PaletteDisplayLUT.make(window:entries:)` folds the window LUT and the
+  palette into a single raw-sample → RGB table, which the existing palette
+  kernel already consumes — colour on screen needed no new shader, and the
+  CPU path indexes the same table the same way.
+
+- **Print bakes the colour in, because the wire cannot carry it.** PS3.3
+  Table C.13-5 permits only RGB in a Basic Color Image Sequence, and "palette"
+  appears nowhere in PS3.4 Annex H: a printer can never be told which palette
+  was used. So `preparationPalette` bakes it into 8-bit RGB before
+  transmission, `preparationColorMode` widens monochrome to colour, and
+  `preparationBitDepth` clamps to 8 bits. Two costs follow, and the sheet says
+  both where they are chosen: colour film is capped at 8 bits per sample where
+  grayscale can do 12 or 16, and the Linear-OD density curve stays
+  grayscale-only. Raw pixel jobs never colourise, and a grey palette is
+  dropped before it reaches any of this.
+
+- **Film-wide with per-cell override.** `applyFilmPalette` sets the sheet;
+  `setCellPalette` overrides one cell; a new `.palette` sync lock carries a
+  change across linked cells. Resetting a cell restores the *film's* palette
+  rather than grey, so a reset cell on a coloured sheet is not left the odd
+  one out. The palette is part of `ViewerPresentation` and counts toward
+  `isIdentity`, and it is folded into both the render cache key and the
+  print-cell texture key — without which the picker would appear to do nothing.
+
+- **`dicom-print --palette`.** Tokens are generated from the shared catalog
+  (`hot-metal-blue`, `viridis`, `pet-20-step`, …), grouped in `--help`, so the
+  terminal and the app cannot drift apart. A dry run names the palette and
+  prints its well-known SOP Instance UID where the standard defines one.
+
+- **Renamed to end a collision.** DICOMStudio's own `PseudoColorPalette` — the
+  GSPS C.11.10 stored-state vocabulary, used only by headless
+  presentation-state code — is now `PresentationStatePalette`. It was
+  shadowing the DICOMCore type and is a genuinely different idea: what a
+  *saved state* says an image should look like, not the palette a reader picks.
+
+### Fixed — colour studies printed grey, and colour jobs the printer rejected (2026-08-19)
+
+*Work in progress, not yet committed.*
+
+- **A colour study came out grey.** Only raw mode preserved colour: the
+  processed path handed the preprocessor the job's colour mode, which
+  flattened RGB to luminance before the pixels ever reached the wire — so a
+  colour ultrasound or a fused PET printed, and *saved*, as greys.
+  `PrintJobRequest.preservesSourceColor` (default on) keeps a colour source in
+  colour on an otherwise grayscale job. The app detects it rather than
+  trusting the mark: `refreshSourceColor()` reads Samples per Pixel and
+  Photometric Interpretation off each file. A "Print colour images as greys"
+  toggle keeps the old behaviour deliberately, and the sheet says which way it
+  will go.
+
+- **The SOP class now follows the pixels, in both directions.** A job whose
+  colour mode disagreed with its prepared pixels was rejected outright — raw
+  RGB on a Basic Grayscale Image Box answers 0x0106, *Samples per Pixel must
+  be 1*. `PrintWorkflow.reconcilingColorMode(_:with:diagnostics:)` moves a job
+  carrying three-sample frames onto Basic Colour Print Management, and back to
+  grayscale when no frame carries colour, reporting the switch to
+  diagnostics rather than doing it silently.
+
+- **A saved film is named after its pixels.** The simulator labelled the image
+  box from the request, so a film the SCU had already moved onto Basic Colour
+  could be written out claiming grayscale while holding three samples per
+  pixel — a state no real printer could be in, and one that made the saved
+  film disagree with the print.
+
+### Fixed — Presentation LUT INVERSE is rendered into pixels, not sent on the wire (2026-08-19)
+
+*Work in progress, not yet committed.*
+
+INVERSE is the softcopy module's value (PS3.3 C.11.6); the print module
+(C.11.4) enumerates only IDENTITY and LIN OD. Sending it risked the N-CREATE
+being rejected for a film the reader plainly asked for.
+`PresentationLUTShape.inverse` becomes `.inverseRendered`, with `wireValue`
+nil, `invertsPixels` and `isLegalPrintShape`: the inversion is applied to the
+pixels by the new `PresentationLUTTransform` and no Presentation LUT SOP
+instance is created — the same answer DCMTK gives for `--inverse-plut`. The
+CLI token `inverse` is unchanged; the menu now reads "Inverse (rendered into
+pixels)". As an SCP we are liberal in the other direction: an incoming
+INVERSE — NUL- and space-trimmed, upper-cased — is accepted and honoured
+rather than failing the association, because printing the inverted film is a
+better outcome than refusing it. The preview XORs the film's rendered inverse
+with any per-cell invert, so screen and film agree.
+
+`PresentationLUTTransform` also supplies the pixel side of LIN OD for the one
+case with no printer to defer to — the on-screen preview — with the
+standard's default density bounds (`minDensity` 20, `maxDensity` 300 in
+hundredths of OD, PS3.3 C.13.3).
+
+### Added — saved views: a presentation state the viewer writes and the film can adopt (2026-08-19)
+
+*Work in progress, not yet committed.*
+
+The viewer could read a GSPS but never write one. It now saves what is on
+screen as a named view, and the print screen can dress a whole film in it.
+
+- **The write half.** `GrayscalePresentationStateBuilder` (DICOMKit) emits a
+  conformant GSPS IOD opposite the existing parser. Its contract is that the
+  parser can read back what it writes, so the tests are round trips rather
+  than tag assertions: a tag written in a form the parser rejects is a bug
+  even when the tag itself is right.
+
+- **The store.** `PresentationStateStore` (DICOMPrintKit) keeps one shared PR
+  series per study — series 9001, "Presentation States" — holding one GSPS
+  object per image per saved view, grouped by the reader's label.
+  `SavedView.state(forImage:)` and `covers(image:)` encode the rule that a
+  view says nothing about an image it was not saved on, which is why the
+  picker only offers views that cover the image in front of you.
+
+- **One translation, done in one place.** `ViewerPresentationStateBridge`
+  converts between viewer state and the standard's vocabulary, handling the
+  two mismatches explicitly: GSPS allows only 0/90/180/270 with a *horizontal*
+  flip, so a vertical flip is written as 180° plus horizontal; and Displayed
+  Area is a source-pixel rectangle, so a view saved in one viewport restores
+  correctly into a different one.
+
+- **What GSPS cannot hold goes beside it.** Drawn arrows have no primitive in
+  the Graphic Annotation Sequence, which also has no per-annotation colour and
+  no scale — so annotations are stored losslessly in an
+  `<sopInstanceUID>.annotations.json` sidecar next to the object rather than
+  written lossily into it. Re-saving with no annotations deletes the orphan.
+
+- **In the viewer.** A picker lists Default first and saved views
+  newest-first, with naming and a named delete confirmation, and hides itself
+  when there is nothing to choose. Every tool property now clears the claim
+  that a saved view is still on screen the moment it is moved, so the label
+  never lies; the selection is remembered per image across series stepping.
+
+- **On film.** Cells adopt stored states — one cell, every cell, or only the
+  cells the reader has not already touched — with a film-wide toggle and a
+  default-view picker that says how many cells each label would cover. The
+  cell's own recorded size is passed as the viewport, so a stored Displayed
+  Area becomes the right zoom and pan for that cell. A cell the reader has
+  adjusted is never overwritten, and a raw job drops saved views entirely.
+
+### Added — drawn annotations belong to the image, show live, and reach the film (2026-08-19)
+
+*Work in progress, not yet committed.*
+
+- **Keyed by the image, not by the film mark.** Annotations move to
+  `ImageAnnotationKey(filePath:frameIndex:)`, so a frame marked into two cells
+  carries one shared set and the viewer can find them without a mark at all.
+  `annotationsForPrinting` expands that back to per-mark keys at print time —
+  a frame on two cells is burned twice — dropping blank text boxes on the way.
+
+- **Composited on the GPU in the main viewer.** `AnnotationOverlayTexture` is
+  a sibling of the frame texture, so editing an annotation does not force a
+  frame re-decode and panning does not rebuild the overlay. The shader takes a
+  second texture and composites it *after* inversion, so a yellow arrow stays
+  yellow on an inverted frame; a 1×1 transparent placeholder is always bound
+  so the binding is unconditional. The rasterizer calls the film's own
+  `ImageAnnotationBurner`, so screen and film cannot drift apart.
+
+- **On film, deliberately.** "Include annotations on film" defaults on and
+  burns for non-raw jobs; raw pixel jobs cannot carry them, which the sheet
+  says, and a job that goes out without them logs a notice rather than
+  dropping them quietly.
+
+### Fixed — the film's geometry: rotation direction, crop, flip order, and the zoom dead zone (2026-08-19)
+
+*Work in progress, not yet committed.*
+
+A set of geometry defects that made the preview and the film disagree, each
+now pinned by a test that compares the two paths directly.
+
+- **Every CPU-drawn thumbnail turned the wrong way.** `FrameRenderer.applying`
+  rotated opposite to the raw-pixel transform used for film: `rotate(by:)` in
+  a bottom-left-origin context is counterclockwise on a top-down display, and
+  the negation the comment promised was simply absent — so tray thumbnails,
+  CPU film cells and unfocused viewer tiles sat at twice the angle from the
+  film. `FrameRendererOrientationTests` now compares both paths pixel-for-pixel
+  over the same presentations.
+
+- **Free rotation shrank the anatomy instead of cropping.** A non-quarter turn
+  grew the output to the turned bounding box — √2 at 45°, 14% at 10° — so the
+  picture got smaller on film. It now turns about its centre at its existing
+  scale and the corners are cut, which is what the viewer does. A byte-identical
+  resample also reports itself as resampled, so true-size millimetres are not
+  claimed for blended pixels.
+
+- **Flip was applied before rotation.** Folded into the fit scale, a flip on a
+  quarter-turned image came out upside-down rather than mirrored — the two
+  orders differ by a half turn — and the film disagreed with the screen. Flip
+  now happens after rotation.
+
+- **Pan moved opposite the hand on flipped cells.** Stored pan is a
+  screen-space vector that was un-rotated without being un-mirrored. The
+  transform is now `q = F · R · (zoom · p) + t`, with `viewToImage(x:y:)`
+  un-mirroring before un-rotating.
+
+- **The zoom dead zone.** Every zoom in [0.25, 1) rendered identically to
+  fitted, so downward drags did nothing and pan was clamped to zero; the
+  minimum cell zoom is now 1.0, since a fitted film cell has nothing to zoom
+  out to, and a notice explains when Pan has nowhere to go. Free rotation also
+  delivered only 1.46× for a 2× zoom at 30°.
+
+- **The crop is masked.** Fragments outside the film crop are painted black;
+  previously the freely-rotated corners and the letterbox beside a zoomed cell
+  showed the neighbouring anatomy the crop existed to remove.
+
+- **"Reset Cell" lit for cells nobody had edited**, because the window seeded
+  on first click counted as an edit — and a seed arriving after a reset re-lit
+  it. Edits are now measured against that seeded baseline, and reset restores
+  the seed rather than clearing it.
+
+### Fixed — corner captions land on the cell's corners (2026-08-19)
+
+*Work in progress, not yet committed.*
+
+The preview anchors patient identification to the *cell's* corners, but on the
+wire only the image box exists — so a fitted frame of a different aspect than
+its cell was letterboxed by the printer, and the burned caption floated in the
+margin instead of sitting in the corner. `PreparedPrintImage
+.padded(toCellAspectRatio:)` widens the frame to the cell's shape with film
+background first — minimum stored value for MONOCHROME2 and RGB, maximum for
+MONOCHROME1 — and centres the picture. It applies only where the problem
+exists: fit-to-film, non-raw, and only when there are captions to place; fill,
+stretch, true size and raw are untouched.
+
+**Caption sizes are shared constants now.** The burner's typography is public
+and single-source, and the preview consumes it — dropping its own 11 pt cap
+and its own size fraction, which had been drawing captions at well under half
+the size the film actually printed.
+
+### Changed — the viewer: cine that plays, cursors that name the tool, presets that address the right modality (2026-08-19)
+
+*Work in progress, not yet committed.*
+
+- **A multi-frame image opens already playing**, looping at the rate its own
+  header asks for — Recommended Display Frame Rate first, then Cine Rate, then
+  Frame Time — clamped, with malformed values ignored. There is a play/pause
+  toolbar button on Space. The cine timer's lifecycle is fixed: it starts on
+  appear if playback is already running, restarts on a rate change only while
+  playing, and stops on disappear.
+
+- **The pointer carries the tool's own icon.** `ToolSymbolCursor` draws the
+  same SF Symbol the toolbar button shows into the cursor, cached per symbol,
+  and switches to the filled variant while dragging — replacing a generic
+  crosshair that stood for both windowing and rotate. Delivered through
+  AppKit cursor rects and reset to the arrow when the view leaves its window,
+  which fixes the cursor sticking outside the image area. The windowing icon
+  is now `sun.max`, no longer the mirrored twin of the Invert button's glyph.
+
+- **Window presets address the modality.** A preset's identity is now
+  modality-qualified: "Bone" exists for CT, CR and DX, and the duplicate
+  identifiers had been wiring preset rows to the wrong actions. A cell offers
+  its own modality's presets first, with the rest under "Other Modalities" —
+  the modality is read in the same header pass that already reads image
+  numbers.
+
+### Fixed — the print screen no longer leaks edits between visits, and status polling follows the queue (2026-08-19)
+
+*Work in progress, not yet committed.*
+
+- **Hand adjustments became permanent.** The print screen is kept alive
+  between openings, and reverting cleared the flags without restoring the
+  values: window one cell, close, adjust window, zoom or rotation in the
+  viewer, reopen — and none of the viewer's work showed. Reverting now
+  restores the values, opening a new film reverts adjustments and cancels any
+  in-flight saved-view adoption, and marks are re-synced from the viewer only
+  when the follow toggles are on. The viewer's print tray shows marks *as
+  picked*, so it no longer flickers with every windowing drag on the print
+  screen.
+
+- **Window propagation carried the numbers but not the space.** Peers kept
+  their own window space, so the same centre and width meant different
+  pictures. The space now travels with them, and "Apply This Window to All
+  Cells" is scoped to the current film.
+
+- **A job held for an offline printer waited forever** unless the print screen
+  happened to be open, because polling was tied to that screen's lifetime.
+  The queue now says which printers have work waiting — excluding paused
+  queues and paused jobs, including retrying ones — and monitoring follows
+  that demand, polling a newly-demanded printer immediately.
+
+### Fixed — the preview survives a scaling change, says when its tools are off, and sets its corners in one size (2026-08-14)
+
+*Committed in `ac61700` / `de67c39`.*
+
+- **Changing the scaling mode no longer kills the preview.** The mode decides
+  which cache draws each cell — Stretch is CPU-drawn, the rest come off the
+  GPU — without changing a single mark, so switching to Stretch asked for
+  thumbnails that had been deliberately released while the GPU had the film,
+  and nothing re-requested them: every cell fell to a spinner, and every tool
+  drag looked dead until some unrelated edit happened to refresh the caches.
+  The caches now refresh the moment the mode changes.
+
+- **The film says when a job setting has taken the tools away.** Raw pixels
+  disable window/zoom/pan/invert by definition, and the job-wide window
+  disables per-cell windowing — but both did it silently: the drag was
+  accepted and discarded, and the switch that did it sits folded away under
+  More. A notice over the film now names the setting and what still works.
+
+- **Identification corners are one block of type again.** A long line — a
+  study description, an institution name — used to shrink alone (down to
+  half) while the patient's name beside it kept full size, so one cell's
+  corners came out in two font sizes; the burner meanwhile drew every line at
+  full size, so the film disagreed with the preview too. Preview and burner
+  now compute one size per cell — the cell's own, stepped down as a whole
+  block until the widest line fits its corner — measured with the same face
+  so they step down together.
+
+### Added — the image filter works on a film that mixes series (2026-08-14)
+
+*Committed in `ac61700` / `de67c39`.*
+
+"Filter Images" used to be withheld the moment a second series was marked,
+because image numbers restart at 1 in every series and one global "60 to 140"
+would have taken a different run out of each. The filter now carries **one
+range per marked series**, keyed by the series' identity (Series Instance UID,
+with the existing description/folder fallbacks):
+
+- The popover shows a row per series — its description, its marked run, and
+  its own From/To fields plus a per-series "All" button. A single-series film
+  gets the one row it always had. Rows are named by Series Description: from
+  the mark, else read out of the file header alongside the image numbers — so
+  a whole-series mark from a UID-named export folder still gets a readable
+  name, not the UID.
+- Each range clamps to its own series' bounds, and the ordinal fallback for
+  unnumbered files now counts within the series, not across the film.
+- Everything downstream still reads one filtered list (`printedItems`), so the
+  preview, the plan and the print run cannot disagree; ranges whose series
+  leave the film are dropped by the clamp, and a new film still starts
+  unfiltered.
+
+### Added — the queue survives a restart, the audit trail becomes a record, and four print-correctness gaps close (2026-08-14)
+
+*Committed in `ac61700` / `de67c39`.*
+
+The queue and audit trail built earlier today did their jobs only while the app
+stayed up and only for a reader who trusted the file. This pass makes the queue
+durable and the trail evidentiary, and closes the FR-004/006 rendering gaps —
+one of which printed wrong contrast without saying so.
+
+- **The print queue survives a quit or crash.** Jobs persist to
+  `print-queue.json` on every state transition (never on progress ticks — a
+  job restarting at 40% would be a lie). On relaunch, jobs that were on the
+  printer come back **failed** ("Interrupted — the app quit while it was
+  printing"): their association is gone and pretending otherwise would be
+  worse. Waiting jobs come back waiting — but the queue restores **held**,
+  because an app launch must never open an association and print film on its
+  own; resuming is a deliberate act. A waiting job whose source file no longer
+  exists fails at restore, naming the path, rather than at print time.
+  Reprint therefore survives a restart too: Resend replays the captured
+  payload from disk.
+
+- **The queue speaks SRS §6.2's full state language.** SUBMITTING (association
+  setup and image preparation) and RETRYING join the states. A job whose run
+  *throws* — a dropped association, an unreachable printer — retries
+  automatically, up to a cap, a few seconds apart, with the attempt count
+  persisted so the §8.2 "retry count < max" gate survives a restart. A printer
+  that **answered and rejected** the job does not retry: rejection is final,
+  a fault is not.
+
+- **A job for an offline printer waits instead of failing.** The last FR-012
+  item: when the status monitor knows a printer is offline, its job stays
+  pending — the row says it is waiting for the printer — and the monitor's
+  next good report releases it. Strictly FIFO: a later job does not jump an
+  offline printer's job, because queue order is a promise about film order.
+  Only monitored printers hold jobs; an unmonitored printer has no live status
+  to trust, so its jobs run and fail honestly.
+
+- **Jobs can be reordered by dragging** in the queue list. The running job is
+  tracked by ID, not position, so moving rows is always safe.
+
+- **The audit trail is now a record, not a list.** Every new event carries a
+  session ID (one UUID per app launch), the recording host, and — on
+  transitions — the state before and after. Events are **hash-chained**
+  (SHA-256, each entry sealing the one before it): editing a recorded field or
+  removing an event from the middle breaks every hash after it, and the Audit
+  Trail tab shows a red shield naming the first broken link. Trails written
+  before these fields existed still load; their events are simply unhashed.
+
+- **Retention is a policy, not a count.** The 500-event cap — which a busy
+  department would roll past in days, silently — is gone. Audit events live
+  seven years; a failure's *detail text* is redacted after one (the event
+  itself stays); the rewrite re-chains the hashes and is itself recorded as
+  a `retentionApplied` event, so the trail explains its own edits.
+
+- **The Clear button is gone.** SRS §11.2 forbids deleting audit records, and
+  a control whose own dialog conceded "This cannot be undone" had no business
+  existing. Retention policy is now the only thing that removes an event.
+
+- **CSV joins JSON and PDF** in the export menus of both the audit trail and
+  the job history — the spreadsheet form §11.3 names.
+
+- **A SIGMOID image now prints with sigmoid contrast.** A window carried off a
+  viewer mark arrives as two bare numbers, and its VOI LUT Function silently
+  defaulted to linear — the one place the never-silently-degrade rule was not
+  honoured. The print path now inherits the file's (0028,1056), because the
+  function belongs to the image; an explicit non-linear choice on the request
+  still wins.
+
+- **A custom Presentation LUT can be sent.** `PresentationLUTTable` travels as
+  the Presentation LUT Sequence (2050,0010) — descriptor and 16-bit data — in
+  the N-CREATE, instead of a shape, for printers calibrated against a
+  site-supplied curve.
+
+- **LIN OD is a density curve, not a negation.** The composer previously
+  approximated Linear Optical Density by inverting the pixels. It now maps
+  P-values through the film box's Min/Max Density range with transmitted
+  luminance falling as 10^(−OD) — mid-gray on film transmits ~4% of full
+  light, not 50%. Orientation is unchanged, so existing films do not flip.
+
+- **The film-wide caption band can sit on any edge.** Footer (the default,
+  unchanged), header, either side — where the text runs spine-wise along the
+  film — or drawn over the images without reserving space. The band is carved
+  out of the picture area on its edge only: a side band never costs the
+  images height. Chosen in the printer emulator's settings as "Annotation
+  position", persisted with the rest of the SCP settings.
+
+### Changed — print preview: what is armed is now visible before the drag (2026-08-14)
+
+*Committed in `ac61700` / `de67c39`.*
+
+The preview's tools were readable only from the rail at the edge of the screen,
+and only if you went and looked. Everything here is about making the answer to
+"what will this drag do, and to how many cells" available where the hand
+already is.
+
+- **The pointer says which tool is armed.** Over a cell with a picture in it,
+  the cursor takes the tool's shape — the plain arrow for W/L (matching the
+  rail's own pointer glyph, and leaving the default tool's film untouched), a
+  magnifier for zoom, an open hand for pan that closes while the drag is
+  running, an I-beam for text, a crosshair for arrow. Empty cells and the sheet
+  margin keep the normal arrow, since no tool can act there. Via a tracking
+  area and `cursorUpdate` (`ToolCursor`), not `NSCursor.push()`/`.pop()`: hover
+  callbacks do not arrive in balanced pairs, and moving quickly between cells
+  left the pushed cursor stuck over the whole window. The overlay refuses hits
+  in `hitTest` rather than through SwiftUI's `allowsHitTesting(false)` — the
+  latter takes the view out of cursor tracking too, which is why the shape only
+  ever changed when a tool was switched under a stationary mouse.
+
+- **The W/L tool's rail icon is a pointer.** It was `circle.lefthalf.filled` —
+  the same glyph the Invert button carries, mirrored — so two buttons a few
+  points apart showed the same shape.
+
+### Changed — advanced print defaults for the department setup (2026-08-14)
+
+*Committed in `ac61700` / `de67c39`.*
+
+The sheet now opens with Medium: Blue Film, Destination: Magazine,
+Magnification: Bilinear, Presentation LUT: None (unchanged), and the burned
+identification includes birth date and institution alongside the always-on
+name/ID lines. Nothing here is persisted, so every launch starts from these;
+within a session they still survive between films as department settings.
+Burned birth date is a deliberate choice — it lives in the pixels and survives
+later header de-identification.
+
+### Fixed — the pan tool did nothing on a fill-scaled film (2026-08-14)
+
+*Committed in `ac61700` / `de67c39`.*
+
+Two halves of the same bug, found a layer apart. A fill-scaled cell is showing
+a crop at every zoom, so a pan has real travel even unzoomed — but every step
+of the pipeline read the picture with the *fitted* geometry:
+
+- `ViewerPresentation.clampedPan` computed its travel limits from the fit
+  scale, so at zoom 1 the limits were zero and the model discarded every pan.
+  Fixed first: a `covers:` flag scales by `max` rather than `min`.
+- That alone moved nothing on screen, because `visibleRegion` — the call that
+  decides which pixels the shader and the film actually get — re-clamped the
+  now-surviving pan with the same fitted assumption and answered "the whole
+  image", which the fill crop then re-centred. The pan lived in the mark and
+  died on the way to the pixels.
+
+`visibleRegion` now takes the same `covers:` flag, and the film's real scaling
+mode is threaded from one truth to every consumer: the model's clamps
+(`panCell`, the zoom-out re-clamp, the linked-cells propagation), the preview
+shader (`PrintCellDisplay.presentation`, covering when a fill cell size is
+passed), and the print pixel path (`PrintPresentationTransform.apply` via
+`PrintService`, from `request.scalingMode`) — so the film prints the same
+panned crop the preview shows. `PrintFillPanTests` asserts on what the shader
+and the transform are given, not on the stored value, which is exactly the gap
+the first fix fell into.
+
+Corrections to the first attempt: Stretch is out of the covering set — it
+covers the cell by distortion, not by cropping, so nothing is hidden and a pan
+has nowhere to go, same as fit. Fit at zoom 1 likewise remains a no-op by
+design: the whole image is on the film, and the preview does not pretend a
+drag would print. Zooming a fill cell back out to 1 still keeps the reader's
+framing, since zoom 1 there is still a crop. The CPU thumbnail fallback keeps
+the fitted read (it is shared with the viewer); a fill cell drawn from it shows
+the centred crop only until its texture lands and the GPU path takes over.
+
+- **The tools and locks reset on every visit.** They used to survive as
+  "working habits", alongside the printer and film size. The difference is
+  that a habit is visible when you come back to it and an armed mode is not:
+  a reader who left the pan tool armed with the W/L lock shut pans four cells
+  on the next visit's first drag, and finds out afterwards. The screen now
+  always opens windowing, nothing locked, nothing picked, scope back to the
+  series. Job settings — printer, film size, medium, identification — still
+  survive, as before.
+
+- **The sync locks are in the same order as the tools.** W/L, Zoom & Pan,
+  Invert — matching the rail above them, so a lock sits where the tool it
+  holds together does.
+
+- **Separators are visible.** The rail's group rules and its edge against the
+  film were hairline `Divider`s that all but vanished; they are now a 1pt rule
+  at 45% secondary. The rail's grouping is what makes eleven buttons readable
+  as four groups.
+
+- **Every control on the rail has a key.** The five tools already had W, Z, P,
+  T, R; the sync locks, the scope and Pick did not, and those are exactly the
+  controls reached for mid-drag with the other hand on the film. A lock takes
+  its tool's key shifted — ⇧W, ⇧Z, ⇧V — which is the same tool-to-lock pairing
+  the rail now shows by ordering them alike. S swaps a shut lock's reach
+  between Series and Film; A picks the run of cells from the focused one, or
+  lets a picked set go. The full table is documented on `toolShortcuts`.
+
+- **One door for shutting a lock.** The rail button, the context menu and the
+  new shortcut all go through `toggleSyncFromUI(_:)`, which carries the window
+  seeding (cells never opened have no window for a relative edit to work from)
+  and the job-wide-window refusal. Previously the seeding was copied into each
+  call site; a shortcut is delivered whether or not a disabled button would
+  have taken the click, so that refusal had to move below the button.
+
+- **Tooltips are a guide, not a label.** Every tool, lock, scope, selection
+  and reset control now states the gesture, what it changes, its shortcut, and
+  — read live from the same rules the drag itself uses — how many cells the
+  next drag will actually reach. The film size, printer, orientation and copies
+  controls gain the tooltips they never had, and the film size menu is labelled
+  "Film Size" rather than "Film", which read as a heading for the whole bar.
+
+### Added — app-side print queue and audit trail (2026-08-14)
+
+*Committed in `ac61700` / `de67c39`.*
+
+Queue management and the audit trail are app responsibilities, so both live
+entirely in DICOMStudio — no package logic moved, and no login module: the
+trail records what this app instance did, not who was signed in.
+
+- **Print jobs now go through a queue.** `PrintQueueService` (DICOMStudio)
+  executes submitted jobs one at a time, so two jobs never interleave
+  associations on the same printer. Jobs move through pending → running →
+  completed/failed, with paused and stopped under user control. The print
+  sheet still mirrors its own job's phase, console, progress and result —
+  through handlers the queue calls — so the submit flow looks unchanged.
+
+- **Queue management screen.** The Print Center's right pane gains a
+  Queue / History / Audit Trail switcher. The Queue tab lists every job with
+  its state, progress and attempt count, with per-job actions the state makes
+  meaningful — Start Now (jump the line), Pause/Resume (hold a waiting job),
+  Stop (cancel; the SCU N-DELETEs the film session), Resend (a finished job
+  re-enters the queue as a fresh attempt with the same captured payload),
+  Remove — and queue-wide Pause/Resume, Stop All and Clear Finished.
+  A running job cannot pause: its association is already open, so pausing
+  one is refused rather than half-honored.
+
+- **Audit trail, recorded and persisted app-side.** Every queue action and
+  job outcome — submitted, started, completed (with Print Job UIDs), failed,
+  paused, resumed, stopped, resent, removed, queue-level actions, history
+  clearing — lands in `print-audit-trail.json` (newest first) the moment it
+  happens, so a crash mid-job still leaves a record. The Audit Trail tab
+  browses it with text search, an action filter and export. (Retention,
+  tamper evidence and the removal of the clear control are in the later
+  entry above.)
+
+- **Both records export as PDF as well as JSON.** The Export button in the
+  History and Audit Trail panes is now a menu offering **JSON…** or **PDF…**.
+  JSON is unchanged and still byte-identical to the on-disk store, for another
+  program to read. PDF renders a paginated Letter-size report — title, row
+  count and generation date, ruled column headings, and a page footer — for
+  the reader who is filing it with a QA record or handing it to a service
+  engineer rather than running `jq` over it. The audit PDF always covers the
+  whole trail, not the current search filter: an exported audit record that
+  silently dropped rows would be a misleading document to file. Empty records
+  still produce a one-page "No records." report, since a zero-page PDF is a
+  file no viewer will open.
+
+- **History records resends too.** Job history is now written by the queue's
+  completion callback rather than the print sheet, so a job resent from the
+  queue screen lands in Recent Jobs like any other. Cancelled jobs stay out
+  of history — it remains a record of jobs that were sent — while the audit
+  trail keeps the stop.
+
+### Added — the print history answers questions, not just lists jobs (2026-08-14)
+
+*Committed in `ac61700` / `de67c39`.*
+
+The history stored every job's Print Job SOP Instance UIDs but never showed
+them again: "did that print?" could only be asked while the print sheet was
+still open. The Print Center's Recent Jobs pane now closes that loop.
+
+- **Check Status on a past job.** Each history row with recorded job UIDs gains
+  a **Check Status** button that N-GETs every film's execution status from the
+  printer the job was sent to (found by name — if the profile has since been
+  removed, the row says so instead of failing silently). Multi-film jobs get
+  one line per film — `Film 2: FAILURE (CHECK PRINTER)` — coloured and
+  glyphed by state, matching the print sheet's own status display. Results are
+  in-memory only: an execution status is what the printer says now, so a stale
+  answer from a previous launch would mislead. The query runs through a new
+  `PrintJobStatusQuerying` seam (same pattern as the status monitor's probe),
+  so the flow is tested without a printer on the network.
+
+- **The UIDs are visible at last.** Hovering a history row shows the Film
+  Session UID and Print Job UID(s) as a tooltip.
+
+- **Fixed: the emulator forgot its print jobs the moment the SCU released.**
+  `DICOMPrintServer` kept Print Job records on the association, so any status
+  query on a later association — which is how "Check Status" necessarily asks —
+  answered 0x0112 *No such SOP Instance* for a job it had just printed. Film
+  session state is rightly association-scoped (PS3.4 H.4), but the Print Job
+  SOP Instance is exactly the part that must outlive the release (PS3.4
+  H.4.8). Jobs now live in a server-wide `PrintSCPJobStore`, bounded to the
+  100 most recent. A loopback test prints, releases, and N-GETs the job on a
+  fresh association.
+
+- **Export… and Clear…** in the Recent Jobs header. Export writes the history
+  as JSON in the exact on-disk format (`print-job-history.json`), so an
+  exported audit file and the live store are interchangeable. Clear asks first
+  and removes the entries from disk as well.
+
+### Added — the workstation notices a printer changing state on its own (2026-08-13)
+
+*Committed in `ac61700`. Closes five of the six FR-012 sub-items
+of `PRINT_SRS_CONFORMANCE_REPORT.md`; the sixth needs FR-011's queue.*
+
+A printer's state was only ever as fresh as the last time somebody pressed a
+button, and it was reported in two colours where the standard defines three.
+A printer low on film looked exactly like one that had failed.
+
+- **A printer's state is now a closed enum, not a string comparison.**
+  `PrinterStatusSeverity` covers the three states PS3.3 C.13.9 defines —
+  NORMAL, WARNING, FAILURE — plus `unknown` for an SCP that answered with
+  something else. Parsing is lenient about padding and case, because CS values
+  arrive padded and non-conformant printers vary the case; anything it cannot
+  place becomes `unknown` rather than being read as healthy, since the
+  dangerous failure is a printer we cannot understand being handed a job.
+  `PrinterStatus.isNormal` keeps working, joined by `isWarning`/`isFailure`.
+
+- **WARNING is no longer reported as an error.** `ServerConnectionStatus` gains
+  a `warning` case and the status pane maps onto it, replacing
+  `status.isNormal ? .online : .error` — which had been telling the user a
+  printer with low film was broken. A warning printer still accepts jobs, per
+  the SRS: blocking on it would stop usable work. Warning and failure differ in
+  glyph as well as colour, so the distinction survives for a colour-blind
+  reader.
+
+- **Background polling on a configurable interval (10–300s).**
+  `PrinterStatusMonitor` runs one task per printer rather than a shared timer,
+  so an unreachable printer cannot set everyone else's cadence. The first poll
+  is jittered: printers enabled together would otherwise open associations in
+  lockstep for as long as the app runs. On failure the interval doubles to a
+  ten-minute ceiling and resets the moment the printer answers, so a printer
+  switched off overnight is not probed every ten seconds until morning.
+
+- **Monitoring is opt-in per printer, and off by default.** Polling opens a
+  real association on someone's hospital printer; that is a thing to ask for,
+  not something to switch on for every profile a user has ever saved.
+
+- **Polled status is deliberately not persisted.** It is observed state, and
+  writing `printer-profiles.json` on every poll would rewrite the file every
+  few seconds per printer to store something meaningless after a restart. The
+  interval and the opt-in *are* persisted, and a profile written before those
+  fields existed still decodes — an older file loads with monitoring off
+  rather than dropping every printer the user configured. An out-of-range
+  interval, from a hand-edited file or an older build, is clamped rather than
+  trusted: at zero it would be a hot loop against a hospital printer.
+
+- An unreachable printer reports as offline, a failed one as error. "We could
+  not ask" and "it answered and said it is broken" are different facts, and an
+  operator needs to tell them apart.
+
+- 43 tests. The probe and the clock are both injected, so the backoff curve,
+  the lifecycle and the legacy-JSON decode are asserted without a real printer
+  or a real second passing.
+
+### Added — print scaling modes, table LUTs, and optional identification fields (2026-08-13)
+
+*Committed in `ac61700`. Closes the FR-003 / FR-004 / FR-006 gaps
+of `PRINT_FR_003_004_006_PLAN.md`; every default reproduces the previous
+output byte for byte.*
+
+- **Scaling modes (FR-003).** `PrintScalingMode` — Fit to Film (the old and
+  still-default behaviour), Fill to Film, True Size (1:1), and Stretch — with
+  9-way `PrintCellAlignment` positioning. Fit and fill travel to a real
+  printer as Requested Decimate/Crop Behavior (2020,0040); true size
+  additionally sends Requested Image Size (2020,0030), computed per image from
+  Pixel Spacing / Imager Pixel Spacing / Nominal Scanned Pixel Spacing —
+  column spacing × columns, so a crop narrows the request with it, a quarter
+  turn swaps the axes, and a free-angle resample clears it. An image with no
+  recorded spacing falls back to fit **with a console warning**, never
+  silently: a wrong-scale film is one a clinician might measure against.
+  Stretch and the alignment have no DICOM form and apply where the toolkit
+  composes the film itself (preview, Save Film, the SCP emulator); the
+  settings sheet says so. The film-box composer's CROP path now honours
+  Requested Image Size (PS3.4 H.4.3) instead of ignoring it. In the live
+  preview, fill is composed into the display shader's *source region* — the
+  cell's Metal view keeps one size through every tool drag, which is what
+  keeps a tool step at one quad redraw — and stretch draws on the CPU path,
+  which can ignore the aspect. True size and non-centre alignment draw as
+  centred fit on screen (a panel-scaled sheet has no physical size) and are
+  exact on the composed film. Print preview cells sample bilinear where the
+  viewer stays nearest-pixel: a film cell is judged as a picture, its
+  CPU-drawn neighbours are smoothed, and a cell must not change texture the
+  moment its GPU texture arrives.
+- **Table-form LUTs (FR-004).** `GrayscaleLUT` decodes the Modality LUT
+  Sequence (0028,3000) and VOI LUT Sequence (0028,3010): descriptor entry
+  count 0 meaning 65536, sign following the pixels (and, for VOI, a negative
+  rescale intercept), byte- and word-packed data, clamping at both ends, and
+  normalization over the table's actual range so a 12-in-16-bit table keeps
+  the film's full dynamic range. A Modality LUT **replaces** the rescale pair
+  (PS3.3 C.11.1 makes them mutually exclusive); the VOI precedence is now
+  explicit user window → VOI LUT table → header Window Center/Width →
+  auto-stretch. Before this, an image whose presentation requires a table LUT
+  printed with the wrong contrast, silently.
+- **Window presets beyond CT and MR (FR-004).** CR/DX, MG, PT (SUV), NM and
+  XA/RF join the preset table, in the viewer and the print cell tools alike.
+  US stays empty deliberately: its frames are display-ready and a fixed
+  window would be an invented number.
+- **Optional identification fields (FR-006).** Birth date, accession number,
+  institution and series description can join the burned caption — each
+  opt-in, each in a documented corner, all off by default so the default film
+  is unchanged. Birth date stays off unless deliberately chosen: burned into
+  pixels it survives later header de-identification. Caption typography is
+  now configurable (`PrintAnnotationStyle`: font family, size as a fraction
+  of the frame clamped to a legible 2–10%, forced white/black that still
+  flips for MONOCHROME1); the automatic style remains the default and the
+  recommendation. The film footer's minimum type size rises from 2.5 mm to
+  2.82 mm — the SRS's 8 pt floor stated physically.
+
+### Changed — every film cell says what made its picture (2026-08-10)
+
+*Committed in `ac61700` / `de67c39`.*
+
+The caption under a film cell named the patient and the study, and stopped
+there. A reader comparing two slices on one sheet is comparing their technique
+as much as their anatomy, and that was on neither.
+
+- **What made the picture, each value under its own label.** `Modality: CT`,
+  `Image: 45` — the acquisition sequence number, with the series left off, since
+  a cell is one image and its series is already named by the study description
+  above it — then the technique that modality is actually read by:
+  `Slice Thickness: 5.00 mm` and `kVp`/`Exposure` on a CT, `TR`/`TE` and
+  `Field Strength` on an MR, `kVp`/`Exposure`/`View` on a plain film, thickness
+  and `Radiopharmaceutical` on PT/NM. Anything the list does not know still gets
+  its slice thickness. Labelled because "5.00 mm" alone could be a thickness, a
+  spacing or a slice interval; whatever the scanner did not record is left off,
+  since a film that prints "kVp:" with no number beside it has said something
+  false about a machine. The patient and the study stay unlabelled — a name
+  reads as a name.
+- **The study date carries its time.** `15 Oct 2025 14:32`, to the minute: a
+  patient can be scanned twice in a day, before and after contrast, and two
+  films differing only by the hour are two films nobody can put in order.
+- **The film footer is gone.** Stating the identification once at the foot of a
+  sheet only worked while every cell said the same thing; a caption that names
+  the image's own number and thickness cannot be lifted off the picture it
+  belongs to. Captions are now always under the image, burned into the pixels
+  that carry them, so nothing depends on whether a printer honours annotation
+  boxes. The "Caption" placement picker and its context-menu twin are gone with
+  it; the identification switch remains.
+- **The caption moved into the corners, as on the viewer.** Not a strip below
+  the picture: the corners of a fitted image are background, the reader's eye is
+  in the middle, and a caption under the picture is one read by looking away
+  from the anatomy it describes. The arrangement is the workstation's — who and
+  what at the top right, what made the picture at the bottom left, the study
+  date at the bottom right, the top left left clear for the printer's own label
+  — so a film and the screen it was approved on are read the same way.
+- **The picture gets its rows back.** Nothing is scaled to make room, in the
+  preview or in the burned pixels: `ImageAnnotationBurner` draws the four corner
+  blocks over the frame with a halo at the opposite end of the greyscale, so
+  each line survives both a white lung field and a black background, and
+  `PrintCornerAnnotation` is what the preview and the burner both lay out from.
+  Set plain, at one weight, on screen and on film: nothing in the corners is a
+  different kind of statement from anything else there, and the halo is what
+  keeps a line legible, not its weight. The blocks are pushed into the corners
+  of the *cell* rather than of the picture inside it — a frame that is not the
+  cell's shape leaves a letterbox margin, and text held to the picture reads as
+  floating in the middle of the sheet — and set a size smaller than the viewer's
+  corners, since a film cell carries more lines in less room.
+
+### Fixed — the range filtered by position, and ⌘-click never landed (2026-08-11)
+
+*Committed in `ac61700` / `de67c39`.*
+
+- **The image range now matches the series' own numbers.** It was falling back
+  to each mark's *position in the tray*, which equals the image number only when
+  a series is marked whole, from image one, with nothing skipped — so "3 to 9"
+  printed whichever seven marks sat in those slots. Marking a whole series
+  records paths and no numbers on purpose (reading two hundred headers to label
+  a tray nobody has opened would stall the viewer), so the numbers are now read
+  from the files themselves: header only, stopping at Instance Number, done once
+  and kept, and only when the range control is actually opened. The control
+  greys out while it reads rather than letting a range be typed against half the
+  numbers.
+- **⌘-click reaches the selection.** It was expressed as a second, modified
+  `TapGesture` alongside the plain one, and SwiftUI's priority rules gave the
+  plain one the click — so every ⌘-click arrived as an ordinary click, the
+  picked set never grew past the cell clicked last, and Delete took only that
+  cell. The modifier is now read from the event inside the one tap handler, so
+  there is no contest to lose. A plain click on an unpicked cell clears the set,
+  which is what makes "click somewhere else and start again" work.
+- **Delete works from the keyboard.** It was handled by the film's own key
+  handler, which needs the film to hold keyboard focus — after a click in the
+  settings column or the range popover it does not. It is a shortcut now
+  (⌫ and ⌦), delivered wherever the print screen is, and still takes a selected
+  annotation before the cell it was drawn on.
+
+### Added — a run of the series, and thinning a sheet out (2026-08-11)
+
+*Committed in `ac61700` / `de67c39`.*
+
+- **Images: from ( ) to ( ).** A CT of two hundred slices is fourteen sheets, and
+  the reader wants the four where the finding is. The range names them by the
+  image's own number — the one printed in the cell's corner — and the films are
+  laid out from what falls inside it.
+
+  It is a **filter, not an edit**: the marks it holds back keep their windowing
+  and their arrangement, widening the range brings them straight back, and *Load
+  All Images* is one click rather than a re-mark of the series. One filtered
+  list feeds the plan, the preview and the print run, so the sheet on screen is
+  the sheet the printer receives. Offered for a single series only — across two
+  the numbers restart, and one range would take a different run out of each.
+- **Cells come off the film with ⌫.** The picked cells, or the focused one, from
+  the cell's own menu or the delete key — which still takes a selected
+  annotation first, innermost thing first. The rest of the film shuffles up in
+  order: image 7 moves into the hole image 4 left, no cell is left blank in the
+  middle of a sheet, and the last film simply ends earlier. The focus lands on
+  the cell that moved up into the first hole, so a run of deletions is done from
+  one spot instead of chasing the picture around the sheet.
+- **Locks stop at the edge of the sheet.** A locked window or zoom now reaches
+  only the film being judged. It is the sheet in front of the reader and the
+  only one whose cells they can watch move; re-windowing thirteen films nobody
+  has turned to is an edit whose effects are discovered on paper. The scope
+  choice is now *Same Series* or *Whole Film*, both read as "…on this film", and
+  "All Cells" is gone.
+
+### Added — picking out the cells a tool acts on (2026-08-11)
+
+*Committed in `ac61700` / `de67c39`.*
+
+The locks answer "which cells move with this one" by rule — same series, this
+film, everything. That is right when the rule is the intent. It is the wrong
+shape for "these four, and not the rest", which is common enough that stating
+it as a rule is a chore.
+
+- **⌘-click picks cells out.** A checkmark badge marks each one, a thin accent
+  ring draws round it, and the film's caption says how many are picked. Escape
+  clears them, and so does the rail's own button.
+- **Select ▸ Succeeding Cells on This Film**, on the cell's right-click menu,
+  takes the focused cell and everything after it on the sheet — stopping at the
+  film's edge, so what a drag is about to touch is on screen to be seen. *All
+  Cells on This Film* is beside it.
+- **A selection outranks the locks.** While two or more cells are picked, every
+  tool — window, zoom/pan, invert — acts on exactly those and the locks stand
+  aside. An explicit selection is a statement the reader has just made by hand,
+  and a lock quietly widening it to the rest of the series would undo the point
+  of making it. Drag a cell that is *not* picked and it moves alone. Clear the
+  selection and the locks are in charge again, unchanged.
+- **A job-wide window still wins.** Nothing per-cell reaches the film then, so a
+  picked selection carries no window edit either — geometry still travels.
+- **The lock badge moved to the top left.** The identification now occupies the
+  top right and both bottom corners, and a badge over a patient's name is a
+  badge over the one thing on the film that must stay legible.
+- **The film grew into the slack it already had.** The page arrows float over
+  the empty gutter beside a portrait sheet instead of charging the picture 68
+  points for two chevrons standing in space; when the panel is too tight for
+  that, they take their gutter back and the sheet fits in the rest. The layout
+  button now says what it is — *Layout: 4×5*.
+
+### Fixed — a film of sixteen cells loaded one decode at a time (2026-08-11)
+
+*Committed in `ac61700` / `de67c39`.*
+
+`FrameSourceCache` is an actor, and it read and decoded the file *inside* its
+own isolation. Every cell after the first therefore queued behind a full
+JPEG 2000 decode, and a window/level drag — which needs nothing but pixels
+already in hand — queued behind all of them: a 4×4 film trickled in row by row
+and the tools felt dead while it did.
+
+- **The decode runs off the actor.** The cache is shared state and has to be
+  serialised; the codec is not. Each path's decode is a detached task the actor
+  awaits, so sixteen files decode concurrently and sixteen cells of one file
+  share a single decode.
+- **A byte budget, not a file count.** The cache held three files, which is far
+  too few for a film whose every cell is being adjusted — loading cell sixteen
+  evicted cell one, so dragging it re-decoded from disk. It now holds 256 MB of
+  decoded pixels, never fewer than three files, which is a whole CT film over.
+- **Identification is read per film.** The preview parsed every marked file's
+  header up front — a hundred marks is a hundred full reads competing for the
+  same disk and cores as the decodes the cells are waiting on. It now reads the
+  film on screen, and the next one when it is turned to.
+- **A new layout loads its new cells.** The preview refreshed its caches when
+  the film index or the mark list changed, and a layout change alters neither:
+  a 2×2 turned into a 4×4 showed the four pictures it already had and twelve
+  spinners nobody had asked to render, until some later event happened to
+  refresh them. It now watches the cells the film is actually showing, which is
+  the thing all three of those changes have in common.
+
+### Added — linked film cells: adjust one, adjust them all (2026-08-07)
+
+*Committed in `ac61700` / `de67c39`.*
 
 "Apply this window to all cells" was a one-shot copy made after the fact. Judging
 a film means comparing its cells, and cells can only be compared when they are
@@ -151,7 +1171,7 @@ shown alike — which meant repeating every zoom by hand, cell by cell.
 
 ### Added — a film of one study names its patient once (2026-08-07)
 
-*Work in progress, not yet committed.*
+*Committed in `ac61700` / `de67c39`.*
 
 Identification was burned under every image, which is right for a sheet that
 mixes studies and repetitive noise on a sheet that does not: sixteen cells of one
@@ -205,7 +1225,7 @@ cases.
 
 ### Changed — the print preview stays shut, opens wider, and writes the film out (2026-08-07)
 
-*Work in progress, not yet committed.*
+*Committed in `ac61700` / `de67c39`.*
 
 - **A launch shows the library and nothing else.** Print Preview and Printer
   Emulator are singleton `Window` scenes, so macOS restored whichever was open at
@@ -229,7 +1249,7 @@ cases.
 
 ### Added — film layouts the standard has and a grid has not (2026-08-06)
 
-*Work in progress, not yet committed.*
+*Committed in `ac61700` / `de67c39`.*
 
 PS3.3 C.13.3 lets a film's rows hold different numbers of images: `ROW\1,3` is a
 scout above three slices, `COL\1,2` is one image beside two. The Print SCP has
@@ -273,7 +1293,7 @@ reader most often wants for a comparison film could be received and not sent.
 
 ### Changed — the viewer opens on the images (2026-08-06)
 
-*Work in progress, not yet committed.*
+*Committed in `ac61700` / `de67c39`.*
 
 Opening a study put four columns on screen before the first picture: the app's
 feature list, the series pane, the images, and an empty selection tray. Two of
@@ -299,7 +1319,7 @@ them were answering questions nobody had asked yet.
 
 ### Changed — the viewer's three columns are told apart (2026-08-06)
 
-*Work in progress, not yet committed.*
+*Committed in `ac61700` / `de67c39`.*
 
 The series pane, the reading area and the selection tray all sat on the same
 near-black surface, so nothing on screen said which column held the images that
@@ -324,7 +1344,7 @@ were about to print:
 
 ### Changed — the print preview is a window, not a sheet (2026-08-06)
 
-*Work in progress, not yet committed.*
+*Committed in `ac61700` / `de67c39`.*
 
 - The preview's cells now draw from GPU textures (`PrintCellTextureCache`), because
   the preview is where the tools are used: window/level, zoom, pan, rotate, flip and
@@ -385,7 +1405,7 @@ Full GPU rendering pipeline for the viewer, landing GPU plan milestones M0–M7
 
 ### Added — corner annotations and GPU textures for unfocused tiles (2026-08-04, in progress)
 
-*Work in progress, not yet committed.*
+*Committed in `ac61700` / `de67c39`.*
 
 - On-screen viewer tiles and the focused viewport now carry the traditional
   four-corner reading-room annotation layout — size/window/cursor readout

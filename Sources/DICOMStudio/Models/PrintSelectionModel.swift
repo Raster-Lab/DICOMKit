@@ -14,7 +14,7 @@ import DICOMPrintKit
 // MARK: - Selection Item
 
 /// One marked frame destined for a film cell.
-public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
+public struct PrintSelectionItem: Identifiable, Hashable, Sendable, Codable {
     /// Stable identity: a given frame of a given file can be marked only once.
     public var id: String { "\(filePath)#\(frameIndex)" }
 
@@ -140,6 +140,11 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
         return "dir:" + (filePath as NSString).deletingLastPathComponent
     }
 
+    /// The image identity this mark's annotations are shared under.
+    public var annotationKey: ImageAnnotationKey {
+        ImageAnnotationKey(filePath: filePath, frameIndex: frameIndex)
+    }
+
     /// Label for the marks tray, e.g. "CHEST AXIAL · #14 · frame 3/60".
     public var displayLabel: String {
         var parts: [String] = []
@@ -183,6 +188,36 @@ public final class PrintSelectionModel {
     /// Each adjusted mark as it stood before the first hand adjustment, so the
     /// edit can be taken back.
     private var preAdjustment: [String: PrintSelectionItem] = [:]
+
+    // MARK: Drawn annotations
+
+    /// The text and arrows drawn on each image, keyed by image identity rather
+    /// than by mark: an image marked onto two film cells shows one shared set
+    /// of annotations in both, and the main viewer can look annotations up by
+    /// file path and frame index alone, without any notion of a film mark. See
+    /// `PrintSelectionModel+Annotations.swift`.
+    public var cellAnnotations: [ImageAnnotationKey: [PrintOverlayAnnotation]] = [:]
+
+    /// The annotation the inspector is editing, if any.
+    public var selectedAnnotationID: UUID?
+
+    /// Size the next annotation is drawn at, as a fraction of the image's
+    /// height. Changing a selected annotation's size adopts it here too.
+    ///
+    /// The smallest the size control offers, by request: a reader's note is a
+    /// margin note, and one that starts large is something to shrink on every
+    /// annotation rather than once. Anything bigger is still a drag away, and
+    /// the burner's own pixel floor keeps even this legible on a small frame.
+    public var annotationScale: Double = PrintOverlayAnnotation.minimumScale
+
+    /// Colour the next annotation is drawn in.
+    ///
+    /// White, which is what a reader marking a greyscale study expects to
+    /// write in — the yellow this used to be reads as a highlight rather than
+    /// a note, and on a colour or inverted frame it was the louder of the two.
+    /// Every other colour remains one click away in the annotation controls,
+    /// and choosing one adopts it for the annotations that follow.
+    public var annotationColor: PrintOverlayColor = .white
 
     public init() {}
 
@@ -280,6 +315,22 @@ public final class PrintSelectionModel {
     /// Whether a mark has been adjusted by hand.
     public func isAdjusted(_ id: String) -> Bool { adjustedIDs.contains(id) }
 
+    /// The marks as they were made, with the print screen's hand adjustments
+    /// left out — in the same film order as ``items``.
+    ///
+    /// Two readers of the same list want different things from it. The film and
+    /// the printer want the mark as it now stands, hand adjustments included:
+    /// that is the picture being sent. The viewer's tray wants the image as it
+    /// was picked, because it answers "what have I put on the film?" and a tool
+    /// used on the print screen is not an answer to that — it belongs to the
+    /// film being composed, not to the selection. Rendering the live mark there
+    /// made every windowing drag on the print screen flicker a tray row beside
+    /// it.
+    public var itemsAsMarked: [PrintSelectionItem] {
+        guard !preAdjustment.isEmpty else { return items }
+        return items.map { preAdjustment[$0.id] ?? $0 }
+    }
+
     /// Takes back every hand adjustment to a mark, restoring it to how it was
     /// marked, and lets it follow the viewer again.
     @discardableResult
@@ -298,6 +349,34 @@ public final class PrintSelectionModel {
     public func clearAdjustment(forID id: String) {
         adjustedIDs.remove(id)
         preAdjustment.removeValue(forKey: id)
+    }
+
+    /// Takes back every hand adjustment, so all marks say what they said when
+    /// they were marked and follow the viewer again.
+    ///
+    /// A hand adjustment defends a cell against ``refreshMarksFromViewer()`` for
+    /// as long as that film is being composed, which is what it is for. It must
+    /// not outlive the visit. The print screen is kept alive between openings, so
+    /// without this the flag is permanent: window one cell in the preview, close
+    /// the screen, then go on windowing, zooming and turning that image in the
+    /// viewer, and reopening the screen shows none of it — the mark stopped
+    /// listening on the first visit and never started again. Reopening the screen
+    /// is opening it on what is ticked *now*, so the marks start following the
+    /// screen again too.
+    ///
+    /// The values are restored, not merely unflagged. Clearing the flags alone
+    /// looked equivalent — "the viewer's next re-sync overwrites them anyway" —
+    /// but the re-sync only reaches marks that are *on screen*; every other
+    /// mark kept the last visit's pans and zooms, and a film reopened after a
+    /// cancelled visit still wore the edits the cancel appeared to discard.
+    public func revertAllAdjustments() {
+        for (id, original) in preAdjustment {
+            if let index = items.firstIndex(where: { $0.id == id }) {
+                items[index] = original
+            }
+        }
+        adjustedIDs.removeAll()
+        preAdjustment.removeAll()
     }
 
     /// Drops adjustment bookkeeping for marks that are no longer selected.

@@ -19,12 +19,17 @@ public enum PrintPresentationTransform {
     ///   - image: Prepared, uncompressed image-box pixels (8- or 16-bit,
     ///     1 or 3 samples per pixel).
     ///   - presentation: The viewer arrangement to bake in.
+    ///   - covers: Whether the job's scaling lays the picture covering its cell
+    ///     (fill-to-film). The crop is then read with the covering geometry, so
+    ///     the film prints the same panned crop the preview shows — read as
+    ///     fitted, the film re-centred what the preview had slid.
     /// - Returns: The transformed image, or `image` unchanged when the
     ///   presentation is an identity or the pixel layout is not one this can
     ///   safely permute.
     public static func apply(
         _ presentation: ViewerPresentation,
-        to image: PrintImageData
+        to image: PrintImageData,
+        covers: Bool = false
     ) -> PrintImageData {
         guard !presentation.isIdentity else { return image }
 
@@ -46,12 +51,34 @@ public enum PrintPresentationTransform {
         var pixels = [UInt8](image.pixelData.prefix(width * height * pixelStride))
 
         // 1. Crop to the region the viewport was showing.
+        //
+        // Off-square, the crop is taken wider than the picture that comes out
+        // of it. The rotation below turns about the centre at the scale the
+        // region already had, so the picture keeps its size and its corners
+        // swing outside — and the pixels that ought to swing *in* to replace
+        // them are the ones just past the crop's edge. Cropping tight threw
+        // those away before the resampler could reach them, and the corners
+        // came out as background wedges even where the frame plainly had image
+        // there. So the crop grows to the box the turned rectangle sweeps
+        // (clamped to the frame), the output stays the ungrown size, and the
+        // resampler — which reads backwards from each output pixel — finds real
+        // pixels where it used to find nothing. `printedSize` below is what
+        // keeps the output at the size the film expects.
         var currentWidth = width
         var currentHeight = height
-        if let region = presentation.visibleRegion(imageWidth: width, imageHeight: height) {
-            pixels = crop(pixels, width: currentWidth, region: region, pixelStride: pixelStride)
-            currentWidth = region.width
-            currentHeight = region.height
+        var printedWidth: Int?
+        var printedHeight: Int?
+        if let region = presentation.visibleRegion(
+            imageWidth: width, imageHeight: height, covers: covers) {
+            let sampled = presentation.regionCoveringTurnedCell(
+                region, imageWidth: width, imageHeight: height)
+            pixels = crop(pixels, width: currentWidth, region: sampled, pixelStride: pixelStride)
+            currentWidth = sampled.width
+            currentHeight = sampled.height
+            if sampled != region {
+                printedWidth = region.width
+                printedHeight = region.height
+            }
         }
 
         // 2. Rotate, then flip — the order the viewer composes them in.
@@ -67,10 +94,23 @@ public enum PrintPresentationTransform {
         } else {
             // A free angle cannot be permuted, so it is resampled — once, here,
             // over full-resolution pixels rather than over the monitor's copy.
-            let turned = presentation.turnedSize(
-                width: Double(currentWidth), height: Double(currentHeight))
-            let outWidth = max(1, Int(turned.width.rounded()))
-            let outHeight = max(1, Int(turned.height.rounded()))
+            //
+            // The output keeps the *cropped region's own size*, deliberately: the
+            // picture turns about its centre at the scale it already had, and the
+            // corners that swing outside are cut, exactly as they are on screen.
+            //
+            // The alternative — growing the box to the turned bounding rectangle —
+            // keeps every corner, but it costs the anatomy its size: the printer
+            // fits whatever it is handed into the image box, so a 45° turn of a
+            // square frame hands it a √2-larger rectangle and the anatomy lands at
+            // 71% of the size it had. That is a real shrink on film, and it is
+            // worst at exactly the small angles a reader uses to straighten a
+            // tilted head (86% at 10°). Matching the viewer is what was asked for:
+            // the picture the reader turned is the size they turned it at.
+            // Out at the *printed* size — the region the reader composed —
+            // while reading from the grown crop around it.
+            let outWidth = printedWidth ?? currentWidth
+            let outHeight = printedHeight ?? currentHeight
             pixels = rotateResampling(
                 pixels, width: currentWidth, height: currentHeight,
                 outWidth: outWidth, outHeight: outHeight,
@@ -313,12 +353,26 @@ public extension PreparedPrintImage {
     }
 
     /// A copy with the viewer's arrangement baked into its pixels.
+    ///
+    /// - Parameter covers: whether the job scales pictures to cover their cells
+    ///   (fill-to-film) — see ``PrintPresentationTransform/apply(_:to:covers:)``.
     func applying(
         _ presentation: ViewerPresentation,
+        covers: Bool = false,
         onProgress: PrintImagePreparer.ProgressHandler? = nil
     ) -> PreparedPrintImage {
-        let transformed = PrintPresentationTransform.apply(presentation, to: descriptor)
-        guard transformed != descriptor else { return self }
+        let transformed = PrintPresentationTransform.apply(
+            presentation, to: descriptor, covers: covers)
+        // Unchanged pixels are only the whole story while the *spacing* is
+        // unchanged too. A free-angle resample can come out byte-identical —
+        // a small or near-uniform frame whose blended samples round back to the
+        // values they came from — and returning `self` there would hand true
+        // size the original millimetres for pixels that are now blends of their
+        // neighbours. Rare, but it is exactly the case where the claim is
+        // wrong, so it is decided by what was *asked* for rather than by what
+        // the bytes happened to do.
+        let resamples = presentation.rotationDegrees != 0 && !presentation.isQuarterTurn
+        guard transformed != descriptor || resamples else { return self }
         onProgress?(
             "Applied viewer presentation: "
             + "\(descriptor.columns)x\(descriptor.rows) → "
@@ -330,10 +384,21 @@ public extension PreparedPrintImage {
             + (presentation.flipHorizontal ? ", flipped horizontally" : "")
             + (presentation.flipVertical ? ", flipped vertically" : "")
             + (presentation.invert ? ", inverted" : ""))
+        // The physical spacing follows the permutation: a crop keeps it (fewer
+        // columns, same millimetres each), a quarter turn swaps row for column,
+        // and a free-angle resample invalidates it — a resampled pixel has no
+        // single spacing, so true size becomes undefined rather than wrong.
+        let odd = presentation.isQuarterTurn && presentation.quarterTurns % 2 == 1
+        let row = presentation.isQuarterTurn
+            ? (odd ? columnSpacingMillimeters : rowSpacingMillimeters) : nil
+        let column = presentation.isQuarterTurn
+            ? (odd ? rowSpacingMillimeters : columnSpacingMillimeters) : nil
         return PreparedPrintImage(
             descriptor: transformed,
             sourcePath: sourcePath,
-            frameIndex: frameIndex
+            frameIndex: frameIndex,
+            rowSpacingMillimeters: row,
+            columnSpacingMillimeters: column
         )
     }
 }

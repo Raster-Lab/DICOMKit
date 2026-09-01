@@ -135,7 +135,7 @@ public enum ColorLUTHelpers: Sendable {
     ///
     /// - Parameter palette: Pseudo-color palette type.
     /// - Returns: Array of 256 ColorEntry values.
-    public static func palette(for type: PseudoColorPalette) -> [ColorEntry] {
+    public static func palette(for type: PresentationStatePalette) -> [ColorEntry] {
         switch type {
         case .hotIron: return hotIronPalette()
         case .rainbow: return rainbowPalette()
@@ -209,7 +209,7 @@ public enum ColorLUTHelpers: Sendable {
     ///
     /// - Parameter palette: Pseudo-color palette type.
     /// - Returns: Human-readable label.
-    public static func paletteLabel(for palette: PseudoColorPalette) -> String {
+    public static func paletteLabel(for palette: PresentationStatePalette) -> String {
         switch palette {
         case .hotIron: return "Hot Iron"
         case .rainbow: return "Rainbow"

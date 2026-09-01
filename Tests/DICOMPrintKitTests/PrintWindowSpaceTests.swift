@@ -216,4 +216,70 @@ final class PrintWindowSpaceTests: XCTestCase {
         ])
         XCTAssertNil(PrintImagePreparer.resolvedWindow(PrintJobRequest(), dataSet: dataSet))
     }
+
+    // MARK: - VOI LUT Function (0028,1056)
+
+    /// The SIGMOID fixture: the same frame declaring its windows sigmoid.
+    private func makeSigmoidDataSet() -> DataSet {
+        var elements = makeDataSet().allElements
+        elements.append(.string(tag: .voiLUTFunction, vr: .CS, value: "SIGMOID"))
+        return DataSet(elements: elements)
+    }
+
+    /// The silent-degrade regression: a viewer mark's window arrives as bare
+    /// numbers whose function defaulted to linear, but (0028,1056) belongs to
+    /// the image — the film has to be windowed the way the screen was.
+    func testViewerWindowInheritsTheFilesSigmoidFunction() {
+        let request = PrintJobRequest(
+            windowSettings: WindowSettings(center: 1064, width: 400),
+            windowSpace: .storedValues)
+        let resolved = PrintImagePreparer.windowInOutputUnits(
+            request, dataSet: makeSigmoidDataSet())
+        XCTAssertEqual(resolved?.function, .sigmoid)
+        // The conversion itself is unchanged.
+        XCTAssertEqual(resolved?.center, 40)
+        XCTAssertEqual(resolved?.width, 400)
+    }
+
+    /// An explicit non-linear function on the request is a real choice; the
+    /// file must not override it.
+    func testExplicitRequestFunctionStands() {
+        let request = PrintJobRequest(
+            windowSettings: WindowSettings(center: 40, width: 400, function: .linearExact))
+        let resolved = PrintImagePreparer.windowInOutputUnits(
+            request, dataSet: makeSigmoidDataSet())
+        XCTAssertEqual(resolved?.function, .linearExact)
+    }
+
+    /// A file that says nothing keeps the linear default.
+    func testLinearStaysLinearWhenTheFileSaysNothing() {
+        let request = PrintJobRequest(
+            windowSettings: WindowSettings(center: 40, width: 400))
+        let resolved = PrintImagePreparer.windowInOutputUnits(request, dataSet: makeDataSet())
+        XCTAssertEqual(resolved?.function, .linear)
+    }
+
+    /// The function reaches the pixels: the same window prints different bytes
+    /// on a SIGMOID file than on a linear one — that difference *is* the fix.
+    func testSigmoidChangesThePrintedPixels() async throws {
+        let preparer = PrintImagePreparer()
+        let request = PrintJobRequest(
+            windowSettings: WindowSettings(center: 1064, width: 400),
+            windowSpace: .storedValues)
+
+        let linearSet = makeDataSet()
+        let linear = try await preparer.prepare(
+            pixelData: try makePixelData(linearSet), dataSet: linearSet, request: request)
+
+        let sigmoidSet = makeSigmoidDataSet()
+        let sigmoid = try await preparer.prepare(
+            pixelData: try makePixelData(sigmoidSet), dataSet: sigmoidSet, request: request)
+
+        XCTAssertNotEqual(try XCTUnwrap(linear.first).descriptor.pixelData,
+                          try XCTUnwrap(sigmoid.first).descriptor.pixelData,
+                          "A SIGMOID image printing byte-identically to a linear one means "
+                          + "(0028,1056) is still being ignored")
+        // And it is a picture, not a clipped ramp: sigmoid never truly clips.
+        XCTAssertGreaterThan(greyLevels(try XCTUnwrap(sigmoid.first)), 8)
+    }
 }

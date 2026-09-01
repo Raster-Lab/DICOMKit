@@ -88,6 +88,10 @@ public enum ServerConnectionStatus: String, Sendable, Equatable, Hashable, Codab
     case unknown   = "UNKNOWN"
     case testing   = "TESTING"
     case online    = "ONLINE"
+    /// Reachable and usable, but reporting a non-blocking problem — a printer
+    /// with low film, for instance. Distinct from ``error`` so the UI can show
+    /// amber rather than red and still let the user submit work.
+    case warning   = "WARNING"
     case offline   = "OFFLINE"
     case error     = "ERROR"
 
@@ -97,6 +101,7 @@ public enum ServerConnectionStatus: String, Sendable, Equatable, Hashable, Codab
         case .unknown: return "Unknown"
         case .testing: return "Testing…"
         case .online:  return "Online"
+        case .warning: return "Warning"
         case .offline: return "Offline"
         case .error:   return "Error"
         }
@@ -108,8 +113,9 @@ public enum ServerConnectionStatus: String, Sendable, Equatable, Hashable, Codab
         case .unknown: return "questionmark.circle"
         case .testing: return "arrow.triangle.2.circlepath"
         case .online:  return "checkmark.circle.fill"
+        case .warning: return "exclamationmark.triangle.fill"
         case .offline: return "xmark.circle"
-        case .error:   return "exclamationmark.triangle.fill"
+        case .error:   return "xmark.octagon.fill"
         }
     }
 }
@@ -898,7 +904,7 @@ public struct MPPSItem: Sendable, Identifiable, Equatable, Hashable {
 
 /// Print priority for DICOM print operations.
 /// Reference: DICOM PS3.3 C.13.1 – Film Session Module
-public enum PrintPriority: String, Sendable, Equatable, Hashable, CaseIterable {
+public enum PrintPriority: String, Sendable, Equatable, Hashable, CaseIterable, Codable {
     case high   = "HIGH"
     case med    = "MED"
     case low    = "LOW"

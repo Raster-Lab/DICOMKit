@@ -326,7 +326,7 @@ extension DataSet {
     /// - Returns: Rescale intercept (default 0.0 if not present; 0.0 when a
     ///   Modality LUT Sequence is present)
     public func rescaleIntercept() -> Double {
-        guard modalityLUT() == nil else { return 0.0 }
+        guard modalityLUTData() == nil else { return 0.0 }
         return decimalString(for: .rescaleIntercept)?.value ?? 0.0
     }
     
@@ -339,13 +339,13 @@ extension DataSet {
     /// Rescale Slope/Intercept (PS3.3 C.11.1: the two forms are mutually exclusive;
     /// on malformed files carrying both, the sequence wins). In that case this
     /// returns the identity slope so linear composition by callers cannot corrupt
-    /// LUT-mapped output; use ``rescale(_:)`` or ``modalityLUT()`` for the actual
+    /// LUT-mapped output; use ``rescale(_:)`` or ``modalityLUTData()`` for the actual
     /// transform.
     ///
     /// - Returns: Rescale slope (default 1.0 if not present; 1.0 when a Modality
     ///   LUT Sequence is present)
     public func rescaleSlope() -> Double {
-        guard modalityLUT() == nil else { return 1.0 }
+        guard modalityLUTData() == nil else { return 1.0 }
         return decimalString(for: .rescaleSlope)?.value ?? 1.0
     }
 
@@ -358,7 +358,7 @@ extension DataSet {
     /// range clamp to the first/last entry (C.11.1.1.1).
     ///
     /// - Returns: The LUT, or nil if the sequence is absent or malformed
-    public func modalityLUT() -> LUTData? {
+    public func modalityLUTData() -> LUTData? {
         guard let item = sequence(for: .modalityLUTSequence)?.first else { return nil }
 
         // Descriptor: US (binary) in conformant files; tolerate IS from
@@ -396,7 +396,7 @@ extension DataSet {
     /// - Parameter storedValue: The stored pixel value
     /// - Returns: The transformed value in output units (e.g., Hounsfield Units for CT)
     public func rescale(_ storedValue: Double) -> Double {
-        if let lut = modalityLUT() {
+        if let lut = modalityLUTData() {
             return lut.lookup(Int(storedValue.rounded()))
         }
         return rescaleSlope() * storedValue + rescaleIntercept()

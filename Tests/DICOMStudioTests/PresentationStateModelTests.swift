@@ -184,18 +184,18 @@ struct BlendingPresentationStateModelTests {
     }
 }
 
-@Suite("PseudoColorPalette Tests")
+@Suite("PresentationStatePalette Tests")
 struct PseudoColorPaletteTests {
 
     @Test("All palette types")
     func testCaseCount() {
-        #expect(PseudoColorPalette.allCases.count == 7)
+        #expect(PresentationStatePalette.allCases.count == 7)
     }
 
     @Test("Raw values are correct")
     func testRawValues() {
-        #expect(PseudoColorPalette.hotIron.rawValue == "HOT_IRON")
-        #expect(PseudoColorPalette.rainbow.rawValue == "RAINBOW")
-        #expect(PseudoColorPalette.pet.rawValue == "PET")
+        #expect(PresentationStatePalette.hotIron.rawValue == "HOT_IRON")
+        #expect(PresentationStatePalette.rainbow.rawValue == "RAINBOW")
+        #expect(PresentationStatePalette.pet.rawValue == "PET")
     }
 }

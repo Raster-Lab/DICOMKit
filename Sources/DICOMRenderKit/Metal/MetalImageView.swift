@@ -29,6 +29,29 @@ public final class MetalImageRenderer: NSObject, MTKViewDelegate {
     /// swaps which texture the quad samples.
     public var frame: DisplayFrameTexture?
 
+    /// A reader's drawn text and arrows, composited over `frame`. `nil` draws
+    /// none — the shader still samples a real (1×1, fully transparent) texture
+    /// in that case, see `placeholderAnnotationTexture`, so the fragment
+    /// function never has to branch on whether one was bound.
+    public var annotationOverlay: AnnotationOverlayTexture?
+
+    /// A 1×1 fully transparent texture, bound whenever `annotationOverlay` is
+    /// `nil`. Built once and reused: most frames carry no annotation, and
+    /// there is no reason to allocate a full-resolution transparent texture
+    /// per draw just to say "nothing here".
+    private lazy var placeholderAnnotationTexture: MTLTexture? = {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: 1, height: 1, mipmapped: false)
+        descriptor.usage = [.shaderRead]
+        descriptor.storageMode = .shared
+        guard let texture = device.device.makeTexture(descriptor: descriptor) else { return nil }
+        let zero: [UInt8] = [0, 0, 0, 0]
+        texture.replace(
+            region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0,
+            withBytes: zero, bytesPerRow: 4)
+        return texture
+    }()
+
     /// Tool state. Changing any of it costs one redraw and touches no pixel data.
     public var presentation: DisplayPresentation = .identity
 
@@ -105,14 +128,19 @@ public final class MetalImageRenderer: NSObject, MTKViewDelegate {
 
         var params = DisplayShaderParams(
             transform: transform,
+            sourceRegion: presentation.sourceRegionUV(
+                imageWidth: frame.width, imageHeight: frame.height),
             invert: presentation.invert ? 1 : 0,
-            isGrayscale: frame.isGrayscale ? 1 : 0
+            isGrayscale: frame.isGrayscale ? 1 : 0,
+            linearFilter: presentation.linearFiltering ? 1 : 0,
+            desaturate: presentation.desaturate ? 1 : 0
         )
 
         encoder.setRenderPipelineState(pipelineState)
         encoder.setVertexBytes(&params, length: MemoryLayout<DisplayShaderParams>.stride, index: 0)
         encoder.setFragmentBytes(&params, length: MemoryLayout<DisplayShaderParams>.stride, index: 0)
         encoder.setFragmentTexture(frame.texture, index: 0)
+        encoder.setFragmentTexture(annotationOverlay?.texture ?? placeholderAnnotationTexture, index: 1)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         encoder.endEncoding()
 
@@ -143,10 +171,16 @@ public struct MetalImageView: PlatformViewRepresentable {
 
     private let frame: DisplayFrameTexture?
     private let presentation: DisplayPresentation
+    private let annotationOverlay: AnnotationOverlayTexture?
 
-    public init(frame: DisplayFrameTexture?, presentation: DisplayPresentation) {
+    public init(
+        frame: DisplayFrameTexture?,
+        presentation: DisplayPresentation,
+        annotationOverlay: AnnotationOverlayTexture? = nil
+    ) {
         self.frame = frame
         self.presentation = presentation
+        self.annotationOverlay = annotationOverlay
     }
 
     public final class Coordinator {
@@ -175,10 +209,50 @@ public struct MetalImageView: PlatformViewRepresentable {
         guard let renderer = context.coordinator.renderer else { return }
         renderer.frame = frame
         renderer.presentation = presentation
+        renderer.annotationOverlay = annotationOverlay
+        Self.matchDrawableToTheDisplay(view)
         #if os(macOS)
         view.needsDisplay = true
         #else
         view.setNeedsDisplay()
+        #endif
+    }
+
+    /// Keeps the drawable at the display's real pixel count.
+    ///
+    /// `autoResizeDrawable` sizes the drawable from the layer's bounds *times its
+    /// `contentsScale`*, and that scale is only right once the view has joined a
+    /// window on a screen. A representable's view is built before that happens,
+    /// so on a Retina display the layer can still be at 1× when the first frames
+    /// are drawn — and a cell then renders at half its linear resolution and is
+    /// magnified back up by the compositor. That is a real, visible softness:
+    /// a quarter of the pixels, blurred over the area of all of them, on a screen
+    /// whose whole purpose is showing what the pixel data actually says.
+    ///
+    /// It is not self-correcting either. The layer's scale changes when the view
+    /// is added to a window or moved between screens of different densities, and
+    /// neither of those is a bounds change, so `autoResizeDrawable` has no reason
+    /// to recompute and the view stays soft until something else resizes it.
+    ///
+    /// So the scale is read from the window at every update — which is when the
+    /// picture is about to be drawn anyway — and both the layer and the drawable
+    /// are brought to it. Assigning only when the value actually differs: setting
+    /// `drawableSize` is what triggers `drawableSizeWillChange`, and writing the
+    /// same size back on every SwiftUI update would be a redraw per keystroke.
+    private static func matchDrawableToTheDisplay(_ view: MTKView) {
+        #if os(macOS)
+        // `backingScaleFactor` of the window it is in; a view not yet in one is
+        // left alone rather than guessed at, and picked up on the next update.
+        guard let scale = view.window?.backingScaleFactor, scale > 0 else { return }
+        if view.layer?.contentsScale != scale {
+            view.layer?.contentsScale = scale
+        }
+        let bounds = view.bounds.size
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let target = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        if view.drawableSize != target {
+            view.drawableSize = target
+        }
         #endif
     }
 

@@ -6,8 +6,10 @@
 // Marking is scattered across a reading session: a tile here, a frame there, a
 // whole series at once. The tray is the answer to "what have I actually picked?"
 // — the selection in film order, one image per row, without opening the print
-// sheet. Clicking a row brings that image back on screen; the cross takes it off
-// the film.
+// sheet. The tray only *reports*: clicking a row changes nothing in the reading
+// area — re-hanging the viewer under a reader who only meant to glance at the
+// film order is how a carefully arranged screen gets torn down by accident. The
+// cross takes an image off the film, and that is the tray's one verb.
 
 #if canImport(SwiftUI)
 import SwiftUI
@@ -17,10 +19,23 @@ struct ViewerPrintTrayView: View {
     @Bindable var viewModel: ImageViewerViewModel
 
     #if canImport(CoreGraphics)
-    /// One thumbnail per mark, rendered with that mark's own window and
-    /// arrangement — the tray shows what will print, not the untouched frame.
+    /// One thumbnail per mark, rendered as the image was marked.
     @State private var thumbnails = PrintThumbnailCache()
     #endif
+
+    /// The marks as the tray shows them: the images as they were picked.
+    ///
+    /// Work done on the film is the film's. The print screen writes its tool
+    /// edits into the marks themselves (that is what the printer reads), and the
+    /// tray sits beside that screen on macOS — so windowing a cell there used to
+    /// re-render its row here, one flicker per mouse event, reporting an
+    /// arrangement the reader made somewhere else entirely. The tray answers
+    /// "what have I picked?", and the answer does not change because a cell was
+    /// zoomed on the film. Adjustments are dropped for display only; the marks
+    /// keep them, and the film keeps printing them.
+    private var trayItems: [PrintSelectionItem] {
+        viewModel.printSelection.itemsAsMarked
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,7 +46,7 @@ struct ViewerPrintTrayView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        ForEach(Array(viewModel.printSelection.items.enumerated()),
+                        ForEach(Array(trayItems.enumerated()),
                                 id: \.element.id) { position, item in
                             row(item, position: position)
                         }
@@ -45,8 +60,11 @@ struct ViewerPrintTrayView: View {
         // only pure black, so the eye lands there and not on the tray.
         .viewerPaneSurface(imageEdge: .leading)
         #if canImport(CoreGraphics)
-        .onAppear { thumbnails.refresh(for: viewModel.printSelection.items) }
-        .onChange(of: viewModel.printSelection.items) { _, items in
+        .onAppear { thumbnails.refresh(for: trayItems) }
+        // Keyed on the as-marked images, so a film-screen tool edit — which
+        // changes the live mark but not how it was marked — does not queue a
+        // re-render here.
+        .onChange(of: trayItems) { _, items in
             thumbnails.refresh(for: items)
         }
         #endif
@@ -136,12 +154,9 @@ struct ViewerPrintTrayView: View {
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(isOnScreen ? Color.accentColor : .clear, lineWidth: 2)
         }
-        .contentShape(Rectangle())
-        .onTapGesture { viewModel.showMarkedImage(item) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Selected image \(position + 1): \(item.displayLabel)"
                             + (isOnScreen ? ", on screen" : ""))
-        .accessibilityHint("Click to show this image in the viewer")
     }
 
     @ViewBuilder

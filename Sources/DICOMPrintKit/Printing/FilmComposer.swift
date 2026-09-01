@@ -39,6 +39,11 @@ public struct FilmComposerConfiguration: Sendable, Hashable {
     /// Whether to draw Basic Annotation Box text on the sheet.
     public let drawAnnotations: Bool
 
+    /// Which edge the film-wide annotation band occupies (SRS FR-006:
+    /// header, footer, side or overlay). Footer is the default and what
+    /// every film before this option existed was composed with.
+    public let annotationEdge: FilmAnnotationEdge
+
     /// Whether to draw crop marks when Trim (2010,0140) is YES.
     public let drawTrimMarks: Bool
 
@@ -48,25 +53,89 @@ public struct FilmComposerConfiguration: Sendable, Hashable {
     /// Film Size / DPI combination must not be able to allocate unboundedly.
     public let maximumPixelDimension: Int
 
+    /// Where an image sits in a cell it does not fill (SRS FR-003).
+    ///
+    /// Centred by default — what a real printer does. Alignment and
+    /// ``stretchToFill`` are local composition preferences with no DICOM
+    /// attribute behind them: a film received over the wire is composed with
+    /// the defaults, so the emulator keeps printing what the SCU asked for.
+    public let cellAlignment: PrintCellAlignment
+
+    /// Fill each cell exactly, aspect ratio ignored (SRS FR-003 "stretch").
+    /// Not for diagnostic use; local composition only.
+    public let stretchToFill: Bool
+
+    /// A pseudo-colour palette laid over received image boxes when the sheet is
+    /// composed. Local rendering only, and `nil` — no recolouring — by default.
+    ///
+    /// This is a *viewing* control, in the same family as ``cellAlignment`` and
+    /// ``stretchToFill``: a local composition preference with no DICOM attribute
+    /// behind it. It has to be, because Print Management gives it nowhere to
+    /// live — "palette" does not appear in PS3.4 Annex H, and PS3.3 Table C.13-5
+    /// lets a Basic Color Image Box carry only `RGB`. An SCU therefore cannot
+    /// ask for one and cannot be told one was used.
+    ///
+    /// That is exactly why it must not touch the wire. The P-Values in an image
+    /// box are what the sending operator approved; recolouring them on the way
+    /// through would make the film disagree with the screen the study was signed
+    /// off on, and the SCU would never know. So this reaches the composed bitmap
+    /// and nothing else: ``FilmComposer`` applies it when rasterising, the
+    /// received ``PrintImageData`` keeps its original samples, and anything
+    /// re-sent or re-encoded from them is unaffected.
+    public let previewPalette: PseudoColorPalette?
+
     public init(
-        dpi: Double = 300,
+        dpi: Double = PrintSCPSettings.defaultDPI,
         densityMapping: DensityMapping = .paperDirect,
         marginMillimeters: Double = 5,
         cellSpacingMillimeters: Double = 2,
         drawAnnotations: Bool = true,
+        annotationEdge: FilmAnnotationEdge = .bottom,
         drawTrimMarks: Bool = true,
-        maximumPixelDimension: Int = 12000
+        maximumPixelDimension: Int = 12000,
+        cellAlignment: PrintCellAlignment = .center,
+        stretchToFill: Bool = false,
+        previewPalette: PseudoColorPalette? = nil
     ) {
-        self.dpi = max(36, min(1200, dpi))
+        // Clamped to the one range the whole app agrees on, so the settings UI
+        // and the composer cannot drift apart on what a printable DPI is.
+        self.dpi = min(max(dpi, PrintSCPSettings.dpiRange.lowerBound),
+                       PrintSCPSettings.dpiRange.upperBound)
         self.densityMapping = densityMapping
         self.marginMillimeters = max(0, marginMillimeters)
         self.cellSpacingMillimeters = max(0, cellSpacingMillimeters)
         self.drawAnnotations = drawAnnotations
+        self.annotationEdge = annotationEdge
         self.drawTrimMarks = drawTrimMarks
         self.maximumPixelDimension = max(256, maximumPixelDimension)
+        self.cellAlignment = cellAlignment
+        self.stretchToFill = stretchToFill
+        // Grey is not a recolouring, and carrying it would push mono boxes down
+        // the RGB path for nothing. Dropped here so every reader downstream can
+        // treat non-nil as "there are colours to apply".
+        self.previewPalette = previewPalette.flatMap { $0.isGrayscale ? nil : $0 }
     }
 
-    /// Print-quality defaults (300 DPI, paper-direct density).
+    /// This configuration with a different cell placement — how the simulator
+    /// and save-film apply a job's scaling mode over the emulator's settings.
+    public func withPlacement(
+        alignment: PrintCellAlignment, stretch: Bool
+    ) -> FilmComposerConfiguration {
+        FilmComposerConfiguration(
+            dpi: dpi,
+            densityMapping: densityMapping,
+            marginMillimeters: marginMillimeters,
+            cellSpacingMillimeters: cellSpacingMillimeters,
+            drawAnnotations: drawAnnotations,
+            annotationEdge: annotationEdge,
+            drawTrimMarks: drawTrimMarks,
+            maximumPixelDimension: maximumPixelDimension,
+            cellAlignment: alignment,
+            stretchToFill: stretch,
+            previewPalette: previewPalette)
+    }
+
+    /// Print-quality defaults (600 DPI, paper-direct density).
     public static let `default` = FilmComposerConfiguration()
 
     /// A fast, low-resolution configuration for previews.
@@ -136,7 +205,8 @@ public struct FilmComposer: Sendable {
             on: sheet(for: film),
             marginMillimeters: configuration.marginMillimeters,
             spacingMillimeters: configuration.cellSpacingMillimeters,
-            footerMillimeters: footerMillimeters(for: film))
+            footerMillimeters: footerMillimeters(for: film),
+            annotationEdge: configuration.annotationEdge)
     }
 
     /// The strip this film's annotations need along the bottom of the sheet.
@@ -161,7 +231,13 @@ public struct FilmComposer: Sendable {
                 width: width, height: height, limit: configuration.maximumPixelDimension)
         }
 
-        let isColor = film.imageBoxes.contains { ($0.image?.samplesPerPixel ?? 1) > 1 }
+        // A palette makes colour out of grey, so it decides the sheet's depth
+        // as surely as a colour box does. Without this an all-grayscale film
+        // would compose into a grayscale context and throw the palette's colours
+        // away at the last step, which is precisely the failure that made a
+        // chosen palette look like it did nothing.
+        let isColor = configuration.previewPalette != nil
+            || film.imageBoxes.contains { ($0.image?.samplesPerPixel ?? 1) > 1 }
         let samplesPerPixel = isColor ? 3 : 1
 
         // A bitmap CGContext supports 8 bpp gray, but *not* 24 bpp RGB — colour
@@ -288,7 +364,9 @@ public struct FilmComposer: Sendable {
         emptyDensity: Double
     ) throws {
         let invert = shouldInvert(box: box, image: image, film: film)
-        guard let cgImage = try makeCGImage(from: image, invert: invert, forceColor: isColor) else {
+        let transfer = linODTransfer(film: film)
+        guard let cgImage = try makeCGImage(
+            from: image, invert: invert, transfer: transfer, forceColor: isColor) else {
             throw FilmCompositionError.unsupportedPhotometricInterpretation(
                 image.photometricInterpretation)
         }
@@ -300,7 +378,9 @@ public struct FilmComposer: Sendable {
             in: cell,
             requestedSizeMillimeters: requestedMillimeters,
             behavior: box.content.requestedDecimateCropBehavior,
-            sheet: sheet)
+            sheet: sheet,
+            alignment: configuration.cellAlignment,
+            stretch: configuration.stretchToFill)
 
         switch placement {
         case .failed(let reason):
@@ -339,10 +419,61 @@ public struct FilmComposer: Sendable {
 
     // MARK: Pixels
 
+    /// Recolours 8-bit samples through a palette, returning interleaved RGB.
+    ///
+    /// Takes one or three samples per pixel and always returns three: a colour
+    /// box is reduced to Rec.601 luminance first — the same coefficients the
+    /// rest of the kit reduces colour with — because a palette indexes a single
+    /// scalar. Reducing a colour box does discard its original hue, which for a
+    /// colour-Doppler ultrasound is the velocity encoding; that is inherent to
+    /// asking for a palette over colour, and it is why this is off unless the
+    /// operator turns it on.
+    ///
+    /// Purely a function of its input. The caller's buffer is not modified.
+    static func palettise(
+        _ samples: Data, samplesPerPixel: Int, palette: PseudoColorPalette
+    ) -> Data {
+        let table = palette.entries()
+        let lastIndex = table.count - 1
+        let pixelCount = samples.count / max(1, samplesPerPixel)
+
+        var rgb = Data(count: pixelCount * 3)
+        rgb.withUnsafeMutableBytes { destination in
+            samples.withUnsafeBytes { source in
+                guard let dst = destination.bindMemory(to: UInt8.self).baseAddress,
+                      let src = source.bindMemory(to: UInt8.self).baseAddress else { return }
+                for pixel in 0..<pixelCount {
+                    let level: Double
+                    if samplesPerPixel == 3 {
+                        let offset = pixel * 3
+                        level = 0.299 * Double(src[offset])
+                            + 0.587 * Double(src[offset + 1])
+                            + 0.114 * Double(src[offset + 2])
+                    } else {
+                        level = Double(src[pixel])
+                    }
+                    let index = Swift.min(
+                        lastIndex, Int(level / 255.0 * Double(lastIndex) + 0.5))
+                    let entry = table[index]
+                    let base = pixel * 3
+                    dst[base] = entry.red
+                    dst[base + 1] = entry.green
+                    dst[base + 2] = entry.blue
+                }
+            }
+        }
+        return rgb
+    }
+
     /// Converts an image box's P-Values into an 8-bit `CGImage`.
+    ///
+    /// `transfer`, when present, is a 256-entry P-value → luminance curve
+    /// (LIN OD) applied after the inversions — grayscale only, since a density
+    /// curve has no meaning for an RGB box.
     private func makeCGImage(
         from image: PrintImageData,
         invert: Bool,
+        transfer: [UInt8]? = nil,
         forceColor: Bool
     ) throws -> CGImage? {
         let width = Int(image.columns), height = Int(image.rows)
@@ -364,6 +495,27 @@ public struct FilmComposer: Sendable {
 
         if invert {
             samples = Data(samples.map { 255 &- $0 })
+        }
+        if let transfer, samplesPerPixel == 1 {
+            samples = Data(samples.map { transfer[Int($0)] })
+        }
+
+        // The operator's palette, applied to the pixels on their way into the
+        // bitmap and nowhere else. `image` is not written back, so the received
+        // P-Values keep their original values for anything that re-reads them.
+        //
+        // Placed after the inversions and the density curve so the colour lands
+        // on the levels the sheet would actually have shown — the same ordering
+        // the viewer uses, where the palette follows the VOI rather than
+        // preceding it.
+        //
+        // Every photometric interpretation is eligible here, colour included: a
+        // three-sample box is reduced to Rec.601 luminance first, since a
+        // palette indexes one scalar and there is otherwise nothing to index.
+        if let palette = configuration.previewPalette {
+            samples = Self.palettise(
+                samples, samplesPerPixel: samplesPerPixel, palette: palette)
+            samplesPerPixel = 3
         }
 
         // A grayscale box on a colour film has to be widened to RGB so it can
@@ -519,7 +671,7 @@ public struct FilmComposer: Sendable {
     /// Whether an image box's pixels must be inverted before drawing.
     ///
     /// Four independent inversions compose (each flips the sense of the last):
-    /// MONOCHROME1 source, Polarity REVERSE, an INVERSE / LIN OD Presentation
+    /// MONOCHROME1 source, Polarity REVERSE, a rendered-inverse Presentation
     /// LUT shape, and film-emulation density mapping.
     func shouldInvert(box: ReceivedImageBox, image: PrintImageData, film: ReceivedFilm) -> Bool {
         var invert = false
@@ -528,11 +680,43 @@ public struct FilmComposer: Sendable {
         if photometric == "MONOCHROME1" { invert.toggle() }
         if box.content.polarity == .reverse { invert.toggle() }
         switch film.presentationLUTShape {
-        case .inverse, .linearOpticalDensity: invert.toggle()
-        case .identity, nil: break
+        case .inverseRendered: invert.toggle()
+        // LIN OD is not a negation — it is the density curve applied in
+        // ``linODTransfer(film:)``, whose low-P-is-dark orientation already
+        // contains the reversal this switch used to fake with a toggle.
+        case .identity, .linearOpticalDensity, nil: break
         }
         if configuration.densityMapping == .filmEmulation { invert.toggle() }
         return invert
+    }
+
+    /// The LIN OD transfer curve as a 256-entry P-value → luminance table.
+    ///
+    /// Under LIN OD the input values are linearly proportional to *optical
+    /// density*, low input printing light (Min Density) and high input dark —
+    /// the same orientation the previous invert-toggle approximated. What the
+    /// toggle got wrong is the curve: a screen shows transmitted luminance,
+    /// which falls off as 10^(−OD), so equal density steps are exponential
+    /// luminance steps, not the straight line a negation draws:
+    ///
+    ///     OD(p) = Dmin + (p/255)·(Dmax − Dmin)
+    ///     l(p)  = (10^(−OD(p)) − 10^(−Dmax)) / (10^(−Dmin) − 10^(−Dmax))
+    ///
+    /// Min/Max Density arrive in hundredths of OD (PS3.3 C.13.3), defaulting
+    /// to 0.2 / 3.0 — ordinary film stock — when the film box does not say.
+    func linODTransfer(film: ReceivedFilm) -> [UInt8]? {
+        guard film.presentationLUTShape == .linearOpticalDensity else { return nil }
+        let minOD = Double(film.minDensity ?? 20) / 100
+        let maxOD = Double(film.maxDensity ?? 300) / 100
+        guard maxOD > minOD else { return nil }
+
+        let brightest = pow(10, -minOD)
+        let darkest = pow(10, -maxOD)
+        return (0...255).map { p in
+            let density = minOD + (Double(p) / 255) * (maxOD - minOD)
+            let luminance = (pow(10, -density) - darkest) / (brightest - darkest)
+            return UInt8(max(0, min(255, (luminance * 255).rounded())))
+        }
     }
 
     /// Maps a Border / Empty Image Density value to a luminance in 0...1.
@@ -624,14 +808,39 @@ public struct FilmComposer: Sendable {
         let fontMillimeters = FilmIdentificationFooter.fontMillimeters(
             sheetHeightMillimeters: sheet.heightMillimeters)
         let fontSize = max(8, sheet.pixels(fromMillimeters: fontMillimeters))
-        let font = CTFontCreateWithName("Helvetica" as CFString, fontSize, nil)
+        let font = CTFontCreateWithName(
+            PrintAnnotationStyle.defaultFontFamily as CFString, fontSize, nil)
         let color = gray(background > 0.5 ? 0 : 1, isColor: isColor)
         let lineHeight = fontSize * FilmIdentificationFooter.lineFactor
         let margin = sheet.pixels(fromMillimeters: configuration.marginMillimeters)
         let padding = fontSize * FilmIdentificationFooter.paddingFactor
+        let edge = configuration.annotationEdge
+        let sheetWidth = Double(sheet.pixelWidth)
+        let sheetHeight = Double(sheet.pixelHeight)
 
         context.saveGState()
         context.textMatrix = .identity
+        // A side band runs the text along the edge: the whole context turns a
+        // quarter, lines then lay out exactly as they do on a horizontal band.
+        // (CG origin is bottom-left, +y up; rotations are counterclockwise.)
+        switch edge {
+        case .left:
+            // Baseline runs down the sheet (reads top-to-bottom, glyph tops
+            // inward) — spine orientation. Lines stack in from the left edge.
+            context.rotate(by: -.pi / 2)
+            context.translateBy(x: -sheetHeight, y: 0)
+        case .right:
+            // Baseline runs up the sheet (reads bottom-to-top, glyph tops
+            // inward). Lines stack in from the right edge.
+            context.rotate(by: .pi / 2)
+            context.translateBy(x: 0, y: -sheetWidth)
+        case .top, .bottom, .overlay:
+            break
+        }
+        // The band's coordinate space: on a side band the "width" to centre in
+        // is the sheet's height, and the lines stack in from the turned edge.
+        let bandWidth = (edge == .left || edge == .right) ? sheetHeight : sheetWidth
+
         for (index, annotation) in annotations.enumerated() {
             // CoreText attribute keys directly: DICOMPrintKit must not pull in
             // AppKit/UIKit for `NSAttributedString.Key.font`.
@@ -644,10 +853,17 @@ public struct FilmComposer: Sendable {
             guard let attributed else { continue }
             let line = CTLineCreateWithAttributedString(attributed)
             let bounds = CTLineGetImageBounds(line, context)
-            // Stack upwards from the bottom margin, first position lowest.
-            context.textPosition = CGPoint(
-                x: max(margin, (Double(sheet.pixelWidth) - Double(bounds.width)) / 2),
-                y: margin + padding + Double(annotations.count - index - 1) * lineHeight)
+            let x = max(margin, (bandWidth - Double(bounds.width)) / 2)
+            let y: Double
+            switch edge {
+            case .bottom, .overlay, .left, .right:
+                // Stack upwards from the near margin, first position innermost.
+                y = margin + padding + Double(annotations.count - index - 1) * lineHeight
+            case .top:
+                // Stack downward from the top, first position uppermost.
+                y = sheetHeight - margin - padding - Double(index + 1) * lineHeight
+            }
+            context.textPosition = CGPoint(x: x, y: y)
             CTLineDraw(line, context)
         }
         context.restoreGState()

@@ -266,8 +266,15 @@ public struct ColorPresentationStateModel: Identifiable, Sendable, Equatable, Ha
     }
 }
 
-/// Pseudo-Color palette type.
-public enum PseudoColorPalette: String, Sendable, Equatable, Hashable, CaseIterable {
+/// Pseudo-Color palette named by a stored Pseudo-Color Softcopy Presentation
+/// State (PS3.3 C.11.10).
+///
+/// Distinct from ``DICOMCore/PseudoColorPalette``, which is the palette a reader
+/// picks for the screen and the film. This one is what a *saved* presentation
+/// state says an image should be shown with — a fact read out of a file rather
+/// than a choice being made — and the two lists differ because the standard's
+/// C.11.10 vocabulary is not the set of palettes worth offering in a picker.
+public enum PresentationStatePalette: String, Sendable, Equatable, Hashable, CaseIterable {
     case hotIron = "HOT_IRON"
     case rainbow = "RAINBOW"
     case hotMetal = "HOT_METAL"
@@ -291,7 +298,7 @@ public struct PseudoColorPresentationStateModel: Identifiable, Sendable, Equatab
     public let referencedImages: [ReferencedImage]
 
     /// Selected pseudo-color palette.
-    public let palette: PseudoColorPalette
+    public let palette: PresentationStatePalette
 
     /// Custom color lookup table (256 entries of RGB triplets).
     public let customLUT: [ColorEntry]?
@@ -313,7 +320,7 @@ public struct PseudoColorPresentationStateModel: Identifiable, Sendable, Equatab
         id: UUID = UUID(),
         sopInstanceUID: String = "",
         referencedImages: [ReferencedImage] = [],
-        palette: PseudoColorPalette = .hotIron,
+        palette: PresentationStatePalette = .hotIron,
         customLUT: [ColorEntry]? = nil,
         voiLUT: VOILUTTransform? = nil,
         graphicAnnotations: [GraphicAnnotation] = [],
@@ -371,7 +378,7 @@ public struct BlendingPresentationStateModel: Identifiable, Sendable, Equatable,
     public let blendingOpacity: Double
 
     /// Overlay pseudo-color palette.
-    public let overlayPalette: PseudoColorPalette?
+    public let overlayPalette: PresentationStatePalette?
 
     /// Underlay VOI LUT.
     public let underlayVOILUT: VOILUTTransform?
@@ -389,7 +396,7 @@ public struct BlendingPresentationStateModel: Identifiable, Sendable, Equatable,
         underlayImages: [ReferencedImage] = [],
         overlayImages: [ReferencedImage] = [],
         blendingOpacity: Double = 0.5,
-        overlayPalette: PseudoColorPalette? = nil,
+        overlayPalette: PresentationStatePalette? = nil,
         underlayVOILUT: VOILUTTransform? = nil,
         overlayVOILUT: VOILUTTransform? = nil,
         label: String = "Untitled"

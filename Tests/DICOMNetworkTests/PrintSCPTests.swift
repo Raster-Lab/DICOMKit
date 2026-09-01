@@ -593,6 +593,33 @@ final class PrintSCPLoopbackTests: XCTestCase {
         XCTAssertEqual(film.printJobUID, result.printJobUID)
     }
 
+    func testPrintJobStatusSurvivesTheAssociation() async throws {
+        let (pixels, descriptor) = makeImage()
+        let result = try await DICOMPrintService.printImages(
+            configuration: configuration(),
+            images: [pixels],
+            imageDescriptors: [descriptor])
+        XCTAssertTrue(result.success, result.errorMessage ?? "")
+        let jobUID = try XCTUnwrap(result.printJobUID)
+
+        // The print association has released; this N-GET opens a new one.
+        // PS3.4 H.4.8: the Print Job SOP Instance must still be known.
+        let status = try await DICOMPrintService.getPrintJobStatus(
+            configuration: configuration(), printJobUID: jobUID)
+        XCTAssertEqual(status.printJobUID, jobUID)
+        XCTAssertEqual(status.executionStatus, "DONE")
+        XCTAssertTrue(status.isCompleted)
+
+        // A UID the server never issued still answers no-such-SOP-Instance.
+        do {
+            _ = try await DICOMPrintService.getPrintJobStatus(
+                configuration: configuration(), printJobUID: "1.2.3.4.5")
+            XCTFail("Expected an unknown job to be refused")
+        } catch {
+            XCTAssertTrue("\(error)".contains("0x0112"), "\(error)")
+        }
+    }
+
     func testMultiImageLayoutAllocatesOneBoxPerImage() async throws {
         let images = (0..<4).map { _ in makeImage(size: 4) }
         let result = try await DICOMPrintService.printImages(
@@ -631,18 +658,38 @@ final class PrintSCPLoopbackTests: XCTestCase {
         XCTAssertEqual(film.imageBoxes.first?.image, descriptor)
     }
 
+    /// A legal shape (PS3.3 C.11.4) travels as Presentation LUT Shape and the
+    /// SCP reads it back off the film box.
     func testPresentationLUTShapeReachesTheFilm() async throws {
         let (pixels, descriptor) = makeImage(size: 4)
         let result = try await DICOMPrintService.printImages(
             configuration: configuration(),
             images: [pixels],
-            options: PrintOptions(presentationLUTShape: .inverse),
+            options: PrintOptions(presentationLUTShape: .linearOpticalDensity),
             imageDescriptors: [descriptor])
 
         XCTAssertTrue(result.success, result.errorMessage ?? "")
         let films = await handler.films
         let film = try XCTUnwrap(films.first)
-        XCTAssertEqual(film.presentationLUTShape, .inverse)
+        XCTAssertEqual(film.presentationLUTShape, .linearOpticalDensity)
+    }
+
+    /// A rendered inverse is realised in the pixels before transmission, so
+    /// nothing goes into (2050,0020) — C.11.4 has no INVERSE to put there.
+    /// The job must still print, and the film must carry no shape.
+    func testRenderedInverseSendsNoPresentationLUTShape() async throws {
+        let (pixels, descriptor) = makeImage(size: 4)
+        let result = try await DICOMPrintService.printImages(
+            configuration: configuration(),
+            images: [pixels],
+            options: PrintOptions(presentationLUTShape: .inverseRendered),
+            imageDescriptors: [descriptor])
+
+        XCTAssertTrue(result.success, result.errorMessage ?? "")
+        let films = await handler.films
+        let film = try XCTUnwrap(films.first)
+        XCTAssertNil(film.presentationLUTShape,
+                     "INVERSE is not legal on the wire in a print context")
     }
 
     func testAnnotationsReachTheFilm() async throws {

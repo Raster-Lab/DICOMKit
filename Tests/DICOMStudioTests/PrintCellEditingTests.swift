@@ -79,6 +79,33 @@ struct PrintCellEditingTests {
         #expect(viewModel.window(forItemID: "/a.dcm#0")?.center == 40)
     }
 
+    @Test("A preset's window is marked as output units — HU, not stored values")
+    func testPresetIsTaggedOutputUnits() {
+        let viewModel = makeViewModel(items: markedFrames)
+        let lung = WindowLevelPreset(name: "Lung", center: -600, width: 1500, modality: "CT")
+        viewModel.applyWindowPreset(lung, toItemID: "/b.dcm#0")
+
+        // −600 is HU. Rendered as a stored value it sits below every pixel of a
+        // CT with a −1024 intercept and the cell washes out to white — the space
+        // has to travel with the numbers so the renderer converts them.
+        let mark = viewModel.selection.items.first { $0.id == "/b.dcm#0" }
+        #expect(mark?.windowSpace == .outputUnits)
+    }
+
+    @Test("A drag after a preset keeps the window in the preset's space")
+    func testDragAfterPresetKeepsSpace() {
+        let viewModel = makeViewModel(items: markedFrames)
+        let lung = WindowLevelPreset(name: "Lung", center: -600, width: 1500, modality: "CT")
+        viewModel.applyWindowPreset(lung, toItemID: "/b.dcm#0")
+
+        viewModel.adjustWindow(forItemID: "/b.dcm#0", deltaCenter: 10, deltaWidth: 50)
+
+        let mark = viewModel.selection.items.first { $0.id == "/b.dcm#0" }
+        #expect(mark?.windowCenter == -590)
+        // The nudge must not relabel HU numbers as stored values.
+        #expect(mark?.windowSpace == .outputUnits)
+    }
+
     @Test("Apply to all gives every cell the focused window and drops the job-wide override")
     func testApplyToAll() {
         let viewModel = makeViewModel(items: markedFrames)
@@ -91,6 +118,80 @@ struct PrintCellEditingTests {
         #expect(viewModel.useExplicitWindow == false)
         #expect(viewModel.selection.items.allSatisfy {
             $0.windowCenter == 300 && $0.windowWidth == 1500
+        })
+    }
+
+    @Test("Apply to all stops at the edge of the focused cell's film")
+    func testApplyToAllIsBoundedToTheFilm() {
+        // Six marks on 2×2 films: four on film 0, two on film 1. Every other
+        // cell-to-cell edit on this screen stops at the sheet being judged (see
+        // `PrintCellSyncScope`), and both the button and the menu item say "on
+        // film" — but this one wrote `selection.items`, so it rewrote the whole
+        // job. On a long job that is hundreds of writes the reader cannot see,
+        // each one observed by the preview.
+        let items = (0..<6).map {
+            PrintSelectionItem(filePath: "/f\($0).dcm", frameIndex: 0)
+        }
+        let viewModel = makeViewModel(items: items)
+        viewModel.layoutMode = .explicit
+        viewModel.layoutOption = .layout2x2
+        #expect(viewModel.plan.cellsPerFilm == 4)
+        #expect(viewModel.plan.filmCount == 2)
+
+        viewModel.focusCell("/f0.dcm#0")
+        viewModel.setWindow(forItemID: "/f0.dcm#0", center: 300, width: 1500)
+        viewModel.applyFocusedWindowToAllCells()
+
+        // Film 0 takes the window…
+        for index in 0..<4 {
+            let mark = viewModel.selection.items.first { $0.id == "/f\(index).dcm#0" }
+            #expect(mark?.windowCenter == 300)
+            #expect(mark?.windowWidth == 1500)
+        }
+        // …and film 1, which the reader has not turned to, is left alone.
+        for index in 4..<6 {
+            let mark = viewModel.selection.items.first { $0.id == "/f\(index).dcm#0" }
+            #expect(mark?.windowCenter == nil)
+            #expect(mark?.windowWidth == nil)
+        }
+    }
+
+    @Test("Apply to all reaches the focused cell's own film, not always the first")
+    func testApplyToAllFollowsTheFocusedFilm() {
+        // Focus on the second sheet: the bound is "the film the focused cell is
+        // on", not "the first film".
+        let items = (0..<6).map {
+            PrintSelectionItem(filePath: "/f\($0).dcm", frameIndex: 0)
+        }
+        let viewModel = makeViewModel(items: items)
+        viewModel.layoutMode = .explicit
+        viewModel.layoutOption = .layout2x2
+
+        viewModel.focusCell("/f4.dcm#0")
+        viewModel.setWindow(forItemID: "/f4.dcm#0", center: -600, width: 1200)
+        viewModel.applyFocusedWindowToAllCells()
+
+        for index in 4..<6 {
+            #expect(viewModel.selection.items.first { $0.id == "/f\(index).dcm#0" }?
+                .windowCenter == -600)
+        }
+        for index in 0..<4 {
+            #expect(viewModel.selection.items.first { $0.id == "/f\(index).dcm#0" }?
+                .windowCenter == nil)
+        }
+    }
+
+    @Test("Apply to all carries the focused cell's window space with the numbers")
+    func testApplyToAllCarriesSpace() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.focusCell("/a.dcm#0")
+        let lung = WindowLevelPreset(name: "Lung", center: -600, width: 1500, modality: "CT")
+        viewModel.applyWindowPreset(lung, toItemID: "/a.dcm#0")
+
+        viewModel.applyFocusedWindowToAllCells()
+
+        #expect(viewModel.selection.items.allSatisfy {
+            $0.windowCenter == -600 && $0.windowSpace == .outputUnits
         })
     }
 
@@ -253,6 +354,49 @@ struct PrintCellEditingTests {
         #expect(viewModel.selection.items[0].presentation?.panY == 0)
     }
 
+    /// The other half of the rule above, and the one that was wrong: a *filled*
+    /// cell is showing a crop at every zoom, so the pan tool has real travel
+    /// there even at zoom 1. Clamping it as though it were fitted zeroed both
+    /// axes, and the tool looked dead on a fill-scaled film.
+    @Test("A filled cell is a crop, so the pan tool moves it even unzoomed")
+    func testPanWorksOnAFilledCellAtZoomOne() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.scalingMode = .fillToFilm
+
+        // A 1000×500 frame covering a square 300-point cell is scaled by 0.6 on
+        // its short side, so it is 600 points wide in a 300-point cell: 150
+        // points hidden either side, and the drag stops there.
+        viewModel.panCell(forItemID: "/a.dcm#0", dx: 1000, dy: 0,
+                          cellSize: CGSize(width: 300, height: 300),
+                          pixelSize: CGSize(width: 1000, height: 500))
+
+        #expect(viewModel.selection.items[0].presentation?.panX == 150)
+    }
+
+    @Test("Zooming a filled cell back out keeps the framing the reader chose")
+    func testZoomOutKeepsPanOnAFilledCell() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.scalingMode = .fillToFilm
+        let cell = CGSize(width: 300, height: 300)
+        let pixels = CGSize(width: 1000, height: 500)
+
+        viewModel.panCell(forItemID: "/a.dcm#0", dx: 100, dy: 0,
+                          cellSize: cell, pixelSize: pixels)
+        #expect(viewModel.selection.items[0].presentation?.panX == 100)
+
+        // Zoom in and straight back out to 1. On a filled cell zoom 1 is still
+        // a crop, so the part of the picture the reader framed must survive —
+        // on a fitted cell this same step correctly clears the pan (above).
+        viewModel.adjustZoom(forItemID: "/a.dcm#0", factor: 2,
+                             cellSize: cell, pixelSize: pixels)
+        viewModel.adjustZoom(forItemID: "/a.dcm#0", factor: 0.5,
+                             cellSize: cell, pixelSize: pixels)
+
+        #expect(viewModel.selection.items[0].presentation?.zoom == 1.0)
+        #expect(viewModel.selection.items[0].presentation?.panX == 100,
+                "zooming back to fitted is not a request to re-frame the crop")
+    }
+
     @Test("Arranging a cell turns the film's arrangement on, so the drag shows")
     func testArrangementEditEnablesViewerPresentation() {
         let viewModel = makeViewModel(items: markedFrames)
@@ -315,6 +459,112 @@ struct PrintCellEditingTests {
         #expect(viewModel.selection.items[0].presentation?.quarterTurns == 1)
     }
 
+    @Test("The rotate tool turns to any angle, both ways, and wraps")
+    func testFreeAngleRotation() {
+        let viewModel = makeViewModel(items: markedFrames)
+        let cell = CGSize(width: 200, height: 200)
+
+        // A drag emits many small deltas; they add up to the angle dragged.
+        for _ in 0..<10 {
+            viewModel.rotateCell(forItemID: "/a.dcm#0", byDegrees: 3, cellSize: cell)
+        }
+        #expect(viewModel.selection.items[0].presentation?.rotationDegrees == 30)
+        // Not a quarter turn, so the film resamples it rather than permuting.
+        #expect(viewModel.isCellSkewed("/a.dcm#0"))
+
+        // Dragging back unwinds it, through zero and round the other way.
+        viewModel.rotateCell(forItemID: "/a.dcm#0", byDegrees: -50, cellSize: cell)
+        #expect(viewModel.selection.items[0].presentation?.rotationDegrees == 340)
+    }
+
+    @Test("Flipping a cell mirrors it, and mirrors it back")
+    func testFlipCell() {
+        let viewModel = makeViewModel(items: markedFrames)
+
+        viewModel.flipCellHorizontal(forItemID: "/a.dcm#0")
+        #expect(viewModel.selection.items[0].presentation?.flipHorizontal == true)
+        #expect(viewModel.isCellFlipped("/a.dcm#0"))
+
+        viewModel.flipCellVertical(forItemID: "/a.dcm#0")
+        #expect(viewModel.selection.items[0].presentation?.flipVertical == true)
+
+        viewModel.flipCellHorizontal(forItemID: "/a.dcm#0")
+        #expect(viewModel.selection.items[0].presentation?.flipHorizontal == false)
+        // Still mirrored on the other axis, so still flipped.
+        #expect(viewModel.isCellFlipped("/a.dcm#0"))
+
+        viewModel.flipCellVertical(forItemID: "/a.dcm#0")
+        #expect(!viewModel.isCellFlipped("/a.dcm#0"))
+    }
+
+    @Test("A flip stays on the cell it was made on — laterality is not carried")
+    func testFlipIsNeverPropagated() {
+        let viewModel = makeViewModel(items: markedFrames)
+        // Every lock shut, the widest reach: a flip still goes nowhere, because
+        // mirroring a whole film prints a sheet nobody can read.
+        viewModel.cellSync = .all
+        viewModel.cellSyncScope = .thisFilm
+
+        viewModel.flipCellHorizontal(forItemID: "/a.dcm#0")
+        viewModel.flipCellVertical(forItemID: "/a.dcm#0")
+
+        #expect(viewModel.selection.items[0].presentation?.flipHorizontal == true)
+        #expect(viewModel.selection.items[0].presentation?.flipVertical == true)
+        #expect(viewModel.selection.items[1].presentation?.flipHorizontal != true)
+        #expect(viewModel.selection.items[1].presentation?.flipVertical != true)
+    }
+
+    @Test("Flipping a cell keeps its window, zoom and angle")
+    func testFlipKeepsTheRestOfTheArrangement() {
+        let viewModel = makeViewModel(items: markedFrames)
+        let cell = CGSize(width: 200, height: 200)
+        viewModel.setWindow(forItemID: "/a.dcm#0", center: 300, width: 1500)
+        viewModel.adjustZoom(forItemID: "/a.dcm#0", factor: 2, cellSize: cell)
+        viewModel.rotateCell(forItemID: "/a.dcm#0", byDegrees: 90, cellSize: cell)
+
+        viewModel.flipCellHorizontal(forItemID: "/a.dcm#0", cellSize: cell)
+
+        let mark = viewModel.selection.items[0]
+        #expect(mark.presentation?.flipHorizontal == true)
+        #expect(mark.presentation?.zoom == 2)
+        #expect(mark.presentation?.rotationDegrees == 90)
+        #expect(mark.windowCenter == 300)
+        #expect(mark.windowWidth == 1500)
+    }
+
+    @Test("Straighten squares a cell up without touching its window or crop")
+    func testStraighten() {
+        let viewModel = makeViewModel(items: markedFrames)
+        let cell = CGSize(width: 200, height: 200)
+        viewModel.setWindow(forItemID: "/a.dcm#0", center: 300, width: 1500)
+        viewModel.adjustZoom(forItemID: "/a.dcm#0", factor: 2, cellSize: cell)
+        viewModel.rotateCell(forItemID: "/a.dcm#0", byDegrees: 84, cellSize: cell)
+        #expect(viewModel.isCellSkewed("/a.dcm#0"))
+
+        viewModel.straightenCell(forItemID: "/a.dcm#0", cellSize: cell)
+
+        let mark = viewModel.selection.items[0]
+        #expect(mark.presentation?.rotationDegrees == 90)
+        #expect(!viewModel.isCellSkewed("/a.dcm#0"))
+        // The rest of the arrangement is left exactly where it was.
+        #expect(mark.presentation?.zoom == 2)
+        #expect(mark.windowCenter == 300)
+        #expect(mark.windowWidth == 1500)
+    }
+
+    @Test("A drag of nothing is not an edit")
+    func testZeroRotationIsIgnored() {
+        let viewModel = makeViewModel(items: markedFrames)
+        let cell = CGSize(width: 200, height: 200)
+
+        viewModel.rotateCell(forItemID: "/a.dcm#0", byDegrees: 0, cellSize: cell)
+        viewModel.rotateCell(forItemID: "/a.dcm#0", byDegrees: .nan, cellSize: cell)
+
+        // No presentation written at all, so the cell still counts as untouched
+        // and `useViewerPresentation` was not switched on behind the reader.
+        #expect(viewModel.selection.items[0].presentation == nil)
+    }
+
     // MARK: - Reset and focus
 
     @Test("Reset returns a cell to the untouched frame")
@@ -375,6 +625,60 @@ struct PrintCellEditingTests {
         #expect(viewModel.selection.update(fromViewer) == true)
     }
 
+    @Test("Revert All takes every cell back to what the viewer showed")
+    func testRevertAllCells() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.setWindow(forItemID: "/a.dcm#0", center: 300, width: 1500)
+        viewModel.setWindow(forItemID: "/b.dcm#0", center: 90, width: 60)
+        viewModel.adjustZoom(forItemID: "/a.dcm#0", factor: 2,
+                             cellSize: CGSize(width: 200, height: 200))
+        #expect(viewModel.hasAdjustedCells)
+
+        viewModel.revertAllCells()
+
+        #expect(!viewModel.hasAdjustedCells)
+        // The viewer's own window survives: revert takes back what *this
+        // screen* did, which is exactly the distinction from reset.
+        #expect(viewModel.window(forItemID: "/a.dcm#0")?.center == 40)
+        #expect(viewModel.window(forItemID: "/a.dcm#0")?.width == 400)
+        #expect(viewModel.selection.items[0].presentation == nil)
+        // A cell the viewer marked with no window of its own goes back to none,
+        // rather than keeping the one set here.
+        #expect(viewModel.window(forItemID: "/b.dcm#0") == nil)
+        // …and every cell follows the screen again.
+        #expect(viewModel.selection.update(PrintSelectionItem(
+            filePath: "/a.dcm", frameIndex: 0,
+            windowCenter: 55, windowWidth: 200)) == true)
+    }
+
+    @Test("Revert All is quiet when nothing has been adjusted")
+    func testRevertAllWithNothingToTakeBack() {
+        let viewModel = makeViewModel(items: markedFrames)
+        #expect(!viewModel.hasAdjustedCells)
+
+        viewModel.revertAllCells()
+
+        // The marks are untouched, and specifically the viewer's window is not
+        // cleared by a revert that had nothing to revert.
+        #expect(viewModel.window(forItemID: "/a.dcm#0")?.center == 40)
+        #expect(!viewModel.hasAdjustedCells)
+    }
+
+    @Test("Revert on the focused cell takes back that cell alone")
+    func testRevertFocusedCell() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.setWindow(forItemID: "/a.dcm#0", center: 300, width: 1500)
+        viewModel.setWindow(forItemID: "/b.dcm#0", center: 90, width: 60)
+        viewModel.focusCell("/a.dcm#0")
+
+        viewModel.revertFocusedCell()
+
+        #expect(viewModel.window(forItemID: "/a.dcm#0")?.center == 40)
+        #expect(viewModel.window(forItemID: "/b.dcm#0")?.center == 90,
+                "the cell that was not focused keeps its edit")
+        #expect(viewModel.hasAdjustedCells)
+    }
+
     @Test("Reset lets the cell follow the viewer again too")
     func testResetClearsAdjustment() {
         let viewModel = makeViewModel(items: markedFrames)
@@ -407,5 +711,82 @@ struct PrintCellEditingTests {
         viewModel.pruneFocus()
         #expect(viewModel.focusedItemID == nil)
         #expect(viewModel.focusedItem == nil)
+    }
+
+    // MARK: - Film palette across visits
+
+    @Test("Reopening the print screen gives back a grey film")
+    func testFilmPaletteResetsForNewFilm() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.applyFilmPalette(.hotIron)
+        #expect(viewModel.filmPalette == .hotIron)
+
+        // The screen is kept alive between visits, so the second launch runs
+        // the same reset the first one did.
+        viewModel.resetForNewFilm()
+        #expect(viewModel.filmPalette == nil)
+        for item in viewModel.selection.items {
+            #expect(item.presentation?.palette == nil)
+        }
+    }
+
+    @Test("The palette picker still colours the film on a second launch")
+    func testFilmPaletteAppliesAfterRelaunch() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.applyFilmPalette(.hotIron)
+        viewModel.resetForNewFilm()
+
+        // The bug: the stale film palette made every cell look self-chosen, so
+        // this pick reached none of them and the picker read dead.
+        viewModel.applyFilmPalette(.pet)
+        #expect(viewModel.filmPalette == .pet)
+        for item in viewModel.selection.items {
+            #expect(item.presentation?.palette == .pet)
+        }
+    }
+
+    @Test("A cell that chose its own palette keeps it through a film-wide pick")
+    func testSelfChosenPaletteSurvivesFilmPalette() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.setCellPalette(.pet, forItemID: "/a.dcm#0")
+
+        viewModel.applyFilmPalette(.hotIron)
+        #expect(viewModel.cellPalette(forItemID: "/a.dcm#0") == .pet)
+        #expect(viewModel.cellPalette(forItemID: "/b.dcm#0") == .hotIron)
+    }
+
+    @Test("Resetting a cell hands it back to the film's picker")
+    func testResetCellFollowsFilmAgain() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.applyFilmPalette(.hotIron)
+        viewModel.setCellPalette(.pet, forItemID: "/a.dcm#0")
+        viewModel.resetCell(forItemID: "/a.dcm#0")
+
+        // Reset gives the cell back to the film, so the next film-wide pick
+        // must reach it — the drift that previously stranded it for good.
+        #expect(viewModel.cellPalette(forItemID: "/a.dcm#0") == .hotIron)
+        viewModel.applyFilmPalette(.pet)
+        #expect(viewModel.cellPalette(forItemID: "/a.dcm#0") == .pet)
+    }
+
+    @Test("Picking the film's own colour by hand does not strand the cell")
+    func testHandPickingFilmColourStillFollows() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.applyFilmPalette(.hotIron)
+        viewModel.setCellPalette(.hotIron, forItemID: "/a.dcm#0")
+
+        viewModel.applyFilmPalette(.pet)
+        #expect(viewModel.cellPalette(forItemID: "/a.dcm#0") == .pet)
+    }
+
+    @Test("Grey chosen on a coloured film is a choice and is defended")
+    func testGreyIsAChoice() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.applyFilmPalette(.hotIron)
+        viewModel.setCellPalette(.grayscale, forItemID: "/a.dcm#0")
+
+        viewModel.applyFilmPalette(.pet)
+        #expect(viewModel.cellPalette(forItemID: "/a.dcm#0") == .grayscale)
+        #expect(viewModel.cellPalette(forItemID: "/b.dcm#0") == .pet)
     }
 }

@@ -94,6 +94,43 @@ struct PrintViewerPresentationEndToEndTests {
         #expect(marked.windowWidth == 1500)
     }
 
+    @Test("A hand adjustment defends the cell for that visit, not for ever")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testAdjustmentIsReleasedWhenTheScreenReopens() throws {
+        let viewModel = ImageViewerViewModel()
+        viewModel.filePath = "/a.dcm"
+        viewModel.viewContentWidth = 800
+        viewModel.viewContentHeight = 600
+        viewModel.togglePrintMarkForCurrentFrame()
+
+        // First visit: the cell is windowed by hand in the preview, which stops
+        // it following the viewer — the behaviour the test above pins down.
+        let print = PrintViewModel(selection: viewModel.printSelection)
+        print.setWindow(forItemID: "/a.dcm#0", center: -600, width: 1500)
+        #expect(viewModel.printSelection.isAdjusted("/a.dcm#0"))
+
+        // The screen closes and the reader goes on working the image: zooming
+        // it, turning it, windowing it. None of that reached the film, because
+        // the mark had stopped listening on the first visit and the flag was
+        // never released — the screen outlives a visit.
+        viewModel.zoomLevel = 9.0
+        viewModel.rotationAngle = 90
+        viewModel.windowCenter = 42
+        viewModel.windowWidth = 300
+
+        // Reopening, in the order `preparePrintScreen` uses: the kept-alive
+        // screen is put back to a new film first, then the marks are re-synced.
+        print.resetForNewFilm()
+        viewModel.refreshMarksFromViewer()
+
+        let marked = try #require(viewModel.printSelection.items.first)
+        #expect(viewModel.printSelection.isAdjusted("/a.dcm#0") == false)
+        #expect(marked.presentation?.zoom == 9.0)
+        #expect(marked.presentation?.quarterTurns == 1)
+        #expect(marked.windowCenter == 42)
+        #expect(marked.windowWidth == 300)
+    }
+
     @Test("Marking every frame carries the arrangement to each one")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testAllFramesCarryPresentation() {
@@ -147,6 +184,51 @@ struct PrintViewerPresentationEndToEndTests {
         #expect(film.pixelData.count
                 == Int(film.rows) * Int(film.columns) * Int(film.samplesPerPixel)
                    * Int(film.bitsAllocated) / 8)
+    }
+
+    @Test("A cell turned to a free angle by the rotate tool prints turned")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testFreeAngleRotateToolReachesTheFilm() async throws {
+        let path = try fixturePath()
+        let service = PrintService()
+        var request = PrintJobRequest()
+        request.frameSelection = .single(1)
+
+        let baseline = try await service.prepare(
+            items: [PrintSelectionItem(filePath: path)], request: request)
+        let source = try #require(baseline.first).descriptor
+
+        // The film preview's own tool, driven as a drag drives it: many small
+        // deltas on one cell, adding up to an angle that is not a quarter turn.
+        let selection = PrintSelectionModel()
+        selection.add(contentsOf: [PrintSelectionItem(filePath: path)])
+        let viewModel = PrintViewModel(selection: selection)
+        let itemID = try #require(selection.items.first?.id)
+        let cell = CGSize(width: 300, height: 300)
+        for _ in 0..<15 {
+            viewModel.rotateCell(forItemID: itemID, byDegrees: 2, cellSize: cell)
+        }
+        let marked = try #require(viewModel.selection.items.first)
+        let presentation = try #require(marked.presentation)
+        #expect(presentation.rotationDegrees == 30)
+        #expect(!presentation.isQuarterTurn)
+
+        let prepared = try await service.prepare(items: [marked], request: request)
+        let film = try #require(prepared.first)
+
+        // The frame keeps its rectangle: the picture turns about its centre at
+        // the size it already had, and the corners that swing outside are cut —
+        // the way the viewer turns one. Growing to the turned bounding box would
+        // print the anatomy 27% smaller at this angle, for a shrink the reader
+        // never asked for.
+        #expect(film.descriptor.columns == source.columns)
+        #expect(film.descriptor.rows == source.rows)
+        #expect(film.descriptor.pixelData != baseline.first?.descriptor.pixelData,
+                "the pixels are turned, not passed through")
+        // Resampled pixels have no single spacing, so true size is refused
+        // rather than stated wrongly.
+        #expect(film.rowSpacingMillimeters == nil)
+        #expect(film.columnSpacingMillimeters == nil)
     }
 
     @Test("Film pixels are the source's own — cropping never resamples")

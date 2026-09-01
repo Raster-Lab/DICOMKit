@@ -29,7 +29,7 @@ public struct PrintRequestError: Error, CustomStringConvertible, Sendable {
 // MARK: - Frame Selection
 
 /// Which frame(s) of a multi-frame source become image boxes.
-public enum PrintFrameSelection: Sendable, Equatable {
+public enum PrintFrameSelection: Sendable, Equatable, Codable {
     /// A single 1-based frame number.
     case single(Int)
     /// Every frame of the file, one image box per frame.
@@ -42,7 +42,7 @@ public enum PrintFrameSelection: Sendable, Equatable {
 // MARK: - Layout Selection
 
 /// How the film layout (rows × columns) is chosen.
-public enum PrintLayoutSelection: Sendable, Equatable {
+public enum PrintLayoutSelection: Sendable, Equatable, Codable {
     /// Let the print service pick an optimal grid for the image count.
     case automatic
     /// An explicit rows × columns grid.
@@ -121,7 +121,7 @@ public enum PrintWindowSpace: String, Sendable, Equatable, Codable {
 /// Holds every option the `dicom-print send` command exposes. Construct it,
 /// call ``validate()``, then feed it to ``PrintImagePreparer`` (for the pixel
 /// side) and ``PrintWorkflow`` (for the DIMSE side).
-public struct PrintJobRequest: Sendable {
+public struct PrintJobRequest: Sendable, Codable {
 
     // MARK: Film session
 
@@ -157,10 +157,26 @@ public struct PrintJobRequest: Sendable {
 
     // MARK: Image box
 
+    /// How images are scaled to their cells (SRS FR-003).
+    ///
+    /// Fit and fill travel to a real printer as Decimate/Crop Behavior; true
+    /// size additionally sends Requested Image Size per image. Stretch has no
+    /// wire form and applies only where this toolkit composes the film itself.
+    public var scalingMode: PrintScalingMode
+
+    /// Where an image sits in a cell it does not fill (SRS FR-003).
+    ///
+    /// Local composition only — a printer receiving the job centres, as
+    /// printers do; the preview shows which of the two will happen.
+    public var cellAlignment: PrintCellAlignment
+
     /// Image polarity (NORMAL / REVERSE).
     public var polarity: ImagePolarity
     /// Presentation LUT shape to create and reference, if any.
     public var presentationLUTShape: PresentationLUTShape?
+    /// Custom Presentation LUT data, sent instead of a shape (the "Custom"
+    /// option) — takes precedence over ``presentationLUTShape``.
+    public var presentationLUTTable: PresentationLUTTable?
     /// Film annotations. Only sent when ``annotationDisplayFormatID`` is set.
     public var annotations: [DICOMNetwork.PrintAnnotation]
     /// Printer-configured Annotation Display Format ID (2010,0030).
@@ -178,6 +194,21 @@ public struct PrintJobRequest: Sendable {
 
     /// Grayscale or color print management.
     public var colorMode: DICOMNetwork.PrintColorMode
+
+    /// Keep a colour source's colour even when the job is configured grayscale.
+    ///
+    /// On by default, because losing colour is almost never what was meant.
+    /// A colour ultrasound or a fused PET/CT carries its diagnosis *in* the
+    /// colour — flow direction, uptake — and flattening it to greys throws that
+    /// away silently, while a raw job of the same image keeps it. The mismatch
+    /// is resolved on the wire instead: ``PrintWorkflow/execute`` moves the job
+    /// onto Basic Colour Print Management when the prepared frames turn out to
+    /// carry colour, so the pixels and the SOP class always agree.
+    ///
+    /// Set `false` for the old behaviour — deliberately rendering colour sources
+    /// as greys, which is what a grayscale-only printer or a monochrome film
+    /// stock actually wants.
+    public var preservesSourceColor: Bool = true
     /// Which frames of multi-frame sources to print.
     public var frameSelection: PrintFrameSelection
     /// Send stored pixel values with no rescale / window / inversion applied.
@@ -186,8 +217,26 @@ public struct PrintJobRequest: Sendable {
     public var windowSettings: WindowSettings?
     /// The space ``windowSettings`` is stated in (see ``PrintWindowSpace``).
     public var windowSpace: PrintWindowSpace
-    /// Grayscale output bit depth: 8, 12, or 16.
+    /// Grayscale output bit depth: 8 or 12.
+    ///
+    /// PS3.3 Table C.13-3 enumerates Bits Stored as 8 or 12 for the Basic
+    /// Grayscale Image Box. 16 is still accepted here — earlier builds offered
+    /// it and it survives in saved settings — but it is clamped to 12 before it
+    /// reaches the wire, with a diagnostic, rather than producing an image box
+    /// no conforming printer may accept.
     public var bitDepth: Int
+    /// A pseudo-colour palette to bake into the prepared pixels.
+    ///
+    /// Set per image by the print sheet, from the cell's own presentation. It
+    /// takes a monochrome frame to 8-bit RGB, since Print Management has no way
+    /// to carry a palette by reference — PS3.3 Table C.13-5 allows only `RGB` in
+    /// a Basic Color Image Sequence. ``bitDepth`` is therefore ignored for a
+    /// coloured frame: the standard fixes colour at 8 bits per sample.
+    ///
+    /// Grey palettes are not set here; they are the absence of colour, and
+    /// leaving this `nil` keeps the frame on the grayscale path with its bit
+    /// depth and density curve intact.
+    public var palette: PseudoColorPalette?
 
     // MARK: Execution
 
@@ -214,17 +263,22 @@ public struct PrintJobRequest: Sendable {
         emptyImageDensity: String = "BLACK",
         trimOption: TrimOption = .no,
         configurationInformation: String? = nil,
+        scalingMode: PrintScalingMode = .fitToFilm,
+        cellAlignment: PrintCellAlignment = .center,
         polarity: ImagePolarity = .normal,
         presentationLUTShape: PresentationLUTShape? = nil,
+        presentationLUTTable: PresentationLUTTable? = nil,
         annotations: [DICOMNetwork.PrintAnnotation] = [],
         annotationDisplayFormatID: String? = nil,
         filmAnnotations: [[DICOMNetwork.PrintAnnotation]] = [],
         colorMode: DICOMNetwork.PrintColorMode = .grayscale,
+        preservesSourceColor: Bool = true,
         frameSelection: PrintFrameSelection = .first,
         raw: Bool = false,
         windowSettings: WindowSettings? = nil,
         windowSpace: PrintWindowSpace = .outputUnits,
         bitDepth: Int = 8,
+        palette: PseudoColorPalette? = nil,
         verifyFirst: Bool = false,
         checkStatus: Bool = false,
         retries: Int = 0,
@@ -243,17 +297,22 @@ public struct PrintJobRequest: Sendable {
         self.emptyImageDensity = emptyImageDensity
         self.trimOption = trimOption
         self.configurationInformation = configurationInformation
+        self.scalingMode = scalingMode
+        self.cellAlignment = cellAlignment
         self.polarity = polarity
         self.presentationLUTShape = presentationLUTShape
+        self.presentationLUTTable = presentationLUTTable
         self.annotations = annotations
         self.annotationDisplayFormatID = annotationDisplayFormatID
         self.filmAnnotations = filmAnnotations
         self.colorMode = colorMode
+        self.preservesSourceColor = preservesSourceColor
         self.frameSelection = frameSelection
         self.raw = raw
         self.windowSettings = windowSettings
         self.windowSpace = windowSpace
         self.bitDepth = bitDepth
+        self.palette = palette
         self.verifyFirst = verifyFirst
         self.checkStatus = checkStatus
         self.retries = retries
@@ -309,11 +368,57 @@ public struct PrintJobRequest: Sendable {
             trimOption: trimOption,
             sessionLabel: sessionLabel,
             presentationLUTShape: presentationLUTShape,
+            presentationLUTTable: presentationLUTTable,
             annotations: annotations,
             annotationDisplayFormatID: annotationDisplayFormatID,
             configurationInformation: configurationInformation,
             filmAnnotations: filmAnnotations
         )
+    }
+
+    /// The per-image scaling attributes ``scalingMode`` sends on the wire.
+    ///
+    /// - Fit and stretch send nothing: DECIMATE is the printer default, and
+    ///   stretch has no DICOM form.
+    /// - Fill sends CROP for every image.
+    /// - True size sends CROP plus Requested Image Size (2020,0030) — the
+    ///   image's physical width — for every image whose source recorded its
+    ///   pixel spacing. An image without spacing **falls back to fit**, and
+    ///   ``trueSizeFallbackCount(for:)`` is how a caller finds out and says so:
+    ///   a film silently printed at the wrong scale is a film a clinician
+    ///   might measure against.
+    public func imageBoxOptions(for images: [PreparedPrintImage]) -> [PrintImageBoxOptions] {
+        switch scalingMode {
+        case .fitToFilm, .stretch:
+            return []
+        case .fillToFilm:
+            return images.map { _ in
+                PrintImageBoxOptions(requestedDecimateCropBehavior: .crop)
+            }
+        case .trueSize:
+            return images.map { image in
+                guard let millimeters = image.physicalWidthMillimeters else {
+                    return PrintImageBoxOptions()
+                }
+                return PrintImageBoxOptions(
+                    requestedImageSize: Self.decimalString(millimeters),
+                    requestedDecimateCropBehavior: .crop)
+            }
+        }
+    }
+
+    /// How many of `images` cannot be printed true-size because their source
+    /// records no pixel spacing. Zero unless ``scalingMode`` is `.trueSize`.
+    public func trueSizeFallbackCount(for images: [PreparedPrintImage]) -> Int {
+        guard scalingMode == .trueSize else { return 0 }
+        return images.filter { $0.physicalWidthMillimeters == nil }.count
+    }
+
+    /// A DS-legal rendering of a millimetre value (≤ 16 characters).
+    static func decimalString(_ value: Double) -> String {
+        var text = String(format: "%.4f", value)
+        if text.count > 16 { text = String(format: "%.6g", value) }
+        return text
     }
 
     /// How many physical films `imageCount` images produce under this request.
@@ -351,8 +456,14 @@ public struct PrintJobRequest: Sendable {
         if let width = windowSettings?.width, width < 1 {
             throw PrintRequestError("--window-width must be 1 or greater")
         }
+        // 16 is accepted and clamped rather than refused: it was offered by
+        // earlier builds and is stored in saved print settings, so failing on it
+        // would break jobs that used to run. `PrintImagePreparer` drops it to
+        // the deepest legal value and says so — see `preparationBitDepth`.
         guard [8, 12, 16].contains(bitDepth) else {
-            throw PrintRequestError("--bit-depth must be 8, 12, or 16")
+            throw PrintRequestError(
+                "--bit-depth must be 8 or 12 (PS3.3 Table C.13-3 enumerates Bits "
+                + "Stored as 8 or 12 for the Basic Grayscale Image Box)")
         }
         if raw && (windowSettings != nil || bitDepth != 8) {
             throw PrintRequestError(

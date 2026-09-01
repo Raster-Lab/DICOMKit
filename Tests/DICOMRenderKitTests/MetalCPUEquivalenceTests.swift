@@ -190,6 +190,66 @@ final class MetalCPUEquivalenceTests: XCTestCase {
         }
     }
 
+    /// A monochrome frame shown through a reader's pseudo-colour palette.
+    ///
+    /// The palette recolours the *windowed* level, so it folds into the window
+    /// table as one raw-sample → RGB lookup and the frame takes the palette
+    /// kernel — four bytes out instead of one. Both backends must fold it the
+    /// same way, or the film preview and the printed film would disagree about
+    /// colour the way they used to disagree about having any: the GPU preview
+    /// path carried no palette at all and drew every cell grey while the print
+    /// path coloured it.
+    ///
+    /// Every representable 16-bit sample, so no entry in the composed table goes
+    /// unchecked.
+    func testMonochromePseudoColorEquivalence() throws {
+        let metal = try requireMetal()
+        let descriptor = monochromeDescriptor(
+            rows: 256, columns: 256, bitsAllocated: 16, bitsStored: 16, highBit: 15,
+            isSigned: false)
+        var data = Data(count: descriptor.bytesPerFrame)
+        data.withUnsafeMutableBytes { raw in
+            let out = raw.bindMemory(to: UInt16.self)
+            for i in 0..<65_536 { out[i] = UInt16(i) }
+        }
+        let pixelData = PixelData(data: data, descriptor: descriptor).pageAligned()
+
+        // One palette from each group, so a fault in a single table's
+        // provenance does not pass unnoticed.
+        let palettes: [PseudoColorPalette] = [.hotIron, .pet, .rainbow]
+        for palette in palettes {
+            for window in windows.prefix(3) {
+                try assertEquivalent(
+                    FrameRenderRequest(
+                        pixelData: pixelData, frameIndex: 0, window: window,
+                        pseudoColorPalette: palette),
+                    metal,
+                    "mono+\(palette.rawValue) w=\(window.center)/\(window.width)")
+            }
+        }
+    }
+
+    /// Grey is not a recolouring, so it must leave the cheaper single-channel
+    /// monochrome path alone rather than widening every cell to RGB.
+    func testGrayscalePaletteKeepsTheMonochromePath() throws {
+        let metal = try requireMetal()
+        let descriptor = monochromeDescriptor(
+            rows: 37, columns: 23, bitsAllocated: 16, bitsStored: 12, highBit: 11,
+            isSigned: false)
+        let pixelData = PixelData(data: scatteredBytes(count: descriptor.bytesPerFrame),
+                                  descriptor: descriptor).pageAligned()
+        let request = FrameRenderRequest(
+            pixelData: pixelData, frameIndex: 0,
+            window: WindowSettings(center: 2048, width: 4096),
+            pseudoColorPalette: .grayscale)
+        XCTAssertNil(request.effectivePseudoColorPalette,
+                     "grey must not push a cell into colour")
+        let image = try XCTUnwrap(metal.renderFrame(request))
+        XCTAssertEqual(image.bitsPerPixel, 8,
+                       "still single-channel: colour would cost bit depth for no colour")
+        try assertEquivalent(request, metal, "mono+grayscale")
+    }
+
     /// A realistic size, and one that is an exact multiple of common threadgroup
     /// dimensions — the complement of the 37×23 case.
     func testMonochromeEquivalenceAtClinicalSize() throws {
@@ -256,6 +316,57 @@ final class MetalCPUEquivalenceTests: XCTestCase {
                     FrameRenderRequest(pixelData: pixelData),
                     metal, "rgb planar=\(planar) \(bitsStored)-bit")
             }
+        }
+    }
+
+    /// A reader's ramp applies to a frame that carries its own colours too.
+    ///
+    /// The bug behind "the palette is still disabled for US": a colour frame
+    /// used to have its ramp discarded by both backends, so the control was
+    /// greyed out to stop it claiming a colour nothing would draw. The ramp now
+    /// maps the frame's luminance instead — a display choice over what the
+    /// frame *shows*, since a colour frame has no raw sample to fold a table
+    /// into. This pins the three things that has to be true of it.
+    func testColourFrameTakesAReadersRamp() throws {
+        let descriptor = PixelDataDescriptor(
+            rows: 23, columns: 37,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 3,
+            photometricInterpretation: .rgb, planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: scatteredBytes(count: descriptor.bytesPerFrame),
+                                  descriptor: descriptor)
+        let plain = FrameRenderRequest(pixelData: pixelData)
+        let ramped = FrameRenderRequest(
+            pixelData: pixelData, pseudoColorPalette: .hotIron)
+
+        // The request routes it: a colour frame's ramp is the reader's, not the
+        // one that folds into a window.
+        XCTAssertNil(ramped.effectivePseudoColorPalette,
+                     "a colour frame has no window table to fold a ramp into")
+        XCTAssertEqual(ramped.readerPalette, .hotIron)
+        XCTAssertNil(plain.readerPalette, "no ramp chosen is no recolouring")
+
+        // The CPU actually recolours, rather than handing back the frame it was
+        // given. Comparing bytes rather than trusting the call not to no-op.
+        let cpu = CPUFrameRenderer()
+        let plainImage = try XCTUnwrap(cpu.renderFrame(plain))
+        let rampedImage = try XCTUnwrap(cpu.renderFrame(ramped))
+        XCTAssertEqual(rampedImage.width, plainImage.width)
+        XCTAssertEqual(rampedImage.height, plainImage.height)
+        XCTAssertNotEqual(
+            try XCTUnwrap(plainImage.dataProvider?.data) as Data,
+            try XCTUnwrap(rampedImage.dataProvider?.data) as Data,
+            "the ramp must change the pixels, or it is being discarded again")
+
+        // And Metal declines it, so `FrameRenderService` falls through to the
+        // CPU that does handle it. A GPU that rendered this without the ramp
+        // would silently win the race and show the un-ramped frame.
+        if let metal = try? requireMetal() {
+            XCTAssertNil(metal.renderFrame(ramped),
+                         "the GPU has no luminance-ramp kernel and must decline")
+            XCTAssertNotNil(metal.renderFrame(plain),
+                            "without a ramp the colour frame still belongs on the GPU")
         }
     }
 

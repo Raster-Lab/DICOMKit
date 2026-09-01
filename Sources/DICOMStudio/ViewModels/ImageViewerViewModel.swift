@@ -8,6 +8,7 @@ import Observation
 import DICOMKit
 import DICOMCore
 import DICOMRenderKit
+import DICOMPrintKit
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -123,13 +124,29 @@ public final class ImageViewerViewModel {
     // MARK: - Window/Level State
 
     /// Current window center value.
-    public var windowCenter: Double = 128.0 { didSet { printMarksFollowScreen() } }
+    public var windowCenter: Double = 128.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools(); noteWindowAction() } }
 
     /// Current window width value.
-    public var windowWidth: Double = 256.0 { didSet { printMarksFollowScreen() } }
+    public var windowWidth: Double = 256.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools(); noteWindowAction() } }
 
     /// Whether grayscale is inverted.
-    public var isInverted: Bool = false { didSet { printMarksFollowScreen() } }
+    public var isInverted: Bool = false { didSet { printMarksFollowScreen(); presentationStateFollowsTools(); noteToolAction() } }
+
+    /// The pseudo-colour palette the focused image is shown through.
+    ///
+    /// A display choice over the *windowed* grey, exactly as on film: the stored
+    /// pixels are untouched, and the same measurement under two palettes is one
+    /// measurement seen two ways. `nil` means nobody has chosen — see
+    /// ``ViewerPresentation/palette`` for why that is not the same as choosing
+    /// ``PseudoColorPalette/grayscale``.
+    ///
+    /// Set through ``applyPalette(_:)`` rather than assigned: unlike zoom and
+    /// inversion, a palette is *pixels* and not an arrangement — the display
+    /// shader can turn and crop a frame but it cannot colour one — so changing
+    /// it has to re-render rather than redraw.
+    public internal(set) var palette: DICOMCore.PseudoColorPalette? {
+        didSet { printMarksFollowScreen(); noteToolAction() }
+    }
 
     /// Available window presets for the current modality.
     public var availablePresets: [WindowLevelPreset] = []
@@ -163,31 +180,186 @@ public final class ImageViewerViewModel {
     /// Cine playback frames per second.
     public var playbackFPS: Double = CinePlaybackHelpers.defaultFPS
 
+    /// Whether a multi-frame file starts looping the moment it opens.
+    ///
+    /// On by default: a multi-frame image is a moving picture, and a reader
+    /// opening one is looking for the motion, not for frame 0 held still. The
+    /// preference exists because that is not true of every multi-frame IOD —
+    /// a CT stack is multi-frame too and is read by scrolling, not by playing.
+    public var autoPlayMultiFrame: Bool = true
+
     // MARK: - Zoom / Pan / Rotation
 
     /// Current zoom level (1.0 = 100%).
-    public var zoomLevel: Double = 1.0 { didSet { printMarksFollowScreen() } }
+    public var zoomLevel: Double = 1.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools(); noteToolAction() } }
 
     /// Pan offset X in points.
-    public var panOffsetX: Double = 0.0 { didSet { printMarksFollowScreen() } }
+    public var panOffsetX: Double = 0.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools(); noteToolAction() } }
 
     /// Pan offset Y in points.
-    public var panOffsetY: Double = 0.0 { didSet { printMarksFollowScreen() } }
+    public var panOffsetY: Double = 0.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools(); noteToolAction() } }
 
     /// Rotation angle in degrees.
-    public var rotationAngle: Double = 0.0 { didSet { printMarksFollowScreen() } }
+    public var rotationAngle: Double = 0.0 { didSet { printMarksFollowScreen(); presentationStateFollowsTools(); noteToolAction() } }
 
     /// Whether the image is flipped horizontally.
-    public var isFlippedHorizontal: Bool = false { didSet { printMarksFollowScreen() } }
+    public var isFlippedHorizontal: Bool = false { didSet { printMarksFollowScreen(); presentationStateFollowsTools(); noteToolAction() } }
 
     /// Whether the image is flipped vertically.
-    public var isFlippedVertical: Bool = false { didSet { printMarksFollowScreen() } }
+    public var isFlippedVertical: Bool = false { didSet { printMarksFollowScreen(); presentationStateFollowsTools(); noteToolAction() } }
 
-    /// Whether the metadata overlay is visible.
+    // MARK: - Series-wide tool memory
+
+    /// One series' tool arrangement — everything the toolbar can do to the
+    /// picture, captured when the reader steps off the series and put back
+    /// when they return. Zoom, pan, rotation, the flips, inversion, the
+    /// palette and the window are statements about how the *series* is being
+    /// read: they hold across every slice, survive a detour through another
+    /// series, and end where the reader ends them — saving the arrangement as
+    /// a presentation state, applying a saved view by hand, Reset, Default
+    /// View, or a new study, which drops the lot. The drawn annotations are
+    /// deliberately not here: they are per-image statements, and their store
+    /// (`printSelection.cellAnnotations`) already keys them that way.
+    struct SeriesToolState {
+        var windowCenter: Double
+        var windowWidth: Double
+        /// Whether the window was the reader's doing. A window that merely
+        /// arrived with a file is that file's statement, not the series', and
+        /// must not overwrite the next file's own header window.
+        var userAdjustedWindow: Bool
+        var zoomLevel: Double
+        var panOffsetX: Double
+        var panOffsetY: Double
+        var rotationAngle: Double
+        var isFlippedHorizontal: Bool
+        var isFlippedVertical: Bool
+        var isInverted: Bool
+        var palette: DICOMCore.PseudoColorPalette?
+    }
+
+    /// The unsaved tool arrangement of every series touched this study, keyed
+    /// by Series Instance UID. Cleared by ``prepareForNewStudy()``.
+    var toolStateBySeries: [String: SeriesToolState] = [:]
+
+    /// The cache key of the image on screen — its Series Instance UID, or its
+    /// file path when the file states none. `nil` while nothing cacheable is
+    /// showing (a waveform, a report, an empty viewer).
+    var currentToolCacheKey: String?
+
+    /// Whether any tool has been moved in the current series — by the reader,
+    /// not by a load, a tile focus change, or an applied view. Nothing is
+    /// cached until one has: an untouched series has no arrangement worth
+    /// remembering, and caching one would suppress the saved-view offers for
+    /// no reason.
+    var toolsTouchedInSeries = false
+
+    /// Whether the reader has windowed in the current series — see
+    /// ``SeriesToolState/userAdjustedWindow``.
+    var userAdjustedWindowInSeries = false
+
+    /// Set while a tile's stored arrangement is being copied onto the live
+    /// view model — a restore, not a reader action.
+    var restoringToolState = false
+
+    /// Marks a tool moved by the reader. Loads, tile restores and applied
+    /// views move the same properties, so their flags gate the observers'
+    /// calls here.
+    func noteToolAction() {
+        guard !isLoading, !applyingPresentationState, !restoringToolState else { return }
+        toolsTouchedInSeries = true
+    }
+
+    /// Marks the window as the reader's — a tool action with the extra fact
+    /// that the *window* is now a series-wide statement.
+    func noteWindowAction() {
+        guard !isLoading, !applyingPresentationState, !restoringToolState else { return }
+        toolsTouchedInSeries = true
+        userAdjustedWindowInSeries = true
+    }
+
+    /// The key a file's tool state is cached under.
+    static func toolCacheKey(dataSet: DataSet, path: String) -> String {
+        if let uid = dataSet.string(for: .seriesInstanceUID)?
+            .trimmingCharacters(in: .whitespaces), !uid.isEmpty {
+            return uid
+        }
+        // A file that does not say what series it is in is its own series.
+        return path
+    }
+
+    /// Snapshots the tools for the series being stepped off, if the reader has
+    /// moved any. Called at the top of every load, before the new file's state
+    /// overwrites what this reads.
+    func cacheToolStateForCurrentSeries() {
+        guard let key = currentToolCacheKey, toolsTouchedInSeries else { return }
+        toolStateBySeries[key] = SeriesToolState(
+            windowCenter: windowCenter,
+            windowWidth: windowWidth,
+            userAdjustedWindow: userAdjustedWindowInSeries,
+            zoomLevel: zoomLevel,
+            panOffsetX: panOffsetX,
+            panOffsetY: panOffsetY,
+            rotationAngle: rotationAngle,
+            isFlippedHorizontal: isFlippedHorizontal,
+            isFlippedVertical: isFlippedVertical,
+            isInverted: isInverted,
+            palette: palette)
+    }
+
+    /// Forgets the current series' cached arrangement.
+    ///
+    /// Called at the moments the memory is finished with: the arrangement was
+    /// saved as a presentation state (the store now holds it), a saved view
+    /// was applied by hand (the reader replaced it), or Reset / Default View
+    /// put the series back to the files' own pictures.
+    func forgetSeriesToolState() {
+        if let key = currentToolCacheKey { toolStateBySeries[key] = nil }
+        toolsTouchedInSeries = false
+        userAdjustedWindowInSeries = false
+    }
+
+    /// Seeds a freshly hung tile with its series' cached arrangement, so the
+    /// grid path shows a returning series the way the reader left it — the
+    /// same statement ``loadDICOMData``'s restore makes for the 1×1 viewer.
+    /// A series with no cached arrangement leaves the tile at its defaults.
+    func seedCellFromToolCache(_ cell: inout ViewerCellState, seriesUID: String?) {
+        guard let seriesUID, let cached = toolStateBySeries[seriesUID] else { return }
+        cell.zoom = cached.zoomLevel
+        cell.panX = cached.panOffsetX
+        cell.panY = cached.panOffsetY
+        cell.rotationAngle = cached.rotationAngle
+        cell.isFlippedHorizontal = cached.isFlippedHorizontal
+        cell.isFlippedVertical = cached.isFlippedVertical
+        cell.isInverted = cached.isInverted
+        cell.palette = cached.palette
+        // The window only when the reader dialled it; a nil window makes the
+        // tile read at the file's own VOI — see ``restoreArrangement(of:)``.
+        if cached.userAdjustedWindow {
+            cell.windowCenter = cached.windowCenter
+            cell.windowWidth = cached.windowWidth
+        }
+    }
+
+    /// Detaches the viewer from the cache while non-image content shows: a
+    /// waveform has no tools to remember, and a snapshot taken while one is up
+    /// would file the previous image's state under the wrong moment.
+    func detachFromToolCache() {
+        currentToolCacheKey = nil
+        toolsTouchedInSeries = false
+        userAdjustedWindowInSeries = false
+    }
+
+    /// Whether the image-metadata popup is open.
+    ///
+    /// A popup rather than a corner block. The block was anchored over the
+    /// picture's bottom-left, which is where the zoom, image number and
+    /// compression lines of the reading annotations already are — so switching
+    /// it on laid file, dimensions and transfer syntax straight over the
+    /// annotations a reader reads the image by. Presenting it the way the tag
+    /// inspector is presented gives it room for the full block, keeps the
+    /// picture clear, and makes the two "tell me about this file" surfaces
+    /// behave the same way.
     public var showMetadataOverlay: Bool = false
-
-    /// Whether the performance overlay is visible.
-    public var showPerformanceOverlay: Bool = false
 
     /// What the open file says, for the corner annotations.
     ///
@@ -205,6 +377,22 @@ public final class ImageViewerViewModel {
     /// strip below the picture instead, and has its own switch.
     /// See `ImageViewerViewModel+Annotations.swift`.
     public var showImageAnnotations: Bool = true
+
+    /// Whether the patient-orientation letters are drawn at the four edges.
+    ///
+    /// On by default, and separate from ``showImageAnnotations`` because it is
+    /// a different kind of statement. The corner blocks describe the picture —
+    /// who, what window, which frame — and a reader who knows the study can
+    /// work without them. The edge letters say which side of the patient is
+    /// which, and that is the one thing on screen no reader can derive from
+    /// looking: an axial slice is very nearly symmetric, so with the letters
+    /// off there is nothing distinguishing left from right.
+    ///
+    /// So it is a switch rather than a removal. A reader who finds the letters
+    /// noisy on a modality where laterality is not in question — a sagittal
+    /// topogram, a screen shared for teaching — can turn them off, and the
+    /// default keeps the marker where the safety case wants it.
+    public var showOrientationLabels: Bool = true
 
     /// Whether the DICOM tag inspector sheet is visible.
     public var showDICOMInspector: Bool = false
@@ -267,9 +455,20 @@ public final class ImageViewerViewModel {
     /// own; this is what reaches the separate window.
     public private(set) var printScreenDismissRequests: Int = 0
 
+    /// Whether the print screen is standing in for the viewer's own columns.
+    ///
+    /// On macOS the print screen takes over the centre panel: the series pane,
+    /// the reading area and the print tray step aside — and their toolbar,
+    /// toggles included, goes with them — until the film is printed or put
+    /// away. One flag rather than three pane flags forced off, so the panes
+    /// come back exactly as the reader had them: nothing was collapsed, the
+    /// whole column was swapped.
+    public var isPrintScreenEmbedded: Bool = false
+
     /// Asks for the print screen to be closed.
     public func requestPrintScreenDismissal() {
         isPrintSheetPresented = false
+        isPrintScreenEmbedded = false
         printScreenDismissRequests += 1
     }
 
@@ -288,6 +487,16 @@ public final class ImageViewerViewModel {
     /// The grid mirrors the film: tile order is film-cell order. See
     /// `ImageViewerViewModel+Layout.swift`.
     public internal(set) var layout: ViewerTileLayout = .single
+
+    /// What the grid is a grid *of* — one series per tile, or one image per tile.
+    ///
+    /// Series-led is the default because it is the reading a grid is usually
+    /// wanted for and because it is what the grid has always done; the wheel
+    /// already walks a stack one tile at a time. Kept beside ``layout`` rather
+    /// than passed to ``applyLayout(_:)`` so that changing the mode re-fills the
+    /// grid on its own — the reader picks "Image" and the tiles change under
+    /// them, without having to re-choose the shape they already chose.
+    public internal(set) var layoutFill: ViewerLayoutFill = .series
 
     /// Per-tile state. Empty at 1×1, where the view model itself is the tile.
     public internal(set) var cells: [ViewerCellState] = []
@@ -309,6 +518,139 @@ public final class ImageViewerViewModel {
 
     /// Series the focused tile is showing, for the pane's "Current series" mark.
     public internal(set) var currentSeriesUID: String?
+
+    // MARK: - Saved views (presentation states)
+
+    /// Where saved views are kept. See `ImageViewerViewModel+PresentationStates.swift`.
+    ///
+    /// Nil only when the app-support directory could not be reached, in which
+    /// case the picker stays hidden rather than offering a save that would fail.
+    public internal(set) var presentationStateStore: PresentationStateStore? =
+        try? PresentationStateStore.applicationSupport()
+
+    /// Series Instance UIDs of the image series that have at least one saved
+    /// view. What the series pane's badge reads.
+    ///
+    /// Cached rather than computed: answering from the store means parsing
+    /// every presentation-state file of the study, and the pane asks once per
+    /// card per render. Refreshed where the answer can change — the study
+    /// loading, a view being saved, a view being deleted.
+    public internal(set) var savedViewSeriesUIDs: Set<String> = []
+
+    /// The presentation-state objects of the study, grouped by the image series
+    /// they describe. What the series pane's PR list reads.
+    ///
+    /// Cached alongside ``savedViewSeriesUIDs`` and refreshed by the same call,
+    /// for the same reason: the answer costs a parse of every presentation
+    /// state in the study, and the pane would ask once per card per render.
+    public internal(set) var savedViewReferencesBySeries: [String: [SavedViewReference]] = [:]
+
+    /// The saved view being shown, or nil for the image as the file describes it.
+    ///
+    /// Names the view rather than holding it: the store is the authority, and a
+    /// label survives the list being reloaded after a save or a delete.
+    public internal(set) var selectedPresentationStateLabel: String?
+
+    /// Set while a saved view is being applied.
+    ///
+    /// The tool paths clear ``selectedPresentationStateLabel`` so a moved tool
+    /// stops claiming to be a saved view; applying one moves those same tools,
+    /// and without this guard would clear its own selection.
+    var applyingPresentationState: Bool = false
+
+    /// Whatever went wrong saving or deleting a view, for the viewer to show.
+    public internal(set) var presentationStateError: String?
+
+    /// The saved views to offer the reader for the image just opened.
+    ///
+    /// Non-nil for as long as the prompt is on screen. Opening an image that
+    /// has saved views is the one moment where the choice between them and the
+    /// file's own view is live — the reader has not yet adjusted anything, so
+    /// applying a view costs them nothing, and *not* offering it means a view
+    /// they saved yesterday is quietly ignored until they think to open the
+    /// picker. Hence a prompt rather than a silent apply: which of three
+    /// windows a slice should be read at is the reader's call, not the app's.
+    public internal(set) var savedViewPrompt: SavedViewPrompt?
+
+    /// The series a saved view was last published into the study as.
+    ///
+    /// Held so the viewer can confirm what happened and name the reference ID
+    /// the reader is meant to quote — a publish that says nothing looks like a
+    /// button that does nothing, since the new series only shows in the pane
+    /// after the shell has filed it.
+    public internal(set) var publishedPresentationSeries: PresentationStateStore.PublishedSeries?
+
+    /// Bumped whenever a saved view has been published into the study.
+    ///
+    /// A counter rather than a flag, for the same reason as the print screen's
+    /// dismissal: the shell has to re-read the study's files each time, and
+    /// publishing two views in a row must ask twice.
+    public internal(set) var presentationSeriesPublishRequests: Int = 0
+
+    /// The presentation states just removed from the study's series.
+    ///
+    /// Named by SOP Instance UID, which is what the library files them under.
+    public internal(set) var unpublishedPresentationStateUIDs: [String] = []
+
+    /// Bumped whenever presentation states have been removed from the study.
+    ///
+    /// Separate from ``presentationSeriesPublishRequests`` because the shell
+    /// does the opposite thing with it: one adds instances to the library's
+    /// index, the other takes them out.
+    public internal(set) var presentationSeriesRemovalRequests: Int = 0
+
+    // MARK: - Study download
+
+    /// The question asked before the open study leaves the app as a ZIP.
+    ///
+    /// Non-nil once the archive has been built and measured: the prompt names
+    /// the ZIP's exact size so the reader confirms — or declines — knowing what
+    /// they are about to write. See `ImageViewerViewModel+StudyDownload.swift`.
+    public internal(set) var studyDownloadPrompt: StudyDownloadPrompt?
+
+    /// Set while the study's files are being staged and compressed.
+    public internal(set) var isPreparingStudyDownload: Bool = false
+
+    /// Whatever went wrong building the study's ZIP, for the viewer to show.
+    public internal(set) var studyDownloadError: String?
+
+    /// The view each image is currently being read at, keyed by SOP Instance UID.
+    ///
+    /// A choice about a slice, not about a moment: applying a saved view is the
+    /// reader saying "this is how I am reading *this* image", and stepping to
+    /// the next slice and back must not quietly undo it. So the choice is
+    /// recorded here and re-applied on arrival, and the image keeps that
+    /// reading until the reader changes it — to another view, or to the default.
+    ///
+    /// The label alone could not do this. It is a single value describing
+    /// whatever is on screen, and nothing clears it on load, so after a step it
+    /// names a view of the slice just left. Keying by image is what separates
+    /// "this image is being read at the bone window" from "the previous one was".
+    ///
+    /// An absent key means the image has no standing choice, which is what
+    /// makes it a candidate for the prompt. A key holding nil is the reader
+    /// having chosen the default view — a real answer, and one that must
+    /// survive the round trip just as a saved view does.
+    @ObservationIgnored var appliedViewByImage: [String: String?] = [:]
+
+    /// Whether the window on screen is one the reader chose.
+    ///
+    /// A window differing from the file's is worth naming a view for; one that
+    /// matches it adds nothing the file does not already say.
+    var hasReaderChosenWindow: Bool {
+        guard let file = dicomFile else { return false }
+        let fileCenter = file.dataSet.decimalStrings(for: .windowCenter)?.first?.value
+        let fileWidth = file.dataSet.decimalStrings(for: .windowWidth)?.first?.value
+        guard let fileCenter, let fileWidth else {
+            // No window in the file: any window on screen was computed or chosen.
+            return true
+        }
+        // Stored-value space, so the comparison is against the same units the
+        // viewer holds. A hair of drift is not a reader's decision.
+        let center = rescaleSlope != 0 ? (windowCenter * rescaleSlope + rescaleIntercept) : windowCenter
+        let width = rescaleSlope != 0 ? (windowWidth * rescaleSlope) : windowWidth
+        return abs(center - fileCenter) > 0.5 || abs(width - fileWidth) > 0.5
+    }
 
     /// Series shown in a tile at some point this session.
     ///
@@ -492,8 +834,35 @@ public final class ImageViewerViewModel {
         return ds.sequence(for: .waveformSequence)?.isEmpty == false
     }
 
+    /// The frame rate the file asks to be played at, if it states one.
+    ///
+    /// Three tags can carry it, and they are read in the order the standard
+    /// prefers: Recommended Display Frame Rate (0008,2144) is the display
+    /// instruction, Cine Rate (0018,0040) is the rate the equipment captured
+    /// at, and Frame Time (0018,1063) gives the interval in milliseconds, which
+    /// inverts to a rate. Returns `nil` when the file states none of them, so
+    /// the caller can keep the reader's own setting rather than reset it.
+    private static func headerFrameRate(in ds: DataSet) -> Double? {
+        func number(_ tag: Tag) -> Double? {
+            guard let raw = ds.string(for: tag)?.trimmingCharacters(in: .whitespaces),
+                  let value = Double(raw), value > 0 else { return nil }
+            return value
+        }
+
+        if let rate = number(.recommendedDisplayFrameRate) { return rate }
+        if let rate = number(.cineRate) { return rate }
+        // Frame Time is a per-frame interval in milliseconds: 33.3 ms → 30 fps.
+        if let milliseconds = number(.frameTime) { return 1000.0 / milliseconds }
+        return nil
+    }
+
     /// Shared implementation for loading parsed DICOM data.
     private func loadDICOMData(_ data: Data, path: String) throws {
+        // The series being stepped off keeps its tool arrangement — captured
+        // before anything below mutates the state it reads. See
+        // ``SeriesToolState``.
+        cacheToolStateForCurrentSeries()
+
         // Clear any prior waveform so a failed/non-waveform load can't leave a stale
         // tracing on screen. The same holds for a report or document.
         self.waveform = nil
@@ -541,6 +910,7 @@ public final class ImageViewerViewModel {
             self.currentFrameIndex = 0
             self.errorMessage = nil
             self.isLoading = false
+            detachFromToolCache()
             return
         }
 
@@ -556,6 +926,7 @@ public final class ImageViewerViewModel {
             self.currentFrameIndex = 0
             self.errorMessage = nil
             self.isLoading = false
+            detachFromToolCache()
             return
         }
 
@@ -610,12 +981,60 @@ public final class ImageViewerViewModel {
 
         // Reset viewer state
         currentFrameIndex = 0
-        playbackState = .stopped
+        playbackDirection = .forward
+        // What the file says it should be played at, before deciding whether to
+        // play it. A file with no rate keeps whatever the reader last dialled in.
+        if let headerFPS = Self.headerFrameRate(in: ds) {
+            playbackFPS = CinePlaybackHelpers.clampFPS(headerFPS)
+        }
+        // A multi-frame image opens running, so the motion is visible without
+        // the reader having to find the transport bar first. Single-frame files
+        // have nothing to play, and stay stopped.
+        playbackMode = .loop
+        playbackState = (numberOfFrames > 1 && autoPlayMultiFrame) ? .playing : .stopped
+        // Every tool back to the file's own picture first — then, if the
+        // reader has an unsaved arrangement standing over this series, that
+        // arrangement back over it. The tools are series-wide: zoom, window,
+        // rotation, the flips, inversion and colour are how the *series* is
+        // being read, so stepping slice to slice keeps them, stepping to
+        // another series swaps them for that series' own, and coming back
+        // restores them — until the arrangement is saved as a presentation
+        // state, reset, or the study closes. See ``SeriesToolState``.
         zoomLevel = 1.0
         panOffsetX = 0.0
         panOffsetY = 0.0
         rotationAngle = 0.0
+        isFlippedHorizontal = false
+        isFlippedVertical = false
         isInverted = false
+        palette = nil
+        let toolKey = Self.toolCacheKey(dataSet: ds, path: path)
+        currentToolCacheKey = toolKey
+        if let cached = toolStateBySeries[toolKey] {
+            zoomLevel = cached.zoomLevel
+            panOffsetX = cached.panOffsetX
+            panOffsetY = cached.panOffsetY
+            rotationAngle = cached.rotationAngle
+            isFlippedHorizontal = cached.isFlippedHorizontal
+            isFlippedVertical = cached.isFlippedVertical
+            isInverted = cached.isInverted
+            palette = cached.palette
+            // The window only when the reader dialled it: a header window
+            // that merely tagged along in a snapshot belongs to the slice it
+            // came from, and this slice has just applied its own above.
+            if cached.userAdjustedWindow {
+                windowCenter = cached.windowCenter
+                windowWidth = cached.windowWidth
+            }
+            toolsTouchedInSeries = true
+            userAdjustedWindowInSeries = cached.userAdjustedWindow
+        } else {
+            toolsTouchedInSeries = false
+            userAdjustedWindowInSeries = false
+        }
+        if isMultiCellLayout, cells.indices.contains(focusedCellIndex) {
+            cells[focusedCellIndex].palette = palette
+        }
 
         // Render first frame
         renderCurrentFrame()
@@ -638,6 +1057,18 @@ public final class ImageViewerViewModel {
 
         // Start progressive decode for J2K/HTJ2K files (Phase 8).
         startProgressiveDecode()
+
+        // The label describes what was on screen a moment ago, which is the
+        // slice being left. The new image's own reading is restored just below
+        // if it has one, so this only has to stop the stale name standing in
+        // for it in the meantime.
+        selectedPresentationStateLabel = nil
+
+        // The image is now identified, so its standing view can be put back —
+        // or, if it has none, its saved views offered. Harmless when the study
+        // pane has not arrived yet: it calls this too, and whichever is last
+        // does the work.
+        offerSavedViewsIfNeeded()
     }
 
     // MARK: - Decoded pixel cache
@@ -778,7 +1209,12 @@ public final class ImageViewerViewModel {
             let window = WindowSettings(center: windowCenter, width: windowWidth)
             let request = FrameRenderRequest(
                 pixelData: decoded.0, frameIndex: currentFrameIndex,
-                window: window, paletteLUT: decoded.1)
+                window: window, paletteLUT: decoded.1,
+                // The reader's colour choice. Folded into the render rather than
+                // applied after it, so the GPU display path colours in the same
+                // dispatch that windows — and so the picture on screen is the
+                // one the film composer builds from the same request.
+                pseudoColorPalette: palette)
 
             #if canImport(Metal)
             // The GPU display path, when this frame qualifies: one dispatch yields
@@ -811,7 +1247,8 @@ public final class ImageViewerViewModel {
         if image == nil, let source,
            let auto = FrameRenderService.shared.renderFrame(FrameRenderRequest(
                pixelData: source.pixelData, frameIndex: currentFrameIndex,
-               window: nil, paletteLUT: source.palette)) {
+               window: nil, paletteLUT: source.palette,
+               pseudoColorPalette: palette)) {
             image = auto
             detailedError = nil
         }
@@ -820,7 +1257,8 @@ public final class ImageViewerViewModel {
         if image == nil, let source {
             if let stored = FrameRenderService.shared.renderFrame(FrameRenderRequest(
                 pixelData: source.pixelData, frameIndex: currentFrameIndex,
-                window: file.windowSettings(), paletteLUT: source.palette)) {
+                window: file.windowSettings(), paletteLUT: source.palette,
+                pseudoColorPalette: palette)) {
                 image = stored
                 detailedError = nil
             }
@@ -953,9 +1391,22 @@ public final class ImageViewerViewModel {
         renderCurrentFrame()
     }
 
-    /// Auto-adjusts window/level from the DICOM header.
+    /// Auto-adjusts window/level back to the file's own default.
+    ///
+    /// Falls through to the measured window when the header carries no VOI.
+    /// The header is not always there — CTs written by some scanners, and most
+    /// secondary captures, have no Window Center at all — and a reset that
+    /// silently did nothing on those files is what made "Reset View" look
+    /// broken for windowing: the geometry snapped back and the drag the reader
+    /// wanted undone stayed exactly where it was. `applyDefaultWindow` is the
+    /// shared policy that `loadFile` itself opens on, so a reset lands on the
+    /// picture the file first showed rather than on a second-guess.
     public func autoWindowLevel() {
-        if let firstWindow = headerWindowSettings.first {
+        if let file = dicomFile {
+            applyDefaultWindow(for: file, slope: rescaleSlope, intercept: rescaleIntercept)
+            voiLUTFunction = headerWindowSettings.first?.function.rawValue ?? voiLUTFunction
+            renderCurrentFrame()
+        } else if let firstWindow = headerWindowSettings.first {
             applyWindowSettings(firstWindow)
         }
     }
@@ -975,6 +1426,48 @@ public final class ImageViewerViewModel {
         windowCenter = result.center
         windowWidth = result.width
         renderCurrentFrame()
+    }
+
+    // MARK: - Pseudo-colour
+
+    /// Shows the image through a pseudo-colour palette, or takes the colour off.
+    ///
+    /// Always re-renders, even on the GPU display path: the shader's transform
+    /// covers zoom, pan, rotation, flip and inversion, but colour is decided
+    /// when the window LUT is built, so a palette change is a new render rather
+    /// than a new draw. That is one dispatch, which is what the display path
+    /// costs anyway.
+    ///
+    /// - Parameter palette: the palette, or `nil` to go back to no choice at
+    ///   all. ``PseudoColorPalette/grayscale`` is the *other* grey — a choice of
+    ///   grey, which a film-wide default will not overwrite. In the viewer the
+    ///   two look identical; the difference is carried to the film with the
+    ///   mark, so a reader who deliberately kept a PET grey keeps it grey when
+    ///   the film is coloured. See ``ViewerPresentation/palette``.
+    public func applyPalette(_ palette: DICOMCore.PseudoColorPalette?) {
+        guard palette != self.palette else { return }
+        self.palette = palette
+        // The focused tile owns this choice, so it goes into `cells` now rather
+        // than at the next focus change: the tray, the film preview and the
+        // grid's own unfocused tiles all read `cells`, and until this lands
+        // they would draw the tile in the colour it had a moment ago.
+        if isMultiCellLayout, cells.indices.contains(focusedCellIndex) {
+            cells[focusedCellIndex].palette = palette
+        }
+        renderCurrentFrame()
+    }
+
+    /// Whether a palette is actually colouring the image on screen.
+    ///
+    /// False only when no palette is chosen or the chosen one is grey — grey is
+    /// not a recolouring. A frame that carries its own colours is *not* an
+    /// exception any more: the ramp is applied to its luminance, so the toolbar
+    /// showing the ramp is showing what the renderer produced. The toolbar reads
+    /// this to decide whether to look active, so it must agree with the
+    /// renderers — see `FrameRenderRequest.readerPalette`.
+    public var isPseudoColored: Bool {
+        guard let palette else { return false }
+        return !palette.isGrayscale
     }
 
     /// Toggles grayscale inversion.
@@ -1074,11 +1567,28 @@ public final class ImageViewerViewModel {
     }
 
     /// Resets the image back to how it looked when it was first opened: zoom,
-    /// pan, rotation, flip, window/level, and inversion all undone.
+    /// pan, rotation, flip, window/level, inversion, colour and the drawn
+    /// annotations all undone — and the series' remembered tool arrangement
+    /// with them, so stepping away and back does not put back what was just
+    /// reset.
     public func resetView() {
         resetTransformations()
         autoWindowLevel()
         isInverted = false
+        // The palette goes with the inversion, and for the reader's reason
+        // rather than a structural one: both are ways of mapping grey to what
+        // the eye sees, and "back to how it was opened" means the file's own
+        // picture. A reset that left the image in Hot Iron would be answering a
+        // different question from the one the button asks.
+        palette = nil
+        if isMultiCellLayout, cells.indices.contains(focusedCellIndex) {
+            cells[focusedCellIndex].palette = nil
+        }
+        // The drawings too: they are tool work like the rest, and a reset
+        // that kept the arrows would not be the original image the button
+        // promises.
+        clearDrawnAnnotationsForCurrentImage()
+        forgetSeriesToolState()
         renderCurrentFrame()
     }
 
@@ -1092,18 +1602,36 @@ public final class ImageViewerViewModel {
         isFlippedVertical = false
     }
 
-    /// Fits the image to the view.
+    /// Fits the image to the view: the whole picture on screen, re-centred.
+    ///
+    /// Zoom here is *relative to the fitted image*, not a pixel ratio — every
+    /// display path aspect-fits the frame before applying zoom, so 1.0 already
+    /// means "the whole picture, as large as the viewport allows". The GPU path
+    /// does the fit in its transform (see `DisplayPresentation.transform`), and
+    /// the CPU path does it with `.aspectRatio(contentMode: .fit)` ahead of the
+    /// `.scaleEffect`.
+    ///
+    /// This used to assign `GestureHelpers.fitZoom` — a *pixel-space* answer,
+    /// `min(viewW/imageW, viewH/imageH)` — into that fit-relative field, so the
+    /// fit was applied twice and the button shrank the image instead of fitting
+    /// it. A 4096-wide CT in a 900pt viewport landed at 0.22× and all but
+    /// vanished; it only looked right when the image happened to be viewport-
+    /// sized. `fitZoom` is correct in itself and still serves callers working in
+    /// pixel space — it is simply not what this field holds.
+    ///
+    /// The parameters are kept so the call sites need not change and so the
+    /// degenerate-viewport guard below has something to check.
     ///
     /// - Parameters:
     ///   - viewWidth: Available view width.
     ///   - viewHeight: Available view height.
     public func fitToView(viewWidth: Double, viewHeight: Double) {
-        zoomLevel = GestureHelpers.fitZoom(
-            imageWidth: Double(imageColumns),
-            imageHeight: Double(imageRows),
-            viewWidth: viewWidth,
-            viewHeight: viewHeight
-        )
+        // A viewport that has not been laid out yet cannot be fitted to. Leaving
+        // the arrangement alone is the honest answer: resetting zoom against a
+        // zero-sized view would move the picture on the reader's behalf for a
+        // measurement that was never taken.
+        guard viewWidth > 0, viewHeight > 0 else { return }
+        zoomLevel = GestureHelpers.defaultZoom
         panOffsetX = 0.0
         panOffsetY = 0.0
     }
@@ -1208,6 +1736,26 @@ public final class ImageViewerViewModel {
     public var isMonochrome: Bool {
         let pi = photometricInterpretation.uppercased()
         return pi == "MONOCHROME1" || pi == "MONOCHROME2"
+    }
+
+    /// Whether the frame carries its own colours, and so has nothing for a
+    /// pseudo-colour ramp to say.
+    ///
+    /// Photometric Interpretation is asked first because it is the tag that
+    /// actually states this, and it catches the two cases a sample count misses.
+    /// `PALETTE COLOR` stores one sample per pixel through its own LUT — colour
+    /// already, though a sample count alone would call it grey and offer a ramp
+    /// that the renderer then discards. And an ultrasound whose Samples per
+    /// Pixel sits in the per-frame functional groups rather than at the top of
+    /// the dataset reads back as the default 1, which would grey out the control
+    /// on a genuinely monochrome image — the common shape behind "the palette is
+    /// dead on US". The sample count stays as the fallback for a file whose
+    /// Photometric Interpretation is missing or unrecognised.
+    public var carriesOwnColor: Bool {
+        if let pi = DICOMCore.PhotometricInterpretation.parse(photometricInterpretation) {
+            return pi.isColor
+        }
+        return samplesPerPixel >= 3
     }
 
     /// Human-readable series position text, e.g. "3 / 12".

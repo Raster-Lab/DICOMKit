@@ -68,7 +68,14 @@ public struct PrintSCPSimulator: Sendable {
         guard !images.isEmpty else { return [] }
 
         let plan = request.plan(forImageCount: images.count)
-        let composer = FilmComposer(configuration: settings.makeComposerConfiguration())
+        // FR-003: the job's scaling mode composes here exactly as it would
+        // print — fill and true size through the wire attributes each image
+        // box carries, stretch and alignment as the local placement they are.
+        let boxOptions = request.imageBoxOptions(for: images)
+        let composer = FilmComposer(
+            configuration: settings.makeComposerConfiguration().withPlacement(
+                alignment: request.cellAlignment,
+                stretch: request.scalingMode == .stretch))
         let sessionUID = UIDGenerator.generateSOPInstanceUID().value
         let session = FilmSession(
             sopInstanceUID: sessionUID,
@@ -78,7 +85,14 @@ public struct PrintSCPSimulator: Sendable {
             filmDestination: request.filmDestination,
             filmSessionLabel: request.sessionLabel)
         let layout = PrintLayout(rows: plan.layout.rows, columns: plan.layout.columns)
-        let sopClassUID = request.colorMode == .color
+        // Named after the pixels, not the request. A saved film is what the
+        // printer would have received, and the SCU moves a job carrying colour
+        // frames onto Basic Colour whatever the request said
+        // (`PrintWorkflow.reconcilingColorMode`) — a box labelled grayscale
+        // while holding three samples per pixel is a state no real printer
+        // could be in, and it makes the saved film disagree with the print.
+        let hasColorFrames = images.contains { $0.descriptor.samplesPerPixel > 1 }
+        let sopClassUID = (request.colorMode == .color || hasColorFrames)
             ? basicColorImageBoxSOPClassUID
             : basicGrayscaleImageBoxSOPClassUID
 
@@ -87,12 +101,16 @@ public struct PrintSCPSimulator: Sendable {
             let indices = plan.imageIndices(onFilm: filmIndex)
             let boxes = (0..<plan.cellsPerFilm).map { cell -> ReceivedImageBox in
                 let imageIndex = indices.lowerBound + cell
+                let box = imageIndex < boxOptions.count
+                    ? boxOptions[imageIndex] : PrintImageBoxOptions()
                 return ReceivedImageBox(
                     sopInstanceUID: UIDGenerator.generateSOPInstanceUID().value,
                     sopClassUID: sopClassUID,
                     content: ImageBoxContent(
                         imagePosition: UInt16(cell + 1),
-                        polarity: request.polarity),
+                        polarity: request.polarity,
+                        requestedImageSize: box.requestedImageSize,
+                        requestedDecimateCropBehavior: box.requestedDecimateCropBehavior),
                     image: imageIndex < indices.upperBound ? images[imageIndex].descriptor : nil)
             }
 

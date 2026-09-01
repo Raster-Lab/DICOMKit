@@ -103,6 +103,7 @@ struct FilmLayoutGalleryView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .interactiveRow()
                 }
             }
         }
@@ -161,7 +162,10 @@ struct FilmLayoutGalleryView: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
-        .help("\(band.displayName) — \(band.displayFormat.summary)")
+        .interactiveControl(cornerRadius: 6, horizontal: 3, vertical: 3)
+        // `.railTooltip`, not `.help` — a plain button's tooltip lands on a
+        // wrapper the pointer never enters. See `railTooltip`.
+        .railTooltip("\(band.displayName) — \(band.displayFormat.summary)")
         .accessibilityLabel("\(band.displayName), \(band.cellCount) images")
         .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
     }
@@ -255,7 +259,8 @@ struct FilmLayoutGalleryView: View {
             }
         }
         .buttonStyle(.plain)
-        .help(option.displayName)
+        .interactiveControl(cornerRadius: 6, horizontal: 3, vertical: 3)
+        .railTooltip(option.displayName)
         .accessibilityLabel(option.displayName)
         .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
     }
@@ -286,7 +291,8 @@ struct FilmLayoutGalleryView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(help)
+        .interactiveControl(cornerRadius: 7, horizontal: 2, vertical: 2)
+        .railTooltip(help)
         .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
     }
 

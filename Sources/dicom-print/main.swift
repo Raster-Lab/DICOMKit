@@ -289,11 +289,16 @@ struct SendCommand: ParsableCommand {
     @Option(name: .long, help: "Explicit VOI window width (requires --window-center)")
     var windowWidth: Double?
 
-    @Option(name: .long, help: "Grayscale output bit depth: 8, 12, or 16 (default: 8; >8 sends 16-bit-allocated P-Values)")
+    @Option(name: .long, help: "Grayscale output bit depth: 8 or 12 (default: 8). PS3.3 Table C.13-3 allows Bits Stored of 8 or 12 only; 12 sends 12-in-16 P-Values. A higher value is clamped, not refused.")
     var bitDepth: Int = 8
 
     @Option(name: .long, help: "Presentation LUT shape: identity, inverse, lin-od (default: none)")
     var presentationLut: PresentationLUTOption?
+
+    @Option(name: .long, help: ArgumentHelp(
+        "Pseudo-colour palette baked into the pixels (default: none, grayscale).",
+        discussion: PaletteOption.discussion))
+    var palette: PaletteOption?
 
     @Option(name: .long, help: "Annotation text to place on the film (repeatable; position is order given). Requires --annotation-format.")
     var annotate: [String] = []
@@ -364,6 +369,7 @@ struct SendCommand: ParsableCommand {
                 return WindowSettings(center: center, width: width)
             }(),
             bitDepth: bitDepth,
+            palette: palette?.palette,
             verifyFirst: verifyFirst,
             checkStatus: checkStatus,
             retries: retries,
@@ -401,6 +407,14 @@ struct SendCommand: ParsableCommand {
             fprintln("Color Mode: \(color.printColorMode.rawValue)")
             if let presentationLut = presentationLut {
                 fprintln("Presentation LUT: \(presentationLut.shape.rawValue)")
+            }
+            if let palette = palette?.palette, !palette.isGrayscale {
+                // The UID when the standard defines one: it is the only durable
+                // name for the palette, and the film itself cannot carry it.
+                let identity = palette.wellKnownSOPInstanceUID.map { " [\($0)]" } ?? ""
+                fprintln("Palette: \(palette.displayName)\(identity)")
+                fprintln("  Colour prints at 8-bit RGB; --bit-depth applies to "
+                       + "grayscale film only.")
             }
             if !printAnnotations.isEmpty, let fmt = annotationFormat {
                 fprintln("Annotations: \(printAnnotations.count) (format \(fmt))")
@@ -1065,6 +1079,42 @@ struct LayoutOption: ExpressibleByArgument {
     }
 }
 
+/// A pseudo-colour palette named on the command line.
+///
+/// The cases are not written out: they are the shared
+/// ``DICOMCore/PseudoColorPalette``, lower-cased and hyphenated, so the CLI
+/// cannot come to disagree with the app about which palettes exist or what they
+/// are called. Adding a palette to the shared type adds it here.
+struct PaletteOption: ExpressibleByArgument {
+    let palette: PseudoColorPalette
+
+    /// `HOT_METAL_BLUE` → `hot-metal-blue`.
+    static func token(for palette: PseudoColorPalette) -> String {
+        palette.rawValue.lowercased().replacingOccurrences(of: "_", with: "-")
+    }
+
+    init?(argument: String) {
+        let wanted = argument.lowercased()
+        guard let match = PseudoColorPalette.allCases.first(where: {
+            Self.token(for: $0) == wanted
+        }) else { return nil }
+        self.palette = match
+    }
+
+    /// The palettes, grouped, for `--help`. Grouped for the same reason the
+    /// picker is: the DICOM heading is a promise the others cannot make.
+    static var discussion: String {
+        PseudoColorPalette.catalog.map { entry in
+            let names = entry.palettes.map(token(for:)).joined(separator: ", ")
+            return "\(entry.group.title): \(names)"
+        }.joined(separator: "\n")
+        + "\n\nColour is baked into 8-bit RGB before sending: DICOM Print "
+        + "Management cannot name a palette to a printer (PS3.3 Table C.13-5 "
+        + "allows only RGB in a Basic Color Image Sequence). --bit-depth and a "
+        + "lin-od presentation LUT therefore apply to grayscale film only."
+    }
+}
+
 enum PresentationLUTOption: String, ExpressibleByArgument {
     case identity
     case inverse
@@ -1073,7 +1123,7 @@ enum PresentationLUTOption: String, ExpressibleByArgument {
     var shape: PresentationLUTShape {
         switch self {
         case .identity: return .identity
-        case .inverse: return .inverse
+        case .inverse: return .inverseRendered
         case .linOD: return .linearOpticalDensity
         }
     }

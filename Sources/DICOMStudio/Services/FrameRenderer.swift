@@ -53,7 +53,10 @@ enum FrameRenderer {
                 String(presentation.rotationDegrees),
                 presentation.flipHorizontal ? "H" : "",
                 presentation.flipVertical ? "V" : "",
-                presentation.invert ? "I" : ""
+                presentation.invert ? "I" : "",
+                // The palette recolours every pixel, so two cells identical in
+                // every other respect are still two different pictures.
+                presentation.palette?.rawValue ?? ""
             ])
         }
         return parts.joined(separator: "|")
@@ -118,6 +121,14 @@ enum FrameRenderer {
                 paletteLUT: source.paletteLUT
             ))
             guard var image = rendered else { return nil }
+
+            // Colour before the overlays and the arrangement, matching the film:
+            // the print path palettises the windowed level and *then* burns
+            // overlays over it, so doing it in the other order here would tint
+            // the burnt-in graphics on screen but not on paper.
+            if let palette = presentation?.palette, !palette.isGrayscale {
+                image = colorized(image, palette: palette) ?? image
+            }
 
             // Overlay planes go on before the frame is cropped, turned or
             // scaled: they are defined against the image's own pixel matrix, so
@@ -189,7 +200,8 @@ enum FrameRenderer {
         frameIndex: Int,
         windowCenter: Double?,
         windowWidth: Double?,
-        windowSpace: PrintWindowSpace = .storedValues
+        windowSpace: PrintWindowSpace = .storedValues,
+        palette: DICOMCore.PseudoColorPalette? = nil
     ) async -> DisplayFrameTexture? {
         guard let renderer = FrameRenderService.shared.displayRenderer,
               let source = await FrameSourceCache.shared.source(forPath: path) else { return nil }
@@ -215,7 +227,13 @@ enum FrameRenderer {
                 pixelData: source.pixelData,
                 frameIndex: frameIndex,
                 window: window,
-                paletteLUT: source.paletteLUT
+                paletteLUT: source.paletteLUT,
+                // The reader's pseudo-colour choice, which is *pixels* and not
+                // an arrangement: the shader can turn, crop and invert a cell
+                // but it cannot colour one, so unlike zoom and rotation this has
+                // to be in the render. Without it the film preview drew every
+                // cell grey while the film itself printed in colour.
+                pseudoColorPalette: palette
             ))
         }.value
     }
@@ -233,6 +251,84 @@ enum FrameRenderer {
         return DICOMImageExporter.determineWindowSettings(
             from: source.file, pixelData: source.pixelData, frameIndex: frameIndex,
             windowCenter: nil, windowWidth: nil)
+    }
+
+    /// The source frame's own pixel dimensions.
+    ///
+    /// Needed to restore a stored presentation state onto a film cell: Displayed
+    /// Area is a rectangle of *source* pixels, so turning it back into a zoom
+    /// and a pan takes the image's real size — guessing it from the cell would
+    /// put the crop somewhere else on the anatomy. Read through the same cache
+    /// the renderer uses, so a cell already on screen costs nothing.
+    static func pixelSize(path: String) async -> CGSize? {
+        guard let source = await FrameSourceCache.shared.source(forPath: path) else { return nil }
+        let descriptor = source.pixelData.descriptor
+        guard descriptor.columns > 0, descriptor.rows > 0 else { return nil }
+        return CGSize(width: Double(descriptor.columns), height: Double(descriptor.rows))
+    }
+
+    // MARK: - Pseudo-colour
+
+    /// Recolours a rendered grayscale frame through a palette.
+    ///
+    /// The preview's counterpart to `ImagePreprocessor.colorize`, and it has to
+    /// stay its counterpart: this is the one screen whose whole job is to
+    /// promise what the film will look like, so the two must index the same
+    /// table the same way. Both take the displayed level — after the window,
+    /// after polarity — and look it up directly.
+    ///
+    /// Returns `nil` if the frame is not the 8-bit grayscale the renderer
+    /// produces for a monochrome source, in which case the caller keeps the
+    /// original: a colour source has its own colours, and a palette has nothing
+    /// to say about them.
+    static func colorized(
+        _ image: CGImage, palette: DICOMCore.PseudoColorPalette
+    ) -> CGImage? {
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return nil }
+
+        // Read the frame back as 8-bit grey regardless of how it was rendered,
+        // so the lookup has one predictable input.
+        var grey = [UInt8](repeating: 0, count: width * height)
+        guard let greyContext = CGContext(
+            data: &grey,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+        greyContext.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let table = palette.entries()
+        let lastIndex = table.count - 1
+        // RGBX rather than packed RGB: CoreGraphics bitmap contexts do not
+        // support 24 bits per pixel, which is the same reason `FilmComposer`
+        // draws colour into a 32-bit buffer.
+        var rgbx = [UInt8](repeating: 0, count: width * height * 4)
+        for pixel in 0..<(width * height) {
+            let entry = table[min(lastIndex, Int(grey[pixel]))]
+            let base = pixel * 4
+            rgbx[base] = entry.red
+            rgbx[base + 1] = entry.green
+            rgbx[base + 2] = entry.blue
+            rgbx[base + 3] = 255
+        }
+
+        return rgbx.withUnsafeMutableBytes { raw -> CGImage? in
+            guard let context = CGContext(
+                data: raw.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            ) else { return nil }
+            return context.makeImage()
+        }
     }
 
     // MARK: - Arrangement
@@ -258,12 +354,15 @@ enum FrameRenderer {
         let flipV = presentation.flipVertical
 
         if rotation != 0 || flipH || flipV {
-            // The turned box, so a free angle keeps its corners instead of being
-            // cut to the crop's own rectangle — the same shape the film carries.
-            let turned = presentation.turnedSize(
-                width: Double(result.width), height: Double(result.height))
-            let outWidth = max(1, Int(turned.width.rounded()))
-            let outHeight = max(1, Int(turned.height.rounded()))
+            // A quarter turn swaps the sides; any other angle keeps the crop's
+            // own rectangle and lets the corners fall outside it. The picture
+            // turns about its centre at the size it already had — the way the
+            // viewer turns one, and the way the film's resampler and the display
+            // shader now compose one. Growing to the turned bounding box instead
+            // would keep those corners by shrinking the anatomy (√2 at 45°).
+            let odd = presentation.isQuarterTurn && presentation.quarterTurns % 2 == 1
+            let outWidth = max(1, odd ? result.height : result.width)
+            let outHeight = max(1, odd ? result.width : result.height)
             guard let context = CGContext(
                 data: nil,
                 width: outWidth,
@@ -275,10 +374,17 @@ enum FrameRenderer {
             ) else { return result }
 
             // CoreGraphics' origin is bottom-left while the viewer rotates in
-            // screen space, so the clockwise turn is negated here.
+            // screen space, so the clockwise turn is negated here — actually
+            // negated, in the call. A positive `rotate(by:)` in a bottom-left
+            // context comes out *counterclockwise* once the bitmap is shown
+            // top-down: mirrors survive the flip between the two spaces, but a
+            // rotation conjugated through it reverses. This line carried the
+            // angle un-negated with only the comment claiming otherwise, and
+            // every thumbnail and CPU-drawn cell turned its image the opposite
+            // way from the viewer, twice the angle apart.
             context.translateBy(x: Double(outWidth) / 2, y: Double(outHeight) / 2)
             context.scaleBy(x: flipH ? -1 : 1, y: flipV ? -1 : 1)
-            context.rotate(by: rotation * .pi / 180)
+            context.rotate(by: -rotation * .pi / 180)
             context.draw(result, in: CGRect(
                 x: -Double(result.width) / 2,
                 y: -Double(result.height) / 2,

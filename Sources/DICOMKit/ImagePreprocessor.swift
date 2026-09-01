@@ -143,13 +143,19 @@ public actor ImagePreprocessor {
     ///   - frameIndex: Zero-based frame to prepare
     ///   - colorMode: Target color mode for printing
     ///   - windowSettings: Optional window settings (if nil, auto-calculated)
+    ///   - voiLUT: A table-form VOI LUT to apply *instead of* a window. The
+    ///     caller resolves the precedence (an explicit user window beats the
+    ///     table, the table beats the header's Window Center/Width — PS3.3
+    ///     C.11.2); passing both is a caller error and the LUT wins.
     public func prepareForPrint(
         pixelData: PixelData,
         dataSet: DataSet,
         frameIndex: Int = 0,
         colorMode: PrintColorMode,
         windowSettings: WindowSettings? = nil,
-        outputBitDepth: Int = 8
+        outputBitDepth: Int = 8,
+        voiLUT: GrayscaleLUT? = nil,
+        palette: PseudoColorPalette? = nil
     ) async throws -> PreparedImage {
         let descriptor = pixelData.descriptor
         guard frameIndex >= 0, frameIndex < descriptor.numberOfFrames else {
@@ -171,7 +177,9 @@ public actor ImagePreprocessor {
                 colorMode: colorMode,
                 windowSettings: windowSettings,
                 frameIndex: frameIndex,
-                outputBitDepth: outputBitDepth
+                outputBitDepth: outputBitDepth,
+                voiLUT: voiLUT,
+                palette: palette
             )
         } else if photometric.isPaletteColor {
             return try await preprocessPaletteColorImage(
@@ -179,14 +187,16 @@ public actor ImagePreprocessor {
                 descriptor: descriptor,
                 dataSet: dataSet,
                 colorMode: colorMode,
-                frameIndex: frameIndex
+                frameIndex: frameIndex,
+                palette: palette
             )
         } else if photometric.isColor {
             return try await preprocessColorImage(
                 pixelData: pixelData,
                 descriptor: descriptor,
                 colorMode: colorMode,
-                frameIndex: frameIndex
+                frameIndex: frameIndex,
+                palette: palette
             )
         } else {
             throw ImagePreprocessingError.unsupportedPhotometricInterpretation(photometric.rawValue)
@@ -202,7 +212,9 @@ public actor ImagePreprocessor {
         colorMode: PrintColorMode,
         windowSettings: WindowSettings?,
         frameIndex: Int = 0,
-        outputBitDepth: Int = 8
+        outputBitDepth: Int = 8,
+        voiLUT: GrayscaleLUT? = nil,
+        palette: PseudoColorPalette? = nil
     ) async throws -> PreparedImage {
         let width = descriptor.columns
         let height = descriptor.rows
@@ -219,31 +231,62 @@ public actor ImagePreprocessor {
             count: totalPixels
         )
         
-        // Apply rescale slope and intercept
-        pixelValues = applyRescale(
-            to: pixelValues,
-            dataSet: dataSet
-        )
-        
-        // Determine window settings
-        let window: WindowSettings
-        if let providedWindow = windowSettings {
-            window = providedWindow
+        // Modality transform. A table-form Modality LUT Sequence *replaces*
+        // the rescale pair — PS3.3 C.11.1 makes them mutually exclusive, so
+        // applying both would rescale twice.
+        if let modalityLUT = dataSet.modalityLUT() {
+            pixelValues = pixelValues.map { modalityLUT.value(for: $0) }
         } else {
-            // Auto-calculate from pixel range
-            let minVal = pixelValues.min() ?? 0.0
-            let maxVal = pixelValues.max() ?? 1.0
-            let center = (minVal + maxVal) / 2.0
-            let width = maxVal - minVal
-            window = WindowSettings(center: center, width: max(1.0, width))
+            pixelValues = applyRescale(
+                to: pixelValues,
+                dataSet: dataSet
+            )
         }
-        
-        // Apply window/level transformation
-        var normalizedPixels = pixelValues.map { window.apply(to: $0) }
+
+        // VOI transform: a table LUT when the caller resolved to one,
+        // otherwise a window — provided, or auto-stretched over the frame.
+        var normalizedPixels: [Double]
+        if let voiLUT {
+            normalizedPixels = pixelValues.map { voiLUT.normalized($0) }
+        } else {
+            let window: WindowSettings
+            if let providedWindow = windowSettings {
+                window = providedWindow
+            } else {
+                // Auto-calculate from pixel range
+                let minVal = pixelValues.min() ?? 0.0
+                let maxVal = pixelValues.max() ?? 1.0
+                let center = (minVal + maxVal) / 2.0
+                let width = maxVal - minVal
+                window = WindowSettings(center: center, width: max(1.0, width))
+            }
+
+            // Apply window/level transformation
+            normalizedPixels = pixelValues.map { window.apply(to: $0) }
+        }
         
         // Handle MONOCHROME1 polarity (invert)
         if descriptor.photometricInterpretation == .monochrome1 {
             normalizedPixels = normalizedPixels.map { 1.0 - $0 }
+        }
+
+        // A pseudo-colour palette turns the windowed grey into colour, and from
+        // here the frame is RGB: it leaves by a different door, below.
+        //
+        // This is the last point at which the value is still the normalised
+        // [0, 1] level the palette indexes — after the modality and VOI
+        // transforms and after polarity, so the colour lands on what the reader
+        // actually sees rather than on raw stored values.
+        //
+        // Grey palettes deliberately fall through to the grayscale path: they
+        // have no colour to add, and taking the RGB door would cost the film its
+        // deep-grayscale bit depth and its density curve for nothing.
+        if let palette, !palette.isGrayscale {
+            return Self.colorize(
+                normalizedPixels,
+                palette: palette,
+                width: width,
+                height: height)
         }
         
         // Convert to unsigned P-Values at the requested depth: 8-bit stays one
@@ -279,13 +322,150 @@ public actor ImagePreprocessor {
         )
     }
     
+    // MARK: - Pseudo-colour
+
+    /// Turns windowed grey levels into an 8-bit RGB frame through a palette.
+    ///
+    /// The palette is baked into the pixels here because there is nowhere else
+    /// to put it: PS3.3 Table C.13-5 enumerates `RGB` as the only photometric
+    /// interpretation a Basic Color Image Sequence may carry, and the word
+    /// "palette" does not appear anywhere in the Print Management service
+    /// (PS3.4 Annex H). A printer therefore never learns which palette was
+    /// chosen — only the colours it produced. The choice itself is recorded in
+    /// the print audit trail, which is the only place it survives.
+    ///
+    /// Eight bits per sample is the standard's ceiling for colour print, not a
+    /// shortcut: Bits Allocated and Bits Stored are both fixed at 8 for the
+    /// colour image box. A film that wanted 12- or 16-bit greys gives that up
+    /// when it takes colour, and the print sheet says so before the job is sent.
+    static func colorize(
+        _ normalizedPixels: [Double],
+        palette: PseudoColorPalette,
+        width: Int,
+        height: Int
+    ) -> PreparedImage {
+        // Resolved once: the table is 256 fixed entries, and looking it up per
+        // pixel through the enum would rebuild it for every pixel on the sheet.
+        let table = palette.entries()
+        let lastIndex = table.count - 1
+
+        var rgb = Data(count: normalizedPixels.count * 3)
+        rgb.withUnsafeMutableBytes { raw in
+            guard let out = raw.bindMemory(to: UInt8.self).baseAddress else { return }
+            for (offset, value) in normalizedPixels.enumerated() {
+                // The window has already mapped the frame into [0, 1]; anything
+                // outside it is a value the window clipped, and clamping is what
+                // the grey path does with it too.
+                let clamped = value.isFinite ? Swift.min(Swift.max(value, 0), 1) : 0
+                let index = Swift.min(lastIndex, Int(clamped * Double(lastIndex) + 0.5))
+                let entry = table[index]
+                let base = offset * 3
+                out[base] = entry.red
+                out[base + 1] = entry.green
+                out[base + 2] = entry.blue
+            }
+        }
+
+        return PreparedImage(
+            pixelData: rgb,
+            width: width,
+            height: height,
+            bitsAllocated: 8,
+            samplesPerPixel: 3,
+            photometricInterpretation: "RGB",
+            bitsStored: 8
+        )
+    }
+
+    /// Recolours an already-RGB frame through a pseudo-colour palette.
+    ///
+    /// A palette indexes a *scalar*, and a colour frame has three samples per
+    /// pixel, so there is nothing to index until the samples are reduced to one.
+    /// That reduction is Rec.601 luminance — the same coefficients
+    /// ``convertRGBToGrayscale`` already uses, so a palettised colour frame and
+    /// a grey one agree about which pixels are bright.
+    ///
+    /// The source is never modified: `rgb` is read, a new buffer is returned,
+    /// and the caller's `PixelData` is untouched. Nothing is written back to the
+    /// data set, so the stored pixels a `--raw` job sends stay exactly as they
+    /// were on disk.
+    ///
+    /// This is lossy in a way the monochrome path is not, and deliberately so:
+    /// the original hue is gone from the *output*, which for a colour-Doppler
+    /// ultrasound means the velocity encoding no longer reads. Colour sources
+    /// therefore only reach here when a palette was explicitly chosen for the
+    /// job — never by default.
+    static func colorizeRGB(
+        _ rgb: Data,
+        palette: PseudoColorPalette,
+        width: Int,
+        height: Int
+    ) throws -> PreparedImage {
+        let totalPixels = width * height
+        guard rgb.count >= totalPixels * 3 else {
+            throw ImagePreprocessingError.insufficientPixelData
+        }
+
+        var levels = [Double](repeating: 0, count: totalPixels)
+        rgb.withUnsafeBytes { raw in
+            guard let bytes = raw.bindMemory(to: UInt8.self).baseAddress else { return }
+            for i in 0..<totalPixels {
+                let offset = i * 3
+                let luminance = 0.299 * Double(bytes[offset])
+                    + 0.587 * Double(bytes[offset + 1])
+                    + 0.114 * Double(bytes[offset + 2])
+                // `colorize` indexes a normalised [0, 1] level, and 8-bit
+                // samples are already the full range — no window applies to a
+                // colour frame, whose samples are display values by definition.
+                levels[i] = luminance / 255.0
+            }
+        }
+
+        return Self.colorize(levels, palette: palette, width: width, height: height)
+    }
+
+    /// Reduces a prepared RGB frame to 8-bit MONOCHROME2 P-Values.
+    ///
+    /// Deliberately independent of the source ``PixelDataDescriptor``: by this
+    /// point the frame is the palette's output, three samples per pixel,
+    /// whatever the source was. Driving the reduction from the source
+    /// descriptor would reject a PALETTE COLOR frame, which carries one sample
+    /// per pixel on disk and three here.
+    static func flattenToGrayscale(_ image: PreparedImage) throws -> PreparedImage {
+        let totalPixels = image.width * image.height
+        guard image.pixelData.count >= totalPixels * 3 else {
+            throw ImagePreprocessingError.insufficientPixelData
+        }
+        var gray = [UInt8](repeating: 0, count: totalPixels)
+        image.pixelData.withUnsafeBytes { raw in
+            guard let bytes = raw.bindMemory(to: UInt8.self).baseAddress else { return }
+            for i in 0..<totalPixels {
+                let offset = i * 3
+                let value = 0.299 * Double(bytes[offset])
+                    + 0.587 * Double(bytes[offset + 1])
+                    + 0.114 * Double(bytes[offset + 2])
+                gray[i] = UInt8(Swift.min(Swift.max(value, 0.0), 255.0))
+            }
+        }
+        return PreparedImage(
+            pixelData: Data(gray),
+            width: image.width,
+            height: image.height,
+            bitsAllocated: 8,
+            samplesPerPixel: 1,
+            photometricInterpretation: "MONOCHROME2",
+            bitsStored: 8
+        )
+    }
+
     // MARK: - Color Image Processing
     
     private func preprocessColorImage(
         pixelData: PixelData,
         descriptor: PixelDataDescriptor,
         colorMode: PrintColorMode,
-        frameIndex: Int = 0
+        frameIndex: Int = 0,
+        palette: PseudoColorPalette? = nil
     ) async throws -> PreparedImage {
         let width = descriptor.columns
         let height = descriptor.rows
@@ -325,6 +505,26 @@ public actor ImagePreprocessor {
                 }
                 frameData = Self.convertYBRFullToRGB(frameData)
             }
+        }
+
+        // A palette recolours the frame the moment the samples are RGB — after
+        // the YBR conversion above, so YBR and RGB sources take the same door,
+        // and before the grayscale branch below, which would otherwise flatten
+        // the very colours the palette just produced.
+        //
+        // Grey palettes fall through untouched, matching the monochrome path:
+        // they add no colour, so the ordinary colour handling is already right.
+        if let palette, !palette.isGrayscale {
+            let colorized = try Self.colorizeRGB(
+                try normalizeColorData(frameData: frameData, descriptor: descriptor),
+                palette: palette,
+                width: width,
+                height: height)
+            // A grayscale printer still cannot take the RGB the palette made;
+            // the film's own limit is applied on the wire, as it is for any
+            // other colour frame.
+            guard colorMode == .grayscale else { return colorized }
+            return try Self.flattenToGrayscale(colorized)
         }
 
         // For color images, we may need to convert based on printer capabilities
@@ -368,7 +568,8 @@ public actor ImagePreprocessor {
         descriptor: PixelDataDescriptor,
         dataSet: DataSet,
         colorMode: PrintColorMode,
-        frameIndex: Int = 0
+        frameIndex: Int = 0,
+        palette: PseudoColorPalette? = nil
     ) async throws -> PreparedImage {
         // Each stored value indexes the Red/Green/Blue Palette Color Lookup
         // Tables (PS3.3 C.7.6.3.1.5); the LUT module is required for PALETTE
@@ -407,6 +608,20 @@ public actor ImagePreprocessor {
             rgbBytes.append(r)
             rgbBytes.append(g)
             rgbBytes.append(b)
+        }
+
+        // A pseudo-colour palette replaces the file's own colours rather than
+        // compounding with them. The file's LUT has already run — that is what
+        // produced `rgbBytes` — so the reader's choice lands on the colours the
+        // image actually shows, and the two tables never stack.
+        //
+        // The file's LUT is not modified and nothing is written back: this is a
+        // display choice over a copy, exactly as it is for a monochrome source.
+        if let palette, !palette.isGrayscale {
+            let colorized = try Self.colorizeRGB(
+                Data(rgbBytes), palette: palette, width: width, height: height)
+            guard colorMode == .grayscale else { return colorized }
+            return try Self.flattenToGrayscale(colorized)
         }
 
         if colorMode == .grayscale {

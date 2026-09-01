@@ -591,14 +591,15 @@ struct PrintSCPEndToEndTests {
 
         // The view model exposes two independently-delivered signals: `films` (the
         // record array, from the sink stream) and `filmCount` (the `.filmPrinted`
-        // counter). The earlier poll waited on `films` but the assertions also read
-        // `filmCount`, so under load the counter could still be 0 when the array was
-        // already populated — a fast, misleading failure. Poll until BOTH have landed
-        // (or the ceiling), so the wait matches everything the assertions check.
-        var waited = 0
-        while (viewModel.films.isEmpty || viewModel.filmCount < 1), waited < 600 {
+        // counter). Waiting on `films` alone can arrive before the counter it is
+        // asserted against, so both are waited for. The wait is against a deadline
+        // rather than a fixed number of sleeps: under a loaded run the sleeps
+        // themselves are what get delayed, so a tick budget expires in far less
+        // wall-clock time than it reads as.
+        let deadline = ContinuousClock.now + .seconds(30)
+        while viewModel.films.isEmpty || viewModel.filmCount < 1,
+              ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(50))
-            waited += 1
         }
 
         #expect(viewModel.films.count == 1)

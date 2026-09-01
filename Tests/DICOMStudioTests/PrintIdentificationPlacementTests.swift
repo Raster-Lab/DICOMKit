@@ -3,11 +3,12 @@
 //
 // Where a print job puts the patient's name.
 //
-// The property under test: a film states its identification once only when the
-// whole sheet is one study, and whatever the film does *not* say at its foot it
-// says under each image. Between the two of them every marked frame on a film
-// is always identifiable — a sheet that says nothing about its patient is the
-// one outcome none of these paths may produce.
+// The property under test: every marked frame on a film carries its own
+// identification, burned into the corners of the picture it belongs to. It
+// states the technique of that image as well as the patient, so there is nothing
+// one line at the foot of a sheet could say for all of them — and a sheet that
+// says nothing about its patient is the one outcome none of these paths may
+// produce.
 
 import Testing
 @testable import DICOMStudio
@@ -25,8 +26,12 @@ struct PrintIdentificationPlacementTests {
     }
 
     private func text(_ study: String, patient: String = "DOE^JANE") -> PatientOverlayText {
-        PatientOverlayText(primaryLine: "\(patient), 711794, 2026-08-01",
-                           secondaryLine: "CT ABDOMEN",
+        PatientOverlayText(patientLine: "\(patient), 711794",
+                           studyDate: "2026-08-01 09:14",
+                           studyDescription: "CT ABDOMEN",
+                           modalityLine: "Modality: CT",
+                           positionLine: "Image: 5",
+                           techniqueLines: ["Slice Thickness: 5.00 mm", "kVp: 120"],
                            studyInstanceUID: study)
     }
 
@@ -36,8 +41,8 @@ struct PrintIdentificationPlacementTests {
 
     // MARK: One film
 
-    @Test("A film of one study says whose it is once, at its foot")
-    func testSingleStudyFilmIsFootered() {
+    @Test("Every image on a single-study film still carries its own caption")
+    func testSingleStudyFilmCaptionsEachImage() {
         let viewModel = makeViewModel(items: fourFrames)
         viewModel.layoutMode = .explicit
         viewModel.layoutOption = .layout2x2
@@ -49,16 +54,21 @@ struct PrintIdentificationPlacementTests {
             for: items, texts: texts, plan: plan)
 
         #expect(identifications.count == 1)
-        #expect(identifications[0].footerLines == ["DOE^JANE, 711794, 2026-08-01", "CT ABDOMEN"])
+        #expect(identifications[0] == .perImage)
+        #expect(identifications[0].footerLines.isEmpty, "no film states its identification once")
 
-        // Nothing is burned under the pictures: the sheet has already said it.
         let burns = viewModel.identificationBurns(
-            for: items, texts: texts, identifications: identifications,
-            plan: plan, footersDelivered: true)
-        #expect(burns.isEmpty)
+            for: items, texts: texts, identifications: identifications, plan: plan)
+        #expect(burns.count == items.count)
+        // Who and what at the top right, what made the picture at the bottom
+        // left — the second of those is why the caption cannot be lifted to the
+        // foot of the sheet.
+        #expect(burns["/0.dcm#0"]?.topRight == ["DOE^JANE, 711794", "CT ABDOMEN"])
+        #expect(burns["/0.dcm#0"]?.bottomLeft.contains("Slice Thickness: 5.00 mm") == true)
+        #expect(burns["/0.dcm#0"]?.bottomRight == ["2026-08-01 09:14"])
     }
 
-    @Test("A film mixing studies captions every image instead")
+    @Test("A film mixing studies captions every image too")
     func testMixedStudyFilmCaptionsEachImage() {
         let viewModel = makeViewModel(items: fourFrames)
         viewModel.layoutMode = .explicit
@@ -74,16 +84,15 @@ struct PrintIdentificationPlacementTests {
         #expect(identifications[0] == .perImage)
 
         let burns = viewModel.identificationBurns(
-            for: items, texts: texts, identifications: identifications,
-            plan: plan, footersDelivered: true)
+            for: items, texts: texts, identifications: identifications, plan: plan)
         #expect(burns.count == items.count)
-        #expect(burns["/3.dcm#0"]?.first?.hasPrefix("ROE^RICHARD") == true)
+        #expect(burns["/3.dcm#0"]?.topRight.first?.hasPrefix("ROE^RICHARD") == true)
     }
 
     // MARK: Two films
 
-    @Test("Each sheet of a spilling job is decided on its own")
-    func testFilmsAreDecidedIndependently() {
+    @Test("Every sheet of a spilling job is captioned")
+    func testFilmsAreEachCaptioned() {
         let viewModel = makeViewModel(items: fourFrames)
         viewModel.layoutMode = .custom
         viewModel.customLayoutText = "STANDARD\\2,1"
@@ -97,53 +106,14 @@ struct PrintIdentificationPlacementTests {
             for: items, texts: texts, plan: plan)
 
         #expect(plan.filmCount == 2)
-        #expect(identifications[0].footerLines.first?.hasPrefix("DOE^JANE") == true)
-        #expect(identifications[1] == .perImage)
-
-        // Only the mixed sheet's images carry their own caption.
-        let burns = viewModel.identificationBurns(
-            for: items, texts: texts, identifications: identifications,
-            plan: plan, footersDelivered: true)
-        #expect(Set(burns.keys) == ["/2.dcm#0", "/3.dcm#0"])
-    }
-
-    // MARK: Fallback
-
-    @Test("A footer that cannot reach the film is burned under each image instead")
-    func testUndeliverableFooterFallsBackToBurning() {
-        let viewModel = makeViewModel(items: fourFrames)
-        viewModel.layoutMode = .explicit
-        viewModel.layoutOption = .layout2x2
-        let items = viewModel.selection.items
-        let texts = Dictionary(uniqueKeysWithValues: items.map { ($0.filePath, text("1.2.3")) })
-        let plan = viewModel.request.plan(forImageCount: items.count)
-        let identifications = viewModel.filmIdentifications(
-            for: items, texts: texts, plan: plan)
+        #expect(identifications.allSatisfy { $0 == .perImage })
 
         let burns = viewModel.identificationBurns(
-            for: items, texts: texts, identifications: identifications,
-            plan: plan, footersDelivered: false)
-
-        #expect(burns.count == items.count)
+            for: items, texts: texts, identifications: identifications, plan: plan)
+        #expect(Set(burns.keys) == ["/0.dcm#0", "/1.dcm#0", "/2.dcm#0", "/3.dcm#0"])
     }
 
-    // MARK: Placement override
-
-    @Test("Forcing per-image captions overrides a single-study film")
-    func testForcedPerImagePlacement() {
-        let viewModel = makeViewModel(items: fourFrames)
-        viewModel.layoutMode = .explicit
-        viewModel.layoutOption = .layout2x2
-        viewModel.identificationPlacement = .perImage
-        let items = viewModel.selection.items
-        let texts = Dictionary(uniqueKeysWithValues: items.map { ($0.filePath, text("1.2.3")) })
-        let plan = viewModel.request.plan(forImageCount: items.count)
-
-        let identifications = viewModel.filmIdentifications(
-            for: items, texts: texts, plan: plan)
-
-        #expect(identifications[0] == .perImage)
-    }
+    // MARK: Off
 
     @Test("Identification switched off leaves the film alone")
     func testIdentificationOff() {
@@ -158,7 +128,25 @@ struct PrintIdentificationPlacementTests {
 
         #expect(identifications.allSatisfy { $0 == .none })
         #expect(viewModel.identificationBurns(
-            for: items, texts: texts, identifications: identifications,
-            plan: plan, footersDelivered: false).isEmpty)
+            for: items, texts: texts, identifications: identifications, plan: plan).isEmpty)
+    }
+
+    @Test("A file whose header could not be read is not captioned with someone else's name")
+    func testUnreadableFileIsSkipped() {
+        let viewModel = makeViewModel(items: fourFrames)
+        viewModel.layoutMode = .explicit
+        viewModel.layoutOption = .layout2x2
+        let items = viewModel.selection.items
+        var texts = Dictionary(uniqueKeysWithValues: items.map { ($0.filePath, text("1.2.3")) })
+        texts["/2.dcm"] = nil
+        let plan = viewModel.request.plan(forImageCount: items.count)
+
+        let identifications = viewModel.filmIdentifications(
+            for: items, texts: texts, plan: plan)
+        let burns = viewModel.identificationBurns(
+            for: items, texts: texts, identifications: identifications, plan: plan)
+
+        #expect(burns["/2.dcm#0"] == nil)
+        #expect(burns.count == 3)
     }
 }
