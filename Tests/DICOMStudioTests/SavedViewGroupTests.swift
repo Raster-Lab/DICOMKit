@@ -90,6 +90,45 @@ struct SavedViewGroupTests {
         #expect(!group.coversWholeSeries(ofImageCount: 33))
     }
 
+    // MARK: - The row's frame statement
+
+    @Test("The row names the drawn frames so a reader can check the cine counter")
+    func testLabelNamesAnnotatedFrames() {
+        func labelled(_ frames: [Int]) -> String {
+            SavedViewReference(
+                sopInstanceUID: "1.2.9",
+                label: "PR1",
+                imageSeriesInstanceUID: "1.2.3",
+                imageSOPInstanceUID: "1.2.4",
+                imageInstanceNumber: 10,
+                imageSeriesNumber: 1,
+                annotatedFrameNumbers: frames).imageLocationLabel
+        }
+
+        // A single-frame image, or a view that only windows and zooms, names
+        // no frame — the state is about the whole object.
+        #expect(labelled([]) == "Series 1, image 10")
+        // One-based, matching the corner overlay's "Im: 11/92".
+        #expect(labelled([11]) == "Series 1, image 10, frame 11")
+        #expect(labelled([3, 8]) == "Series 1, image 10, frames 3, 8")
+        #expect(labelled([3, 8, 11]) == "Series 1, image 10, frames 3, 8, 11")
+        // Past three the list would run the row off its line; the count still
+        // says the drawings are spread through the cine.
+        #expect(labelled([1, 2, 3, 4]) == "Series 1, image 10, 4 frames")
+    }
+
+    @Test("The frame is stated even for an image the study does not number")
+    func testFrameSurvivesMissingInstanceNumber() {
+        let reference = SavedViewReference(
+            sopInstanceUID: "1.2.9",
+            label: "PR1",
+            imageSeriesInstanceUID: "1.2.3",
+            imageSOPInstanceUID: "1.2.4",
+            imageSeriesNumber: 1,
+            annotatedFrameNumbers: [11])
+        #expect(reference.imageLocationLabel == "Series 1, frame 11")
+    }
+
     // MARK: - The collapse rule
 
     @Test("A view on every image of the series collapses to one line")

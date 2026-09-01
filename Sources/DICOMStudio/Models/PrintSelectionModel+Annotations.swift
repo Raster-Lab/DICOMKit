@@ -208,6 +208,8 @@ extension PrintSelectionModel {
                 case .text:       return !overlay.text.isEmpty
                 case .arrow:      return true
                 case .annotation: return !overlay.isBlank
+                case .polyline, .circle, .ellipse, .point, .shutter:
+                    return true
                 }
             }
             guard kept.count != overlays.count else { continue }
@@ -435,7 +437,10 @@ extension PrintSelectionModel {
         _ transform: (inout PrintOverlayAnnotation) -> Void
     ) {
         guard var overlays = cellAnnotations[key],
-              let index = overlays.firstIndex(where: { $0.id == id }) else { return }
+              let index = overlays.firstIndex(where: { $0.id == id }),
+              // Read out of another viewer's state: shown as stated, never
+              // moved or reworded here — see ``PrintOverlayAnnotation/isLocked``.
+              !overlays[index].isLocked else { return }
         transform(&overlays[index])
         cellAnnotations[key] = overlays
     }

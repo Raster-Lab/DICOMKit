@@ -7,6 +7,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — a study's own presentation states are adopted, drawn, and printed (2026-08-31)
+
+*Work in progress, not yet committed.*
+
+A study exported from a PACS or saved out of Weasis carries its PR objects
+with it. They were indexed like any other series — the pane could name them,
+and nothing could show them, because the viewer's saved views came from
+`PresentationStateStore` and the store listed only what this app had itself
+saved. The reader's workflow is "the presentation state arrives with the
+study, apply it, print it", and that path did not exist.
+
+- **Adoption on study open.** `StudyPresentationStateAdoption.adopt`, called
+  from `MainViewModel.populateViewerSeriesPane` before the viewer is told
+  about the study, offers every GSPS, CSPS and Pseudo-Color object the library
+  indexes for the study to the store, which copies the ones it does not
+  already hold. Keyed on SOP Instance UID, so reopening a study is a no-op.
+  Cheap when there is nothing to do: a study with no PR series touches no
+  file, and one with them reads a header per referenced image, never the whole
+  study.
+
+- **In the picker, marked *imported*, and the first one applied on arrival**,
+  as Weasis does. Window, zoom, pan, rotation, flip, inversion and palette go
+  onto the image; a Modality LUT rescale carried by the state is used to
+  interpret its window (`RestoredDisplay.rescaleSlope`/`rescaleIntercept`).
+
+- **What the other viewer drew is drawn here.** The Graphic Annotation
+  Sequence — POLYLINE, INTERPOLATED, CIRCLE, ELLIPSE and POINT objects with
+  their text — becomes `PrintOverlayAnnotation` shapes per image and frame in
+  the sidecar, stroked in the layer's recommended colour. Display shutters
+  become `.shutter` overlays, drawn first with an even-odd fill so everything
+  outside the open region is masked. Three surfaces share one geometry:
+  `ImageAnnotationBurner.shapePath` for the film, a GPU texture in the viewer,
+  and `ImportedShapeView` for the print preview and the non-Metal fallback.
+
+- **Imported views are locked, not editable.** There is no measuring tool here
+  that could recompute a "42.3 mm" label, so a shape read out of somebody
+  else's state is shown and printed exactly as stated and cannot be moved or
+  reworded. The whole view can be taken off; deleting one writes a
+  `<uid>.declined` tombstone so it is not adopted again on the next open.
+
+- **On film.** A marked image burns the same shapes and shutter into the
+  pixels, oriented with the cell, so the Print SCP receives them in the image
+  box rather than as an overlay the printer may ignore.
+
+- **Not carried:** a state's VOI LUT *table* (a window is), bitmap shutters
+  that reference an overlay group, and a CSPS's ICC profile.
+
+### Fixed — presentation states are written with the VRs the standard gives them (2026-08-31)
+
+*Work in progress, not yet committed.*
+
+`dcmpschk` rejected a saved view at the first attribute it checked. The
+builder had hardcoded `vr: .IS` on seven binary attributes — Image Rotation
+(US), the Displayed Area corners (SL), the Graphic Layer recommended display
+values (US), and Graphic Data, Bounding Box corners and Anchor Point (FL) —
+and the parser read back the same wrong forms, so every round-trip test passed
+against a file no other toolkit would accept. **A round trip can never catch a
+wrong VR; only a dictionary check or an external validator can.**
+
+- **The VR now comes from the dictionary, not the call site.**
+  `DataSet+DictionaryVR.swift` adds `setInteger(s)`, `setReals` and
+  `setStringFromDictionary`, which read the VR from `DataElementDictionary` —
+  DICOMKit already ships the full PS3.6 table. A call site can no longer
+  disagree with the standard. `DataElement.int16s`/`int32s`/`float32s` fill in
+  the multi-valued binary constructors these need.
+
+- **Objects written before the fix still open.**
+  `DataElement.integerValuesTolerant`/`realValuesTolerant` read a number
+  whatever VR it was stored under, so a view saved by an older build restores
+  its zoom, pan and layer colours instead of coming back blank.
+
+- **Guarded by a sweep, not by an assertion.** `PublishedStateDictionaryVRTests`
+  walks every element of a published object, recursing into sequences, and
+  compares each VR to the dictionary — skipping the tags whose real VR depends
+  on Pixel Representation or transfer syntax, which the flattened resource
+  file would report as broken. Validated externally with `dcmpschk`.
+
+### Fixed — image ordering, study deletion, and drawings that outlived their study (2026-08-31)
+
+*Work in progress, not yet committed.*
+
+- **Two viewers no longer disagree about which image is "17 of 31".** A window
+  saved on image 17 here showed on 4/31 in Weasis — on the *same pixels* both
+  times; only the ordinals differed. Instance Number is an IS, text, and was
+  read as binary until 2026-07-30, so any library indexed before then holds
+  nils forever: re-imports are deduplicated by SOP Instance UID and never
+  refresh metadata, leaving the series in file-system order.
+  `ViewerSeriesCatalog.resolvingInstanceOrder` repairs it at open time, off
+  the main actor, reading only the series actually missing numbers and writing
+  what it recovers back into the library so the files are read once rather than
+  once per open. `loadStudySeries` adopts the repaired order without moving the
+  image on screen.
+
+- **Deleting a study now reclaims its files.** Import copies every file into
+  `Imports/<StudyInstanceUID>/`; removing the index row left that copy behind,
+  invisible to the browser and still holding pixel data and patient
+  identification. `StudyFileCleanup` removes both halves, and checks every path
+  is inside the import directory first — a library entry pointing at a file the
+  user picked in place is never touched. The index is saved before anything is
+  deleted, so a crash between the two leaves a listed study with missing files
+  rather than orphaned files no screen can reach. `onStudyRemoved` lets the
+  viewer, the caches and the print queue let go of the study at that moment.
+
+- **Drawn annotations reset with the study.** Window, zoom and rotation were
+  already dropped on a study switch; the drawings were the one tool state that
+  stayed behind, keyed to the previous study's file paths, and reappeared the
+  next time that study was opened.
+
 ### Added — research adoption: selected-frame access, parser hardening, PS3.15 de-identification (2026-08-10/11)
 
 *Work in progress, not yet committed. Full plan and evidence:

@@ -15,6 +15,21 @@ public struct StudyBrowserView: View {
     /// Whether the "delete all studies" confirmation is showing.
     @State private var isConfirmingDeleteAll = false
 
+    /// The study awaiting delete confirmation, if any.
+    ///
+    /// Delete now removes the images from disk, so it asks first. Holding the
+    /// study rather than a flag keeps the prompt able to name the patient, which
+    /// is what stops the wrong study being deleted from a list of near-identical
+    /// rows.
+    @State private var studyPendingDelete: StudyModel?
+
+    /// A pending orphan sweep: folder count and bytes it would reclaim.
+    ///
+    /// Studies deleted before delete reclaimed its files left folders behind
+    /// that no screen can reach. The sweep is offered rather than run silently,
+    /// because deleting files the user cannot see should still be their call.
+    @State private var pendingSweep: (folders: Int, bytes: Int64)?
+
     public init(viewModel: StudyBrowserViewModel) {
         self.viewModel = viewModel
     }
@@ -92,8 +107,73 @@ public struct StudyBrowserView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes them from the library only — the DICOM files stay on disk.")
+            Text("The images imported into DICOM Studio will be deleted from this Mac. Files you imported from elsewhere are not touched.")
         }
+        .confirmationDialog(
+            studyPendingDelete.map { "Delete \(Self.describe($0))?" } ?? "Delete study?",
+            isPresented: Binding(
+                get: { studyPendingDelete != nil },
+                set: { if !$0 { studyPendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let study = studyPendingDelete {
+                    viewModel.removeStudy(study.studyInstanceUID)
+                }
+                studyPendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { studyPendingDelete = nil }
+        } message: {
+            Text("The images imported into DICOM Studio will be deleted from this Mac. This cannot be undone.")
+        }
+        .confirmationDialog(
+            pendingSweep.map { sweep in
+                sweep.folders == 0
+                    ? "No leftover files to reclaim"
+                    : "Reclaim \(Self.formatBytes(sweep.bytes)) from \(sweep.folders) deleted stud\(sweep.folders == 1 ? "y" : "ies")?"
+            } ?? "",
+            isPresented: Binding(
+                get: { pendingSweep != nil },
+                set: { if !$0 { pendingSweep = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let sweep = pendingSweep, sweep.folders > 0 {
+                Button("Reclaim", role: .destructive) {
+                    viewModel.removeOrphanedStudyFiles()
+                    pendingSweep = nil
+                }
+                Button("Cancel", role: .cancel) { pendingSweep = nil }
+            } else {
+                Button("OK", role: .cancel) { pendingSweep = nil }
+            }
+        } message: {
+            if let sweep = pendingSweep, sweep.folders > 0 {
+                Text("These images belong to studies that are no longer in your library. Studies currently listed are not affected.")
+            } else {
+                Text("Every file in DICOM Studio's storage belongs to a study in your library.")
+            }
+        }
+    }
+
+    /// Bytes as something a person reads, for the reclaim prompt.
+    private static func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    /// How a study is named in a confirmation, so the user can tell which one
+    /// they are about to lose.
+    private static func describe(_ study: StudyModel) -> String {
+        let candidates = [
+            study.patientName?.replacingOccurrences(of: "^", with: " "),
+            study.studyDescription
+        ]
+        for case let text? in candidates {
+            let trimmed = text.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return "this study"
     }
 
     private var browserToolbar: some View {
@@ -171,6 +251,17 @@ public struct StudyBrowserView: View {
             }
             .disabled(viewModel.library.studyCount == 0 || viewModel.isImporting)
             .help("Delete all imported studies from the library")
+
+            // Reclaims folders left by studies deleted before delete removed
+            // its files. Hidden when there is nothing to reclaim.
+            Button {
+                pendingSweep = viewModel.orphanedStudyFileSize()
+            } label: {
+                Image(systemName: "internaldrive")
+                    .accessibilityLabel("Reclaim leftover disk space")
+            }
+            .disabled(viewModel.isImporting)
+            .help("Reclaim disk space from studies no longer in the library")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -243,7 +334,7 @@ public struct StudyBrowserView: View {
             .contextMenu { studyActions(study) }
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button(role: .destructive) {
-                    viewModel.removeStudy(study.studyInstanceUID)
+                    studyPendingDelete = study
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
@@ -308,7 +399,7 @@ public struct StudyBrowserView: View {
                   systemImage: study.isFavorite ? "star.slash" : "star.fill")
         }
         Button(role: .destructive) {
-            viewModel.removeStudy(study.studyInstanceUID)
+            studyPendingDelete = study
         } label: {
             Label("Delete", systemImage: "trash")
         }

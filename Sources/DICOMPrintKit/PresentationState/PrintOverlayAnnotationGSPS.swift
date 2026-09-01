@@ -163,6 +163,18 @@ public enum PrintOverlayAnnotationGSPS {
                     graphicObjects.append(contentsOf: arrowObjects(
                         for: annotation, imageWidth: imageWidth, imageHeight: imageHeight))
                 }
+            case .polyline, .circle, .ellipse, .point:
+                // A shape that came *from* a GSPS goes back out as the same
+                // graphic object it was read from — re-saving a view that
+                // carries an imported ruler must not lose the ruler.
+                if let object = shapeObject(
+                    for: annotation, imageWidth: imageWidth, imageHeight: imageHeight) {
+                    graphicObjects.append(object)
+                }
+            case .shutter:
+                // Shutters are the Display Shutter module's, not an annotation;
+                // they are written by the state's own `shutters`, not here.
+                break
             }
         }
 
@@ -227,6 +239,221 @@ public enum PrintOverlayAnnotationGSPS {
         }
         #endif
         return (fontSize * 0.6 * Double(text.count), fontSize)
+    }
+
+    // MARK: - Shapes
+
+    /// A shape kind as the graphic object it was read from.
+    private static func shapeObject(
+        for annotation: PrintOverlayAnnotation,
+        imageWidth: Int,
+        imageHeight: Int
+    ) -> GraphicObject? {
+        let type: PresentationGraphicType
+        switch annotation.kind {
+        case .polyline: type = .polyline
+        case .circle:   type = .circle
+        case .ellipse:  type = .ellipse
+        case .point:    type = .point
+        default:        return nil
+        }
+        guard !annotation.isBlank else { return nil }
+        var data: [Double] = []
+        for point in annotation.points {
+            data.append(point.x * Double(imageWidth))
+            data.append(point.y * Double(imageHeight))
+        }
+        return GraphicObject(type: type, data: data, filled: annotation.filled, units: .pixel)
+    }
+
+    // MARK: - Reading a state written elsewhere
+
+    /// The drawings a presentation state carries for one image, as the
+    /// overlays this app displays and burns — the reverse of the writers
+    /// above, for states written by another viewer.
+    ///
+    /// Every graphic object becomes a shape overlay in its layer's colour;
+    /// every text object becomes a text overlay, or the combined kind when it
+    /// has a visible anchor (Weasis's annotation with its leader line). All of
+    /// them locked: they say what another reader measured, and moving one
+    /// here would make its label wrong.
+    ///
+    /// Frames follow the item's Referenced Frame Number (one-based): an item
+    /// that names none applies to every frame of a multi-frame image, which is
+    /// what the standard means by the omission and what a cine viewer shows.
+    ///
+    /// - Parameters:
+    ///   - state: The parsed state.
+    ///   - sopInstanceUID: The image to read drawings for; items naming other
+    ///     images are skipped.
+    ///   - imageWidth: The image's columns, to normalize PIXEL coordinates.
+    ///   - imageHeight: The image's rows.
+    ///   - numberOfFrames: How many frames the image has, so an unframed item
+    ///     can be spread across all of them.
+    /// - Returns: Overlays keyed by zero-based frame index. Empty when the
+    ///   state draws nothing on this image.
+    public static func overlays(
+        from state: GrayscalePresentationState,
+        forImage sopInstanceUID: String,
+        imageWidth: Int,
+        imageHeight: Int,
+        numberOfFrames: Int = 1
+    ) -> [Int: [PrintOverlayAnnotation]] {
+        guard imageWidth > 0, imageHeight > 0 else { return [:] }
+        let width = Double(imageWidth)
+        let height = Double(imageHeight)
+        let colours = Dictionary(
+            state.graphicLayers.map { ($0.name, layerColor($0)) },
+            uniquingKeysWith: { first, _ in first })
+        var byFrame: [Int: [PrintOverlayAnnotation]] = [:]
+
+        for item in state.graphicAnnotations {
+            let references = item.referencedImages.filter { $0.sopInstanceUID == sopInstanceUID }
+            guard !references.isEmpty else { continue }
+            let color = colours[item.layer] ?? .yellow
+
+            var overlays: [PrintOverlayAnnotation] = []
+            for object in item.graphicObjects {
+                if let overlay = shapeOverlay(object, width: width, height: height, color: color) {
+                    overlays.append(overlay)
+                }
+            }
+            for text in item.textObjects {
+                if let overlay = textOverlay(text, width: width, height: height, color: color) {
+                    overlays.append(overlay)
+                }
+            }
+            guard !overlays.isEmpty else { continue }
+
+            // The frames this item speaks for. Several references to the same
+            // image with different frames are legal and are all honoured.
+            var frames = Set<Int>()
+            for reference in references {
+                if let numbers = reference.referencedFrameNumbers, !numbers.isEmpty {
+                    for number in numbers where number >= 1 { frames.insert(number - 1) }
+                } else {
+                    for frame in 0..<max(1, numberOfFrames) { frames.insert(frame) }
+                }
+            }
+            for frame in frames {
+                // Fresh identities per frame: the same drawing on two frames is
+                // two overlays as far as selection and deletion are concerned.
+                byFrame[frame, default: []].append(contentsOf: overlays.map {
+                    var copy = $0
+                    copy.id = UUID()
+                    return copy
+                })
+            }
+        }
+        return byFrame
+    }
+
+    /// The layer's recommended colour, RGB first (16-bit per channel), then
+    /// grey, then the reading-room default.
+    static func layerColor(_ layer: GraphicLayer) -> PrintOverlayColor {
+        if let rgb = layer.recommendedRGBValue {
+            return PrintOverlayColor(
+                red: Double(rgb.red) / 65535,
+                green: Double(rgb.green) / 65535,
+                blue: Double(rgb.blue) / 65535)
+        }
+        if let grey = layer.recommendedGrayscaleValue {
+            let value = Double(grey) / 65535
+            return PrintOverlayColor(red: value, green: value, blue: value)
+        }
+        return .yellow
+    }
+
+    /// One graphic object as a shape overlay, or nil for one this cannot draw.
+    static func shapeOverlay(
+        _ object: GraphicObject,
+        width: Double, height: Double,
+        color: PrintOverlayColor
+    ) -> PrintOverlayAnnotation? {
+        let kind: PrintOverlayAnnotation.Kind
+        switch object.type {
+        case .point:                  kind = .point
+        case .polyline, .interpolated: kind = .polyline
+        case .circle:                 kind = .circle
+        case .ellipse:                kind = .ellipse
+        }
+        let points = normalizedPoints(object.data, units: object.units, width: width, height: height)
+        let overlay = PrintOverlayAnnotation(
+            shape: kind, points: points, filled: object.filled,
+            scale: PrintOverlayAnnotation.defaultScale, color: color, isLocked: true)
+        return overlay.isBlank ? nil : overlay
+    }
+
+    /// One text object as a text overlay — the combined kind when its anchor
+    /// is visible, since that is DICOM's own "label with a leader line".
+    ///
+    /// The type size is taken from the bounding box's height, which is how
+    /// the writer said how large the words were; clamped to what this app can
+    /// set, which is wide enough for any measurement label.
+    static func textOverlay(
+        _ text: TextObject,
+        width: Double, height: Double,
+        color: PrintOverlayColor
+    ) -> PrintOverlayAnnotation? {
+        let words = text.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return nil }
+        let topLeft = normalizedPoints(
+            [text.boundingBoxTopLeft.column, text.boundingBoxTopLeft.row],
+            units: text.boundingBoxUnits, width: width, height: height).first
+            ?? PrintOverlayPoint(x: 0, y: 0)
+        let bottomRight = normalizedPoints(
+            [text.boundingBoxBottomRight.column, text.boundingBoxBottomRight.row],
+            units: text.boundingBoxUnits, width: width, height: height).first
+            ?? topLeft
+        // Bounding box height as a fraction of the image is exactly what
+        // `scale` means. A box with no height (some writers state a point)
+        // falls back to the default size.
+        let boxHeight = abs(bottomRight.y - topLeft.y)
+        let scale = boxHeight > 0.001
+            ? boxHeight
+            : PrintOverlayAnnotation.defaultScale
+        // The words start at the box's top-left whichever corner order the
+        // writer used.
+        let start = PrintOverlayPoint(
+            x: min(topLeft.x, bottomRight.x), y: min(topLeft.y, bottomRight.y))
+
+        if text.anchorPointVisible, let anchor = text.anchorPoint {
+            let end = normalizedPoints(
+                [anchor.column, anchor.row],
+                units: text.anchorPointUnits, width: width, height: height).first ?? start
+            return PrintOverlayAnnotation(
+                kind: .annotation, start: start, end: end, text: words,
+                scale: scale, color: color, isLocked: true)
+        }
+        return PrintOverlayAnnotation(
+            kind: .text, start: start, text: words,
+            scale: scale, color: color, isLocked: true)
+    }
+
+    /// Pairs of coordinates as normalized points. PIXEL values are divided by
+    /// the image's size; DISPLAY values are already fractions of the displayed
+    /// area, which this treats as the image — right for the whole-image
+    /// display most writers state, and the only reading possible without the
+    /// writer's viewport.
+    static func normalizedPoints(
+        _ data: [Double], units: AnnotationUnits, width: Double, height: Double
+    ) -> [PrintOverlayPoint] {
+        guard data.count >= 2 else { return [] }
+        var points: [PrintOverlayPoint] = []
+        for index in stride(from: 0, to: data.count - 1, by: 2) {
+            let x = data[index]
+            let y = data[index + 1]
+            switch units {
+            case .pixel:
+                // The same convention the writers above use — a fraction of
+                // the image's size, no half-pixel offset — so a shape written
+                // by this app and read back lands exactly where it was.
+                points.append(PrintOverlayPoint(x: x / width, y: y / height))
+            case .display:
+                points.append(PrintOverlayPoint(x: x, y: y))
+            }
+        }
+        return points
     }
 
     // MARK: - Arrow

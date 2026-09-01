@@ -203,7 +203,7 @@ public enum ImageAnnotationBurner {
         into image: PreparedPrintImage,
         orientation: PrintOverlayOrientation? = nil
     ) -> PreparedPrintImage {
-        let drawable = overlays.filter { !$0.isBlank }
+        let drawable = drawOrder(overlays)
         guard !drawable.isEmpty else { return image }
 
         return rendering(into: image) { canvas in
@@ -213,9 +213,21 @@ public enum ImageAnnotationBurner {
                 case .arrow: drawArrow(overlay, in: canvas, orientation: orientation)
                 case .annotation:
                     drawCombined(overlay, in: canvas, orientation: orientation)
+                case .polyline, .circle, .ellipse, .point:
+                    drawShape(overlay, in: canvas, orientation: orientation)
+                case .shutter:
+                    drawShutter(overlay, in: canvas, orientation: orientation)
                 }
             }
         }
+    }
+
+    /// The overlays worth drawing, in the order they must be drawn: shutters
+    /// first, so a mask never paints over a ruler or a label that sits inside
+    /// the open region's edge; blanks dropped.
+    static func drawOrder(_ overlays: [PrintOverlayAnnotation]) -> [PrintOverlayAnnotation] {
+        let drawable = overlays.filter { !$0.isBlank }
+        return drawable.filter { $0.kind == .shutter } + drawable.filter { $0.kind != .shutter }
     }
 
     /// Rasterizes what the reader drew onto a transparent RGBA canvas, instead
@@ -265,7 +277,7 @@ public enum ImageAnnotationBurner {
                   ) else { return false }
             let canvas = Canvas(context: context, width: width, height: height,
                                 isInverted: false, isGrayscale: false)
-            for overlay in overlays where !overlay.isBlank {
+            for overlay in drawOrder(overlays) {
                 switch overlay.kind {
                 // Lettering only: `uprightOnly` turns the glyphs back without
                 // moving the anchor, because the shader moves the anchor.
@@ -275,6 +287,12 @@ public enum ImageAnnotationBurner {
                 case .annotation:
                     drawCombined(overlay, in: canvas,
                                  orientation: orientation, uprightOnly: true)
+                // Shapes and shutters sit in image space like arrows do: the
+                // shader turns them with the picture, so they are left unmapped.
+                case .polyline, .circle, .ellipse, .point:
+                    drawShape(overlay, in: canvas)
+                case .shutter:
+                    drawShutter(overlay, in: canvas)
                 }
             }
             return true
@@ -906,6 +924,166 @@ public enum ImageAnnotationBurner {
 
     private static func cgPoint(_ point: PrintPlanePoint) -> CGPoint {
         CGPoint(x: point.x, y: point.y)
+    }
+
+    // MARK: - Shapes from a presentation state
+
+    /// The stroke a shape is drawn with: the arrow's line weight for the same
+    /// `scale`, so a ruler and an arrow on one image read as one hand.
+    public static func shapeLineWidths(scale: Double, imageHeight: Double)
+        -> (line: Double, halo: Double)
+    {
+        let geometry = PrintArrowGeometry(
+            scale: scale, imageHeight: imageHeight, arrowLength: imageHeight)
+        return (geometry.lineWidth, geometry.haloWidth)
+    }
+
+    /// The path of a shape kind, in the context's bottom-up pixel coordinates.
+    ///
+    /// Every vertex goes through the arrangement first, the way an arrow's
+    /// ends do: a circle drawn on a picture that was then turned a quarter is
+    /// still a circle around the same anatomy. An ellipse is rebuilt from its
+    /// mapped axes rather than mapped point by point, which keeps it an
+    /// ellipse under a quarter turn or a mirror (the only arrangements a film
+    /// cell applies to it besides a uniform crop).
+    static func shapePath(
+        _ overlay: PrintOverlayAnnotation,
+        width: Int, height: Int,
+        orientation: PrintOverlayOrientation? = nil
+    ) -> CGPath? {
+        func pixel(_ point: PrintOverlayPoint) -> CGPoint {
+            let mapped = orientation?.point(point) ?? (x: point.x, y: point.y)
+            return CGPoint(x: mapped.x * Double(width),
+                           y: Double(height) * (1 - mapped.y))
+        }
+        let points = overlay.points.map(pixel)
+        let path = CGMutablePath()
+
+        switch overlay.kind {
+        case .polyline:
+            guard points.count >= 2 else { return nil }
+            path.move(to: points[0])
+            for point in points.dropFirst() { path.addLine(to: point) }
+            if overlay.filled { path.closeSubpath() }
+
+        case .circle:
+            guard points.count >= 2 else { return nil }
+            let centre = points[0]
+            let radius = hypot(points[1].x - centre.x, points[1].y - centre.y)
+            guard radius > 0 else { return nil }
+            path.addEllipse(in: CGRect(
+                x: centre.x - radius, y: centre.y - radius,
+                width: radius * 2, height: radius * 2))
+
+        case .ellipse:
+            guard points.count >= 4 else { return nil }
+            let centre = CGPoint(x: (points[0].x + points[1].x) / 2,
+                                 y: (points[0].y + points[1].y) / 2)
+            let semiMajor = hypot(points[1].x - points[0].x, points[1].y - points[0].y) / 2
+            let semiMinor = hypot(points[3].x - points[2].x, points[3].y - points[2].y) / 2
+            guard semiMajor > 0, semiMinor > 0 else { return nil }
+            let angle = atan2(points[1].y - points[0].y, points[1].x - points[0].x)
+            let transform = CGAffineTransform(translationX: centre.x, y: centre.y)
+                .rotated(by: angle)
+            path.addEllipse(
+                in: CGRect(x: -semiMajor, y: -semiMinor,
+                           width: semiMajor * 2, height: semiMinor * 2),
+                transform: transform)
+
+        case .point:
+            guard let centre = points.first else { return nil }
+            // A cross the size of the type, so a marked point is findable on
+            // film without hiding what it marks.
+            let arm = max(3, overlayFontSize(
+                imageHeight: Double(height), scale: overlay.scale) * 0.5)
+            path.move(to: CGPoint(x: centre.x - arm, y: centre.y))
+            path.addLine(to: CGPoint(x: centre.x + arm, y: centre.y))
+            path.move(to: CGPoint(x: centre.x, y: centre.y - arm))
+            path.addLine(to: CGPoint(x: centre.x, y: centre.y + arm))
+
+        case .shutter:
+            // The open region — what `drawShutter` paints *around*.
+            guard points.count >= 2 else { return nil }
+            if points.count == 2 {
+                // Two points are a rectangle's corners unless the reader of the
+                // state said circle; `filled` carries that distinction.
+                if overlay.filled {
+                    let centre = points[0]
+                    let radius = hypot(points[1].x - centre.x, points[1].y - centre.y)
+                    guard radius > 0 else { return nil }
+                    path.addEllipse(in: CGRect(
+                        x: centre.x - radius, y: centre.y - radius,
+                        width: radius * 2, height: radius * 2))
+                } else {
+                    path.addRect(CGRect(
+                        x: min(points[0].x, points[1].x),
+                        y: min(points[0].y, points[1].y),
+                        width: abs(points[1].x - points[0].x),
+                        height: abs(points[1].y - points[0].y)))
+                }
+            } else {
+                path.move(to: points[0])
+                for point in points.dropFirst() { path.addLine(to: point) }
+                path.closeSubpath()
+            }
+
+        case .text, .arrow, .annotation:
+            return nil
+        }
+        return path
+    }
+
+    /// A ruler, an angle, a polygon, an ROI — stroked (or filled) with a halo
+    /// underneath, the way an arrow is, so it survives whatever it crosses.
+    private static func drawShape(
+        _ overlay: PrintOverlayAnnotation,
+        in canvas: Canvas,
+        orientation: PrintOverlayOrientation? = nil
+    ) {
+        guard let path = shapePath(
+            overlay, width: canvas.width, height: canvas.height,
+            orientation: orientation) else { return }
+        let widths = shapeLineWidths(scale: overlay.scale, imageHeight: Double(canvas.height))
+
+        canvas.context.saveGState()
+        canvas.context.setLineCap(.round)
+        canvas.context.setLineJoin(.round)
+        for (extra, color) in [(widths.halo, canvas.halo(for: overlay.color)),
+                               (0.0, canvas.color(for: overlay.color))] {
+            canvas.context.setStrokeColor(color)
+            canvas.context.setFillColor(color)
+            canvas.context.setLineWidth(widths.line + extra)
+            canvas.context.addPath(path)
+            // Outline only, filled or not: a viewer fills an ROI translucently,
+            // and film has no alpha — a solid fill would hide the anatomy the
+            // ROI was drawn to measure. `filled` still closes the path.
+            canvas.context.strokePath()
+        }
+        canvas.context.restoreGState()
+    }
+
+    /// Paints the shutter's presentation value everywhere outside its shape.
+    ///
+    /// Even-odd fill of the whole frame minus the open region: one pass, no
+    /// per-pixel test, and the same rule whether the shape is a rectangle, a
+    /// circle or a polygon.
+    private static func drawShutter(
+        _ overlay: PrintOverlayAnnotation,
+        in canvas: Canvas,
+        orientation: PrintOverlayOrientation? = nil
+    ) {
+        guard let open = shapePath(
+            overlay, width: canvas.width, height: canvas.height,
+            orientation: orientation) else { return }
+        let mask = CGMutablePath()
+        mask.addRect(CGRect(x: 0, y: 0, width: canvas.width, height: canvas.height))
+        mask.addPath(open)
+
+        canvas.context.saveGState()
+        canvas.context.setFillColor(canvas.color(for: overlay.color))
+        canvas.context.addPath(mask)
+        canvas.context.fillPath(using: .evenOdd)
+        canvas.context.restoreGState()
     }
 
     /// A normalized point in the context's own coordinates, which run bottom-up.

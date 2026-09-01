@@ -46,8 +46,25 @@ enum AnnotationSidecar {
         var palette: PseudoColorPalette?
         var annotationsByFrame: [Int: [PrintOverlayAnnotation]] = [:]
 
-        /// Nothing worth a file: no colour and nothing drawn.
-        var isEmpty: Bool { palette == nil && annotationsByFrame.isEmpty }
+        /// Drawings keyed by the image they belong to, then by frame.
+        ///
+        /// The app's own objects describe one image each, and their drawings
+        /// live in `annotationsByFrame`. A state adopted from another viewer
+        /// may describe a whole series in one object — Weasis writes one PR
+        /// per series — and its rulers belong to particular images, so they
+        /// are filed under the image's SOP Instance UID here.
+        var annotationsByFrameByImage: [String: [Int: [PrintOverlayAnnotation]]] = [:]
+
+        /// Whether the object beside this sidecar was adopted from the study
+        /// rather than saved here — shown as such in the pickers, and never
+        /// re-published over the original.
+        var isImported: Bool = false
+
+        /// Nothing worth a file: no colour, nothing drawn, nothing to remember.
+        var isEmpty: Bool {
+            palette == nil && annotationsByFrame.isEmpty
+                && annotationsByFrameByImage.isEmpty && !isImported
+        }
 
         /// Every drawing regardless of frame, in frame order — what callers
         /// that speak to the whole image (the GSPS sequence, the pickers'
@@ -63,6 +80,8 @@ enum AnnotationSidecar {
     private struct Payload: Codable {
         var palette: PseudoColorPalette?
         var frames: [String: [PrintOverlayAnnotation]]?
+        var images: [String: [String: [PrintOverlayAnnotation]]]?
+        var imported: Bool?
     }
 
     /// The file holding the annotations for the GSPS object at `stateURL`.
@@ -94,8 +113,19 @@ enum AnnotationSidecar {
         where !annotations.isEmpty {
             frames[String(frame)] = annotations
         }
+        var images: [String: [String: [PrintOverlayAnnotation]]] = [:]
+        for (uid, byFrame) in contents.annotationsByFrameByImage {
+            var frames: [String: [PrintOverlayAnnotation]] = [:]
+            for (frame, annotations) in byFrame where !annotations.isEmpty {
+                frames[String(frame)] = annotations
+            }
+            if !frames.isEmpty { images[uid] = frames }
+        }
         let payload = Payload(
-            palette: contents.palette, frames: frames.isEmpty ? nil : frames)
+            palette: contents.palette,
+            frames: frames.isEmpty ? nil : frames,
+            images: images.isEmpty ? nil : images,
+            imported: contents.isImported ? true : nil)
 
         let encoder = JSONEncoder()
         // Sorted keys so a view saved twice with the same annotations produces
@@ -147,7 +177,20 @@ enum AnnotationSidecar {
                 guard let frame = Int(key), !annotations.isEmpty else { continue }
                 byFrame[frame] = annotations
             }
-            return Contents(palette: payload.palette, annotationsByFrame: byFrame)
+            var byImage: [String: [Int: [PrintOverlayAnnotation]]] = [:]
+            for (uid, frames) in payload.images ?? [:] {
+                var perFrame: [Int: [PrintOverlayAnnotation]] = [:]
+                for (key, annotations) in frames {
+                    guard let frame = Int(key), !annotations.isEmpty else { continue }
+                    perFrame[frame] = annotations
+                }
+                if !perFrame.isEmpty { byImage[uid] = perFrame }
+            }
+            return Contents(
+                palette: payload.palette,
+                annotationsByFrame: byFrame,
+                annotationsByFrameByImage: byImage,
+                isImported: payload.imported ?? false)
         }
 
         guard let legacy = try? decoder.decode(

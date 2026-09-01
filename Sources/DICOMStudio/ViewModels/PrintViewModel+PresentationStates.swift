@@ -208,7 +208,7 @@ extension PrintViewModel {
         // arrow on another frame of the same image belongs to that frame's
         // cell, not this one.
         selection.cellAnnotations[item.annotationKey] =
-            stored.annotations(forFrame: item.annotationKey.frameIndex)
+            stored.annotations(forImage: sopInstanceUID, frame: item.annotationKey.frameIndex)
 
         return true
     }

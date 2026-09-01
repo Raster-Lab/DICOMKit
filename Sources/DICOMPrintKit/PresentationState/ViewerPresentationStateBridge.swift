@@ -176,6 +176,14 @@ public enum ViewerPresentationStateBridge {
         public var flipHorizontal: Bool
         public var invert: Bool
 
+        /// The state's own Modality LUT, as a rescale, when it carries one.
+        ///
+        /// A presentation state's window is stated in the units its Modality
+        /// LUT produces; a state that brings its own rescale means its window
+        /// in *those* units, not the image's. Nil means the image's own.
+        public var rescaleSlope: Double?
+        public var rescaleIntercept: Double?
+
         public init(
             windowCenter: Double? = nil,
             windowWidth: Double? = nil,
@@ -184,7 +192,9 @@ public enum ViewerPresentationStateBridge {
             panY: Double = 0,
             rotationDegrees: Double = 0,
             flipHorizontal: Bool = false,
-            invert: Bool = false
+            invert: Bool = false,
+            rescaleSlope: Double? = nil,
+            rescaleIntercept: Double? = nil
         ) {
             self.windowCenter = windowCenter
             self.windowWidth = windowWidth
@@ -194,6 +204,8 @@ public enum ViewerPresentationStateBridge {
             self.rotationDegrees = rotationDegrees
             self.flipHorizontal = flipHorizontal
             self.invert = invert
+            self.rescaleSlope = rescaleSlope
+            self.rescaleIntercept = rescaleIntercept
         }
     }
 
@@ -220,6 +232,11 @@ public enum ViewerPresentationStateBridge {
         if case .window(let center, let width, _, _)? = state.voiLUT {
             restored.windowCenter = center
             restored.windowWidth = width
+        }
+
+        if case .rescale(let slope, let intercept, _)? = state.modalityLUT, slope != 0 {
+            restored.rescaleSlope = slope
+            restored.rescaleIntercept = intercept
         }
 
         if let spatial = state.spatialTransformation {

@@ -139,8 +139,7 @@ struct ViewerImageSavedViewList: View {
     private func savedViewRow(_ view: SavedView) -> some View {
         SavedViewRow(
             label: view.label,
-            detail: view.coveredImageCount > 1
-                ? "\(view.coveredImageCount) images" : nil,
+            detail: Self.detail(for: view),
             isSelected: viewModel.selectedPresentationStateLabel == view.label,
             onDelete: { pendingDeletion = view }
         ) {
@@ -150,6 +149,17 @@ struct ViewerImageSavedViewList: View {
             viewModel.applySavedView(view, byHand: true)
             close()
         }
+    }
+
+    /// The row's small print: how far the view reaches, and whether it came
+    /// with the study rather than being saved here — a reader should know
+    /// whose reading they are about to apply, and that deleting it takes
+    /// off something another workstation wrote.
+    static func detail(for view: SavedView) -> String? {
+        var parts: [String] = []
+        if view.coveredImageCount > 1 { parts.append("\(view.coveredImageCount) images") }
+        if view.isImported { parts.append("imported") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     // MARK: - Reading the model

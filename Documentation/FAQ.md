@@ -257,6 +257,52 @@ let transformedImage = try gsps.apply(to: dicomFile)
 - Color Softcopy Presentation State (CSPS)
 - Pseudo-Color Softcopy Presentation State
 
+### A study I imported has a PR series from another viewer. Will DICOM Studio show it?
+
+Yes. When a study is opened in the viewer, every GSPS, CSPS and Pseudo-Color
+object the library indexes for it is adopted into the app's presentation-state
+store (one copy per SOP Instance UID, so reopening the study changes nothing)
+and offered in the saved-view picker marked *imported*. The first one is
+applied on arrival, as Weasis does: its window, zoom, rotation, flip, inversion
+and palette go onto the image, and its Graphic Annotation Sequence — rulers,
+angles, polygons, circles, ellipses, points and their labels — is drawn over
+the image in the layer's recommended colour. Display shutters are honoured.
+A Modality LUT rescale carried by the state is used to interpret its window.
+
+Imported drawings are shown and printed exactly as the other viewer stated
+them but cannot be moved or reworded here: the app has no measuring tool to
+recompute a "42.3 mm" label, so the whole imported view can be taken off, but
+its parts cannot be edited. Deleting an imported view is remembered — the
+study's own copy is not adopted again on the next open.
+
+When such an image is marked for print, the same drawings and shutter are
+burned into the film pixels, oriented with the cell, so the Print SCP
+receives them in the image box.
+
+Not carried: a state's VOI LUT *table* (a window is), bitmap shutters that
+reference an overlay group, and a CSPS's ICC profile.
+
+### A saved view from an older build opens, but `dcmpschk` used to reject it. Why?
+
+Until 2026-08-31 the presentation-state builder chose Value Representations by
+hand, and chose seven of them wrongly: Image Rotation, the Displayed Area
+corners, the Graphic Layer recommended display values, Graphic Data, the
+Bounding Box corners and Anchor Point were all written as `IS` where the
+standard says `US`, `SL` or `FL`. The library's own parser read back the same
+wrong forms, so every round-trip test passed against a file no other toolkit
+would accept.
+
+VRs now come from DICOMKit's data dictionary (the full PS3.6 table it already
+ships) rather than from the call site, so a write path cannot disagree with the
+standard. Objects written by an older build still open — numbers are read
+whatever VR they were stored under — but re-save a view if you need the file
+itself to validate.
+
+**Writing your own elements?** Prefer the dictionary-driven setters
+(`setInteger(s)`, `setReals`, `setStringFromDictionary`) over passing a VR by
+hand. Note that a round-trip test can never catch a wrong VR; only a dictionary
+check or an external validator such as `dcmpschk` can.
+
 ---
 
 ## Structured Reporting
@@ -348,6 +394,33 @@ See [Documentation/ConformanceStatement.md](ConformanceStatement.md) for the det
 ### Why does my file fail to parse?
 
 See the [Troubleshooting Guide](Troubleshooting.md) for common issues and solutions.
+
+### Another viewer says this image is 4 of 31; DICOM Studio says 17 of 31. Which is right?
+
+Check first whether the two viewers are showing the *same pixels*. If they are,
+this is a numbering disagreement, not a misplaced presentation state — a state
+references its image by SOP Instance UID, so ordering cannot land one on the
+wrong slice.
+
+The cause is a stale library index. Instance Number is an `IS` — text — and was
+read as binary until 2026-07-30, which always answered nil, leaving affected
+series filed in file-system order. Re-importing does not fix it: imports are
+deduplicated by SOP Instance UID and never refresh metadata. Opening the study
+now repairs it, reading the numbers off the headers of just the series that are
+missing them and writing them back, so the cost is paid once rather than on
+every open.
+
+### I deleted a study. Are its files gone?
+
+Yes, if the app imported them. Import copies each file into
+`Imports/<StudyInstanceUID>/`, and deleting the study removes that copy along
+with the index row — previously the row went and the files stayed, invisible to
+the browser but still holding pixel data and patient identification.
+
+Files outside that import directory are never deleted. A study the library
+points at in place — an older import, or a fixture opened from a source tree —
+loses its row and keeps its files, because those belong to you and not to the
+app.
 
 ### Where can I get help?
 

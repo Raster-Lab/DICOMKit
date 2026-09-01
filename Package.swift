@@ -357,7 +357,9 @@ let package = Package(
         // concurrency errors in PerformanceTests/ImageCacheTests.swift.
         .testTarget(
             name: "DICOMKitTests",
-            dependencies: ["DICOMKit", "DICOMCore"],
+            // DICOMDictionary: the presentation-state builders' VRs are asserted
+            // against the standard dictionary rather than a hand-copied table.
+            dependencies: ["DICOMKit", "DICOMCore", "DICOMDictionary"],
             exclude: [
                 "AI",
                 "EncapsulatedDocument",
@@ -453,7 +455,10 @@ let package = Package(
         // the emulator end-to-end: SCU → Print SCP → composer → sink.
         .testTarget(
             name: "DICOMPrintKitTests",
-            dependencies: ["DICOMPrintKit", "DICOMNetwork", "DICOMCore"]
+            // DICOMDictionary: published presentation states are checked
+            // element-by-element against the standard data dictionary.
+            dependencies: ["DICOMPrintKit", "DICOMNetwork", "DICOMCore",
+                           "DICOMKit", "DICOMDictionary"]
         ),
         .testTarget(
             name: "DICOMToolboxTests",

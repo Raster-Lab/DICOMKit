@@ -73,6 +73,11 @@ public enum ViewerSeriesCatalog {
                 if let number = instance.instanceNumber {
                     map[instance.sopInstanceUID] = number
                 }
+            },
+            // Per object as well as in total: a series of several cines shows
+            // one preview per object, and the card needs each loop's length.
+            frameCountsByFilePath: instances.reduce(into: [String: Int]()) { map, instance in
+                map[instance.filePath] = instance.numberOfFrames ?? 1
             }
         )
     }
@@ -82,6 +87,80 @@ public enum ViewerSeriesCatalog {
         guard let instance = library.instances.values.first(where: { $0.filePath == filePath })
         else { return nil }
         return library.series[instance.seriesInstanceUID]?.studyInstanceUID
+    }
+
+    /// Repairs entries whose instance order was lost, reading it off the files.
+    ///
+    /// The pane's order comes from the library index, and an index written by
+    /// a build that could not read Instance Number — it is an IS, *text*, and
+    /// was once read as binary, which always answered nil — files a series in
+    /// file-system order forever after: re-imports are skipped as duplicates
+    /// by SOP Instance UID, so the stale nils are never refreshed. The symptom
+    /// is two viewers disagreeing about which image "17/31" is: this app in
+    /// file order, any conformant viewer in acquisition order — and a saved
+    /// presentation state, which names its image by UID, then *looks* like it
+    /// landed on the wrong slice when it landed exactly where it was made.
+    ///
+    /// Off the main actor like orientation resolution and for the same reason:
+    /// it reads headers, one per object, and a study open must not wait on
+    /// them. Only series actually missing numbers are read at all, so a
+    /// healthy library costs nothing.
+    ///
+    /// - Returns: The entries, re-sorted where numbers were recovered, and the
+    ///   recovered numbers by SOP Instance UID — what the caller writes back
+    ///   into the library so this reads the files once, not once per open.
+    public static func resolvingInstanceOrder(
+        _ entries: [ViewerSeriesEntry]
+    ) async -> (entries: [ViewerSeriesEntry], recoveredNumbers: [String: Int]) {
+        await Task.detached(priority: .utility) {
+            var recovered: [String: Int] = [:]
+            let repaired = entries.map { entry -> ViewerSeriesEntry in
+                // Numbers the index already has are trusted; a series is only
+                // read back when objects are missing theirs, which is the
+                // stale-index shape. A lone object needs no order at all.
+                guard entry.isImageSeries, entry.filePaths.count > 1,
+                      entry.instanceNumbersBySOPUID.count < entry.filePaths.count
+                else { return entry }
+
+                var numbersBySOPUID = entry.instanceNumbersBySOPUID
+                var numbersByPath: [String: Int] = [:]
+                for path in entry.filePaths {
+                    guard let file = try? DICOMFile.read(
+                              from: URL(fileURLWithPath: path),
+                              options: .metadataOnly),
+                          let sopUID = file.dataSet.string(for: .sopInstanceUID),
+                          let number = DICOMFileService.integerString(
+                              in: file.dataSet, tag: .instanceNumber)
+                    else { continue }
+                    numbersBySOPUID[sopUID] = number
+                    numbersByPath[path] = number
+                    recovered[sopUID] = number
+                }
+                guard !numbersByPath.isEmpty else { return entry }
+
+                // The order the study asserts: Instance Number ascending, the
+                // path tiebreak keeping unnumbered objects stable at the end —
+                // the same rule the library's own sort applies.
+                let ordered = entry.filePaths.sorted {
+                    let left = numbersByPath[$0] ?? Int.max
+                    let right = numbersByPath[$1] ?? Int.max
+                    if left != right { return left < right }
+                    return $0 < $1
+                }
+                return ViewerSeriesEntry(
+                    seriesInstanceUID: entry.seriesInstanceUID,
+                    title: entry.title,
+                    seriesNumber: entry.seriesNumber,
+                    modality: entry.modality,
+                    orientation: entry.orientation,
+                    filePaths: ordered,
+                    frameCount: entry.frameCount,
+                    contentKind: entry.contentKind,
+                    instanceNumbersBySOPUID: numbersBySOPUID,
+                    frameCountsByFilePath: entry.frameCountsByFilePath)
+            }
+            return (repaired, recovered)
+        }.value
     }
 
     /// Re-reads orientation for each entry, one file per series.
@@ -104,7 +183,8 @@ public enum ViewerSeriesCatalog {
                     filePaths: entry.filePaths,
                     frameCount: entry.frameCount,
                     contentKind: entry.contentKind,
-                    instanceNumbersBySOPUID: entry.instanceNumbersBySOPUID)
+                    instanceNumbersBySOPUID: entry.instanceNumbersBySOPUID,
+                    frameCountsByFilePath: entry.frameCountsByFilePath)
             }
         }.value
     }

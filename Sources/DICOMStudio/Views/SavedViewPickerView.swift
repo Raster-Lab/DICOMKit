@@ -73,20 +73,17 @@ struct SavedViewPickerView: View {
                 // instead, which is the same guard in the one place that does
                 // re-run when the reader actually clicks.
                 Button("Save for This Image") { commitSave(scope: .currentImage) }
-                // The wider scopes appear only where they would cover more
-                // than the image save does — a lone image offering "save for
-                // the series" would be a choice without a difference.
+                // The series scope appears only where it would cover more than
+                // the image save does — a lone image offering "save for the
+                // series" would be a choice without a difference.
                 if viewModel.canSaveViewForSeries {
                     Button("Save for This Series") { commitSave(scope: .currentSeries) }
                 }
-                if viewModel.canSaveViewForAllSeries {
-                    Button("Save for All Series") { commitSave(scope: .allSeries) }
-                }
             } message: {
                 Text("Saved views keep the window, zoom, pan and orientation "
-                     + "of the image on screen. Saving for this series — or "
-                     + "for all series — writes the same view onto every image "
-                     + "it covers. Saving over a name replaces it."
+                     + "of the image on screen. Saving for this series writes "
+                     + "the same view onto every image of the series. Saving "
+                     + "over a name replaces it."
                      + "\n\nThe view is added to the study as a presentation "
                      + "state series, with a reference ID you can quote.")
             }

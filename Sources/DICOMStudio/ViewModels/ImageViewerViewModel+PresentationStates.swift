@@ -83,7 +83,18 @@ extension ImageViewerViewModel {
                                 }?.seriesNumber,
                                 stateSeriesNumber: state.seriesNumber,
                                 stateInstanceNumber: state.state.instanceNumber,
-                                isColour: state.palette.map { !$0.isGrayscale } ?? false))
+                                isColour: state.palette.map { !$0.isGrayscale } ?? false,
+                                // The frames its drawings are on. The series
+                                // reference above deliberately names none —
+                                // window and zoom cover the whole object — so
+                                // the frame lives only on the graphic
+                                // annotations, one-based as (0008,1160) says.
+                                annotatedFrameNumbers: Set(
+                                    state.state.graphicAnnotations.flatMap { annotation in
+                                        annotation.referencedImages
+                                            .filter { $0.sopInstanceUID == image.sopInstanceUID }
+                                            .flatMap { $0.referencedFrameNumbers ?? [] }
+                                    }).sorted()))
                     }
                 }
             }
@@ -343,17 +354,23 @@ extension ImageViewerViewModel {
 
     // MARK: - Save scope
 
-    /// What a save covers: the image on screen, the series it belongs to, or
-    /// every image series of the study.
+    /// What a save covers: the image on screen, or the series it belongs to.
     ///
     /// A saved view is the same object either way — presentation states under
     /// one label, one per image. The scope only decides which images get one,
     /// which is why applying, updating, deleting and exporting a series view
     /// go through exactly the code paths an image view does.
+    ///
+    /// There is deliberately no study-wide scope. A saved view is a window,
+    /// zoom, pan and orientation, and those belong to an acquisition: a lung
+    /// window is wrong for the abdomen series, and a scout's zoom means
+    /// nothing on thin slices. Spreading one view over every series writes
+    /// mostly-wrong presentation states that the reader then has to delete.
+    /// Both scopes here stay inside one acquisition, where a shared view is
+    /// actually a statement about the same pixels.
     public enum SavedViewScope: Sendable, Equatable {
         case currentImage
         case currentSeries
-        case allSeries
     }
 
     /// Whether saving for the series would cover more than saving the image.
@@ -362,11 +379,6 @@ extension ImageViewerViewModel {
     /// second button would be a choice without a difference.
     public var canSaveViewForSeries: Bool {
         imageFilePaths(for: .currentSeries).count > 1
-    }
-
-    /// Whether the study has more than one image series to spread a view over.
-    public var canSaveViewForAllSeries: Bool {
-        studySeries.filter { $0.isImageSeries && !$0.filePaths.isEmpty }.count > 1
     }
 
     /// The files a scope's save would cover, in series order.
@@ -386,12 +398,6 @@ extension ImageViewerViewModel {
             }
             if !seriesFiles.isEmpty { return seriesFiles }
             return filePath.map { [$0] } ?? []
-        case .allSeries:
-            // Image series only: a view is a statement about pixels, and
-            // writing one against a report or a waveform would reference
-            // objects no viewer can window.
-            let paths = studySeries.filter(\.isImageSeries).flatMap(\.filePaths)
-            return paths.isEmpty ? imageFilePaths(for: .currentSeries) : paths
         }
     }
 
@@ -524,9 +530,9 @@ extension ImageViewerViewModel {
     /// Saves the current view under a name, over a chosen scope.
     ///
     /// The image scope is ``saveCurrentView(label:)`` unchanged. The series
-    /// scopes write the *same* view — this window, zoom and orientation — onto
-    /// every image they cover: one presentation state per image, all under the
-    /// one label. That shape is what makes the rest free: the store already
+    /// scope writes the *same* view — this window, zoom and orientation — onto
+    /// every image of the series: one presentation state per image, all under
+    /// the one label. That shape is what makes the rest free: the store already
     /// groups by label, so updating (re-saving the name), deleting, applying
     /// and exporting a series view are the same operations an image view gets.
     ///
@@ -1046,9 +1052,13 @@ extension ImageViewerViewModel {
         if let center = restored.windowCenter, let width = restored.windowWidth {
             // The object speaks rescaled units; the viewer's window is kept in
             // stored-pixel units — the inverse of the conversion the save did.
-            if rescaleSlope != 0 {
-                windowCenter = (center - rescaleIntercept) / rescaleSlope
-                windowWidth = width / abs(rescaleSlope)
+            // A state that brings its own Modality LUT means its window in
+            // those units, so its rescale is the one to undo.
+            let slope = restored.rescaleSlope ?? rescaleSlope
+            let intercept = restored.rescaleIntercept ?? rescaleIntercept
+            if slope != 0 {
+                windowCenter = (center - intercept) / slope
+                windowWidth = width / abs(slope)
             } else {
                 windowCenter = center
                 windowWidth = width
@@ -1084,7 +1094,7 @@ extension ImageViewerViewModel {
                 printSelection.selectedAnnotationID = nil
             }
             for key in replaced { printSelection.cellAnnotations[key] = nil }
-            for (frame, annotations) in stored.annotationsByFrame {
+            for (frame, annotations) in stored.annotationsByFrame(forImage: sopInstanceUID) {
                 printSelection.cellAnnotations[
                     ImageAnnotationKey(filePath: filePath, frameIndex: frame)] = annotations
             }

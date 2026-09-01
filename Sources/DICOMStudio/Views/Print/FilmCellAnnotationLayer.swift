@@ -65,10 +65,19 @@ struct FilmCellAnnotationLayer: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(viewModel.annotations(forItemID: itemID)) { annotation in
-                switch annotation.kind {
-                case .text:  textAnnotation(annotation)
-                case .arrow: arrowAnnotation(annotation)
-                case .annotation: combinedAnnotation(annotation)
+                if annotation.isLocked || annotation.isShape {
+                    // From another viewer's presentation state: drawn as the
+                    // film will burn it, never grabbed — a ruler's label is
+                    // a measurement, and dragging it would make it a lie.
+                    lockedAnnotation(annotation)
+                } else {
+                    switch annotation.kind {
+                    case .text:  textAnnotation(annotation)
+                    case .arrow: arrowAnnotation(annotation)
+                    case .annotation: combinedAnnotation(annotation)
+                    case .polyline, .circle, .ellipse, .point, .shutter:
+                        lockedAnnotation(annotation)
+                    }
                 }
             }
         }
@@ -241,6 +250,58 @@ struct FilmCellAnnotationLayer: View {
             }
         }
         .accessibilityLabel("Arrow annotation")
+    }
+
+    // MARK: - Locked annotations and shapes
+
+    /// An imported annotation or a shape, drawn through the cell's
+    /// arrangement exactly as the burner will place it, with nothing to grab.
+    @ViewBuilder
+    private func lockedAnnotation(_ annotation: PrintOverlayAnnotation) -> some View {
+        ZStack(alignment: .topLeading) {
+            if annotation.isShape {
+                ImportedShapeView(
+                    annotation: annotation,
+                    point: { point($0) },
+                    lineScaleHeight: imageRect.height)
+            } else {
+                if annotation.hasWords {
+                    let fontSize = max(Self.minimumPreviewFontSize,
+                                       CGFloat(ImageAnnotationBurner.overlayFontSize(
+                                        imageHeight: Double(imageRect.height),
+                                        scale: annotation.scale)))
+                    let position = point(annotation.start)
+                    Text(annotation.text)
+                        .font(.custom(ImageAnnotationBurner.overlayFontFamily, size: fontSize))
+                        .foregroundStyle(color(annotation.color))
+                        .shadow(color: halo(annotation.color), radius: max(1, fontSize * 0.08))
+                        .rotationEffect(.degrees(orientation.textAngleDegrees), anchor: .topLeading)
+                        .scaleEffect(x: orientation.textIsMirrored ? -1 : 1, y: 1, anchor: .topLeading)
+                        .offset(x: position.x, y: position.y)
+                }
+                if annotation.kind == .arrow || (annotation.kind == .annotation && annotation.hasArrow) {
+                    let tailNorm = annotation.kind == .arrow
+                        ? annotation.start
+                        : PrintAnnotationLayout.leaderTail(
+                            for: annotation,
+                            imageWidth: Double(imageRect.width),
+                            imageHeight: Double(imageRect.height))
+                    if let tailNorm {
+                        let metrics = ArrowMetrics(
+                            scale: annotation.scale, imageHeight: imageRect.height,
+                            tail: point(tailNorm), head: point(annotation.end))
+                        ArrowShape(metrics: metrics)
+                            .stroke(halo(annotation.color), lineWidth: metrics.haloWidth)
+                        ArrowShape(metrics: metrics)
+                            .fill(color(annotation.color))
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityLabel(annotation.isShape
+                            ? "Imported measurement"
+                            : "Imported annotation: \(annotation.text)")
     }
 
     // MARK: - Combined annotation (label + arrow, after Weasis)

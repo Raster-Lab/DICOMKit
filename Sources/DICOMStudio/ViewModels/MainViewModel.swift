@@ -151,7 +151,10 @@ public final class MainViewModel {
         self.studyBrowserViewModel = StudyBrowserViewModel(
             library: savedLibrary,
             importService: importService,
-            libraryStorageService: libraryStorageService
+            libraryStorageService: libraryStorageService,
+            // Deleting a study reclaims the copy import made of it. Without
+            // this the browser drops the row and leaves the images on disk.
+            fileCleanup: StudyFileCleanup(storageService: storageService)
         )
 
         let imageViewer = ImageViewerViewModel()
@@ -206,6 +209,14 @@ public final class MainViewModel {
             self.selectedDestination = .viewer
         }
 
+        // Deleting a study is when the rest of the app has to let go of it:
+        // the viewer would otherwise keep showing images whose files are gone,
+        // and a queued print job would still try to print them.
+        self.studyBrowserViewModel.onStudyRemoved = { [weak self] studyUID, filePaths in
+            guard let self else { return }
+            self.releaseStudy(studyUID, filePaths: filePaths)
+        }
+
         // Wire the study browser's "open in viewer" callbacks.
         // Series callback (preferred): loads all files in the series with navigation.
         self.studyBrowserViewModel.onOpenSeriesInViewer = { [weak self] files, startIdx in
@@ -244,6 +255,38 @@ public final class MainViewModel {
         }
     }
 
+    /// Lets go of a study the library no longer holds.
+    ///
+    /// Called after its files have been deleted. Everything here is about not
+    /// pointing at bytes that are gone: the viewer stops showing the study, the
+    /// decoded-pixel cache drops it, and queued print jobs for it are withdrawn
+    /// rather than left to fail at the printer.
+    func releaseStudy(_ studyUID: String, filePaths: [String]) {
+        // The viewer, but only if this is the study it is showing. A reader who
+        // deleted some other study should not have their images cleared.
+        if imageViewerViewModel.studyInstanceUID == studyUID {
+            imageViewerViewModel.closeStudy()
+            if selectedDestination == .viewer {
+                selectedDestination = .library
+            }
+        }
+
+        // Decoded pixels of the deleted study are still resident otherwise —
+        // this cache is keyed by path, and those paths are now gone.
+        Task { await FrameSourceCache.shared.clear() }
+
+        // Queued jobs that would print files that no longer exist. Active jobs
+        // are left alone: the printer already has them, and `remove` refuses
+        // them anyway.
+        let deletedPaths = Set(filePaths)
+        let doomed = printViewModel.queue.jobs.filter { job in
+            !job.state.isActive && job.payload.items.contains { item in
+                deletedPaths.contains(item.filePath)
+            }
+        }
+        for job in doomed { printViewModel.queue.remove(job.id) }
+    }
+
     /// Fills the viewer's series pane with every series of the file's study.
     ///
     /// The pane is what lets a reader hang a different series in a tile, so it
@@ -255,13 +298,37 @@ public final class MainViewModel {
               let studyUID = ViewerSeriesCatalog.studyUID(containing: filePath, in: library)
         else { return }
 
+        // The study's own presentation states go into the store first, so
+        // that the pane's badges and the viewer's first offer — both made by
+        // `loadStudySeries` — already know about them. A second visit to the
+        // same study finds them there and does nothing.
+        if let store = imageViewerViewModel.presentationStateStore {
+            StudyPresentationStateAdoption.adopt(studyUID: studyUID, in: library, into: store)
+        }
+
         let entries = ViewerSeriesCatalog.entries(forStudy: studyUID, in: library)
         imageViewerViewModel.loadStudySeries(entries, studyUID: studyUID)
 
         Task { [weak self] in
-            let resolved = await ViewerSeriesCatalog.resolvingOrientations(entries)
+            // Instance order first: a stale index (numbers never parsed) has
+            // the series in file-system order, and every viewer the study
+            // travels to sorts by Instance Number — the numbers on screen
+            // here have to mean the same slice they mean everywhere else.
+            let ordered = await ViewerSeriesCatalog.resolvingInstanceOrder(entries)
+            let resolved = await ViewerSeriesCatalog.resolvingOrientations(ordered.entries)
             guard let self, self.imageViewerViewModel.studyInstanceUID == studyUID else { return }
             self.imageViewerViewModel.loadStudySeries(resolved, studyUID: studyUID)
+            // The recovered numbers go back into the index, so the repair
+            // reads the files once — not on every open of the study.
+            guard !ordered.recoveredNumbers.isEmpty else { return }
+            for (sopUID, number) in ordered.recoveredNumbers {
+                if var instance = self.library.instances[sopUID],
+                   instance.instanceNumber == nil {
+                    instance.instanceNumber = number
+                    self.library.addInstance(instance)
+                }
+            }
+            try? self.libraryStorageService.save(self.library)
         }
     }
 

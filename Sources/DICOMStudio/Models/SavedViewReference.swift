@@ -50,6 +50,17 @@ public struct SavedViewReference: Identifiable, Hashable, Sendable {
     /// Whether the object carries a colour palette (a Pseudo-Color state).
     public let isColour: Bool
 
+    /// The frames of a multi-frame image the state's drawings are on, as the
+    /// viewer displays them — one-based, read from the Graphic Annotation
+    /// Sequence's Referenced Frame Numbers (0008,1160).
+    ///
+    /// Empty for a single-frame image, and for a state with no drawings: the
+    /// window and zoom are statements about the whole object and name no frame.
+    /// Instance Number cannot say which frame carries the text — a cine loop is
+    /// one instance — so this is the only number a reader can check against the
+    /// corner overlay's frame counter.
+    public let annotatedFrameNumbers: [Int]
+
     public init(
         sopInstanceUID: String,
         label: String,
@@ -59,7 +70,8 @@ public struct SavedViewReference: Identifiable, Hashable, Sendable {
         imageSeriesNumber: Int? = nil,
         stateSeriesNumber: Int? = nil,
         stateInstanceNumber: Int? = nil,
-        isColour: Bool = false
+        isColour: Bool = false,
+        annotatedFrameNumbers: [Int] = []
     ) {
         self.sopInstanceUID = sopInstanceUID
         self.label = label
@@ -70,6 +82,7 @@ public struct SavedViewReference: Identifiable, Hashable, Sendable {
         self.stateSeriesNumber = stateSeriesNumber
         self.stateInstanceNumber = stateInstanceNumber
         self.isColour = isColour
+        self.annotatedFrameNumbers = annotatedFrameNumbers
     }
 
     /// "Series 2, image 42" — where the *image* is, which is what a reader
@@ -78,12 +91,33 @@ public struct SavedViewReference: Identifiable, Hashable, Sendable {
     /// Stated as far as it is known: an image the study does not index by
     /// number gets its series alone rather than an invented position.
     public var imageLocationLabel: String {
+        let location: String
         switch (imageSeriesNumber, imageInstanceNumber) {
-        case let (series?, image?): return "Series \(series), image \(image)"
-        case let (series?, nil): return "Series \(series)"
-        case let (nil, image?): return "Image \(image)"
-        case (nil, nil): return "Image"
+        case let (series?, image?): location = "Series \(series), image \(image)"
+        case let (series?, nil): location = "Series \(series)"
+        case let (nil, image?): location = "Image \(image)"
+        case (nil, nil): location = "Image"
         }
+        guard let frames = frameLabel else { return location }
+        return "\(location), \(frames)"
+    }
+
+    /// "frame 11", "frames 3, 8" or "12 frames" — where on a multi-frame image
+    /// the drawings are, stated so a reader can check it against the corner
+    /// overlay's frame counter. Nil when the state names no frame.
+    ///
+    /// A handful of frames are named outright; more than three would run the
+    /// row off its line, so a heavily annotated loop states its count instead.
+    private var frameLabel: String? {
+        guard !annotatedFrameNumbers.isEmpty else { return nil }
+        if annotatedFrameNumbers.count == 1 {
+            return "frame \(annotatedFrameNumbers[0])"
+        }
+        if annotatedFrameNumbers.count <= 3 {
+            let list = annotatedFrameNumbers.map(String.init).joined(separator: ", ")
+            return "frames \(list)"
+        }
+        return "\(annotatedFrameNumbers.count) frames"
     }
 
     /// "PR 9001 · 3" — the presentation state's own series and instance number.

@@ -69,6 +69,13 @@ public struct GrayscalePresentationStateBuilder: Sendable {
         dataSet.setString(patient.patientID ?? "", for: .patientID, vr: .LO)
         dataSet.setString(patient.patientBirthDate ?? "", for: .patientBirthDate, vr: .DA)
         dataSet.setString(patient.patientSex ?? "", for: .patientSex, vr: .CS)
+        // Written only when the image has one: Issuer of Patient ID is part of
+        // how a viewer keys the patient (Weasis: patientId + issuer + name), so
+        // a PR that drops it while the image carries it files under a different
+        // patient — badge on the series, no state on the image.
+        if let issuerOfPatientID = patient.issuerOfPatientID {
+            dataSet.setString(issuerOfPatientID, for: .issuerOfPatientID, vr: .LO)
+        }
 
         // MARK: General Study
         //
@@ -125,7 +132,9 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             Self.applyVOILUT(voiLUT, to: &dataSet)
         }
         if let spatial = state.spatialTransformation {
-            dataSet.setString(String(spatial.rotation), for: .imageRotation, vr: .IS)
+            // The dictionary decides the encoding (US); the builder supplies
+            // only the number.
+            dataSet.setInteger(spatial.rotation, for: .imageRotation)
             dataSet.setString(spatial.horizontalFlip ? "Y" : "N", for: .imageHorizontalFlip, vr: .CS)
         }
         if let area = state.displayedArea {
@@ -199,19 +208,23 @@ public struct GrayscalePresentationStateBuilder: Sendable {
     }
 
     private static func displayedAreaElement(_ area: DisplayedArea) -> DataElement {
-        // Written as IS rather than SL. The standard permits either, and IS is
-        // the form `GrayscalePresentationStateParser` reads — an SL-valued
-        // corner parses back as nil, losing the zoom and pan the state exists
-        // to record.
+        // Encodings come from the dictionary (SL here). The parser accepts the
+        // IS form older builds wrote, so existing states still read back.
         let item = SequenceItem(elements: [
+            Self.integers([area.topLeft.column, area.topLeft.row],
+                          for: .displayedAreaTopLeftHandCorner),
+            Self.integers([area.bottomRight.column, area.bottomRight.row],
+                          for: .displayedAreaBottomRightHandCorner),
             DataElement.string(
-                tag: .displayedAreaTopLeftHandCorner, vr: .IS,
-                value: "\(area.topLeft.column)\\\(area.topLeft.row)"),
+                tag: .presentationSizeMode, vr: .CS, value: area.sizeMode.rawValue),
+            // Type 1C: C.10.4 requires one of Presentation Pixel Spacing
+            // (0070,0101) or Presentation Pixel Aspect Ratio (0070,0102) in
+            // every item — dcmpschk fails the object outright when both are
+            // absent. Physical spacing is not something this builder knows, so
+            // the aspect ratio is written instead: 1\\1, the square pixels the
+            // viewer already assumes when it composes the displayed area.
             DataElement.string(
-                tag: .displayedAreaBottomRightHandCorner, vr: .IS,
-                value: "\(area.bottomRight.column)\\\(area.bottomRight.row)"),
-            DataElement.string(
-                tag: .presentationSizeMode, vr: .CS, value: area.sizeMode.rawValue)
+                tag: .presentationPixelAspectRatio, vr: .IS, value: "1\\1")
         ])
         return sequence(tag: .displayedAreaSelectionSequence, items: [item])
     }
@@ -277,18 +290,14 @@ public struct GrayscalePresentationStateBuilder: Sendable {
                 elements.append(DataElement.string(
                     tag: .graphicLayerDescription, vr: .LO, value: description))
             }
-            // Written as IS rather than US for the same reason the displayed
-            // area corners are: it is the form the parser reads back, and an
-            // explicit-VR file carries its VR with it.
             if let grayscale = layer.recommendedGrayscaleValue {
-                elements.append(DataElement.string(
-                    tag: .graphicLayerRecommendedDisplayGrayscaleValue, vr: .IS,
-                    value: String(grayscale)))
+                elements.append(Self.integers(
+                    [grayscale], for: .graphicLayerRecommendedDisplayGrayscaleValue))
             }
             if let rgb = layer.recommendedRGBValue {
-                elements.append(DataElement.string(
-                    tag: .graphicLayerRecommendedDisplayRGBValue, vr: .IS,
-                    value: "\(rgb.red)\\\(rgb.green)\\\(rgb.blue)"))
+                elements.append(Self.integers(
+                    [rgb.red, rgb.green, rgb.blue],
+                    for: .graphicLayerRecommendedDisplayRGBValue))
             }
             return SequenceItem(elements: elements)
         }
@@ -341,17 +350,9 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             DataElement.string(
                 tag: .graphicAnnotationUnits, vr: .CS, value: object.units.rawValue),
             // Always 2: Graphic Data here is (column, row) pairs.
-            DataElement(tag: .graphicDimensions, vr: .US, length: 2,
-                        valueData: Data([2, 0])),
-            DataElement(tag: .numberOfGraphicPoints, vr: .US, length: 2,
-                        valueData: Data([UInt8(object.pointCount & 0xFF),
-                                         UInt8((object.pointCount >> 8) & 0xFF)])),
-            // DS rather than FL, matching the displayed-area precedent: it is
-            // the form the parser reads back, and the explicit VR travels with
-            // the file.
-            DataElement.string(
-                tag: .graphicData, vr: .DS,
-                value: object.data.map(decimalString).joined(separator: "\\")),
+            Self.integers([2], for: .graphicDimensions),
+            Self.integers([object.pointCount], for: .numberOfGraphicPoints),
+            Self.reals(object.data, for: .graphicData),
             DataElement.string(tag: .graphicType, vr: .CS, value: object.type.rawValue),
             DataElement.string(
                 tag: .graphicFilled, vr: .CS, value: object.filled ? "Y" : "N")
@@ -365,23 +366,17 @@ public struct GrayscalePresentationStateBuilder: Sendable {
                 value: text.boundingBoxUnits.rawValue),
             DataElement.string(
                 tag: .textObjectUnformattedTextValue, vr: .ST, value: text.text),
-            DataElement.string(
-                tag: .boundingBoxTopLeftHandCorner, vr: .DS,
-                value: "\(decimalString(text.boundingBoxTopLeft.column))\\"
-                     + "\(decimalString(text.boundingBoxTopLeft.row))"),
-            DataElement.string(
-                tag: .boundingBoxBottomRightHandCorner, vr: .DS,
-                value: "\(decimalString(text.boundingBoxBottomRight.column))\\"
-                     + "\(decimalString(text.boundingBoxBottomRight.row))"),
+            Self.reals([text.boundingBoxTopLeft.column, text.boundingBoxTopLeft.row],
+                       for: .boundingBoxTopLeftHandCorner),
+            Self.reals([text.boundingBoxBottomRight.column, text.boundingBoxBottomRight.row],
+                       for: .boundingBoxBottomRightHandCorner),
             // Type 1C once a bounding box is present. LEFT because that is how
             // every renderer of this model draws — the anchor is the top-left.
             DataElement.string(
                 tag: .boundingBoxTextHorizontalJustification, vr: .CS, value: "LEFT")
         ]
         if let anchor = text.anchorPoint {
-            elements.append(DataElement.string(
-                tag: .anchorPoint, vr: .DS,
-                value: "\(decimalString(anchor.column))\\\(decimalString(anchor.row))"))
+            elements.append(Self.reals([anchor.column, anchor.row], for: .anchorPoint))
             elements.append(DataElement.string(
                 tag: .anchorPointVisibility, vr: .CS,
                 value: text.anchorPointVisible ? "Y" : "N"))
@@ -390,6 +385,33 @@ public struct GrayscalePresentationStateBuilder: Sendable {
                 value: text.anchorPointUnits.rawValue))
         }
         return SequenceItem(elements: elements)
+    }
+
+    /// An integer-valued element encoded the way the data dictionary says.
+    ///
+    /// The builder names the tag and the numbers; DICOMKit's own
+    /// `DataElementDictionary` supplies the VR, so a call site cannot pick one
+    /// that disagrees with the standard. `.UN` is unreachable for these tags —
+    /// every one is in the dictionary — and only guards the lookup.
+    private static func integers(_ values: [Int], for tag: Tag) -> DataElement {
+        var holder = DataSet()
+        guard holder.setIntegers(values, for: tag), let element = holder[tag] else {
+            return DataElement.strings(
+                tag: tag, vr: .UN, values: values.map(String.init))
+        }
+        return element
+    }
+
+    /// A real-valued element encoded the way the data dictionary says.
+    /// See ``integers(_:for:)``.
+    private static func reals(_ values: [Double], for tag: Tag) -> DataElement {
+        var holder = DataSet()
+        guard holder.setReals(values, for: tag, decimalStringFormatter: decimalString),
+              let element = holder[tag] else {
+            return DataElement.strings(
+                tag: tag, vr: .UN, values: values.map(decimalString))
+        }
+        return element
     }
 
     private static func sequence(tag: Tag, items: [SequenceItem]) -> DataElement {
@@ -441,6 +463,9 @@ public struct PresentationStatePatientContext: Sendable, Equatable {
     public var patientID: String?
     public var patientBirthDate: String?
     public var patientSex: String?
+    /// Issuer of Patient ID (0010,0021). Copied because viewers fold it into
+    /// the patient's identity key; see the write site for the failure it stops.
+    public var issuerOfPatientID: String?
 
     public var studyInstanceUID: String
     public var studyDate: String?
@@ -458,6 +483,7 @@ public struct PresentationStatePatientContext: Sendable, Equatable {
         patientID: String? = nil,
         patientBirthDate: String? = nil,
         patientSex: String? = nil,
+        issuerOfPatientID: String? = nil,
         studyInstanceUID: String,
         studyDate: String? = nil,
         studyTime: String? = nil,
@@ -472,6 +498,7 @@ public struct PresentationStatePatientContext: Sendable, Equatable {
         self.patientID = patientID
         self.patientBirthDate = patientBirthDate
         self.patientSex = patientSex
+        self.issuerOfPatientID = issuerOfPatientID
         self.studyInstanceUID = studyInstanceUID
         self.studyDate = studyDate
         self.studyTime = studyTime
@@ -497,6 +524,7 @@ public struct PresentationStatePatientContext: Sendable, Equatable {
             patientID: string(.patientID),
             patientBirthDate: string(.patientBirthDate),
             patientSex: string(.patientSex),
+            issuerOfPatientID: string(.issuerOfPatientID),
             studyInstanceUID: string(.studyInstanceUID) ?? "",
             studyDate: string(.studyDate),
             studyTime: string(.studyTime),

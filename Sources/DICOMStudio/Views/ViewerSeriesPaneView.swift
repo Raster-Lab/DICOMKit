@@ -326,6 +326,11 @@ struct ViewerSeriesPaneView: View {
                     .foregroundStyle(.white.opacity(0.55))
                     .multilineTextAlignment(.center)
             }
+        } else if entry.objectPreviews.count > 1 {
+            // Several cines under one series: one preview per object, the way
+            // Horos shows them. A single thumbnail of the first file would
+            // claim the series is one recording when it holds two.
+            objectStrip(entry)
         } else {
             imageThumbnail(entry)
         }
@@ -333,33 +338,122 @@ struct ViewerSeriesPaneView: View {
 
     @ViewBuilder
     private func imageThumbnail(_ entry: ViewerSeriesEntry) -> some View {
-        #if canImport(CoreGraphics)
         if let path = entry.firstFilePath {
-            let key = FrameImageStore.Request(path: path).key
-            if let image = thumbnails.image(forKey: key) {
-                Image(decorative: image, scale: 1.0, orientation: .up)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else if thumbnails.didFail(key) {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-            } else {
-                ProgressView().controlSize(.small)
-            }
+            frameThumbnail(path)
         } else {
             Image(systemName: "square.dashed")
                 .foregroundStyle(.white.opacity(0.2))
+        }
+    }
+
+    @ViewBuilder
+    private func frameThumbnail(_ path: String) -> some View {
+        #if canImport(CoreGraphics)
+        let key = FrameImageStore.Request(path: path).key
+        if let image = thumbnails.image(forKey: key) {
+            Image(decorative: image, scale: 1.0, orientation: .up)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+        } else if thumbnails.didFail(key) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+        } else {
+            ProgressView().controlSize(.small)
         }
         #else
         Color.black
         #endif
     }
 
+    // MARK: - Per-object previews
+
+    /// Previews drawn on a multi-cine card before the strip resorts to a
+    /// "+N" tile. Three keeps each preview wide enough to read; a series with
+    /// more objects shows two and says how many the card cannot fit — the
+    /// remaining loops are one click away, through the series itself.
+    private static let objectStripCapacity = 3
+
+    /// One preview per multi-frame object, side by side.
+    @ViewBuilder
+    private func objectStrip(_ entry: ViewerSeriesEntry) -> some View {
+        let previews = entry.objectPreviews
+        let shown = previews.count > Self.objectStripCapacity
+            ? Array(previews.prefix(Self.objectStripCapacity - 1))
+            : previews
+        let hidden = previews.count - shown.count
+
+        HStack(spacing: 4) {
+            ForEach(shown) { preview in
+                objectPreviewTile(entry, preview: preview)
+            }
+            if hidden > 0 {
+                overflowTile(entry, hidden: hidden)
+            }
+        }
+        .padding(4)
+    }
+
+    /// One object: its first frame over its loop length, opening that object.
+    ///
+    /// A button of its own, above the card's tap: clicking the 92-frame loop
+    /// is a request to read that recording, and landing the reader on the
+    /// series' first object instead would show them the other one.
+    private func objectPreviewTile(
+        _ entry: ViewerSeriesEntry, preview: SeriesObjectPreview
+    ) -> some View {
+        Button {
+            viewModel.selectSeries(
+                entry.seriesInstanceUID, startingAtFile: preview.filePath)
+        } label: {
+            VStack(spacing: 2) {
+                frameThumbnail(preview.filePath)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Text(preview.frameCountLabel)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "Object with \(preview.frameCountLabel). Show it in the selected tile.")
+    }
+
+    /// The objects the strip has no room for, still one click from view.
+    private func overflowTile(_ entry: ViewerSeriesEntry, hidden: Int) -> some View {
+        Button {
+            viewModel.selectSeries(entry.seriesInstanceUID)
+        } label: {
+            VStack(spacing: 2) {
+                Image(systemName: "square.stack")
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.6))
+                Text("+\(hidden)")
+                    .font(.caption2.monospacedDigit().bold())
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(hidden) more objects. Show the series.")
+    }
+
     #if canImport(CoreGraphics)
     private func refreshThumbnails() {
-        thumbnails.refresh(viewModel.studySeries.compactMap { entry in
-            guard entry.isImageSeries else { return nil }
-            return entry.firstFilePath.map { FrameImageStore.Request(path: $0) }
+        thumbnails.refresh(viewModel.studySeries.flatMap { entry -> [FrameImageStore.Request] in
+            guard entry.isImageSeries else { return [] }
+            let previews = entry.objectPreviews
+            if previews.count > 1 {
+                // Only the strip's visible tiles: decoding every loop of a
+                // long echo study for tiles that draw as "+N" is wasted disk.
+                let shown = previews.count > Self.objectStripCapacity
+                    ? previews.prefix(Self.objectStripCapacity - 1)
+                    : previews.prefix(previews.count)
+                return shown.map { FrameImageStore.Request(path: $0.filePath) }
+            }
+            return entry.firstFilePath.map { [FrameImageStore.Request(path: $0)] } ?? []
         })
     }
     #endif

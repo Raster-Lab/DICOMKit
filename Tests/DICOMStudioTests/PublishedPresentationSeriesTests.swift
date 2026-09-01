@@ -251,8 +251,10 @@ struct PublishedPresentationSeriesTests {
         let published = try #require(viewModel.publishedPresentationSeries)
         let url = try #require(published.instances.first?.url)
         let file = try DICOMFile.read(from: url)
-        #expect(file.dataSet.string(for: .imageRotation) == "0",
+        #expect(file.dataSet[.imageRotation]?.uint16Value == 0,
                 "0 is enumerated; 360 is not a legal Image Rotation value")
+        #expect(file.dataSet[.imageRotation]?.vr == .US,
+                "Image Rotation is US per PS3.6 — dcmpschk rejects an IS-valued one")
     }
 
     @Test("An assigned 360 normalises rather than reaching print")

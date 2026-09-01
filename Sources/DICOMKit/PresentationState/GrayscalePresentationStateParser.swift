@@ -68,8 +68,16 @@ public struct GrayscalePresentationStateParser: Sendable {
         // the same thing in both, and the model records which class it was via
         // `sopClassUID`. The palette itself is read separately, through the
         // data set's own `paletteColorLUT()`, by callers that want it.
+        // Color Softcopy (A.33.3) is read too: it has no Modality, VOI or
+        // Presentation LUT module — every LUT parse below returns nil for it
+        // — and carries an ICC profile this model does not hold, but its
+        // spatial transformation, displayed area, shutters and graphic
+        // annotations are the same modules and mean the same thing. A CSPS
+        // shipped with a colour ultrasound is how another viewer's
+        // measurements on it arrive, and refusing the file loses them.
         guard sopClassUID == .grayscaleSoftcopyPresentationStateStorage
-            || sopClassUID == .pseudoColorSoftcopyPresentationStateStorage else {
+            || sopClassUID == .pseudoColorSoftcopyPresentationStateStorage
+            || sopClassUID == .colorSoftcopyPresentationStateStorage else {
             throw ParseError.invalidSOPClassUID(sopClassUID)
         }
         
@@ -282,7 +290,7 @@ public struct GrayscalePresentationStateParser: Sendable {
     }
     
     private func parseSpatialTransformation(from dataSet: DataSet) -> SpatialTransformation? {
-        let rotation = dataSet.integerString(for: .imageRotation)?.value ?? 0
+        let rotation = dataSet[.imageRotation]?.integerValueTolerant ?? 0
         let flipString = dataSet.string(for: .imageHorizontalFlip)
         let horizontalFlip = flipString == "Y"
         
@@ -299,9 +307,9 @@ public struct GrayscalePresentationStateParser: Sendable {
             return nil
         }
         
-        guard let topLeftValues = firstItem[.displayedAreaTopLeftHandCorner]?.integerStringValues?.map({ $0.value }),
+        guard let topLeftValues = firstItem[.displayedAreaTopLeftHandCorner]?.integerValuesTolerant,
               topLeftValues.count == 2,
-              let bottomRightValues = firstItem[.displayedAreaBottomRightHandCorner]?.integerStringValues?.map({ $0.value }),
+              let bottomRightValues = firstItem[.displayedAreaBottomRightHandCorner]?.integerValuesTolerant,
               bottomRightValues.count == 2 else {
             return nil
         }
@@ -327,10 +335,10 @@ public struct GrayscalePresentationStateParser: Sendable {
             }
             
             let description = item.string(for: .graphicLayerDescription)
-            let grayscaleValue = item[.graphicLayerRecommendedDisplayGrayscaleValue]?.integerStringValue?.value
+            let grayscaleValue = item[.graphicLayerRecommendedDisplayGrayscaleValue]?.integerValueTolerant
             
             var rgbValue: (red: Int, green: Int, blue: Int)? = nil
-            if let rgbValues = item[.graphicLayerRecommendedDisplayRGBValue]?.integerStringValues?.map({ $0.value }),
+            if let rgbValues = item[.graphicLayerRecommendedDisplayRGBValue]?.integerValuesTolerant,
                rgbValues.count == 3 {
                 rgbValue = (red: rgbValues[0], green: rgbValues[1], blue: rgbValues[2])
             }
@@ -405,7 +413,7 @@ public struct GrayscalePresentationStateParser: Sendable {
     private func parseGraphicObject(from item: SequenceItem) throws -> GraphicObject? {
         guard let typeString = item.string(for: .graphicType),
               let type = PresentationGraphicType(rawValue: typeString),
-              let data = item[.graphicData]?.decimalStringValues?.map({ $0.value }) else {
+              let data = item[.graphicData]?.realValuesTolerant else {
             return nil
         }
         
@@ -428,9 +436,9 @@ public struct GrayscalePresentationStateParser: Sendable {
         // parser used the wrong tag.
         guard let text = item.string(for: .textObjectUnformattedTextValue)
                 ?? item.string(for: .unformattedTextValue),
-              let topLeftValues = item[.boundingBoxTopLeftHandCorner]?.decimalStringValues?.map({ $0.value }),
+              let topLeftValues = item[.boundingBoxTopLeftHandCorner]?.realValuesTolerant,
               topLeftValues.count == 2,
-              let bottomRightValues = item[.boundingBoxBottomRightHandCorner]?.decimalStringValues?.map({ $0.value }),
+              let bottomRightValues = item[.boundingBoxBottomRightHandCorner]?.realValuesTolerant,
               bottomRightValues.count == 2 else {
             return nil
         }
@@ -439,7 +447,7 @@ public struct GrayscalePresentationStateParser: Sendable {
         let bottomRight = (column: bottomRightValues[0], row: bottomRightValues[1])
         
         var anchorPoint: (column: Double, row: Double)? = nil
-        if let anchorValues = item[.anchorPoint]?.decimalStringValues?.map({ $0.value }),
+        if let anchorValues = item[.anchorPoint]?.realValuesTolerant,
            anchorValues.count == 2 {
             anchorPoint = (column: anchorValues[0], row: anchorValues[1])
         }

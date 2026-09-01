@@ -218,6 +218,43 @@ struct SavedViewPaletteFrameTests {
         #expect(other.annotations(forFrame: 0).isEmpty)
     }
 
+    @Test("The pane's row names the frame a multi-frame view is drawn on")
+    func referenceNamesAnnotatedFrames() throws {
+        let fixture = try makeFixture()
+        defer { cleanUp(fixture) }
+
+        // A cine: the reader is on displayed frame 11 — index 10 — when they
+        // write the text, which is the number the corner overlay shows them.
+        fixture.viewModel.numberOfFrames = 92
+        fixture.viewModel.printSelection.cellAnnotations[
+            ImageAnnotationKey(filePath: fixture.paths[0], frameIndex: 10)] = [arrow()]
+        #expect(fixture.viewModel.saveCurrentView(label: "Frame check"))
+
+        let reference = try #require(fixture.viewModel
+            .savedViewReferences(forSeries: Self.seriesUID)
+            .first { $0.label == "Frame check" })
+        #expect(reference.annotatedFrameNumbers == [11],
+                "one-based, as (0008,1160) and the corner overlay both count")
+        #expect(reference.imageLocationLabel.hasSuffix("frame 11"),
+                "the row states the frame the reader can scrub to")
+    }
+
+    @Test("A single-frame view's row names no frame")
+    func singleFrameReferenceNamesNoFrame() throws {
+        let fixture = try makeFixture()
+        defer { cleanUp(fixture) }
+
+        fixture.viewModel.printSelection.cellAnnotations[
+            ImageAnnotationKey(filePath: fixture.paths[0], frameIndex: 0)] = [arrow()]
+        #expect(fixture.viewModel.saveCurrentView(label: "Flat image"))
+
+        let reference = try #require(fixture.viewModel
+            .savedViewReferences(forSeries: Self.seriesUID)
+            .first { $0.label == "Flat image" })
+        #expect(reference.annotatedFrameNumbers.isEmpty)
+        #expect(!reference.imageLocationLabel.contains("frame"))
+    }
+
     @Test("Applying a view puts each frame's drawings back on its frame")
     func applyRestoresDrawingsPerFrame() throws {
         let fixture = try makeFixture()

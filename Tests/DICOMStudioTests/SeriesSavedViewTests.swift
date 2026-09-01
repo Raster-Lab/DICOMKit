@@ -148,10 +148,9 @@ struct SeriesSavedViewTests {
         defer { cleanUp(fixture) }
 
         #expect(fixture.viewModel.canSaveViewForSeries)
-        #expect(fixture.viewModel.canSaveViewForAllSeries)
     }
 
-    @Test("A lone image offers neither series scope")
+    @Test("A lone image offers no series scope")
     func loneImageOffersNoSeriesScope() throws {
         let fixture = try makeFixture()
         defer { cleanUp(fixture) }
@@ -162,7 +161,6 @@ struct SeriesSavedViewTests {
         fixture.viewModel.currentSeriesUID = nil
 
         #expect(fixture.viewModel.canSaveViewForSeries == false)
-        #expect(fixture.viewModel.canSaveViewForAllSeries == false)
     }
 
     // MARK: - Saving
@@ -187,23 +185,32 @@ struct SeriesSavedViewTests {
         #expect(fixture.viewModel.selectedPresentationStateLabel == "Lung window")
     }
 
-    @Test("An all-series save covers every image of every series")
-    func allSeriesSaveCoversTheStudy() async throws {
+    @Test("A series save never reaches beyond its own series")
+    func seriesSaveStopsAtTheSeriesBoundary() async throws {
+        // There is no study-wide scope: a window and zoom belong to one
+        // acquisition. Saving in series B must leave series A alone, and each
+        // image's state must name the series it actually belongs to.
         let fixture = try makeFixture()
         defer { cleanUp(fixture) }
 
+        fixture.viewModel.filePath = fixture.seriesBPaths[0]
+        fixture.viewModel.sopInstanceUID = Self.sopB1
+        fixture.viewModel.currentSeriesUID = Self.seriesBUID
         fixture.viewModel.zoomLevel = 2.5
+
         let saved = await fixture.viewModel.saveCurrentView(
-            label: "Lung window", scope: .allSeries)
+            label: "Coronal window", scope: .currentSeries)
         #expect(saved)
 
         let view = try #require(fixture.store
-            .views(forStudy: Self.studyUID).first { $0.label == "Lung window" })
-        #expect(view.coveredImageCount == 4)
-        for sop in [Self.sopA1, Self.sopA2, Self.sopB1, Self.sopB2] {
-            #expect(view.covers(image: sop))
-        }
-        // Each image's state names its own series, not the current one.
+            .views(forStudy: Self.studyUID).first { $0.label == "Coronal window" })
+        #expect(view.coveredImageCount == 2)
+        #expect(view.covers(image: Self.sopB1))
+        #expect(view.covers(image: Self.sopB2))
+        #expect(view.covers(image: Self.sopA1) == false)
+        #expect(view.covers(image: Self.sopA2) == false)
+
+        // Each covered image's state names its own series.
         let stateB = try #require(view.state(forImage: Self.sopB1))
         #expect(stateB.state.referencedSeries.first?.seriesInstanceUID == Self.seriesBUID)
     }
@@ -385,18 +392,27 @@ struct SeriesSavedViewTests {
         #expect(publishedStates(in: fixture.studyDirectory).count == 2)
     }
 
-    @Test("An all-series export lands every covered image's object")
-    func allSeriesExportCoversTheStudy() async throws {
+    @Test("Each series' export lands only that series' objects")
+    func seriesExportsStayWithinTheirSeries() async throws {
         let fixture = try makeFixture()
         defer { cleanUp(fixture) }
 
         fixture.viewModel.zoomLevel = 2.5
         _ = await fixture.viewModel.saveCurrentView(
-            label: "Lung window", scope: .allSeries)
+            label: "Lung window", scope: .currentSeries)
+        #expect(publishedStates(in: fixture.studyDirectory).count == 2)
+
+        // A second view, saved from the other series, adds its own two — the
+        // study accumulates by series rather than in one study-wide sweep.
+        fixture.viewModel.filePath = fixture.seriesBPaths[0]
+        fixture.viewModel.sopInstanceUID = Self.sopB1
+        fixture.viewModel.currentSeriesUID = Self.seriesBUID
+        _ = await fixture.viewModel.saveCurrentView(
+            label: "Coronal window", scope: .currentSeries)
 
         #expect(publishedStates(in: fixture.studyDirectory).count == 4)
         let published = try #require(fixture.viewModel.publishedPresentationSeries)
-        #expect(published.instances.count == 4)
+        #expect(published.instances.count == 2)
     }
 
     // MARK: - Reverting to the default view
@@ -709,10 +725,21 @@ struct SeriesSavedViewTests {
         let fixture = try makeFixture()
         defer { cleanUp(fixture) }
 
-        // One view over both series, then back out of series A only.
+        // The same label saved over each series in turn, then back out of
+        // series A only.
         fixture.viewModel.zoomLevel = 2.5
         _ = await fixture.viewModel.saveCurrentView(
-            label: "Lung window", scope: .allSeries)
+            label: "Lung window", scope: .currentSeries)
+
+        fixture.viewModel.filePath = fixture.seriesBPaths[0]
+        fixture.viewModel.sopInstanceUID = Self.sopB1
+        fixture.viewModel.currentSeriesUID = Self.seriesBUID
+        _ = await fixture.viewModel.saveCurrentView(
+            label: "Lung window", scope: .currentSeries)
+
+        fixture.viewModel.filePath = fixture.seriesAPaths[0]
+        fixture.viewModel.sopInstanceUID = Self.sopA1
+        fixture.viewModel.currentSeriesUID = Self.seriesAUID
         await fixture.viewModel.applyDefaultViewForSeries()
 
         // Series B still stands on it.

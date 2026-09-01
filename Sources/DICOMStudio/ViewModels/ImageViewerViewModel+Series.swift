@@ -32,6 +32,19 @@ extension ImageViewerViewModel {
         if let current = seriesEntry(containing: filePath) {
             currentSeriesUID = current.seriesInstanceUID
             visitedSeriesUIDs.insert(current.seriesInstanceUID)
+            // The navigation list may predate an instance-order repair: the
+            // series was handed over in the index's stale order, and the
+            // repaired entry now asserts the study's own. Same files in a new
+            // order is that repair arriving — adopt it, keeping the image on
+            // screen exactly where it is so nothing jumps under the reader.
+            if current.filePaths != seriesFiles,
+               Set(current.filePaths) == Set(seriesFiles) {
+                seriesFiles = current.filePaths
+                if let path = filePath,
+                   let index = current.filePaths.firstIndex(of: path) {
+                    currentFileIndex = index
+                }
+            }
             // The image loaded before the study did, so its saved views could
             // not be looked up then: the store files them under the Study
             // Instance UID that has only just arrived.
@@ -55,6 +68,27 @@ extension ImageViewerViewModel {
     /// "start over", so the selected-images panel starts over with it; the
     /// library's own "Print…" does not come through here, so the files it marks
     /// survive.
+    /// Clears the viewer completely, including the image on screen.
+    ///
+    /// `prepareForNewStudy()` leaves the current file loaded because a new one
+    /// is about to replace it. When a study is *deleted* there is no
+    /// replacement: its files are gone, so the image, the navigation list and
+    /// the decoded pixels behind them all have to go too, or the viewer keeps
+    /// displaying a study that no longer exists.
+    public func closeStudy() {
+        prepareForNewStudy()
+        seriesFiles = []
+        currentFileIndex = 0
+        filePath = nil
+        sopInstanceUID = nil
+        dicomFile = nil
+        #if canImport(CoreGraphics)
+        currentImage = nil
+        displayTexture = nil
+        #endif
+        isLoading = false
+    }
+
     public func prepareForNewStudy() {
         layout = .single
         cells = []
@@ -83,6 +117,13 @@ extension ImageViewerViewModel {
         // their film positions, and the print screen itself if it was still up —
         // the film on it was composed from the study being left behind.
         printSelection.clear()
+        // And the drawings: text and arrows are tool state like window and
+        // zoom, and they reset with the study the same way. Drawings worth
+        // keeping have a home already — saving a view writes them into the
+        // presentation state — so what is left here is the scratch work of a
+        // read that is over. Kept per image rather than per mark, so `clear()`
+        // above does not reach them.
+        printSelection.clearAllAnnotations()
         requestPrintScreenDismissal()
         // And the panel that held them: with nothing on the film, the tray is
         // back to where it starts — out of the way until this study's first
@@ -114,6 +155,17 @@ extension ImageViewerViewModel {
     @discardableResult
     public func selectSeries(_ uid: String) -> Bool {
         assignSeriesToFocusedCell(uid)
+    }
+
+    /// Shows a series starting at one of its objects.
+    ///
+    /// The path from a card's per-object previews: a series of several cines
+    /// shows one preview per object, and clicking the second loop is a request
+    /// to read *that* recording, not to start over at the first.
+    @discardableResult
+    public func selectSeries(_ uid: String, startingAtFile filePath: String) -> Bool {
+        assignSeries(uid, toCell: cells.isEmpty ? 0 : focusedCellIndex,
+                     startingAtFile: filePath)
     }
 
     /// The series pane entry a file belongs to, if any.
@@ -150,24 +202,31 @@ extension ImageViewerViewModel {
     ///
     /// - Returns: `true` when the series was hung.
     @discardableResult
-    public func assignSeries(_ uid: String, toCell index: Int) -> Bool {
+    public func assignSeries(
+        _ uid: String, toCell index: Int, startingAtFile startFile: String? = nil
+    ) -> Bool {
         guard let entry = seriesEntry(uid: uid),
-              let firstFile = entry.firstFilePath else { return false }
+              entry.firstFilePath != nil else { return false }
+
+        // The requested object, when it is actually the series' — a stale path
+        // falls back to the top of the stack rather than refusing the series.
+        let fileIndex = startFile.flatMap { entry.filePaths.firstIndex(of: $0) } ?? 0
+        let file = entry.filePaths[fileIndex]
 
         // At 1×1 there are no tiles until a layout is applied; hang the series
         // in the viewer itself.
         guard cells.indices.contains(index) else {
             guard index == 0 else { return false }
-            return hangInViewer(entry, firstFile: firstFile)
+            return hangInViewer(entry, startIndex: fileIndex)
         }
 
         captureFocusedCell()
 
         var cell = ViewerCellState(index: index)
-        cell.filePath = firstFile
+        cell.filePath = file
         cell.seriesUID = entry.seriesInstanceUID
         cell.seriesFiles = entry.filePaths
-        cell.fileIndex = 0
+        cell.fileIndex = fileIndex
         // The series' cached arrangement, seeded into the tile so
         // ``restoreArrangement(of:)`` puts it on screen rather than wiping the
         // restore the file load just performed.
@@ -201,10 +260,10 @@ extension ImageViewerViewModel {
     /// series showed it upright: it wiped the restored tools and, being a
     /// reader-visible mutation, re-snapshotted the wiped state over the good
     /// cache entry on the next depart.
-    private func hangInViewer(_ entry: ViewerSeriesEntry, firstFile: String) -> Bool {
+    private func hangInViewer(_ entry: ViewerSeriesEntry, startIndex: Int) -> Bool {
         loadSeries(
             files: entry.filePaths,
-            startIndex: 0,
+            startIndex: startIndex,
             securityScopedParent: seriesSecurityScopedParent)
         currentSeriesUID = entry.seriesInstanceUID
         visitedSeriesUIDs.insert(entry.seriesInstanceUID)

@@ -10,6 +10,7 @@
 
 import XCTest
 import DICOMCore
+import DICOMDictionary
 @testable import DICOMKit
 
 final class GrayscalePresentationStateBuilderTests: XCTestCase {
@@ -101,6 +102,48 @@ final class GrayscalePresentationStateBuilderTests: XCTestCase {
         XCTAssertEqual(dataSet.string(for: .studyInstanceUID), "1.2.3.4.5")
         XCTAssertEqual(dataSet.string(for: .patientID), "12345")
         XCTAssertEqual(dataSet.string(for: .accessionNumber), "A1")
+    }
+
+    /// Issuer of Patient ID is part of how viewers key the patient (Weasis:
+    /// patientId + issuer + name), so a PR that drops it while the image has it
+    /// files under a different patient — series badge, but no state on the
+    /// image. It must be copied when present, and stay absent when not: an
+    /// empty element and a missing one read back the same, but only absence
+    /// keeps issuer-less exports byte-identical to what they always were.
+    func test_build_copiesIssuerOfPatientIDWhenPresent() {
+        var patient = context()
+        patient.issuerOfPatientID = "HOSP_A"
+
+        let dataSet = GrayscalePresentationStateBuilder().buildDataSet(
+            from: state(),
+            patient: patient,
+            seriesInstanceUID: "1.2.3.4.5.900",
+            seriesNumber: 900)
+
+        XCTAssertEqual(dataSet.string(for: .issuerOfPatientID), "HOSP_A")
+    }
+
+    func test_build_omitsIssuerOfPatientIDWhenAbsent() {
+        let dataSet = GrayscalePresentationStateBuilder().buildDataSet(
+            from: state(),
+            patient: context(),
+            seriesInstanceUID: "1.2.3.4.5.900",
+            seriesNumber: 900)
+
+        XCTAssertNil(dataSet[.issuerOfPatientID])
+    }
+
+    /// The context reader is the other half: the viewer's save path copies the
+    /// image's attributes through `make(from:)`, so an issuer the image carries
+    /// has to survive that read or the write above never sees it.
+    func test_makeContext_readsIssuerOfPatientID() {
+        var imageDataSet = DataSet()
+        imageDataSet.setString("1.2.3.4.5", for: .studyInstanceUID, vr: .UI)
+        imageDataSet.setString("HOSP_A", for: .issuerOfPatientID, vr: .LO)
+
+        let context = PresentationStatePatientContext.make(from: imageDataSet)
+
+        XCTAssertEqual(context.issuerOfPatientID, "HOSP_A")
     }
 
     // MARK: - Round trips
@@ -291,6 +334,211 @@ final class GrayscalePresentationStateBuilderTests: XCTestCase {
 
         let parsed = try GrayscalePresentationStateParser().parse(dataSet: dataSet)
         XCTAssertEqual(parsed.graphicAnnotations.first?.textObjects.first?.text, "Legacy")
+    }
+
+    // MARK: - Value Representation conformance
+    //
+    // The builder passes a VR by hand at every call site and nothing checked
+    // those against the dictionary, so it wrote these binary attributes as
+    // IS/DS text. The round trip still passed — the parser read the same wrong
+    // form back — while `dcmpschk` rejected the file at the first one:
+    //
+    //     Error: Unexpected Value Representation.
+    //        Affected VR       : [IS], should be [US] according to data dictionary.
+    //        Affected attribute: (0070,0042) ImageRotation
+    //
+    // `test_build_writesEveryElementWithItsDictionaryVR` is the general guard:
+    // it walks everything written, nested sequences included, and compares each
+    // VR against DICOMKit's own DataElementDictionary. The tests after it pin
+    // the specific attributes that were wrong, with their values.
+
+    private func annotatedDataSet() -> DataSet {
+        GrayscalePresentationStateBuilder().buildDataSet(
+            from: annotatedState(),
+            patient: context(),
+            seriesInstanceUID: "1.2.3.4.5.900",
+            seriesNumber: 900)
+    }
+
+    /// Every element the builder writes must carry the VR the standard
+    /// dictionary gives its tag. This is the test that would have caught the
+    /// original `dcmpschk` failure, and it catches the next one for free.
+    func test_build_writesEveryElementWithItsDictionaryVR() throws {
+        var offenders: [String] = []
+
+        func check(_ elements: [DataElement], path: String) {
+            for element in elements {
+                // Group-length and private tags are not in the dictionary.
+                guard element.tag.element != 0x0000, !element.tag.isPrivate,
+                      let entry = DataElementDictionary.lookup(tag: element.tag)
+                else { continue }
+
+                // Sequences carry SQ regardless; recurse into their items.
+                if element.vr == .SQ {
+                    for (index, item) in (element.sequenceItems ?? []).enumerated() {
+                        check(Array(item.elements.values),
+                              path: "\(path)\(entry.keyword)[\(index)]/")
+                    }
+                    continue
+                }
+
+                // `xs`-style tags list more than one legal VR (US or SS, keyed
+                // to Pixel Representation); any of the listed ones is correct.
+                if !entry.vr.contains(element.vr) {
+                    offenders.append(
+                        "\(path)\(entry.keyword) \(element.tag) is \(element.vr), "
+                        + "should be \(entry.vr.map(String.init(describing:)).joined(separator: " or "))")
+                }
+            }
+        }
+
+        // A state exercising every module the builder writes.
+        var annotated = annotatedState()
+        annotated = GrayscalePresentationState(
+            sopInstanceUID: annotated.sopInstanceUID,
+            instanceNumber: 1,
+            presentationLabel: annotated.presentationLabel,
+            presentationCreationDate: DICOMDate(year: 2026, month: 8, day: 18),
+            presentationCreationTime: DICOMTime(hour: 14, minute: 30, second: 0),
+            referencedSeries: annotated.referencedSeries,
+            voiLUT: .window(center: -600, width: 1500, explanation: "Lung", function: .sigmoid),
+            presentationLUT: .inverse,
+            spatialTransformation: SpatialTransformation(rotation: 270, horizontalFlip: true),
+            displayedArea: DisplayedArea(
+                topLeft: (column: 10, row: 20),
+                bottomRight: (column: 210, row: 220),
+                sizeMode: .scaleToFit),
+            graphicLayers: annotated.graphicLayers,
+            graphicAnnotations: annotated.graphicAnnotations)
+
+        let dataSet = GrayscalePresentationStateBuilder().buildDataSet(
+            from: annotated,
+            patient: context(),
+            seriesInstanceUID: "1.2.3.4.5.900",
+            seriesNumber: 900)
+
+        check(Array(dataSet.allElements), path: "")
+        XCTAssertEqual(offenders, [], "VRs disagreeing with the data dictionary")
+    }
+
+    /// C.10.4 makes Presentation Pixel Spacing / Aspect Ratio Type 1C: one of
+    /// them must appear in every Displayed Area item. With neither, dcmpschk
+    /// rejects the object even though every VR is right.
+    func test_build_writesPresentationPixelAspectRatioInDisplayedArea() throws {
+        let dataSet = GrayscalePresentationStateBuilder().buildDataSet(
+            from: state(),
+            patient: context(),
+            seriesInstanceUID: "1.2.3.4.5.900",
+            seriesNumber: 900)
+
+        let item = try XCTUnwrap(dataSet[.displayedAreaSelectionSequence]?.sequenceItems?.first)
+        let hasSpacing = item[.presentationPixelSpacing] != nil
+        let ratio = item[.presentationPixelAspectRatio]
+        XCTAssertTrue(hasSpacing || ratio != nil,
+                      "one of (0070,0101) or (0070,0102) is required")
+        XCTAssertEqual(ratio?.vr, .IS)
+        XCTAssertEqual(ratio?.integerStringValues?.map(\.value), [1, 1])
+    }
+
+    func test_build_writesImageRotationAsUS() throws {
+        let dataSet = GrayscalePresentationStateBuilder().buildDataSet(
+            from: state(spatial: SpatialTransformation(rotation: 90, horizontalFlip: false)),
+            patient: context(),
+            seriesInstanceUID: "1.2.3.4.5.900",
+            seriesNumber: 900)
+
+        let element = try XCTUnwrap(dataSet[.imageRotation])
+        XCTAssertEqual(element.vr, .US, "(0070,0042) Image Rotation is US")
+        XCTAssertEqual(element.uint16Value, 90)
+    }
+
+    func test_build_writesDisplayedAreaCornersAsSL() throws {
+        let dataSet = GrayscalePresentationStateBuilder().buildDataSet(
+            from: state(),
+            patient: context(),
+            seriesInstanceUID: "1.2.3.4.5.900",
+            seriesNumber: 900)
+
+        let item = try XCTUnwrap(dataSet[.displayedAreaSelectionSequence]?.sequenceItems?.first)
+        let topLeft = try XCTUnwrap(item[.displayedAreaTopLeftHandCorner])
+        let bottomRight = try XCTUnwrap(item[.displayedAreaBottomRightHandCorner])
+
+        XCTAssertEqual(topLeft.vr, .SL, "(0070,0052) is SL")
+        XCTAssertEqual(bottomRight.vr, .SL, "(0070,0053) is SL")
+        XCTAssertEqual(topLeft.int32Values, [10, 20])
+        XCTAssertEqual(bottomRight.int32Values, [210, 220])
+    }
+
+    func test_build_writesGraphicLayerRecommendedValuesAsUS() throws {
+        let item = try XCTUnwrap(annotatedDataSet()[.graphicLayerSequence]?.sequenceItems?.first)
+        let rgb = try XCTUnwrap(item[.graphicLayerRecommendedDisplayRGBValue])
+
+        XCTAssertEqual(rgb.vr, .US, "(0070,0067) is US")
+        XCTAssertEqual(rgb.uint16Values, [65535, 65535, 0])
+    }
+
+    func test_build_writesGraphicDataAsFL() throws {
+        let annotation = try XCTUnwrap(
+            annotatedDataSet()[.graphicAnnotationSequence]?.sequenceItems?.first)
+        let graphic = try XCTUnwrap(
+            annotation[.graphicObjectSequence]?.sequenceItems?.first)
+        // `Tag.graphicData` is declared in both DICOMCore and SRDocumentSerializer;
+        // name the tag outright rather than depend on which one resolves.
+        let data = try XCTUnwrap(graphic[DICOMCore.Tag(group: 0x0070, element: 0x0022)])
+
+        XCTAssertEqual(data.vr, .FL, "(0070,0022) Graphic Data is FL")
+        XCTAssertEqual(data.float32Values, [10.5, 20.5, 100, 200])
+        // Both are Type 1 whenever Graphic Data is present.
+        XCTAssertEqual(graphic[.graphicDimensions]?.uint16Value, 2)
+        XCTAssertEqual(graphic[.numberOfGraphicPoints]?.uint16Value, 2)
+    }
+
+    func test_build_writesTextObjectCoordinatesAsFL() throws {
+        let annotation = try XCTUnwrap(
+            annotatedDataSet()[.graphicAnnotationSequence]?.sequenceItems?.first)
+        let text = try XCTUnwrap(annotation[.textObjectSequence]?.sequenceItems?.first)
+
+        let topLeft = try XCTUnwrap(text[.boundingBoxTopLeftHandCorner])
+        let bottomRight = try XCTUnwrap(text[.boundingBoxBottomRightHandCorner])
+        let anchor = try XCTUnwrap(text[.anchorPoint])
+
+        XCTAssertEqual(topLeft.vr, .FL, "(0070,0010) is FL")
+        XCTAssertEqual(bottomRight.vr, .FL, "(0070,0011) is FL")
+        XCTAssertEqual(anchor.vr, .FL, "(0070,0014) is FL")
+        XCTAssertEqual(topLeft.float32Values, [30, 40])
+        XCTAssertEqual(bottomRight.float32Values, [130, 60])
+        XCTAssertEqual(anchor.float32Values, [30, 40])
+    }
+
+    /// States written before the VRs were corrected carry IS/DS text in these
+    /// same tags. The parser reads either form, so a reader's saved zoom, pan,
+    /// and layer colour survive the change.
+    func test_parse_acceptsLegacyStringVRs() throws {
+        var dataSet = GrayscalePresentationStateBuilder().buildDataSet(
+            from: state(spatial: SpatialTransformation(rotation: 270, horizontalFlip: false)),
+            patient: context(),
+            seriesInstanceUID: "1.2.3.4.5.900",
+            seriesNumber: 900)
+
+        // Rewrite rotation and the displayed area the way older builds did.
+        dataSet.setString("270", for: .imageRotation, vr: .IS)
+        dataSet[.displayedAreaSelectionSequence] = DataElement(
+            tag: .displayedAreaSelectionSequence, vr: .SQ, length: 0, valueData: Data(),
+            sequenceItems: [SequenceItem(elements: [
+                DataElement.string(
+                    tag: .displayedAreaTopLeftHandCorner, vr: .IS, value: "11\\22"),
+                DataElement.string(
+                    tag: .displayedAreaBottomRightHandCorner, vr: .IS, value: "211\\222"),
+                DataElement.string(
+                    tag: .presentationSizeMode, vr: .CS, value: "SCALE TO FIT")
+            ])])
+
+        let parsed = try GrayscalePresentationStateParser().parse(dataSet: dataSet)
+        XCTAssertEqual(parsed.spatialTransformation?.rotation, 270)
+        XCTAssertEqual(parsed.displayedArea?.topLeft.column, 11)
+        XCTAssertEqual(parsed.displayedArea?.topLeft.row, 22)
+        XCTAssertEqual(parsed.displayedArea?.bottomRight.column, 211)
+        XCTAssertEqual(parsed.displayedArea?.bottomRight.row, 222)
     }
 
     func test_build_omitsAnnotationSequencesWhenNothingIsDrawn() {

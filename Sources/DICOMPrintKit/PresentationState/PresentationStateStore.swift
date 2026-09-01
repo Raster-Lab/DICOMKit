@@ -86,6 +86,10 @@ public struct SavedView: Sendable, Equatable, Identifiable {
         return "PR-" + String(digits.suffix(8))
     }
 
+    /// Whether this view came out of the study's own files rather than being
+    /// saved here — shown as such, so a reader knows whose reading it is.
+    public var isImported: Bool { states.contains(where: \.isImported) }
+
     /// The state covering a given image, if this view has one.
     ///
     /// A view saved over three images has nothing to say about a fourth; the
@@ -133,6 +137,31 @@ public struct StoredPresentationState: Sendable, Equatable {
     /// saved off a pseudo-coloured image would otherwise restore grey.
     public let palette: PseudoColorPalette?
 
+    /// Drawings filed by image, for an object that describes several.
+    ///
+    /// Empty for the app's own objects, which describe one image each and keep
+    /// their drawings in ``annotationsByFrame``. An object adopted from the
+    /// study may describe a series, and each image's rulers are under its
+    /// SOP Instance UID here. Read through ``annotationsByFrame(forImage:)``.
+    public let annotationsByFrameByImage: [String: [Int: [PrintOverlayAnnotation]]]
+
+    /// Whether this object was adopted from the study's own files rather than
+    /// saved by this app — see ``PresentationStateStore/adopt(presentationStateFiles:studyInstanceUID:images:)``.
+    public let isImported: Bool
+
+    /// The drawings belonging to one image, by frame.
+    ///
+    /// The per-image filing when the object has it, else the object's own —
+    /// which is right for every object that describes a single image.
+    public func annotationsByFrame(forImage sopInstanceUID: String) -> [Int: [PrintOverlayAnnotation]] {
+        annotationsByFrameByImage[sopInstanceUID] ?? annotationsByFrame
+    }
+
+    /// The drawings belonging to one frame of one image.
+    public func annotations(forImage sopInstanceUID: String, frame frameIndex: Int) -> [PrintOverlayAnnotation] {
+        annotationsByFrame(forImage: sopInstanceUID)[frameIndex] ?? []
+    }
+
     /// Every drawing regardless of frame, in frame order.
     ///
     /// For callers that speak to the image as a whole — a film cell showing one
@@ -169,7 +198,9 @@ public struct StoredPresentationState: Sendable, Equatable {
         annotationsByFrame: [Int: [PrintOverlayAnnotation]]? = nil,
         palette: PseudoColorPalette? = nil,
         seriesInstanceUID: String = "",
-        seriesNumber: Int? = nil
+        seriesNumber: Int? = nil,
+        annotationsByFrameByImage: [String: [Int: [PrintOverlayAnnotation]]] = [:],
+        isImported: Bool = false
     ) {
         self.state = state
         self.url = url
@@ -181,6 +212,8 @@ public struct StoredPresentationState: Sendable, Equatable {
         self.palette = palette
         self.seriesInstanceUID = seriesInstanceUID
         self.seriesNumber = seriesNumber
+        self.annotationsByFrameByImage = annotationsByFrameByImage
+        self.isImported = isImported
     }
 
     /// Every image this state applies to.
@@ -578,7 +611,9 @@ public struct PresentationStateStore: Sendable {
                 palette: palette,
                 seriesInstanceUID: file.dataSet.string(for: .seriesInstanceUID) ?? "",
                 seriesNumber: file.dataSet.string(for: .seriesNumber)
-                    .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }))
+                    .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) },
+                annotationsByFrameByImage: sidecar.annotationsByFrameByImage,
+                isImported: sidecar.isImported))
         }
 
         // Grouping by label is what makes several objects one saved view. This
@@ -618,9 +653,18 @@ public struct PresentationStateStore: Sendable {
     // MARK: - Deleting
 
     /// Removes one saved view, by label.
+    ///
+    /// An imported view leaves a marker behind — see ``declinedMarker(for:)``
+    /// — so the study's own copy, still in its folder, is not adopted straight
+    /// back on the next open. Deleting it here means "I do not want this
+    /// reading offered", and that has to hold across visits.
     public func deleteView(label: String, studyInstanceUID: String) throws {
         for view in views(forStudy: studyInstanceUID) where view.label == label {
             for state in view.states {
+                if state.isImported {
+                    fileManager.createFile(
+                        atPath: Self.declinedMarker(for: state.url).path, contents: nil)
+                }
                 try? fileManager.removeItem(at: state.url)
                 // The sidecar goes with the object. Leaving one behind would
                 // outlive its `.dcm` and be picked up by the next save that
@@ -630,11 +674,223 @@ public struct PresentationStateStore: Sendable {
         }
     }
 
+    /// The file whose presence says an imported object was deleted by hand
+    /// and must not be adopted again: `<sopInstanceUID>.declined` beside where
+    /// the object was.
+    static func declinedMarker(for stateURL: URL) -> URL {
+        stateURL.deletingPathExtension().appendingPathExtension("declined")
+    }
+
     /// Removes every saved view for a study.
     public func deleteAll(forStudy studyInstanceUID: String) throws {
         let directory = directory(forStudy: studyInstanceUID)
         guard fileManager.fileExists(atPath: directory.path) else { return }
         try fileManager.removeItem(at: directory)
+    }
+
+    // MARK: - Adopting the study's own presentation states
+
+    /// The presentation state IODs this store reads: Grayscale (…11.1),
+    /// Color (…11.2) and Pseudo-Color (…11.3) Softcopy.
+    public static let presentationStateSOPClasses: Set<String> = [
+        "1.2.840.10008.5.1.4.1.1.11.1",
+        "1.2.840.10008.5.1.4.1.1.11.2",
+        "1.2.840.10008.5.1.4.1.1.11.3",
+    ]
+
+    /// What the adoption needs to know about an image a state may describe.
+    public struct AdoptableImage: Sendable, Equatable {
+        public let sopInstanceUID: String
+        public let columns: Int
+        public let rows: Int
+        public let numberOfFrames: Int
+
+        public init(sopInstanceUID: String, columns: Int, rows: Int, numberOfFrames: Int = 1) {
+            self.sopInstanceUID = sopInstanceUID
+            self.columns = columns
+            self.rows = rows
+            self.numberOfFrames = max(1, numberOfFrames)
+        }
+    }
+
+    /// What one adoption pass did.
+    public struct AdoptionResult: Sendable, Equatable {
+        /// Objects copied into the store this pass.
+        public var adopted: [URL] = []
+        /// Objects already in the store, left as they were.
+        public var alreadyPresent: Int = 0
+        /// Files skipped: not a presentation state, unreadable, or describing
+        /// no image the study has.
+        public var skipped: Int = 0
+
+        public init() {}
+    }
+
+    /// Takes the presentation states a study arrived with into the store, so
+    /// the viewer offers them the way it offers its own saved views.
+    ///
+    /// A study from a PACS or another workstation carries its readings as PR
+    /// objects in a series of its own — Weasis writes one per series, with
+    /// every ruler and label on every image in it. The store only ever listed
+    /// what this app had saved, so those readings were classified in the
+    /// series pane and shown nowhere. This is the step that was missing.
+    ///
+    /// Each object is copied under the study, keyed by its SOP Instance UID,
+    /// so a second pass over the same study changes nothing — including the
+    /// app's own published objects, which are already in the store under the
+    /// same UID. Alongside the copy goes a sidecar carrying what the object
+    /// says in this app's own vocabulary: the graphic annotations converted
+    /// per image and frame, and the display shutters as shutter overlays, so
+    /// every downstream reader — viewer, print preview, film — works from the
+    /// same channel the app's own drawings use. An object whose sidecar
+    /// travelled with it (one this app published) keeps that sidecar instead.
+    ///
+    /// - Parameters:
+    ///   - urls: The candidate files. Anything that is not a presentation
+    ///     state is skipped, so a whole study folder may be passed.
+    ///   - studyInstanceUID: The study to file them under. An object claiming
+    ///     a different study is skipped.
+    ///   - images: The study's images by SOP Instance UID, with the pixel
+    ///     dimensions the object's pixel-unit coordinates are normalized by.
+    ///     An object that describes none of them is skipped.
+    @discardableResult
+    public func adopt(
+        presentationStateFiles urls: [URL],
+        studyInstanceUID: String,
+        images: [String: AdoptableImage]
+    ) -> AdoptionResult {
+        var result = AdoptionResult()
+        guard !urls.isEmpty, !images.isEmpty else {
+            result.skipped = urls.count
+            return result
+        }
+        let parser = GrayscalePresentationStateParser()
+        let directory = directory(forStudy: studyInstanceUID)
+
+        for url in urls where url.pathExtension.lowercased() == "dcm" || url.pathExtension.isEmpty {
+            guard let file = try? DICOMFile.read(from: url),
+                  let sopClass = file.dataSet.string(for: .sopClassUID)?
+                      .trimmingCharacters(in: .whitespacesAndNewlines),
+                  Self.presentationStateSOPClasses.contains(sopClass),
+                  let sopInstanceUID = file.dataSet.string(for: .sopInstanceUID)?
+                      .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !sopInstanceUID.isEmpty,
+                  let state = try? parser.parse(dataSet: file.dataSet)
+            else { result.skipped += 1; continue }
+
+            // The object's own study, when it states one, must be this one:
+            // a PR filed under another study describes nothing here.
+            if let claimed = file.dataSet.string(for: .studyInstanceUID)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !claimed.isEmpty, claimed != studyInstanceUID {
+                result.skipped += 1
+                continue
+            }
+
+            let referenced = Set(state.referencedSeries.flatMap {
+                $0.referencedImages.map(\.sopInstanceUID) })
+            let described = referenced.compactMap { images[$0] }
+            guard !described.isEmpty else { result.skipped += 1; continue }
+
+            let destination = directory.appendingPathComponent("\(sopInstanceUID).dcm")
+            if fileManager.fileExists(atPath: destination.path)
+                || fileManager.fileExists(atPath: Self.declinedMarker(for: destination).path) {
+                result.alreadyPresent += 1
+                continue
+            }
+
+            do {
+                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+                try fileManager.copyItem(at: url, to: destination)
+            } catch {
+                result.skipped += 1
+                continue
+            }
+
+            // A sidecar that travelled with the object is the app's own record
+            // of what was drawn — authoritative, as it is for the store's own
+            // copy. Anything else gets one built from what the object says.
+            let travelled = AnnotationSidecar.read(forStateAt: url)
+            if !travelled.isEmpty {
+                var contents = travelled
+                contents.isImported = true
+                try? AnnotationSidecar.write(contents, forStateAt: destination)
+            } else {
+                let contents = Self.importedSidecar(for: state, images: described)
+                try? AnnotationSidecar.write(contents, forStateAt: destination)
+            }
+            result.adopted.append(destination)
+        }
+        return result
+    }
+
+    /// What an adopted object says, in the app's own vocabulary.
+    static func importedSidecar(
+        for state: GrayscalePresentationState,
+        images: [AdoptableImage]
+    ) -> AnnotationSidecar.Contents {
+        var contents = AnnotationSidecar.Contents()
+        contents.isImported = true
+        for image in images {
+            var byFrame = PrintOverlayAnnotationGSPS.overlays(
+                from: state,
+                forImage: image.sopInstanceUID,
+                imageWidth: image.columns,
+                imageHeight: image.rows,
+                numberOfFrames: image.numberOfFrames)
+            // Shutters are a statement about the whole image, every frame.
+            let shutters = state.shutters.compactMap {
+                Self.shutterOverlay($0, imageWidth: image.columns, imageHeight: image.rows)
+            }
+            if !shutters.isEmpty {
+                for frame in 0..<image.numberOfFrames {
+                    byFrame[frame, default: []].insert(
+                        contentsOf: shutters.map { var copy = $0; copy.id = UUID(); return copy },
+                        at: 0)
+                }
+            }
+            if !byFrame.isEmpty {
+                contents.annotationsByFrameByImage[image.sopInstanceUID] = byFrame
+            }
+        }
+        return contents
+    }
+
+    /// A display shutter as the overlay that paints its outside.
+    ///
+    /// The presentation value is a 16-bit P-value (PS3.3 C.7.6.11); absent, the
+    /// shutter is black, which is what every viewer shows for it. Bitmap
+    /// shutters need the overlay plane they name, which the sidecar cannot
+    /// carry — those are left to the overlay-plane renderer.
+    static func shutterOverlay(
+        _ shutter: DisplayShutter, imageWidth: Int, imageHeight: Int
+    ) -> PrintOverlayAnnotation? {
+        guard imageWidth > 0, imageHeight > 0 else { return nil }
+        let width = Double(imageWidth)
+        let height = Double(imageHeight)
+        let grey = Double(shutter.presentationValue ?? 0) / 65535
+        let color = PrintOverlayColor(red: grey, green: grey, blue: grey)
+        func point(_ column: Int, _ row: Int) -> PrintOverlayPoint {
+            PrintOverlayPoint(x: Double(column) / width, y: Double(row) / height)
+        }
+        switch shutter {
+        case .rectangular(let left, let right, let top, let bottom, _):
+            return PrintOverlayAnnotation(
+                shape: .shutter, points: [point(left, top), point(right, bottom)],
+                filled: false, color: color)
+        case .circular(let centerColumn, let centerRow, let radius, _):
+            return PrintOverlayAnnotation(
+                shape: .shutter,
+                points: [point(centerColumn, centerRow), point(centerColumn + radius, centerRow)],
+                filled: true, color: color)
+        case .polygonal(let vertices, _):
+            guard vertices.count >= 3 else { return nil }
+            return PrintOverlayAnnotation(
+                shape: .shutter, points: vertices.map { point($0.column, $0.row) },
+                filled: false, color: color)
+        case .bitmap:
+            return nil
+        }
     }
 
     // MARK: - Publishing into the study
@@ -830,8 +1086,7 @@ public struct PresentationStateStore: Sendable {
             guard url.pathExtension.lowercased() == "dcm",
                   let file = try? DICOMFile.read(from: url),
                   let sopClass = file.dataSet.string(for: .sopClassUID),
-                  sopClass == GrayscalePresentationStateBuilder.sopClassUID
-                      || sopClass == PseudoColorPresentationStateBuilder.sopClassUID
+                  Self.presentationStateSOPClasses.contains(sopClass)
             else { return false }
             // Content Description holds the reader's own wording; Presentation
             // Label is the CS-folded one. Matching either is what makes this

@@ -67,11 +67,20 @@ struct ViewerAnnotationEditLayer: View {
                     drawingSurface(mapping)
                 }
                 ForEach(annotations) { annotation in
-                    switch annotation.kind {
-                    case .text:  textAnnotation(annotation, mapping: mapping)
-                    case .arrow: arrowAnnotation(annotation, mapping: mapping)
-                    case .annotation:
-                        combinedAnnotation(annotation, mapping: mapping)
+                    if annotation.isLocked {
+                        // From another viewer's presentation state: shown,
+                        // never grabbed. The GPU overlay draws it; this only
+                        // stands in on the non-Metal paths.
+                        lockedAnnotation(annotation, mapping: mapping)
+                    } else {
+                        switch annotation.kind {
+                        case .text:  textAnnotation(annotation, mapping: mapping)
+                        case .arrow: arrowAnnotation(annotation, mapping: mapping)
+                        case .annotation:
+                            combinedAnnotation(annotation, mapping: mapping)
+                        case .polyline, .circle, .ellipse, .point, .shutter:
+                            lockedAnnotation(annotation, mapping: mapping)
+                        }
                     }
                 }
             }
@@ -335,6 +344,67 @@ struct ViewerAnnotationEditLayer: View {
             }
         }
         .accessibilityLabel("Arrow annotation")
+    }
+
+    // MARK: - Locked annotations and shapes
+
+    /// An annotation the reader may look at but not touch — everything read
+    /// out of an imported presentation state, and every shape kind.
+    ///
+    /// On the GPU paths the overlay texture already draws it and this view is
+    /// empty; without the texture the content is drawn here, upright text and
+    /// the shape's own path, with no gesture attached so clicks fall through
+    /// to the picture.
+    @ViewBuilder
+    private func lockedAnnotation(
+        _ annotation: PrintOverlayAnnotation, mapping: ViewerAnnotationMapping
+    ) -> some View {
+        if !contentIsOnGPU {
+            ZStack(alignment: .topLeading) {
+                if annotation.isShape {
+                    ImportedShapeView(
+                        annotation: annotation,
+                        point: { mapping.viewPoint($0) },
+                        lineScaleHeight: CGFloat(Double(viewModel.imageRows) * mapping.displayScale))
+                } else {
+                    if annotation.hasWords {
+                        let anchor = mapping.viewPoint(annotation.start)
+                        let fontSize = max(Self.minimumPreviewFontSize,
+                                           CGFloat(ImageAnnotationBurner.overlayFontSize(
+                                            imageHeight: Double(viewModel.imageRows),
+                                            scale: annotation.scale) * mapping.displayScale))
+                        Text(annotation.text)
+                            .font(.custom(ImageAnnotationBurner.overlayFontFamily, size: fontSize))
+                            .foregroundStyle(color(annotation.color))
+                            .shadow(color: halo(annotation.color), radius: max(1, fontSize * 0.08))
+                            .offset(x: anchor.x, y: anchor.y)
+                    }
+                    if annotation.kind == .arrow || (annotation.kind == .annotation && annotation.hasArrow) {
+                        let tailNorm = annotation.kind == .arrow
+                            ? annotation.start
+                            : PrintAnnotationLayout.leaderTail(
+                                for: annotation,
+                                imageWidth: Double(viewModel.imageColumns),
+                                imageHeight: Double(viewModel.imageRows))
+                        if let tailNorm {
+                            let metrics = ArrowMetrics(
+                                scale: annotation.scale,
+                                imageHeight: CGFloat(Double(viewModel.imageRows) * mapping.displayScale),
+                                tail: mapping.viewPoint(tailNorm),
+                                head: mapping.viewPoint(annotation.end))
+                            ArrowShape(metrics: metrics)
+                                .stroke(halo(annotation.color), lineWidth: metrics.haloWidth)
+                            ArrowShape(metrics: metrics)
+                                .fill(color(annotation.color))
+                        }
+                    }
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityLabel(annotation.isShape
+                                ? "Imported measurement"
+                                : "Imported annotation: \(annotation.text)")
+        }
     }
 
     // MARK: - Combined annotation (label + arrow, after Weasis)
