@@ -1,9 +1,31 @@
 import Testing
+import Foundation
 @testable import DICOMDictionary
 @testable import DICOMCore
 
 @Suite("Dictionary Tests")
 struct DictionaryTests {
+
+    @Test("Packaged app dictionary bundle resolves from Resources")
+    func packagedAppDictionaryBundleResolution() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let resources = root.appendingPathComponent("Resources", isDirectory: true)
+        let packaged = resources.appendingPathComponent(
+            DICOMDictionaryResourceBundle.bundleName, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(
+            at: resources, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: Bundle.module.bundleURL, to: packaged)
+
+        let resolved = DICOMDictionaryResourceBundle.packagedBundle(
+            mainResourceURL: resources)
+        #expect(resolved?.bundleURL.standardizedFileURL == packaged.standardizedFileURL)
+        #expect(
+            resolved?.url(forResource: "DataElementDictionary", withExtension: "txt")
+                != nil)
+    }
     
     @Test("Data element dictionary lookup by tag")
     func testDataElementLookupByTag() {

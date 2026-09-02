@@ -1,6 +1,23 @@
 import Foundation
 import DICOMCore
 
+enum DICOMDictionaryResourceBundle {
+    static let bundleName = "DICOMKit_DICOMDictionary.bundle"
+
+    static func packagedBundle(mainResourceURL: URL?) -> Bundle? {
+        guard let mainResourceURL else { return nil }
+        return Bundle(url: mainResourceURL.appendingPathComponent(bundleName, isDirectory: true))
+    }
+
+    static var resolved: Bundle {
+        // SwiftPM's generated Bundle.module accessor looks beside Bundle.main's
+        // bundle URL. A conventionally signed macOS app must instead place
+        // nested resource bundles in Contents/Resources, so prefer that
+        // production location and retain Bundle.module for package tools/tests.
+        packagedBundle(mainResourceURL: Bundle.main.resourceURL) ?? Bundle.module
+    }
+}
+
 /// Comprehensive DICOM Data Element Dictionary
 ///
 /// Contains all standard DICOM data elements from PS3.6 2026a.
@@ -13,7 +30,8 @@ public struct DataElementDictionary: Sendable {
     // MARK: - Parsed Dictionary
 
     private static let entries: [Tag: DataElementEntry] = {
-        guard let url = Bundle.module.url(forResource: "DataElementDictionary", withExtension: "txt"),
+        guard let url = DICOMDictionaryResourceBundle.resolved.url(
+            forResource: "DataElementDictionary", withExtension: "txt"),
               let content = try? String(contentsOf: url, encoding: .utf8) else {
             return [:]
         }
