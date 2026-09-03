@@ -282,6 +282,33 @@ public enum ToolRegistry {
                 EnumValue(label: "PNG", value: "png"),
                 EnumValue(label: "JPEG", value: "jpeg"),
             ]),
+            ParameterDefinition(id: "target", cliFlag: "--target", label: "Target SOP Class", help: "auto: classic single-frame class when one exists; same: keep the source class", type: .enumeration, enumValues: [
+                EnumValue(label: "Auto", value: "auto"),
+                EnumValue(label: "Same class", value: "same"),
+                EnumValue(label: "Classic only", value: "classic"),
+            ]),
+            ParameterDefinition(id: "pixel-handling", cliFlag: "--pixel-handling", label: "Compressed Pixels", help: "Keep the transfer syntax per frame or decode to native", type: .enumeration, enumValues: [
+                EnumValue(label: "Preserve", value: "preserve"),
+                EnumValue(label: "Decode", value: "decode"),
+            ]),
+            ParameterDefinition(id: "private-groups", cliFlag: "--private-groups", label: "Private Functional Groups", help: "Flatten, keep, or drop vendor functional groups", type: .enumeration, enumValues: [
+                EnumValue(label: "Flatten", value: "flatten"),
+                EnumValue(label: "Keep", value: "keep"),
+                EnumValue(label: "Drop", value: "drop"),
+            ]),
+            ParameterDefinition(id: "instance-number", cliFlag: "--instance-number", label: "Instance Numbering", help: "frame: 1-based frame number; instack: In-Stack Position Number; original: unchanged", type: .enumeration, enumValues: [
+                EnumValue(label: "Frame number", value: "frame"),
+                EnumValue(label: "In-Stack Position", value: "instack"),
+                EnumValue(label: "Original", value: "original"),
+            ]),
+            ParameterDefinition(id: "split-by", cliFlag: "--split-by", label: "Split Series By", help: "Write one series per stack or temporal position", type: .enumeration, enumValues: [
+                EnumValue(label: "None", value: "none"),
+                EnumValue(label: "Stack", value: "stack"),
+                EnumValue(label: "Temporal position", value: "temporal"),
+            ]),
+            ParameterDefinition(id: "new-series", cliFlag: "--new-series", label: "New Series UID", help: "Mint a new Series Instance UID for the extracted frames", type: .boolean),
+            ParameterDefinition(id: "frames-per", cliFlag: "--frames-per", label: "Frames per Part", help: "Write concatenation parts of N frames instead of single frames", type: .string),
+            ParameterDefinition(id: "random-uids", cliFlag: "--random-uids", label: "Random UIDs", help: "Generate random SOP/Series UIDs instead of deriving them from the source", type: .boolean),
             ParameterDefinition(id: "recursive", cliFlag: "--recursive", label: "Recursive", help: "Process recursively", type: .boolean),
         ]
     )
@@ -295,8 +322,32 @@ public enum ToolRegistry {
         parameters: [
             ParameterDefinition(id: "inputs", cliFlag: "@argument", label: "Input Files", help: "Files to merge", type: .file, isRequired: true),
             ParameterDefinition(id: "output", cliFlag: "--output", label: "Output File", help: "Output file", type: .file, isRequired: true),
-            ParameterDefinition(id: "format", cliFlag: "--format", label: "Output Format", help: "Output format", type: .enumeration, enumValues: [
-                EnumValue(label: "DICOM", value: "dicom"),
+            ParameterDefinition(id: "format", cliFlag: "--format", label: "Output Format", help: "Multi-frame object to build", type: .enumeration, enumValues: [
+                EnumValue(label: "Standard", value: "standard"),
+                EnumValue(label: "Auto (from source)", value: "auto"),
+                EnumValue(label: "Enhanced CT", value: "enhanced-ct"),
+                EnumValue(label: "Enhanced MR", value: "enhanced-mr"),
+                EnumValue(label: "Enhanced PET", value: "enhanced-pet"),
+                EnumValue(label: "Enhanced XA", value: "enhanced-xa"),
+                EnumValue(label: "Enhanced XRF", value: "enhanced-xrf"),
+                EnumValue(label: "Legacy Converted CT", value: "legacy-converted-ct"),
+                EnumValue(label: "Legacy Converted MR", value: "legacy-converted-mr"),
+                EnumValue(label: "Legacy Converted PET", value: "legacy-converted-pet"),
+                EnumValue(label: "Multi-frame SC", value: "sc-multiframe"),
+                EnumValue(label: "US Multi-frame", value: "us-multiframe"),
+            ]),
+            ParameterDefinition(id: "pixel-handling", cliFlag: "--pixel-handling", label: "Compressed Pixels", help: "Keep the transfer syntax (one fragment per frame) or decode to native", type: .enumeration, enumValues: [
+                EnumValue(label: "Preserve", value: "preserve"),
+                EnumValue(label: "Decode", value: "decode"),
+            ]),
+            ParameterDefinition(id: "make-stacks", cliFlag: "--make-stacks", label: "Make Stacks", help: "Group frames into stacks by orientation", type: .boolean),
+            ParameterDefinition(id: "temporal-position", cliFlag: "--temporal-position", label: "Temporal Positions", help: "Derive Temporal Position Index from Trigger Time / Acquisition Time", type: .boolean),
+            ParameterDefinition(id: "new-series", cliFlag: "--new-series", label: "New Series UID", help: "Mint a new Series Instance UID for the merged object", type: .boolean),
+            ParameterDefinition(id: "allow-any-source", cliFlag: "--allow-any-source", label: "Allow Any Source", help: "Skip the source SOP class check for enhanced targets", type: .boolean),
+            ParameterDefinition(id: "level", cliFlag: "--level", label: "Merge Level", help: "file, series, or study", type: .enumeration, enumValues: [
+                EnumValue(label: "File", value: "file"),
+                EnumValue(label: "Series", value: "series"),
+                EnumValue(label: "Study", value: "study"),
             ]),
             ParameterDefinition(id: "sort-by", cliFlag: "--sort-by", label: "Sort By", help: "Sort files by field", type: .string),
             ParameterDefinition(id: "validate", cliFlag: "--validate", label: "Validate", help: "Validate output", type: .boolean),

@@ -2461,40 +2461,42 @@ private func executeDicomSplit() async {
     let framesSpec = paramValue("frames")
     let format = paramValue("format").isEmpty ? "dicom" : paramValue("format")
     let applyWindow = paramValue("apply-window") == "true"
-    // Non-numeric window values are an ArgumentParser error on the CLI — mirror
-    // that (error + exit 1) instead of silently coercing to nil and running
-    // without the requested window.
-    let windowCenterStr = paramValue("window-center")
-    let windowWidthStr = paramValue("window-width")
-    for (raw, flag) in [(windowCenterStr, "--window-center"), (windowWidthStr, "--window-width")] {
-        if !raw.isEmpty && Double(raw) == nil {
-            let msg = "The value '\(raw)' is invalid for '\(flag)'"
-            appendConsoleOutput("Error: \(msg)\n")
-            consoleStatus = .error; service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-split", command: commandPreview, exitCode: 1, output: msg)
-            return
-        }
-    }
-    let windowCenter = Double(windowCenterStr)
-    let windowWidth = Double(windowWidthStr)
     let pattern = paramValue("pattern").isEmpty ? nil : paramValue("pattern")
     let recursive = paramValue("recursive") == "true"
     let verbose = paramValue("verbose") == "true"
 
-    // Parse the --frames selection through the SHARED SplitConsole parser (0-based,
-    // the exact grammar and error text the dicom-split CLI uses).
-    var frameIndices: Set<Int>? = nil
-    if !framesSpec.isEmpty {
-        do {
-            frameIndices = try SplitConsole.parseFrameSelection(framesSpec)
-        } catch {
-            let parseError = (error as? SplitConsole.FrameSelectionError)?.description ?? "\(error)"
-            appendConsoleOutput("Error: \(parseError)\n")
-            consoleStatus = .error; service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-split", command: commandPreview, exitCode: 1, output: parseError)
-            return
-        }
+    // Value parsing happens in ArgumentParser on the CLI, before `run()` sees
+    // anything: a non-numeric --window-center / --window-width / --frames-per is
+    // the FIRST thing reported, with ArgumentParser's two-line message. Mirror
+    // that (shared wording via SplitConsole) instead of silently coercing to nil.
+    let windowCenterStr = paramValue("window-center")
+    let windowWidthStr = paramValue("window-width")
+    let framesPerStr = paramValue("frames-per").trimmingCharacters(in: .whitespaces)
+    let valueChecks: [(raw: String, flag: String, help: String, ok: Bool)] = [
+        (windowCenterStr, "--window-center", SplitConsole.windowCenterHelp, windowCenterStr.isEmpty || Double(windowCenterStr) != nil),
+        (windowWidthStr, "--window-width", SplitConsole.windowWidthHelp, windowWidthStr.isEmpty || Double(windowWidthStr) != nil),
+        (framesPerStr, "--frames-per", SplitConsole.framesPerHelp, framesPerStr.isEmpty || Int(framesPerStr) != nil),
+    ]
+    for check in valueChecks where !check.ok {
+        let lines = SplitConsole.invalidValueLines(value: check.raw, option: check.flag, help: check.help)
+        for line in lines { appendConsoleOutput(line + "\n") }
+        consoleStatus = .error; service.setConsoleStatus(.error)
+        addToHistory(toolName: "dicom-split", command: commandPreview, exitCode: 1, output: lines[0])
+        return
     }
+    let windowCenter = Double(windowCenterStr)
+    let windowWidth = Double(windowWidthStr)
+
+    // Enhanced-multiframe options — the same SplitOptions the dicom-split CLI builds.
+    var splitOptions = SplitOptions()
+    splitOptions.target = SplitTargetPolicy(rawValue: paramValue("target")) ?? .auto
+    splitOptions.pixelHandling = MultiframePixelHandling(rawValue: paramValue("pixel-handling")) ?? .preserve
+    splitOptions.privateGroups = PrivateFunctionalGroupPolicy(rawValue: paramValue("private-groups")) ?? .flatten
+    splitOptions.instanceNumbering = SplitInstanceNumbering(rawValue: paramValue("instance-number")) ?? .frame
+    splitOptions.seriesGrouping = SplitSeriesGrouping(rawValue: paramValue("split-by")) ?? .none
+    splitOptions.newSeries = paramValue("new-series") == "true"
+    splitOptions.deterministicUIDs = paramValue("random-uids") != "true"
+    splitOptions.framesPerInstance = framesPerStr.isEmpty ? nil : Int(framesPerStr)
 
     // Sandbox access.
     let inputScopedURL = securityScopedURLs["inputPath"]
@@ -2511,6 +2513,8 @@ private func executeDicomSplit() async {
     let outputBaseURL = _splitOut.url
     if let note = _splitOut.note { appendConsoleOutput(note + "\n") }
 
+    // From here on the checks run in the CLI's `run()` order: input exists,
+    // output directory, --frames-per >= 1, banner, --frames parse.
     let fm = FileManager.default
     var isDir: ObjCBool = false
     guard fm.fileExists(atPath: inputURL.path, isDirectory: &isDir) else {
@@ -2531,15 +2535,40 @@ private func executeDicomSplit() async {
         return
     }
 
+    if let per = splitOptions.framesPerInstance, per < 1 {
+        let msg = SplitConsole.framesPerTooSmallMessage
+        appendConsoleOutput("Error: \(msg)\n")
+        consoleStatus = .error; service.setConsoleStatus(.error)
+        addToHistory(toolName: "dicom-split", command: commandPreview, exitCode: 1, output: msg)
+        return
+    }
+
     // Banner via the SHARED SplitConsole — byte-identical to the CLI's.
     if verbose {
         for line in SplitConsole.headerLines(
             input: inputURL.path, output: outputBaseURL.path,
             format: SplitOutputFormat(rawValue: format) ?? .dicom,
             frames: framesSpec, applyWindow: applyWindow,
-            windowCenter: windowCenter, windowWidth: windowWidth
+            windowCenter: windowCenter, windowWidth: windowWidth,
+            options: splitOptions
         ) {
             appendConsoleOutput(line + "\n")
+        }
+    }
+
+    // Parse the --frames selection through the SHARED SplitConsole parser (0-based,
+    // the exact grammar and error text the dicom-split CLI uses). The CLI parses
+    // it after the banner, so a bad selection still shows the verbose header.
+    var frameIndices: Set<Int>? = nil
+    if !framesSpec.isEmpty {
+        do {
+            frameIndices = try SplitConsole.parseFrameSelection(framesSpec)
+        } catch {
+            let parseError = (error as? SplitConsole.FrameSelectionError)?.description ?? "\(error)"
+            appendConsoleOutput("Error: \(parseError)\n")
+            consoleStatus = .error; service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-split", command: commandPreview, exitCode: 1, output: parseError)
+            return
         }
     }
 
@@ -2555,6 +2584,7 @@ private func executeDicomSplit() async {
     let workWindowWidth = windowWidth
     let workPattern = pattern
     let workVerbose = verbose
+    let workOptions = splitOptions
 
     struct SplitOutcome: Sendable {
         var log: String = ""
@@ -2580,6 +2610,7 @@ private func executeDicomSplit() async {
             windowWidth: workWindowWidth,
             namingPattern: workPattern,
             verbose: workVerbose,
+            options: workOptions,
             log: { logBox.text += $0 + "\n" }
         )
 
@@ -2610,8 +2641,11 @@ private func executeDicomSplit() async {
         return result
     }.value
 
-    // Emit detailed log if verbose.
-    if verbose && !outcome.log.isEmpty {
+    // Emit the engine's log unconditionally: FrameSplitter gates its own
+    // progress lines on `verbose`, but its warnings (non-DICOM / unsplittable
+    // file skipped, `--frames` ignored for concatenation parts) are always
+    // printed by the CLI — gating the whole log here used to drop them.
+    if !outcome.log.isEmpty {
         appendConsoleOutput(outcome.log)
     }
 
@@ -2658,9 +2692,9 @@ private func executeDicomSplit() async {
     ///  - `series` -> one merged file per Series Instance UID, written into `--output` dir
     ///  - `study`  -> per-study dir, one merged file per series within each study
     ///
-    /// Note: the `--format` enhanced-ct/-mr/-xa functional-group construction from the real
-    /// CLI is not reproduced here (the executable's FrameMerger only concatenates pixel data
-    /// and sets NumberOfFrames regardless of format); behavior matches the standard path.
+    /// The `--format` enhanced-*/legacy-converted-*/sc-/us-multiframe construction runs
+    /// through the same shared FrameMerger (FunctionalGroupBuilder + MultiframePixelAssembler)
+    /// the CLI uses, so the app and the CLI produce the same object.
     private func executeDicomMerge() async {
         let inputPath = paramValue("inputPath")
         let outputPath = paramValue("output")
@@ -2671,6 +2705,13 @@ private func executeDicomSplit() async {
         let validate = paramValue("validate") == "true"
         let recursive = paramValue("recursive") == "true"
         let verbose = paramValue("verbose") == "true"
+
+        var mergeOptions = MergeOptions()
+        mergeOptions.pixelHandling = MultiframePixelHandling(rawValue: paramValue("pixel-handling")) ?? .preserve
+        mergeOptions.makeStacks = paramValue("make-stacks") == "true"
+        mergeOptions.temporalPositions = paramValue("temporal-position") == "true"
+        mergeOptions.newSeries = paramValue("new-series") == "true"
+        mergeOptions.allowAnySource = paramValue("allow-any-source") == "true"
 
         guard !inputPath.isEmpty else {
             appendConsoleOutput("Error: Input file path is required.\n")
@@ -2707,6 +2748,16 @@ private func executeDicomSplit() async {
         let mergeRoots = CommandBuilderHelpers.splitMultiValue(inputPath)
         let mergeRootPaths = mergeRoots.count > 1 ? mergeRoots : [inputURL.path]
 
+        // Every root must exist — the CLI validates this before its banner (a
+        // missing root is "Input path does not exist", not "No DICOM files found").
+        for root in mergeRootPaths where !FileManager.default.fileExists(atPath: root) {
+            let msg = MergeConsole.inputNotFoundMessage(path: root)
+            appendConsoleOutput("Error: \(msg)\n")
+            consoleStatus = .error; service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-merge", command: commandPreview, exitCode: 1, output: msg)
+            return
+        }
+
         // Banner via the SHARED MergeConsole — byte-identical to the CLI's.
         if verbose {
             for line in MergeConsole.headerLines(
@@ -2714,7 +2765,8 @@ private func executeDicomSplit() async {
                 format: MergeFormat(rawValue: format) ?? .standard,
                 level: MergeLevel(rawValue: level) ?? .file,
                 sortBy: MergeSortCriteria(rawValue: sortBy) ?? .instanceNumber,
-                order: MergeSortOrder(rawValue: order) ?? .ascending
+                order: MergeSortOrder(rawValue: order) ?? .ascending,
+                options: mergeOptions
             ) {
                 appendConsoleOutput(line + "\n")
             }
@@ -2728,11 +2780,13 @@ private func executeDicomSplit() async {
                 // Discovery runs through the shared, sorted FrameMerger gatherer — the
                 // exact walk the dicom-merge CLI uses.
                 let files = try FrameMerger.gatherInputFiles(from: mergeRootPaths, recursive: recursive)
-                guard !files.isEmpty else {
-                    return ("Error: \(MergeConsole.noDICOMFilesFoundMessage)\n", 1)
-                }
+                // "Found N DICOM files" precedes the empty check on the CLI, so a
+                // verbose run that finds nothing still reports "Found 0".
                 if verbose {
                     log += MergeConsole.foundFilesLines(count: files.count).map { $0 + "\n" }.joined()
+                }
+                guard !files.isEmpty else {
+                    return (log + "Error: \(MergeConsole.noDICOMFilesFoundMessage)\n", 1)
                 }
 
                 // Delegate the merge to the shared DICOMKit engine — the exact same
@@ -2746,6 +2800,7 @@ private func executeDicomSplit() async {
                     order: MergeSortOrder(rawValue: order) ?? .ascending,
                     validate: validate,
                     verbose: verbose,
+                    options: mergeOptions,
                     log: { log += $0 + "\n" }
                 )
 

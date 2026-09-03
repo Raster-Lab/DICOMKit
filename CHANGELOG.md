@@ -7,6 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — dicom-split / dicom-merge: Workshop ↔ terminal parity suite (2026-09-03)
+
+`Tests/DICOMStudioTests/SplitMergeWorkshopCLIParityTests.swift` runs every option
+combination of both tools through the Studio CLI Workshop executor and the real
+release binary and asserts identical console output, exit outcome and written
+files. It found five app-side drifts, all fixed: the Workshop dropped the
+engine's non-verbose warnings (skipped files, `--frames` ignored with
+`--frames-per`), parsed `--frames` before the verbose banner, printed bad-value
+errors without ArgumentParser's `<value-name>` / `Help:` line (now shared through
+`SplitConsole.invalidValueLines` and help constants the CLI's `@Option` reads),
+skipped merge's "Found 0 DICOM files" line, and reported a missing merge root as
+"No DICOM files found" instead of "Input path does not exist".
+
+### Added — dicom-split / dicom-merge understand Enhanced multi-frame, for every modality (2026-09-01)
+
+*Work in progress, not yet committed. Plan and progress: `ENHANCED_MULTIFRAME_SPLIT_MERGE_PLAN.md`.*
+
+Both tools used to be byte shufflers: split copied the whole data set per
+frame (Enhanced SOP class kept, the complete Per-frame Functional Groups
+Sequence left in every file), merge stacked pixel bytes under whatever SOP
+class the template had and, for `--format enhanced-*`, emitted only a
+Pixel Measures / Frame Content / Plane Position skeleton with Dimension Index
+Values pointing at no Dimension Organization. Compressed input corrupted both
+ways. The `--help` text claimed "proper functional groups" throughout.
+
+- **One shared engine, `Sources/DICOMKit/Multiframe/`**, used by the CLIs and
+  the Studio Workshop alike (same pattern as `CompressionConsole` /
+  `DICOMConverter`): `MultiframeSOPClassMap` (the single table of multi-frame
+  SOP classes → split target / merge sources), `FunctionalGroupFlattener`
+  (Shared then Per-frame item promoted to the top level, per-frame wins, plus
+  the typed clean-up — Frame Type → Image Type, Frame Laterality → Image
+  Laterality, Effective Echo Time → Echo Time, MR Scanning Sequence / Sequence
+  Variant / Scan Options derivation), `FunctionalGroupBuilder` (attribute
+  equality decides shared vs per-frame, whole macro at once; Frame Content
+  always per-frame; Multi-frame Dimension module; Conversion Source Attributes
+  and Unassigned Per-Frame Converted Attributes for Legacy Converted targets),
+  `LegacyVectorResolver` (Frame Time Vector → Frame Time, NM index vectors
+  sliced per frame), `MultiframePixelAssembler` (native slicing or one
+  encapsulated fragment per frame with a Basic Offset Table; `decode` mode
+  writes Explicit VR LE).
+- **dicom-split** converts Enhanced CT/MR/PET/XA/XRF and Legacy Converted
+  objects to CT/MR/PET/XA/XRF Image Storage, US Multi-frame → US Image,
+  Multi-frame SC → SC Image; keeps the class (one frame per instance, Per-frame
+  sequence trimmed to the frame's item) for NM, XA/RF, RT, Breast Tomo, X-Ray
+  3D, OPT, Enhanced US Volume, MR Colour, IVOCT; refuses Segmentation,
+  Parametric Map and MR Spectroscopy. New options: `--target auto|same|classic`,
+  `--pixel-handling preserve|decode`, `--private-groups flatten|keep|drop`,
+  `--instance-number frame|instack|original`, `--split-by none|stack|temporal`,
+  `--new-series`; `{number:04d}`, `{instance}` and `{stack}` pattern variables.
+  Image export decodes only the requested frame and honours the frame's own VOI.
+- **dicom-merge** formats: `auto` (Legacy Converted CT/MR/PET, US Multi-frame or
+  Multi-frame SC from the source class), `enhanced-pet`, `enhanced-xrf`,
+  `legacy-converted-ct|mr|pet`, `sc-multiframe`, `us-multiframe`; a source
+  SOP-class gate (`--allow-any-source` to override); `--make-stacks`,
+  `--temporal-position`, `--new-series`, `--pixel-handling`. Image Pixel module
+  consistency, transfer-syntax equality and duplicate SOP Instance UIDs are
+  checked on every run; `standard` on a classic IOD warns. Sorting by Image
+  Position (Patient) now projects onto the slice normal and is stable.
+- **Concatenations** (`MultiframeConcatenation`, DCMTK ConcatenationCreator /
+  Loader parity): `dicom-split --frames-per N` writes parts that keep the SOP
+  class and carry Concatenation UID, In-concatenation Number / Total Number,
+  Concatenation Frame Offset Number and the source SOP Instance UID, with the
+  Per-frame items and legacy vectors of their frames — the one legal split for
+  Segmentation and Parametric Map (Ophthalmic Tomography is refused, as the
+  IOD requires). `dicom-merge` recognises parts and reassembles them in
+  In-concatenation order, restoring the source SOP Instance UID.
+- **Provenance**: extracted instances get UIDs derived from the source
+  (`2.25.<SHA-256>` — same input, same output; `--random-uids` opts out), so
+  Referenced / Source Image references that name frames of another multi-frame
+  object are rewritten to the single-frame instances they become (dcm4che
+  `adjustReferencedImages`).
+- **Multi-frame inputs to merge** contribute every frame (Enhanced chunks are
+  flattened and re-factored; cine loops have their vectors sliced), and the
+  (Volume) plane macros position frames of the volume IODs.
+- **Viewer/export**: `DataSet.windowSettings()`, `allWindowSettings()`,
+  `rescaleSlope()` and `rescaleIntercept()` fall back to the Frame VOI LUT /
+  Pixel Value Transformation functional groups and take a `frameIndex:` (that
+  frame's Per-frame item, else the Shared one); `DataSet.flattenedFrame(_:)`
+  exposes a frame's attributes at the top level. The one window policy
+  (`DICOMImageExporter.determineWindowSettings`) now honours the frame at the
+  rescale and VOI rungs, so viewer tiles (GPU and CPU), film, `dicom-export`
+  and `dicom-convert` render each frame of a per-frame-windowed Enhanced
+  object (multi-echo MR, PET) with its own window instead of frame 0's. The
+  focused viewport follows the frame while its window is untouched, keeps a
+  dragged window across frames, always adopts the frame's rescale pair, and
+  "reset" lands on the frame on screen.
+- **Tests**: `EnhancedMultiframeRoundTripTests` (27 oracles — Enhanced CT →
+  classic → Enhanced → classic identity, `--target same`, stacks, NM vectors,
+  US cine, encapsulated preserve through split and merge, mixed transfer
+  syntax, gating, Legacy Converted evidence, `auto`, sort-by-normal,
+  concatenation split/reassembly, deterministic UIDs, reference expansion,
+  multi-frame inputs, volume geometry, functional-group window fallback,
+  per-frame window/rescale through accessors, policy and split) and
+  `ViewerPerFrameWindowTests` (untouched window follows the frame, dragged
+  window survives paging, shared window is not per-frame).
+
 ### Added — a study's own presentation states are adopted, drawn, and printed (2026-08-31)
 
 *Work in progress, not yet committed.*

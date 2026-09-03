@@ -132,7 +132,14 @@ public final class MetalImageRenderer: NSObject, MTKViewDelegate {
                 imageWidth: frame.width, imageHeight: frame.height),
             invert: presentation.invert ? 1 : 0,
             isGrayscale: frame.isGrayscale ? 1 : 0,
-            linearFilter: presentation.linearFiltering ? 1 : 0,
+            // Bilinear when magnified, nearest at or below 1:1 — see
+            // `DisplayPresentation.magnifies`. Measured against the drawable, so
+            // the threshold is right on a Retina display.
+            linearFilter: (presentation.linearFiltering
+                           || presentation.magnifies(
+                                imageWidth: frame.width, imageHeight: frame.height,
+                                viewWidth: Double(size.width), viewHeight: Double(size.height)))
+                ? 1 : 0,
             desaturate: presentation.desaturate ? 1 : 0
         )
 

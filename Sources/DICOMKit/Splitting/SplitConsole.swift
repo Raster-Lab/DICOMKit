@@ -56,6 +56,29 @@ public enum SplitConsole {
         return indices
     }
 
+    // MARK: - Option help + ArgumentParser-shaped value errors
+
+    /// Help text of the numeric options. Single-sourced here because the CLI's
+    /// `@Option(help:)` prints it in ArgumentParser's "Help:" line for an
+    /// unparseable value, and the Workshop reproduces that line verbatim.
+    public static let windowCenterHelp = "Window center for image rendering"
+    public static let windowWidthHelp = "Window width for image rendering"
+    public static let framesPerHelp = "Write concatenation parts of N frames (SOP class kept; the only legal split for Segmentation / Parametric Map)"
+
+    /// `--frames-per 0` (or negative). The CLI throws this inside `ValidationError`.
+    public static let framesPerTooSmallMessage = "--frames-per must be at least 1"
+
+    /// The two lines ArgumentParser prints when an option value cannot be parsed
+    /// (`dicom-split --frames-per x`): the error, then the option's help. `option`
+    /// is the long flag; the value name is derived from it the way ArgumentParser
+    /// does for a long-only option.
+    public static func invalidValueLines(value: String, option: String, help: String) -> [String] {
+        let valueName = option.hasPrefix("--") ? String(option.dropFirst(2)) : option
+        let usage = "\(option) <\(valueName)>"
+        return ["Error: The value '\(value)' is invalid for '\(usage)'",
+                "Help:  \(usage)  \(help)"]
+    }
+
     // MARK: - Validation messages
 
     /// Input path missing. The CLI throws this inside `ValidationError` (which
@@ -73,6 +96,8 @@ public enum SplitConsole {
     // MARK: - Console lines
 
     /// Verbose banner, emitted before any frame work. Newline-free lines.
+    /// Enhanced-multiframe options are echoed only when they differ from the
+    /// defaults so the classic banner is unchanged.
     public static func headerLines(
         input: String,
         output: String,
@@ -80,7 +105,8 @@ public enum SplitConsole {
         frames: String?,
         applyWindow: Bool,
         windowCenter: Double?,
-        windowWidth: Double?
+        windowWidth: Double?,
+        options: SplitOptions = SplitOptions()
     ) -> [String] {
         var lines = [
             "DICOM Split Tool v\(toolVersion)",
@@ -96,8 +122,70 @@ public enum SplitConsole {
             lines.append("Window Center: \(windowCenter ?? 0)")
             lines.append("Window Width: \(windowWidth ?? 0)")
         }
+        let defaults = SplitOptions()
+        if options.target != defaults.target { lines.append("Target: \(options.target.rawValue)") }
+        if options.pixelHandling != defaults.pixelHandling { lines.append("Pixel handling: \(options.pixelHandling.rawValue)") }
+        if options.privateGroups != defaults.privateGroups { lines.append("Private groups: \(options.privateGroups.rawValue)") }
+        if options.instanceNumbering != defaults.instanceNumbering { lines.append("Instance numbering: \(options.instanceNumbering.rawValue)") }
+        if options.seriesGrouping != defaults.seriesGrouping { lines.append("Split by: \(options.seriesGrouping.rawValue)") }
+        if options.newSeries { lines.append("New series: yes") }
+        if let per = options.framesPerInstance, per > 0 { lines.append("Frames per instance: \(per)") }
+        if !options.deterministicUIDs { lines.append("UIDs: random") }
         lines.append("")
         return lines
+    }
+
+    /// Verbose per-file plan: what the frames become.
+    public static func planLines(
+        sourceName: String,
+        targetSOPClassUID: String?,
+        functionalGroups: Bool,
+        seriesCount: Int
+    ) -> [String] {
+        var lines: [String] = []
+        if let target = targetSOPClassUID {
+            let targetName = MultiframeSOPClassMap.entry(for: target)?.name ?? classicName(target)
+            lines.append("  SOP Class: \(sourceName) -> \(targetName)")
+        } else {
+            lines.append("  SOP Class: \(sourceName) (kept, one frame per instance)")
+        }
+        if functionalGroups {
+            lines.append(targetSOPClassUID != nil
+                         ? "  Functional groups: flattened to top level"
+                         : "  Functional groups: per-frame item retained")
+        }
+        if seriesCount > 1 {
+            lines.append("  Output series: \(seriesCount)")
+        }
+        return lines
+    }
+
+    /// A source file that cannot be split (Segmentation, no classic counterpart…).
+    public static func skippedLine(path: String, reason: String) -> String {
+        "Warning: Skipping \(path): \(reason)"
+    }
+
+    /// Verbose line announcing a concatenation split.
+    public static func concatenationPlanLine(parts: Int, framesPerInstance: Int) -> String {
+        "  Concatenation: \(parts) part(s) of up to \(framesPerInstance) frame(s)"
+    }
+
+    /// `--frames` has no meaning when writing concatenation parts.
+    public static let frameSelectionIgnoredForConcatenationLine =
+        "Warning: --frames is ignored when --frames-per writes concatenation parts"
+
+    static func classicName(_ uid: String) -> String {
+        typealias U = MultiframeSOPClassMap.UID
+        switch uid {
+        case U.ctImage: return "CT Image Storage"
+        case U.mrImage: return "MR Image Storage"
+        case U.petImage: return "Positron Emission Tomography Image Storage"
+        case U.xaImage: return "X-Ray Angiographic Image Storage"
+        case U.xrfImage: return "X-Ray Radiofluoroscopic Image Storage"
+        case U.usImage: return "Ultrasound Image Storage"
+        case U.secondaryCapture: return "Secondary Capture Image Storage"
+        default: return uid
+        }
     }
 
     /// Final summary. Always emitted (including the all-zero case), so a run that

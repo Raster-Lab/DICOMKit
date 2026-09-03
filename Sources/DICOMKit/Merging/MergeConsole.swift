@@ -32,15 +32,18 @@ public enum MergeConsole {
     // MARK: - Console lines
 
     /// Verbose banner, emitted before gathering. Newline-free lines.
+    /// Enhanced-multiframe options are echoed only when they differ from the
+    /// defaults so the classic banner is unchanged.
     public static func headerLines(
         inputCount: Int,
         output: String,
         format: MergeFormat,
         level: MergeLevel,
         sortBy: MergeSortCriteria,
-        order: MergeSortOrder
+        order: MergeSortOrder,
+        options: MergeOptions = MergeOptions()
     ) -> [String] {
-        [
+        var lines = [
             "DICOM Merge Tool v\(toolVersion)",
             "========================",
             "Inputs: \(inputCount) path(s)",
@@ -48,8 +51,58 @@ public enum MergeConsole {
             "Format: \(format.rawValue)",
             "Level: \(level.rawValue)",
             "Sort: \(sortBy.rawValue) (\(order.rawValue))",
-            "",
         ]
+        let defaults = MergeOptions()
+        if options.pixelHandling != defaults.pixelHandling { lines.append("Pixel handling: \(options.pixelHandling.rawValue)") }
+        if options.makeStacks { lines.append("Stacks: by orientation") }
+        if options.temporalPositions { lines.append("Temporal positions: yes") }
+        if options.newSeries { lines.append("New series: yes") }
+        if options.allowAnySource { lines.append("Source gate: disabled") }
+        lines.append("")
+        return lines
+    }
+
+    /// `--format standard` on a classic single-frame IOD: the result is not a
+    /// conformant multi-frame object. Always emitted.
+    public static func nonMultiframeSOPClassWarning(name: String) -> String {
+        "Warning: \(name) is not a multi-frame IOD; use --format auto or an enhanced-*/legacy-converted-* format"
+    }
+
+    /// Verbose summary of the functional groups an Enhanced target received.
+    public static func functionalGroupLines(
+        target: String,
+        shared: Int,
+        perFrame: Int,
+        stacks: Int,
+        temporalPositions: Int?,
+        dimensionOrganizationType: String?
+    ) -> [String] {
+        var lines = [
+            "Target: \(target)",
+            "Functional groups: \(shared) shared, \(perFrame) per-frame",
+            "Stacks: \(stacks)",
+        ]
+        if let temporalPositions { lines.append("Temporal positions: \(temporalPositions)") }
+        lines.append("Dimension organization: \(dimensionOrganizationType ?? "none")")
+        return lines
+    }
+
+    /// Attributes that vary between frames and had nowhere to go (non-legacy target).
+    public static func droppedAttributesWarning(tags: [String]) -> String {
+        "Warning: dropped \(tags.count) varying attribute(s) without a functional group: \(tags.joined(separator: ", "))"
+    }
+
+    /// Verbose line when the inputs were concatenation parts and were reassembled.
+    public static func concatenationReassembledLine(parts: Int, frames: Int, sopInstanceUID: String) -> String {
+        "Reassembled concatenation: \(parts) part(s), \(frames) frame(s) -> \(sopInstanceUID)"
+    }
+
+    /// Verbose line for the legacy multi-frame targets (US / SC multi-frame).
+    public static func legacyMultiframeLine(target: String, frameTime: String?) -> String {
+        if let frameTime, !frameTime.isEmpty {
+            return "Target: \(target) (Frame Time \(frameTime.trimmingCharacters(in: .whitespaces)) ms)"
+        }
+        return "Target: \(target)"
     }
 
     /// Verbose line emitted once the input files have been gathered.
