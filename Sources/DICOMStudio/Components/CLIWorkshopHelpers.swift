@@ -2319,8 +2319,53 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "pattern", flag: "--pattern", displayName: "Filename Pattern",
-                    parameterType: .textField, placeholder: "e.g. frame_{n}",
-                    helpText: "Output filename pattern", isAdvanced: true
+                    parameterType: .textField, placeholder: "e.g. frame_{number:04d}_{modality}.dcm",
+                    helpText: "Output filename pattern ({number}, {number:04d}, {instance}, {stack}, {modality}, {series})", isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "target", flag: "--target", displayName: "Target SOP Class",
+                    parameterType: .enumPicker, placeholder: "auto",
+                    helpText: "auto: classic single-frame class when one exists (Enhanced CT → CT Image); same: keep the source class; classic: require a classic counterpart",
+                    defaultValue: "auto", allowedValues: SplitTargetPolicy.allCases.map { $0.rawValue }
+                ),
+                CLIParameterDefinition(
+                    id: "pixel-handling", flag: "--pixel-handling", displayName: "Compressed Pixels",
+                    parameterType: .enumPicker, placeholder: "preserve",
+                    helpText: "preserve: keep the transfer syntax frame by frame; decode: write native Explicit VR LE",
+                    defaultValue: "preserve", allowedValues: MultiframePixelHandling.allCases.map { $0.rawValue }
+                ),
+                CLIParameterDefinition(
+                    id: "private-groups", flag: "--private-groups", displayName: "Private Functional Groups",
+                    parameterType: .enumPicker, placeholder: "flatten",
+                    helpText: "What to do with vendor functional groups", isAdvanced: true,
+                    defaultValue: "flatten", allowedValues: PrivateFunctionalGroupPolicy.allCases.map { $0.rawValue }
+                ),
+                CLIParameterDefinition(
+                    id: "instance-number", flag: "--instance-number", displayName: "Instance Numbering",
+                    parameterType: .enumPicker, placeholder: "frame",
+                    helpText: "frame: 1-based frame number; instack: In-Stack Position Number; original: unchanged", isAdvanced: true,
+                    defaultValue: "frame", allowedValues: SplitInstanceNumbering.allCases.map { $0.rawValue }
+                ),
+                CLIParameterDefinition(
+                    id: "split-by", flag: "--split-by", displayName: "Split Series By",
+                    parameterType: .enumPicker, placeholder: "none",
+                    helpText: "Write one series per stack or temporal position", isAdvanced: true,
+                    defaultValue: "none", allowedValues: SplitSeriesGrouping.allCases.map { $0.rawValue }
+                ),
+                CLIParameterDefinition(
+                    id: "new-series", flag: "--new-series", displayName: "New Series UID",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Mint a new Series Instance UID for the extracted frames", isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "frames-per", flag: "--frames-per", displayName: "Frames per Part",
+                    parameterType: .textField, placeholder: "e.g. 25",
+                    helpText: "Write concatenation parts of N frames (SOP class kept; the only legal split for Segmentation / Parametric Map)", isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "random-uids", flag: "--random-uids", displayName: "Random UIDs",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Generate random SOP/Series UIDs instead of deriving them from the source", isAdvanced: true
                 ),
                 CLIParameterDefinition(
                     id: "recursive", flag: "--recursive", displayName: "Recursive",
@@ -2350,9 +2395,35 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "format", flag: "--format", displayName: "Merge Format",
                     parameterType: .enumPicker, placeholder: "standard",
-                    helpText: "Merged object format",
+                    helpText: "Merged object format (auto picks Legacy Converted / US / SC multi-frame from the source SOP class)",
                     defaultValue: "standard",
-                    allowedValues: ["standard", "enhanced-ct", "enhanced-mr", "enhanced-xa"]
+                    allowedValues: MergeFormat.allCases.map { $0.rawValue }
+                ),
+                CLIParameterDefinition(
+                    id: "pixel-handling", flag: "--pixel-handling", displayName: "Compressed Pixels",
+                    parameterType: .enumPicker, placeholder: "preserve",
+                    helpText: "preserve: keep the transfer syntax (one fragment per frame); decode: write native Explicit VR LE",
+                    defaultValue: "preserve", allowedValues: MultiframePixelHandling.allCases.map { $0.rawValue }
+                ),
+                CLIParameterDefinition(
+                    id: "make-stacks", flag: "--make-stacks", displayName: "Make Stacks",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Group frames into stacks by Image Orientation (Patient)", isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "temporal-position", flag: "--temporal-position", displayName: "Temporal Positions",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Derive Temporal Position Index from Trigger Time / Acquisition Time", isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "new-series", flag: "--new-series", displayName: "New Series UID",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Mint a new Series Instance UID for the merged object", isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "allow-any-source", flag: "--allow-any-source", displayName: "Allow Any Source",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Skip the source SOP class check for enhanced targets", isAdvanced: true
                 ),
                 CLIParameterDefinition(
                     id: "level", flag: "--level", displayName: "Merge Level",

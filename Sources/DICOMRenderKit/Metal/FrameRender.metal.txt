@@ -247,7 +247,7 @@ struct DisplayParams {
     float4   sourceRegion;
     uint     invert;       // 1 → present inverted (white ↔ black)
     uint     isGrayscale;  // 1 → splat .r across RGB; the texture is r8Unorm
-    uint     linearFilter; // 1 → bilinear magnification (print preview cells)
+    uint     linearFilter; // 1 → bilinear (magnified viewer frames, print preview cells)
     uint     desaturate;   // 1 → Rec.601 luminance greys (print "colour as greys")
 };
 
@@ -280,12 +280,12 @@ fragment float4 display_fragment(DisplayVertex in [[stage_in]],
                                  texture2d<float> frame [[texture(0)]],
                                  texture2d<float> annotations [[texture(1)]])
 {
-    // Nearest by default. The existing viewer builds its CGImage with
-    // `shouldInterpolate: false`, so a zoomed-in image shows its actual pixels
-    // rather than a smoothed guess — which is what reading pixel data calls for.
-    // Switching the viewer to linear would silently change what is on screen.
-    //
-    // The print preview asks for bilinear instead: its cells are judged as
+    // Nearest up to 1:1, bilinear when magnified. At or below one device pixel
+    // per texel nearest is exact — a reader at actual size sees the actual
+    // pixels. Above it, point-replication shows every texel as a block (a
+    // small 154×192 MR filling a reading area is ~4.6×), so the host asks for
+    // bilinear via `linearFilter` (`DisplayPresentation.magnifies`). The print
+    // preview asks for bilinear unconditionally: its cells are judged as
     // pictures on a panel-scaled sheet, its CPU-drawn cells are smoothed by
     // the platform image view, and a cell must not change texture when its
     // GPU texture arrives.

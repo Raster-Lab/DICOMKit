@@ -241,12 +241,18 @@ public enum DICOMImageExporter {
     /// far from the data, producing a washed-out or near-blank image. The pixel-range
     /// and 16-bit fallbacks are already computed in stored space, so they are used
     /// as-is. Reference: DICOM PS3.3 C.11.2 (VOI LUT) + C.11.1 (Modality LUT).
+    ///
+    /// `frameIndex` is honoured at every rung: on an Enhanced multi-frame object
+    /// the rescale pair and the VOI come from *that frame's* Pixel Value
+    /// Transformation / Frame VOI LUT functional groups (else the shared ones),
+    /// so a multi-echo MR or a per-frame-windowed PET pages through the viewer
+    /// and exports with each frame's own window rather than frame 0's.
     public static func determineWindowSettings(
         from file: DICOMFile, pixelData: PixelData, frameIndex: Int,
         windowCenter: Double?, windowWidth: Double?
     ) -> WindowSettings {
-        let slope = file.rescaleSlope()
-        let intercept = file.rescaleIntercept()
+        let slope = file.rescaleSlope(frameIndex: frameIndex)
+        let intercept = file.rescaleIntercept(frameIndex: frameIndex)
         func toStored(center: Double, width: Double) -> WindowSettings {
             guard slope != 0 else { return WindowSettings(center: center, width: width) }
             return WindowSettings(center: (center - intercept) / slope, width: width / abs(slope))
@@ -261,7 +267,8 @@ public enum DICOMImageExporter {
         // form first: ``DICOMFile/windowSettings()`` parses a *single* DS and
         // returns nil for those files, which would drop a perfectly good VOI on
         // the floor and auto-stretch the full pixel range instead.
-        if let windowFromFile = file.allWindowSettings().first ?? file.windowSettings() {
+        if let windowFromFile = file.allWindowSettings(frameIndex: frameIndex).first
+            ?? file.windowSettings(frameIndex: frameIndex) {
             return toStored(center: windowFromFile.center, width: windowFromFile.width)
         }
         if let range = pixelData.pixelRange(forFrame: frameIndex) {

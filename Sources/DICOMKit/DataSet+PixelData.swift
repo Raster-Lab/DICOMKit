@@ -260,17 +260,29 @@ extension DataSet {
     /// Extracts Window Center and Window Width values to create WindowSettings.
     /// Returns nil if window values are not present.
     ///
+    /// - Parameter frameIndex: For Enhanced multi-frame objects, the frame whose
+    ///   Frame VOI LUT functional group is consulted when the top-level window is
+    ///   absent; `nil` reads the shared item (else the first frame's).
     /// - Returns: WindowSettings if present
-    public func windowSettings() -> WindowSettings? {
+    public func windowSettings(frameIndex: Int? = nil) -> WindowSettings? {
         guard let centerDS = decimalString(for: .windowCenter),
               let widthDS = decimalString(for: .windowWidth) else {
+            // Enhanced multi-frame objects carry the VOI in the Frame VOI LUT
+            // functional group; fall back to that frame's item, else the shared one.
+            if let item = functionalGroupItem(.frameVOILUTSequence, frameIndex: frameIndex),
+               let c = item[.windowCenter]?.decimalStringValue?.value,
+               let w = item[.windowWidth]?.decimalStringValue?.value {
+                return WindowSettings(center: c, width: w,
+                                      explanation: item.string(for: .windowCenterWidthExplanation),
+                                      function: VOILUTFunction.parse(item.string(for: .voiLUTFunction)))
+            }
             return nil
         }
-        
+
         let explanation = string(for: .windowCenterWidthExplanation)
         let functionString = string(for: .voiLUTFunction)
         let function = VOILUTFunction.parse(functionString)
-        
+
         return WindowSettings(
             center: centerDS.value,
             width: widthDS.value,
@@ -278,23 +290,86 @@ extension DataSet {
             function: function
         )
     }
+
+    /// The first item of a functional-group macro for one frame.
+    ///
+    /// With a `frameIndex`, that frame's Per-frame item is consulted first (a
+    /// macro lives in exactly one of the two sequences, so a per-frame hit is
+    /// the frame's own value), then the Shared item. Without one — or when the
+    /// index is out of range — the Shared item is read, else the *first*
+    /// Per-frame item. Whole-frame access goes through ``flattenedFrame(_:)``.
+    func functionalGroupItem(_ macro: Tag, frameIndex: Int? = nil) -> SequenceItem? {
+        let perFrame = self[.perFrameFunctionalGroupsSequence]?.sequenceItems
+        if let frameIndex, let perFrame, perFrame.indices.contains(frameIndex),
+           let item = perFrame[frameIndex][macro]?.sequenceItems?.first {
+            return item
+        }
+        if let shared = self[.sharedFunctionalGroupsSequence]?.sequenceItems?.first,
+           let item = shared[macro]?.sequenceItems?.first {
+            return item
+        }
+        if frameIndex == nil, let first = perFrame?.first,
+           let item = first[macro]?.sequenceItems?.first {
+            return item
+        }
+        return nil
+    }
+
+    /// Whether any frame of an Enhanced multi-frame object carries its own
+    /// window or rescale — i.e. whether the Frame VOI LUT or Pixel Value
+    /// Transformation macro sits in the Per-frame Functional Groups Sequence.
+    /// Viewers use this to decide whether paging frames must re-derive the
+    /// default window; cine loops and shared-window volumes answer `false`.
+    public var hasPerFrameWindowOrRescale: Bool {
+        guard let perFrame = self[.perFrameFunctionalGroupsSequence]?.sequenceItems else { return false }
+        return perFrame.contains { item in
+            item[.frameVOILUTSequence] != nil || item[.pixelValueTransformationSequence] != nil
+        }
+    }
+
+    /// The data set of one frame of an Enhanced multi-frame object with its
+    /// functional groups promoted to the top level (identity, pixel data and
+    /// NumberOfFrames untouched apart from the module removal). Single-frame
+    /// objects come back unchanged.
+    public func flattenedFrame(_ frameIndex: Int) -> DataSet {
+        guard self[.perFrameFunctionalGroupsSequence] != nil || self[.sharedFunctionalGroupsSequence] != nil else {
+            return self
+        }
+        var ds = FunctionalGroupFlattener.flatten(self, frameIndex: frameIndex, toClassic: false)
+        if let pixel = self[.pixelData] { ds[.pixelData] = pixel }
+        if let frames = self[.numberOfFrames] { ds[.numberOfFrames] = frames }
+        return ds
+    }
     
     /// Returns all window settings from the data set
     ///
     /// DICOM allows multiple window center/width pairs.
     /// Returns an empty array if no window settings are present.
     ///
+    /// - Parameter frameIndex: For Enhanced multi-frame objects, the frame whose
+    ///   Frame VOI LUT functional group is consulted when the top-level window is
+    ///   absent; `nil` reads the shared item (else the first frame's).
     /// - Returns: Array of WindowSettings
-    public func allWindowSettings() -> [WindowSettings] {
-        guard let centers = decimalStrings(for: .windowCenter),
-              let widths = decimalStrings(for: .windowWidth),
+    public func allWindowSettings(frameIndex: Int? = nil) -> [WindowSettings] {
+        // Top level first; else the Frame VOI LUT macro, which may carry the
+        // same multi-valued pairs as a classic image.
+        let element: (Tag) -> DataElement?
+        if self[.windowCenter] != nil, self[.windowWidth] != nil {
+            element = { self[$0] }
+        } else if let item = functionalGroupItem(.frameVOILUTSequence, frameIndex: frameIndex) {
+            element = { item[$0] }
+        } else {
+            return []
+        }
+        guard let centers = element(.windowCenter)?.decimalStringValues,
+              let widths = element(.windowWidth)?.decimalStringValues,
               !centers.isEmpty, !widths.isEmpty else {
             return []
         }
-        
+
         // Get explanations (may be fewer than windows)
-        let explanations = strings(for: .windowCenterWidthExplanation) ?? []
-        let functionString = string(for: .voiLUTFunction)
+        let explanations = element(.windowCenterWidthExplanation)?.stringValues ?? []
+        let functionString = element(.voiLUTFunction)?.stringValue
         let function = VOILUTFunction.parse(functionString)
         
         var settings: [WindowSettings] = []
@@ -325,9 +400,10 @@ extension DataSet {
     ///
     /// - Returns: Rescale intercept (default 0.0 if not present; 0.0 when a
     ///   Modality LUT Sequence is present)
-    public func rescaleIntercept() -> Double {
+    public func rescaleIntercept(frameIndex: Int? = nil) -> Double {
         guard modalityLUTData() == nil else { return 0.0 }
-        return decimalString(for: .rescaleIntercept)?.value ?? 0.0
+        if let value = decimalString(for: .rescaleIntercept)?.value { return value }
+        return functionalGroupItem(.pixelValueTransformationSequence, frameIndex: frameIndex)?[.rescaleIntercept]?.decimalStringValue?.value ?? 0.0
     }
     
     /// Returns the rescale slope value
@@ -344,9 +420,10 @@ extension DataSet {
     ///
     /// - Returns: Rescale slope (default 1.0 if not present; 1.0 when a Modality
     ///   LUT Sequence is present)
-    public func rescaleSlope() -> Double {
+    public func rescaleSlope(frameIndex: Int? = nil) -> Double {
         guard modalityLUTData() == nil else { return 1.0 }
-        return decimalString(for: .rescaleSlope)?.value ?? 1.0
+        if let value = decimalString(for: .rescaleSlope)?.value { return value }
+        return functionalGroupItem(.pixelValueTransformationSequence, frameIndex: frameIndex)?[.rescaleSlope]?.decimalStringValue?.value ?? 1.0
     }
 
     /// Returns the parsed Modality LUT, when a Modality LUT Sequence (0028,3000)

@@ -72,13 +72,17 @@ public struct DisplayPresentation: Equatable, Sendable {
     /// the flatten happens before the rendered Presentation LUT.
     public var desaturate: Bool = false
 
-    /// Bilinear magnification instead of the viewer's nearest-pixel default.
+    /// Force bilinear sampling regardless of scale.
     ///
-    /// The viewer stays nearest deliberately — reading pixel data calls for
-    /// the actual pixels, not a smoothed guess. The print preview sets this:
-    /// its cells are judged as pictures on a panel-scaled sheet, its CPU-drawn
-    /// cells are smoothed by the platform image view, and a cell must not
-    /// change texture the moment its GPU texture arrives.
+    /// The viewer leaves this `false` and lets ``magnifies(imageWidth:imageHeight:viewWidth:viewHeight:)``
+    /// decide per draw: nearest at or below 1:1 (a texel maps to at most one
+    /// device pixel, so nearest is exact and a reader at actual size sees the
+    /// actual pixels), bilinear once the picture is magnified (a 154×192 MR
+    /// filling a reading area is ~4.6×, and point-replication there shows as
+    /// blocks). The print preview sets this `true`: its cells are judged as
+    /// pictures on a panel-scaled sheet, its CPU-drawn cells are smoothed by
+    /// the platform image view, and a cell must not change texture the moment
+    /// its GPU texture arrives.
     public var linearFiltering: Bool = false
 
     /// The rectangle of source pixels to show, when the caller knows it exactly.
@@ -233,6 +237,23 @@ extension DisplayPresentation {
     /// progressively-decoded J2K file because its canvas resolved to zero size under
     /// `.aspectRatio` (see `ProgressiveImageView`). Answering `nil` rather than
     /// dividing by zero is what makes that case detectable instead of silent.
+    /// Whether the picture is drawn larger than 1 device pixel per image pixel.
+    ///
+    /// The aspect-fit scale the transform starts from, times the reader's zoom,
+    /// measured in *drawable* pixels — so a 2× display magnifies at half the
+    /// point-space zoom, which is what the eye sees. This is what picks the
+    /// display shader's sampler: nearest is exact up to 1:1 and bilinear above
+    /// it. A film crop (``sourceRegion``) composes its own scale and sets
+    /// ``linearFiltering`` explicitly, so it is never magnified by this rule.
+    /// A degenerate image or viewport is not magnified.
+    public func magnifies(imageWidth: Int, imageHeight: Int,
+                          viewWidth: Double, viewHeight: Double) -> Bool {
+        guard sourceRegion == nil,
+              imageWidth > 0, imageHeight > 0, viewWidth > 0, viewHeight > 0 else { return false }
+        let fit = min(viewWidth / Double(imageWidth), viewHeight / Double(imageHeight))
+        return fit * zoom > 1.0
+    }
+
     func transform(imageWidth: Int, imageHeight: Int,
                    viewWidth: Double, viewHeight: Double) -> simd_float4x4? {
         if sourceRegion != nil {

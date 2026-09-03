@@ -166,7 +166,20 @@ public final class ImageViewerViewModel {
     // MARK: - Multi-Frame / Cine State
 
     /// Current frame index (0-based).
-    public var currentFrameIndex: Int = 0
+    public var currentFrameIndex: Int = 0 {
+        didSet { if currentFrameIndex != oldValue { adoptFrameWindow(for: currentFrameIndex) } }
+    }
+
+    /// Whether the loaded file windows or rescales *per frame* — an Enhanced
+    /// object whose Frame VOI LUT or Pixel Value Transformation macro sits in
+    /// the Per-frame Functional Groups. Only then does paging re-derive the
+    /// default window; a cine loop or shared-window volume pays nothing.
+    public private(set) var hasPerFrameWindow = false
+
+    /// The window ``applyDefaultWindow(for:slope:intercept:frameIndex:)`` last
+    /// derived, in stored space, so a frame change can tell an untouched default
+    /// (which follows the frame) from a reader's adjustment (which stays).
+    private var frameDefaultWindow: (center: Double, width: Double)?
 
     /// Cine playback state.
     public var playbackState: PlaybackState = .stopped
@@ -966,14 +979,17 @@ public final class ImageViewerViewModel {
             }
         }
 
-        // Extract rescale parameters for window correction
-        let slope = file.rescaleSlope()
-        let intercept = file.rescaleIntercept()
+        // Extract rescale parameters for window correction — frame 0's on an
+        // Enhanced object, the file's otherwise (the accessors fall back to the
+        // functional groups themselves).
+        hasPerFrameWindow = file.dataSet.hasPerFrameWindowOrRescale
+        let slope = file.rescaleSlope(frameIndex: 0)
+        let intercept = file.rescaleIntercept(frameIndex: 0)
         self.rescaleSlope = slope
         self.rescaleIntercept = intercept
 
         // Extract window settings from header
-        applyDefaultWindow(for: file, slope: slope, intercept: intercept)
+        applyDefaultWindow(for: file, slope: slope, intercept: intercept, frameIndex: 0)
 
         // Load modality presets
         let modality = file.dataSet.string(for: .modality) ?? ""
@@ -1327,11 +1343,18 @@ public final class ImageViewerViewModel {
     /// The numbers come from ``DICOMImageExporter/determineWindowSettings`` — the
     /// one window-resolution policy shared with export, the tile cache and the
     /// film — so a tile and the viewport showing the same image cannot disagree.
-    func applyDefaultWindow(for file: DICOMFile, slope: Double, intercept: Double) {
-        headerWindowSettings = file.allWindowSettings()
+    ///
+    /// `frameIndex` picks the frame whose functional groups supply the VOI on an
+    /// Enhanced object (default: the frame on screen), so a reset lands on the
+    /// window of the frame the reader is looking at, not frame 0's.
+    func applyDefaultWindow(for file: DICOMFile, slope: Double, intercept: Double,
+                            frameIndex: Int? = nil) {
+        let frame = frameIndex ?? currentFrameIndex
+        headerWindowSettings = file.allWindowSettings(frameIndex: frame)
         if let firstWindow = headerWindowSettings.first {
             voiLUTFunction = firstWindow.function.rawValue
         }
+        defer { frameDefaultWindow = (windowCenter, windowWidth) }
         guard let pixData = file.pixelData() else {
             // No pixels to measure: the header VOI is all there is to go on.
             guard let firstWindow = headerWindowSettings.first else { return }
@@ -1345,10 +1368,46 @@ public final class ImageViewerViewModel {
             return
         }
         let window = DICOMImageExporter.determineWindowSettings(
-            from: file, pixelData: pixData, frameIndex: 0,
+            from: file, pixelData: pixData, frameIndex: frame,
             windowCenter: nil, windowWidth: nil)
         windowCenter = window.center
         windowWidth = window.width
+    }
+
+    /// Lets the window follow the frame on a file that windows per frame.
+    ///
+    /// A multi-echo Enhanced MR or a per-frame-windowed PET declares a Frame VOI
+    /// LUT (and sometimes a Pixel Value Transformation) for each frame. Paging
+    /// such a file adopts the new frame's rescale pair always — those are facts
+    /// about the pixels, not reader state — and re-derives the default window
+    /// only while the reader has not adjusted it: a dragged window survives
+    /// paging exactly as it does on a cine loop. The header is read directly
+    /// (no pixel decode), so this is cheap enough for cine playback.
+    private func adoptFrameWindow(for frameIndex: Int) {
+        guard hasPerFrameWindow, let file = dicomFile else { return }
+        let slope = file.rescaleSlope(frameIndex: frameIndex)
+        let intercept = file.rescaleIntercept(frameIndex: frameIndex)
+        rescaleSlope = slope
+        rescaleIntercept = intercept
+        guard let untouched = frameDefaultWindow,
+              untouched.center == windowCenter, untouched.width == windowWidth else { return }
+        let header = file.allWindowSettings(frameIndex: frameIndex)
+        guard let window = header.first else { return }
+        // Following the frame is not a reader action: it must not mark the
+        // series as window-adjusted the way a drag does.
+        let wasRestoring = restoringToolState
+        restoringToolState = true
+        defer { restoringToolState = wasRestoring }
+        headerWindowSettings = header
+        voiLUTFunction = window.function.rawValue
+        if slope != 0 {
+            windowCenter = (window.center - intercept) / slope
+            windowWidth = window.width / abs(slope)
+        } else {
+            windowCenter = window.center
+            windowWidth = window.width
+        }
+        frameDefaultWindow = (windowCenter, windowWidth)
     }
 
     /// Re-adopts the loaded file's default window, discarding any adjustment.

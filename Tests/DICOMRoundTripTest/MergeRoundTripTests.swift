@@ -170,7 +170,8 @@ final class MergeRoundTripTests: XCTestCase {
         XCTAssertEqual(readU8(px, at: 2 * frameSize), 10)
     }
 
-    // Oracle: validate=true throws MergeError.inconsistentPixelDataSize when frame byte-sizes differ.
+    // Oracle: validate=true throws on differing frame geometry, naming the
+    // attribute that differs (Rows) rather than only the resulting byte counts.
     func testValidateThrowsOnInconsistentPixelSize() async throws {
         let dir = try makeTempDir()
         let a = makeGrayscale8(rows: 4, cols: 4, fillPattern: { _ in 1 })   // 16 bytes
@@ -184,9 +185,43 @@ final class MergeRoundTripTests: XCTestCase {
             try await merger.mergeToSingleFile(files: paths, outputPath: out.path)
             XCTFail("Expected validation to throw on inconsistent pixel data size")
         } catch let error as MergeError {
-            guard case .inconsistentPixelDataSize = error else {
-                return XCTFail("Expected .inconsistentPixelDataSize, got \(error)")
+            switch error {
+            case .inconsistentAttribute(let tag, let expected, let found, _, _):
+                XCTAssertEqual(tag, Tag.rows.description)
+                XCTAssertEqual(expected, "4")
+                XCTAssertEqual(found, "8")
+            case .inconsistentPixelDataSize:
+                break   // byte-size fallback is also an acceptable rejection
+            default:
+                return XCTFail("Expected a geometry mismatch, got \(error)")
             }
+        }
+    }
+
+    // Oracle: transposed frames (4x8 and 8x4) have identical byte counts, so the
+    // byte-size check cannot see the difference — only a real Rows/Columns
+    // comparison catches them. Rows/Columns are US (binary), and comparing them
+    // via `string(for:)` yields nil for both sides, which silently accepts any
+    // pair of inputs; this asserts the comparison is VR-aware.
+    func testTransposedFramesAreRejectedDespiteEqualByteCount() async throws {
+        let dir = try makeTempDir()
+        let a = makeGrayscale8(rows: 4, cols: 8, fillPattern: { _ in 1 })
+        let b = makeGrayscale8(rows: 8, cols: 4, fillPattern: { _ in 2 })
+        let paths = try writeInputs([a, b], dir: dir)
+
+        let out = dir.appendingPathComponent("merged.dcm")
+        let merger = FrameMerger(format: .standard, level: .file, sortBy: .none,
+                                 order: .ascending, validate: false, verbose: false)
+        do {
+            try await merger.mergeToSingleFile(files: paths, outputPath: out.path)
+            XCTFail("Expected the merge to reject transposed frames")
+        } catch let error as MergeError {
+            guard case .inconsistentAttribute(let tag, let expected, let found, _, _) = error else {
+                return XCTFail("Expected .inconsistentAttribute, got \(error)")
+            }
+            XCTAssertEqual(tag, Tag.rows.description)
+            XCTAssertEqual(expected, "4")
+            XCTAssertEqual(found, "8")
         }
     }
 

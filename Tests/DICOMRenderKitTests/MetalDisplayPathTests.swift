@@ -348,6 +348,94 @@ final class MetalDisplayPathTests: XCTestCase {
         }
     }
 
+    // MARK: - Magnification picks the sampler
+
+    /// A small frame filling a large tile is magnified: bilinear, so a 154×192
+    /// MR in a 1×1 reading area is not shown as ~4.6-pixel blocks.
+    func testSmallFrameFillingTheViewIsMagnified() {
+        let p = DisplayPresentation()
+        XCTAssertTrue(p.magnifies(imageWidth: 154, imageHeight: 192, viewWidth: 1508, viewHeight: 887))
+    }
+
+    /// A frame larger than the drawable is minified: nearest, the reader sees
+    /// actual pixels — and zooming in past 1:1 flips it to bilinear.
+    func testLargeFrameIsNotMagnifiedUntilZoomedPastOneToOne() {
+        var p = DisplayPresentation()
+        XCTAssertFalse(p.magnifies(imageWidth: 2048, imageHeight: 2048, viewWidth: 1024, viewHeight: 1024))
+        p.zoom = 2.0
+        XCTAssertFalse(p.magnifies(imageWidth: 2048, imageHeight: 2048, viewWidth: 1024, viewHeight: 1024),
+                       "fit 0.5 × zoom 2 is exactly 1:1 — still nearest")
+        p.zoom = 2.5
+        XCTAssertTrue(p.magnifies(imageWidth: 2048, imageHeight: 2048, viewWidth: 1024, viewHeight: 1024))
+    }
+
+    /// The film composes its own scale and sets `linearFiltering` itself; the
+    /// magnification rule never second-guesses a crop.
+    func testFilmCropIsNeverMagnifiedByTheRule() {
+        let p = DisplayPresentation(sourceRegion: .init(x: 0, y: 0, width: 16, height: 16))
+        XCTAssertFalse(p.magnifies(imageWidth: 64, imageHeight: 64, viewWidth: 1024, viewHeight: 1024))
+    }
+
+    func testDegenerateSizesAreNotMagnified() {
+        let p = DisplayPresentation()
+        XCTAssertFalse(p.magnifies(imageWidth: 0, imageHeight: 64, viewWidth: 128, viewHeight: 128))
+        XCTAssertFalse(p.magnifies(imageWidth: 64, imageHeight: 64, viewWidth: 0, viewHeight: 128))
+    }
+
+    /// End to end: a 64×64 frame whose left half is black and right half white,
+    /// drawn 2× into 128×128, has a blended pixel at the seam on the GPU — the
+    /// magnified viewer no longer point-replicates. (At 2× the device pixel
+    /// left of the seam samples texel 31.25: a quarter of the way into white.)
+    func testMagnifiedFrameIsSampledBilinearlyOnScreen() throws {
+        guard let renderer = MetalImageRenderer(),
+              let device = MetalRenderDevice.shared else {
+            throw XCTSkip("No Metal device on this machine")
+        }
+        let descriptor = PixelDataDescriptor(
+            rows: 64, columns: 64,
+            bitsAllocated: 16, bitsStored: 16, highBit: 15, isSigned: false,
+            samplesPerPixel: 1, photometricInterpretation: .monochrome2)
+        var bytes = Data(count: descriptor.bytesPerFrame)
+        bytes.withUnsafeMutableBytes { raw in
+            let out = raw.bindMemory(to: UInt16.self)
+            for i in 0..<(64 * 64) { out[i] = (i % 64) < 32 ? 0 : 65_535 }
+        }
+        let request = FrameRenderRequest(
+            pixelData: PixelData(data: bytes, descriptor: descriptor).pageAligned(),
+            frameIndex: 0,
+            window: WindowSettings(center: 32_768, width: 65_536))
+        renderer.frame = try requireRenderer().renderDisplayTexture(request)
+        renderer.presentation = DisplayPresentation()   // viewer defaults: no forced filtering
+
+        let size = 128
+        let target = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: MetalImageRenderer.colorPixelFormat,
+            width: size, height: size, mipmapped: false)
+        target.usage = [.renderTarget, .shaderRead]
+        target.storageMode = .shared
+        let texture = try XCTUnwrap(device.device.makeTexture(descriptor: target))
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = texture
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        XCTAssertTrue(renderer.render(size: CGSize(width: size, height: size),
+                                      descriptor: pass, drawable: nil))
+        let fence = try XCTUnwrap(device.commandQueue.makeCommandBuffer())
+        fence.commit()
+        fence.waitUntilCompleted()
+        var out = [UInt8](repeating: 0, count: size * size * 4)
+        out.withUnsafeMutableBytes { buffer in
+            texture.getBytes(buffer.baseAddress!, bytesPerRow: size * 4,
+                             from: MTLRegionMake2D(0, 0, size, size), mipmapLevel: 0)
+        }
+        let row = (0..<size).map { Int(out[(64 * size + $0) * 4]) }
+        XCTAssertEqual(row[8], 0, "deep in the black half")
+        XCTAssertEqual(row[120], 255, "deep in the white half")
+        let seam = row[60...67].filter { $0 > 8 && $0 < 247 }
+        XCTAssertFalse(seam.isEmpty,
+                       "a magnified seam must blend; nearest sampling leaves none: \(Array(row[56...71]))")
+    }
+
     /// A renderer with no frame must not draw — and must not claim the drawable was
     /// the problem, or the zero-size flag would be useless for diagnosis.
     func testMissingFrameDoesNotDrawAndDoesNotBlameTheDrawable() throws {

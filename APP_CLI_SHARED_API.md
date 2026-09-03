@@ -117,8 +117,8 @@ shared engine; those now also share a `*Console` formatter (see §6).
 | `dicom-json` | default · `--reverse` | `DICOMJSONEncoder` / `DICOMJSONDecoder` | `DICOMWeb` | |
 | `dicom-xml` | (default) | `DICOMXMLEncoder` / `DICOMXMLDecoder` | `DICOMWeb` | |
 | `dicom-convert` | (default) | `TransferSyntaxConverter` + `DICOMFile` rendering | `DICOMCore` + `DICOMKit` | |
-| `dicom-split` | (default) | `FrameSplitter` | `DICOMKit/Splitting` | `SplitConsole` |
-| `dicom-merge` | (default) | `FrameMerger` | `DICOMKit/Merging` | `MergeConsole` |
+| `dicom-split` | (default) | `FrameSplitter` + `Multiframe/` (`MultiframeSOPClassMap`, `FunctionalGroupFlattener`, `LegacyVectorResolver`, `MultiframePixelAssembler`) | `DICOMKit/Splitting` + `DICOMKit/Multiframe` | `SplitConsole` |
+| `dicom-merge` | (default) | `FrameMerger` + `Multiframe/` (`MultiframeSOPClassMap`, `FunctionalGroupBuilder`, `MultiframePixelAssembler`) | `DICOMKit/Merging` + `DICOMKit/Multiframe` | `MergeConsole` |
 | `dicom-study` | summary · check · stats · compare · organize | `StudyScanner` / `StudyReport` / `StudyOrganizer` | `DICOMKit/Study` | |
 | `dicom-archive` | init · import · query · list · export · check · stats | `ArchiveStore` | `DICOMKit/Archive` | |
 | `dicom-pixedit` | (default) | `PixelEditor` | `DICOMKit/PixelEditing` | |

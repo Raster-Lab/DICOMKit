@@ -242,15 +242,18 @@ extension DICOMFile {
     /// Returns the first window settings from the file
     ///
     /// - Returns: WindowSettings if present
-    public func windowSettings() -> WindowSettings? {
-        dataSet.windowSettings()
+    public func windowSettings(frameIndex: Int? = nil) -> WindowSettings? {
+        dataSet.windowSettings(frameIndex: frameIndex)
     }
-    
+
     /// Returns all window settings from the file
     ///
+    /// - Parameter frameIndex: For Enhanced multi-frame objects, the frame whose
+    ///   Frame VOI LUT functional group supplies the window when there is none at
+    ///   the top level.
     /// - Returns: Array of WindowSettings
-    public func allWindowSettings() -> [WindowSettings] {
-        dataSet.allWindowSettings()
+    public func allWindowSettings(frameIndex: Int? = nil) -> [WindowSettings] {
+        dataSet.allWindowSettings(frameIndex: frameIndex)
     }
     
 #if canImport(CoreGraphics)
@@ -443,13 +446,13 @@ extension DICOMFile {
     // MARK: - Rescale Values
     
     /// Returns the rescale intercept value
-    public func rescaleIntercept() -> Double {
-        dataSet.rescaleIntercept()
+    public func rescaleIntercept(frameIndex: Int? = nil) -> Double {
+        dataSet.rescaleIntercept(frameIndex: frameIndex)
     }
-    
+
     /// Returns the rescale slope value
-    public func rescaleSlope() -> Double {
-        dataSet.rescaleSlope()
+    public func rescaleSlope(frameIndex: Int? = nil) -> Double {
+        dataSet.rescaleSlope(frameIndex: frameIndex)
     }
     
     /// Applies the rescale transformation to a pixel value

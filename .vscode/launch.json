@@ -899,6 +899,26 @@
             "target": "cli-parity-docs",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release cli-parity-docs"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-printscp",
+            "target": "dicom-printscp",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-printscp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-printscp",
+            "target": "dicom-printscp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-printscp"
         }
     ]
 }
