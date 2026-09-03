@@ -360,8 +360,10 @@ struct IntegrationValidationTests {
         #expect(hitResult?.data == entry.data)
         
         // Cache hit should be significantly faster (allowing some variance for test stability)
-        // In production, cache hits are typically microseconds vs milliseconds for network/disk
-        #expect(hitDuration <= missDuration * 10) // Allow 10x variance for test stability
+        // In production, cache hits are typically microseconds vs milliseconds for network/disk.
+        // Floor the miss duration at 1 ms: under load the miss path can complete faster than
+        // the clock's resolution, which would collapse the bound to zero and fail any hit.
+        #expect(hitDuration <= max(missDuration, 0.001) * 10)
         
         let stats = await cache.getStats()
         #expect(stats.hits == 1)

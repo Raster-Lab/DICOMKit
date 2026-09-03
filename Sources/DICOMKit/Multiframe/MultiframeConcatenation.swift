@@ -100,8 +100,17 @@ public enum MultiframeConcatenation {
         ds[.extendedOffsetTable] = nil
         ds[.extendedOffsetTableLengths] = nil
 
-        if let items = source[.perFrameFunctionalGroupsSequence]?.sequenceItems, items.count >= part.frames.upperBound {
-            ds.setSequence(Array(items[part.frames]), for: .perFrameFunctionalGroupsSequence)
+        if let items = source[.perFrameFunctionalGroupsSequence]?.sequenceItems {
+            // Slice only what the source actually has: a short (malformed) sequence
+            // must not survive at full length in a part that claims fewer frames.
+            let upper = min(items.count, part.frames.upperBound)
+            let lower = min(part.frames.lowerBound, upper)
+            let slice = Array(items[lower..<upper])
+            if slice.isEmpty {
+                ds[.perFrameFunctionalGroupsSequence] = nil
+            } else {
+                ds.setSequence(slice, for: .perFrameFunctionalGroupsSequence)
+            }
         }
         LegacyVectorResolver.resolve(&ds, frames: part.frames, kind: vectorKind, mode: .sameClass)
 

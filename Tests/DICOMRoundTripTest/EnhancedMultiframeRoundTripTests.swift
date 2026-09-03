@@ -826,4 +826,136 @@ final class EnhancedMultiframeRoundTripTests: XCTestCase {
         XCTAssertEqual(FrameSplitter.expandPattern("{number}.dcm", frameIndex: 3, instance: "4", stack: "1", modality: "MR", series: "1"),
                        "0003.dcm")
     }
+
+    // MARK: - Review-fix regressions (PR #207)
+
+    // Oracle (PS3.3 C.11.2): a window needs BOTH center and width. A top-level
+    // Window Center without a Window Width must not shadow the Frame VOI LUT
+    // functional group.
+    func testWindowCenterWithoutWidthFallsBackToFrameVOILUT() {
+        var ds = makeEnhancedCT(frames: 1).dataSet
+        ds.setString("100", for: .windowCenter, vr: .DS)
+        ds[.windowWidth] = nil
+        let settings = ds.allWindowSettings(frameIndex: 0)
+        XCTAssertEqual(settings.map { $0.center }, [40], "shared Frame VOI LUT window")
+        XCTAssertEqual(settings.map { $0.width }, [400])
+
+        // A classic image with center-but-no-width (and no functional groups)
+        // still has no usable window.
+        var classic = makeGrayscale16(rows: 4, cols: 4, fillPattern: { _ in 1 }).dataSet
+        classic.setString("100", for: .windowCenter, vr: .DS)
+        classic[.windowWidth] = nil
+        XCTAssertTrue(classic.allWindowSettings().isEmpty)
+    }
+
+    // Oracle (PS3.3 C.7.6.16): a concatenation part's Per-frame sequence has one
+    // item per part frame. A source whose sequence is shorter than NumberOfFrames
+    // must not leave the full-length sequence in a smaller part.
+    func testConcatenationPartNeverKeepsOversizedPerFrameSequence() {
+        var src = makeEnhancedCT(frames: 5).dataSet
+        let items = Array(src[.perFrameFunctionalGroupsSequence]!.sequenceItems!.prefix(3))
+        src.setSequence(items, for: .perFrameFunctionalGroupsSequence) // malformed: 3 items, 5 frames
+        let parts = MultiframeConcatenation.parts(frameCount: 5, framesPerInstance: 2)
+        for part in parts {
+            let ds = MultiframeConcatenation.partDataSet(source: src, part: part,
+                                                         concatenationUID: "1.2.3.4", vectorKind: .none)
+            let count = ds[.perFrameFunctionalGroupsSequence]?.sequenceItems?.count ?? 0
+            XCTAssertLessThanOrEqual(count, part.frames.count,
+                                     "part \(part.index) must not describe more frames than it has")
+        }
+        // Last part (frame 4) has no item at all left: sequence removed, not oversized.
+        let last = MultiframeConcatenation.partDataSet(source: src, part: parts[2],
+                                                       concatenationUID: "1.2.3.4", vectorKind: .none)
+        XCTAssertNil(last[.perFrameFunctionalGroupsSequence])
+    }
+
+    // Oracle: a merged object's Per-frame sequence length must equal NumberOfFrames.
+    // When that cannot be built (mixed enhanced + classic inputs), the sequence is
+    // dropped with a warning rather than left describing only the template's frames.
+    func testStandardMergeDropsMismatchedPerFrameSequence() async throws {
+        let enhanced = makeEnhancedCT(frames: 2)
+        let classic = mutate(makeClassicCT(index: 2, value: 300, position: "0\\0\\3.0")) { ds in
+            ds.setUInt16(12, for: .bitsStored)   // match makeEnhancedCT's Image Pixel module
+            ds.setUInt16(11, for: .highBit)
+        }
+        var lines: [String] = []
+        let merged = try await merge([enhanced, classic], format: .standard, sortBy: .none) { lines.append($0) }
+        XCTAssertEqual(trimmed(merged.dataSet, .numberOfFrames), "3")
+        XCTAssertNil(merged.dataSet[.perFrameFunctionalGroupsSequence],
+                     "a 2-item sequence must not survive in a 3-frame object")
+        XCTAssertTrue(lines.contains { $0.contains("dropped Per-frame Functional Groups") }, "warning emitted")
+    }
+
+    // Oracle: Acquisition Time is time-of-day; a cine crossing midnight has one
+    // wrapped delta and still yields the true Frame Time. A genuinely out-of-order
+    // sequence must abandon the derivation, not fabricate a day-long Frame Time.
+    func testDerivedFrameTimeUnwrapsMidnightButNotDisorder() async throws {
+        var options = MergeOptions()
+        options.allowAnySource = true
+        let midnight = ["235958", "235959", "000000"].enumerated().map { i, t in
+            mutate(makeClassicCT(index: i, value: UInt16(100 + i), position: "0\\0\\\(Double(i))")) {
+                $0.setString(t, for: .acquisitionTime, vr: .TM)
+            }
+        }
+        let merged = try await merge(midnight, format: .scMultiframe, sortBy: .none, options: options)
+        XCTAssertEqual(merged.dataSet[.frameTime]?.decimalStringValue?.value, 1000, "1 s steps across midnight")
+
+        let disordered = ["100005", "100000", "100001"].enumerated().map { i, t in
+            mutate(makeClassicCT(index: i, value: UInt16(100 + i), position: "0\\0\\\(Double(i))")) {
+                $0.setString(t, for: .acquisitionTime, vr: .TM)
+            }
+        }
+        let mergedDisordered = try await merge(disordered, format: .scMultiframe, sortBy: .none, options: options)
+        XCTAssertNil(mergedDisordered.dataSet[.frameTime], "no plausible cine timing to derive")
+    }
+
+    // Oracle: a legacy vector shorter than the frame range is malformed; the
+    // resolved frame must carry no value rather than another frame's value.
+    func testLegacyVectorOutOfRangeDropsAttributeInsteadOfClamping() {
+        var ds = DataSet()
+        ds.setStrings(["10", "20", "30"], for: .frameTimeVector, vr: .DS)
+        ds[.frameIncrementPointer] = DataElement(tag: .frameIncrementPointer, vr: .AT, length: 4,
+                                                 valueData: DICOMWriter().serializeTag(.frameTimeVector))
+        LegacyVectorResolver.resolve(&ds, frameIndex: 5, kind: .cine, mode: .classic)
+        XCTAssertNil(ds[.frameTime], "frame 5 has no time in a 3-value vector")
+        XCTAssertNil(ds[.frameTimeVector])
+    }
+
+    // Oracle: Series Number is study-scoped. Series minted for a source without
+    // one must not take the low ordinals (1, 2, ...) existing series already use.
+    func testMintedSeriesNumbersAvoidLowOrdinals() async throws {
+        let src = mutate(makeEnhancedCT(frames: 2)) { $0[.seriesNumber] = nil }
+        var options = SplitOptions()
+        options.seriesGrouping = .stack
+        let (_, files) = try await split(src, options: options)
+        XCTAssertFalse(files.isEmpty)
+        for out in files {
+            let number = Int(trimmed(out.dataSet, .seriesNumber) ?? "") ?? 0
+            XCTAssertGreaterThan(number, 100, "minted number must sit far from existing ordinals")
+        }
+    }
+
+    // Oracle: merging parts that cover overlapping frame ranges of one
+    // concatenation source duplicates frames; the standard path must say so.
+    func testStandardMergeWarnsOnOverlappingConcatenationParts() async throws {
+        let sourceUID = "1.2.3.4.5.999"
+        func part(_ n: Int, offset: Int) -> DICOMFile {
+            mutate(makeMultiFrame(rows: 4, cols: 4, frames: 2)) { ds in
+                ds.setString(rtUID(), for: .sopInstanceUID, vr: .UI)
+                ds.setString("1.2.3.4.888", for: .concatenationUID, vr: .UI)
+                ds.setUInt16(UInt16(n), for: .inConcatenationNumber)
+                ds.setUInt16(3, for: .inConcatenationTotalNumber)
+                ds.setUInt32(UInt32(offset), for: .concatenationFrameOffsetNumber)
+                ds.setString(sourceUID, for: .sopInstanceUIDOfConcatenationSource, vr: .UI)
+            }
+        }
+        // Two overlapping parts plus a non-part, so the standard path (not
+        // concatenation reassembly) handles them.
+        let files = [part(1, offset: 0), part(2, offset: 1),
+                     mutate(makeMultiFrame(rows: 4, cols: 4, frames: 2)) { $0.setString(rtUID(), for: .sopInstanceUID, vr: .UI) }]
+        var lines: [String] = []
+        _ = try await merge(files, format: .standard, sortBy: .none) { lines.append($0) }
+        XCTAssertTrue(lines.contains { $0.contains("overlapping frame ranges") }, "got: \(lines)")
+    }
 }
+

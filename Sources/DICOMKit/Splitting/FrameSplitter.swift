@@ -79,6 +79,7 @@ public struct SplitOptions: Sendable {
 public struct SplitResult: Sendable {
     public var processedFiles = 0
     public var skippedFiles = 0
+    /// Output instances written: one per frame, or one per concatenation part.
     public var extracted = 0
     public var failed = 0
     public var writtenPaths: [String] = []
@@ -330,7 +331,10 @@ public struct FrameSplitter {
                 : UIDGenerator.generateSeriesInstanceUID().value
         }
         let baseSeries = options.newSeries ? mintSeries("new") : (sourceSeries ?? mintSeries("base"))
-        let baseSeriesNumber = ds.string(for: .seriesNumber).flatMap { Int($0.trimmingCharacters(in: .whitespaces)) } ?? 0
+        // Series Number is study-scoped: without a source number, bare ordinals
+        // (1, 2, 3...) would collide with the study's existing series, so mint
+        // from a deliberately high base instead.
+        let baseSeriesNumber = ds.string(for: .seriesNumber).flatMap { Int($0.trimmingCharacters(in: .whitespaces)) } ?? 99
 
         var seriesUIDs = Array(repeating: baseSeries, count: numberOfFrames)
         var seriesNumbers = Array(repeating: String?.none, count: numberOfFrames)

@@ -85,9 +85,14 @@ public enum LegacyVectorResolver {
     /// Frame Time Vector → Frame Time (classic, one frame) or the range's vector.
     static func collapseFrameTimeVector(_ dataSet: inout DataSet, frames: Range<Int>, mode: Mode) {
         guard let vector = dataSet.strings(for: .frameTimeVector), !vector.isEmpty else { return }
-        let lower = min(frames.lowerBound, vector.count - 1)
+        // A vector shorter than the frame range means the source is malformed;
+        // drop the attribute rather than stamp another frame's value.
+        guard frames.lowerBound < vector.count else {
+            dataSet[.frameTimeVector] = nil
+            return
+        }
         let upper = min(frames.upperBound, vector.count)
-        let values = Array(vector[lower..<max(upper, lower + 1)]).map { $0.trimmingCharacters(in: .whitespaces) }
+        let values = Array(vector[frames.lowerBound..<upper]).map { $0.trimmingCharacters(in: .whitespaces) }
         switch mode {
         case .classic where values.count == 1:
             dataSet.setString(values[0], for: .frameTime, vr: .DS)
@@ -107,9 +112,12 @@ public enum LegacyVectorResolver {
 
         if vr.isBackslashDelimitedText {
             guard let values = element.stringValues, values.count > 1 else { return }
-            let lower = min(frames.lowerBound, values.count - 1)
+            guard frames.lowerBound < values.count else {
+                dataSet[tag] = nil
+                return
+            }
             let upper = min(frames.upperBound, values.count)
-            let kept = Array(values[lower..<max(upper, lower + 1)]).map { $0.trimmingCharacters(in: .whitespaces) }
+            let kept = Array(values[frames.lowerBound..<upper]).map { $0.trimmingCharacters(in: .whitespaces) }
             dataSet.setStrings(kept, for: tag, vr: vr)
             return
         }
@@ -123,8 +131,12 @@ public enum LegacyVectorResolver {
         }
         let count = element.valueData.count / width
         guard count > 1 else { return }
-        let lower = min(frames.lowerBound, count - 1)
-        let upper = max(min(frames.upperBound, count), lower + 1)
+        guard frames.lowerBound < count else {
+            dataSet[tag] = nil
+            return
+        }
+        let lower = frames.lowerBound
+        let upper = min(frames.upperBound, count)
         let start = element.valueData.startIndex + lower * width
         let end = element.valueData.startIndex + upper * width
         let slice = Data(element.valueData[start..<end])

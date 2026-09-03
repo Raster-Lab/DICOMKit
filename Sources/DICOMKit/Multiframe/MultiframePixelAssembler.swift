@@ -119,6 +119,9 @@ public enum MultiframePixelAssembler {
                     // Bit-packed (PS3.5 8.1.1): frames are packed contiguously.
                     // Slicing (and later concatenating) per frame is only exact
                     // when each frame ends on a byte boundary.
+                    // Continuous packing across samples (the standard only defines
+                    // sub-byte pixels for Samples per Pixel 1); the byte-boundary
+                    // guard below rejects anything this math can't slice exactly.
                     let bitsPerFrame = descriptor.pixelsPerFrame * descriptor.samplesPerPixel * descriptor.bitsAllocated
                     guard bitsPerFrame % 8 == 0 else {
                         throw MultiframePixelError.unalignedSubBytePixels(bitsPerFrame: bitsPerFrame)

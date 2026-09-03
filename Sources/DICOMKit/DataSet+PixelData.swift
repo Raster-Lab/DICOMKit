@@ -354,7 +354,7 @@ extension DataSet {
         // Top level first; else the Frame VOI LUT macro, which may carry the
         // same multi-valued pairs as a classic image.
         let element: (Tag) -> DataElement?
-        if self[.windowCenter] != nil {
+        if self[.windowCenter] != nil, self[.windowWidth] != nil {
             element = { self[$0] }
         } else if let item = functionalGroupItem(.frameVOILUTSequence, frameIndex: frameIndex) {
             element = { item[$0] }

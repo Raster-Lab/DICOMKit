@@ -433,6 +433,7 @@ public struct FrameMerger {
         // Core consistency (always on): the Image Pixel module must agree.
         try validateImagePixelModule(sources)
         try validateUniqueSOPInstances(files.map { $0.1.dataSet })
+        warnOnOverlappingConcatenationParts(files.map { $0.1.dataSet })
 
         // Target SOP class + source gate.
         let targetUID = resolveTargetSOPClass(template: template)
@@ -500,6 +501,11 @@ public struct FrameMerger {
             }
             if items.count == sources.count {
                 mergedDataSet.setSequence(items, for: .perFrameFunctionalGroupsSequence)
+            } else {
+                // The template's sequence describes only its own frames; keeping it
+                // would contradict NumberOfFrames. Better absent than wrong.
+                mergedDataSet[.perFrameFunctionalGroupsSequence] = nil
+                log(MergeConsole.perFrameFunctionalGroupsDroppedWarning(found: items.count, expected: sources.count))
             }
         }
         MultiframePixelAssembler.applyPixelDescription(payloads[0], to: &mergedDataSet, fileMeta: &fileMetaInformation)
@@ -637,7 +643,19 @@ public struct FrameMerger {
         if ds[.frameTime] == nil {
             let times = frames.compactMap { $0.string(for: .acquisitionTime).flatMap { FunctionalGroupBuilder.timeSeconds($0.trimmingCharacters(in: .whitespaces)) } }
             if times.count == frames.count, frames.count > 1 {
-                let deltas = zip(times.dropFirst(), times).map { ($0 - $1) * 1000 }
+                var deltas = zip(times.dropFirst(), times).map { ($0 - $1) * 1000 }
+                // Acquisition Time is time-of-day: a cine crossing midnight wraps
+                // exactly once. Unwrap a single negative step by one day, but only
+                // when the result is in line with the other steps - an out-of-order
+                // pair must abandon the derivation, not yield a day-long frame time.
+                let negatives = deltas.indices.filter { deltas[$0] < 0 }
+                if negatives.count == 1, deltas.count > 1 {
+                    let others = deltas.indices.filter { $0 != negatives[0] }.map { deltas[$0] }
+                    let unwrapped = deltas[negatives[0]] + 86_400_000
+                    if let maxOther = others.max(), maxOther > 0, unwrapped <= maxOther * 10 {
+                        deltas[negatives[0]] = unwrapped
+                    }
+                }
                 if deltas.allSatisfy({ $0 > 0 }) {
                     ds.setString(DataSet.defaultDecimalString(deltas.reduce(0, +) / Double(deltas.count)), for: .frameTime, vr: .DS)
                 }
@@ -780,6 +798,26 @@ public struct FrameMerger {
         for ds in dataSets {
             guard let uid = ds.string(for: .sopInstanceUID).map(MultiframeSOPClassMap.normalize) else { continue }
             if !seen.insert(uid).inserted { throw MergeError.duplicateSOPInstanceUID(uid) }
+        }
+    }
+
+    /// Concatenation parts of the same source that reach the standard path
+    /// (mixed with non-parts, or from different concatenations) can cover
+    /// overlapping frame ranges; the merge would then duplicate frames.
+    private func warnOnOverlappingConcatenationParts(_ dataSets: [DataSet]) {
+        var ranges: [String: [(Int, Int)]] = [:]
+        for ds in dataSets {
+            guard let source = ds.string(for: .sopInstanceUIDOfConcatenationSource).map(MultiframeSOPClassMap.normalize),
+                  !source.isEmpty else { continue }
+            let offset = Int(ds.uint32(for: .concatenationFrameOffsetNumber) ?? 0)
+            let frames = ds.numberOfFrames ?? 1
+            ranges[source, default: []].append((offset, offset + frames))
+        }
+        for source in ranges.keys.sorted() {
+            let sorted = ranges[source]!.sorted { $0.0 < $1.0 }
+            if zip(sorted, sorted.dropFirst()).contains(where: { $1.0 < $0.1 }) {
+                log(MergeConsole.overlappingConcatenationPartsWarning(source: source))
+            }
         }
     }
 

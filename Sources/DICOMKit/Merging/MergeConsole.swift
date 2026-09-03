@@ -87,6 +87,16 @@ public enum MergeConsole {
         return lines
     }
 
+    /// A standard merge whose Per-frame items could not be gathered for every frame.
+    public static func perFrameFunctionalGroupsDroppedWarning(found: Int, expected: Int) -> String {
+        "Warning: dropped Per-frame Functional Groups Sequence (\(found) item(s) for \(expected) frame(s))"
+    }
+
+    /// Inputs that are overlapping parts of one concatenation source.
+    public static func overlappingConcatenationPartsWarning(source: String) -> String {
+        "Warning: inputs cover overlapping frame ranges of concatenation source \(source); frames may be duplicated"
+    }
+
     /// Attributes that vary between frames and had nowhere to go (non-legacy target).
     public static func droppedAttributesWarning(tags: [String]) -> String {
         "Warning: dropped \(tags.count) varying attribute(s) without a functional group: \(tags.joined(separator: ", "))"

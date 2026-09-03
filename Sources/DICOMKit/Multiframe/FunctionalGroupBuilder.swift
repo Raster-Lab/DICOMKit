@@ -343,8 +343,9 @@ public enum FunctionalGroupBuilder {
             let positions = indices.map { FunctionalGroupFlattener.frameInfo(in: frames[$0], frameIndex: 0).positionAlongNormal }
             let ordered: [Int]
             if positions.allSatisfy({ $0 != nil }) && indices.count > 1 {
-                ordered = indices.sorted { (positions[indices.firstIndex(of: $0)!] ?? 0) < (positions[indices.firstIndex(of: $1)!] ?? 0) }
-                let sortedPositions = ordered.map { positions[indices.firstIndex(of: $0)!] ?? 0 }
+                let pairs = zip(indices, positions).sorted { (($0.1 ?? 0), $0.0) < (($1.1 ?? 0), $1.0) }
+                ordered = pairs.map { $0.0 }
+                let sortedPositions = pairs.map { $0.1 ?? 0 }
                 let deltas = zip(sortedPositions.dropFirst(), sortedPositions).map { $0 - $1 }
                 if let first = deltas.first {
                     regular = regular && deltas.allSatisfy { abs($0 - first) <= max(abs(first) * 0.01, 0.001) }
