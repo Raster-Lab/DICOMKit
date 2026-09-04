@@ -995,32 +995,50 @@ extension Data {
     /// Reference: PS3.5 Section A.5 - Deflated Explicit VR Little Endian
     func decompress() -> Data? {
         // For DICOM deflated data, we use raw DEFLATE (no zlib header)
-        // The data should be pure deflate-compressed bytes
-        return self.withUnsafeBytes { sourceBuffer in
-            guard let sourcePointer = sourceBuffer.baseAddress else {
-                return nil
-            }
-            
-            // Allocate destination buffer - start with 4x source size as initial estimate
-            let destinationCapacity = Swift.max(count * 4, 64 * 1024)
-            let destinationBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: destinationCapacity)
-            defer { destinationBuffer.deallocate() }
-            
-            // Decompress using compression framework
-            let decompressedSize = compression_decode_buffer(
-                destinationBuffer,
-                destinationCapacity,
-                sourcePointer.assumingMemoryBound(to: UInt8.self),
-                count,
-                nil,
-                COMPRESSION_ZLIB
-            )
-            
-            guard decompressedSize > 0 else {
-                return nil
-            }
+        // The data should be pure deflate-compressed bytes.
+        //
+        // Streamed, not single-buffer: `compression_decode_buffer` into a fixed
+        // destination silently TRUNCATES when the inflated size exceeds the buffer and
+        // still reports success. DICOM data sets routinely deflate far better than the
+        // old 4× guess (uniform pixel backgrounds, long headers), so the tail of the
+        // data set — usually Pixel Data — was being dropped without any error.
+        if isEmpty { return Data() }
+        return self.withUnsafeBytes { sourceBuffer -> Data? in
+            guard let sourcePointer = sourceBuffer.baseAddress else { return nil }
 
-            return Data(bytes: destinationBuffer, count: decompressedSize)
+            var stream = compression_stream(
+                dst_ptr: UnsafeMutablePointer<UInt8>.allocate(capacity: 0), dst_size: 0,
+                src_ptr: sourcePointer.assumingMemoryBound(to: UInt8.self), src_size: count,
+                state: nil)
+            guard compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB) == COMPRESSION_STATUS_OK else {
+                return nil
+            }
+            defer { compression_stream_destroy(&stream) }
+
+            let chunkSize = Swift.max(count * 4, 256 * 1024)
+            let chunk = UnsafeMutablePointer<UInt8>.allocate(capacity: chunkSize)
+            defer { chunk.deallocate() }
+
+            var output = Data()
+            stream.src_ptr = sourcePointer.assumingMemoryBound(to: UInt8.self)
+            stream.src_size = count
+            while true {
+                stream.dst_ptr = chunk
+                stream.dst_size = chunkSize
+                let status = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
+                let produced = chunkSize - stream.dst_size
+                if produced > 0 { output.append(chunk, count: produced) }
+                switch status {
+                case COMPRESSION_STATUS_OK:
+                    // Destination filled (or more input to consume) — keep going.
+                    if produced == 0 && stream.src_size == 0 { return output.isEmpty ? nil : output }
+                    continue
+                case COMPRESSION_STATUS_END:
+                    return output.isEmpty ? nil : output
+                default:
+                    return nil
+                }
+            }
         }
     }
 

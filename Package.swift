@@ -421,6 +421,7 @@ let package = Package(
                 "TextRegionDetectorTests.swift",
                 "PixelCleaningWorkflowTests.swift",
                 "PHITextClassifierTests.swift",
+                "PixelRedactionCompressionMatrixTests.swift",
                 // ECOSYSTEM_COMPARISON.md §5 cross-toolkit bug-scenario matrix.
                 "CrossToolkitMatrixTests.swift",
                 // RESEARCH_ADOPTION_PLAN.md M2: selected-frame access + frame index.

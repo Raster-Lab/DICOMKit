@@ -131,13 +131,22 @@ public struct PixelEditor {
                 dataSet.remove(tag: .planarConfiguration)
             }
             // Emit uncompressed Explicit VR Little Endian.
-            fileMeta = uncompressedFileMeta(from: fileMeta)
+            fileMeta = Self.explicitLittleEndianFileMeta(from: fileMeta)
             if verbose {
                 log("Decoded compressed pixel data (\(sourceSyntax?.displayName ?? "compressed")) → Explicit VR Little Endian")
             }
         } else {
             descriptor = try extractDescriptor(from: dataSet)
             pixelData = pixelElement.valueData
+            // A Deflated source was inflated on read; the writer emits the Data Set raw,
+            // so the File Meta must say Explicit VR LE or the output is mislabelled and
+            // unreadable ("Failed to decompress deflated data" on the next open).
+            if sourceSyntax?.isDeflated == true {
+                fileMeta = Self.explicitLittleEndianFileMeta(from: fileMeta)
+                if verbose {
+                    log("Inflated deflated data set → Explicit VR Little Endian")
+                }
+            }
             pixelVR = pixelElement.vr
         }
 
@@ -416,7 +425,7 @@ public struct PixelEditor {
     /// Returns a copy of the File Meta Information re-pointed at Explicit VR Little
     /// Endian, with the group length (0002,0000) recomputed so the FMI stays
     /// self-consistent after the transfer-syntax change.
-    private func uncompressedFileMeta(from meta: DataSet) -> DataSet {
+    static func explicitLittleEndianFileMeta(from meta: DataSet) -> DataSet {
         var fmi = meta
         fmi.setString(TransferSyntax.explicitVRLittleEndian.uid, for: .transferSyntaxUID, vr: .UI)
         // Recompute group length over everything that follows it.

@@ -231,7 +231,11 @@ public struct PixelRedactor {
 
         recordAttestation(in: &dataSet)
 
-        file = DICOMFile(fileMetaInformation: file.fileMetaInformation, dataSet: dataSet)
+        // The output is always Explicit VR Little Endian (§5.1/§5.4): PixelEditor already
+        // re-targets encapsulated sources; native Implicit/BE and dataset-level Deflate
+        // sources are re-pointed here so the syntax describes the emitted bytes.
+        let fmi = PixelEditor.explicitLittleEndianFileMeta(from: file.fileMetaInformation)
+        file = DICOMFile(fileMetaInformation: fmi, dataSet: dataSet)
         let outcome = Outcome(
             regions: regions, basis: basis, note: note, frameCount: frameCount,
             removedIconImage: removedIcon, removedOverlays: removedOverlays,

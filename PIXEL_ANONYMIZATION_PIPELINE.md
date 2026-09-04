@@ -629,12 +629,12 @@ release binary after DICOMKit changes before manual CLI verification.
 10. ✅ Default `classify`; `=all` stays the explicit aggressive mode (workflow: only redact verdicts contribute regions; keeps never count as unredacted leftovers).
 11. ✅ Audit verdict lines (PHI-safe): `Report.auditLines` → `Anonymizer.recordPixelAudit` → `--audit-log` (truncated text + length only; verified no name reaches the log).
 
-**Phase 4 — Complete object coverage + semantic replacement**
+**Phase 4 — Complete object coverage + semantic replacement** ✅ (2026-09-04)
 12. ✅ Concatenation cross-part union in directory/batch mode + single-file warning. (2026-09-04; `PixelCleaningWorkflow.sweep` + `ConcatenationSweep` pre-pass in `dicom-anon --recursive`, `Options.presetDetectedRegions` unioned into every part, `isComplete` needs every declared part; verified on the binary: a clean-looking part 1 is blanked with part 2's regions)
 13. ✅ `--redact-style replace` (§6.5): values from the header engine's mapping,
     date replacement gated on `--shift-dates`, uncertain → blank/label,
     too-small-region fallback with audit note. (2026-09-04; `PHITextClassifier.classifyDetailed` reports matched attributes in text order; `PixelRedactor.Replacement` per region; CLI previews the header pass with a throwaway engine; verified on the binary: header and pixels both read `ANONYMOUS <32-hex pseudonym>`; requires `--detect-text` classify)
-14. Expanded compression/photometric regression tests.
+14. ✅ Expanded compression/photometric regression tests. (2026-09-04; `PixelRedactionCompressionMatrixTests`: 18 cases — explicit/implicit LE, deflate, RLE (8/16-bit/RGB), JPEG baseline (gray/RGB), JPEG lossless, JPEG-LS, J2K lossless+lossy, HTJ2K, JPEG XL — each: detect → decode → mask every frame → Explicit VR LE with a descriptor matching the buffer, pixels outside the mask equal the decoded source, no detectable text, attestation earned. Two pre-existing bugs found and fixed: (a) the parser's deflate inflate truncated silently at 4× the deflated size — now streamed; (b) PixelEditor re-emitted a deflated source raw under a still-deflated File Meta. Native Implicit VR sources are now re-emitted Explicit VR LE by the redactor as §5.1 specifies.)
 
 **Phase 5 — Output encoding parity**
 14. `--recompress <codec>` + `--recompress source` (§5.3), only after the clean
