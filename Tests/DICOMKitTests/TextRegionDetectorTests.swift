@@ -125,6 +125,199 @@ final class TextRegionDetectorTests: XCTestCase {
     // MARK: - Vision integration (Apple platforms)
 
     #if canImport(Vision) && canImport(CoreGraphics)
+    /// 8-bit grayscale bitmap (row-major, top-down) with `text` drawn near the top.
+    /// Background 0.2 gray (51), glyphs white (255).
+    private func bannerBitmap(
+        text: String, columns: Int, rows: Int, textOrigin: (x: Int, y: Int), fontSize: CGFloat
+    ) throws -> (bytes: Data, drawn: Region) {
+        let space = CGColorSpaceCreateDeviceGray()
+        guard let ctx = CGContext(
+            data: nil, width: columns, height: rows, bitsPerComponent: 8,
+            bytesPerRow: columns, space: space, bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { throw XCTSkip("no bitmap context") }
+        ctx.setFillColor(gray: 0.2, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: columns, height: rows))
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, fontSize, nil)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font, .foregroundColor: CGColor(gray: 1, alpha: 1)]
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
+        let bounds = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
+        let baselineY = CGFloat(rows) - CGFloat(textOrigin.y) - bounds.maxY
+        ctx.textPosition = CGPoint(x: CGFloat(textOrigin.x), y: baselineY)
+        CTLineDraw(line, ctx)
+        guard let raw = ctx.data else { throw XCTSkip("no bitmap data") }
+        let drawn = Region(
+            x: textOrigin.x + Int(bounds.minX.rounded(.down)), y: textOrigin.y,
+            width: Int(bounds.width.rounded(.up)) + 1, height: Int(bounds.height.rounded(.up)) + 1)
+        return (Data(bytes: raw, count: columns * rows), drawn)
+    }
+
+    private func fileMeta() -> DataSet {
+        var meta = DataSet()
+        meta.setString("1.2.840.10008.1.2.1", for: Tag(group: 0x0002, element: 0x0010), vr: .UI)
+        return meta
+    }
+
+    private func seq(_ tag: Tag, _ elements: [DataElement]) -> DataElement {
+        FunctionalGroupBuilder.sequenceElement(tag, items: [SequenceItem(elements: elements)], writer: DICOMWriter())
+    }
+
+    // MARK: Phase 2 — classic multiframe sampling
+
+    /// A banner that appears ONLY mid-loop is missed by first/middle/last sampling
+    /// (by design — banners are static) and caught by `--ocr-all-frames`.
+    func testMidLoopOnlyTextNeedsAllFramesSampling() throws {
+        let columns = 512, rows = 256, frames = 7
+        let blank = Data(repeating: 51, count: columns * rows)
+        let (banner, _) = try bannerBitmap(text: "STAGE PEAK", columns: columns, rows: rows,
+                                           textOrigin: (24, 20), fontSize: 28)
+        var pixels = Data()
+        for f in 0..<frames { pixels += (f == 1 || f == 5) ? banner : blank }   // never on 0, 3, 6
+
+        var ds = DataSet()
+        ds.setString("1.2.840.10008.5.1.4.1.1.6.1", for: .sopClassUID, vr: .UI)
+        ds.setString("1.2.3.4.5.7", for: .sopInstanceUID, vr: .UI)
+        ds.setString("US", for: .modality, vr: .CS)
+        ds.setUInt16(UInt16(rows), for: .rows); ds.setUInt16(UInt16(columns), for: .columns)
+        ds.setUInt16(8, for: .bitsAllocated); ds.setUInt16(8, for: .bitsStored); ds.setUInt16(7, for: .highBit)
+        ds.setUInt16(0, for: .pixelRepresentation); ds.setUInt16(1, for: .samplesPerPixel)
+        ds.setString("MONOCHROME2", for: .photometricInterpretation, vr: .CS)
+        ds.setString("\(frames)", for: .numberOfFrames, vr: .IS)
+        ds[.pixelData] = DataElement.data(tag: .pixelData, vr: .OB, data: pixels)
+        let file = try DICOMFile.read(from: try DICOMFile(fileMetaInformation: fileMeta(), dataSet: ds).write())
+
+        let sampled = try TextRegionDetector().detect(in: file)
+        XCTAssertTrue(sampled.isEmpty, "sampling scans 0/3/6 only: \(sampled.map(\.frameIndex))")
+        let all = try TextRegionDetector().detect(in: file, allFrames: true)
+        XCTAssertEqual(Set(all.map(\.frameIndex)), [1, 5])
+
+        // And once found, the region is blanked on EVERY frame, not just where it was seen.
+        let regions = TextRegionDetector.unionedRegions(all)
+        let plan = PixelRedactionPlan.plan(for: file.dataSet, detectedRegions: regions)
+        let (out, outcome) = try XCTUnwrap(PixelRedactor().redact(fileData: try file.write(), plan: plan))
+        XCTAssertEqual(outcome.frameCount, frames)
+        XCTAssertTrue(try TextRegionDetector().detect(in: DICOMFile.read(from: out), allFrames: true).isEmpty)
+    }
+
+    // MARK: Phase 2 — enhanced multiframe per-frame VOI
+
+    /// 16-bit Enhanced MR: background 1000, glyphs 1100, NO top-level window. Each
+    /// frame's own Frame VOI LUT item decides whether the text is visible at all:
+    /// frames 0 and 2 window 1050/200 (text visible), frame 1 windows 3000/100 (all black).
+    private func enhancedMRFixture(text: String = "DOE JANE", blindFrame: Int = 1, frames: Int = 3)
+        throws -> (data: Data, drawn: Region) {
+        let columns = 512, rows = 256
+        let (bitmap, drawn) = try bannerBitmap(text: text, columns: columns, rows: rows,
+                                               textOrigin: (24, 20), fontSize: 28)
+        var frame = Data(capacity: columns * rows * 2)
+        for b in bitmap {
+            let v: UInt16 = b > 127 ? 1100 : 1000
+            frame.append(UInt8(v & 0xFF)); frame.append(UInt8(v >> 8))
+        }
+        var pixels = Data()
+        for _ in 0..<frames { pixels += frame }
+
+        var ds = DataSet()
+        ds.setString("1.2.840.10008.5.1.4.1.1.4.1", for: .sopClassUID, vr: .UI)   // Enhanced MR
+        ds.setString("1.2.3.4.5.8", for: .sopInstanceUID, vr: .UI)
+        ds.setString("MR", for: .modality, vr: .CS)
+        ds.setUInt16(UInt16(rows), for: .rows); ds.setUInt16(UInt16(columns), for: .columns)
+        ds.setUInt16(16, for: .bitsAllocated); ds.setUInt16(12, for: .bitsStored); ds.setUInt16(11, for: .highBit)
+        ds.setUInt16(0, for: .pixelRepresentation); ds.setUInt16(1, for: .samplesPerPixel)
+        ds.setString("MONOCHROME2", for: .photometricInterpretation, vr: .CS)
+        ds.setString("\(frames)", for: .numberOfFrames, vr: .IS)
+        ds.setSequence([SequenceItem(elements: [
+            seq(.pixelMeasuresSequence, [DataElement.string(tag: .pixelSpacing, vr: .DS, value: "0.5\\0.5")]),
+        ])], for: .sharedFunctionalGroupsSequence)
+        var perFrame: [SequenceItem] = []
+        for f in 0..<frames {
+            let center = f == blindFrame ? "3000" : "1050"
+            let width = f == blindFrame ? "100" : "200"
+            perFrame.append(SequenceItem(elements: [
+                seq(.frameContentSequence, [DataElement.uint32(tag: .inStackPositionNumber, value: UInt32(f + 1))]),
+                seq(.frameVOILUTSequence, [
+                    DataElement.string(tag: .windowCenter, vr: .DS, value: center),
+                    DataElement.string(tag: .windowWidth, vr: .DS, value: width),
+                ]),
+            ]))
+        }
+        ds.setSequence(perFrame, for: .perFrameFunctionalGroupsSequence)
+        ds[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: pixels)
+        return (try DICOMFile(fileMetaInformation: fileMeta(), dataSet: ds).write(), drawn)
+    }
+
+    func testEnhancedMultiframeOCRHonoursEachFramesOwnVOI() throws {
+        let (data, drawn) = try enhancedMRFixture()
+        let file = try DICOMFile.read(from: data)
+        let detections = try TextRegionDetector().detect(in: file, allFrames: true)
+        // Frames 0 and 2 render the text under their own window; frame 1's window
+        // blacks everything out. Seeing text on frame 1 would mean frame 0's (or a
+        // pixel-range) window was reused — the bug §4.3 forbids.
+        XCTAssertEqual(Set(detections.map(\.frameIndex)), [0, 2], "\(detections.map { ($0.frameIndex, $0.text) })")
+        let union = TextRegionDetector.unionedRegions(detections)
+        XCTAssertTrue(union.contains { covers($0, drawn) }, "detected \(union) must cover \(drawn)")
+    }
+
+    func testEnhancedMultiframeRedactionKeepsFunctionalGroupsByteStable() throws {
+        let (data, _) = try enhancedMRFixture()
+        let file = try DICOMFile.read(from: data)
+        let regions = TextRegionDetector.unionedRegions(try TextRegionDetector().detect(in: file))
+        XCTAssertFalse(regions.isEmpty)
+        let plan = PixelRedactionPlan.plan(for: file.dataSet, detectedRegions: regions)
+        let (out, outcome) = try XCTUnwrap(PixelRedactor().redact(fileData: data, plan: plan))
+        XCTAssertEqual(outcome.frameCount, 3)
+
+        let cleaned = try DICOMFile.read(from: out)
+        let perFrame = try XCTUnwrap(cleaned.dataSet.sequence(for: .perFrameFunctionalGroupsSequence))
+        XCTAssertEqual(perFrame.count, 3, "NumberOfFrames == per-frame FG count")
+        XCTAssertEqual(cleaned.dataSet.numberOfFrames, 3)
+        // Byte-stable functional groups.
+        let srcPerFrame = try XCTUnwrap(file.dataSet.sequence(for: .perFrameFunctionalGroupsSequence))
+        for (a, b) in zip(srcPerFrame, perFrame) {
+            XCTAssertEqual(a.allElements.map(\.tag), b.allElements.map(\.tag))
+            XCTAssertEqual(a.allElements.map(\.valueData), b.allElements.map(\.valueData))
+        }
+        XCTAssertEqual(
+            file.dataSet.sequence(for: .sharedFunctionalGroupsSequence)?.first?.allElements.map(\.valueData),
+            cleaned.dataSet.sequence(for: .sharedFunctionalGroupsSequence)?.first?.allElements.map(\.valueData))
+        // 16-bit samples inside the region are the fill on every frame; outside untouched.
+        let px = try XCTUnwrap(cleaned.dataSet[.pixelData]?.valueData)
+        let frameBytes = 512 * 256 * 2
+        for f in 0..<3 {
+            let i = f * frameBytes + (30 * 512 + 40) * 2
+            XCTAssertEqual(UInt16(px[i]) | UInt16(px[i + 1]) << 8, 0, "frame \(f) banner")
+            let j = f * frameBytes + (200 * 512 + 40) * 2
+            XCTAssertEqual(UInt16(px[j]) | UInt16(px[j + 1]) << 8, 1000, "frame \(f) anatomy")
+        }
+        // No detectable text remains, under any frame's window.
+        XCTAssertTrue(try TextRegionDetector().detect(in: cleaned, allFrames: true).isEmpty)
+    }
+
+    func testFunctionalGroupInvariantRefusesAMismatch() throws {
+        let (data, _) = try enhancedMRFixture()
+        var ds = try DICOMFile.read(from: data).dataSet
+        var broken = ds
+        // Simulate a rewrite that dropped a per-frame item.
+        var items = try XCTUnwrap(ds.sequence(for: .perFrameFunctionalGroupsSequence))
+        items.removeLast()
+        broken.setSequence(items, for: .perFrameFunctionalGroupsSequence)
+        XCTAssertThrowsError(try PixelRedactor.checkFunctionalGroupInvariant(source: ds, result: broken)) {
+            guard case PixelRedactionError.functionalGroupMismatch(let frames, let n) = $0 else {
+                return XCTFail("\($0)")
+            }
+            XCTAssertEqual(frames, 3); XCTAssertEqual(n, 2)
+        }
+        // And altered content (same count) is refused too.
+        var altered = ds
+        var items2 = try XCTUnwrap(ds.sequence(for: .perFrameFunctionalGroupsSequence))
+        items2[0] = SequenceItem(elements: [seq(.frameContentSequence, [DataElement.uint32(tag: .inStackPositionNumber, value: 99)])])
+        altered.setSequence(items2, for: .perFrameFunctionalGroupsSequence)
+        XCTAssertThrowsError(try PixelRedactor.checkFunctionalGroupInvariant(source: ds, result: altered))
+        // Untouched passes.
+        XCTAssertNoThrow(try PixelRedactor.checkFunctionalGroupInvariant(source: ds, result: ds))
+        _ = ds
+    }
+
     /// Draws `text` at the top of an 8-bit grayscale frame and returns the DICOM bytes
     /// plus the rectangle the glyphs were drawn into (top-left pixel coordinates).
     private func fixture(

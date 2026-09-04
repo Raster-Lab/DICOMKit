@@ -161,6 +161,11 @@ public struct PixelRedactor {
         var file = try DICOMFile.read(from: maskedData)
         var dataSet = file.dataSet
 
+        // Enhanced multiframe invariant: masking changes only Pixel Data and the
+        // descriptor. NumberOfFrames must still equal the per-frame functional-group
+        // count, and the functional groups must be byte-stable — never emit otherwise.
+        try Self.checkFunctionalGroupInvariant(source: sourceFile.dataSet, result: dataSet)
+
         // A thumbnail derived before cleaning still shows the identifiers. PS3.15 notes
         // the icon may be cleaned or recreated; removing it is the safe option, since
         // re-deriving one here would need a render policy this type should not own.
@@ -180,6 +185,33 @@ public struct PixelRedactor {
             removedIconImage: removedIcon, removedOverlays: removedOverlays,
             style: style, labelFallbackRegions: fallback)
         return (try file.write(), outcome)
+    }
+
+    /// Refuses to emit an Enhanced multiframe object whose functional groups no longer
+    /// match its frames (PIXEL_ANONYMIZATION_PIPELINE.md §4.3 / §9).
+    static func checkFunctionalGroupInvariant(source: DataSet, result: DataSet) throws {
+        guard let perFrame = result.sequence(for: .perFrameFunctionalGroupsSequence) else { return }
+        let frames = max(1, result.numberOfFrames ?? 1)
+        guard perFrame.count == frames else {
+            throw PixelRedactionError.functionalGroupMismatch(frames: frames, perFrameItems: perFrame.count)
+        }
+        let sourcePerFrame = source.sequence(for: .perFrameFunctionalGroupsSequence) ?? []
+        let sourceShared = source.sequence(for: .sharedFunctionalGroupsSequence) ?? []
+        let resultShared = result.sequence(for: .sharedFunctionalGroupsSequence) ?? []
+        guard sourcePerFrame.count == perFrame.count, sourceShared.count == resultShared.count else {
+            throw PixelRedactionError.functionalGroupMismatch(frames: frames, perFrameItems: perFrame.count)
+        }
+        func stable(_ a: [SequenceItem], _ b: [SequenceItem]) -> Bool {
+            for (x, y) in zip(a, b) {
+                let ex = x.allElements, ey = y.allElements
+                guard ex.count == ey.count else { return false }
+                for (p, q) in zip(ex, ey) where p.tag != q.tag || p.valueData != q.valueData { return false }
+            }
+            return true
+        }
+        guard stable(sourcePerFrame, perFrame), stable(sourceShared, resultShared) else {
+            throw PixelRedactionError.functionalGroupsAltered
+        }
     }
 
     /// The stored value farthest from `fill` within the image's representable range, so
@@ -275,9 +307,18 @@ public enum PixelRedactionError: Error, LocalizedError, Equatable {
     case unresolvedRegion(String)
     /// The `label` style needs glyph rasterization (CoreGraphics/CoreText), absent here.
     case labelUnavailable
+    /// Enhanced multiframe: NumberOfFrames no longer equals the per-frame FG count.
+    case functionalGroupMismatch(frames: Int, perFrameItems: Int)
+    /// Enhanced multiframe: functional-group content changed during the rewrite.
+    case functionalGroupsAltered
 
     public var errorDescription: String? {
         switch self {
+        case .functionalGroupMismatch(let frames, let items):
+            return "Refusing to write: Number of Frames (\(frames)) does not match the per-frame "
+                + "functional group count (\(items)) after pixel redaction."
+        case .functionalGroupsAltered:
+            return "Refusing to write: functional groups changed during pixel redaction."
         case .labelUnavailable:
             return "The label redaction style needs CoreGraphics/CoreText, which is not available "
                 + "on this platform. Use --redact-style blank."

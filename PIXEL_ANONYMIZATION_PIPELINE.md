@@ -539,7 +539,7 @@ job); and non-text pixel PHI — faces, tattoos, other visual identity — for w
 | Nothing declared, OCR off, no template | `nothingToDo` — pass through (the blind spot OCR closes) |
 | `--detect-text` on a platform without Vision | **hard error**, never a no-op |
 | Invalid rectangle / rect outside frame bounds | validation error at parse time |
-| Enhanced FG count mismatch after rewrite | invariant violation — error, never emit |
+| Enhanced FG count mismatch after rewrite | invariant violation — error, never emit (`PixelRedactionError.functionalGroupMismatch` / `.functionalGroupsAltered`) [EXISTS] |
 | Concatenation part processed alone | warn: cross-part OCR coverage incomplete |
 | Decode failure | error — never write partially cleaned output |
 | Re-encode failure | error — never write a falsely attested output |
@@ -621,9 +621,9 @@ release binary after DICOMKit changes before manual CLI verification.
 5. ✅ `--clean-pixel-data --detect-text` end-to-end (interim `all` semantics). (2026-09-04; verified on the release-style banner fixture: OCR of the output finds nothing on any of 5 frames)
 6. ✅ `--redact-style blank|label` + `--redact-label` (blank-then-draw mechanic). (2026-09-04; verified on the binary: OCR of a labelled output reads only the stamp)
 
-**Phase 2 — Frame coverage**
-6. Classic MF sampling (first/middle/last) + `--ocr-all-frames`.
-7. Enhanced MF per-frame VOI rendering.
+**Phase 2 — Frame coverage** ✅ (2026-09-04)
+6. ✅ Classic MF sampling (first/middle/last) + `--ocr-all-frames`. (shipped in Phase 1 via `TextRegionDetector.sampledFrameIndices`; pinned by a mid-loop-only banner test: sampling misses it, `--ocr-all-frames` finds it, and the region is then blanked on every frame)
+7. ✅ Enhanced MF per-frame VOI rendering. (the shared `renderFrameForExport` already resolves Frame VOI LUT → shared → top-level per frame; pinned by a 16-bit Enhanced MR fixture whose frame 1 window blacks the text out — detections land on frames 0/2 only. Post-rewrite invariant `NumberOfFrames == per-frame FG count` + byte-stable shared/per-frame FGs is now enforced by `PixelRedactor.checkFunctionalGroupInvariant` — a violation refuses to emit)
 
 **Phase 3 — Classification**
 8. PHI term harvesting from the original header.
