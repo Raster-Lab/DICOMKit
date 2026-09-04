@@ -368,6 +368,8 @@ public enum PixelRedactionError: Error, LocalizedError, Equatable {
     case functionalGroupMismatch(frames: Int, perFrameItems: Int)
     /// Enhanced multiframe: functional-group content changed during the rewrite.
     case functionalGroupsAltered
+    /// `--recompress`: the redacted rects were not flat fill after the codec round-trip.
+    case recompressVerificationFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -376,6 +378,8 @@ public enum PixelRedactionError: Error, LocalizedError, Equatable {
                 + "functional group count (\(items)) after pixel redaction."
         case .functionalGroupsAltered:
             return "Refusing to write: functional groups changed during pixel redaction."
+        case .recompressVerificationFailed(let detail):
+            return "Refusing to write: redacted regions did not survive re-encoding as blank (\(detail))."
         case .labelUnavailable:
             return "The label redaction style needs CoreGraphics/CoreText, which is not available "
                 + "on this platform. Use --redact-style blank."

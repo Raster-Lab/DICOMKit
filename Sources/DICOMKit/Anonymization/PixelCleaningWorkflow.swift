@@ -16,6 +16,35 @@ import DICOMCore
 /// - Nothing is written on a dry run; the plan is still built so it can be printed.
 public struct PixelCleaningWorkflow: Sendable {
 
+    /// `--recompress <codec|source>` (§5.3).
+    public enum Recompress: Sendable, Equatable {
+        /// Mirror the input's transfer syntax (encoding parity).
+        case source
+        /// A named codec from `CompressionManager.codecMap` (`jpeg-ls`, `rle`, …).
+        case codec(String)
+
+        public static func parse(_ raw: String) -> Recompress? {
+            let v = raw.trimmingCharacters(in: .whitespaces).lowercased()
+            if v.isEmpty { return nil }
+            if v == "source" { return .source }
+            return CompressionManager.resolveEncoding(for: v) != nil ? .codec(v) : nil
+        }
+    }
+
+    /// What `--recompress` did.
+    public struct Recompression: Sendable, Equatable {
+        /// Codec name actually used (`explicit-le` on a fallback).
+        public let codec: String
+        /// Output transfer syntax UID.
+        public let transferSyntaxUID: String
+        /// Transfer syntax UID of the input.
+        public let sourceTransferSyntaxUID: String
+        /// True when the re-encode is irreversible.
+        public let lossy: Bool
+        /// Honest caveats: lossy regeneration, JXL grayscale, non-encodable fallback.
+        public let notes: [String]
+    }
+
     /// OCR mode. `classify` (default) redacts PHI and uncertain text and keeps only
     /// allowlisted clinical text; `all` redacts every detected region.
     public enum TextDetectionMode: String, Sendable, CaseIterable {
@@ -52,6 +81,8 @@ public struct PixelCleaningWorkflow: Sendable {
         /// True when every part of this file's concatenation was swept, so the
         /// single-part coverage warning is not needed.
         public var concatenationAnalyzedCompletely: Bool
+        /// `--recompress`: re-encode the clean pixels AFTER redaction and attestation.
+        public var recompress: Recompress?
         /// `replace` style only: the header engine's post-de-identification values,
         /// derived with ``ReplacementMapping/derive(original:deidentified:)``. Never
         /// invented here — the pixels and the header must tell one story.
@@ -67,7 +98,8 @@ public struct PixelCleaningWorkflow: Sendable {
             style: PixelRedactor.Style = .blank,
             presetDetectedRegions: [PixelRedactionPlan.Region] = [],
             concatenationAnalyzedCompletely: Bool = false,
-            replacementMapping: ReplacementMapping? = nil
+            replacementMapping: ReplacementMapping? = nil,
+            recompress: Recompress? = nil
         ) {
             self.cleanPixelData = cleanPixelData
             self.explicitRegions = explicitRegions
@@ -79,6 +111,7 @@ public struct PixelCleaningWorkflow: Sendable {
             self.presetDetectedRegions = presetDetectedRegions
             self.concatenationAnalyzedCompletely = concatenationAnalyzedCompletely
             self.replacementMapping = replacementMapping
+            self.recompress = recompress
         }
 
         /// Pixel modification is requested: `--clean-pixel-data`, or rectangles (which
@@ -115,6 +148,8 @@ public struct PixelCleaningWorkflow: Sendable {
         public let frameCount: Int
         /// Non-refusing notes for the summary (e.g. incomplete concatenation coverage).
         public let warnings: [String]
+        /// Set when `--recompress` re-encoded the clean pixels.
+        public var recompression: Recompression? = nil
         /// Detected text the run will **not** blank and that was not positively
         /// allowlisted. Non-empty means the caller must refuse to write an output file
         /// unless the operator accepted the risk.
@@ -128,11 +163,16 @@ public struct PixelCleaningWorkflow: Sendable {
         /// PHI-safe audit lines: verdict, reason, confidence, rect, frame, truncated text.
         /// Never the full recognized string — the audit log must not become a PHI store.
         public var auditLines: [String] {
-            zip(detections, verdicts).map { d, v in
+            var lines = zip(detections, verdicts).map { d, v in
                 "OCR frame=\(d.frameIndex) rect=\(d.region.x),\(d.region.y),\(d.region.width),\(d.region.height) "
                 + "verdict=\(v.name) reason=\"\(v.reason)\" conf=\(String(format: "%.2f", d.confidence)) "
                 + "text=\(d.redactedForAudit)"
             }
+            if let r = recompression {
+                lines.append("re-encoded to \(r.codec == "explicit-le" && r.sourceTransferSyntaxUID != r.transferSyntaxUID ? "fallback " : "")"
+                             + "\(r.transferSyntaxUID) (source \(r.sourceTransferSyntaxUID), \(r.lossy ? "lossy" : "lossless"))")
+            }
+            return lines
         }
         /// Warnings in the same shape as `ConfidentialityEngine.residualPixelPHIWarnings`.
         public var residualWarnings: [String] {
@@ -146,6 +186,137 @@ public struct PixelCleaningWorkflow: Sendable {
     }
 
     public init() {}
+
+    // MARK: - Output encoding parity (`--recompress`, §5.3)
+
+    /// Resolves what to encode with. `source` mirrors the input syntax, honouring the
+    /// lossy/lossless intent the source declared in (0028,2110); syntaxes the toolkit
+    /// cannot encode fall back to Explicit VR LE with a note — never a silent
+    /// substitution, never a refusal to redact.
+    static func resolveRecompressCodec(
+        _ target: Recompress, sourceTransferSyntaxUID: String, sourceDataSet: DataSet
+    ) -> (codec: String, notes: [String]) {
+        switch target {
+        case .codec(let name):
+            return (name, [])
+        case .source:
+            let uid = sourceTransferSyntaxUID.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+            let sourceIsLossy = sourceDataSet.string(for: .lossyImageCompression)?
+                .trimmingCharacters(in: .whitespaces) == "01"
+            let candidates = CompressionManager.codecMap.filter { $0.encoding.transferSyntax.uid == uid }
+            guard !candidates.isEmpty else {
+                return ("explicit-le", ["source transfer syntax \(uid) cannot be re-encoded by this toolkit — "
+                                        + "output written as Explicit VR Little Endian instead"])
+            }
+            // Prefer the entry whose intent matches the source's declared lossy state.
+            let preferred = candidates.first { entry in
+                switch entry.encoding.intent {
+                case .lossy: return sourceIsLossy
+                case .lossless: return !sourceIsLossy
+                case .notApplicable: return true
+                }
+            } ?? candidates[0]
+            return (preferred.names[0], [])
+        }
+    }
+
+    static func recompress(
+        cleanData: Data, target: Recompress, sourceTransferSyntaxUID: String, sourceDataSet: DataSet,
+        regions: [PixelRedactionPlan.Region], fillValue: Int
+    ) throws -> (Data, Recompression) {
+        var (codec, notes) = resolveRecompressCodec(
+            target, sourceTransferSyntaxUID: sourceTransferSyntaxUID, sourceDataSet: sourceDataSet)
+        guard let encoding = CompressionManager.resolveEncoding(for: codec) else {
+            throw CompressionError.unknownCodec(codec)
+        }
+        // Irreversible when the intent says so, or when the syntax itself is lossy-only
+        // (JPEG baseline/extended, JPEG-LS near-lossless) — the same rule the compressor
+        // uses to decide whether to record a lossy generation.
+        let lossy = encoding.intent == .lossy
+            || (encoding.intent == .notApplicable && encoding.transferSyntax.lossyImageCompressionMethod != nil)
+        if lossy {
+            notes.append("lossy re-encode (\(codec)) re-quantizes the WHOLE image, not just the redacted "
+                         + "regions — second-generation loss; Lossy Image Compression Ratio/Method updated")
+        }
+        if lossy, encoding.transferSyntax.uid == TransferSyntax.jpegXL.uid,
+           (sourceDataSet.uint16(for: .samplesPerPixel) ?? 1) == 1 {
+            notes.append("JPEG XL lossy (VarDCT) is RGB-only: this grayscale image is encoded lossless "
+                         + "Modular under the same transfer syntax UID")
+        }
+
+        let encoded: Data
+        do {
+            encoded = try CompressionManager().compressData(cleanData, codec: codec, quality: nil)
+        } catch {
+            // Never a refusal to redact: keep the clean uncompressed output and say why.
+            notes.append("re-encode with \(codec) failed (\(error.localizedDescription)) — output written as "
+                         + "Explicit VR Little Endian instead")
+            codec = "explicit-le"
+            let fallback = Recompression(
+                codec: codec, transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
+                sourceTransferSyntaxUID: sourceTransferSyntaxUID, lossy: false, notes: notes)
+            return (cleanData, fallback)
+        }
+
+        // Blanking oracle after the codec round-trip: the rects must still be flat fill.
+        try verifyBlankAfterRecompression(encoded, regions: regions, fillValue: fillValue, lossy: lossy)
+
+        let outUID = try DICOMFile.read(from: encoded).transferSyntaxUID ?? encoding.transferSyntax.uid
+        return (encoded, Recompression(
+            codec: codec, transferSyntaxUID: outUID, sourceTransferSyntaxUID: sourceTransferSyntaxUID,
+            lossy: lossy, notes: notes))
+    }
+
+    /// Reopens the re-encoded output, decodes it, and checks every redacted rect on every
+    /// frame is still the fill. Lossless: exact. Lossy: a flat rectangle survives as a
+    /// flat rectangle, but codec ringing can bleed a few pixels at the edge, so the check
+    /// insets each rect and allows a small tolerance; a rect too small to inset was
+    /// already verified before re-encoding.
+    static func verifyBlankAfterRecompression(
+        _ data: Data, regions: [PixelRedactionPlan.Region], fillValue: Int, lossy: Bool
+    ) throws {
+        let (decoded, _) = try PixelEditor(verbose: false).processData(data, operations: [])
+        let file = try DICOMFile.read(from: decoded)
+        let ds = file.dataSet
+        guard let px = ds[.pixelData]?.valueData,
+              let columns = ds.uint16(for: .columns).map(Int.init),
+              let rows = ds.uint16(for: .rows).map(Int.init)
+        else { throw PixelRedactionError.recompressVerificationFailed("no decodable pixel data") }
+        let spp = Int(ds.uint16(for: .samplesPerPixel) ?? 1)
+        let bytes = Int(ds.uint16(for: .bitsAllocated) ?? 8) / 8
+        let signed = (ds.uint16(for: .pixelRepresentation) ?? 0) == 1
+        let frames = max(1, ds.numberOfFrames ?? 1)
+        let frameBytes = rows * columns * spp * bytes
+        let inset = lossy ? 8 : 0
+        let tolerance = lossy ? 16 : 0
+        func sample(_ i: Int) -> Int {
+            if bytes == 1 { return signed ? Int(Int8(bitPattern: px[i])) : Int(px[i]) }
+            let raw = UInt16(px[i]) | UInt16(px[i + 1]) << 8
+            return signed ? Int(Int16(bitPattern: raw)) : Int(raw)
+        }
+        for r in regions {
+            let x0 = r.x + inset, y0 = r.y + inset
+            let x1 = min(columns, r.x + r.width) - inset, y1 = min(rows, r.y + r.height) - inset
+            guard x1 > x0, y1 > y0 else { continue }
+            for f in 0..<frames {
+                for y in y0..<y1 {
+                    for x in x0..<x1 {
+                        let base = f * frameBytes + (y * columns + x) * spp * bytes
+                        for c in 0..<spp {
+                            let i = base + c * bytes
+                            guard i + bytes <= px.count else {
+                                throw PixelRedactionError.recompressVerificationFailed("pixel data truncated")
+                            }
+                            if abs(sample(i) - fillValue) > tolerance {
+                                throw PixelRedactionError.recompressVerificationFailed(
+                                    "frame \(f) pixel (\(x),\(y)) = \(sample(i)) inside redacted rect after re-encode")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // MARK: - Semantic replacement (`replace` style)
 
@@ -387,8 +558,19 @@ public struct PixelCleaningWorkflow: Sendable {
         if let (redacted, outcome) = try PixelRedactor().redact(
             fileData: fileData, plan: plan, fillValue: options.fillValue, style: options.style,
             replacements: replacements) {
-            return Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: plan,
-                          outcome: outcome, data: redacted, frameCount: frameCount, warnings: notes)
+            var data = redacted
+            var recompression: Recompression?
+            if let target = options.recompress {
+                // Strictly AFTER redaction + attestation (§5.3): decode → mask → attest → re-encode.
+                let sourceUID = file.transferSyntaxUID ?? TransferSyntax.explicitVRLittleEndian.uid
+                (data, recompression) = try Self.recompress(
+                    cleanData: redacted, target: target, sourceTransferSyntaxUID: sourceUID,
+                    sourceDataSet: file.dataSet, regions: outcome.regions, fillValue: options.fillValue ?? 0)
+            }
+            var report = Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: plan,
+                                outcome: outcome, data: data, frameCount: frameCount, warnings: notes)
+            report.recompression = recompression
+            return report
         }
         return Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: plan,
                       outcome: nil, data: fileData, frameCount: frameCount, warnings: notes)

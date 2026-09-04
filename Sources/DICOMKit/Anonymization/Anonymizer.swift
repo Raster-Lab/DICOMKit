@@ -549,6 +549,19 @@ public enum AnonConsole {
         return out
     }
 
+    /// `--recompress` console lines: what was re-encoded to, and every caveat.
+    public static func recompressionLines(_ r: PixelCleaningWorkflow.Recompression) -> String {
+        var out: String
+        if r.transferSyntaxUID == r.sourceTransferSyntaxUID {
+            out = "Re-encoded to source syntax \(r.transferSyntaxUID) (\(r.codec), \(r.lossy ? "lossy" : "lossless"))\n"
+        } else {
+            out = "Re-encoded to \(r.transferSyntaxUID) (\(r.codec), \(r.lossy ? "lossy" : "lossless")); source was \(r.sourceTransferSyntaxUID)\n"
+        }
+        for n in r.notes { out += "  ⚠️  \(n)\n" }
+        out += "  verified: redacted regions still blank after the codec round-trip\n"
+        return out
+    }
+
     /// One-line OCR summary. Reports what was done — never that the image is clean.
     public static func textDetectionLine(report: PixelCleaningWorkflow.Report) -> String {
         let n = report.detections.count

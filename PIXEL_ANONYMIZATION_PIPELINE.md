@@ -83,7 +83,7 @@ dicom-anon in.dcm --dry-run --clean-pixel-data --detect-text
 | `--ocr-all-frames` | OCR every frame instead of sampled frames | EXISTS (Phase 1.3) |
 | `--allow-burned-in-phi` | Write the metadata-scrubbed file anyway; marked Patient Identity Removed = NO | EXISTS |
 | `--dry-run` | Print planned regions/verdicts, write nothing | EXISTS (table: Phase 1.4) |
-| `--recompress <codec\|source>` | Re-encode clean pixels post-redaction; `source` mirrors the input transfer syntax (§5.3) | NEW (Phase 5) |
+| `--recompress <codec\|source>` | Re-encode clean pixels post-redaction; `source` mirrors the input transfer syntax (§5.3) | EXISTS (Phase 5) |
 | `--redact-style <blank\|label\|replace>` | What the cleaned region shows: fill value, a fixed stamp, or semantic replacement values (§6.5) | EXISTS (`blank`/`label` Phase 1.6; `replace` Phase 4.13) |
 | `--redact-label <text>` | Custom stamp text for `label` style (default `REDACTED`) | EXISTS (Phase 1.6) |
 
@@ -271,7 +271,7 @@ through the shared codec layer (BOT/fragment walking included); photometric
 follows the decode (YBR JPEG/J2K → RGB, descriptor + (0028,0004) updated with
 the buffer — never relabeled independently); output FMI set to Explicit VR LE.
 
-### 5.3 Output encoding and `--recompress` [NEW — Phase 5]
+### 5.3 Output encoding and `--recompress` [EXISTS — Phase 5, 2026-09-04]
 
 Default output (no flag) stays **Explicit VR LE**: universally readable (the
 Horos compatibility notes are the proof) and never adds generation loss without
@@ -636,11 +636,13 @@ release binary after DICOMKit changes before manual CLI verification.
     too-small-region fallback with audit note. (2026-09-04; `PHITextClassifier.classifyDetailed` reports matched attributes in text order; `PixelRedactor.Replacement` per region; CLI previews the header pass with a throwaway engine; verified on the binary: header and pixels both read `ANONYMOUS <32-hex pseudonym>`; requires `--detect-text` classify)
 14. ✅ Expanded compression/photometric regression tests. (2026-09-04; `PixelRedactionCompressionMatrixTests`: 18 cases — explicit/implicit LE, deflate, RLE (8/16-bit/RGB), JPEG baseline (gray/RGB), JPEG lossless, JPEG-LS, J2K lossless+lossy, HTJ2K, JPEG XL — each: detect → decode → mask every frame → Explicit VR LE with a descriptor matching the buffer, pixels outside the mask equal the decoded source, no detectable text, attestation earned. Two pre-existing bugs found and fixed: (a) the parser's deflate inflate truncated silently at 4× the deflated size — now streamed; (b) PixelEditor re-emitted a deflated source raw under a still-deflated File Meta. Native Implicit VR sources are now re-emitted Explicit VR LE by the redactor as §5.1 specifies.)
 
-**Phase 5 — Output encoding parity**
-14. `--recompress <codec>` + `--recompress source` (§5.3), only after the clean
+**Phase 5 — Output encoding parity** ✅ (2026-09-04)
+14. ✅ `--recompress <codec>` + `--recompress source` (§5.3), only after the clean
     uncompressed path is proven: source-syntax capture, lossy regeneration
     warning + (0028,2112/2114) update, JXL grayscale and non-encodable
-    fallbacks, post-recompress blanking verification.
+    fallbacks, post-recompress blanking verification. (`PixelCleaningWorkflow.recompress` runs strictly after redaction + attestation and hands the clean bytes to the shared `CompressionManager`; `source` resolves the codec from the input UID honouring the declared lossy state; encode failure or a non-encodable syntax falls back to Explicit VR LE with a note; `verifyBlankAfterRecompression` reopens, decodes and re-checks every rect on every frame (exact for lossless; inset + tolerance for lossy) and refuses to write otherwise; console/audit record the re-encode. Verified on the binary: RLE source parity (same UID, rects blank, anatomy intact), JPEG baseline lossy with the second-generation warning and updated (0028,2110/2112/2114).)
+
+**Open codec-layer issue (not part of this plan):** the JPEG 2000 *lossy* (.91) path in J2KSwift is unreliable in this build — a metal-backend lossy encode decodes cleanly in pydicom/OpenJPEG but as noise in our decoder, and `--quality maximum` fails its own round-trip validation. The compression matrix records this as a loud known-issue skip (decode-fidelity precheck) rather than a redaction failure; JPEG 2000 lossless is unaffected and required to pass.
 
 ---
 

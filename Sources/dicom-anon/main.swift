@@ -84,6 +84,17 @@ struct DICOMAnon: ParsableCommand {
     @Option(name: .long, help: "Stamp text for --redact-style label (default: REDACTED)")
     var redactLabel: String?
 
+    @Option(name: .long, help: """
+        Re-encode the CLEAN pixels after redaction: 'source' mirrors the input transfer \
+        syntax (lossless sources round-trip exactly outside the redacted regions; lossy \
+        sources are re-quantized — second-generation loss, header ratio/method updated), \
+        or any dicom-compress codec name (jpeg-ls, rle, jpeg2000-lossless, …). Without \
+        this the output is Explicit VR Little Endian, universally readable but larger for \
+        a compressed cine. Syntaxes this toolkit cannot encode fall back to Explicit VR LE \
+        with a console note. The redacted regions are re-verified blank after re-encoding.
+        """)
+    var recompress: String?
+
     @Flag(name: .long, help: """
         Detect burned-in text with on-device OCR (Apple Vision) as a region source. \
         Does NOT imply cleaning: alone (no --output) it inspects and reports; with \
@@ -256,9 +267,20 @@ struct DICOMAnon: ParsableCommand {
         guard let style = PixelRedactor.Style.parse(redactStyle, label: redactLabel) else {
             throw ValidationError("Invalid --redact-style '\(redactStyle)'. Use 'blank', 'label' or 'replace'.")
         }
+        var recompressTarget: PixelCleaningWorkflow.Recompress?
+        if let raw = recompress {
+            guard let parsed = PixelCleaningWorkflow.Recompress.parse(raw) else {
+                throw ValidationError("Invalid --recompress '\(raw)'. Use 'source' or a dicom-compress codec name.")
+            }
+            guard cleanPixelData || !redactRegion.isEmpty else {
+                throw ValidationError("--recompress only applies after pixel cleaning; add --clean-pixel-data or --redact-region.")
+            }
+            recompressTarget = parsed
+        }
         return PixelCleaningWorkflow.Options(
             cleanPixelData: cleanPixelData, explicitRegions: explicit,
-            detectText: mode, ocrAllFrames: ocrAllFrames, fillValue: redactFill, style: style)
+            detectText: mode, ocrAllFrames: ocrAllFrames, fillValue: redactFill, style: style,
+            recompress: recompressTarget)
     }
 
     private func parseProfile() throws -> AnonymizationProfile {
@@ -440,6 +462,10 @@ struct DICOMAnon: ParsableCommand {
                 dicomFile = try DICOMFile.read(from: report.data, force: force)
                 if verbose {
                     print(AnonConsole.pixelRedactionLines(outcome: outcome), terminator: "")
+                }
+                if let r = report.recompression {
+                    // Always shown: the lossy/fallback caveats are not optional information.
+                    print(AnonConsole.recompressionLines(r), terminator: "")
                 }
             }
             // Coverage notes are reported, never used to refuse.

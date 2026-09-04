@@ -327,6 +327,131 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertFalse(texts.contains { $0.contains("SMITH") || $0.contains("0012345") }, "\(texts)")
     }
 
+    // MARK: Phase 5 — --recompress
+
+    private func tsUID(_ data: Data) throws -> String {
+        try DICOMFile.read(from: data).transferSyntaxUID?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")) ?? ""
+    }
+
+    func testRecompressParsing() {
+        XCTAssertEqual(PixelCleaningWorkflow.Recompress.parse("source"), .source)
+        XCTAssertEqual(PixelCleaningWorkflow.Recompress.parse("JPEG-LS"), .codec("jpeg-ls"))
+        XCTAssertNil(PixelCleaningWorkflow.Recompress.parse("h264"))
+        XCTAssertNil(PixelCleaningWorkflow.Recompress.parse(""))
+    }
+
+    /// `--recompress source` on a lossless source: same UID out, redacted rects still
+    /// blank after the codec round-trip, pixels outside byte-identical to the clean
+    /// uncompressed output, attestation intact.
+    func testRecompressSourceMirrorsALosslessSourceExactly() throws {
+        let native = try bannerImage(text: "SMITH JOHN", frames: 3)
+        let rle = try CompressionManager().compressData(native, codec: "rle", quality: nil)
+        XCTAssertEqual(try tsUID(rle), TransferSyntax.rleLossless.uid)
+
+        let plain = try PixelCleaningWorkflow().run(
+            fileData: rle, options: Options(cleanPixelData: true, detectText: .all), dryRun: false)
+        let parity = try PixelCleaningWorkflow().run(
+            fileData: rle, options: Options(cleanPixelData: true, detectText: .all, recompress: .source), dryRun: false)
+        let r = try XCTUnwrap(parity.recompression)
+        XCTAssertEqual(r.codec, "rle")
+        XCTAssertFalse(r.lossy)
+        XCTAssertTrue(r.notes.isEmpty, "\(r.notes)")
+        XCTAssertEqual(try tsUID(parity.data), TransferSyntax.rleLossless.uid, "output syntax equals the source's")
+        XCTAssertEqual(try tsUID(plain.data), TransferSyntax.explicitVRLittleEndian.uid, "default stays Explicit VR LE")
+
+        // Decode both and compare: identical pixels (lossless), so the rects are blank
+        // and anatomy untouched — byte-different bitstream, identical image.
+        let (decodedParity, _) = try PixelEditor(verbose: false).processData(parity.data, operations: [])
+        XCTAssertEqual(try DICOMFile.read(from: decodedParity).dataSet[.pixelData]?.valueData,
+                       try DICOMFile.read(from: plain.data).dataSet[.pixelData]?.valueData)
+        XCTAssertNotEqual(parity.data, plain.data)
+        let out = try DICOMFile.read(from: parity.data)
+        XCTAssertEqual(out.dataSet.string(for: .burnedInAnnotation)?.trimmingCharacters(in: .whitespaces), "NO")
+        XCTAssertTrue(try TextRegionDetector().detect(in: out, allFrames: true).isEmpty)
+        XCTAssertTrue(parity.auditLines.last?.contains("re-encoded to \(TransferSyntax.rleLossless.uid)") ?? false, "\(parity.auditLines)")
+        XCTAssertTrue(AnonConsole.recompressionLines(r).hasPrefix("Re-encoded to source syntax"), AnonConsole.recompressionLines(r))
+    }
+
+    /// A named lossy codec: warns about second-generation loss, updates the lossy
+    /// attributes for the new generation, and the rects survive as flat black.
+    func testRecompressLossyCodecWarnsAndKeepsRectsBlank() throws {
+        let native = try bannerImage(text: "DOE JANE 0012345", frames: 2)
+        let report = try PixelCleaningWorkflow().run(
+            fileData: native,
+            options: Options(cleanPixelData: true, detectText: .all, recompress: .codec("jpeg-baseline")), dryRun: false)
+        let r = try XCTUnwrap(report.recompression)
+        XCTAssertTrue(r.lossy)
+        XCTAssertEqual(try tsUID(report.data), TransferSyntax.jpegBaseline.uid)
+        XCTAssertTrue(r.notes.contains { $0.contains("second-generation") }, "\(r.notes)")
+        let ds = try DICOMFile.read(from: report.data).dataSet
+        XCTAssertEqual(ds.string(for: .lossyImageCompression)?.trimmingCharacters(in: .whitespaces), "01")
+        XCTAssertEqual(ds.strings(for: .lossyImageCompressionMethod)?.count, 1)
+        XCTAssertEqual(ds.strings(for: .lossyImageCompressionRatio)?.count, 1)
+        XCTAssertEqual(ds.string(for: .burnedInAnnotation)?.trimmingCharacters(in: .whitespaces), "NO")
+        XCTAssertTrue(try TextRegionDetector().detect(in: DICOMFile.read(from: report.data), allFrames: true).isEmpty)
+        // The console line carries the warning.
+        XCTAssertTrue(AnonConsole.recompressionLines(r).contains("⚠️"), AnonConsole.recompressionLines(r))
+    }
+
+    /// `source` on a lossy JPEG source re-targets the same syntax with a lossy warning
+    /// and appends a second generation to the lossy history.
+    func testRecompressSourceOnALossySourceIsSecondGeneration() throws {
+        let native = try bannerImage(text: "SMITH JOHN")
+        let jpeg = try CompressionManager().compressData(native, codec: "jpeg-baseline", quality: nil)
+        XCTAssertEqual(try DICOMFile.read(from: jpeg).dataSet.strings(for: .lossyImageCompressionMethod)?.count, 1)
+        let report = try PixelCleaningWorkflow().run(
+            fileData: jpeg, options: Options(cleanPixelData: true, detectText: .all, recompress: .source), dryRun: false)
+        let r = try XCTUnwrap(report.recompression)
+        XCTAssertEqual(r.codec, "jpeg", "the codec map's canonical name for JPEG baseline")
+        XCTAssertTrue(r.lossy)
+        XCTAssertEqual(try tsUID(report.data), TransferSyntax.jpegBaseline.uid)
+        XCTAssertEqual(try DICOMFile.read(from: report.data).dataSet.strings(for: .lossyImageCompressionMethod)?.count, 2,
+                       "a second generation is recorded, the header stays honest")
+    }
+
+    /// Uncompressed sources: `source` keeps them uncompressed (implicit stays implicit).
+    func testRecompressSourceOnUncompressedSourcesIsParity() throws {
+        let native = try bannerImage(text: "SMITH JOHN")
+        let implicit = try CompressionManager().compressData(native, codec: "implicit-le", quality: nil)
+        let report = try PixelCleaningWorkflow().run(
+            fileData: implicit, options: Options(cleanPixelData: true, detectText: .all, recompress: .source), dryRun: false)
+        XCTAssertEqual(try tsUID(report.data), TransferSyntax.implicitVRLittleEndian.uid)
+        XCTAssertEqual(report.recompression?.codec, "implicit-le")
+        let deflated = try CompressionManager().compressData(native, codec: "deflate", quality: nil)
+        let d = try PixelCleaningWorkflow().run(
+            fileData: deflated, options: Options(cleanPixelData: true, detectText: .all, recompress: .source), dryRun: false)
+        XCTAssertEqual(try tsUID(d.data), TransferSyntax.deflatedExplicitVRLittleEndian.uid)
+        XCTAssertTrue(try TextRegionDetector().detect(in: DICOMFile.read(from: d.data)).isEmpty)
+    }
+
+    /// A source syntax the toolkit cannot encode falls back to Explicit VR LE with a
+    /// note — never a silent substitution, never a refusal to redact.
+    func testRecompressSourceFallsBackForNonEncodableSyntax() throws {
+        var ds = DataSet()   // any data set; only the resolver is under test here
+        let (codec, notes) = PixelCleaningWorkflow.resolveRecompressCodec(
+            .source, sourceTransferSyntaxUID: "1.2.840.10008.1.2.4.102", sourceDataSet: ds)   // MPEG-4
+        XCTAssertEqual(codec, "explicit-le")
+        XCTAssertEqual(notes.count, 1)
+        XCTAssertTrue(notes[0].contains("cannot be re-encoded"), notes[0])
+        // Intent follows the source's declared lossy state for the general J2K UID.
+        ds.setString("01", for: .lossyImageCompression, vr: .CS)
+        XCTAssertEqual(PixelCleaningWorkflow.resolveRecompressCodec(.source, sourceTransferSyntaxUID: TransferSyntax.jpeg2000.uid, sourceDataSet: ds).codec, "jpeg2000")
+        ds.setString("00", for: .lossyImageCompression, vr: .CS)
+        XCTAssertEqual(PixelCleaningWorkflow.resolveRecompressCodec(.source, sourceTransferSyntaxUID: TransferSyntax.jpeg2000.uid, sourceDataSet: ds).codec, "jpeg2000-lossless")
+    }
+
+    /// The post-recompress oracle refuses when a rect is not flat fill any more.
+    func testRecompressVerificationRefusesANonBlankRect() throws {
+        let native = try bannerImage(text: "SMITH JOHN")   // untouched: banner still there
+        XCTAssertThrowsError(try PixelCleaningWorkflow.verifyBlankAfterRecompression(
+            native, regions: [Region(x: 0, y: 0, width: 512, height: 60)], fillValue: 0, lossy: false)) { error in
+            guard case PixelRedactionError.recompressVerificationFailed = error else { return XCTFail("\(error)") }
+        }
+        XCTAssertNoThrow(try PixelCleaningWorkflow.verifyBlankAfterRecompression(
+            native, regions: [Region(x: 0, y: 200, width: 10, height: 10)], fillValue: 51, lossy: false),
+            "a region that is already the fill passes")
+    }
+
     // MARK: Phase 4 — replace style
 
     /// Pixels and header tell ONE story: the burned name/ID/date are replaced with the
