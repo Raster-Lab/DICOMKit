@@ -28,10 +28,13 @@ public struct PHITextClassifier: Sendable, Equatable {
         public var identifiers: [String]
         /// Dates and ages rendered in burned formats — matched exactly after normalization.
         public var derived: [String]
+        /// Which header attribute each term came from (for semantic replacement).
+        public var sourceTags: [String: Tag]
 
-        public init(identifiers: [String] = [], derived: [String] = []) {
+        public init(identifiers: [String] = [], derived: [String] = [], sourceTags: [String: Tag] = [:]) {
             self.identifiers = identifiers
             self.derived = derived
+            self.sourceTags = sourceTags
         }
 
         public var isEmpty: Bool { identifiers.isEmpty && derived.isEmpty }
@@ -51,6 +54,15 @@ public struct PHITextClassifier: Sendable, Equatable {
             }
         }
         public var name: String { isRedact ? "redact" : "keep" }
+    }
+
+    /// A verdict plus the header attributes whose values were found in the text — the
+    /// only basis on which a `replace` style may substitute a value.
+    public struct Classification: Sendable, Equatable {
+        public let verdict: Verdict
+        /// Header tags matched, in order of first occurrence; empty for pattern/keyword/
+        /// uncertain verdicts (those never get semantic replacement).
+        public let matchedTags: [Tag]
     }
 
     /// OCR confidence below this is treated as uncertain → redact, whatever the text.
@@ -106,6 +118,8 @@ public struct PHITextClassifier: Sendable, Equatable {
     public static func harvestTerms(from dataSet: DataSet) -> Terms {
         var identifiers = Set<String>()
         var derived = Set<String>()
+        var sourceTags: [String: Tag] = [:]
+        func note(_ term: String, _ tag: Tag) { if sourceTags[term] == nil { sourceTags[term] = tag } }
 
         func value(_ tag: Tag) -> String? {
             dataSet.string(for: tag)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank
@@ -134,15 +148,17 @@ public struct PHITextClassifier: Sendable, Equatable {
                     // A component may itself hold several words ("JOHN PAUL").
                     for word in c.split(whereSeparator: { $0 == " " || $0 == "-" }) {
                         let n = normalize(String(word))
-                        if n.count >= 3 { identifiers.insert(n) }
+                        if n.count >= 3 { identifiers.insert(n); note(n, tag) }
                     }
                     let n = normalize(c)
-                    if n.count >= 3 { identifiers.insert(n) }
+                    if n.count >= 3 { identifiers.insert(n); note(n, tag) }
                 }
                 if components.count >= 2 {
-                    identifiers.insert(normalize(components.joined()))                  // SMITHJOHN
-                    identifiers.insert(normalize(components.reversed().joined()))       // JOHNSMITH
-                    identifiers.insert(normalize(components[1].prefix(1) + components[0])) // JSMITH
+                    for form in [normalize(components.joined()),                        // SMITHJOHN
+                                 normalize(components.reversed().joined()),             // JOHNSMITH
+                                 normalize(components[1].prefix(1) + components[0])] {  // JSMITH
+                        identifiers.insert(form); note(form, tag)
+                    }
                 }
             }
         }
@@ -157,14 +173,14 @@ public struct PHITextClassifier: Sendable, Equatable {
             for raw in values(tag) {
                 let n = normalize(raw)
                 guard n.count >= 3 else { continue }
-                identifiers.insert(n)
+                identifiers.insert(n); note(n, tag)
                 // MRN with and without leading zeros.
                 let stripped = String(n.drop(while: { $0 == "0" }))
-                if stripped.count >= 3 { identifiers.insert(stripped) }
+                if stripped.count >= 3 { identifiers.insert(stripped); note(stripped, tag) }
                 // Multi-word institutions: each significant word too.
                 for word in raw.split(separator: " ") {
                     let w = normalize(String(word))
-                    if w.count >= 5 { identifiers.insert(w) }
+                    if w.count >= 5 { identifiers.insert(w); note(w, tag) }
                 }
             }
         }
@@ -173,7 +189,10 @@ public struct PHITextClassifier: Sendable, Equatable {
         let dateTags: [Tag] = [.patientBirthDate, .studyDate, .seriesDate, .acquisitionDate, .contentDate]
         for tag in dateTags {
             for raw in values(tag) {
-                for rendered in renderedDateForms(raw) { derived.insert(normalize(rendered)) }
+                for rendered in renderedDateForms(raw) {
+                    let n = normalize(rendered)
+                    derived.insert(n); note(n, tag)
+                }
             }
         }
         // Patient age: 045Y → 45Y, 45.
@@ -181,14 +200,15 @@ public struct PHITextClassifier: Sendable, Equatable {
             let digits = age.filter(\.isNumber)
             let unit = age.filter(\.isLetter)
             let n = String(Int(digits) ?? -1)
-            if n != "-1" {
-                derived.insert(normalize(n + unit))
-                derived.insert(normalize(digits + unit))
-                derived.insert(n)
+            // Only the unit-bearing forms: a bare "45" would match inside any ID.
+            if n != "-1", !unit.isEmpty {
+                for form in [normalize(n + unit), normalize(digits + unit)] {
+                    derived.insert(form); note(form, .patientAge)
+                }
             }
         }
 
-        return Terms(identifiers: identifiers.sorted(), derived: derived.sorted())
+        return Terms(identifiers: identifiers.sorted(), derived: derived.sorted(), sourceTags: sourceTags)
     }
 
     /// Common burned renderings of a DICOM DA value (`YYYYMMDD`).
@@ -241,44 +261,71 @@ public struct PHITextClassifier: Sendable, Equatable {
 
     /// Classifies one recognized string.
     public func classify(_ text: String, confidence: Float) -> Verdict {
+        classifyDetailed(text, confidence: confidence).verdict
+    }
+
+    /// Classifies one recognized string and reports which header attributes matched.
+    public func classifyDetailed(_ text: String, confidence: Float) -> Classification {
         if confidence < minimumConfidence {
-            return .redact(reason: "uncertain: OCR confidence \(String(format: "%.2f", confidence)) below \(String(format: "%.2f", minimumConfidence))")
+            return Classification(verdict: .redact(reason: "uncertain: OCR confidence \(String(format: "%.2f", confidence)) below \(String(format: "%.2f", minimumConfidence))"), matchedTags: [])
         }
         let normalized = Self.normalize(text)
-        guard !normalized.isEmpty else { return .redact(reason: "uncertain: no recognizable characters") }
+        guard !normalized.isEmpty else {
+            return Classification(verdict: .redact(reason: "uncertain: no recognizable characters"), matchedTags: [])
+        }
         let folded = Self.foldConfusions(normalized)
 
-        // 1. Harvested PHI terms (fuzzy).
+        // 1. Harvested PHI terms (fuzzy). Collect EVERY matching attribute so a line
+        //    carrying name + ID + date can be replaced item by item.
+        var matched: [(Int, Tag)] = []
+        var reasons: [String] = []
         for term in terms.identifiers {
-            if Self.fuzzyContains(haystack: folded, needle: Self.foldConfusions(term)) {
-                return .redact(reason: "matched header identifier")
+            let needle = Self.foldConfusions(term)
+            if let position = Self.fuzzyPosition(haystack: folded, needle: needle) {
+                if reasons.isEmpty { reasons.append("matched header identifier") }
+                if let tag = terms.sourceTags[term] { matched.append((position, tag)) }
             }
         }
-        for term in terms.derived where folded.contains(Self.foldConfusions(term)) {
-            return .redact(reason: "matched header date/age")
+        for term in terms.derived {
+            if let range = folded.range(of: Self.foldConfusions(term)) {
+                if !reasons.contains("matched header date/age") { reasons.append("matched header date/age") }
+                if let tag = terms.sourceTags[term] {
+                    matched.append((folded.distance(from: folded.startIndex, to: range.lowerBound), tag))
+                }
+            }
+        }
+        if !reasons.isEmpty {
+            var seen = Set<Tag>()
+            let tags = matched.sorted { $0.0 < $1.0 }.map(\.1).filter { seen.insert($0).inserted }
+            return Classification(verdict: .redact(reason: reasons.joined(separator: "; ")), matchedTags: tags)
         }
 
         // 2. PHI-shaped patterns (no header source needed).
         if let pattern = Self.phiPattern(in: text) {
-            return .redact(reason: "pattern: \(pattern)")
+            return Classification(verdict: .redact(reason: "pattern: \(pattern)"), matchedTags: [])
         }
 
         // 3. Keyword proximity: a PHI label on the line taints the whole line.
         let tokens = Self.tokens(of: text)
         if let keyword = tokens.first(where: { Self.phiKeywords.contains($0) }) {
-            return .redact(reason: "near PHI keyword \(keyword)")
+            return Classification(verdict: .redact(reason: "near PHI keyword \(keyword)"), matchedTags: [])
         }
 
         // 4. Keep ONLY when every token is positively allowlisted.
         if !tokens.isEmpty, tokens.allSatisfy(Self.isAllowlisted) {
-            return .keep(reason: "allowlist: " + Self.allowlistCategory(tokens))
+            return Classification(verdict: .keep(reason: "allowlist: " + Self.allowlistCategory(tokens)), matchedTags: [])
         }
-        return .redact(reason: "uncertain: not on the allowlist")
+        return Classification(verdict: .redact(reason: "uncertain: not on the allowlist"), matchedTags: [])
     }
 
     /// Classifies every detection.
     public func classify(_ detections: [TextRegionDetector.Detection]) -> [Verdict] {
         detections.map { classify($0.text, confidence: $0.confidence) }
+    }
+
+    /// Classifies every detection with matched attributes.
+    public func classifyDetailed(_ detections: [TextRegionDetector.Detection]) -> [Classification] {
+        detections.map { classifyDetailed($0.text, confidence: $0.confidence) }
     }
 
     // MARK: Helpers
@@ -329,17 +376,24 @@ public struct PHITextClassifier: Sendable, Equatable {
     /// Normalized-substring, else any window of `needle.count` (±1) within `haystack`
     /// at bounded edit distance (1 for short terms, 2 for 8+ characters).
     static func fuzzyContains(haystack: String, needle: String) -> Bool {
-        guard !needle.isEmpty, !haystack.isEmpty else { return false }
-        if haystack.contains(needle) { return true }
-        guard needle.count >= 4 else { return false }
+        fuzzyPosition(haystack: haystack, needle: needle) != nil
+    }
+
+    /// Character offset of the (fuzzy) match, or nil.
+    static func fuzzyPosition(haystack: String, needle: String) -> Int? {
+        guard !needle.isEmpty, !haystack.isEmpty else { return nil }
+        if let r = haystack.range(of: needle) {
+            return haystack.distance(from: haystack.startIndex, to: r.lowerBound)
+        }
+        guard needle.count >= 4 else { return nil }
         let budget = needle.count >= 8 ? 2 : 1
         let h = Array(haystack), n = Array(needle)
         for width in max(1, n.count - 1)...(n.count + 1) where width <= h.count {
             for start in 0...(h.count - width) {
-                if editDistance(Array(h[start..<(start + width)]), n, limit: budget) <= budget { return true }
+                if editDistance(Array(h[start..<(start + width)]), n, limit: budget) <= budget { return start }
             }
         }
-        return false
+        return nil
     }
 
     static func editDistance(_ a: [Character], _ b: [Character], limit: Int) -> Int {

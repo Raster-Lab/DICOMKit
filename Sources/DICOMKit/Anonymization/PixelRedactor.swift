@@ -30,12 +30,17 @@ public struct PixelRedactor {
         case blank
         /// A fixed stamp (default `REDACTED`).
         case label(String)
+        /// Semantic replacement: the header engine's own anonymized value for the
+        /// attribute that was matched (name → anonymized name, date → shifted date, ID →
+        /// pseudonym). Regions without a truthful value get the fallback stamp.
+        case replace(fallback: String)
 
-        /// Parses `--redact-style` (`blank` | `label`); `replace` is a later phase.
+        /// Parses `--redact-style` (`blank` | `label` | `replace`).
         public static func parse(_ raw: String, label: String?) -> Style? {
             switch raw.trimmingCharacters(in: .whitespaces).lowercased() {
             case "blank": return .blank
             case "label": return .label(label ?? RedactionLabelRenderer.defaultLabel)
+            case "replace": return .replace(fallback: label ?? RedactionLabelRenderer.defaultLabel)
             default: return nil
             }
         }
@@ -44,6 +49,7 @@ public struct PixelRedactor {
             switch self {
             case .blank: return "blank"
             case .label: return "label"
+            case .replace: return "replace"
             }
         }
     }
@@ -67,11 +73,17 @@ public struct PixelRedactor {
         /// Regions too small to carry a legible stamp — blanked only. Reported, never
         /// silent.
         public let labelFallbackRegions: [PixelRedactionPlan.Region]
+        /// `replace` style: the value actually drawn into each replaced region.
+        public let replacements: [PixelRedactionPlan.Region: String]
+        /// `replace` style: why a region got the fallback stamp instead of a value.
+        public let replacementFallbackNotes: [PixelRedactionPlan.Region: String]
 
         public init(
             regions: [PixelRedactionPlan.Region], basis: PixelRedactionPlan.Basis, note: String,
             frameCount: Int, removedIconImage: Bool, removedOverlays: Bool,
-            style: Style = .blank, labelFallbackRegions: [PixelRedactionPlan.Region] = []
+            style: Style = .blank, labelFallbackRegions: [PixelRedactionPlan.Region] = [],
+            replacements: [PixelRedactionPlan.Region: String] = [:],
+            replacementFallbackNotes: [PixelRedactionPlan.Region: String] = [:]
         ) {
             self.regions = regions
             self.basis = basis
@@ -81,6 +93,8 @@ public struct PixelRedactor {
             self.removedOverlays = removedOverlays
             self.style = style
             self.labelFallbackRegions = labelFallbackRegions
+            self.replacements = replacements
+            self.replacementFallbackNotes = replacementFallbackNotes
         }
     }
 
@@ -96,11 +110,19 @@ public struct PixelRedactor {
     ///   required no pixel work.
     /// - Throws: ``PixelRedactionError/unresolvedRegion(_:)`` when the plan could not
     ///   locate the burned-in content — a refusal, never a silent pass-through.
+    /// Per-region semantic replacement input for the `replace` style: the text to
+    /// draw, or a note explaining why nothing truthful can be drawn.
+    public enum Replacement: Sendable, Equatable {
+        case value(String)
+        case unavailable(reason: String)
+    }
+
     public func redact(
         fileData: Data,
         plan: PixelRedactionPlan,
         fillValue: Int? = nil,
-        style: Style = .blank
+        style: Style = .blank,
+        replacements: [PixelRedactionPlan.Region: Replacement] = [:]
     ) throws -> (data: Data, outcome: Outcome)? {
         switch plan.decision {
         case .nothingToDo:
@@ -111,7 +133,8 @@ public struct PixelRedactor {
 
         case .redact(let regions, let basis):
             return try apply(regions: regions, basis: basis, plan: plan,
-                             to: fileData, fillValue: fillValue, style: style)
+                             to: fileData, fillValue: fillValue, style: style,
+                             replacements: replacements)
         }
     }
 
@@ -123,7 +146,8 @@ public struct PixelRedactor {
         plan: PixelRedactionPlan,
         to fileData: Data,
         fillValue: Int?,
-        style: Style
+        style: Style,
+        replacements: [PixelRedactionPlan.Region: Replacement]
     ) throws -> (data: Data, outcome: Outcome) {
         let sourceFile = try DICOMFile.read(from: fileData)
         let note = provenanceNote(plan: plan, basis: basis, dataSet: sourceFile.dataSet)
@@ -141,17 +165,45 @@ public struct PixelRedactor {
             PixelOperation.mask(x: $0.x, y: $0.y, width: $0.width, height: $0.height, fillValue: fill)
         }
         var fallback: [PixelRedactionPlan.Region] = []
-        if case .label(let text) = style {
+        var drawn: [PixelRedactionPlan.Region: String] = [:]
+        var fallbackNotes: [PixelRedactionPlan.Region: String] = [:]
+        // What to stamp into each (already blanked) region, if anything.
+        var stampText: [(PixelRedactionPlan.Region, String)] = []
+        switch style {
+        case .blank:
+            break
+        case .label(let text):
+            stampText = regions.map { ($0, text) }
+        case .replace(let fallbackLabel):
+            for r in regions {
+                switch replacements[r] {
+                case .value(let value):
+                    stampText.append((r, value))
+                    drawn[r] = value
+                case .unavailable(let reason):
+                    stampText.append((r, fallbackLabel))
+                    fallbackNotes[r] = reason
+                case nil:
+                    stampText.append((r, fallbackLabel))
+                    fallbackNotes[r] = "no header-mapped value for this region (not a classified PHI match)"
+                }
+            }
+        }
+        if !stampText.isEmpty {
             guard RedactionLabelRenderer.isAvailable else {
                 throw PixelRedactionError.labelUnavailable
             }
             let foreground = Self.contrastingStoredValue(to: fill, in: sourceFile.dataSet)
-            for r in regions {
+            for (r, text) in stampText {
                 if let mask = RedactionLabelRenderer.glyphMask(text: text, width: r.width, height: r.height) {
                     operations.append(.stamp(x: r.x, y: r.y, width: r.width, height: r.height,
                                              glyphMask: mask, foregroundValue: foreground))
                 } else {
                     fallback.append(r)   // too small to render legibly — blank only, audited
+                    drawn[r] = nil
+                    if case .replace = style {
+                        fallbackNotes[r] = "region too small to render legibly — blanked"
+                    }
                 }
             }
         }
@@ -183,7 +235,8 @@ public struct PixelRedactor {
         let outcome = Outcome(
             regions: regions, basis: basis, note: note, frameCount: frameCount,
             removedIconImage: removedIcon, removedOverlays: removedOverlays,
-            style: style, labelFallbackRegions: fallback)
+            style: style, labelFallbackRegions: fallback,
+            replacements: drawn, replacementFallbackNotes: fallbackNotes)
         return (try file.write(), outcome)
     }
 

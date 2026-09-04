@@ -383,7 +383,35 @@ final class PixelRedactionTests: XCTestCase {
         XCTAssertEqual(PixelRedactor.Style.parse("blank", label: nil), .blank)
         XCTAssertEqual(PixelRedactor.Style.parse("label", label: nil), .label("REDACTED"))
         XCTAssertEqual(PixelRedactor.Style.parse("LABEL", label: "PHI REMOVED"), .label("PHI REMOVED"))
-        XCTAssertNil(PixelRedactor.Style.parse("replace", label: nil), "replace ships in Phase 4")
+        XCTAssertEqual(PixelRedactor.Style.parse("replace", label: nil), .replace(fallback: "REDACTED"))
+        XCTAssertNil(PixelRedactor.Style.parse("fuzzy", label: nil))
+    }
+
+    func testReplaceStyleDrawsValuesOnlyWhereSuppliedAndFallsBackAudited() throws {
+        guard RedactionLabelRenderer.isAvailable else { throw XCTSkip("no glyph rasterizer") }
+        let ds = imageDataSet(rows: 120, columns: 240, frames: 2)
+        let named = PixelRedactionPlan.Region(x: 10, y: 5, width: 220, height: 40)
+        let unknown = PixelRedactionPlan.Region(x: 10, y: 60, width: 220, height: 40)
+        let tiny = PixelRedactionPlan.Region(x: 0, y: 110, width: 240, height: 5)
+        let plan = PixelRedactionPlan(decision: .redact(regions: [named, unknown, tiny], basis: .textDetection))
+        let (out, outcome) = try XCTUnwrap(PixelRedactor().redact(
+            fileData: try fileBytes(ds), plan: plan, style: .replace(fallback: "REDACTED"),
+            replacements: [named: .value("ANONYMOUS"), unknown: .unavailable(reason: "uncertain region")]))
+        XCTAssertEqual(outcome.replacements, [named: "ANONYMOUS"])
+        XCTAssertEqual(outcome.replacementFallbackNotes[unknown], "uncertain region")
+        XCTAssertTrue(outcome.replacementFallbackNotes[tiny]?.contains("too small") ?? false, "\(outcome.replacementFallbackNotes)")
+        XCTAssertEqual(outcome.labelFallbackRegions, [tiny])
+        // Every region is blanked first: no original 200s survive inside any of them.
+        for (r, expectInk) in [(named, true), (unknown, true), (tiny, false)] {
+            for frame in 0..<2 {
+                let values = Set(try styleTestRegionPixels(out, region: r, columns: 240, frame: frame, frameSize: 120 * 240))
+                XCTAssertTrue(values.isSubset(of: [0, 255]), "\(r) frame \(frame): \(values)")
+                XCTAssertEqual(values.contains(255), expectInk, "\(r) frame \(frame)")
+            }
+        }
+        let lines = AnonConsole.pixelRedactionLines(outcome: outcome)
+        XCTAssertTrue(lines.contains("replaced with header value \"ANONYMOUS\""), lines)
+        XCTAssertTrue(lines.contains("labelled \"REDACTED\" (uncertain region)"), lines)
     }
 
     func testGlyphMaskGeometry() {

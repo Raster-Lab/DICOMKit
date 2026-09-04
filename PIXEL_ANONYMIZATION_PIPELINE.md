@@ -84,7 +84,7 @@ dicom-anon in.dcm --dry-run --clean-pixel-data --detect-text
 | `--allow-burned-in-phi` | Write the metadata-scrubbed file anyway; marked Patient Identity Removed = NO | EXISTS |
 | `--dry-run` | Print planned regions/verdicts, write nothing | EXISTS (table: Phase 1.4) |
 | `--recompress <codec\|source>` | Re-encode clean pixels post-redaction; `source` mirrors the input transfer syntax (§5.3) | NEW (Phase 5) |
-| `--redact-style <blank\|label\|replace>` | What the cleaned region shows: fill value, a fixed stamp, or semantic replacement values (§6.5) | EXISTS `blank`/`label` (Phase 1.6); NEW `replace` (Phase 4) |
+| `--redact-style <blank\|label\|replace>` | What the cleaned region shows: fill value, a fixed stamp, or semantic replacement values (§6.5) | EXISTS (`blank`/`label` Phase 1.6; `replace` Phase 4.13) |
 | `--redact-label <text>` | Custom stamp text for `label` style (default `REDACTED`) | EXISTS (Phase 1.6) |
 
 ### 2.1 Option semantics
@@ -436,7 +436,7 @@ stored identifying values are removed), so 113101 stays earned in every style.
 |---|---|---|---|
 | `blank` (default) | fill value only | no | 1 ✅ |
 | `label` | fixed stamp (`REDACTED` / `--redact-label` text) — works for every verdict including uncertain; a reviewer sees "cleaned deliberately", not a suspected rendering bug | no | 1 ✅ (`RedactionLabelRenderer` → `PixelOperation.stamp`; too-small regions fall back to blank and are listed in `Outcome.labelFallbackRegions` + the console) |
-| `replace` | semantic replacement: burned name → **anonymized** name, burned date → **shifted** date, burned ID → pseudonym | yes | 4 |
+| `replace` | semantic replacement: burned name → **anonymized** name, burned date → **shifted** date, burned ID → pseudonym | yes | 4 ✅ (`ReplacementMapping.derive(original:deidentified:)` reads the header engine's own output from an in-memory preview of the configured pass; only classified matches with a mapped value for every matched attribute are drawn; note: PS3.15 Basic **zeroes** PatientName/ID, so under `--profile ps315` those regions honestly get the label) |
 
 Rendering: CoreGraphics/CoreText glyphs mapped to stored values at the image's
 real bit depth (foreground = a bright stored value, background = the fill);
@@ -631,9 +631,9 @@ release binary after DICOMKit changes before manual CLI verification.
 
 **Phase 4 — Complete object coverage + semantic replacement**
 12. ✅ Concatenation cross-part union in directory/batch mode + single-file warning. (2026-09-04; `PixelCleaningWorkflow.sweep` + `ConcatenationSweep` pre-pass in `dicom-anon --recursive`, `Options.presetDetectedRegions` unioned into every part, `isComplete` needs every declared part; verified on the binary: a clean-looking part 1 is blanked with part 2's regions)
-13. `--redact-style replace` (§6.5): values from the header engine's mapping,
+13. ✅ `--redact-style replace` (§6.5): values from the header engine's mapping,
     date replacement gated on `--shift-dates`, uncertain → blank/label,
-    too-small-region fallback with audit note.
+    too-small-region fallback with audit note. (2026-09-04; `PHITextClassifier.classifyDetailed` reports matched attributes in text order; `PixelRedactor.Replacement` per region; CLI previews the header pass with a throwaway engine; verified on the binary: header and pixels both read `ANONYMOUS <32-hex pseudonym>`; requires `--detect-text` classify)
 14. Expanded compression/photometric regression tests.
 
 **Phase 5 — Output encoding parity**

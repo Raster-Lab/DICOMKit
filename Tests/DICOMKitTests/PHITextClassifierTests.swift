@@ -33,9 +33,10 @@ final class PHITextClassifierTests: XCTestCase {
             XCTAssertTrue(t.identifiers.contains(expected), "missing \(expected) in \(t.identifiers)")
         }
         for expected in ["19611203", "12031961", "03121961", "120361", "3DEC1961", "03DEC1961",
-                         "20240115", "01152024", "15012024", "45Y", "45", "045Y"] {
+                         "20240115", "01152024", "15012024", "45Y", "045Y"] {
             XCTAssertTrue(t.derived.contains(expected), "missing \(expected) in \(t.derived)")
         }
+        XCTAssertFalse(t.derived.contains("45"), "a bare age would match inside any ID")
     }
 
     func testHarvestIgnoresTooShortTermsThatWouldMatchEverything() {
@@ -102,6 +103,16 @@ final class PHITextClassifierTests: XCTestCase {
         XCTAssertTrue(c.classify("R cm Zebra", confidence: 0.99).isRedact, "one unknown token taints")
         XCTAssertTrue(c.classify("SMITH R", confidence: 0.99).isRedact, "PHI beats the allowlist")
         XCTAssertTrue(c.classify("123456789", confidence: 0.99).isRedact, "long digit runs are IDs")
+    }
+
+    func testMatchedTagsReportEveryAttributeFoundInTextOrder() {
+        let c = classifier()
+        let r = c.classifyDetailed("SMITH JOHN MRN 0012345 12/03/1961", confidence: 0.99)
+        XCTAssertTrue(r.verdict.isRedact)
+        XCTAssertEqual(r.matchedTags, [.patientName, .patientID, .patientBirthDate])
+        XCTAssertEqual(c.classifyDetailed("R 10 cm", confidence: 0.99).matchedTags, [])
+        XCTAssertEqual(c.classifyDetailed("07/04/1985", confidence: 0.99).matchedTags, [], "a bare pattern has no attribute")
+        XCTAssertEqual(c.classifyDetailed("SMITH", confidence: 0.1).matchedTags, [], "uncertain never carries a match")
     }
 
     func testFuzzyMatchingIsBoundedNotUnbounded() {

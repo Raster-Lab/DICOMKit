@@ -72,9 +72,12 @@ struct DICOMAnon: ParsableCommand {
     var redactFill: Int?
 
     @Option(name: .long, help: """
-        What a cleaned region shows: blank (fill value only, default) or label (a fixed \
+        What a cleaned region shows: blank (fill value only, default), label (a fixed \
         stamp drawn INTO the already-blanked box, so reviewers see it was cleaned \
-        deliberately). The region is always blanked first; the stamp is cosmetic.
+        deliberately), or replace (the header engine's own anonymized value for the \
+        matched attribute — name, ID, shifted date — so pixels and header tell one \
+        story; needs --detect-text classify; uncertain regions and attributes the header \
+        policy removes get the label instead). The region is always blanked first.
         """)
     var redactStyle: String = "blank"
 
@@ -215,6 +218,26 @@ struct DICOMAnon: ParsableCommand {
         }
     }
     
+    /// Runs the configured header de-identification on a copy, for `replace` values.
+    /// Uses a throwaway engine so the real pass's audit log and UID map are untouched.
+    private func previewHeaderPass(file: DICOMFile, anonymizer: Anonymizer) throws -> DICOMFile {
+        if profile.lowercased() == "ps315" {
+            let options = ConfidentialityProfile.Options(
+                retainLongitudinalTemporal: retainDates,
+                retainPatientCharacteristics: retainCharacteristics,
+                retainDeviceIdentity: retainDevice,
+                retainInstitutionIdentity: retainInstitution,
+                retainUIDs: retainUids,
+                cleanDescriptors: cleanDescriptors,
+                dateOffsetDays: shiftDates)
+            return anonymizer.deidentify(file: file, options: options).0
+        }
+        let throwaway = Anonymizer(
+            profile: try parseProfile(), shiftDates: shiftDates, regenerateUIDs: false,
+            preserveTags: try parsePreserveTags(), customActions: try parseCustomActions())
+        return try throwaway.anonymize(file: file, filePath: "preview").0
+    }
+
     /// Translates the pixel-related flags into the shared workflow options.
     private func pixelCleaningOptions() throws -> PixelCleaningWorkflow.Options {
         let editor = PixelEditor(verbose: false)
@@ -231,7 +254,7 @@ struct DICOMAnon: ParsableCommand {
             mode = parsed
         }
         guard let style = PixelRedactor.Style.parse(redactStyle, label: redactLabel) else {
-            throw ValidationError("Invalid --redact-style '\(redactStyle)'. Use 'blank' or 'label'.")
+            throw ValidationError("Invalid --redact-style '\(redactStyle)'. Use 'blank', 'label' or 'replace'.")
         }
         return PixelCleaningWorkflow.Options(
             cleanPixelData: cleanPixelData, explicitRegions: explicit,
@@ -391,6 +414,16 @@ struct DICOMAnon: ParsableCommand {
         if let sweep, let info = PixelCleaningWorkflow.concatenationInfo(of: dicomFile.dataSet) {
             pixelOptions.presetDetectedRegions = sweep.regions(for: info.uid)
             pixelOptions.concatenationAnalyzedCompletely = sweep.isComplete(info.uid)
+        }
+        // `replace` draws the header engine's OWN values: preview the header pass on the
+        // original data set (in memory, nothing written) and read what it produces.
+        if case .replace = pixelOptions.style {
+            guard pixelOptions.detectText == .classify else {
+                throw ValidationError("--redact-style replace needs --detect-text with mode classify (replacement values come from classified matches).")
+            }
+            let preview = try previewHeaderPass(file: dicomFile, anonymizer: anonymizer)
+            pixelOptions.replacementMapping = PixelCleaningWorkflow.ReplacementMapping.derive(
+                original: dicomFile.dataSet, deidentified: preview.dataSet)
         }
         if pixelOptions.isActive {
             let report = try PixelCleaningWorkflow().run(

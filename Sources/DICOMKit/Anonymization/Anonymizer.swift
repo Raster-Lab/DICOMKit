@@ -526,6 +526,14 @@ public enum AnonConsole {
                 verb = fallback.contains(r)
                     ? "blanked (too small for label \"\(text)\" — blank only)"
                     : "blanked + labelled \"\(text)\""
+            case .replace(let fallbackLabel):
+                if let value = outcome.replacements[r] {
+                    verb = "blanked + replaced with header value \"\(value)\""
+                } else if fallback.contains(r) {
+                    verb = "blanked (\(outcome.replacementFallbackNotes[r] ?? "too small") — blank only)"
+                } else {
+                    verb = "blanked + labelled \"\(fallbackLabel)\" (\(outcome.replacementFallbackNotes[r] ?? "no replacement"))"
+                }
             }
             out += "  \(verb) (\(r.x),\(r.y)) \(r.width)x\(r.height)"
             out += outcome.frameCount > 1 ? " on all \(outcome.frameCount) frames\n" : "\n"

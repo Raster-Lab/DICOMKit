@@ -52,6 +52,10 @@ public struct PixelCleaningWorkflow: Sendable {
         /// True when every part of this file's concatenation was swept, so the
         /// single-part coverage warning is not needed.
         public var concatenationAnalyzedCompletely: Bool
+        /// `replace` style only: the header engine's post-de-identification values,
+        /// derived with ``ReplacementMapping/derive(original:deidentified:)``. Never
+        /// invented here — the pixels and the header must tell one story.
+        public var replacementMapping: ReplacementMapping?
 
         public init(
             cleanPixelData: Bool = false,
@@ -62,7 +66,8 @@ public struct PixelCleaningWorkflow: Sendable {
             dilation: Int = TextRegionDetector.defaultDilation,
             style: PixelRedactor.Style = .blank,
             presetDetectedRegions: [PixelRedactionPlan.Region] = [],
-            concatenationAnalyzedCompletely: Bool = false
+            concatenationAnalyzedCompletely: Bool = false,
+            replacementMapping: ReplacementMapping? = nil
         ) {
             self.cleanPixelData = cleanPixelData
             self.explicitRegions = explicitRegions
@@ -73,6 +78,7 @@ public struct PixelCleaningWorkflow: Sendable {
             self.style = style
             self.presetDetectedRegions = presetDetectedRegions
             self.concatenationAnalyzedCompletely = concatenationAnalyzedCompletely
+            self.replacementMapping = replacementMapping
         }
 
         /// Pixel modification is requested: `--clean-pixel-data`, or rectangles (which
@@ -94,6 +100,8 @@ public struct PixelCleaningWorkflow: Sendable {
         /// One verdict per detection (parallel to `detections`). In `all` mode every
         /// verdict is redact.
         public let verdicts: [PHITextClassifier.Verdict]
+        /// Header attributes matched per detection (parallel; empty in `all` mode).
+        public let matchedTags: [[Tag]]
         /// Frames OCR scanned.
         public let scannedFrames: [Int]
         /// The plan that was (or would be) executed; `nil` when cleaning was not requested.
@@ -138,6 +146,91 @@ public struct PixelCleaningWorkflow: Sendable {
     }
 
     public init() {}
+
+    // MARK: - Semantic replacement (`replace` style)
+
+    /// The header engine's post-de-identification values for the attributes the
+    /// classifier can match, keyed by tag. Built by comparing the ORIGINAL data set with
+    /// the engine's output for the same file, so the values are the engine's own —
+    /// header `ANONYMOUS`/`ANON-0042` and pixels `ANONYMOUS`/`ANON-0042`, always.
+    public struct ReplacementMapping: Sendable, Equatable {
+        /// Tag → replacement text to draw. A tag the header policy REMOVED or zeroed is
+        /// absent: pixels must never retain information the header dropped.
+        public var values: [Tag: String]
+
+        public init(values: [Tag: String] = [:]) { self.values = values }
+
+        /// Attributes eligible for replacement (the classifier's harvest set).
+        public static let attributes: [Tag] = [
+            .patientName, .otherPatientNames, .referringPhysicianName, .performingPhysicianName,
+            Tag(group: 0x0008, element: 0x1070), Tag(group: 0x0008, element: 0x1048),
+            Tag(group: 0x0008, element: 0x1060), .requestingPhysician,
+            .patientID, .otherPatientIDs, .accessionNumber, .institutionName,
+            .institutionalDepartmentName, .stationName, Tag(group: 0x0020, element: 0x0010),
+            .patientBirthDate, .studyDate, .seriesDate, .acquisitionDate, .contentDate, .patientAge,
+        ]
+
+        public static func derive(original: DataSet, deidentified: DataSet) -> ReplacementMapping {
+            var values: [Tag: String] = [:]
+            for tag in attributes {
+                guard original.string(for: tag)?.trimmingCharacters(in: .whitespaces).isEmpty == false,
+                      let after = deidentified.string(for: tag)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !after.isEmpty
+                else { continue }
+                values[tag] = render(after, vr: deidentified[tag]?.vr)
+            }
+            return ReplacementMapping(values: values)
+        }
+
+        /// Human-legible form for the stamp: PN separators → spaces, DA → ISO date.
+        static func render(_ value: String, vr: VR?) -> String {
+            switch vr {
+            case .PN?:
+                let alphabetic = value.split(separator: "=", omittingEmptySubsequences: false).first.map(String.init) ?? value
+                return alphabetic.split(separator: "^").map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }.joined(separator: " ")
+            case .DA?:
+                let d = value.filter(\.isNumber)
+                guard d.count == 8 else { return value }
+                return "\(d.prefix(4))-\(d.dropFirst(4).prefix(2))-\(d.suffix(2))"
+            default:
+                return value
+            }
+        }
+    }
+
+    /// Decides per detected region what the `replace` style may draw. Only a classified
+    /// PHI match with a header-mapped value for EVERY matched attribute gets a value;
+    /// uncertain/pattern/keyword verdicts, `all` mode, and removed attributes fall back.
+    static func replacements(
+        detections: [TextRegionDetector.Detection], verdicts: [PHITextClassifier.Verdict],
+        matchedTags: [[Tag]], mapping: ReplacementMapping?, style: PixelRedactor.Style
+    ) -> [PixelRedactionPlan.Region: PixelRedactor.Replacement] {
+        guard case .replace = style else { return [:] }
+        var out: [PixelRedactionPlan.Region: PixelRedactor.Replacement] = [:]
+        for (i, d) in detections.enumerated() where i < verdicts.count && verdicts[i].isRedact {
+            guard out[d.region] == nil else { continue }
+            let tags = i < matchedTags.count ? matchedTags[i] : []
+            guard !tags.isEmpty else {
+                out[d.region] = .unavailable(reason: "uncertain region — nothing truthful to substitute")
+                continue
+            }
+            guard let mapping else {
+                out[d.region] = .unavailable(reason: "no header mapping supplied")
+                continue
+            }
+            var parts: [String] = []
+            for tag in tags {
+                guard let v = mapping.values[tag] else {
+                    out[d.region] = .unavailable(reason: "header policy removed \(tag) — blanked, not replaced")
+                    break
+                }
+                if !parts.contains(v) { parts.append(v) }
+            }
+            if out[d.region] == nil { out[d.region] = .value(parts.joined(separator: " ")) }
+        }
+        return out
+    }
 
     // MARK: - Concatenations
 
@@ -243,6 +336,7 @@ public struct PixelCleaningWorkflow: Sendable {
         // [4d] OCR detection — a region source, never a cleaning decision.
         var detections: [TextRegionDetector.Detection] = []
         var verdicts: [PHITextClassifier.Verdict] = []
+        var matchedTags: [[Tag]] = []
         var scanned: [Int] = []
         if let mode = options.detectText {
             guard TextRegionDetector.isAvailable else { throw TextDetectionError.unavailable }
@@ -253,14 +347,17 @@ public struct PixelCleaningWorkflow: Sendable {
             switch mode {
             case .all:
                 verdicts = detections.map { _ in .redact(reason: "all detected text is redacted") }
+                matchedTags = detections.map { _ in [] }
             case .classify:
                 let classifier = PHITextClassifier(terms: PHITextClassifier.harvestTerms(from: file.dataSet))
-                verdicts = classifier.classify(detections)
+                let classified = classifier.classifyDetailed(detections)
+                verdicts = classified.map(\.verdict)
+                matchedTags = classified.map(\.matchedTags)
             }
         }
 
         guard options.cleaningRequested else {
-            return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: nil,
+            return Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: nil,
                           outcome: nil, data: fileData, frameCount: frameCount, warnings: notes)
         }
 
@@ -279,17 +376,21 @@ public struct PixelCleaningWorkflow: Sendable {
             if case .unresolved(let reason) = plan.decision {
                 throw PixelRedactionError.unresolvedRegion(reason)
             }
-            return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: plan,
+            return Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: plan,
                           outcome: nil, data: fileData, frameCount: frameCount, warnings: notes)
         }
 
         // [6]–[10] Decode, mask every frame, strip side channels, attest.
+        let replacements = Self.replacements(
+            detections: detections, verdicts: verdicts, matchedTags: matchedTags,
+            mapping: options.replacementMapping, style: options.style)
         if let (redacted, outcome) = try PixelRedactor().redact(
-            fileData: fileData, plan: plan, fillValue: options.fillValue, style: options.style) {
-            return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: plan,
+            fileData: fileData, plan: plan, fillValue: options.fillValue, style: options.style,
+            replacements: replacements) {
+            return Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: plan,
                           outcome: outcome, data: redacted, frameCount: frameCount, warnings: notes)
         }
-        return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: plan,
+        return Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: plan,
                       outcome: nil, data: fileData, frameCount: frameCount, warnings: notes)
     }
 }

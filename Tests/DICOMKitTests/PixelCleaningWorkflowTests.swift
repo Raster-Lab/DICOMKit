@@ -327,6 +327,87 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertFalse(texts.contains { $0.contains("SMITH") || $0.contains("0012345") }, "\(texts)")
     }
 
+    // MARK: Phase 4 — replace style
+
+    /// Pixels and header tell ONE story: the burned name/ID/date are replaced with the
+    /// header engine's own values for the same file, dates only under --shift-dates.
+    func testReplaceStyleUsesTheHeaderEnginesOwnValues() throws {
+        let data = try twoLineImage(top: "SMITH JOHN", bottom: "R 10 cm")
+        let file = try DICOMFile.read(from: data)
+        // The header engine, previewed the way the CLI does it (legacy basic profile,
+        // shifted dates): name → ANONYMOUS, ID → SHA-256 pseudonym, DOB → +30 days.
+        let header = try Anonymizer(profile: .basic, shiftDates: 30).anonymize(file: file, filePath: "preview").0.dataSet
+        let mapping = PixelCleaningWorkflow.ReplacementMapping.derive(original: file.dataSet, deidentified: header)
+        XCTAssertEqual(mapping.values[.patientName], "ANONYMOUS")
+        XCTAssertEqual(mapping.values[.patientID]?.count, 32, "\(String(describing: mapping.values[.patientID]))")
+        XCTAssertEqual(mapping.values[.patientBirthDate], "1962-01-02", "19611203 + 30 days, rendered ISO")
+
+        // PS3.15 Basic zeroes name and ID: there the mapping honestly has nothing.
+        let ps315 = Anonymizer(profile: .basic).deidentify(file: file, options: .basic).0.dataSet
+        let strict = PixelCleaningWorkflow.ReplacementMapping.derive(original: file.dataSet, deidentified: ps315)
+        XCTAssertNil(strict.values[.patientName])
+        XCTAssertNil(strict.values[.patientID])
+
+        let report = try PixelCleaningWorkflow().run(
+            fileData: data,
+            options: Options(cleanPixelData: true, detectText: .classify,
+                             style: .replace(fallback: "REDACTED"), replacementMapping: mapping),
+            dryRun: false)
+        let outcome = try XCTUnwrap(report.outcome)
+        XCTAssertEqual(outcome.regions.count, 1, "the clinical label is kept, not replaced")
+        let drawn = try XCTUnwrap(outcome.replacements.values.first)
+        XCTAssertEqual(drawn, "ANONYMOUS", "the header's own value")
+        XCTAssertTrue(outcome.replacementFallbackNotes.isEmpty)
+
+        // Detection oracle: the output reads as the replacement and never the original.
+        let after = try TextRegionDetector().detect(in: DICOMFile.read(from: report.data)).map { $0.text.uppercased() }
+        XCTAssertTrue(after.contains { $0.contains("ANONYMOUS") }, "\(after)")
+        XCTAssertFalse(after.contains { $0.contains("SMITH") || $0.contains("0012345") }, "\(after)")
+        XCTAssertTrue(after.contains { $0.contains("CM") }, "\(after)")
+    }
+
+    /// If the header policy removes dates (no --shift-dates), a burned date is blanked/
+    /// labelled — pixels never retain what the header dropped. Uncertain text is never
+    /// replaced.
+    func testReplaceFallsBackWhenTheHeaderRemovesTheAttributeOrTheTextIsUncertain() throws {
+        let data = try twoLineImage(top: "DOB 12/03/1961", bottom: "Zebra 77")
+        let file = try DICOMFile.read(from: data)
+        // No --shift-dates: the legacy engine REMOVES dates.
+        let header = try Anonymizer(profile: .basic).anonymize(file: file, filePath: "preview").0.dataSet
+        let mapping = PixelCleaningWorkflow.ReplacementMapping.derive(original: file.dataSet, deidentified: header)
+        XCTAssertNil(mapping.values[.patientBirthDate], "a zeroed date has no truthful replacement")
+        XCTAssertEqual(mapping.values[.patientName], "ANONYMOUS")
+
+        let report = try PixelCleaningWorkflow().run(
+            fileData: data,
+            options: Options(cleanPixelData: true, detectText: .classify,
+                             style: .replace(fallback: "REDACTED"), replacementMapping: mapping),
+            dryRun: false)
+        let outcome = try XCTUnwrap(report.outcome)
+        XCTAssertEqual(outcome.regions.count, 2)
+        XCTAssertTrue(outcome.replacements.isEmpty, "nothing truthful to draw: \(outcome.replacements)")
+        XCTAssertEqual(outcome.replacementFallbackNotes.count, 2)
+        let notes = outcome.replacementFallbackNotes.values.joined(separator: " | ")
+        XCTAssertTrue(notes.contains("header policy removed"), notes)
+        XCTAssertTrue(notes.contains("uncertain"), notes)
+        let after = try TextRegionDetector().detect(in: DICOMFile.read(from: report.data)).map { $0.text.uppercased() }
+        XCTAssertFalse(after.contains { $0.contains("1961") || $0.contains("ZEBRA") }, "\(after)")
+        XCTAssertTrue(after.allSatisfy { $0.contains("REDACTED") }, "\(after)")
+        for l in report.auditLines { XCTAssertFalse(l.contains("1961"), l) }
+    }
+
+    func testReplaceInAllModeNeverInventsValues() throws {
+        let data = try twoLineImage(top: "SMITH JOHN", bottom: "R")
+        let report = try PixelCleaningWorkflow().run(
+            fileData: data,
+            options: Options(cleanPixelData: true, detectText: .all, style: .replace(fallback: "REDACTED"),
+                             replacementMapping: .init(values: [.patientName: "ANONYMOUS"])),
+            dryRun: false)
+        let outcome = try XCTUnwrap(report.outcome)
+        XCTAssertTrue(outcome.replacements.isEmpty, "all mode has no classified matches")
+        XCTAssertEqual(outcome.replacementFallbackNotes.count, outcome.regions.count)
+    }
+
     // MARK: Phase 4 — concatenations
 
     private func concatenationPart(text: String, uid: String, number: Int, total: Int) throws -> Data {
