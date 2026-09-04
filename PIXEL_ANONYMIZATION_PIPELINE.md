@@ -79,10 +79,10 @@ dicom-anon in.dcm --dry-run --clean-pixel-data --detect-text
 | `--clean-pixel-data` | Consent gate for irreversible pixel modification; enables deterministic strategies | EXISTS |
 | `--redact-region x,y,w,h` | Operator rectangles; deterministic, reproducible; implies cleaning | EXISTS |
 | `--redact-fill N` | Fill value for blanked samples (default 0 = black) | EXISTS |
-| `--detect-text[=classify\|all]` | OCR detection source; default `classify` (see §2.1 for the interim default) | NEW |
-| `--ocr-all-frames` | OCR every frame instead of sampled frames | NEW |
+| `--detect-text[=classify\|all]` | OCR detection source; default `classify` (see §2.1 for the interim default). Flag + `--detect-text-mode`; the `=mode` shorthand is rewritten before parsing | EXISTS (Phase 1.3) |
+| `--ocr-all-frames` | OCR every frame instead of sampled frames | EXISTS (Phase 1.3) |
 | `--allow-burned-in-phi` | Write the metadata-scrubbed file anyway; marked Patient Identity Removed = NO | EXISTS |
-| `--dry-run` | Print planned regions/verdicts, write nothing | EXISTS flag, NEW table |
+| `--dry-run` | Print planned regions/verdicts, write nothing | EXISTS (table: Phase 1.4) |
 | `--recompress <codec\|source>` | Re-encode clean pixels post-redaction; `source` mirrors the input transfer syntax (§5.3) | NEW (Phase 5) |
 | `--redact-style <blank\|label\|replace>` | What the cleaned region shows: fill value, a fixed stamp, or semantic replacement values (§6.6) | NEW (`label` Phase 1, `replace` Phase 4) |
 | `--redact-label <text>` | Custom stamp text for `label` style (default `REDACTED`) | NEW |
@@ -134,7 +134,7 @@ DICOM file bytes
    │                          single / classic MF / enhanced MF
    │                          native / encapsulated
    ▼
-[3] Harvest PHI terms ─────── BEFORE header scrubbing                   [NEW]
+[3] Harvest PHI terms ─────── BEFORE header scrubbing                   [NEW — Phase 3]
    │                          PatientName/ID, accession, dates,
    │                          institution, physician/operator names
    ▼
@@ -142,12 +142,12 @@ DICOM file bytes
    │    a. explicit --redact-region rectangles                          [EXISTS]
    │    b. US keep-region inversion ((0018,6011) complement)            [EXISTS]
    │    c. device templates (curated modality/vendor/geometry)          [EXISTS]
-   │    d. OCR detection + classification                               [NEW]
+   │    d. OCR detection (+ classification: Phase 3)                    [EXISTS / NEW]
    │
    │    Declared or detected PHI left unredacted → REFUSE (§2.1, §10).
    │    Nothing declared, nothing detected → nothingToDo (pass through).
    ▼
-[5] Dry-run gate ───────────── print region table and STOP if requested [NEW table]
+[5] Dry-run gate ───────────── print region table and STOP if requested [EXISTS]
    │
    ▼
 [6] Decode Pixel Data ──────── encapsulated → native samples,           [EXISTS]
@@ -178,7 +178,7 @@ Existing implementation anchors:
 - Masking engine: `Sources/DICOMKit/PixelEditing/PixelEditor.swift`
 - Device table: `Sources/DICOMKit/Anonymization/DeviceRedactionTemplates.swift`
 - Declared-PHI detection: `ConfidentialityEngine.residualPixelPHIWarnings`
-- CLI orchestration: `Sources/dicom-anon/main.swift` (pixel work first, then header)
+- CLI orchestration: `Sources/dicom-anon/main.swift` (pixel work first, then header) — thin adapter over the shared `PixelCleaningWorkflow` (`Sources/DICOMKit/Anonymization/PixelCleaningWorkflow.swift`), which owns the §2.1 option semantics, the refusal signal (`Report.residualWarnings`) and the dry-run gate, so the contract is tested at the library (`PixelCleaningWorkflowTests`)
 
 New components:
 
@@ -616,9 +616,9 @@ release binary after DICOMKit changes before manual CLI verification.
 **Phase 1 — OCR safety core**
 1. ✅ `TextRegionDetector` + coordinate-transform unit tests (transform first). (2026-09-04)
 2. ✅ `Basis.textDetection` + plan union. (2026-09-04)
-3. `--detect-text` detection-only behavior + refusal integration (§2.1).
-4. `--dry-run` region table.
-5. `--clean-pixel-data --detect-text` end-to-end (interim `all` semantics).
+3. ✅ `--detect-text` detection-only behavior + refusal integration (§2.1). (2026-09-04; `--allow-burned-in-phi` output is stamped Patient Identity Removed = NO / Burned In Annotation = YES)
+4. ✅ `--dry-run` region table. (2026-09-04)
+5. ✅ `--clean-pixel-data --detect-text` end-to-end (interim `all` semantics). (2026-09-04; verified on the release-style banner fixture: OCR of the output finds nothing on any of 5 frames)
 6. `--redact-style blank|label` + `--redact-label` (blank-then-draw mechanic).
 
 **Phase 2 — Frame coverage**

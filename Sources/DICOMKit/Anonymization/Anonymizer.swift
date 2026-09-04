@@ -522,6 +522,79 @@ public enum AnonConsole {
         return out
     }
 
+    /// One-line OCR summary. Reports what was done — never that the image is clean.
+    public static func textDetectionLine(report: PixelCleaningWorkflow.Report) -> String {
+        let n = report.detections.count
+        let selected: Int
+        if let plan = report.plan, case .redact(let regions, _) = plan.decision {
+            selected = report.detections.filter { regions.contains($0.region) }.count
+        } else {
+            selected = 0
+        }
+        let frames = report.scannedFrames.count
+        return "OCR: \(n) candidate region\(n == 1 ? "" : "s"); \(selected) selected for redaction "
+            + "across \(frames) sampled frame\(frames == 1 ? "" : "s").\n"
+    }
+
+    /// The `--dry-run` region table (§7). Recognized text is shown on the console
+    /// (`showText`) but must be passed as `false` for anything persisted.
+    public static func pixelPlanTable(report: PixelCleaningWorkflow.Report, showText: Bool) -> String {
+        var out = "Pixel redaction plan:\n"
+        let byFrame = Dictionary(grouping: report.detections, by: \.frameIndex)
+        let redacted: Set<PixelRedactionPlan.Region>
+        if let plan = report.plan, case .redact(let regions, _) = plan.decision {
+            redacted = Set(regions)
+        } else {
+            redacted = []
+        }
+        for frame in byFrame.keys.sorted() {
+            out += "Frame \(frame):\n"
+            for d in byFrame[frame]! {
+                let verdict = redacted.contains(d.region) ? "redact" : "detected"
+                let reason = redacted.contains(d.region)
+                    ? "text detected (all detected text is redacted)"
+                    : "cleaning not requested"
+                let text = showText ? d.text : d.redactedForAudit
+                out += "  OCR  rect=\(d.region.x),\(d.region.y),\(d.region.width),\(d.region.height)"
+                    + "  verdict=\(verdict)  reason=\(reason)  conf=\(String(format: "%.2f", d.confidence))"
+                    + "  text=\"\(text)\"\n"
+            }
+        }
+        out += "Final:\n"
+        guard let plan = report.plan else {
+            out += "  detection only — no cleaning requested\n"
+            out += "  Pixel modification: NO\n"
+            return out
+        }
+        switch plan.decision {
+        case .redact(let regions, _):
+            let parts = plan.sources.map { source -> String in
+                let n = source.regions.count
+                let label: String
+                switch source.basis {
+                case .explicit: label = "explicit"
+                case .keepRegionInversion: label = "keep-region"
+                case .deviceTemplate: label = "template"
+                case .textDetection: label = "OCR"
+                }
+                return "\(n) \(label) region\(n == 1 ? "" : "s")"
+            }
+            out += "  \(parts.joined(separator: " + ")) = \(regions.count) unioned region\(regions.count == 1 ? "" : "s")\n"
+            for r in regions {
+                out += "    (\(r.x),\(r.y)) \(r.width)x\(r.height)\n"
+            }
+            out += "  Frames affected: all (\(report.frameCount))\n"
+            out += "  Pixel modification: YES\n"
+        case .nothingToDo:
+            out += "  nothing declared, nothing detected — no pixel work\n"
+            out += "  Pixel modification: NO\n"
+        case .unresolved(let reason):
+            out += "  UNRESOLVED: \(reason)\n"
+            out += "  Pixel modification: REFUSED\n"
+        }
+        return out
+    }
+
     /// The end-of-run summary block (leading blank line, every line newline-terminated).
     /// The "Modified tags" section appears whenever verbose ran over at least one file,
     /// even with zero modified tags — matching the CLI.

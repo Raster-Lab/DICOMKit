@@ -19,6 +19,9 @@ struct DICOMAnon: ParsableCommand {
               dicom-anon file.dcm --output anon.dcm --remove 0010,0010 --replace 0010,0030=19700101
               dicom-anon file.dcm --profile basic --dry-run
               dicom-anon file.dcm --output anon.dcm --profile basic --audit-log anonymization.log
+              dicom-anon file.dcm --detect-text                       (OCR inspection only)
+              dicom-anon file.dcm --output anon.dcm --profile ps315 --clean-pixel-data --detect-text
+              dicom-anon file.dcm --dry-run --clean-pixel-data --detect-text --redact-region 0,0,1024,90
             """,
         version: "1.0.0"
     )
@@ -60,13 +63,33 @@ struct DICOMAnon: ParsableCommand {
     var cleanPixelData: Bool = false
 
     @Option(name: .long, help: """
-        Region to blank as x,y,width,height (repeatable). Implies --clean-pixel-data \
-        and overrides automatic region selection.
+        Region to blank as x,y,width,height (repeatable). Implies --clean-pixel-data; \
+        unioned with automatic region selection and OCR (no source shrinks another).
         """)
     var redactRegion: [String] = []
 
     @Option(name: .long, help: "Fill value for blanked pixels (default: 0 = black)")
     var redactFill: Int?
+
+    @Flag(name: .long, help: """
+        Detect burned-in text with on-device OCR (Apple Vision) as a region source. \
+        Does NOT imply cleaning: alone (no --output) it inspects and reports; with \
+        --output but without --clean-pixel-data the run is REFUSED because the tool \
+        now knows the pixels carry text. With --clean-pixel-data every detected region \
+        is blanked on every frame. Accepts --detect-text=classify|all as a shorthand \
+        for --detect-text-mode.
+        """)
+    var detectText: Bool = false
+
+    @Option(name: .long, help: """
+        OCR mode: classify (default) redacts PHI and uncertain text and keeps only \
+        allowlisted clinical text; all blanks every detected region. INTERIM: until \
+        the PHI classifier ships, classify behaves as all.
+        """)
+    var detectTextMode: String = "classify"
+
+    @Flag(name: .long, help: "OCR every frame instead of the first/middle/last sample")
+    var ocrAllFrames: Bool = false
 
     @Option(name: .long, help: "Number of days to shift dates (preserves intervals)")
     var shiftDates: Int?
@@ -151,7 +174,8 @@ struct DICOMAnon: ParsableCommand {
             // Writing back over the input is never implied. Without --output there is
             // nowhere to write, so anonymizing would silently discard its result and
             // still report success — require --output unless this is a --dry-run preview.
-            guard dryRun || output != nil else {
+            // --detect-text without --output is pure inspection: report and exit.
+            guard dryRun || output != nil || detectText else {
                 throw ValidationError("Anonymization requires --output (or use --dry-run to preview without writing)")
             }
             let result = try anonymizeFile(
@@ -180,6 +204,26 @@ struct DICOMAnon: ParsableCommand {
         }
     }
     
+    /// Translates the pixel-related flags into the shared workflow options.
+    private func pixelCleaningOptions() throws -> PixelCleaningWorkflow.Options {
+        let editor = PixelEditor(verbose: false)
+        let explicit = try redactRegion.map { spec -> PixelRedactionPlan.Region in
+            let r = try editor.parseRegion(spec)
+            return PixelRedactionPlan.Region(x: r.x, y: r.y, width: r.width, height: r.height)
+        }
+        var mode: PixelCleaningWorkflow.TextDetectionMode?
+        if detectText {
+            guard let parsed = PixelCleaningWorkflow.TextDetectionMode.parse(detectTextMode) else {
+                throw ValidationError(
+                    "Invalid --detect-text-mode '\(detectTextMode)'. Use 'classify' (default) or 'all'.")
+            }
+            mode = parsed
+        }
+        return PixelCleaningWorkflow.Options(
+            cleanPixelData: cleanPixelData, explicitRegions: explicit,
+            detectText: mode, ocrAllFrames: ocrAllFrames, fillValue: redactFill)
+    }
+
     private func parseProfile() throws -> AnonymizationProfile {
         switch profile.lowercased() {
         case "basic":
@@ -303,30 +347,49 @@ struct DICOMAnon: ParsableCommand {
         var fileData = try Data(contentsOf: inputURL)
         var dicomFile = try DICOMFile.read(from: fileData, force: force)
 
-        // --- Pixel cleaning runs FIRST, before any header de-identification. ---
+        // --- Pixel work runs FIRST, before any header de-identification. ---
         // The region decision reads Modality / Manufacturer / model, which
         // de-identification removes; planning afterwards would see a scrubbed data set
         // and match nothing. Both CTP and Presidio document this same ordering
         // dependency, so the order here is a correctness requirement, not a preference.
-        if cleanPixelData || !redactRegion.isEmpty {
-            let editor = PixelEditor(verbose: false)
-            let explicit = try redactRegion.map { spec -> PixelRedactionPlan.Region in
-                let r = try editor.parseRegion(spec)
-                return PixelRedactionPlan.Region(x: r.x, y: r.y, width: r.width, height: r.height)
+        var pixelWarnings: [String] = []
+        let pixelOptions = try pixelCleaningOptions()
+        if pixelOptions.isActive {
+            let report = try PixelCleaningWorkflow().run(
+                fileData: fileData, options: pixelOptions, dryRun: dryRun)
+            if pixelOptions.detectText != nil {
+                print(AnonConsole.textDetectionLine(report: report), terminator: "")
             }
-            let plan = PixelRedactionPlan.plan(for: dicomFile.dataSet, explicitRegions: explicit)
-            if let (redacted, outcome) = try PixelRedactor().redact(
-                fileData: fileData, plan: plan, fillValue: redactFill) {
-                fileData = redacted
-                dicomFile = try DICOMFile.read(from: redacted, force: force)
+            if dryRun {
+                print(AnonConsole.pixelPlanTable(report: report, showText: true), terminator: "")
+            }
+            if let outcome = report.outcome {
+                fileData = report.data
+                dicomFile = try DICOMFile.read(from: report.data, force: force)
                 if verbose {
                     print(AnonConsole.pixelRedactionLines(outcome: outcome), terminator: "")
                 }
             }
+            // Detection feeds the refusal contract: text the tool KNOWS is there and
+            // will not blank must block an output file unless the operator accepts it.
+            pixelWarnings = report.residualWarnings
+            if !pixelWarnings.isEmpty && outputURL != nil && !dryRun && !allowBurnedInPHI {
+                throw ValidationError(
+                    """
+                    Refusing to anonymize \(inputURL.lastPathComponent): OCR found burned-in \
+                    text that this run would leave in the pixels.
+
+                    \(pixelWarnings.map { "  ⚠️  \($0)" }.joined(separator: "\n"))
+
+                    Pass --clean-pixel-data to blank the detected regions, or \
+                    --allow-burned-in-phi to write the metadata-scrubbed file anyway \
+                    (it will be marked Patient Identity Removed = NO).
+                    """)
+            }
         }
 
         // Anonymize — PS3.15 Annex E engine or legacy profile.
-        let anonymizedFile: DICOMFile
+        var anonymizedFile: DICOMFile
         let result: AnonymizationResult
         if profile.lowercased() == "ps315" {
             let options = ConfidentialityProfile.Options(
@@ -341,7 +404,7 @@ struct DICOMAnon: ParsableCommand {
             // Refuse to emit a file whose pixels may still identify the patient unless
             // the operator explicitly accepts that. Writing it silently is the harmful
             // case: the metadata looks clean, so the file reads as safe to release.
-            if !res.warnings.isEmpty && !allowBurnedInPHI {
+            if !res.warnings.isEmpty && !allowBurnedInPHI && !dryRun {
                 throw ValidationError(
                     """
                     Refusing to anonymize \(inputURL.lastPathComponent): the pixel data may \
@@ -352,20 +415,32 @@ struct DICOMAnon: ParsableCommand {
                     Without --clean-pixel-data this tool de-identifies the DATASET ONLY, \
                     so burned-in text survives unchanged.
 
-                    Pass --clean-pixel-data to blank it (add --redact-region x,y,w,h if \
-                    the automatic region selection cannot resolve this device), or \
-                    --allow-burned-in-phi to write the metadata-scrubbed file anyway \
-                    (it will be marked Patient Identity Removed = NO).
+                    Pass --clean-pixel-data to blank it (add --redact-region x,y,w,h or \
+                    --detect-text if the automatic region selection cannot resolve this \
+                    device), or --allow-burned-in-phi to write the metadata-scrubbed file \
+                    anyway (it will be marked Patient Identity Removed = NO).
                     """)
             }
             anonymizedFile = file
             result = AnonymizationResult(
                 filePath: inputURL.path, success: res.success,
-                changedTags: res.changedTags, warnings: res.warnings)
+                changedTags: res.changedTags, warnings: res.warnings + pixelWarnings)
         } else {
-            (anonymizedFile, result) = try anonymizer.anonymize(file: dicomFile, filePath: inputURL.path)
+            let (file, res) = try anonymizer.anonymize(file: dicomFile, filePath: inputURL.path)
+            anonymizedFile = file
+            result = AnonymizationResult(
+                filePath: res.filePath, success: res.success,
+                changedTags: res.changedTags, warnings: res.warnings + pixelWarnings)
         }
         
+        // The operator accepted detected-but-unredacted text: the output must say so.
+        // A YES here would be the false attestation this whole pipeline exists to avoid.
+        if !pixelWarnings.isEmpty {
+            var ds = anonymizedFile.dataSet
+            PixelCleaningWorkflow.markDetectedTextRetained(in: &ds)
+            anonymizedFile = DICOMFile(fileMetaInformation: anonymizedFile.fileMetaInformation, dataSet: ds)
+        }
+
         // Write output if not dry-run
         if !dryRun, let outputURL = outputURL {
             // Backup if requested
@@ -438,4 +513,6 @@ extension Substring {
     }
 }
 
-DICOMAnon.main()
+// `--detect-text=classify|all` is the documented shorthand; ArgumentParser flags take
+// no value, so rewrite it into the flag + mode pair before parsing.
+DICOMAnon.main(AnonArguments.expandDetectText(Array(CommandLine.arguments.dropFirst())))
