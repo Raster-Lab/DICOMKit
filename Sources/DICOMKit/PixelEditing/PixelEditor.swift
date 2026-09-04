@@ -5,6 +5,11 @@ import DICOMDictionary
 /// Pixel editing operations.
 public enum PixelOperation: Sendable {
     case mask(x: Int, y: Int, width: Int, height: Int, fillValue: Int)
+    /// Writes `foregroundValue` into every sample of every frame where the
+    /// row-major `glyphMask` (`width × height` bytes, >127 = ink) is set. The
+    /// region is NOT cleared first — callers that need blank-then-draw issue a
+    /// `.mask` for the same rectangle before this operation.
+    case stamp(x: Int, y: Int, width: Int, height: Int, glyphMask: Data, foregroundValue: Int)
     case crop(x: Int, y: Int, width: Int, height: Int)
     case windowLevel(center: Double, width: Double)
     case invert
@@ -153,6 +158,15 @@ public struct PixelEditor {
                     log("Applied mask: (\(x),\(y)) \(width)x\(height), fill=\(fillValue)")
                 }
 
+            case .stamp(let x, let y, let width, let height, let glyphMask, let foreground):
+                let currentDescriptor = descriptorWith(descriptor, rows: currentRows, columns: currentColumns)
+                try applyStamp(pixelData: &pixelData, descriptor: currentDescriptor,
+                               region: (x: x, y: y, width: width, height: height),
+                               glyphMask: glyphMask, foregroundValue: foreground)
+                if verbose {
+                    log("Applied stamp: (\(x),\(y)) \(width)x\(height), foreground=\(foreground)")
+                }
+
             case .crop(let x, let y, let width, let height):
                 let currentDescriptor = descriptorWith(descriptor, rows: currentRows, columns: currentColumns)
                 let (croppedData, newWidth, newHeight) = try applyCrop(
@@ -249,6 +263,35 @@ public struct PixelEditor {
                     for s in 0..<descriptor.samplesPerPixel {
                         let sampleIndex = frameBase + pixelOffset * descriptor.samplesPerPixel + s
                         setPixelValue(in: &pixelData, at: sampleIndex, value: fillValue, descriptor: descriptor)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Draws a glyph mask into a region on every frame (all samples per pixel).
+    func applyStamp(pixelData: inout Data, descriptor: PixelEditDescriptor,
+                    region: (x: Int, y: Int, width: Int, height: Int),
+                    glyphMask: Data, foregroundValue: Int) throws {
+        guard region.x < descriptor.columns, region.y < descriptor.rows,
+              region.x >= 0, region.y >= 0 else {
+            throw PixelEditError.regionOutOfBounds
+        }
+        guard glyphMask.count == region.width * region.height else {
+            throw PixelEditError.invalidRegion("stamp mask size mismatch")
+        }
+        let endX = min(region.x + region.width, descriptor.columns)
+        let endY = min(region.y + region.height, descriptor.rows)
+        for frame in 0..<descriptor.numberOfFrames {
+            let frameBase = frame * descriptor.frameSampleCount
+            for y in region.y..<endY {
+                for x in region.x..<endX {
+                    let m = glyphMask[glyphMask.startIndex + (y - region.y) * region.width + (x - region.x)]
+                    guard m > 127 else { continue }
+                    let pixelOffset = y * descriptor.columns + x
+                    for s in 0..<descriptor.samplesPerPixel {
+                        let sampleIndex = frameBase + pixelOffset * descriptor.samplesPerPixel + s
+                        setPixelValue(in: &pixelData, at: sampleIndex, value: foregroundValue, descriptor: descriptor)
                     }
                 }
             }

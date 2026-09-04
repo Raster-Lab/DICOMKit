@@ -71,6 +71,16 @@ struct DICOMAnon: ParsableCommand {
     @Option(name: .long, help: "Fill value for blanked pixels (default: 0 = black)")
     var redactFill: Int?
 
+    @Option(name: .long, help: """
+        What a cleaned region shows: blank (fill value only, default) or label (a fixed \
+        stamp drawn INTO the already-blanked box, so reviewers see it was cleaned \
+        deliberately). The region is always blanked first; the stamp is cosmetic.
+        """)
+    var redactStyle: String = "blank"
+
+    @Option(name: .long, help: "Stamp text for --redact-style label (default: REDACTED)")
+    var redactLabel: String?
+
     @Flag(name: .long, help: """
         Detect burned-in text with on-device OCR (Apple Vision) as a region source. \
         Does NOT imply cleaning: alone (no --output) it inspects and reports; with \
@@ -219,9 +229,12 @@ struct DICOMAnon: ParsableCommand {
             }
             mode = parsed
         }
+        guard let style = PixelRedactor.Style.parse(redactStyle, label: redactLabel) else {
+            throw ValidationError("Invalid --redact-style '\(redactStyle)'. Use 'blank' or 'label'.")
+        }
         return PixelCleaningWorkflow.Options(
             cleanPixelData: cleanPixelData, explicitRegions: explicit,
-            detectText: mode, ocrAllFrames: ocrAllFrames, fillValue: redactFill)
+            detectText: mode, ocrAllFrames: ocrAllFrames, fillValue: redactFill, style: style)
     }
 
     private func parseProfile() throws -> AnonymizationProfile {

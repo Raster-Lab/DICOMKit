@@ -507,8 +507,17 @@ public enum AnonConsole {
     /// the region was the right one, since no test can verify that for them.
     public static func pixelRedactionLines(outcome: PixelRedactor.Outcome) -> String {
         var out = "Cleaned pixel data (\(outcome.basis.rawValue)): \(outcome.note)\n"
+        let fallback = Set(outcome.labelFallbackRegions)
         for r in outcome.regions {
-            out += "  blanked (\(r.x),\(r.y)) \(r.width)x\(r.height)"
+            let verb: String
+            switch outcome.style {
+            case .blank: verb = "blanked"
+            case .label(let text):
+                verb = fallback.contains(r)
+                    ? "blanked (too small for label \"\(text)\" — blank only)"
+                    : "blanked + labelled \"\(text)\""
+            }
+            out += "  \(verb) (\(r.x),\(r.y)) \(r.width)x\(r.height)"
             out += outcome.frameCount > 1 ? " on all \(outcome.frameCount) frames\n" : "\n"
         }
         if outcome.removedIconImage {

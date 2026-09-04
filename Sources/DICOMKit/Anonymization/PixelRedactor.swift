@@ -22,6 +22,32 @@ import DICOMCore
 /// (0012,0062) guard exists to prevent.
 public struct PixelRedactor {
 
+    /// What a cleaned region shows afterwards. Every style shares one safety-critical
+    /// mechanic — **blank-then-draw**: the whole region is filled first (that is what
+    /// destroys the original glyphs); a stamp is drawn only into the already-blanked box.
+    public enum Style: Sendable, Equatable {
+        /// Fill value only.
+        case blank
+        /// A fixed stamp (default `REDACTED`).
+        case label(String)
+
+        /// Parses `--redact-style` (`blank` | `label`); `replace` is a later phase.
+        public static func parse(_ raw: String, label: String?) -> Style? {
+            switch raw.trimmingCharacters(in: .whitespaces).lowercased() {
+            case "blank": return .blank
+            case "label": return .label(label ?? RedactionLabelRenderer.defaultLabel)
+            default: return nil
+            }
+        }
+
+        public var name: String {
+            switch self {
+            case .blank: return "blank"
+            case .label: return "label"
+            }
+        }
+    }
+
     /// What a redaction run did, for the console and the audit trail.
     public struct Outcome: Sendable, Equatable {
         /// Regions actually blanked.
@@ -36,6 +62,26 @@ public struct PixelRedactor {
         public let removedIconImage: Bool
         /// True when overlay plane elements were removed.
         public let removedOverlays: Bool
+        /// Style applied to the regions.
+        public let style: Style
+        /// Regions too small to carry a legible stamp — blanked only. Reported, never
+        /// silent.
+        public let labelFallbackRegions: [PixelRedactionPlan.Region]
+
+        public init(
+            regions: [PixelRedactionPlan.Region], basis: PixelRedactionPlan.Basis, note: String,
+            frameCount: Int, removedIconImage: Bool, removedOverlays: Bool,
+            style: Style = .blank, labelFallbackRegions: [PixelRedactionPlan.Region] = []
+        ) {
+            self.regions = regions
+            self.basis = basis
+            self.note = note
+            self.frameCount = frameCount
+            self.removedIconImage = removedIconImage
+            self.removedOverlays = removedOverlays
+            self.style = style
+            self.labelFallbackRegions = labelFallbackRegions
+        }
     }
 
     public init() {}
@@ -53,7 +99,8 @@ public struct PixelRedactor {
     public func redact(
         fileData: Data,
         plan: PixelRedactionPlan,
-        fillValue: Int? = nil
+        fillValue: Int? = nil,
+        style: Style = .blank
     ) throws -> (data: Data, outcome: Outcome)? {
         switch plan.decision {
         case .nothingToDo:
@@ -64,7 +111,7 @@ public struct PixelRedactor {
 
         case .redact(let regions, let basis):
             return try apply(regions: regions, basis: basis, plan: plan,
-                             to: fileData, fillValue: fillValue)
+                             to: fileData, fillValue: fillValue, style: style)
         }
     }
 
@@ -75,7 +122,8 @@ public struct PixelRedactor {
         basis: PixelRedactionPlan.Basis,
         plan: PixelRedactionPlan,
         to fileData: Data,
-        fillValue: Int?
+        fillValue: Int?,
+        style: Style
     ) throws -> (data: Data, outcome: Outcome) {
         let sourceFile = try DICOMFile.read(from: fileData)
         let note = provenanceNote(plan: plan, basis: basis, dataSet: sourceFile.dataSet)
@@ -85,9 +133,27 @@ public struct PixelRedactor {
         // masking implementation. It decodes encapsulated sources to native samples
         // and masks the region on *every* frame.
         let editor = PixelEditor(verbose: false)
-        let operations = regions.map {
-            PixelOperation.mask(x: $0.x, y: $0.y, width: $0.width, height: $0.height,
-                                fillValue: fillValue ?? 0)
+        let fill = fillValue ?? 0
+        // Blank FIRST, always. Every region is filled before any stamp is drawn, so the
+        // original glyphs are gone regardless of style — the stamp is cosmetic on top of
+        // a completed redaction, and 113101 stays earned in every style.
+        var operations = regions.map {
+            PixelOperation.mask(x: $0.x, y: $0.y, width: $0.width, height: $0.height, fillValue: fill)
+        }
+        var fallback: [PixelRedactionPlan.Region] = []
+        if case .label(let text) = style {
+            guard RedactionLabelRenderer.isAvailable else {
+                throw PixelRedactionError.labelUnavailable
+            }
+            let foreground = Self.contrastingStoredValue(to: fill, in: sourceFile.dataSet)
+            for r in regions {
+                if let mask = RedactionLabelRenderer.glyphMask(text: text, width: r.width, height: r.height) {
+                    operations.append(.stamp(x: r.x, y: r.y, width: r.width, height: r.height,
+                                             glyphMask: mask, foregroundValue: foreground))
+                } else {
+                    fallback.append(r)   // too small to render legibly — blank only, audited
+                }
+            }
         }
         let (maskedData, _) = try editor.processData(fileData, operations: operations)
 
@@ -111,8 +177,20 @@ public struct PixelRedactor {
         file = DICOMFile(fileMetaInformation: file.fileMetaInformation, dataSet: dataSet)
         let outcome = Outcome(
             regions: regions, basis: basis, note: note, frameCount: frameCount,
-            removedIconImage: removedIcon, removedOverlays: removedOverlays)
+            removedIconImage: removedIcon, removedOverlays: removedOverlays,
+            style: style, labelFallbackRegions: fallback)
         return (try file.write(), outcome)
+    }
+
+    /// The stored value farthest from `fill` within the image's representable range, so
+    /// a stamp contrasts with its blanked background at the image's real bit depth
+    /// (MONOCHROME1/2 alike — contrast, not "brightness", is what a reviewer needs).
+    static func contrastingStoredValue(to fill: Int, in dataSet: DataSet) -> Int {
+        let bitsStored = Int(dataSet.uint16(for: .bitsStored) ?? dataSet.uint16(for: .bitsAllocated) ?? 8)
+        let signed = (dataSet.uint16(for: .pixelRepresentation) ?? 0) == 1
+        let lo = signed ? -(1 << (bitsStored - 1)) : 0
+        let hi = signed ? (1 << (bitsStored - 1)) - 1 : (1 << bitsStored) - 1
+        return (fill - lo) >= (hi - fill) ? lo : hi
     }
 
     /// One note per contributing source when the plan unioned several; the single
@@ -195,9 +273,14 @@ public struct PixelRedactor {
 public enum PixelRedactionError: Error, LocalizedError, Equatable {
     /// The image declares burned-in identifiers but no strategy located them.
     case unresolvedRegion(String)
+    /// The `label` style needs glyph rasterization (CoreGraphics/CoreText), absent here.
+    case labelUnavailable
 
     public var errorDescription: String? {
         switch self {
+        case .labelUnavailable:
+            return "The label redaction style needs CoreGraphics/CoreText, which is not available "
+                + "on this platform. Use --redact-style blank."
         case .unresolvedRegion(let reason):
             return """
                 Cannot determine which pixels to blank. \(reason)

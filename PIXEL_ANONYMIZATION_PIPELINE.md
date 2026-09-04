@@ -84,8 +84,8 @@ dicom-anon in.dcm --dry-run --clean-pixel-data --detect-text
 | `--allow-burned-in-phi` | Write the metadata-scrubbed file anyway; marked Patient Identity Removed = NO | EXISTS |
 | `--dry-run` | Print planned regions/verdicts, write nothing | EXISTS (table: Phase 1.4) |
 | `--recompress <codec\|source>` | Re-encode clean pixels post-redaction; `source` mirrors the input transfer syntax (§5.3) | NEW (Phase 5) |
-| `--redact-style <blank\|label\|replace>` | What the cleaned region shows: fill value, a fixed stamp, or semantic replacement values (§6.6) | NEW (`label` Phase 1, `replace` Phase 4) |
-| `--redact-label <text>` | Custom stamp text for `label` style (default `REDACTED`) | NEW |
+| `--redact-style <blank\|label\|replace>` | What the cleaned region shows: fill value, a fixed stamp, or semantic replacement values (§6.5) | EXISTS `blank`/`label` (Phase 1.6); NEW `replace` (Phase 4) |
+| `--redact-label <text>` | Custom stamp text for `label` style (default `REDACTED`) | EXISTS (Phase 1.6) |
 
 ### 2.1 Option semantics
 
@@ -436,8 +436,8 @@ stored identifying values are removed), so 113101 stays earned in every style.
 
 | Style | Region content after cleaning | Needs classifier | Phase |
 |---|---|---|---|
-| `blank` (default) | fill value only | no | 1 |
-| `label` | fixed stamp (`REDACTED` / `--redact-label` text) — works for every verdict including uncertain; a reviewer sees "cleaned deliberately", not a suspected rendering bug | no | 1 |
+| `blank` (default) | fill value only | no | 1 ✅ |
+| `label` | fixed stamp (`REDACTED` / `--redact-label` text) — works for every verdict including uncertain; a reviewer sees "cleaned deliberately", not a suspected rendering bug | no | 1 ✅ (`RedactionLabelRenderer` → `PixelOperation.stamp`; too-small regions fall back to blank and are listed in `Outcome.labelFallbackRegions` + the console) |
 | `replace` | semantic replacement: burned name → **anonymized** name, burned date → **shifted** date, burned ID → pseudonym | yes | 4 |
 
 Rendering: CoreGraphics/CoreText glyphs mapped to stored values at the image's
@@ -619,7 +619,7 @@ release binary after DICOMKit changes before manual CLI verification.
 3. ✅ `--detect-text` detection-only behavior + refusal integration (§2.1). (2026-09-04; `--allow-burned-in-phi` output is stamped Patient Identity Removed = NO / Burned In Annotation = YES)
 4. ✅ `--dry-run` region table. (2026-09-04)
 5. ✅ `--clean-pixel-data --detect-text` end-to-end (interim `all` semantics). (2026-09-04; verified on the release-style banner fixture: OCR of the output finds nothing on any of 5 frames)
-6. `--redact-style blank|label` + `--redact-label` (blank-then-draw mechanic).
+6. ✅ `--redact-style blank|label` + `--redact-label` (blank-then-draw mechanic). (2026-09-04; verified on the binary: OCR of a labelled output reads only the stamp)
 
 **Phase 2 — Frame coverage**
 6. Classic MF sampling (first/middle/last) + `--ocr-all-frames`.

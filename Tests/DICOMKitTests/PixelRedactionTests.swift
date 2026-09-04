@@ -315,6 +315,93 @@ final class PixelRedactionTests: XCTestCase {
         }
     }
 
+    // MARK: - Redaction styles (blank-then-draw)
+
+    private func styleTestRegionPixels(_ out: Data, region: PixelRedactionPlan.Region, columns: Int, frame: Int = 0, frameSize: Int) throws -> [UInt8] {
+        let px = try pixels(of: out)
+        var v: [UInt8] = []
+        for y in region.y..<(region.y + region.height) {
+            for x in region.x..<(region.x + region.width) {
+                v.append(px[frame * frameSize + y * columns + x])
+            }
+        }
+        return v
+    }
+
+    func testLabelStyleBlanksThenStampsOnEveryFrame() throws {
+        guard RedactionLabelRenderer.isAvailable else { throw XCTSkip("no glyph rasterizer") }
+        let ds = imageDataSet(rows: 60, columns: 200, frames: 3)
+        let region = PixelRedactionPlan.Region(x: 10, y: 5, width: 180, height: 40)
+        let plan = PixelRedactionPlan(decision: .redact(regions: [region], basis: .explicit))
+        let (out, outcome) = try XCTUnwrap(
+            PixelRedactor().redact(fileData: try fileBytes(ds), plan: plan, style: .label("REDACTED")))
+        XCTAssertEqual(outcome.style, .label("REDACTED"))
+        XCTAssertTrue(outcome.labelFallbackRegions.isEmpty)
+        for frame in 0..<3 {
+            let values = try styleTestRegionPixels(out, region: region, columns: 200, frame: frame, frameSize: 60 * 200)
+            // Only the fill (0) and the contrasting foreground (255) may appear: the
+            // original 200s are gone — blank-then-draw, never draw-over.
+            XCTAssertTrue(Set(values).isSubset(of: [0, 255]), "frame \(frame): \(Set(values))")
+            XCTAssertTrue(values.contains(255), "frame \(frame) must carry the stamp")
+            XCTAssertTrue(values.contains(0), "frame \(frame) must be blanked around the glyphs")
+        }
+        // Outside the region: untouched.
+        let px = try pixels(of: out)
+        XCTAssertEqual(px[0], 200)
+        XCTAssertEqual(px[59 * 200 + 199], 200)
+        // Attestation is earned in every style.
+        let file = try DICOMFile.read(from: out)
+        XCTAssertEqual(file.dataSet.string(for: .burnedInAnnotation)?.trimmingCharacters(in: .whitespaces), "NO")
+    }
+
+    func testLabelStyleFallsBackToBlankOnTooSmallRegionsWithAnAuditNote() throws {
+        guard RedactionLabelRenderer.isAvailable else { throw XCTSkip("no glyph rasterizer") }
+        let ds = imageDataSet(rows: 20, columns: 10)
+        let tiny = PixelRedactionPlan.Region(x: 0, y: 0, width: 10, height: 4)
+        let plan = PixelRedactionPlan(decision: .redact(regions: [tiny], basis: .explicit))
+        let (out, outcome) = try XCTUnwrap(
+            PixelRedactor().redact(fileData: try fileBytes(ds), plan: plan, style: .label("REDACTED")))
+        XCTAssertEqual(outcome.labelFallbackRegions, [tiny])
+        let values = try styleTestRegionPixels(out, region: tiny, columns: 10, frameSize: 200)
+        XCTAssertEqual(Set(values), [0], "a too-small region is blanked only")
+        let lines = AnonConsole.pixelRedactionLines(outcome: outcome)
+        XCTAssertTrue(lines.contains("too small for label"), lines)
+    }
+
+    func testLabelForegroundContrastsWithTheFillAtTheRealBitDepth() {
+        var ds = imageDataSet()
+        XCTAssertEqual(PixelRedactor.contrastingStoredValue(to: 0, in: ds), 255)
+        XCTAssertEqual(PixelRedactor.contrastingStoredValue(to: 255, in: ds), 0)
+        ds.setUInt16(16, for: .bitsAllocated); ds.setUInt16(12, for: .bitsStored)
+        XCTAssertEqual(PixelRedactor.contrastingStoredValue(to: 0, in: ds), 4095)
+        ds.setUInt16(1, for: .pixelRepresentation)
+        XCTAssertEqual(PixelRedactor.contrastingStoredValue(to: -2048, in: ds), 2047)
+        XCTAssertEqual(PixelRedactor.contrastingStoredValue(to: 0, in: ds), -2048)
+    }
+
+    func testStyleParsing() {
+        XCTAssertEqual(PixelRedactor.Style.parse("blank", label: nil), .blank)
+        XCTAssertEqual(PixelRedactor.Style.parse("label", label: nil), .label("REDACTED"))
+        XCTAssertEqual(PixelRedactor.Style.parse("LABEL", label: "PHI REMOVED"), .label("PHI REMOVED"))
+        XCTAssertNil(PixelRedactor.Style.parse("replace", label: nil), "replace ships in Phase 4")
+    }
+
+    func testGlyphMaskGeometry() {
+        guard RedactionLabelRenderer.isAvailable else { return }
+        XCTAssertNil(RedactionLabelRenderer.glyphMask(text: "REDACTED", width: 20, height: 10), "too narrow")
+        XCTAssertNil(RedactionLabelRenderer.glyphMask(text: "REDACTED", width: 200, height: 6), "too short")
+        XCTAssertNil(RedactionLabelRenderer.glyphMask(text: "", width: 200, height: 40))
+        let mask = RedactionLabelRenderer.glyphMask(text: "REDACTED", width: 200, height: 40)
+        XCTAssertEqual(mask?.count, 200 * 40)
+        // Ink is centred: present in the middle rows, absent in the top and bottom rows.
+        let m = mask!
+        XCTAssertTrue((0..<200).contains { m[20 * 200 + $0] > 127 })
+        XCTAssertFalse((0..<200).contains { m[$0] > 127 })
+        XCTAssertFalse((0..<200).contains { m[39 * 200 + $0] > 127 })
+        // Ink is inset horizontally.
+        XCTAssertFalse((0..<40).contains { m[$0 * 200] > 127 })
+    }
+
     // MARK: - Forgotten surfaces
 
     func testIconImageSequenceIsRemoved() throws {

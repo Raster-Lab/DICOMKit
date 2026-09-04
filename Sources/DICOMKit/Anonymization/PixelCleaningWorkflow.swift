@@ -43,6 +43,8 @@ public struct PixelCleaningWorkflow: Sendable {
         public var fillValue: Int?
         /// Safety margin around detected text.
         public var dilation: Int
+        /// `--redact-style` / `--redact-label`
+        public var style: PixelRedactor.Style
 
         public init(
             cleanPixelData: Bool = false,
@@ -50,7 +52,8 @@ public struct PixelCleaningWorkflow: Sendable {
             detectText: TextDetectionMode? = nil,
             ocrAllFrames: Bool = false,
             fillValue: Int? = nil,
-            dilation: Int = TextRegionDetector.defaultDilation
+            dilation: Int = TextRegionDetector.defaultDilation,
+            style: PixelRedactor.Style = .blank
         ) {
             self.cleanPixelData = cleanPixelData
             self.explicitRegions = explicitRegions
@@ -58,6 +61,7 @@ public struct PixelCleaningWorkflow: Sendable {
             self.ocrAllFrames = ocrAllFrames
             self.fillValue = fillValue
             self.dilation = dilation
+            self.style = style
         }
 
         /// Pixel modification is requested: `--clean-pixel-data`, or rectangles (which
@@ -160,7 +164,7 @@ public struct PixelCleaningWorkflow: Sendable {
 
         // [6]–[10] Decode, mask every frame, strip side channels, attest.
         if let (redacted, outcome) = try PixelRedactor().redact(
-            fileData: fileData, plan: plan, fillValue: options.fillValue) {
+            fileData: fileData, plan: plan, fillValue: options.fillValue, style: options.style) {
             return Report(detections: detections, scannedFrames: scanned, plan: plan,
                           outcome: outcome, data: redacted, frameCount: frameCount)
         }

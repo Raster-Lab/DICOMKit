@@ -248,6 +248,23 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertTrue(table.contains("Pixel modification: YES"), table)
     }
 
+    /// `label` style end-to-end: OCR of the output finds the stamp and none of the
+    /// original strings — the original is 100% gone regardless of style.
+    func testLabelStyleOutputReadsAsTheStampAndNeverTheOriginal() throws {
+        let data = try bannerImage(text: "SMITH JOHN 0012345")
+        let report = try PixelCleaningWorkflow().run(
+            fileData: data,
+            options: Options(cleanPixelData: true, detectText: .all, style: .label("REDACTED")),
+            dryRun: false)
+        let outcome = try XCTUnwrap(report.outcome)
+        XCTAssertEqual(outcome.style, .label("REDACTED"))
+        let cleaned = try DICOMFile.read(from: report.data)
+        let after = try TextRegionDetector().detect(in: cleaned)
+        let texts = after.map { $0.text.uppercased() }
+        XCTAssertTrue(texts.contains { $0.contains("REDACTED") }, "stamp should be legible: \(texts)")
+        XCTAssertFalse(texts.contains { $0.contains("SMITH") || $0.contains("0012345") }, "\(texts)")
+    }
+
     /// OCR and explicit rectangles union: the rectangle never suppresses detection.
     func testExplicitAndDetectedRegionsUnion() throws {
         let data = try bannerImage(text: "SMITH JOHN")
