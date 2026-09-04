@@ -16,8 +16,8 @@ import DICOMCore
 /// - Nothing is written on a dry run; the plan is still built so it can be printed.
 public struct PixelCleaningWorkflow: Sendable {
 
-    /// OCR mode. Until the classifier ships (Phase 3), `classify` behaves as `all`
-    /// — over-redaction is the safe direction.
+    /// OCR mode. `classify` (default) redacts PHI and uncertain text and keeps only
+    /// allowlisted clinical text; `all` redacts every detected region.
     public enum TextDetectionMode: String, Sendable, CaseIterable {
         case classify
         case all
@@ -80,6 +80,9 @@ public struct PixelCleaningWorkflow: Sendable {
     public struct Report: Sendable {
         /// Every OCR detection on the sampled frames (empty when OCR was off).
         public let detections: [TextRegionDetector.Detection]
+        /// One verdict per detection (parallel to `detections`). In `all` mode every
+        /// verdict is redact.
+        public let verdicts: [PHITextClassifier.Verdict]
         /// Frames OCR scanned.
         public let scannedFrames: [Int]
         /// The plan that was (or would be) executed; `nil` when cleaning was not requested.
@@ -91,12 +94,24 @@ public struct PixelCleaningWorkflow: Sendable {
         public let data: Data
         /// Total frames in the object.
         public let frameCount: Int
-        /// Detected text the run will **not** blank. Non-empty means the caller must
-        /// refuse to write an output file unless the operator accepted the risk.
+        /// Detected text the run will **not** blank and that was not positively
+        /// allowlisted. Non-empty means the caller must refuse to write an output file
+        /// unless the operator accepted the risk.
         public var detectedButUnredacted: [TextRegionDetector.Detection] {
             guard !detections.isEmpty else { return [] }
-            guard let plan, case .redact(let regions, _) = plan.decision else { return detections }
-            return detections.filter { d in !regions.contains(d.region) }
+            let wanted = zip(detections, verdicts).filter { $0.1.isRedact }.map(\.0)
+            guard let plan, case .redact(let regions, _) = plan.decision else { return wanted }
+            return wanted.filter { d in !regions.contains(d.region) }
+        }
+
+        /// PHI-safe audit lines: verdict, reason, confidence, rect, frame, truncated text.
+        /// Never the full recognized string — the audit log must not become a PHI store.
+        public var auditLines: [String] {
+            zip(detections, verdicts).map { d, v in
+                "OCR frame=\(d.frameIndex) rect=\(d.region.x),\(d.region.y),\(d.region.width),\(d.region.height) "
+                + "verdict=\(v.name) reason=\"\(v.reason)\" conf=\(String(format: "%.2f", d.confidence)) "
+                + "text=\(d.redactedForAudit)"
+            }
         }
         /// Warnings in the same shape as `ConfidentialityEngine.residualPixelPHIWarnings`.
         public var residualWarnings: [String] {
@@ -130,25 +145,35 @@ public struct PixelCleaningWorkflow: Sendable {
         let file = try DICOMFile.read(from: fileData)
         let frameCount = max(1, file.dataSet.numberOfFrames ?? 1)
 
+        // [3] Harvest PHI terms from the ORIGINAL header, before any scrubbing.
         // [4d] OCR detection — a region source, never a cleaning decision.
         var detections: [TextRegionDetector.Detection] = []
+        var verdicts: [PHITextClassifier.Verdict] = []
         var scanned: [Int] = []
-        if options.detectText != nil {
+        if let mode = options.detectText {
             guard TextRegionDetector.isAvailable else { throw TextDetectionError.unavailable }
             scanned = TextRegionDetector.sampledFrameIndices(
                 frameCount: frameCount, allFrames: options.ocrAllFrames)
             detections = try TextRegionDetector(dilation: options.dilation)
                 .detect(in: file, frameIndices: scanned)
+            switch mode {
+            case .all:
+                verdicts = detections.map { _ in .redact(reason: "all detected text is redacted") }
+            case .classify:
+                let classifier = PHITextClassifier(terms: PHITextClassifier.harvestTerms(from: file.dataSet))
+                verdicts = classifier.classify(detections)
+            }
         }
 
         guard options.cleaningRequested else {
-            return Report(detections: detections, scannedFrames: scanned, plan: nil,
+            return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: nil,
                           outcome: nil, data: fileData, frameCount: frameCount)
         }
 
-        // [4] Plan: union of every enabled source. Interim (Phases 1–2): every detected
-        // region is redacted regardless of mode; the classifier will refine `classify`.
-        let detected = TextRegionDetector.unionedRegions(detections)
+        // [4] Plan: union of every enabled source. Only redact verdicts contribute a
+        // region; a keep verdict can never shrink another source's region.
+        let detected = TextRegionDetector.unionedRegions(
+            zip(detections, verdicts).filter { $0.1.isRedact }.map(\.0))
         let plan = PixelRedactionPlan.plan(
             for: file.dataSet, explicitRegions: options.explicitRegions, detectedRegions: detected)
 
@@ -158,17 +183,17 @@ public struct PixelCleaningWorkflow: Sendable {
             if case .unresolved(let reason) = plan.decision {
                 throw PixelRedactionError.unresolvedRegion(reason)
             }
-            return Report(detections: detections, scannedFrames: scanned, plan: plan,
+            return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: plan,
                           outcome: nil, data: fileData, frameCount: frameCount)
         }
 
         // [6]–[10] Decode, mask every frame, strip side channels, attest.
         if let (redacted, outcome) = try PixelRedactor().redact(
             fileData: fileData, plan: plan, fillValue: options.fillValue, style: options.style) {
-            return Report(detections: detections, scannedFrames: scanned, plan: plan,
+            return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: plan,
                           outcome: outcome, data: redacted, frameCount: frameCount)
         }
-        return Report(detections: detections, scannedFrames: scanned, plan: plan,
+        return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: plan,
                       outcome: nil, data: fileData, frameCount: frameCount)
     }
 }

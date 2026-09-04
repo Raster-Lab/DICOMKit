@@ -422,6 +422,16 @@ public class Anonymizer {
         return auditLog
     }
     
+    /// Records pixel-work audit lines (PHI-safe — callers pass
+    /// `PixelCleaningWorkflow.Report.auditLines`, never raw OCR strings).
+    public func recordPixelAudit(filePath: String, lines: [String]) {
+        for line in lines {
+            auditLog.append(AuditLogEntry(
+                timestamp: Date(), filePath: filePath, action: "pixel-redaction",
+                tag: .pixelData, originalValue: nil, newValue: line))
+        }
+    }
+
     public func writeAuditLog(to url: URL) throws {
         let dateFormatter = ISO8601DateFormatter()
         var logText = "DICOM Anonymization Audit Log\n"
@@ -540,16 +550,20 @@ public enum AnonConsole {
         } else {
             selected = 0
         }
+        let kept = report.verdicts.filter { !$0.isRedact }.count
         let frames = report.scannedFrames.count
-        return "OCR: \(n) candidate region\(n == 1 ? "" : "s"); \(selected) selected for redaction "
-            + "across \(frames) sampled frame\(frames == 1 ? "" : "s").\n"
+        var line = "OCR: \(n) candidate region\(n == 1 ? "" : "s"); \(selected) selected for redaction"
+        if kept > 0 { line += "; \(kept) kept (allowlisted clinical text)" }
+        line += " across \(frames) sampled frame\(frames == 1 ? "" : "s").\n"
+        return line
     }
 
     /// The `--dry-run` region table (§7). Recognized text is shown on the console
     /// (`showText`) but must be passed as `false` for anything persisted.
     public static func pixelPlanTable(report: PixelCleaningWorkflow.Report, showText: Bool) -> String {
         var out = "Pixel redaction plan:\n"
-        let byFrame = Dictionary(grouping: report.detections, by: \.frameIndex)
+        let indexed = Array(zip(report.detections, report.verdicts))
+        let byFrame = Dictionary(grouping: indexed, by: { $0.0.frameIndex })
         let redacted: Set<PixelRedactionPlan.Region>
         if let plan = report.plan, case .redact(let regions, _) = plan.decision {
             redacted = Set(regions)
@@ -558,11 +572,15 @@ public enum AnonConsole {
         }
         for frame in byFrame.keys.sorted() {
             out += "Frame \(frame):\n"
-            for d in byFrame[frame]! {
-                let verdict = redacted.contains(d.region) ? "redact" : "detected"
-                let reason = redacted.contains(d.region)
-                    ? "text detected (all detected text is redacted)"
-                    : "cleaning not requested"
+            for (d, v) in byFrame[frame]! {
+                let verdict: String
+                if v.isRedact {
+                    verdict = redacted.contains(d.region) ? "redact" : "detected"
+                } else {
+                    verdict = "keep"
+                }
+                let reason = (v.isRedact && !redacted.contains(d.region))
+                    ? "\(v.reason) — cleaning not requested" : v.reason
                 let text = showText ? d.text : d.redactedForAudit
                 out += "  OCR  rect=\(d.region.x),\(d.region.y),\(d.region.width),\(d.region.height)"
                     + "  verdict=\(verdict)  reason=\(reason)  conf=\(String(format: "%.2f", d.confidence))"

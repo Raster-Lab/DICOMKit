@@ -92,9 +92,10 @@ struct DICOMAnon: ParsableCommand {
     var detectText: Bool = false
 
     @Option(name: .long, help: """
-        OCR mode: classify (default) redacts PHI and uncertain text and keeps only \
-        allowlisted clinical text; all blanks every detected region. INTERIM: until \
-        the PHI classifier ships, classify behaves as all.
+        OCR mode: classify (default) redacts text matching the file's own PHI (names, \
+        IDs, dates, institution), PHI-shaped patterns and anything uncertain, keeping \
+        only positively allowlisted clinical text (laterality, units, technique); all \
+        blanks every detected region.
         """)
     var detectTextMode: String = "classify"
 
@@ -372,6 +373,7 @@ struct DICOMAnon: ParsableCommand {
                 fileData: fileData, options: pixelOptions, dryRun: dryRun)
             if pixelOptions.detectText != nil {
                 print(AnonConsole.textDetectionLine(report: report), terminator: "")
+                anonymizer.recordPixelAudit(filePath: inputURL.path, lines: report.auditLines)
             }
             if dryRun {
                 print(AnonConsole.pixelPlanTable(report: report, showText: true), terminator: "")

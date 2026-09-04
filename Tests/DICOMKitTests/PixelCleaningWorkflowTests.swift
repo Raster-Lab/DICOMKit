@@ -168,6 +168,33 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         return try DICOMFile(fileMetaInformation: meta, dataSet: ds).write()
     }
 
+    /// Two text lines on one frame, with a header naming SMITH^JOHN / 0012345.
+    private func twoLineImage(top: String, bottom: String, columns: Int = 512, rows: Int = 256) throws -> Data {
+        let space = CGColorSpaceCreateDeviceGray()
+        guard let ctx = CGContext(
+            data: nil, width: columns, height: rows, bitsPerComponent: 8,
+            bytesPerRow: columns, space: space, bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { throw XCTSkip("no bitmap context") }
+        ctx.setFillColor(gray: 0.2, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: columns, height: rows))
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: CGColor(gray: 1, alpha: 1)]
+        for (text, y) in [(top, CGFloat(rows) - 50), (bottom, CGFloat(40))] {
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
+            ctx.textPosition = CGPoint(x: 24, y: y)
+            CTLineDraw(line, ctx)
+        }
+        guard let raw = ctx.data else { throw XCTSkip("no bitmap data") }
+        var ds = try DICOMFile.read(from: plainImage(rows: rows, columns: columns, modality: "OT")).dataSet
+        ds.setString("SMITH^JOHN", for: .patientName, vr: .PN)
+        ds.setString("0012345", for: .patientID, vr: .LO)
+        ds.setString("19611203", for: .patientBirthDate, vr: .DA)
+        ds[.pixelData] = DataElement.data(tag: .pixelData, vr: .OB, data: Data(bytes: raw, count: columns * rows))
+        var meta = DataSet()
+        meta.setString("1.2.840.10008.1.2.1", for: Tag(group: 0x0002, element: 0x0010), vr: .UI)
+        return try DICOMFile(fileMetaInformation: meta, dataSet: ds).write()
+    }
+
     /// `--detect-text` alone: report, modify nothing, and flag the leftover text so the
     /// caller refuses to write.
     func testDetectionOnlyReportsAndFlagsUnredactedText() throws {
@@ -215,13 +242,48 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertTrue(try TextRegionDetector().detect(in: cleaned, allFrames: true).isEmpty)
     }
 
-    func testAllModeAndClassifyModeBehaveIdenticallyUntilTheClassifierShips() throws {
-        let data = try bannerImage(text: "ACC 4521")
-        let a = try PixelCleaningWorkflow().run(
-            fileData: data, options: Options(cleanPixelData: true, detectText: .all), dryRun: false)
+    /// Classify keeps allowlisted clinical text and redacts PHI; `all` blanks both.
+    func testClassifyKeepsLateralityWhileAllBlanksIt() throws {
+        // Two lines: a PHI banner at the top and a laterality/scale label lower down.
+        let data = try twoLineImage(top: "SMITH JOHN 0012345", bottom: "R 10 cm")
         let c = try PixelCleaningWorkflow().run(
             fileData: data, options: Options(cleanPixelData: true, detectText: .classify), dryRun: false)
-        XCTAssertEqual(a.outcome?.regions, c.outcome?.regions)
+        XCTAssertEqual(c.detections.count, 2, "\(c.detections.map(\.text))")
+        XCTAssertEqual(c.verdicts.filter(\.isRedact).count, 1, "\(zip(c.detections, c.verdicts).map { ($0.text, $1) })")
+        XCTAssertEqual(c.outcome?.regions.count, 1)
+        XCTAssertTrue(c.detectedButUnredacted.isEmpty, "a kept region is not a leftover")
+        XCTAssertTrue(c.residualWarnings.isEmpty)
+        let line = AnonConsole.textDetectionLine(report: c)
+        XCTAssertTrue(line.contains("1 selected for redaction; 1 kept"), line)
+        let after = try TextRegionDetector().detect(in: DICOMFile.read(from: c.data)).map { $0.text.uppercased() }
+        XCTAssertFalse(after.contains { $0.contains("SMITH") }, "\(after)")
+        XCTAssertTrue(after.contains { $0.contains("CM") }, "clinical label must survive: \(after)")
+
+        let a = try PixelCleaningWorkflow().run(
+            fileData: data, options: Options(cleanPixelData: true, detectText: .all), dryRun: false)
+        XCTAssertEqual(a.outcome?.regions.count, 2)
+        XCTAssertTrue(try TextRegionDetector().detect(in: DICOMFile.read(from: a.data)).isEmpty)
+
+        // Dry-run table shows both verdicts; audit lines never carry the string.
+        let table = AnonConsole.pixelPlanTable(report: c, showText: true)
+        XCTAssertTrue(table.contains("verdict=keep"), table)
+        XCTAssertTrue(table.contains("verdict=redact"), table)
+        for l in c.auditLines {
+            XCTAssertFalse(l.contains("SMITH"), l)
+            XCTAssertTrue(l.contains("verdict="), l)
+        }
+    }
+
+    /// Classify harvests the ORIGINAL header: a name that is only PHI because the header
+    /// says so is redacted; the same word with a different header is uncertain → still redacted.
+    func testClassifyUsesTheFilesOwnHeaderTerms() throws {
+        let data = try twoLineImage(top: "Patient SMITH", bottom: "R")
+        let report = try PixelCleaningWorkflow().run(
+            fileData: data, options: Options(detectText: .classify), dryRun: false)
+        let byText = Dictionary(uniqueKeysWithValues: zip(report.detections.map { $0.text.uppercased() }, report.verdicts))
+        XCTAssertTrue(byText.first { $0.key.contains("SMITH") }?.value.isRedact ?? false)
+        XCTAssertTrue(byText.first { $0.key.contains("SMITH") }?.value.reason.contains("identifier") ?? false, "\(byText)")
+        XCTAssertFalse(byText["R"]?.isRedact ?? true, "\(byText)")
     }
 
     func testOcrAllFramesScansEveryFrame() throws {

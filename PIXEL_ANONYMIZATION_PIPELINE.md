@@ -79,7 +79,7 @@ dicom-anon in.dcm --dry-run --clean-pixel-data --detect-text
 | `--clean-pixel-data` | Consent gate for irreversible pixel modification; enables deterministic strategies | EXISTS |
 | `--redact-region x,y,w,h` | Operator rectangles; deterministic, reproducible; implies cleaning | EXISTS |
 | `--redact-fill N` | Fill value for blanked samples (default 0 = black) | EXISTS |
-| `--detect-text[=classify\|all]` | OCR detection source; default `classify` (see §2.1 for the interim default). Flag + `--detect-text-mode`; the `=mode` shorthand is rewritten before parsing | EXISTS (Phase 1.3) |
+| `--detect-text[=classify\|all]` | OCR detection source; default `classify`. Flag + `--detect-text-mode`; the `=mode` shorthand is rewritten before parsing | EXISTS (Phase 1.3; classify real since Phase 3) |
 | `--ocr-all-frames` | OCR every frame instead of sampled frames | EXISTS (Phase 1.3) |
 | `--allow-burned-in-phi` | Write the metadata-scrubbed file anyway; marked Patient Identity Removed = NO | EXISTS |
 | `--dry-run` | Print planned regions/verdicts, write nothing | EXISTS (table: Phase 1.4) |
@@ -102,14 +102,12 @@ dicom-anon in.dcm --dry-run --clean-pixel-data --detect-text
 - `--clean-pixel-data --detect-text=all` = detect + redact every detected region.
 - `--redact-region` remains the deterministic path for validated production
   pipelines: coordinates never depend on OCR model or OS-version behavior.
-- **Interim default (Phases 1–2):** until the classifier ships (Phase 3),
-  `--detect-text` with cleaning behaves as `all` and `--help` says so
-  explicitly. Over-redaction is the safe direction; the default flips to
-  `classify` when Phase 3 lands.
+- **Default is `classify`** (since Phase 3). Phases 1–2 shipped with an interim
+  `all` behaviour; the flip happened when `PHITextClassifier` landed.
 
 ### 2.2 OCR modes
 
-**`classify` (default once Phase 3 lands)** — detect, compare against harvested
+**`classify` (default)** — detect, compare against harvested
 PHI terms and patterns, redact PHI and uncertain text, preserve only confidently
 allowlisted clinical/technical text (laterality, units, technique factors).
 
@@ -134,7 +132,7 @@ DICOM file bytes
    │                          single / classic MF / enhanced MF
    │                          native / encapsulated
    ▼
-[3] Harvest PHI terms ─────── BEFORE header scrubbing                   [NEW — Phase 3]
+[3] Harvest PHI terms ─────── BEFORE header scrubbing                   [EXISTS]
    │                          PatientName/ID, accession, dates,
    │                          institution, physician/operator names
    ▼
@@ -142,7 +140,7 @@ DICOM file bytes
    │    a. explicit --redact-region rectangles                          [EXISTS]
    │    b. US keep-region inversion ((0018,6011) complement)            [EXISTS]
    │    c. device templates (curated modality/vendor/geometry)          [EXISTS]
-   │    d. OCR detection (+ classification: Phase 3)                    [EXISTS / NEW]
+   │    d. OCR detection + classification                               [EXISTS]
    │
    │    Declared or detected PHI left unredacted → REFUSE (§2.1, §10).
    │    Nothing declared, nothing detected → nothingToDo (pass through).
@@ -183,7 +181,7 @@ Existing implementation anchors:
 New components:
 
 - `Sources/DICOMKit/Anonymization/TextRegionDetector.swift` [EXISTS — Phase 1.1: transform, sampling, Vision detection, unit + Vision tests]
-- `Sources/DICOMKit/Anonymization/PHITextClassifier.swift` [NEW]
+- `Sources/DICOMKit/Anonymization/PHITextClassifier.swift` [EXISTS — Phase 3: header term harvest, fuzzy/pattern/keyword redaction, allowlist keep]
 
 ---
 
@@ -625,11 +623,11 @@ release binary after DICOMKit changes before manual CLI verification.
 6. ✅ Classic MF sampling (first/middle/last) + `--ocr-all-frames`. (shipped in Phase 1 via `TextRegionDetector.sampledFrameIndices`; pinned by a mid-loop-only banner test: sampling misses it, `--ocr-all-frames` finds it, and the region is then blanked on every frame)
 7. ✅ Enhanced MF per-frame VOI rendering. (the shared `renderFrameForExport` already resolves Frame VOI LUT → shared → top-level per frame; pinned by a 16-bit Enhanced MR fixture whose frame 1 window blacks the text out — detections land on frames 0/2 only. Post-rewrite invariant `NumberOfFrames == per-frame FG count` + byte-stable shared/per-frame FGs is now enforced by `PixelRedactor.checkFunctionalGroupInvariant` — a violation refuses to emit)
 
-**Phase 3 — Classification**
-8. PHI term harvesting from the original header.
-9. `PHITextClassifier`: fuzzy matching, patterns, allowlist.
-10. Flip default to `classify`; `=all` stays as the explicit aggressive mode.
-11. Audit verdict lines (PHI-safe).
+**Phase 3 — Classification** ✅ (2026-09-04)
+8. ✅ PHI term harvesting from the original header (`PHITextClassifier.harvestTerms`: PN components + joined/initial forms, IDs with/without leading zeros, accession, institution words, station, 22 burned date renderings, age).
+9. ✅ `PHITextClassifier`: OCR-confusion folding + bounded edit distance, date/time/ID/mixed-alphanumeric patterns, PHI keyword proximity, positive allowlist (laterality, units incl. glued `120KVP`, technique/display labels, ≤4-digit numerals); uncertain → redact.
+10. ✅ Default `classify`; `=all` stays the explicit aggressive mode (workflow: only redact verdicts contribute regions; keeps never count as unredacted leftovers).
+11. ✅ Audit verdict lines (PHI-safe): `Report.auditLines` → `Anonymizer.recordPixelAudit` → `--audit-log` (truncated text + length only; verified no name reaches the log).
 
 **Phase 4 — Complete object coverage + semantic replacement**
 12. Concatenation cross-part union in directory/batch mode + single-file warning.
