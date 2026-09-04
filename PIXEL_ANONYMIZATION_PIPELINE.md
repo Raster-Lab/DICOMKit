@@ -10,7 +10,7 @@ Three cooperating region sources:
 2. explicit operator rectangles (`--redact-region`)
 3. OCR text detection (`--detect-text`)
 
-**Status:** `[EXISTS]` = shipped today, `[NEW]` = to be built.
+**Status:** `[EXISTS]` = shipped today, `[NEW]` = to be built. **All five phases landed 2026-09-04** (branch `feature/pixel-anonymization-pipeline`, local); one open codec-layer issue is noted under Phase 5.
 
 ---
 
@@ -58,13 +58,13 @@ dicom-anon in.dcm -o out.dcm --profile ps315 --clean-pixel-data
 # Explicit rectangles (repeatable; implies --clean-pixel-data)
 dicom-anon in.dcm -o out.dcm --redact-region 0,0,1024,90 --redact-region 0,700,1024,68
 
-# OCR inspection only — detect and report, write nothing                   [NEW]
+# OCR inspection only — detect and report, write nothing                   [EXISTS]
 dicom-anon in.dcm --detect-text
 
-# OCR + actual pixel cleaning (default mode: classify)                     [NEW]
+# OCR + actual pixel cleaning (default mode: classify)                     [EXISTS]
 dicom-anon in.dcm -o out.dcm --profile ps315 --clean-pixel-data --detect-text
 
-# Aggressive OCR mode: blank every detected glyph                          [NEW]
+# Aggressive OCR mode: blank every detected glyph                          [EXISTS]
 dicom-anon in.dcm -o out.dcm --clean-pixel-data --detect-text=all
 
 # All three sources, unioned
@@ -338,7 +338,7 @@ audit line records the re-encode ("re-encoded to source syntax
 
 ---
 
-## 6. OCR detection and PHI classification [NEW]
+## 6. OCR detection and PHI classification [EXISTS]
 
 OCR is a **region detector**, not the final anonymization decision by itself.
 
@@ -420,7 +420,7 @@ Redact by default; keep only what is provably safe. Classification can only make
 redaction *less* aggressive than `all` — text Vision missed never reaches the
 classifier — so classify mode is never safer than `all`, only more preserving.
 
-### 6.5 Redaction styles — what the cleaned region shows [NEW]
+### 6.5 Redaction styles — what the cleaned region shows [EXISTS]
 
 The primary target workflow is **classify mode + `replace`**: clinical text
 stays untouched, and only PHI regions are anonymized in place.
