@@ -538,7 +538,7 @@ job); and non-text pixel PHI — faces, tattoos, other visual identity — for w
 | `--detect-text` on a platform without Vision | **hard error**, never a no-op |
 | Invalid rectangle / rect outside frame bounds | validation error at parse time |
 | Enhanced FG count mismatch after rewrite | invariant violation — error, never emit (`PixelRedactionError.functionalGroupMismatch` / `.functionalGroupsAltered`) [EXISTS] |
-| Concatenation part processed alone | warn: cross-part OCR coverage incomplete |
+| Concatenation part processed alone | warn: cross-part OCR coverage incomplete (`Report.warnings`, never a refusal) [EXISTS] |
 | Decode failure | error — never write partially cleaned output |
 | Re-encode failure | error — never write a falsely attested output |
 
@@ -630,7 +630,7 @@ release binary after DICOMKit changes before manual CLI verification.
 11. ✅ Audit verdict lines (PHI-safe): `Report.auditLines` → `Anonymizer.recordPixelAudit` → `--audit-log` (truncated text + length only; verified no name reaches the log).
 
 **Phase 4 — Complete object coverage + semantic replacement**
-12. Concatenation cross-part union in directory/batch mode + single-file warning.
+12. ✅ Concatenation cross-part union in directory/batch mode + single-file warning. (2026-09-04; `PixelCleaningWorkflow.sweep` + `ConcatenationSweep` pre-pass in `dicom-anon --recursive`, `Options.presetDetectedRegions` unioned into every part, `isComplete` needs every declared part; verified on the binary: a clean-looking part 1 is blanked with part 2's regions)
 13. `--redact-style replace` (§6.5): values from the header engine's mapping,
     date replacement gated on `--shift-dates`, uncertain → blank/label,
     too-small-region fallback with audit note.

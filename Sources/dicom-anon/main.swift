@@ -310,6 +310,23 @@ struct DICOMAnon: ParsableCommand {
 
         var results: [AnonymizationResult] = []
 
+        // Concatenation pre-pass (§4.4): with OCR on, sweep every part first so text
+        // found in one part is blanked in all of them.
+        var sweep = PixelCleaningWorkflow.ConcatenationSweep()
+        let baseOptions = try pixelCleaningOptions()
+        if baseOptions.detectText != nil {
+            for fileURL in fileURLs {
+                guard let data = try? Data(contentsOf: fileURL),
+                      let file = try? DICOMFile.read(from: data, force: force),
+                      MultiframeConcatenation.isPart(file.dataSet)
+                else { continue }
+                if let swept = try? PixelCleaningWorkflow().sweep(fileData: data, options: baseOptions),
+                   let info = swept.info {
+                    sweep.add(info, regions: swept.regions)
+                }
+            }
+        }
+
         for fileURL in fileURLs {
             // Calculate relative path
             guard let relativePath = fileURL.path.replacingOccurrences(
@@ -329,7 +346,8 @@ struct DICOMAnon: ParsableCommand {
                 let result = try anonymizeFile(
                     inputURL: fileURL,
                     outputURL: outputFileURL,
-                    anonymizer: anonymizer
+                    anonymizer: anonymizer,
+                    sweep: sweep
                 )
                 results.append(result)
                 
@@ -355,7 +373,8 @@ struct DICOMAnon: ParsableCommand {
     private func anonymizeFile(
         inputURL: URL,
         outputURL: URL?,
-        anonymizer: Anonymizer
+        anonymizer: Anonymizer,
+        sweep: PixelCleaningWorkflow.ConcatenationSweep? = nil
     ) throws -> AnonymizationResult {
         // Read DICOM file
         var fileData = try Data(contentsOf: inputURL)
@@ -367,7 +386,12 @@ struct DICOMAnon: ParsableCommand {
         // and match nothing. Both CTP and Presidio document this same ordering
         // dependency, so the order here is a correctness requirement, not a preference.
         var pixelWarnings: [String] = []
-        let pixelOptions = try pixelCleaningOptions()
+        var pixelNotes: [String] = []
+        var pixelOptions = try pixelCleaningOptions()
+        if let sweep, let info = PixelCleaningWorkflow.concatenationInfo(of: dicomFile.dataSet) {
+            pixelOptions.presetDetectedRegions = sweep.regions(for: info.uid)
+            pixelOptions.concatenationAnalyzedCompletely = sweep.isComplete(info.uid)
+        }
         if pixelOptions.isActive {
             let report = try PixelCleaningWorkflow().run(
                 fileData: fileData, options: pixelOptions, dryRun: dryRun)
@@ -385,6 +409,8 @@ struct DICOMAnon: ParsableCommand {
                     print(AnonConsole.pixelRedactionLines(outcome: outcome), terminator: "")
                 }
             }
+            // Coverage notes are reported, never used to refuse.
+            pixelNotes = report.warnings
             // Detection feeds the refusal contract: text the tool KNOWS is there and
             // will not blank must block an output file unless the operator accepts it.
             pixelWarnings = report.residualWarnings
@@ -439,13 +465,13 @@ struct DICOMAnon: ParsableCommand {
             anonymizedFile = file
             result = AnonymizationResult(
                 filePath: inputURL.path, success: res.success,
-                changedTags: res.changedTags, warnings: res.warnings + pixelWarnings)
+                changedTags: res.changedTags, warnings: res.warnings + pixelWarnings + pixelNotes)
         } else {
             let (file, res) = try anonymizer.anonymize(file: dicomFile, filePath: inputURL.path)
             anonymizedFile = file
             result = AnonymizationResult(
                 filePath: res.filePath, success: res.success,
-                changedTags: res.changedTags, warnings: res.warnings + pixelWarnings)
+                changedTags: res.changedTags, warnings: res.warnings + pixelWarnings + pixelNotes)
         }
         
         // The operator accepted detected-but-unredacted text: the output must say so.

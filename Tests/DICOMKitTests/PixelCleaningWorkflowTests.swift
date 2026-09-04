@@ -327,6 +327,80 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertFalse(texts.contains { $0.contains("SMITH") || $0.contains("0012345") }, "\(texts)")
     }
 
+    // MARK: Phase 4 — concatenations
+
+    private func concatenationPart(text: String, uid: String, number: Int, total: Int) throws -> Data {
+        let data = try bannerImage(text: text, frames: 2)
+        var ds = try DICOMFile.read(from: data).dataSet
+        ds.setString(uid, for: .concatenationUID, vr: .UI)
+        ds.setUInt16(UInt16(number), for: .inConcatenationNumber)
+        ds.setUInt16(UInt16(total), for: .inConcatenationTotalNumber)
+        var meta = DataSet()
+        meta.setString("1.2.840.10008.1.2.1", for: Tag(group: 0x0002, element: 0x0010), vr: .UI)
+        return try DICOMFile(fileMetaInformation: meta, dataSet: ds).write()
+    }
+
+    func testSinglePartWarnsThatCoverageIsIncompleteOnlyWhenOCRRuns() throws {
+        let part = try concatenationPart(text: "SMITH JOHN", uid: "1.2.3.9", number: 1, total: 2)
+        let withOCR = try PixelCleaningWorkflow().run(
+            fileData: part, options: Options(cleanPixelData: true, detectText: .all), dryRun: false)
+        XCTAssertEqual(withOCR.warnings.count, 1)
+        XCTAssertTrue(withOCR.warnings[0].contains("part 1 of 2") && withOCR.warnings[0].contains("analyzed alone"), withOCR.warnings[0])
+        XCTAssertTrue(withOCR.residualWarnings.isEmpty, "a coverage note must never refuse")
+        XCTAssertNotNil(withOCR.outcome, "cleaning still happens")
+
+        let noOCR = try PixelCleaningWorkflow().run(
+            fileData: part, options: Options(explicitRegions: [Region(x: 0, y: 0, width: 512, height: 60)]), dryRun: false)
+        XCTAssertTrue(noOCR.warnings.isEmpty, "no OCR claim, no OCR coverage caveat")
+
+        let swept = try PixelCleaningWorkflow().run(
+            fileData: part, options: Options(cleanPixelData: true, detectText: .all, concatenationAnalyzedCompletely: true), dryRun: false)
+        XCTAssertTrue(swept.warnings.isEmpty)
+    }
+
+    /// Text found only in part 2 must be blanked in part 1 as well (§4.4).
+    func testConcatenationSweepUnionsRegionsAcrossParts() throws {
+        let uid = "1.2.3.10"
+        let part1 = try concatenationPart(text: "", uid: uid, number: 1, total: 2)          // clean-looking
+        let part2 = try concatenationPart(text: "DOE JANE 0012345", uid: uid, number: 2, total: 2)
+        let wf = PixelCleaningWorkflow()
+        var sweep = PixelCleaningWorkflow.ConcatenationSweep()
+        for data in [part1, part2] {
+            let (info, regions) = try wf.sweep(fileData: data, options: Options(detectText: .all))
+            sweep.add(try XCTUnwrap(info), regions: regions)
+        }
+        XCTAssertTrue(sweep.isComplete(uid))
+        XCTAssertFalse(sweep.regions(for: uid).isEmpty)
+
+        // Part 1 alone would be nothingToDo; with the sweep it gets part 2's regions.
+        let alone = try wf.run(fileData: part1, options: Options(cleanPixelData: true, detectText: .all), dryRun: false)
+        XCTAssertNil(alone.outcome)
+        let options = Options(cleanPixelData: true, detectText: .all,
+                              presetDetectedRegions: sweep.regions(for: uid), concatenationAnalyzedCompletely: true)
+        let r1 = try wf.run(fileData: part1, options: options, dryRun: false)
+        let o1 = try XCTUnwrap(r1.outcome)
+        XCTAssertEqual(o1.basis, .textDetection)
+        XCTAssertEqual(Set(o1.regions), Set(sweep.regions(for: uid)))
+        XCTAssertEqual(o1.frameCount, 2)
+        XCTAssertTrue(r1.warnings.isEmpty)
+        let r2 = try wf.run(fileData: part2, options: options, dryRun: false)
+        XCTAssertEqual(Set(try XCTUnwrap(r2.outcome).regions), Set(sweep.regions(for: uid)))
+        XCTAssertTrue(try TextRegionDetector().detect(in: DICOMFile.read(from: r2.data), allFrames: true).isEmpty)
+    }
+
+    func testSweepCompletenessNeedsEveryDeclaredPart() {
+        var sweep = PixelCleaningWorkflow.ConcatenationSweep()
+        let a = PixelCleaningWorkflow.ConcatenationInfo(uid: "u", number: 1, total: 3)
+        sweep.add(a, regions: [Region(x: 0, y: 0, width: 1, height: 1)])
+        XCTAssertFalse(sweep.isComplete("u"))
+        sweep.add(PixelCleaningWorkflow.ConcatenationInfo(uid: "u", number: 3, total: 3), regions: [])
+        XCTAssertFalse(sweep.isComplete("u"), "part 2 missing")
+        sweep.add(PixelCleaningWorkflow.ConcatenationInfo(uid: "u", number: 2, total: 3), regions: [Region(x: 0, y: 0, width: 1, height: 1)])
+        XCTAssertTrue(sweep.isComplete("u"))
+        XCTAssertEqual(sweep.regions(for: "u").count, 1, "duplicates collapse")
+        XCTAssertFalse(sweep.isComplete("other"))
+    }
+
     /// OCR and explicit rectangles union: the rectangle never suppresses detection.
     func testExplicitAndDetectedRegionsUnion() throws {
         let data = try bannerImage(text: "SMITH JOHN")

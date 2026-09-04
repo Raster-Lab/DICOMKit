@@ -45,6 +45,13 @@ public struct PixelCleaningWorkflow: Sendable {
         public var dilation: Int
         /// `--redact-style` / `--redact-label`
         public var style: PixelRedactor.Style
+        /// Regions found on OTHER parts of the same concatenation (directory mode
+        /// pre-pass, ``ConcatenationSweep``). Unioned in as text-detection regions so
+        /// text found in part 2 is blanked in part 1 too.
+        public var presetDetectedRegions: [PixelRedactionPlan.Region]
+        /// True when every part of this file's concatenation was swept, so the
+        /// single-part coverage warning is not needed.
+        public var concatenationAnalyzedCompletely: Bool
 
         public init(
             cleanPixelData: Bool = false,
@@ -53,7 +60,9 @@ public struct PixelCleaningWorkflow: Sendable {
             ocrAllFrames: Bool = false,
             fillValue: Int? = nil,
             dilation: Int = TextRegionDetector.defaultDilation,
-            style: PixelRedactor.Style = .blank
+            style: PixelRedactor.Style = .blank,
+            presetDetectedRegions: [PixelRedactionPlan.Region] = [],
+            concatenationAnalyzedCompletely: Bool = false
         ) {
             self.cleanPixelData = cleanPixelData
             self.explicitRegions = explicitRegions
@@ -62,6 +71,8 @@ public struct PixelCleaningWorkflow: Sendable {
             self.fillValue = fillValue
             self.dilation = dilation
             self.style = style
+            self.presetDetectedRegions = presetDetectedRegions
+            self.concatenationAnalyzedCompletely = concatenationAnalyzedCompletely
         }
 
         /// Pixel modification is requested: `--clean-pixel-data`, or rectangles (which
@@ -94,6 +105,8 @@ public struct PixelCleaningWorkflow: Sendable {
         public let data: Data
         /// Total frames in the object.
         public let frameCount: Int
+        /// Non-refusing notes for the summary (e.g. incomplete concatenation coverage).
+        public let warnings: [String]
         /// Detected text the run will **not** blank and that was not positively
         /// allowlisted. Non-empty means the caller must refuse to write an output file
         /// unless the operator accepted the risk.
@@ -126,6 +139,78 @@ public struct PixelCleaningWorkflow: Sendable {
 
     public init() {}
 
+    // MARK: - Concatenations
+
+    /// Concatenation bookkeeping of one instance, when it is a part.
+    public struct ConcatenationInfo: Sendable, Equatable {
+        public let uid: String
+        public let number: Int?
+        public let total: Int?
+    }
+
+    public static func concatenationInfo(of dataSet: DataSet) -> ConcatenationInfo? {
+        guard MultiframeConcatenation.isPart(dataSet),
+              let uid = dataSet.string(for: .concatenationUID)?
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+        else { return nil }
+        return ConcatenationInfo(
+            uid: uid,
+            number: dataSet.uint16(for: .inConcatenationNumber).map(Int.init),
+            total: dataSet.uint16(for: .inConcatenationTotalNumber).map(Int.init))
+    }
+
+    static func concatenationCoverageWarning(_ info: ConcatenationInfo) -> String {
+        let which: String
+        if let n = info.number, let t = info.total { which = "part \(n) of \(t)" }
+        else if let n = info.number { which = "part \(n)" }
+        else { which = "a part" }
+        return "Concatenation \(info.uid): this file is \(which) and was analyzed alone — "
+            + "text that appears only in another part was not detected. Process the whole "
+            + "concatenation in one directory run for cross-part coverage."
+    }
+
+    /// Detects (and classifies) text in one file without cleaning, for the batch
+    /// pre-pass. Returns the redact-verdict regions and the concatenation info.
+    public func sweep(fileData: Data, options: Options) throws -> (info: ConcatenationInfo?, regions: [PixelRedactionPlan.Region]) {
+        let file = try DICOMFile.read(from: fileData)
+        let info = Self.concatenationInfo(of: file.dataSet)
+        var probe = options
+        probe.cleanPixelData = false
+        probe.explicitRegions = []
+        probe.presetDetectedRegions = []
+        probe.concatenationAnalyzedCompletely = true
+        let report = try run(fileData: fileData, options: probe, dryRun: true)
+        let regions = TextRegionDetector.unionedRegions(
+            zip(report.detections, report.verdicts).filter { $0.1.isRedact }.map(\.0))
+        return (info, regions)
+    }
+
+    /// Directory-mode pre-pass: unions detected regions across every part of each
+    /// concatenation so the union can be applied to every part (§4.4).
+    public struct ConcatenationSweep: Sendable {
+        public private(set) var regions: [String: [PixelRedactionPlan.Region]] = [:]
+        public private(set) var partsSeen: [String: Set<Int>] = [:]
+        public private(set) var totals: [String: Int] = [:]
+
+        public init() {}
+
+        public mutating func add(_ info: ConcatenationInfo, regions found: [PixelRedactionPlan.Region]) {
+            var union = regions[info.uid] ?? []
+            for r in found where !union.contains(r) { union.append(r) }
+            regions[info.uid] = union
+            if let n = info.number { partsSeen[info.uid, default: []].insert(n) }
+            if let t = info.total { totals[info.uid] = t }
+        }
+
+        public func regions(for uid: String) -> [PixelRedactionPlan.Region] { regions[uid] ?? [] }
+
+        /// True when every declared part of the concatenation was swept.
+        public func isComplete(_ uid: String) -> Bool {
+            guard let total = totals[uid], let seen = partsSeen[uid] else { return false }
+            return seen.count >= total && (1...total).allSatisfy { seen.contains($0) }
+        }
+    }
+
     /// Marks an output the operator chose to write **with detected text still in the
     /// pixels** (`--allow-burned-in-phi`). The header pass asserts Patient Identity
     /// Removed = YES for the data set alone; PS3.15 conditions YES on the whole object,
@@ -144,6 +229,15 @@ public struct PixelCleaningWorkflow: Sendable {
     public func run(fileData: Data, options: Options, dryRun: Bool) throws -> Report {
         let file = try DICOMFile.read(from: fileData)
         let frameCount = max(1, file.dataSet.numberOfFrames ?? 1)
+        var notes: [String] = []
+
+        // §4.4 A concatenation instance holds only part of the frame set. Alone, OCR
+        // cannot see text that appears only in another part — say so, never claim
+        // exhaustive cleaning.
+        if options.detectText != nil, !options.concatenationAnalyzedCompletely,
+           let info = Self.concatenationInfo(of: file.dataSet) {
+            notes.append(Self.concatenationCoverageWarning(info))
+        }
 
         // [3] Harvest PHI terms from the ORIGINAL header, before any scrubbing.
         // [4d] OCR detection — a region source, never a cleaning decision.
@@ -167,13 +261,15 @@ public struct PixelCleaningWorkflow: Sendable {
 
         guard options.cleaningRequested else {
             return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: nil,
-                          outcome: nil, data: fileData, frameCount: frameCount)
+                          outcome: nil, data: fileData, frameCount: frameCount, warnings: notes)
         }
 
         // [4] Plan: union of every enabled source. Only redact verdicts contribute a
-        // region; a keep verdict can never shrink another source's region.
-        let detected = TextRegionDetector.unionedRegions(
+        // region; a keep verdict can never shrink another source's region. Regions
+        // swept from sibling concatenation parts are unioned in as well.
+        var detected = TextRegionDetector.unionedRegions(
             zip(detections, verdicts).filter { $0.1.isRedact }.map(\.0))
+        for r in options.presetDetectedRegions where !detected.contains(r) { detected.append(r) }
         let plan = PixelRedactionPlan.plan(
             for: file.dataSet, explicitRegions: options.explicitRegions, detectedRegions: detected)
 
@@ -184,17 +280,17 @@ public struct PixelCleaningWorkflow: Sendable {
                 throw PixelRedactionError.unresolvedRegion(reason)
             }
             return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: plan,
-                          outcome: nil, data: fileData, frameCount: frameCount)
+                          outcome: nil, data: fileData, frameCount: frameCount, warnings: notes)
         }
 
         // [6]–[10] Decode, mask every frame, strip side channels, attest.
         if let (redacted, outcome) = try PixelRedactor().redact(
             fileData: fileData, plan: plan, fillValue: options.fillValue, style: options.style) {
             return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: plan,
-                          outcome: outcome, data: redacted, frameCount: frameCount)
+                          outcome: outcome, data: redacted, frameCount: frameCount, warnings: notes)
         }
         return Report(detections: detections, verdicts: verdicts, scannedFrames: scanned, plan: plan,
-                      outcome: nil, data: fileData, frameCount: frameCount)
+                      outcome: nil, data: fileData, frameCount: frameCount, warnings: notes)
     }
 }
 
