@@ -153,15 +153,81 @@ final class PixelRedactionTests: XCTestCase {
 
     func testExplicitRegionsWinOverDerivation() {
         var ds = imageDataSet()
-        ds.setString("US", for: .modality, vr: .CS)   // would otherwise hit a template
+        ds.setString("XA", for: .modality, vr: .CS)   // no template, no declared region
         let plan = PixelRedactionPlan.plan(
             for: ds, explicitRegions: [.init(x: 1, y: 2, width: 3, height: 4)])
         guard case .redact(let regions, let basis) = plan.decision else {
             return XCTFail("expected redact")
         }
-        XCTAssertEqual(basis, .explicit, "a human instruction must not be second-guessed")
+        XCTAssertEqual(basis, .explicit, "a human instruction remains the recorded basis")
+        XCTAssertEqual(regions[0].x, 1, "the explicit rectangle comes first")
+        // XA matches no template and declares no scan region, so nothing is unioned
+        // onto the explicit rectangle here.
         XCTAssertEqual(regions.count, 1)
-        XCTAssertEqual(regions[0].x, 1)
+        XCTAssertEqual(plan.sources.map(\.basis), [.explicit])
+    }
+
+    /// Principle: region sources UNION, never override. An explicit rectangle on a
+    /// device with a template gets the template band as well — blanking more is the
+    /// safe direction, and a false negative leaks PHI.
+    func testExplicitAndTemplateRegionsAreUnioned() {
+        var ds = imageDataSet(rows: 600, columns: 800)
+        ds.setString("US", for: .modality, vr: .CS)
+        ds.setString("GE MEDICAL SYSTEMS", for: .manufacturer, vr: .LO)
+        ds.setString("LOGIQE9", for: Tag(group: 0x0008, element: 0x1090), vr: .LO)
+        let plan = PixelRedactionPlan.plan(
+            for: ds, explicitRegions: [.init(x: 1, y: 2, width: 3, height: 4)])
+        guard case .redact(let regions, let basis) = plan.decision else {
+            return XCTFail("expected redact")
+        }
+        XCTAssertEqual(basis, .explicit)
+        XCTAssertEqual(plan.sources.map(\.basis), [.explicit, .deviceTemplate])
+        XCTAssertTrue(regions.contains(.init(x: 1, y: 2, width: 3, height: 4)))
+        XCTAssertTrue(regions.contains { $0.y == 0 && $0.width == 800 && $0.height == 60 },
+            "the template band must survive alongside the explicit rectangle")
+    }
+
+    /// OCR regions are unioned onto whatever the deterministic strategies produced and
+    /// never shrink them; duplicates collapse.
+    func testDetectedRegionsAreUnionedOntoDeterministicSources() {
+        var ds = imageDataSet(rows: 600, columns: 800)
+        ds.setString("US", for: .modality, vr: .CS)
+        ds.setString("GE MEDICAL SYSTEMS", for: .manufacturer, vr: .LO)
+        ds.setString("LOGIQE9", for: Tag(group: 0x0008, element: 0x1090), vr: .LO)
+        let band = PixelRedactionPlan.Region(x: 0, y: 0, width: 800, height: 60)
+        let ocr = PixelRedactionPlan.Region(x: 10, y: 500, width: 100, height: 20)
+        let plan = PixelRedactionPlan.plan(for: ds, detectedRegions: [ocr, band, ocr])
+        guard case .redact(let regions, let basis) = plan.decision else {
+            return XCTFail("expected redact")
+        }
+        XCTAssertEqual(basis, .deviceTemplate, "the deterministic source stays primary")
+        XCTAssertEqual(plan.sources.map(\.basis), [.deviceTemplate, .textDetection])
+        XCTAssertEqual(regions.filter { $0 == band }.count, 1, "duplicates collapse")
+        XCTAssertTrue(regions.contains(ocr))
+    }
+
+    /// OCR alone (nothing declared, no template) still resolves — this is the blind
+    /// spot text detection closes.
+    func testDetectedRegionsAloneResolveAnOtherwiseCleanLookingImage() throws {
+        var ds = imageDataSet(rows: 20, columns: 10)
+        ds.setString("XA", for: .modality, vr: .CS)
+        let ocr = PixelRedactionPlan.Region(x: 0, y: 0, width: 10, height: 3)
+        let plan = PixelRedactionPlan.plan(for: ds, detectedRegions: [ocr])
+        guard case .redact(let regions, let basis) = plan.decision else {
+            return XCTFail("expected redact")
+        }
+        XCTAssertEqual(basis, .textDetection)
+        XCTAssertEqual(regions, [ocr])
+
+        let (out, outcome) = try XCTUnwrap(
+            PixelRedactor().redact(fileData: try fileBytes(ds), plan: plan))
+        XCTAssertEqual(outcome.basis, .textDetection)
+        XCTAssertTrue(outcome.note.contains("OCR text detection"), outcome.note)
+        XCTAssertFalse(outcome.note.lowercased().contains("clean"),
+            "the note must not claim the image is clean")
+        let after = try pixels(of: out)
+        XCTAssertEqual(after[0], 0)
+        XCTAssertEqual(after[30], 200, "row 3 is outside the OCR rectangle")
     }
 
     /// The fail-safe strategy: blank everything outside the vendor-declared scan area.

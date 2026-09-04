@@ -30,7 +30,7 @@ import DICOMCore
 public struct PixelRedactionPlan: Sendable, Equatable {
 
     /// A rectangle to blank, in image pixels, origin top-left.
-    public struct Region: Sendable, Equatable {
+    public struct Region: Sendable, Hashable {
         public var x: Int
         public var y: Int
         public var width: Int
@@ -53,6 +53,19 @@ public struct PixelRedactionPlan: Sendable, Equatable {
         case keepRegionInversion
         /// A curated template matched this device and geometry.
         case deviceTemplate
+        /// On-device OCR (``TextRegionDetector``) found text at these coordinates.
+        case textDetection
+    }
+
+    /// One contributing region source, kept so the audit trail can say *why* each
+    /// rectangle exists when several sources were unioned.
+    public struct Source: Sendable, Equatable {
+        public let basis: Basis
+        public let regions: [Region]
+        public init(basis: Basis, regions: [Region]) {
+            self.basis = basis
+            self.regions = regions
+        }
     }
 
     public enum Decision: Sendable, Equatable {
@@ -67,8 +80,13 @@ public struct PixelRedactionPlan: Sendable, Equatable {
 
     public let decision: Decision
 
-    public init(decision: Decision) {
+    /// Every source that contributed to a `.redact` decision, in precedence order. Empty
+    /// for hand-built plans and non-redact decisions; `decision.basis` is `sources.first`.
+    public let sources: [Source]
+
+    public init(decision: Decision, sources: [Source] = []) {
         self.decision = decision
+        self.sources = sources
     }
 
     // MARK: - Planning
@@ -84,25 +102,36 @@ public struct PixelRedactionPlan: Sendable, Equatable {
     ///     verbatim and no derivation is attempted.
     public static func plan(
         for dataSet: DataSet,
-        explicitRegions: [Region] = []
+        explicitRegions: [Region] = [],
+        detectedRegions: [Region] = []
     ) -> PixelRedactionPlan {
+        // Every enabled source may only ADD to the mask (principle: union, never
+        // override). Explicit rectangles come first so they remain the recorded basis;
+        // the derived strategies and OCR are unioned on top.
+        var sources: [Source] = []
         if !explicitRegions.isEmpty {
-            return PixelRedactionPlan(
-                decision: .redact(regions: explicitRegions, basis: .explicit))
+            sources.append(Source(basis: .explicit, regions: explicitRegions))
         }
 
         let residual = ConfidentialityEngine.residualPixelPHIWarnings(in: dataSet)
 
-        // Derive from a declared clinical region when the file offers one.
+        // Derive from a declared clinical region when the file offers one, else a
+        // curated device template. These two are alternatives (the template describes
+        // the same banner the declaration locates), so the first that resolves is used.
         if let inverted = keepRegionInversion(for: dataSet) {
-            return PixelRedactionPlan(
-                decision: .redact(regions: inverted, basis: .keepRegionInversion))
+            sources.append(Source(basis: .keepRegionInversion, regions: inverted))
+        } else if let templated = DeviceRedactionTemplates.regions(for: dataSet) {
+            sources.append(Source(basis: .deviceTemplate, regions: templated))
         }
 
-        // Curated device templates.
-        if let templated = DeviceRedactionTemplates.regions(for: dataSet) {
+        if !detectedRegions.isEmpty {
+            sources.append(Source(basis: .textDetection, regions: detectedRegions))
+        }
+
+        if let primary = sources.first {
             return PixelRedactionPlan(
-                decision: .redact(regions: templated, basis: .deviceTemplate))
+                decision: .redact(regions: unionedRegions(of: sources), basis: primary.basis),
+                sources: sources)
         }
 
         // Nothing derived. If the image declares burned-in content, that is a refusal,
@@ -111,6 +140,18 @@ public struct PixelRedactionPlan: Sendable, Equatable {
             return PixelRedactionPlan(decision: .nothingToDo)
         }
         return PixelRedactionPlan(decision: .unresolved(reason: residual.joined(separator: " ")))
+    }
+
+    /// The union of every source's rectangles, duplicates removed, order preserved.
+    static func unionedRegions(of sources: [Source]) -> [Region] {
+        var seen = Set<Region>()
+        var out: [Region] = []
+        for source in sources {
+            for region in source.regions where seen.insert(region).inserted {
+                out.append(region)
+            }
+        }
+        return out
     }
 
     // MARK: - Keep-region inversion

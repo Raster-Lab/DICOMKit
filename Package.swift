@@ -418,6 +418,7 @@ let package = Package(
                 // PS3.15 Annex E Clean Pixel Data Option (113101): region planning,
                 // blanking mechanism, and earned attestation.
                 "PixelRedactionTests.swift",
+                "TextRegionDetectorTests.swift",
                 // ECOSYSTEM_COMPARISON.md §5 cross-toolkit bug-scenario matrix.
                 "CrossToolkitMatrixTests.swift",
                 // RESEARCH_ADOPTION_PLAN.md M2: selected-frame access + frame index.

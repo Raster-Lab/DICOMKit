@@ -63,7 +63,7 @@ public struct PixelRedactor {
             throw PixelRedactionError.unresolvedRegion(reason)
 
         case .redact(let regions, let basis):
-            return try apply(regions: regions, basis: basis,
+            return try apply(regions: regions, basis: basis, plan: plan,
                              to: fileData, fillValue: fillValue)
         }
     }
@@ -73,11 +73,12 @@ public struct PixelRedactor {
     private func apply(
         regions: [PixelRedactionPlan.Region],
         basis: PixelRedactionPlan.Basis,
+        plan: PixelRedactionPlan,
         to fileData: Data,
         fillValue: Int?
     ) throws -> (data: Data, outcome: Outcome) {
         let sourceFile = try DICOMFile.read(from: fileData)
-        let note = provenanceNote(basis: basis, dataSet: sourceFile.dataSet)
+        let note = provenanceNote(plan: plan, basis: basis, dataSet: sourceFile.dataSet)
         let frameCount = max(1, sourceFile.dataSet.numberOfFrames ?? 1)
 
         // Blank via the shared PixelEditor so the CLI, Studio and this path run one
@@ -114,7 +115,22 @@ public struct PixelRedactor {
         return (try file.write(), outcome)
     }
 
-    private func provenanceNote(basis: PixelRedactionPlan.Basis, dataSet: DataSet) -> String {
+    /// One note per contributing source when the plan unioned several; the single
+    /// basis note otherwise.
+    private func provenanceNote(
+        plan: PixelRedactionPlan, basis: PixelRedactionPlan.Basis, dataSet: DataSet
+    ) -> String {
+        if plan.sources.count > 1 {
+            return plan.sources
+                .map { "\($0.basis.rawValue): \(provenanceNote(basis: $0.basis, count: $0.regions.count, dataSet: dataSet))" }
+                .joined(separator: "; ")
+        }
+        return provenanceNote(basis: basis, count: plan.sources.first?.regions.count, dataSet: dataSet)
+    }
+
+    private func provenanceNote(
+        basis: PixelRedactionPlan.Basis, count: Int?, dataSet: DataSet
+    ) -> String {
         switch basis {
         case .explicit:
             return "caller-specified region"
@@ -123,6 +139,10 @@ public struct PixelRedactor {
                 + "blanked everything outside the declared scan area"
         case .deviceTemplate:
             return DeviceRedactionTemplates.matchNote(for: dataSet) ?? "device template"
+        case .textDetection:
+            // Report what was done — never that the image is now clean (principle #9).
+            let n = count.map { "\($0) region\($0 == 1 ? "" : "s")" } ?? "regions"
+            return "OCR text detection (Vision, \(n))"
         }
     }
 
