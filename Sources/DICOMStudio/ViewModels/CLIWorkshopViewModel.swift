@@ -4960,7 +4960,20 @@ case "dicom-study":
 
     /// Anonymizes DICOM files, matching dicom-anon CLI output exactly.
     private func executeDicomAnon() async {
-        let inputPath = paramValue("inputPath")
+        // Read a parameter only when its visibility conditions hold, so a value
+        // left behind by a hidden control (e.g. a PS3.15 retain toggle after
+        // switching the profile back to basic) is neither previewed nor executed.
+        let value: (String) -> String = { id in
+            guard let def = self.parameterDefinitions.first(where: { $0.id == id }),
+                  self.satisfiesVisibility(def) else { return "" }
+            return self.paramValue(id)
+        }
+        let optional: (String) -> String? = { id in
+            let v = value(id)
+            return v.isEmpty ? nil : v
+        }
+
+        let inputPath = value("inputPath")
         guard !inputPath.isEmpty else {
             appendConsoleOutput("Error: Input path is required.\n")
             addToHistory(toolName: "dicom-anon", command: commandPreview, exitCode: 1, output: "Missing input path")
@@ -4969,108 +4982,54 @@ case "dicom-study":
             return
         }
 
-        let outputPath     = paramValue("output")
-        let profileStr     = paramValue("profile").isEmpty ? "basic" : paramValue("profile")
-        let shiftDaysStr   = paramValue("shift-dates")
-        let regenUIDs      = paramValue("regenerate-uids") == "true"
-        let removeTagsRaw  = paramValue("remove")
-        let replaceRaw     = paramValue("replace")
-        let keepTagsRaw    = paramValue("keep")
-        let recursive      = paramValue("recursive") == "true"
-        let dryRun         = paramValue("dry-run") == "true"
-        let backup         = paramValue("backup") == "true"
-        let auditLogPath   = paramValue("audit-log")
-        let force          = paramValue("force") == "true"
-        let verbose        = paramValue("verbose") == "true"
+        // One request in the CLI's own vocabulary — the same `AnonymizationWorkflow.Request`
+        // `dicom-anon` builds from argv. Repeatable flags use the shared semicolon
+        // `splitMultiValue` convention (the splitter `buildCommand()` uses), never a
+        // comma split: a tag is written `GGGG,EEEE` and a region `x,y,w,h`.
+        var request = AnonymizationWorkflow.Request(inputPath: inputPath)
+        request.output = optional("output")
+        request.profile = optional("profile") ?? "basic"
+        request.retainDates = value("retain-dates") == "true"
+        request.retainCharacteristics = value("retain-characteristics") == "true"
+        request.retainDevice = value("retain-device") == "true"
+        request.retainInstitution = value("retain-institution") == "true"
+        request.retainUids = value("retain-uids") == "true"
+        request.cleanDescriptors = value("clean-descriptors") == "true"
+        request.cleanPixelData = value("clean-pixel-data") == "true"
+        request.redactRegion = CommandBuilderHelpers.splitMultiValue(value("redact-region"))
+        request.redactFill = Int(value("redact-fill"))
+        request.redactStyle = optional("redact-style") ?? "blank"
+        request.redactLabel = optional("redact-label")
+        request.recompress = optional("recompress")
+        request.detectText = value("detect-text") == "true"
+        request.detectTextMode = optional("detect-text-mode") ?? "classify"
+        request.ocrAllFrames = value("ocr-all-frames") == "true"
+        request.shiftDates = Int(value("shift-dates"))
+        request.regenerateUids = value("regenerate-uids") == "true"
+        request.remove = CommandBuilderHelpers.splitMultiValue(value("remove"))
+        request.replace = CommandBuilderHelpers.splitMultiValue(value("replace"))
+        request.keep = CommandBuilderHelpers.splitMultiValue(value("keep"))
+        request.recursive = value("recursive") == "true"
+        request.dryRun = value("dry-run") == "true"
+        request.backup = value("backup") == "true"
+        request.auditLog = optional("audit-log")
+        request.force = value("force") == "true"
+        request.allowBurnedInPHI = value("allow-burned-in-phi") == "true"
+        request.verbose = value("verbose") == "true"
 
-        // Gain sandbox access via security-scoped URLs registered by the file picker.
+        // Sandbox access via the security-scoped URLs registered by the file pickers;
+        // the shared executor resolves a writable output location and then runs the
+        // exact code path the CLI runs.
         let inputScopedURL  = securityScopedURLs["inputPath"]
         let outputScopedURL = securityScopedURLs["output"]
-        let accessingInput  = inputScopedURL?.startAccessingSecurityScopedResource()  ?? false
-        let accessingOutput = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
-        defer {
-            if accessingInput  { inputScopedURL?.stopAccessingSecurityScopedResource() }
-            if accessingOutput { outputScopedURL?.stopAccessingSecurityScopedResource() }
-        }
+        let (output, exitCode) = await Task.detached(priority: .userInitiated) {
+            SecurityViewModel.executeAnonymization(
+                request, inputScopedURL: inputScopedURL, outputScopedURL: outputScopedURL)
+        }.value
 
-        // Map CLI profile string to model enum
-        let profile: AnonymizationProfile
-        switch profileStr {
-        case "clinical-trial": profile = .clinicalTrial
-        case "research":       profile = .research
-        default:               profile = .basic
-        }
-
-        let shiftDays = Int(shiftDaysStr)
-
-        // Parse tag lists via the shared semicolon `splitMultiValue` convention (the same
-        // splitter `buildCommand()` uses for these repeatable flags). Do NOT split on
-        // commas: a tag is written `GGGG,EEEE` (and --replace is `GGGG,EEEE=value`), so
-        // comma-splitting `0010,0010` would shred it into "0010"+"0010", match nothing,
-        // and silently drop the modifier (F19 — same class as the F18 xml --filter-tag bug).
-        let removeTags   = CommandBuilderHelpers.splitMultiValue(removeTagsRaw)
-        let replacePairs = CommandBuilderHelpers.splitMultiValue(replaceRaw)
-        let keepTags     = CommandBuilderHelpers.splitMultiValue(keepTagsRaw)
-
-        // Build a SecurityViewModel scoped just for this run.
-        // Resolve a sandbox-writable output path: scoped URL → ~/Downloads path → fallback.
-        let (resolvedOutputPath, outputRedirectNote) = SecurityViewModel.resolveWritableOutput(
-            path: outputScopedURL?.path ?? outputPath,
-            scopedURL: outputScopedURL
-        )
-        if let note = outputRedirectNote { appendConsoleOutput(note) }
-
-        // Parity with the dicom-anon CLI: a single-file run with no output path (and not
-        // a dry run) has nowhere to write, so error instead of running and reporting
-        // success on a file that was never anonymized. Directory runs resolve an output
-        // dir separately and are unaffected.
-        var anonInputIsDir: ObjCBool = false
-        let anonInputPathResolved = (inputScopedURL ?? URL(fileURLWithPath: inputPath)).path
-        let anonInputExists = FileManager.default.fileExists(atPath: anonInputPathResolved, isDirectory: &anonInputIsDir)
-        if !dryRun && resolvedOutputPath.isEmpty && anonInputExists && !anonInputIsDir.boolValue {
-            appendConsoleOutput("Error: Anonymization requires an output path (or enable Dry Run to preview without writing).\n")
-            addToHistory(toolName: "dicom-anon", command: commandPreview, exitCode: 1, output: "Output required")
-            consoleStatus = .error
-            service.setConsoleStatus(.error)
-            return
-        }
-
-        let secVM = SecurityViewModel()
-        secVM.anonInputPath       = (inputScopedURL ?? URL(fileURLWithPath: inputPath)).path
-        secVM.anonOutputPath      = resolvedOutputPath
-        secVM.anonProfile         = profile
-        secVM.anonShiftDatesEnabled = shiftDays != nil
-        secVM.anonShiftDays       = shiftDays ?? 0
-        secVM.anonRegenerateUIDs  = regenUIDs
-        secVM.anonRemoveTags      = removeTags
-        secVM.anonReplacePairs    = replacePairs
-        secVM.anonKeepTags        = keepTags
-        secVM.anonRecursive       = recursive
-        secVM.anonDryRun          = dryRun
-        secVM.anonBackup          = backup
-        secVM.anonAuditLogPath    = auditLogPath
-        secVM.anonForce           = force
-        secVM.anonVerbose         = verbose
-        secVM.anonInputScopedURL  = inputScopedURL
-        secVM.anonOutputScopedURL = outputScopedURL
-
-        secVM.runAnonymization()
-
-        var waited = 0
-        while secVM.anonIsRunning && waited < 300 {
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            waited += 1
-        }
-
-        let output = secVM.anonOutput
         appendConsoleOutput(output)
-
-        // (The single-file "no output path" case is rejected up front now, matching the
-        // dicom-anon CLI — see the guard above.)
-
         // Structured exit code from the run itself (CLI rule: any failed file → 1) —
         // never derived by sniffing the output text.
-        let exitCode = secVM.anonLastExitCode
         addToHistory(toolName: "dicom-anon", command: commandPreview, exitCode: exitCode, output: output)
         consoleStatus = exitCode == 0 ? .success : .error
         service.setConsoleStatus(exitCode == 0 ? .success : .error)

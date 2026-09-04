@@ -7,7 +7,7 @@ import CryptoKit
 #endif
 
 /// Anonymization profile types
-public enum AnonymizationProfile {
+public enum AnonymizationProfile: Sendable {
     case basic
     case clinicalTrial
     case research
@@ -68,7 +68,7 @@ public enum AnonymizationProfile {
 }
 
 /// Anonymization action for a tag
-public enum AnonymizationAction {
+public enum AnonymizationAction: Sendable {
     case remove
     case replaceWithEmpty
     case replaceWithDummy(String)
@@ -78,7 +78,7 @@ public enum AnonymizationAction {
 }
 
 /// Result of anonymization
-public struct AnonymizationResult {
+public struct AnonymizationResult: Sendable {
     public let filePath: String
     public let success: Bool
     public let changedTags: [Tag]

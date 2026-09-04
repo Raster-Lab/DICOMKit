@@ -422,6 +422,9 @@ let package = Package(
                 "PixelCleaningWorkflowTests.swift",
                 "PHITextClassifierTests.swift",
                 "PixelRedactionCompressionMatrixTests.swift",
+                // The shared dicom-anon run (CLI + Studio Workshop): parsing, refusal,
+                // pixel-first ordering, console text.
+                "AnonymizationWorkflowTests.swift",
                 // ECOSYSTEM_COMPARISON.md §5 cross-toolkit bug-scenario matrix.
                 "CrossToolkitMatrixTests.swift",
                 // RESEARCH_ADOPTION_PLAN.md M2: selected-frame access + frame index.

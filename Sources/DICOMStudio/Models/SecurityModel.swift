@@ -6,6 +6,7 @@
 // Reference: HIPAA Security Rule §164.312
 
 import Foundation
+import DICOMKit
 
 // MARK: - Navigation Tab
 
@@ -248,6 +249,8 @@ public enum AnonymizationProfile: String, Sendable, Equatable, Hashable, CaseIte
     case research         = "RESEARCH"
     case hipaaeSafeHarbor = "HIPAA_SAFE_HARBOR"
     case custom           = "CUSTOM"
+    /// PS3.15 Annex E Basic Application Level Confidentiality Profile (`--profile ps315`).
+    case ps315            = "PS315"
 
     /// Human-readable display name.
     public var displayName: String {
@@ -257,6 +260,7 @@ public enum AnonymizationProfile: String, Sendable, Equatable, Hashable, CaseIte
         case .research:         return "Research (Minimal Removal)"
         case .hipaaeSafeHarbor: return "HIPAA Safe Harbor"
         case .custom:           return "Custom Rules"
+        case .ps315:            return "PS3.15 Annex E (Confidentiality Profile)"
         }
     }
 
@@ -268,6 +272,7 @@ public enum AnonymizationProfile: String, Sendable, Equatable, Hashable, CaseIte
         case .research:         return "research"
         case .hipaaeSafeHarbor: return "basic"   // HIPAA Safe Harbor uses basic profile in CLI
         case .custom:           return "basic"
+        case .ps315:            return "ps315"
         }
     }
 
@@ -279,6 +284,7 @@ public enum AnonymizationProfile: String, Sendable, Equatable, Hashable, CaseIte
         case .research:         return "Minimal removal: PatientName, PatientID, PatientBirthDate only."
         case .hipaaeSafeHarbor: return "Applies HIPAA Safe Harbor de-identification (45 CFR §164.514(b)(2))."
         case .custom:           return "Apply user-defined tag-level anonymization rules."
+        case .ps315:            return "PS3.15 Annex E Basic Profile with optional retention options and Clean Pixel Data."
         }
     }
 }
@@ -862,41 +868,46 @@ public struct PHIDetectionResult: Identifiable, Sendable, Equatable, Hashable {
 /// CLI reference: dicom-anon <path> [options]
 public enum AnonHelpers: Sendable {
 
-    /// Builds the exact dicom-anon CLI command from SecurityViewModel anon-builder state.
-    public static func buildCommand(
-        inputPath: String,
-        outputPath: String,
-        profile: AnonymizationProfile,
-        shiftDates: Int?,
-        regenerateUIDs: Bool,
-        removeTags: [String],
-        replacePairs: [String],
-        keepTags: [String],
-        recursive: Bool,
-        dryRun: Bool,
-        backup: Bool,
-        auditLogPath: String,
-        force: Bool,
-        verbose: Bool
-    ) -> String {
-        guard !inputPath.isEmpty else { return "dicom-anon <input>" }
-        var cmd = "dicom-anon \"\(inputPath)\""
-        if !outputPath.isEmpty { cmd += " --output \"\(outputPath)\"" }
-        if profile != .basic { cmd += " --profile \(profile.cliFlag)" }
-        if let days = shiftDates { cmd += " --shift-dates \(days)" }
-        if regenerateUIDs { cmd += " --regenerate-uids" }
-        for tag in removeTags  where !tag.isEmpty { cmd += " --remove \(tag)" }
-        for pair in replacePairs where !pair.isEmpty { cmd += " --replace \(pair)" }
-        for tag in keepTags    where !tag.isEmpty { cmd += " --keep \(tag)" }
-        if recursive   { cmd += " --recursive" }
-        if dryRun      { cmd += " --dry-run" }
-        if backup      { cmd += " --backup" }
-        if !auditLogPath.isEmpty { cmd += " --audit-log \"\(auditLogPath)\"" }
-        if force       { cmd += " --force" }
-        if verbose     { cmd += " --verbose" }
+    /// Builds the exact dicom-anon CLI command for a shared workflow request —
+    /// one flag per `Request` field, in the CLI's own spelling.
+    public static func buildCommand(_ r: AnonymizationWorkflow.Request) -> String {
+        guard !r.inputPath.isEmpty else { return "dicom-anon <input>" }
+        var cmd = "dicom-anon \"\(r.inputPath)\""
+        if let out = r.output, !out.isEmpty { cmd += " --output \"\(out)\"" }
+        if r.profile != "basic" { cmd += " --profile \(r.profile)" }
+        if r.retainDates           { cmd += " --retain-dates" }
+        if r.retainCharacteristics { cmd += " --retain-characteristics" }
+        if r.retainDevice          { cmd += " --retain-device" }
+        if r.retainInstitution     { cmd += " --retain-institution" }
+        if r.retainUids            { cmd += " --retain-uids" }
+        if r.cleanDescriptors      { cmd += " --clean-descriptors" }
+        if r.cleanPixelData        { cmd += " --clean-pixel-data" }
+        for region in r.redactRegion where !region.isEmpty { cmd += " --redact-region \(region)" }
+        if let fill = r.redactFill { cmd += " --redact-fill \(fill)" }
+        if r.redactStyle != "blank" { cmd += " --redact-style \(r.redactStyle)" }
+        if let label = r.redactLabel, !label.isEmpty { cmd += " --redact-label \"\(label)\"" }
+        if let codec = r.recompress, !codec.isEmpty { cmd += " --recompress \(codec)" }
+        if r.detectText {
+            cmd += " --detect-text"
+            if r.detectTextMode != "classify" { cmd += " --detect-text-mode \(r.detectTextMode)" }
+            if r.ocrAllFrames { cmd += " --ocr-all-frames" }
+        }
+        if let days = r.shiftDates { cmd += " --shift-dates \(days)" }
+        if r.regenerateUids { cmd += " --regenerate-uids" }
+        for tag in r.remove  where !tag.isEmpty { cmd += " --remove \(tag)" }
+        for pair in r.replace where !pair.isEmpty { cmd += " --replace \(pair)" }
+        for tag in r.keep    where !tag.isEmpty { cmd += " --keep \(tag)" }
+        if r.recursive   { cmd += " --recursive" }
+        if r.dryRun      { cmd += " --dry-run" }
+        if r.backup      { cmd += " --backup" }
+        if let log = r.auditLog, !log.isEmpty { cmd += " --audit-log \"\(log)\"" }
+        if r.force       { cmd += " --force" }
+        if r.allowBurnedInPHI { cmd += " --allow-burned-in-phi" }
+        if r.verbose     { cmd += " --verbose" }
         return cmd
     }
 
-    // Summary rendering lives in the shared `AnonConsole` (DICOMKit) — the same
-    // builder the dicom-anon CLI prints from — so the two surfaces cannot drift.
+    // Input parsing, the run itself and every console line live in the shared
+    // `AnonymizationWorkflow` / `AnonConsole` (DICOMKit) — the same code the
+    // dicom-anon CLI runs — so the two surfaces cannot drift.
 }

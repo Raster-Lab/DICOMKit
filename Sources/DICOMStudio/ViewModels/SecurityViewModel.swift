@@ -107,6 +107,37 @@ public final class SecurityViewModel {
     public var anonForce: Bool = false
     /// --verbose
     public var anonVerbose: Bool = false
+
+    // PS3.15 Annex E retention options (--profile ps315 only)
+    public var anonRetainDates: Bool = false
+    public var anonRetainCharacteristics: Bool = false
+    public var anonRetainDevice: Bool = false
+    public var anonRetainInstitution: Bool = false
+    public var anonRetainUIDs: Bool = false
+    public var anonCleanDescriptors: Bool = false
+
+    // Pixel pipeline (Clean Pixel Data, OCR, styles, re-encode)
+    /// --clean-pixel-data
+    public var anonCleanPixelData: Bool = false
+    /// --redact-region x,y,w,h (one per entry)
+    public var anonRedactRegions: [String] = []
+    /// --redact-fill (nil = codec default 0)
+    public var anonRedactFill: Int? = nil
+    /// --redact-style blank|label|replace
+    public var anonRedactStyle: String = "blank"
+    /// --redact-label (empty = REDACTED)
+    public var anonRedactLabel: String = ""
+    /// --recompress source|<codec> (empty = Explicit VR LE)
+    public var anonRecompress: String = ""
+    /// --detect-text
+    public var anonDetectText: Bool = false
+    /// --detect-text-mode classify|all
+    public var anonDetectTextMode: String = "classify"
+    /// --ocr-all-frames
+    public var anonOCRAllFrames: Bool = false
+    /// --allow-burned-in-phi
+    public var anonAllowBurnedInPHI: Bool = false
+
     /// Running flag
     public var anonIsRunning: Bool = false
     /// Structured exit code of the last anonymization run (CLI rule: any failed
@@ -322,24 +353,49 @@ public final class SecurityViewModel {
 
     // MARK: - 11.2b Anon Builder Actions
 
+    /// The shared workflow request for the current builder state — the same
+    /// `AnonymizationWorkflow.Request` the `dicom-anon` CLI builds from argv.
+    public var anonRequest: AnonymizationWorkflow.Request {
+        var r = AnonymizationWorkflow.Request(inputPath: anonInputPath)
+        r.output = anonOutputPath.isEmpty ? nil : anonOutputPath
+        r.profile = anonProfile.cliFlag
+        r.retainDates = anonRetainDates
+        r.retainCharacteristics = anonRetainCharacteristics
+        r.retainDevice = anonRetainDevice
+        r.retainInstitution = anonRetainInstitution
+        r.retainUids = anonRetainUIDs
+        r.cleanDescriptors = anonCleanDescriptors
+        r.cleanPixelData = anonCleanPixelData
+        r.redactRegion = anonRedactRegions
+        r.redactFill = anonRedactFill
+        r.redactStyle = anonRedactStyle
+        r.redactLabel = anonRedactLabel.isEmpty ? nil : anonRedactLabel
+        r.recompress = anonRecompress.isEmpty ? nil : anonRecompress
+        r.detectText = anonDetectText
+        r.detectTextMode = anonDetectTextMode
+        r.ocrAllFrames = anonOCRAllFrames
+        r.shiftDates = anonShiftDatesEnabled ? anonShiftDays : nil
+        r.regenerateUids = anonRegenerateUIDs
+        r.remove = anonRemoveTags
+        r.replace = anonReplacePairs
+        r.keep = anonKeepTags
+        r.recursive = anonRecursive
+        r.dryRun = anonDryRun
+        r.backup = anonBackup
+        r.auditLog = anonAuditLogPath.isEmpty ? nil : anonAuditLogPath
+        r.force = anonForce
+        r.allowBurnedInPHI = anonAllowBurnedInPHI
+        r.verbose = anonVerbose
+        // "Custom Rules" has no CLI profile: it removes exactly the listed tags.
+        if anonProfile == .custom {
+            r.customProfileTags = anonRemoveTags.compactMap { DICOMKit.Anonymizer.parseFlexibleTag($0) }
+        }
+        return r
+    }
+
     /// Returns the exact dicom-anon CLI command for current builder state.
     public var anonCLICommand: String {
-        AnonHelpers.buildCommand(
-            inputPath: anonInputPath,
-            outputPath: anonOutputPath,
-            profile: anonProfile,
-            shiftDates: anonShiftDatesEnabled ? anonShiftDays : nil,
-            regenerateUIDs: anonRegenerateUIDs,
-            removeTags: anonRemoveTags,
-            replacePairs: anonReplacePairs,
-            keepTags: anonKeepTags,
-            recursive: anonRecursive,
-            dryRun: anonDryRun,
-            backup: anonBackup,
-            auditLogPath: anonAuditLogPath,
-            force: anonForce,
-            verbose: anonVerbose
-        )
+        AnonHelpers.buildCommand(anonRequest)
     }
 
     public func addRemoveTag() {
@@ -380,259 +436,81 @@ public final class SecurityViewModel {
         anonKeepTags.removeAll { $0 == tag }
     }
 
-    /// Runs anonymization natively using DICOMKit APIs.
-    /// Output matches dicom-anon printSummary() exactly.
+    /// Runs anonymization natively through the shared workflow (fire-and-forget
+    /// for the Security screen's Run button; `performAnonymization()` awaits it).
     public func runAnonymization() {
+        Task { await performAnonymization() }
+    }
+
+    /// Runs the shared `AnonymizationWorkflow` for the current builder state and
+    /// publishes its console text + exit code. Output matches `dicom-anon` exactly.
+    @discardableResult
+    public func performAnonymization() async -> (output: String, exitCode: Int) {
         guard !anonInputPath.isEmpty else {
             anonOutput = "Error: Input path is required.\n"
             anonLastExitCode = 1
-            return
+            return (anonOutput, 1)
         }
         anonIsRunning = true
         anonOutput = "Running: \(anonCLICommand)\n"
-
-        // Capture all parameters before crossing isolation boundary
-        let inputPath   = anonInputPath
-        let outputPath  = anonOutputPath
-        let profile     = anonProfile
-        let shiftDays   = anonShiftDatesEnabled ? anonShiftDays : nil
-        let regen       = anonRegenerateUIDs
-        let removeTags  = anonRemoveTags
-        let replacePairs = anonReplacePairs
-        let keepTags    = anonKeepTags
-        let recursive   = anonRecursive
-        let dryRun      = anonDryRun
-        let backup      = anonBackup
-        let auditLog    = anonAuditLogPath
-        let force       = anonForce
-        let verbose     = anonVerbose
-
-        Task {
-            let result = await self.executeAnonymization(
-                inputPath: inputPath,
-                outputPath: outputPath,
-                profile: profile,
-                shiftDays: shiftDays,
-                regenerateUIDs: regen,
-                removeTags: removeTags,
-                replacePairs: replacePairs,
-                keepTags: keepTags,
-                recursive: recursive,
-                dryRun: dryRun,
-                backup: backup,
-                auditLogPath: auditLog,
-                force: force,
-                verbose: verbose
-            )
-            self.anonOutput = result.output
-            self.anonLastExitCode = result.exitCode
-            self.anonIsRunning = false
-        }
+        let request = anonRequest
+        let inputScoped = anonInputScopedURL
+        let outputScoped = anonOutputScopedURL
+        let result = await Task.detached(priority: .userInitiated) {
+            Self.executeAnonymization(request, inputScopedURL: inputScoped, outputScopedURL: outputScoped)
+        }.value
+        anonOutput = result.output
+        anonLastExitCode = result.exitCode
+        anonIsRunning = false
+        return result
     }
 
     public func clearAnonOutput() {
         anonOutput = ""
     }
 
-    // MARK: - 11.2b Anon Engine (native DICOMKit, matches dicom-anon output)
+    // MARK: - 11.2b Anon Engine (shared AnonymizationWorkflow, matches dicom-anon output)
 
-    private func executeAnonymization(
-        inputPath: String,
-        outputPath: String,
-        profile: AnonymizationProfile,
-        shiftDays: Int?,
-        regenerateUIDs: Bool,
-        removeTags: [String],
-        replacePairs: [String],
-        keepTags: [String],
-        recursive: Bool,
-        dryRun: Bool,
-        backup: Bool,
-        auditLogPath: String,
-        force: Bool,
-        verbose: Bool
-    ) async -> (output: String, exitCode: Int) {
-        // Start security-scoped resource access so the sandbox allows reading
-        // the user-selected input and writing to the chosen output directory.
-        let inputAccessing  = anonInputScopedURL?.startAccessingSecurityScopedResource()  ?? false
-        let outputAccessing = anonOutputScopedURL?.startAccessingSecurityScopedResource() ?? false
+    /// Runs one `dicom-anon` request in-process. Used by the Security screen builder
+    /// and by the CLI Workshop executor. The only app-specific work here is sandbox
+    /// plumbing: security-scoped access and a guaranteed-writable output location.
+    /// Everything else — parsing, validation, the pixel-first run, refusal, every
+    /// console line — is `AnonymizationWorkflow`, the code the CLI itself runs.
+    nonisolated public static func executeAnonymization(
+        _ base: AnonymizationWorkflow.Request,
+        inputScopedURL: URL?,
+        outputScopedURL: URL?
+    ) -> (output: String, exitCode: Int) {
+        let inputAccessing  = inputScopedURL?.startAccessingSecurityScopedResource()  ?? false
+        let outputAccessing = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
         defer {
-            if inputAccessing  { anonInputScopedURL?.stopAccessingSecurityScopedResource() }
-            if outputAccessing { anonOutputScopedURL?.stopAccessingSecurityScopedResource() }
+            if inputAccessing  { inputScopedURL?.stopAccessingSecurityScopedResource() }
+            if outputAccessing { outputScopedURL?.stopAccessingSecurityScopedResource() }
         }
+
+        var request = base
+        if let inputScopedURL { request.inputPath = inputScopedURL.path }
 
         // Resolve a guaranteed-writable output path before any file I/O.
-        let (effectiveOutputPath, redirectNote) = Self.resolveWritableOutput(
-            path: outputPath,
-            scopedURL: anonOutputScopedURL
-        )
+        let (effectiveOutputPath, redirectNote) = resolveWritableOutput(
+            path: base.output ?? "", scopedURL: outputScopedURL)
+        request.output = effectiveOutputPath.isEmpty ? nil : effectiveOutputPath
 
-        var totalFiles = 0
-        var successful = 0
-        var failed = 0
-        var warnings: [String] = []
-        var modifiedTagNames: [String] = []
         var output = redirectNote ?? ""
-
-        // Resolve file list
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: inputPath, isDirectory: &isDir) else {
-            return ("Error: Input path not found: \(inputPath)\n", 1)
+        // Sandbox/TCC-resilient write: resolveWritableOutput uses POSIX checks that
+        // miss TCC, so retry at write time and fall back to ~/Downloads. The note
+        // surfaces in the run's warnings, exactly where the CLI would report a
+        // write problem.
+        let workflow = AnonymizationWorkflow(writeFile: { data, url in
+            try OutputAccess.write(data, toPath: url.path, scopedURL: nil, subfolder: "Anonymized").note
+        })
+        do {
+            let outcome = try workflow.run(request) { output += $0 }
+            return (output, Int(outcome.exitCode))
+        } catch {
+            // The CLI prints `Error: <message>` (ArgumentParser) and exits 1.
+            return (output + "Error: \(error.localizedDescription)\n", 1)
         }
-
-        // CLI parity: dicom-anon requires --output for a single-file run unless
-        // --dry-run is set (see main.swift) — without it there is nowhere to write,
-        // so anonymizing would silently discard its result while still reporting
-        // success. Mirror that guard here instead of falling through to the write
-        // step below, which no-ops on an empty output path for a single file.
-        if !dryRun && effectiveOutputPath.isEmpty && !isDir.boolValue {
-            return (output + "Error: Anonymization requires an output path (or enable Dry Run to preview without writing).\n", 1)
-        }
-
-        // Validate every --remove/--replace/--keep spec up front, mirroring the CLI's
-        // parseCustomActions/parsePreserveTags: unparseable input must ERROR (the CLI
-        // throws ValidationError), never be silently compactMap-dropped while the run
-        // still reports success.
-        for spec in removeTags where Self.parseTag(spec) == nil {
-            return (output + "Error: Invalid tag format: \(spec)\n", 1)
-        }
-        for pair in replacePairs {
-            let parts = pair.split(separator: "=", maxSplits: 1)
-            guard parts.count == 2 else {
-                return (output + "Error: Invalid replace format: \(pair). Use TAG=VALUE\n", 1)
-            }
-            if Self.parseTag(String(parts[0])) == nil {
-                return (output + "Error: Invalid tag format: \(parts[0])\n", 1)
-            }
-        }
-        for spec in keepTags where Self.parseTag(spec) == nil {
-            return (output + "Error: Invalid tag format: \(spec)\n", 1)
-        }
-
-        var fileURLs: [URL] = []
-        if isDir.boolValue {
-            guard recursive else {
-                return ("Error: Directory anonymization requires --recursive flag\n", 1)
-            }
-            guard !outputPath.isEmpty else {
-                return ("Error: Directory anonymization requires --output directory\n", 1)
-            }
-            // Shared, sorted directory walk — the exact gatherer dicom-anon uses,
-            // so both surfaces process the same files in the same order.
-            guard let gathered = FileGatherer.regularFiles(under: URL(fileURLWithPath: inputPath)) else {
-                return ("Error: Failed to enumerate directory: \(inputPath)\n", 1)
-            }
-            fileURLs = gathered
-        } else {
-            fileURLs = [URL(fileURLWithPath: inputPath)]
-        }
-
-        // Build the shared anonymization engine ONCE for the whole run — the exact
-        // same DICOMKit.Anonymizer the `dicom-anon` CLI uses, so the app and CLI
-        // cannot drift. Reusing one instance keeps UID remapping consistent across
-        // every file in a directory (matching the CLI), and the engine — not the
-        // app — now owns profile→tag mapping, per-tag defaults, UID regeneration,
-        // date shifting, and PHI scanning.
-        let anonymizer = DICOMKit.Anonymizer(
-            profile: Self.engineProfile(profile, removeTags: removeTags),
-            shiftDates: shiftDays,
-            regenerateUIDs: regenerateUIDs,
-            preserveTags: Set(keepTags.compactMap { Self.parseTag($0) }),
-            customActions: Self.engineCustomActions(removeTags: removeTags, replacePairs: replacePairs)
-        )
-
-        for fileURL in fileURLs {
-            totalFiles += 1
-            // CLI parity: dicom-anon computes the path relative to the input directory
-            // for its verbose per-file lines (directory mode only).
-            let relativePath = String(
-                fileURL.path.replacingOccurrences(of: inputPath, with: "").drop(while: { $0 == "/" })
-            )
-
-            do {
-                let data = try Data(contentsOf: fileURL)
-                let dicomFile = try DICOMFile.read(from: data, force: force)
-
-                // All anonymization processing — profile removals, per-tag defaults
-                // (PatientName→ANONYMOUS, PatientID→hash), custom --remove/--replace,
-                // --keep, date shifting, UID regeneration, and PHI scanning — is
-                // delegated to the shared DICOMKit engine.
-                let (anonFile, anonResult) = try anonymizer.anonymize(file: dicomFile, filePath: fileURL.path)
-                let changed = anonResult.changedTags.map { $0.description }
-                warnings.append(contentsOf: anonResult.warnings)
-                modifiedTagNames.append(contentsOf: changed)
-
-                if !dryRun {
-                    // The single-file/no-output/non-dry-run case is rejected up front
-                    // (see the guard above) — effectiveOutputPath is only empty here for
-                    // a directory run, and destURL never falls back to overwriting the
-                    // input file in place.
-                    let destURL: URL?
-                    if isDir.boolValue {
-                        let dirDest = URL(fileURLWithPath: effectiveOutputPath).appendingPathComponent(relativePath)
-                        try FileManager.default.createDirectory(at: dirDest.deletingLastPathComponent(), withIntermediateDirectories: true)
-                        destURL = dirDest
-                    } else {
-                        destURL = effectiveOutputPath.isEmpty ? nil : URL(fileURLWithPath: effectiveOutputPath)
-                    }
-                    if let destURL {
-                        // Backup lands next to the OUTPUT file (`<output>.backup`),
-                        // matching the CLI — and only when a write actually happens.
-                        if backup {
-                            let backupURL = destURL.appendingPathExtension("backup")
-                            try? FileManager.default.copyItem(at: fileURL, to: backupURL)
-                        }
-                        let outData = try anonFile.write()
-                        // Sandbox/TCC-resilient write: the earlier resolveWritableOutput uses POSIX
-                        // checks that miss TCC, so retry at write time and fall back to ~/Downloads.
-                        let wr = try OutputAccess.write(outData, toPath: destURL.path, scopedURL: nil, subfolder: "Anonymized")
-                        if let note = wr.note { warnings.append(note) }
-                    }
-                }
-
-                successful += 1
-                // CLI parity: dicom-anon emits per-file verbose lines only in
-                // directory mode ("✓ <relative path>"); single files get no per-file line.
-                if verbose && isDir.boolValue {
-                    output += AnonConsole.fileSuccessLine(relativePath: relativePath) + "\n"
-                }
-
-            } catch {
-                // CLI parity: a single-file failure propagates out of dicom-anon's run()
-                // as a fatal error (no summary); directory mode records the failure with
-                // the bare error message as the warning and continues.
-                guard isDir.boolValue else {
-                    return (output + "Error: \(error.localizedDescription)\n", 1)
-                }
-                failed += 1
-                warnings.append(error.localizedDescription)
-                if verbose {
-                    output += AnonConsole.fileFailureLine(relativePath: relativePath, message: error.localizedDescription) + "\n"
-                }
-            }
-        }
-
-        // Write audit log via the SHARED Anonymizer (the exact detailed per-tag log the
-        // dicom-anon CLI writes), not a generic summary — so the app and CLI audit files
-        // are byte-identical (timestamps aside). Like the CLI, the log is written even
-        // under --dry-run: dry-run auditing is a primary use case.
-        var auditNote = ""
-        if !auditLogPath.isEmpty {
-            try? anonymizer.writeAuditLog(to: URL(fileURLWithPath: auditLogPath))
-            if verbose { auditNote = AnonConsole.auditLogLine(path: auditLogPath) + "\n" }
-        }
-
-        let summary = AnonConsole.summary(
-            totalFiles: totalFiles,
-            successful: successful,
-            failed: failed,
-            dryRun: dryRun,
-            warnings: warnings,
-            modifiedTags: Set(modifiedTagNames),
-            verbose: verbose
-        )
-        // CLI exit rule (dicom-anon main.swift): any failed file → exit 1.
-        return (output + summary + auditNote, failed > 0 ? 1 : 0)
     }
 
     // MARK: - Anon Engine Helpers
@@ -645,7 +523,7 @@ public final class SecurityViewModel {
     ///  3. ~/Downloads/DICOMStudio/Anonymized/ as a safe fallback.
     ///
     /// Returns the resolved path and an optional redirect notice to display in the output.
-    static func resolveWritableOutput(
+    nonisolated static func resolveWritableOutput(
         path: String,
         scopedURL: URL?
     ) -> (path: String, redirectNote: String?) {
@@ -681,41 +559,6 @@ public final class SecurityViewModel {
 
             """
         return (fallback.path, note)
-    }
-
-    private static func parseTag(_ string: String) -> Tag? {
-        // Shared parser (hex + keyword map) — same code path as the dicom-anon CLI.
-        DICOMKit.Anonymizer.parseFlexibleTag(string)
-    }
-
-    // MARK: - Engine mapping (UI profile + flag strings -> shared DICOMKit engine)
-
-    /// Maps the app's UI ``AnonymizationProfile`` onto the shared engine profile.
-    /// HIPAA Safe Harbor maps to the basic profile (matching the CLI's `cliFlag`);
-    /// Custom uses the explicitly listed `--remove` tags as its removal set.
-    private static func engineProfile(_ profile: AnonymizationProfile, removeTags: [String]) -> DICOMKit.AnonymizationProfile {
-        switch profile {
-        case .basic, .hipaaeSafeHarbor: return .basic
-        case .clinicalTrial:            return .clinicalTrial
-        case .research:                 return .research
-        case .custom:                   return .custom(removeTags.compactMap { parseTag($0) })
-        }
-    }
-
-    /// Builds the engine's per-tag custom actions from the `--remove` / `--replace`
-    /// flag lists (matching the CLI's `parseCustomActions`).
-    private static func engineCustomActions(removeTags: [String], replacePairs: [String]) -> [Tag: DICOMKit.AnonymizationAction] {
-        var actions: [Tag: DICOMKit.AnonymizationAction] = [:]
-        for spec in removeTags {
-            if let tag = parseTag(spec) { actions[tag] = .remove }
-        }
-        for pair in replacePairs {
-            let parts = pair.split(separator: "=", maxSplits: 1)
-            if parts.count == 2, let tag = parseTag(String(parts[0])) {
-                actions[tag] = .replaceWithDummy(String(parts[1]))
-            }
-        }
-        return actions
     }
 
     // MARK: - 11.3 Audit Log Actions

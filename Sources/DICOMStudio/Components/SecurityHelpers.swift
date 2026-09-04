@@ -145,6 +145,10 @@ public enum AnonymizationHelpers: Sendable {
             ]
         case .custom:
             return []
+        case .ps315:
+            // The PS3.15 engine owns its own attribute table (ConfidentialityProfile);
+            // the job-queue rule list is not how that profile is expressed.
+            return []
         }
     }
 
