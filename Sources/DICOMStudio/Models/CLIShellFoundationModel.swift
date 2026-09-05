@@ -721,6 +721,19 @@ public enum ToolSearchPath: Sendable, Equatable, Hashable {
         }
     }
 
+    /// The user's home directory.
+    ///
+    /// `homeDirectoryForCurrentUser` is macOS-only — it describes a real user
+    /// account, which iOS/tvOS/visionOS do not expose. There `NSHomeDirectory()`
+    /// is the app sandbox's home, which is the right root for the same paths.
+    private static var homeDirectory: String {
+        #if os(macOS)
+        return FileManager.default.homeDirectoryForCurrentUser.path
+        #else
+        return NSHomeDirectory()
+        #endif
+    }
+
     /// The resolved directory path for this search location.
     public var path: String {
         switch self {
@@ -729,8 +742,7 @@ public enum ToolSearchPath: Sendable, Equatable, Hashable {
         case .usrLocalBin:
             return "/usr/local/bin"
         case .homeLocalBin:
-            let home = FileManager.default.homeDirectoryForCurrentUser.path
-            return "\(home)/.local/bin"
+            return "\(Self.homeDirectory)/.local/bin"
         case .homebrewPrefix:
             #if arch(arm64)
             return "/opt/homebrew/bin"
@@ -738,8 +750,7 @@ public enum ToolSearchPath: Sendable, Equatable, Hashable {
             return "/usr/local/bin"
             #endif
         case .dicomStudioTools:
-            let home = FileManager.default.homeDirectoryForCurrentUser.path
-            return "\(home)/.dicomstudio/tools"
+            return "\(Self.homeDirectory)/.dicomstudio/tools"
         case .custom(let dir):
             return dir
         }

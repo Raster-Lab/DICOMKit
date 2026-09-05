@@ -34,7 +34,7 @@ import FoundationNetworking
 ///     state: .inProgress
 /// )
 /// ```
-#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS)
+#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public final class UPSClient: @unchecked Sendable {
     
     // MARK: - Properties
