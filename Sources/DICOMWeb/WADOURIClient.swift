@@ -38,7 +38,7 @@ import FoundationNetworking
 /// ```
 ///
 /// Reference: DICOM PS3.18 §8 — WADO-URI Service
-#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS)
+#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public final class WADOURIClient: @unchecked Sendable {
 
     // MARK: - Types

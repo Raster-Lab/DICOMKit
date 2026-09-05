@@ -43,7 +43,7 @@ public protocol OAuth2TokenProvider: Sendable {
 /// let tokenProvider = OAuth2TokenManager(configuration: config)
 /// let token = try await tokenProvider.getAccessToken()
 /// ```
-#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS)
+#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public actor OAuth2TokenManager: OAuth2TokenProvider {
     
     // MARK: - Properties

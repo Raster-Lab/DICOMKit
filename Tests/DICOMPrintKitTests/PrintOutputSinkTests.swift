@@ -256,6 +256,7 @@ final class CompositeAndPaperSinkTests: XCTestCase {
 
     /// Paper output must be impossible to trigger by accident — a misconfigured
     /// emulator that spools hundreds of pages is the failure mode this guards.
+    #if os(macOS) || os(Linux)
     func testPaperSinkRefusesUnlessExplicitlyAllowed() async throws {
         let sink = PaperPrinterSink(queue: "NoSuchQueue", allowPaper: false)
         do {
@@ -267,6 +268,7 @@ final class CompositeAndPaperSinkTests: XCTestCase {
             }
         }
     }
+    #endif
 }
 
 #if canImport(Network)

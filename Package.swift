@@ -10,7 +10,12 @@ let package = Package(
         .iOS(.v18),
         .macOS(.v15),
         .tvOS(.v18),
-        .visionOS(.v1)
+        // visionOS 2 is the real floor: J2KSwift's codec kernels use `Mutex`,
+        // which is visionOS 2+. J2KSwift still declares `.visionOS(.v1)` in its
+        // own manifest, so it fails to compile for visionOS until that is raised
+        // upstream — a visionOS build of DICOMKit is blocked on that, not on this
+        // line. See Raster-Lab/J2KSwift.
+        .visionOS(.v2)
     ],
     products: [
         .library(
@@ -216,6 +221,10 @@ let package = Package(
             name: "DICOMPrintKit",
             targets: ["DICOMPrintKit"]
         ),
+        // macOS only: DICOMStudio is the desktop app's UI layer (AppKit split
+        // views, panels, and pointer affordances). Everything a cross-platform
+        // consumer needs is in the library products above, which build for
+        // macOS, iOS and tvOS.
         .library(
             name: "DICOMStudio",
             targets: ["DICOMStudio"]

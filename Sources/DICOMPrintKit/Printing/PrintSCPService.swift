@@ -76,6 +76,10 @@ public struct PrintSCPService: Sendable {
                 naming: naming,
                 onWrite: onFileWritten))
         }
+        // PaperPrinterSink spools through `lp`, so it exists only where a
+        // subprocess can be launched. Elsewhere the setting simply has no sink
+        // to add — the screen/PDF/image sinks still compose as usual.
+        #if os(macOS) || os(Linux)
         if settings.sendToPaperQueue {
             let queue = settings.paperQueue.trimmingCharacters(in: .whitespaces)
             sinks.append(PaperPrinterSink(
@@ -83,6 +87,7 @@ public struct PrintSCPService: Sendable {
                 allowPaper: true,
                 onSpool: onSpool))
         }
+        #endif
         #endif
 
         return sinks.count == 1 ? screen : CompositePrintSink(sinks)
