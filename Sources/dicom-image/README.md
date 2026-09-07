@@ -276,7 +276,7 @@ dicom-image image.png --output image.dcm \
 
 - **Grayscale images** → MONOCHROME2, 1 Sample Per Pixel
 - **RGB images** → RGB, 3 Samples Per Pixel, Planar Configuration 0
-- **RGBA images** → Converted to RGB (alpha channel removed)
+- **RGBA images** → Converted to RGB (alpha composited onto white, then removed)
 - **CMYK images** → Converted to RGB
 - **Indexed color** → Converted to RGB
 

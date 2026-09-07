@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-image: colour images failed with "Failed to create graphics context" (2026-09-07)
+
+`ImageConverter.extractPixelData` asked Core Graphics for a packed 24-bit RGB
+bitmap context, which Core Graphics does not support (its only 8-bit RGB
+layouts are 32 bits per pixel). Every colour PNG/JPEG/TIFF therefore failed in
+both the `dicom-image` CLI and the Studio CLI Workshop, which shares the
+converter; only grayscale sources ever converted. The RGB path now renders into
+a 32-bit RGBX context, pre-filled white so transparent pixels composite onto
+white, and strips the padding byte so PixelData stays packed 24-bit RGB with
+Samples per Pixel 3. `Tests/DICOMKitTests/SecondaryCapture/ImageConverterColorTests.swift`
+pins the RGBA→RGB samples, the white composite, and the unchanged grayscale path.
+
 ### Added — dicom-split / dicom-merge: Workshop ↔ terminal parity suite (2026-09-03)
 
 `Tests/DICOMStudioTests/SplitMergeWorkshopCLIParityTests.swift` runs every option
