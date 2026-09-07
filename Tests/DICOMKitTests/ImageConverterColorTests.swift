@@ -12,7 +12,7 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 @testable import DICOMKit
-@testable import DICOMCore
+import DICOMCore
 
 final class ImageConverterColorTests: XCTestCase {
 
@@ -51,15 +51,14 @@ final class ImageConverterColorTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let bytes = try ImageConverter.secondaryCaptureData(imageURL: url, metadata: metadata, useExif: false)
-        let file = try DICOMFile(data: bytes)
-        let ds = file.dataSet
+        let ds = try DICOMFile.read(from: bytes).dataSet
 
-        XCTAssertEqual(ds.int(for: .samplesPerPixel), 3)
+        XCTAssertEqual(ds.uint16(for: .samplesPerPixel), 3)
         XCTAssertEqual(ds.string(for: .photometricInterpretation), "RGB")
-        XCTAssertEqual(ds.int(for: .rows), 2)
-        XCTAssertEqual(ds.int(for: .columns), 2)
+        XCTAssertEqual(ds.uint16(for: .rows), 2)
+        XCTAssertEqual(ds.uint16(for: .columns), 2)
 
-        let pixels = try XCTUnwrap(ds[.pixelData]?.data)
+        let pixels = try XCTUnwrap(ds[.pixelData]?.valueData)
         XCTAssertEqual(pixels.count, 2 * 2 * 3, "packed 24-bit RGB, no padding byte")
         XCTAssertEqual([UInt8](pixels), [
             255, 0, 0,   0, 255, 0,
@@ -84,9 +83,9 @@ final class ImageConverterColorTests: XCTestCase {
         XCTAssertTrue(CGImageDestinationFinalize(dest))
 
         let bytes = try ImageConverter.secondaryCaptureData(imageURL: url, metadata: metadata, useExif: false)
-        let ds = try DICOMFile(data: bytes).dataSet
-        XCTAssertEqual(ds.int(for: .samplesPerPixel), 1)
+        let ds = try DICOMFile.read(from: bytes).dataSet
+        XCTAssertEqual(ds.uint16(for: .samplesPerPixel), 1)
         XCTAssertEqual(ds.string(for: .photometricInterpretation), "MONOCHROME2")
-        XCTAssertEqual([UInt8](try XCTUnwrap(ds[.pixelData]?.data)), gray)
+        XCTAssertEqual([UInt8](try XCTUnwrap(ds[.pixelData]?.valueData)), gray)
     }
 }
