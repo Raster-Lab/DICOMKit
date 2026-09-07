@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — CLI Workshop dicom-image wrote onto the browsed output folder (2026-09-07)
+
+The output Browse picker grants a *folder*; typing a filename after it left the
+executor writing the bytes straight onto the folder URL, so a run with a
+browsed `…/Desktop/Test` and a typed `…/Desktop/Test/TEST2.dcm` failed with
+"The file "Test" couldn't be saved in the folder "Desktop"" while the CLI
+succeeded. `executeDicomImage` now hands the typed path to the shared
+`OutputAccess.write`, which places the file inside the grant (batch and
+TIFF-split outputs go through the same path). Console lines print the path
+actually written. `Tests/DICOMStudioTests/WorkshopDicomImageOutputScopeTests.swift`
+pins both the folder+filename and folder-only cases.
+
 ### Fixed — dicom-image: colour images failed with "Failed to create graphics context" (2026-09-07)
 
 `ImageConverter.extractPixelData` asked Core Graphics for a packed 24-bit RGB

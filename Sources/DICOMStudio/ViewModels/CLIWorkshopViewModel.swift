@@ -3716,27 +3716,32 @@ private func executeDicomStudy() async {
             }
 
             // Loads, encodes and writes a single image (page 0) to a .dcm file URL
-            // via the shared engine. Output is written here so the sandbox-resolved
-            // path is honored.
+            // via the shared engine. The write goes through `OutputAccess.write`:
+            // the output Browse picker grants a FOLDER, so when the user then types
+            // a filename the file must be written INSIDE that grant, named from the
+            // typed path. Writing straight onto the scoped folder URL produced
+            // "The file "Test" couldn't be saved in the folder "Desktop"".
+            // Returns the URL actually written, or an error message.
             func convertImageFile(
                 imageURL: URL,
                 outputURL: URL,
                 studyUID: String,
                 seriesUID: String,
                 instanceNumber: Int
-            ) -> String? {
+            ) -> (written: URL?, error: String?) {
                 do {
                     let data = try ImageConverter.secondaryCaptureData(
                         imageURL: imageURL,
                         metadata: makeMetadata(studyUID: studyUID, seriesUID: seriesUID, instanceNumber: instanceNumber),
                         useExif: useExif)
-                    try fm.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try data.write(to: outputURL, options: .atomic)
-                    return nil
+                    let r = try OutputAccess.write(data, toPath: outputURL.path, scopedURL: outputScopedURL,
+                                                   subfolder: "ImageConversion")
+                    if let note = r.note { out += note + "\n" }
+                    return (r.url, nil)
                 } catch let e as ImageConversionError {
-                    return e.errorDescription
+                    return (nil, e.errorDescription)
                 } catch {
-                    return error.localizedDescription
+                    return (nil, error.localizedDescription)
                 }
             }
 
@@ -3775,17 +3780,19 @@ private func executeDicomStudy() async {
                     }
                     let baseName = fileURL.deletingPathExtension().lastPathComponent
                     let outFileURL = outputDirURL.appendingPathComponent("\(baseName).dcm")
-                    if let err = convertImageFile(
+                    let result = convertImageFile(
                         imageURL: fileURL, outputURL: outFileURL,
                         studyUID: finalStudyUID, seriesUID: finalSeriesUID,
                         instanceNumber: instanceNum
-                    ) {
+                    )
+                    if let err = result.error {
                         failureCount += 1
                         if verbose { out += ImageConsole.fileFailureLine(inputName: fileURL.lastPathComponent, message: err) + "\n" }
                     } else {
                         successCount += 1
                         instanceNum += 1
-                        if verbose { out += ImageConsole.fileSuccessLine(inputName: fileURL.lastPathComponent, outputName: outFileURL.lastPathComponent) + "\n" }
+                        let writtenName = (result.written ?? outFileURL).lastPathComponent
+                        if verbose { out += ImageConsole.fileSuccessLine(inputName: fileURL.lastPathComponent, outputName: writtenName) + "\n" }
                     }
                 }
 
@@ -3845,21 +3852,27 @@ private func executeDicomStudy() async {
 
             // ---- Single-file conversion ----
             let finalOutputURL: URL
-            if let resolved = resolvedOutputURL {
+            if outputScopedURL != nil, let op = outputPath {
+                // Browse granted a folder; the field may now hold folder + filename.
+                // Hand the TYPED path to OutputAccess.write, which places it inside
+                // the grant (or names a file after it when it falls outside).
+                finalOutputURL = URL(fileURLWithPath: op)
+            } else if let resolved = resolvedOutputURL {
                 finalOutputURL = resolved
             } else {
                 finalOutputURL = inputURL.deletingPathExtension().appendingPathExtension("dcm")
             }
             if verbose { out += ImageConsole.convertingLine(inputPath: inputURL.path) + "\n" }
-            if let err = convertImageFile(
+            let single = convertImageFile(
                 imageURL: inputURL, outputURL: finalOutputURL,
                 studyUID: studyUIDArg ?? generateUID(),
                 seriesUID: seriesUIDArg ?? generateUID(),
                 instanceNumber: instanceNumberArg ?? 1
-            ) {
-                return ("Error: \(err)\n", 1)
+            )
+            if let err = single.error {
+                return (out + "Error: \(err)\n", 1)
             }
-            out += ImageConsole.convertedLine(outputPath: finalOutputURL.path, verbose: verbose) + "\n"
+            out += ImageConsole.convertedLine(outputPath: (single.written ?? finalOutputURL).path, verbose: verbose) + "\n"
             return (out, 0)
         }.value
         #else
