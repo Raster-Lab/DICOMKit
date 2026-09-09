@@ -453,6 +453,8 @@ let package = Package(
                 "Video/VideoTransferSyntaxTests.swift",
                 "Video/BitstreamReaderTests.swift",
                 "Video/H264ParserTests.swift",
+                "Video/HEVCParserTests.swift",
+                "Video/MPEG2ParserTests.swift",
                 "PerformanceTests/SIMDImageProcessorTests.swift"
             ]
         ),
