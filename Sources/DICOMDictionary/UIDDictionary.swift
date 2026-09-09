@@ -165,6 +165,90 @@ public struct UIDDictionary {
             keyword: "HEVCM10P51",
             type: .transferSyntax
         )
+
+        dict["1.2.840.10008.1.2.4.104"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.104",
+            name: "MPEG-4 AVC/H.264 High Profile / Level 4.2 For 2D Video",
+            keyword: "MPEG4HP422D",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.105"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.105",
+            name: "MPEG-4 AVC/H.264 High Profile / Level 4.2 For 3D Video",
+            keyword: "MPEG4HP423D",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.106"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.106",
+            name: "MPEG-4 AVC/H.264 Stereo High Profile / Level 4.2",
+            keyword: "MPEG4HP42STEREO",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.100.1"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.100.1",
+            name: "Fragmentable MPEG2 Main Profile / Main Level",
+            keyword: "MPEG2MPMLF",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.101.1"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.101.1",
+            name: "Fragmentable MPEG2 Main Profile / High Level",
+            keyword: "MPEG2MPHLF",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.102.1"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.102.1",
+            name: "Fragmentable MPEG-4 AVC/H.264 High Profile / Level 4.1",
+            keyword: "MPEG4HP41F",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.103.1"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.103.1",
+            name: "Fragmentable MPEG-4 AVC/H.264 BD-compatible High Profile / Level 4.1",
+            keyword: "MPEG4HP41BDF",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.104.1"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.104.1",
+            name: "Fragmentable MPEG-4 AVC/H.264 High Profile / Level 4.2 For 2D Video",
+            keyword: "MPEG4HP422DF",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.105.1"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.105.1",
+            name: "Fragmentable MPEG-4 AVC/H.264 High Profile / Level 4.2 For 3D Video",
+            keyword: "MPEG4HP423DF",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.106.1"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.106.1",
+            name: "Fragmentable MPEG-4 AVC/H.264 Stereo High Profile / Level 4.2",
+            keyword: "MPEG4HP42STEREOF",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.107.1"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.107.1",
+            name: "Fragmentable HEVC/H.265 Main Profile / Level 5.1",
+            keyword: "HEVCMP51F",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.108.1"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.108.1",
+            name: "Fragmentable HEVC/H.265 Main 10 Profile / Level 5.1",
+            keyword: "HEVCM10P51F",
+            type: .transferSyntax
+        )
         
         // Common SOP Class UIDs
         dict["1.2.840.10008.5.1.4.1.1.2"] = UIDEntry(

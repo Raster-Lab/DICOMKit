@@ -226,6 +226,36 @@ public struct DataElement: Sendable {
         byteOrder == .bigEndian ? valueData.readFloat64BE(at: offset) : valueData.readFloat64LE(at: offset)
     }
 
+    /// Extracts the value as a single Attribute Tag (AT VR).
+    ///
+    /// An AT value is two consecutive 16-bit unsigned integers: group then element,
+    /// each in this element's byte order. Returns nil for non-AT VRs or when the
+    /// value is shorter than four bytes.
+    ///
+    /// Reference: PS3.5 Section 6.2, Table 6.2-1
+    public var attributeTagValue: Tag? {
+        return attributeTagValues?.first
+    }
+
+    /// Extracts all Attribute Tag (AT VR) values.
+    ///
+    /// Reference: PS3.5 Section 6.2, Table 6.2-1
+    public var attributeTagValues: [Tag]? {
+        guard vr == .AT else { return nil }
+        guard valueData.count >= 4 else { return nil }
+        var tags: [Tag] = []
+        var offset = 0
+        while offset + 4 <= valueData.count {
+            guard let group = readUInt16(at: offset),
+                  let element = readUInt16(at: offset + 2) else {
+                return tags.isEmpty ? nil : tags
+            }
+            tags.append(Tag(group: group, element: element))
+            offset += 4
+        }
+        return tags.isEmpty ? nil : tags
+    }
+
     public var uint16Value: UInt16? {
         // Accept VRs that can contain 16-bit integer data
         switch vr {

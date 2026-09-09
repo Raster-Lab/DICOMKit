@@ -381,7 +381,9 @@ let package = Package(
                 "Segmentation",
                 "StructuredReporting",
                 "TestHelpers",
-                "Video",
+                // "Video" is NOT excluded: its files are in the sources allowlist
+                // below. An excluded directory wins over the allowlist, which is
+                // how the Video suite silently never ran.
                 "Waveform",
                 "DICOMFileTests.swift",
                 "DICOMWritingTests.swift",
@@ -441,6 +443,14 @@ let package = Package(
                 // GSPS writer ⇄ parser round trip: a saved presentation state
                 // the parser cannot read back is not worth storing.
                 "GrayscalePresentationStateBuilderTests.swift",
+                // DICOM_VIDEO_CONVERSION_PLAN.md: the Video IOD suite. The
+                // encapsulation tests write through DICOMWriter and re-parse
+                // through DICOMParser, which is what an in-memory DataSet
+                // round trip cannot check.
+                "Video/VideoTests.swift",
+                "Video/VideoEncapsulationTests.swift",
+                "Video/VideoAttributeTests.swift",
+                "Video/VideoTransferSyntaxTests.swift",
                 "PerformanceTests/SIMDImageProcessorTests.swift"
             ]
         ),
