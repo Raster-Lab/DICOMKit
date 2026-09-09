@@ -38,6 +38,24 @@ public struct VideoProbeResult: Sendable {
     /// The effective frame rate, preferring the bit stream's own declaration over
     /// the container's, since the container's is derived from durations.
     public let frameRate: Double?
+
+    public init(
+        container: VideoContainer,
+        stream: VideoStreamInfo,
+        frameCount: Int,
+        frameCountSource: FrameCountSource,
+        audioTrackCount: Int,
+        suggestedTransferSyntax: TransferSyntax?,
+        frameRate: Double?
+    ) {
+        self.container = container
+        self.stream = stream
+        self.frameCount = frameCount
+        self.frameCountSource = frameCountSource
+        self.audioTrackCount = audioTrackCount
+        self.suggestedTransferSyntax = suggestedTransferSyntax
+        self.frameRate = frameRate
+    }
 }
 
 /// Why an input could not be probed.

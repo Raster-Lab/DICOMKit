@@ -103,6 +103,10 @@ let package = Package(
             targets: ["dicom-image"]
         ),
         .executable(
+            name: "dicom-video",
+            targets: ["dicom-video"]
+        ),
+        .executable(
             name: "dicom-dcmdir",
             targets: ["dicom-dcmdir"]
         ),
@@ -702,6 +706,17 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-image",
+            exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-video",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-video",
             exclude: ["README.md"]
         ),
         .executableTarget(

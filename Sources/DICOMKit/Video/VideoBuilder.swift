@@ -727,7 +727,11 @@ extension Video {
         if value == value.rounded() && abs(value) < 1e15 {
             return String(Int64(value))
         }
-        for precision in stride(from: 12, through: 1, by: -1) {
+        // Six decimal places is well inside DS's 16-byte limit and is finer than
+        // any frame interval needs: at 1000 fps a frame is 1 ms, so microsecond
+        // resolution already over-describes it. Longer renderings only look
+        // precise - 33.333333333333 is not more true than 33.333333.
+        for precision in stride(from: 6, through: 1, by: -1) {
             let formatted = String(format: "%.\(precision)f", value)
             let trimmed = Video.trimTrailingZeros(formatted)
             if trimmed.utf8.count <= 16 {
