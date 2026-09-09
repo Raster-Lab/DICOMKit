@@ -451,6 +451,8 @@ let package = Package(
                 "Video/VideoEncapsulationTests.swift",
                 "Video/VideoAttributeTests.swift",
                 "Video/VideoTransferSyntaxTests.swift",
+                "Video/BitstreamReaderTests.swift",
+                "Video/H264ParserTests.swift",
                 "PerformanceTests/SIMDImageProcessorTests.swift"
             ]
         ),
