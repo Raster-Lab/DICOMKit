@@ -116,6 +116,7 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
     private var objectNoun: String {
         switch contentKind {
         case .image:              return "image"
+        case .video:              return "video clip"
         case .waveform:           return "waveform"
         case .report:             return "report"
         case .keyObjectSelection: return "key object selection"

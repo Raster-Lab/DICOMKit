@@ -70,6 +70,82 @@ final class VideoProbeTests: XCTestCase {
         return stream
     }
 
+    /// A minimal MP4 carrying one H.264 track, with the SPS in an `avcC` box the
+    /// way a camera writes it: length-prefixed, NAL header included.
+    private func h264MP4(sps: [UInt8], frames: UInt32) -> Data {
+        func box(_ type: String, _ payload: Data) -> Data {
+            var data = Data()
+            data.append(uint32: UInt32(payload.count + 8))
+            data.append(contentsOf: Array(type.utf8))
+            data.append(payload)
+            return data
+        }
+
+        var avcCPayload = Data([0x01, 0x64, 0x00, 0x29, 0xFF, 0xE1])
+        avcCPayload.append(uint16: UInt16(sps.count))
+        avcCPayload.append(contentsOf: sps)
+        avcCPayload.append(0x00)  // numOfPictureParameterSets
+        let avcC = box("avcC", avcCPayload)
+
+        var entry = Data(repeating: 0, count: 6)      // reserved
+        entry.append(uint16: 1)                       // data_reference_index
+        entry.append(uint16: 0)                       // pre_defined
+        entry.append(uint16: 0)                       // reserved
+        entry.append(Data(repeating: 0, count: 12))   // pre_defined
+        entry.append(uint16: 1920)
+        entry.append(uint16: 1080)
+        entry.append(uint32: 0x0048_0000)             // horizresolution
+        entry.append(uint32: 0x0048_0000)             // vertresolution
+        entry.append(uint32: 0)                       // reserved
+        entry.append(uint16: 1)                       // frame_count
+        entry.append(Data(repeating: 0, count: 32))   // compressorname
+        entry.append(uint16: 24)                      // depth
+        entry.append(uint16: 0xFFFF)                  // pre_defined -1
+        entry.append(avcC)
+        let avc1 = box("avc1", entry)
+
+        var stsdPayload = Data()
+        stsdPayload.append(uint32: 0)                 // version + flags
+        stsdPayload.append(uint32: 1)                 // entry_count
+        stsdPayload.append(avc1)
+
+        var stszPayload = Data()
+        stszPayload.append(uint32: 0)                 // version + flags
+        stszPayload.append(uint32: 1000)              // uniform sample_size
+        stszPayload.append(uint32: frames)
+
+        let stbl = box("stbl", box("stsd", stsdPayload) + box("stsz", stszPayload))
+
+        var mdhdPayload = Data()
+        mdhdPayload.append(uint32: 0)                 // version + flags
+        mdhdPayload.append(uint32: 0)                 // creation_time
+        mdhdPayload.append(uint32: 0)                 // modification_time
+        mdhdPayload.append(uint32: 30000)             // timescale
+        mdhdPayload.append(uint32: frames * 1000)     // duration
+        mdhdPayload.append(uint16: 0x55C4)            // language
+        mdhdPayload.append(uint16: 0)                 // pre_defined
+
+        var hdlrPayload = Data()
+        hdlrPayload.append(uint32: 0)                 // version + flags
+        hdlrPayload.append(uint32: 0)                 // pre_defined
+        hdlrPayload.append(contentsOf: Array("vide".utf8))
+        hdlrPayload.append(Data(repeating: 0, count: 12))
+        hdlrPayload.append(contentsOf: Array("Handler\0".utf8))
+
+        let mdia = box("mdia", box("mdhd", mdhdPayload)
+                       + box("hdlr", hdlrPayload) + box("minf", stbl))
+
+        var ftypPayload = Data("mp42".utf8)
+        ftypPayload.append(uint32: 512)
+        for brand in ["isom", "mp41", "mp42"] {
+            ftypPayload.append(contentsOf: Array(brand.utf8))
+        }
+
+        return box("ftyp", ftypPayload)
+            + box("moov", box("trak", mdia))
+            + box("mdat", Data(repeating: 0xAB, count: 64))
+    }
+
     private func transportStream(packets: Int = 8) -> Data {
         var ts = Data()
         for index in 0..<packets {
@@ -93,6 +169,22 @@ final class VideoProbeTests: XCTestCase {
         XCTAssertEqual(result.frameCount, 10)
         XCTAssertEqual(result.frameCountSource, .accessUnitScan,
                        "a raw stream has no sample table to consult")
+    }
+
+    /// An iPhone's `.MOV` is ISO-BMFF with an `mp42` brand and an `avcC` box whose
+    /// SPS keeps its 0x67 NAL header. Feeding that byte to the SPS parser as if it
+    /// were `profile_idc` yields 39, and High Profile input is rejected as
+    /// non-conformant — so probing an MP4 has to strip the header first.
+    func test_probe_mp4_readsProfileThroughAVCCNALHeader() throws {
+        let result = try VideoProbe.probe(h264MP4(sps: Self.spsH264NAL, frames: 12))
+
+        XCTAssertEqual(result.container, .mp4)
+        XCTAssertEqual(result.stream.codec, .h264)
+        XCTAssertEqual(result.stream.profileIDC, 100,
+                       "0x67 is the NAL header, not profile_idc 39")
+        XCTAssertEqual(result.stream.levelTimesTen, 41)
+        XCTAssertEqual(result.stream.width, 1920)
+        XCTAssertEqual(result.stream.height, 1080)
     }
 
     func test_probe_hevcElementaryStream() throws {
@@ -209,6 +301,155 @@ final class VideoProbeTests: XCTestCase {
         XCTAssertNil(VideoProbe.detectNonVideo(mpeg2ElementaryStream(frames: 2)))
     }
 
+    // MARK: - MPEG-2 in MP4
+
+    /// A minimal MP4 carrying one MPEG-2 track.
+    ///
+    /// - Parameters:
+    ///   - inESDS: Whether to store the sequence header as an `esds`
+    ///     DecoderSpecificInfo. When false the `esds` stops after the decoder
+    ///     config, exactly as ffmpeg writes it, leaving the header only in `mdat`.
+    private func mpeg2MP4(inESDS: Bool, frames: UInt32 = 50) -> Data {
+        func box(_ type: String, _ payload: Data) -> Data {
+            var data = Data()
+            data.append(uint32: UInt32(payload.count + 8))
+            data.append(contentsOf: Array(type.utf8))
+            data.append(payload)
+            return data
+        }
+
+        /// One MPEG-4 descriptor, with the base-128 size encoding `esds` uses.
+        func descriptor(_ tag: UInt8, _ payload: Data) -> Data {
+            var data = Data([tag])
+            data.append(UInt8(payload.count))
+            data.append(payload)
+            return data
+        }
+
+        // DecoderConfigDescriptor: objectTypeIndication 0x61 is MPEG-2 Main.
+        var decoderConfig = Data([0x61, 0x11])
+        decoderConfig.append(Data(repeating: 0, count: 3))   // bufferSizeDB
+        decoderConfig.append(uint32: 0x0007_BA3C)            // maxBitrate
+        decoderConfig.append(uint32: 0x0007_BA3C)            // avgBitrate
+        if inESDS {
+            decoderConfig.append(descriptor(0x05, Data(Self.mpeg2SequenceHeader)))
+        }
+
+        var esPayload = Data()
+        esPayload.append(uint16: 1)                          // ES_ID
+        esPayload.append(0x00)                               // flags: no options
+        esPayload.append(descriptor(0x04, decoderConfig))
+        esPayload.append(descriptor(0x06, Data([0x02])))     // SLConfigDescriptor
+
+        var esdsPayload = Data()
+        esdsPayload.append(uint32: 0)                        // version + flags
+        esdsPayload.append(descriptor(0x03, esPayload))
+        let esds = box("esds", esdsPayload)
+
+        var entry = Data(repeating: 0, count: 6)             // reserved
+        entry.append(uint16: 1)                              // data_reference_index
+        entry.append(uint16: 0)                              // pre_defined
+        entry.append(uint16: 0)                              // reserved
+        entry.append(Data(repeating: 0, count: 12))          // pre_defined
+        entry.append(uint16: 720)
+        entry.append(uint16: 576)
+        entry.append(uint32: 0x0048_0000)                    // horizresolution
+        entry.append(uint32: 0x0048_0000)                    // vertresolution
+        entry.append(uint32: 0)                              // reserved
+        entry.append(uint16: 1)                              // frame_count
+        entry.append(Data(repeating: 0, count: 32))          // compressorname
+        entry.append(uint16: 24)                             // depth
+        entry.append(uint16: 0xFFFF)                         // pre_defined -1
+        entry.append(esds)
+        let mp4v = box("mp4v", entry)
+
+        var stsdPayload = Data()
+        stsdPayload.append(uint32: 0)                        // version + flags
+        stsdPayload.append(uint32: 1)                        // entry_count
+        stsdPayload.append(mp4v)
+
+        var stszPayload = Data()
+        stszPayload.append(uint32: 0)                        // version + flags
+        stszPayload.append(uint32: 1000)                     // uniform sample_size
+        stszPayload.append(uint32: frames)
+
+        // The chunk offset is patched below, once the header sizes are known.
+        var stcoPayload = Data()
+        stcoPayload.append(uint32: 0)                        // version + flags
+        stcoPayload.append(uint32: 1)                        // entry_count
+        stcoPayload.append(uint32: 0)                        // placeholder offset
+
+        let stbl = box("stbl", box("stsd", stsdPayload)
+                      + box("stsz", stszPayload) + box("stco", stcoPayload))
+
+        var mdhdPayload = Data()
+        mdhdPayload.append(uint32: 0)                        // version + flags
+        mdhdPayload.append(uint32: 0)                        // creation_time
+        mdhdPayload.append(uint32: 0)                        // modification_time
+        mdhdPayload.append(uint32: 25)                       // timescale
+        mdhdPayload.append(uint32: frames)                   // duration
+        mdhdPayload.append(uint16: 0x55C4)                   // language
+        mdhdPayload.append(uint16: 0)                        // pre_defined
+
+        var hdlrPayload = Data()
+        hdlrPayload.append(uint32: 0)                        // version + flags
+        hdlrPayload.append(uint32: 0)                        // pre_defined
+        hdlrPayload.append(contentsOf: Array("vide".utf8))
+        hdlrPayload.append(Data(repeating: 0, count: 12))
+        hdlrPayload.append(contentsOf: Array("Handler\0".utf8))
+
+        let mdia = box("mdia", box("mdhd", mdhdPayload)
+                       + box("hdlr", hdlrPayload) + box("minf", stbl))
+
+        var ftypPayload = Data("mp42".utf8)
+        ftypPayload.append(uint32: 512)
+        for brand in ["isom", "mp41", "mp42"] {
+            ftypPayload.append(contentsOf: Array(brand.utf8))
+        }
+
+        // Samples open with the sequence header, the way MPEG-2 carries it in
+        // band; the header sits 8 bytes into `mdat`, past that box's own header.
+        var samples = Data(Self.mpeg2SequenceHeader)
+        samples.append(contentsOf: [0x00, 0x00, 0x01, 0x00, 0x00, 0x0F, 0xFF, 0xF8])
+
+        let header = box("ftyp", ftypPayload) + box("moov", box("trak", mdia))
+        var file = header + box("mdat", samples)
+
+        // Point stco at the first sample, which follows the `mdat` box header.
+        let sampleStart = UInt32(header.count + 8)
+        guard let stcoRange = file.range(of: Data("stco".utf8)) else { return file }
+        let offsetStart = stcoRange.upperBound + 8
+        file.replaceSubrange(
+            offsetStart..<(offsetStart + 4),
+            with: withUnsafeBytes(of: sampleStart.bigEndian) { Data($0) })
+        return file
+    }
+
+    /// An `esds` is the documented home for a sequence header, so it is preferred
+    /// when a muxer writes one.
+    func test_probe_mpeg2MP4ReadsSequenceHeaderFromESDS() throws {
+        let result = try VideoProbe.probe(mpeg2MP4(inESDS: true))
+
+        XCTAssertEqual(result.container, .mp4)
+        XCTAssertEqual(result.stream.codec, .mpeg2)
+        XCTAssertEqual(result.stream.width, 720)
+        XCTAssertEqual(result.stream.height, 576)
+        XCTAssertEqual(result.frameCount, 50)
+        XCTAssertEqual(result.suggestedTransferSyntax, .mpeg2MainProfile)
+    }
+
+    /// ffmpeg writes an `esds` with no DecoderSpecificInfo at all, because MPEG-2
+    /// repeats its sequence header in band. Such a file must still convert.
+    func test_probe_mpeg2MP4FallsBackToFirstSample() throws {
+        let result = try VideoProbe.probe(mpeg2MP4(inESDS: false))
+
+        XCTAssertEqual(result.container, .mp4)
+        XCTAssertEqual(result.stream.codec, .mpeg2)
+        XCTAssertEqual(result.stream.width, 720)
+        XCTAssertEqual(result.stream.height, 576)
+        XCTAssertEqual(result.suggestedTransferSyntax, .mpeg2MainProfile)
+    }
+
     // MARK: - Transport stream (decision Q2)
 
     func test_probe_transportStreamRejectedWithoutTrustInput() {
@@ -231,6 +472,111 @@ final class VideoProbeTests: XCTestCase {
                        "nothing was read, so nothing is claimed")
         XCTAssertNil(result.suggestedTransferSyntax,
                      "an unvalidated stream gets no automatic transfer syntax")
+    }
+
+    /// Builds a transport stream carrying a PAT, a PMT and one video PID.
+    ///
+    /// - Parameters:
+    ///   - streamType: The PMT stream type, which names the codec.
+    ///   - elementaryStream: The bytes to carry on the video PID.
+    private func transportStream(streamType: UInt8, elementaryStream: Data) -> Data {
+        let videoPID = 0x0100
+        let pmtPID = 0x1000
+
+        /// Wraps a payload in a 188-byte packet, padding with the 0xFF stuffing a
+        /// real muxer uses.
+        func packet(pid: Int, payloadStart: Bool, payload: Data) -> Data {
+            var data = Data([0x47])
+            data.append(UInt8((payloadStart ? 0x40 : 0x00) | (pid >> 8) & 0x1F))
+            data.append(UInt8(pid & 0xFF))
+            data.append(0x10)  // payload only, continuity counter 0
+            let body = payload.prefix(184)
+            data.append(body)
+            data.append(Data(repeating: 0xFF, count: 184 - body.count))
+            return data
+        }
+
+        /// A PSI section, led by its pointer_field and trailed by a stub CRC.
+        func section(tableID: UInt8, body: Data) -> Data {
+            // section_length covers everything after it, the 4-byte CRC included.
+            let length = body.count + 4
+            var data = Data([0x00, tableID])
+            data.append(UInt8(0xB0 | ((length >> 8) & 0x0F)))
+            data.append(UInt8(length & 0xFF))
+            data.append(body)
+            data.append(Data(repeating: 0x00, count: 4))  // CRC_32, unchecked here
+            return data
+        }
+
+        // PAT: one program pointing at the PMT.
+        var patBody = Data([0x00, 0x01, 0xC1, 0x00, 0x00])  // ids, version, numbers
+        patBody.append(contentsOf: [0x00, 0x01])            // program_number 1
+        patBody.append(UInt8(0xE0 | ((pmtPID >> 8) & 0x1F)))
+        patBody.append(UInt8(pmtPID & 0xFF))
+
+        // PMT: one elementary stream of the given type.
+        var pmtBody = Data([0x00, 0x01, 0xC1, 0x00, 0x00])  // ids, version, numbers
+        pmtBody.append(UInt8(0xE0 | ((videoPID >> 8) & 0x1F)))
+        pmtBody.append(UInt8(videoPID & 0xFF))              // PCR_PID
+        pmtBody.append(contentsOf: [0xF0, 0x00])            // program_info_length 0
+        pmtBody.append(streamType)
+        pmtBody.append(UInt8(0xE0 | ((videoPID >> 8) & 0x1F)))
+        pmtBody.append(UInt8(videoPID & 0xFF))
+        pmtBody.append(contentsOf: [0xF0, 0x00])            // ES_info_length 0
+
+        // A PES header, whose payload is the elementary stream itself.
+        var pes = Data([0x00, 0x00, 0x01, 0xE0])
+        pes.append(uint16: 0)                               // PES_packet_length 0
+        pes.append(contentsOf: [0x80, 0x00, 0x00])          // flags, no optional fields
+        pes.append(elementaryStream)
+
+        var ts = Data()
+        ts.append(packet(pid: 0x0000, payloadStart: true,
+                         payload: section(tableID: 0x00, body: patBody)))
+        ts.append(packet(pid: pmtPID, payloadStart: true,
+                         payload: section(tableID: 0x02, body: pmtBody)))
+        ts.append(packet(pid: videoPID, payloadStart: true, payload: pes))
+        // Trailing packets give the sync detector the run of packets it wants.
+        for _ in 0..<4 {
+            ts.append(packet(pid: videoPID, payloadStart: false, payload: Data()))
+        }
+        return ts
+    }
+
+    /// Rows and Columns are required attributes, so a trusted stream still has to
+    /// yield real geometry: an object carrying zeroes is one no reader can show.
+    func test_probe_trustedTransportStreamReadsMPEG2Geometry() throws {
+        let ts = transportStream(streamType: 0x02,
+                                 elementaryStream: mpeg2ElementaryStream(frames: 4))
+        let result = try VideoProbe.probe(ts, trustInput: true)
+
+        XCTAssertEqual(result.container, .mpegTS)
+        XCTAssertEqual(result.stream.codec, .mpeg2)
+        XCTAssertEqual(result.stream.width, 720)
+        XCTAssertEqual(result.stream.height, 576)
+    }
+
+    /// The PMT names the codec, and it is believed over the payload's own shape.
+    /// MPEG-2 start codes share the Annex B prefix, so sniffing would read an
+    /// MPEG-2 sequence header as a plausible — and wrong — H.264 SPS.
+    func test_probe_trustedTransportStreamTrustsPMTCodecOverSniffing() throws {
+        let ts = transportStream(streamType: 0x1B,
+                                 elementaryStream: h264ElementaryStream(frames: 4))
+        let result = try VideoProbe.probe(ts, trustInput: true)
+
+        XCTAssertEqual(result.stream.codec, .h264)
+        XCTAssertEqual(result.stream.width, 1920)
+        XCTAssertEqual(result.stream.height, 1080)
+    }
+
+    /// A PID carrying something unreadable still encapsulates, since the caller
+    /// asserted conformance — but nothing is claimed about it.
+    func test_probe_trustedTransportStreamWithoutReadableVideoClaimsNothing() throws {
+        let result = try VideoProbe.probe(transportStream(), trustInput: true)
+
+        XCTAssertEqual(result.stream.codec, .unknown)
+        XCTAssertEqual(result.stream.width, 0)
+        XCTAssertNil(result.suggestedTransferSyntax)
     }
 
     // MARK: - Unrecognized input

@@ -3626,6 +3626,481 @@ private func executeDicomStudy() async {
         service.setConsoleStatus(exitCode == 0 ? .success : .error)
     }
 
+    // MARK: - dicom-video Execution
+
+    /// Routes to the `dicom-video` subcommand the form selected.
+    ///
+    /// Every one of these runs DICOMKit's shared `VideoWorkflow` engine and
+    /// renders through the shared `VideoConsole`, which the `dicom-video` CLI
+    /// also uses — so the two surfaces emit the same text for the same input.
+    /// What lives here is only the adapter's business: reading the form,
+    /// security-scoped input access, and writing through `OutputAccess`.
+    private func executeDicomVideo() async {
+        let operation = paramValue("operation").isEmpty ? "convert" : paramValue("operation")
+
+        switch operation {
+        case "probe":
+            await executeDicomVideoProbe()
+        case "extract":
+            await executeDicomVideoExtract()
+        case "batch":
+            await executeDicomVideoBatch()
+        default:
+            await executeDicomVideoConvert()
+        }
+    }
+
+    /// Reads the patient/study/series fields the form collects for convert and
+    /// batch. An empty field is left `nil` so the engine emits the Type 2
+    /// attribute zero-length, exactly as an omitted CLI flag does.
+    private func dicomVideoMetadata() -> VideoWorkflow.Metadata {
+        func optional(_ id: String) -> String? {
+            let value = paramValue(id).trimmingCharacters(in: .whitespaces)
+            return value.isEmpty ? nil : value
+        }
+        return VideoWorkflow.Metadata(
+            patientName: optional("patientName"),
+            patientID: optional("patientID"),
+            patientBirthDate: optional("patientBirthDate"),
+            patientSex: optional("patientSex"),
+            studyUID: optional("studyUID"),
+            seriesUID: optional("seriesUID"),
+            accessionNumber: optional("accessionNumber"),
+            studyID: optional("studyID"),
+            referringPhysician: optional("referringPhysician"),
+            seriesDescription: optional("seriesDescription"),
+            modality: optional("modality"),
+            manufacturer: optional("manufacturer"),
+            institutionName: optional("institutionName")
+        )
+    }
+
+    /// Finishes a `dicom-video` run: prints, records history and sets status.
+    ///
+    /// Exit code 2 is a conformance rejection — the input was understood and
+    /// found not DICOM-legal — so it is surfaced as an error status just like
+    /// exit 1, while the console keeps the engine's specific explanation.
+    private func finishDicomVideo(output: String, exitCode: VideoConsole.ExitCode) {
+        var text = output
+        if !text.isEmpty, !text.hasSuffix("\n") { text += "\n" }
+        appendConsoleOutput(text)
+        addToHistory(toolName: "dicom-video", command: commandPreview,
+                     exitCode: Int(exitCode.rawValue), output: text)
+        let status: CLIConsoleStatus = exitCode == .success ? .success : .error
+        consoleStatus = status
+        service.setConsoleStatus(status)
+    }
+
+    /// Reports a missing required form field the way the CLI's ArgumentParser
+    /// would report the same omission.
+    private func failDicomVideoMissing(_ message: String) {
+        finishDicomVideo(output: "Error: \(message)", exitCode: .inputError)
+    }
+
+    // MARK: - dicom-video: convert
+
+    private func executeDicomVideoConvert() async {
+        let inputPath = paramValue("input")
+        let typedOutputPath = paramValue("output")
+        guard !inputPath.isEmpty else {
+            failDicomVideoMissing("Input video path is required.")
+            return
+        }
+        guard !typedOutputPath.isEmpty else {
+            failDicomVideoMissing("Output DICOM file path is required.")
+            return
+        }
+        // A folder picker hands back a directory; writing to it literally would
+        // collide with the folder itself and report a name clash for a clip that
+        // converts perfectly. Same resolution the CLI does, so both surfaces name
+        // the object identically.
+        let outputPath = VideoWorkflow.resolveOutputURL(
+            output: typedOutputPath,
+            input: URL(fileURLWithPath: inputPath),
+            fileExtension: "dcm",
+            isDirectory: { path in
+                var isDirectory: ObjCBool = false
+                let exists = FileManager.default.fileExists(
+                    atPath: path, isDirectory: &isDirectory)
+                return exists && isDirectory.boolValue
+            }
+        ).url.path
+
+        // An unparseable numeric field is reported with ArgumentParser's own two
+        // lines, which is what the CLI prints for the same typed value.
+        let frameRateRaw = paramValue("frameRate").trimmingCharacters(in: .whitespaces)
+        var frameRate: Double?
+        if !frameRateRaw.isEmpty {
+            guard let parsed = Double(frameRateRaw) else {
+                finishDicomVideo(output: VideoConsole.invalidFrameRateLine(frameRateRaw),
+                                 exitCode: .inputError)
+                return
+            }
+            frameRate = parsed
+        }
+
+        let typeRaw = paramValue("type").trimmingCharacters(in: .whitespaces)
+        var type: VideoConsole.TypeArgument = .endoscopic
+        if !typeRaw.isEmpty {
+            guard let parsed = VideoConsole.TypeArgument(rawValue: typeRaw) else {
+                finishDicomVideo(output: VideoConsole.invalidTypeLine(typeRaw),
+                                 exitCode: .inputError)
+                return
+            }
+            type = parsed
+        }
+
+        let instanceNumber = Int(paramValue("instanceNumber")) ?? 1
+        let seriesNumber = Int(paramValue("seriesNumber")) ?? 1
+        let transferSyntaxRaw = paramValue("transferSyntax").trimmingCharacters(in: .whitespaces)
+        let dryRun = paramValue("dryRun") == "true"
+        let trustInput = paramValue("trustInput") == "true"
+        let force = paramValue("force") == "true"
+        let verbose = paramValue("verbose") == "true"
+        let metadata = dicomVideoMetadata()
+        let typeWasExplicit = !typeRaw.isEmpty
+
+        let inputScopedURL = securityScopedURLs["input"]
+        let outputScopedURL = securityScopedURLs["output"]
+        let accessingIn = inputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer { if accessingIn { inputScopedURL?.stopAccessingSecurityScopedResource() } }
+        let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
+
+        let (output, exitCode) = await Task.detached(priority: .userInitiated) {
+            () -> (String, VideoConsole.ExitCode) in
+            guard let bitstream = FileManager.default.contents(atPath: inputURL.path) else {
+                return (VideoConsole.cannotReadLine(inputPath), .inputError)
+            }
+
+            let outcome: VideoWorkflow.ConvertOutcome
+            do {
+                outcome = try VideoWorkflow.convert(
+                    bitstream: bitstream,
+                    type: type,
+                    typeWasExplicit: typeWasExplicit,
+                    explicitTransferSyntax: transferSyntaxRaw.isEmpty ? nil : transferSyntaxRaw,
+                    trustInput: trustInput,
+                    frameRateOverride: frameRate,
+                    dryRun: dryRun,
+                    verbose: verbose,
+                    metadata: metadata,
+                    seriesNumber: seriesNumber,
+                    instanceNumber: instanceNumber
+                )
+            } catch let verboseFailure as VideoWorkflow.VerboseFailure {
+                // Verbose commentary precedes the rejection it explains, the
+                // same order the CLI writes the two to stderr.
+                return (verboseFailure.combinedMessage, verboseFailure.exitCode)
+            } catch let failure as VideoWorkflow.Failure {
+                return (failure.message, failure.exitCode)
+            } catch {
+                return (error.localizedDescription, .inputError)
+            }
+
+            var lines: [String] = []
+            if !outcome.output.isEmpty { lines.append(outcome.output) }
+
+            let report = VideoConsole.describe(
+                outcome.plan.probe, transferSyntax: outcome.plan.transferSyntax)
+
+            if dryRun {
+                lines.append(report)
+                lines.append(VideoConsole.dryRunTrailer)
+                return (lines.joined(separator: "\n"), .success)
+            }
+
+            // The sandbox check mirrors the CLI's: refuse an existing file unless
+            // --force. Only the typed path is checked, because that is what the
+            // user named; a redirect lands somewhere they have not claimed.
+            if outputScopedURL == nil,
+               FileManager.default.fileExists(atPath: outputPath), !force {
+                lines.append(VideoConsole.outputExistsLine(outputPath))
+                return (lines.joined(separator: "\n"), .inputError)
+            }
+
+            guard let data = outcome.data else {
+                lines.append(VideoConsole.cannotWriteLine(outputPath, reason: "nothing was built"))
+                return (lines.joined(separator: "\n"), .inputError)
+            }
+
+            do {
+                let written = try OutputAccess.write(
+                    data, toPath: outputPath, scopedURL: outputScopedURL, subfolder: "Video")
+                if let note = written.note { lines.append(note) }
+                lines.append(VideoConsole.wroteLine(written.url.path))
+            } catch {
+                lines.append(VideoConsole.cannotWriteLine(
+                    outputPath, reason: error.localizedDescription))
+                return (lines.joined(separator: "\n"), .inputError)
+            }
+
+            lines.append(report)
+            return (lines.joined(separator: "\n"), .success)
+        }.value
+
+        finishDicomVideo(output: output, exitCode: exitCode)
+    }
+
+    // MARK: - dicom-video: probe
+
+    private func executeDicomVideoProbe() async {
+        let inputPath = paramValue("input")
+        guard !inputPath.isEmpty else {
+            failDicomVideoMissing("Input video path is required.")
+            return
+        }
+        let trustInput = paramValue("trustInput") == "true"
+        let verbose = paramValue("verbose") == "true"
+
+        let inputScopedURL = securityScopedURLs["input"]
+        let accessing = inputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer { if accessing { inputScopedURL?.stopAccessingSecurityScopedResource() } }
+        let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
+
+        let (output, exitCode) = await Task.detached(priority: .userInitiated) {
+            () -> (String, VideoConsole.ExitCode) in
+            guard let bitstream = FileManager.default.contents(atPath: inputURL.path) else {
+                return (VideoConsole.cannotReadLine(inputPath), .inputError)
+            }
+            do {
+                let outcome = try VideoWorkflow.probe(
+                    bitstream: bitstream, trustInput: trustInput, verbose: verbose)
+                // One console here, so the CLI's two streams are shown together,
+                // commentary first — exactly as a terminal interleaves them.
+                guard !outcome.diagnostics.isEmpty else {
+                    return (outcome.output, outcome.exitCode)
+                }
+                return (outcome.diagnostics + "\n" + outcome.output, outcome.exitCode)
+            } catch let failure as VideoWorkflow.Failure {
+                return (failure.message, failure.exitCode)
+            } catch {
+                return (error.localizedDescription, .inputError)
+            }
+        }.value
+
+        finishDicomVideo(output: output, exitCode: exitCode)
+    }
+
+    // MARK: - dicom-video: extract
+
+    private func executeDicomVideoExtract() async {
+        let inputPath = paramValue("dicomInput")
+        let typedOutputPath = paramValue("videoOutput")
+        guard !inputPath.isEmpty else {
+            failDicomVideoMissing("Input DICOM file path is required.")
+            return
+        }
+        guard !typedOutputPath.isEmpty else {
+            failDicomVideoMissing("Output video file path is required.")
+            return
+        }
+        let force = paramValue("force") == "true"
+        let verbose = paramValue("verbose") == "true"
+
+        let inputScopedURL = securityScopedURLs["dicomInput"]
+        let outputScopedURL = securityScopedURLs["videoOutput"]
+        let accessing = inputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer { if accessing { inputScopedURL?.stopAccessingSecurityScopedResource() } }
+        let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
+
+        let (output, exitCode) = await Task.detached(priority: .userInitiated) {
+            () -> (String, VideoConsole.ExitCode) in
+            guard let data = FileManager.default.contents(atPath: inputURL.path) else {
+                return (VideoConsole.cannotReadLine(inputPath), .inputError)
+            }
+
+            let extracted: ExtractedVideo
+            do {
+                extracted = try VideoWorkflow.extract(fileData: data, inputPath: inputPath)
+            } catch let failure as VideoWorkflow.Failure {
+                return (failure.message, failure.exitCode)
+            } catch {
+                return (error.localizedDescription, .inputError)
+            }
+
+            var lines: [String] = []
+            if verbose {
+                lines.append(VideoConsole.verboseBlock(
+                    VideoConsole.verboseExtractLines(extracted)))
+            }
+            // Into a folder, the recovered container names the file, so the
+            // extension is right by construction. Resolved here rather than up
+            // front because only the extracted payload knows what it is.
+            let outputPath = VideoWorkflow.resolveOutputURL(
+                output: typedOutputPath,
+                input: URL(fileURLWithPath: inputPath),
+                fileExtension: extracted.suggestedFileExtension,
+                isDirectory: { path in
+                    var isDirectory: ObjCBool = false
+                    let exists = FileManager.default.fileExists(
+                        atPath: path, isDirectory: &isDirectory)
+                    return exists && isDirectory.boolValue
+                }
+            ).url.path
+            if outputScopedURL == nil,
+               FileManager.default.fileExists(atPath: outputPath), !force {
+                lines.append(VideoConsole.outputExistsLine(outputPath))
+                return (lines.joined(separator: "\n"), .inputError)
+            }
+
+            if let warning = VideoWorkflow.extensionWarning(
+                for: extracted, outputPath: outputPath) {
+                lines.append(warning)
+            }
+
+            do {
+                let written = try OutputAccess.write(
+                    extracted.bitstream, toPath: outputPath,
+                    scopedURL: outputScopedURL, subfolder: "Video")
+                if let note = written.note { lines.append(note) }
+                lines.append(VideoConsole.extractedLine(
+                    path: written.url.path, byteCount: extracted.bitstream.count))
+            } catch {
+                lines.append(VideoConsole.cannotWriteLine(
+                    outputPath, reason: error.localizedDescription))
+                return (lines.joined(separator: "\n"), .inputError)
+            }
+
+            lines.append(VideoConsole.extractSummary(extracted))
+            return (lines.joined(separator: "\n"), .success)
+        }.value
+
+        finishDicomVideo(output: output, exitCode: exitCode)
+    }
+
+    // MARK: - dicom-video: batch
+
+    private func executeDicomVideoBatch() async {
+        let inputDirectory = paramValue("inputDirectory")
+        let outputDir = paramValue("outputDir")
+        guard !inputDirectory.isEmpty else {
+            failDicomVideoMissing("Input directory is required.")
+            return
+        }
+        guard !outputDir.isEmpty else {
+            failDicomVideoMissing("Output directory is required.")
+            return
+        }
+
+        let typeRaw = paramValue("type").trimmingCharacters(in: .whitespaces)
+        var type: VideoConsole.TypeArgument = .endoscopic
+        if !typeRaw.isEmpty {
+            guard let parsed = VideoConsole.TypeArgument(rawValue: typeRaw) else {
+                finishDicomVideo(output: VideoConsole.invalidTypeLine(typeRaw),
+                                 exitCode: .inputError)
+                return
+            }
+            type = parsed
+        }
+
+        let seriesModeRaw = paramValue("seriesMode").trimmingCharacters(in: .whitespaces)
+        var seriesMode: VideoConsole.SeriesMode = .single
+        if !seriesModeRaw.isEmpty {
+            guard let parsed = VideoConsole.SeriesMode(rawValue: seriesModeRaw) else {
+                finishDicomVideo(output: VideoConsole.invalidSeriesModeLine(seriesModeRaw),
+                                 exitCode: .inputError)
+                return
+            }
+            seriesMode = parsed
+        }
+
+        let transferSyntaxRaw = paramValue("transferSyntax").trimmingCharacters(in: .whitespaces)
+        let recursive = paramValue("recursive") == "true"
+        let continueOnError = paramValue("continueOnError") == "true"
+        let dryRun = paramValue("dryRun") == "true"
+        let force = paramValue("force") == "true"
+        let verbose = paramValue("verbose") == "true"
+        let metadata = dicomVideoMetadata()
+        let typeWasExplicit = !typeRaw.isEmpty
+
+        let inputScopedURL = securityScopedURLs["inputDirectory"]
+        let outputScopedURL = securityScopedURLs["outputDir"]
+        let accessingIn = inputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        let accessingOut = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer {
+            if accessingIn { inputScopedURL?.stopAccessingSecurityScopedResource() }
+            if accessingOut { outputScopedURL?.stopAccessingSecurityScopedResource() }
+        }
+        let inputBase = inputScopedURL ?? URL(fileURLWithPath: inputDirectory)
+
+        // Resolve the destination once, so a sandbox redirect is announced before
+        // the per-clip lines rather than repeated on each of them.
+        let resolvedOutput = OutputAccess.resolveWritableURL(
+            forPath: outputDir, scopedURL: outputScopedURL,
+            subfolder: "Video", isDirectory: true)
+        let outputBase = resolvedOutput.url
+        let redirectNote = resolvedOutput.note
+
+        let (output, exitCode) = await Task.detached(priority: .userInitiated) {
+            () -> (String, VideoConsole.ExitCode) in
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(
+                    atPath: inputBase.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else {
+                return (VideoConsole.notADirectoryLine(inputDirectory), .inputError)
+            }
+
+            do {
+                try VideoWorkflow.validateBatchOptions(
+                    seriesMode: seriesMode, metadata: metadata)
+            } catch let failure as VideoWorkflow.Failure {
+                return (failure.message, failure.exitCode)
+            } catch {
+                return (error.localizedDescription, .inputError)
+            }
+
+            let files: [URL]
+            do {
+                files = try VideoWorkflow.discoverInputs(in: inputBase, recursive: recursive)
+            } catch {
+                return (VideoConsole.notADirectoryLine(inputDirectory), .inputError)
+            }
+            guard !files.isEmpty else {
+                return (VideoConsole.noVideoFilesLine(inputDirectory), .inputError)
+            }
+
+            if !dryRun {
+                do {
+                    try FileManager.default.createDirectory(
+                        at: outputBase, withIntermediateDirectories: true)
+                } catch {
+                    return (VideoConsole.cannotWriteLine(
+                        outputDir, reason: error.localizedDescription), .inputError)
+                }
+            }
+
+            let outcome = VideoWorkflow.runBatch(
+                inputs: files,
+                type: type,
+                typeWasExplicit: typeWasExplicit,
+                explicitTransferSyntax: transferSyntaxRaw.isEmpty ? nil : transferSyntaxRaw,
+                seriesMode: seriesMode,
+                continueOnError: continueOnError,
+                dryRun: dryRun,
+                verbose: verbose,
+                recursive: recursive,
+                metadata: metadata,
+                readFile: { FileManager.default.contents(atPath: $0.path) },
+                writeFile: { item in
+                    let destination = outputBase.appendingPathComponent(item.outputName)
+                    if FileManager.default.fileExists(atPath: destination.path), !force {
+                        throw VideoWorkflow.Failure.inputError(
+                            VideoConsole.batchOutputExistsLine(destination.lastPathComponent))
+                    }
+                    try item.data?.write(to: destination)
+                    return destination.path
+                }
+            )
+
+            // The Workshop has one console, so the CLI's two streams are shown
+            // together — diagnostics first, exactly as a terminal interleaves them.
+            guard let note = redirectNote else { return (outcome.combined, outcome.exitCode) }
+            return (note + "\n" + outcome.combined, outcome.exitCode)
+        }.value
+
+        finishDicomVideo(output: output, exitCode: exitCode)
+    }
+
     // MARK: - dicom-image Execution
 
     /// Converts standard image files (JPEG/PNG/TIFF/BMP/GIF) to DICOM Secondary
@@ -4421,6 +4896,8 @@ case "dicom-study":
             await executeDicomStudy()
         case "dicom-image":
             await executeDicomImage()
+        case "dicom-video":
+            await executeDicomVideo()
         case "dicom-export":
             await executeDicomExport()
         case "dicom-script":

@@ -1466,13 +1466,20 @@ Each data element has:
 
 - ✅ **DICOM Video Support (NEW in v1.6.0)** - DICOM Video IOD support (PS3.3 A.32.5-7)
   - ✅ 3 Video SOP Classes (Video Endoscopic, Video Microscopic, Video Photographic)
-  - ✅ 6 Video Transfer Syntaxes:
+  - ✅ **All 18 Video Transfer Syntaxes** — the nine registry entries and their
+    fragmentable "….1" variants:
     - ✅ MPEG2 Main Profile / Main Level (1.2.840.10008.1.2.4.100)
     - ✅ MPEG2 Main Profile / High Level (1.2.840.10008.1.2.4.101)
     - ✅ MPEG-4 AVC/H.264 High Profile / Level 4.1 (1.2.840.10008.1.2.4.102)
     - ✅ MPEG-4 AVC/H.264 BD-compatible High Profile / Level 4.1 (1.2.840.10008.1.2.4.103)
+    - ✅ MPEG-4 AVC/H.264 High Profile / Level 4.2 For 2D Video (1.2.840.10008.1.2.4.104)
+    - ✅ MPEG-4 AVC/H.264 High Profile / Level 4.2 For 3D Video (1.2.840.10008.1.2.4.105)
+    - ✅ MPEG-4 AVC/H.264 Stereo High Profile / Level 4.2 (1.2.840.10008.1.2.4.106)
     - ✅ HEVC/H.265 Main Profile / Level 5.1 (1.2.840.10008.1.2.4.107)
     - ✅ HEVC/H.265 Main 10 Profile / Level 5.1 (1.2.840.10008.1.2.4.108)
+    - ✅ `.104`/`.105`/`.106` are the ones IHE Endoscopy requires of an Image Archive
+  - ✅ Encapsulated Pixel Data (PS3.5 A.4), with `allowsMultipleFragments` enforcing
+    the one-fragment rule for every non-fragmentable syntax
   - ✅ `Video` data model with frame rate, duration, resolution, and cine metadata
   - ✅ `VideoType` enum (endoscopic, microscopic, photographic)
   - ✅ `VideoCodec` enum (mpeg2, h264, h265) with compression method identifiers
@@ -1481,6 +1488,17 @@ Each data element has:
   - ✅ Transfer syntax detection: `isVideo`, `isMPEG2`, `isH264`, `isH265`
   - ✅ DICOM Part 10 file creation integration
   - ✅ 44 unit tests
+
+- ✅ **Video Conversion & Playback (NEW)** - see `DICOM_VIDEO_CONVERSION_PLAN.md`
+  - ✅ Bitstream probing: `H264Parser`, `HEVCParser`, `MPEG2Parser`, `BitstreamReader`
+  - ✅ Container handling: `MP4ContainerParser` (MP4/MOV, `avcC`/`hvcC`/`esds`),
+    `TransportStreamScanner` (MPEG-TS geometry recovery)
+  - ✅ `VideoConformanceValidator` - reject-and-report, naming the violated constraint
+  - ✅ `VideoExtractor` - recover the encapsulated bit stream, unpadded
+  - ✅ `VideoWorkflow` / `VideoConsole` - the shared engine behind the `dicom-video`
+    CLI and DICOMStudio's CLI Workshop
+  - ✅ DICOMStudio viewer plays clips through AVKit, with the cine transport
+  - ✅ Remux only, never transcode: diagnostic pixel data is preserved bit-for-bit
 
 - ✅ **Secondary Capture Image IOD (NEW in v1.7.0)** - DICOM Secondary Capture IOD support (PS3.3 A.8)
   - ✅ 5 SC SOP Classes:
@@ -4317,7 +4335,7 @@ A production-quality mobile DICOM viewer for iOS and iPadOS. **Implementation co
 
 #### Planned Demo Applications
 
-- **DICOMTools CLI** - Command-line utilities ✅ Complete Phase 1-9 (39 tools including: dicom-info, dicom-convert, dicom-anon, dicom-validate, dicom-query, dicom-send, dicom-dump, dicom-diff, dicom-retrieve, dicom-split, dicom-merge, dicom-json, dicom-xml, dicom-pdf, dicom-image, dicom-dcmdir, dicom-archive, dicom-export, dicom-qr, dicom-wado, dicom-echo, dicom-mwl, dicom-mpps, dicom-pixedit, dicom-tags, dicom-uid, dicom-compress, dicom-study, dicom-script, dicom-print, dicom-measure, dicom-viewer, dicom-report, dicom-3d, dicom-ai, dicom-cloud, dicom-gateway, dicom-server, dicom-jpip, dicom-j2k with 1,164+ tests; Phase 9 J2K/HTJ2K CLI complete)
+- **DICOMTools CLI** - Command-line utilities ✅ Complete Phase 1-9 (42 tools including: dicom-info, dicom-convert, dicom-anon, dicom-validate, dicom-query, dicom-send, dicom-dump, dicom-diff, dicom-retrieve, dicom-split, dicom-merge, dicom-json, dicom-xml, dicom-pdf, dicom-image, dicom-dcmdir, dicom-archive, dicom-export, dicom-qr, dicom-wado, dicom-echo, dicom-mwl, dicom-mpps, dicom-pixedit, dicom-tags, dicom-uid, dicom-compress, dicom-study, dicom-script, dicom-video, dicom-print, dicom-measure, dicom-viewer, dicom-report, dicom-3d, dicom-ai, dicom-cloud, dicom-gateway, dicom-server, dicom-jpip, dicom-j2k with 1,164+ tests; Phase 9 J2K/HTJ2K CLI complete)
 - **DICOMToolbox GUI** - ✅ Complete (Phase 1-8) - SwiftUI macOS application providing graphical interface for 37 CLI tools with drag-and-drop, real-time command preview, educational features, DICOM glossary, accessibility, settings, integration testing, documentation, and release preparation (Phases 1-8 implemented with 370+ tests)
 
 See [DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md) for complete plans and [CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md) for GUI toolbox details.
@@ -4404,11 +4422,12 @@ cp .build/release/dicom-* /usr/local/bin/
 </details>
 
 <details>
-<summary><strong>🖼️ Image Processing (4 tools)</strong></summary>
+<summary><strong>🖼️ Image Processing (5 tools)</strong></summary>
 
 | Tool | Description | Example |
 |------|-------------|---------|
 | `dicom-image` | Image extraction and manipulation | `dicom-image scan.dcm --window-level --output images/` |
+| `dicom-video` | Wrap H.264/HEVC/MPEG-2 video in a DICOM Video IOD, and extract it back | `dicom-video convert clip.mp4 --output clip.dcm` |
 | `dicom-pixedit` | Pixel data editing and manipulation | `dicom-pixedit scan.dcm --apply-lut` |
 | `dicom-split` | Split multi-frame DICOM files | `dicom-split multiframe.dcm --output frames/` |
 | `dicom-merge` | Merge images into multi-frame DICOM | `dicom-merge frame*.dcm --output merged.dcm` |
@@ -4951,7 +4970,10 @@ High-level API:
 - `VideoParser` - Parse video metadata from DICOM data sets
 - `VideoBuilder` - Fluent builder API for creating video DICOM objects
 - SOP Class UID constants for Video Endoscopic, Video Microscopic, Video Photographic
-- 6 video transfer syntaxes (MPEG2, H.264, H.265) with `isVideo`, `isMPEG2`, `isH264`, `isH265`
+- All 18 video transfer syntaxes (MPEG2, H.264, H.265, plus the fragmentable
+  variants) with `isVideo`, `isMPEG2`, `isH264`, `isH265`, `allowsMultipleFragments`
+- `VideoProbe`, `VideoConformanceValidator`, `VideoExtractor`, `VideoWorkflow`,
+  `VideoConsole` - probing, validation, extraction and the shared `dicom-video` engine
 
 **Secondary Capture Image IOD (NEW in v1.7.0):**
 - `SecondaryCaptureImage` - DICOM Secondary Capture IOD (PS3.3 A.8) with 5 SOP Classes

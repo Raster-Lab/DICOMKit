@@ -21,6 +21,12 @@ public enum ViewerNonImageContent: Sendable {
     /// An encapsulated document — a PDF report, a CDA, an STL.
     case document(DICOMKit.EncapsulatedDocument)
 
+    /// A video clip — endoscopy, ultrasound cine, microscopy. The payload is
+    /// the encoded bit stream exactly as it was encapsulated, which is a
+    /// playable container in its own right; the viewer hands it to a player
+    /// rather than decoding frames itself.
+    case video(DICOMKit.ExtractedVideo)
+
     /// Anything else: a presentation state, a key object selection, or content
     /// whose own parser refused it. Carries a summary rather than nothing.
     case summary(kind: ViewerContentKind, title: String, rows: [Row])
@@ -42,6 +48,7 @@ public enum ViewerNonImageContent: Sendable {
         switch self {
         case .report:  return .report
         case .document: return .document
+        case .video: return .video
         case .summary(let kind, _, _): return kind
         }
     }
@@ -70,6 +77,8 @@ public enum ViewerNonImageContent: Sendable {
                 ?? "Structured Report"
         case .document(let document):
             return document.documentTitle ?? Self.name(of: document.documentType)
+        case .video(let video):
+            return "\(video.codec.displayName) Video"
         case .summary(_, let title, _):
             return title
         }
@@ -86,14 +95,35 @@ public enum ViewerNonImageContentReader {
     /// Classification comes first and parsing second, deliberately: an SR whose
     /// content tree cannot be parsed is still an SR, and must not fall through
     /// to the pixel path where it would be reported as an undecodable image.
+    /// - Parameter transferSyntaxUID: The instance's transfer syntax. A video
+    ///   instance carries an image SOP Class, so this is the only thing that
+    ///   distinguishes a clip from a picture; passing `nil` classifies by SOP
+    ///   Class alone and a video would fall through to the pixel path.
     public static func content(
         of dataSet: DataSet,
-        sopClassUID: String?
+        sopClassUID: String?,
+        transferSyntaxUID: String? = nil
     ) -> ViewerNonImageContent? {
-        let kind = ViewerContentKind.kind(forSOPClassUID: sopClassUID)
+        let kind = ViewerContentKind.kind(forSOPClassUID: sopClassUID,
+                                          transferSyntaxUID: transferSyntaxUID)
         switch kind {
         case .image, .waveform:
             return nil
+
+        case .video:
+            // The bit stream is lifted out whole — the same passthrough the
+            // `dicom-video` extract path uses, so what the player receives is
+            // byte for byte what was encapsulated. A clip whose payload cannot
+            // be recovered is still a video instance, and says so rather than
+            // falling through to a pixel error about a picture it never was.
+            guard let transferSyntaxUID,
+                  let syntax = TransferSyntax.from(uid: transferSyntaxUID),
+                  let video = try? VideoExtractor.extract(from: dataSet,
+                                                          transferSyntax: syntax) else {
+                return .summary(kind: kind, title: kind.displayName,
+                                rows: generalRows(of: dataSet, sopClassUID: sopClassUID))
+            }
+            return .video(video)
 
         case .report, .keyObjectSelection:
             if let document = try? SRDocumentParser().parse(dataSet: dataSet) {

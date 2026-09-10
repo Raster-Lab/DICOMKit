@@ -89,9 +89,11 @@ final class VideoExtractorTests: XCTestCase {
     }
 
     func test_oddLengthBitstream_extractsWithPadByte() throws {
-        // The writer pads an odd fragment to an even length. The pad byte is part
-        // of the encapsulated fragment, so it comes back with it — callers who
-        // need the exact original length must track it themselves.
+        // The writer pads an odd fragment to an even length. These bytes have no
+        // container framing to measure them against, so the pad cannot be told
+        // apart from stream data and comes back with it — callers who need the
+        // exact original length must track it themselves. An MP4 payload does
+        // carry that framing, and is trimmed; see the box-extent tests below.
         let original = makeBitstream(byteCount: 1023)
         let file = try roundTripFile(bitstream: original)
 
@@ -99,6 +101,58 @@ final class VideoExtractorTests: XCTestCase {
         XCTAssertEqual(extracted.bitstream.count, 1024, "one pad byte, even length")
         XCTAssertEqual(extracted.bitstream.prefix(1023), original,
                        "the original bytes are unchanged ahead of the pad")
+    }
+
+    func test_oddLengthMP4_dropsThePadByteUsingTheBoxExtent() throws {
+        // Unlike an opaque stream, an MP4 says how long it is: its top-level boxes
+        // account for every byte. So when the writer pads an odd-length MP4, the
+        // trailing byte falls outside the box structure and can be identified as
+        // padding rather than pixel data.
+        var mp4 = Data()
+        mp4.append(contentsOf: [0x00, 0x00, 0x00, 0x10])            // ftyp, 16 bytes
+        mp4.append(contentsOf: Array("ftypisom".utf8))
+        mp4.append(contentsOf: Array("isom".utf8))
+        mp4.append(contentsOf: [0x00, 0x00, 0x00, 0x0B])            // mdat, 11 bytes
+        mp4.append(contentsOf: Array("mdat".utf8))
+        mp4.append(contentsOf: [0xAA, 0xBB, 0xCC])
+        XCTAssertEqual(mp4.count, 27, "an odd total, so the writer must pad it")
+
+        let file = try roundTripFile(bitstream: mp4)
+        let extracted = try VideoExtractor.extract(from: file)
+
+        XCTAssertEqual(extracted.bitstream, mp4,
+                       "the pad byte is dropped, recovering the camera's file exactly")
+        XCTAssertEqual(extracted.container, .mp4)
+    }
+
+    func test_evenLengthMP4_isNeverTrimmed() throws {
+        // Nothing was padded here, so every byte is the container's own.
+        var mp4 = Data()
+        mp4.append(contentsOf: [0x00, 0x00, 0x00, 0x10])
+        mp4.append(contentsOf: Array("ftypisom".utf8))
+        mp4.append(contentsOf: Array("isom".utf8))
+        mp4.append(contentsOf: [0x00, 0x00, 0x00, 0x0C])
+        mp4.append(contentsOf: Array("mdat".utf8))
+        mp4.append(contentsOf: [0xAA, 0xBB, 0xCC, 0xDD])
+        XCTAssertEqual(mp4.count, 28)
+
+        let extracted = try VideoExtractor.extract(from: try roundTripFile(bitstream: mp4))
+        XCTAssertEqual(extracted.bitstream, mp4)
+    }
+
+    func test_trailingByteInsideTheBoxExtentIsKept() throws {
+        // The parity is odd-looking the same way, but here the boxes account for
+        // the final byte, so it is stream data. Trimming it would corrupt the
+        // pixel data, which is exactly what remuxing exists to avoid.
+        var mp4 = Data()
+        mp4.append(contentsOf: [0x00, 0x00, 0x00, 0x10])
+        mp4.append(contentsOf: Array("ftypisom".utf8))
+        mp4.append(contentsOf: Array("isom".utf8))
+        mp4.append(contentsOf: [0x00, 0x00, 0x00, 0x0C])
+        mp4.append(contentsOf: Array("mdat".utf8))
+        mp4.append(contentsOf: [0xAA, 0xBB, 0xCC, 0xDD])
+
+        XCTAssertEqual(VideoExtractor.trimmingEncapsulationPadding(mp4), mp4)
     }
 
     // MARK: - Container detection and file extension

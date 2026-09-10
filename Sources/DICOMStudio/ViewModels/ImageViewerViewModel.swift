@@ -71,6 +71,24 @@ public final class ImageViewerViewModel {
     /// Whether the loaded file holds something other than pixels or a waveform.
     public var isNonImageContent: Bool { nonImageContent != nil }
 
+    /// The clip on screen, when the instance is a video.
+    ///
+    /// The one place that answers "is this a video?", so the player, the cine
+    /// button and the tool gating cannot disagree about it.
+    public var videoContent: DICOMKit.ExtractedVideo? {
+        if case .video(let video) = nonImageContent { return video }
+        return nil
+    }
+
+    /// Whether a clip is on screen.
+    public var isVideoContent: Bool { videoContent != nil }
+
+    /// Whether the cine transport applies to what is on screen — a multi-frame
+    /// image or a video clip, both of which are things that run.
+    public var hasCineTransport: Bool {
+        isVideoContent || (isMultiFrame && hasImage && !isWaveform)
+    }
+
     /// What kind of content the viewer is currently showing.
     public var contentKind: ViewerContentKind {
         if let nonImageContent { return nonImageContent.kind }
@@ -928,17 +946,27 @@ public final class ImageViewerViewModel {
         }
 
         // Reports, encapsulated documents, key object selections and
-        // presentation states carry no Pixel Data. They are classified by SOP
-        // Class before the pixel path runs: falling through would report a
-        // perfectly valid SR as an image that failed to decode.
+        // presentation states carry no Pixel Data; a video's Pixel Data is an
+        // encoded bit stream no still-image codec can decode. All are
+        // classified before the pixel path runs: falling through would report
+        // a perfectly valid SR — or a playable clip — as an image that failed
+        // to decode.
         if let content = ViewerNonImageContentReader.content(
-            of: ds, sopClassUID: ds.string(for: .sopClassUID)) {
+            of: ds, sopClassUID: ds.string(for: .sopClassUID),
+            transferSyntaxUID: file.transferSyntaxUID) {
             self.nonImageContent = content
             self.currentImage = nil
             self.numberOfFrames = 1
             self.currentFrameIndex = 0
             self.errorMessage = nil
             self.isLoading = false
+            // A clip opens running for the same reason a multi-frame image
+            // does — the motion is the content. Everything else with no pixels
+            // has nothing to play and stays stopped, which is also what keeps
+            // the toolbar's cine button off a report.
+            self.playbackMode = .loop
+            self.playbackState = (content.kind == .video && autoPlayMultiFrame)
+                ? .playing : .stopped
             detachFromToolCache()
             return
         }

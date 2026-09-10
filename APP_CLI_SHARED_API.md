@@ -124,6 +124,7 @@ shared engine; those now also share a `*Console` formatter (see §6).
 | `dicom-pixedit` | (default) | `PixelEditor` | `DICOMKit/PixelEditing` | |
 | `dicom-script` | template · run · validate | `ScriptParser`/`Executor`/`Validator`/`TemplateGenerator` | `DICOMKit/Scripting` | `ScriptConsole` |
 | `dicom-image` | single · batch · multipage‑TIFF | `ImageConverter` | `DICOMKit/SecondaryCapture` | |
+| `dicom-video` | convert · probe · extract · batch | `VideoWorkflow` (+ `VideoProbe` / `VideoConformanceValidator` / `VideoBuilder` / `VideoExtractor`) | `DICOMKit/Video` | `VideoConsole` |
 | `dicom-uid` | generate · validate · lookup · regenerate | `UIDManager` | `DICOMKit/UIDManagement` | |
 | `dicom-compress` | info · compress · decompress · batch · backends | `CompressionManager` | `DICOMKit/Compression` | `CompressionConsole` |
 | `dicom-export` | single · contact‑sheet · animate · bulk | `DICOMImageExporter` | `DICOMKit/ImageExport` | |
@@ -169,6 +170,8 @@ that returns the bytes, and a thin file convenience that wraps it:
 | `CompressionManager` | `compressData(_:codec:quality:) -> Data` · `decompressData(_:syntax:)` · `getCompressionInfo(data:)` | `compressFile(…)` · `decompressFile(…)` · `getCompressionInfo(path:)` |
 | `UIDManager` | `regenerateData(_:root:…) -> (Data, [UIDMapping])` | `regenerateUIDs(inputPath:outputPath:…)` |
 | `ImageConverter` | `secondaryCaptureData(imageURL:pageIndex:metadata:useExif:) -> Data` | (adapters write the returned bytes) |
+| `VideoWorkflow` | `convert(…) -> ConvertOutcome` (carries the encoded `Data`) · `runBatch(…, readFile:writeFile:)` | (adapters write the returned bytes; batch takes injected read/write closures) |
+| `VideoWorkflow` (`verbose:`) | `ProbeOutcome.diagnostics` / `BatchOutcome.diagnostics` carry the `verbose:` commentary apart from `output` | CLI writes `diagnostics` to stderr and `output` to stdout; the app concatenates them, commentary first, into its single console |
 | `FrameSplitter` | `SplitResult` of written paths / extracted data | `processDirectory(…) -> SplitResult` |
 
 The CLI then does `let data = try engine.xData(...); try data.write(to: url)`,
@@ -211,7 +214,8 @@ With the engine shared, every remaining difference falls into one of these
 4. **Latency units** — network tools print ms (app) vs s (CLI).
 5. **Genuinely non‑deterministic output** — freshly generated SOP/Study/Series
    UIDs and current date/time (`dicom-image`, `dicom-merge`, `dicom-pdf`
-   encapsulate, `dicom-uid generate/regenerate`), and live PACS/DICOMweb responses
+   encapsulate, `dicom-uid generate/regenerate`, `dicom-video convert/batch`), and
+   live PACS/DICOMweb responses
    (all `DICOMNetwork`/`DICOMWeb` tools). The **engine logic is identical**; the
    bytes differ run‑to‑run by design, which is why these tools rely on the
    round-trip oracle suite (§6) rather than any byte-exact comparison.

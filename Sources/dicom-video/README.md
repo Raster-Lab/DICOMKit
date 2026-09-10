@@ -51,6 +51,38 @@ Useful flags:
 - `--frame-rate <fps>` — override the probed rate, then validate against it.
 - `--trust-input` — encapsulate an MPEG-TS payload without validating it.
   Requires an explicit `--transfer-syntax`, since nothing was read.
+- `-v, --verbose` — explain each step: the container recognised, why that
+  transfer syntax was chosen, where the frame count came from, the UIDs minted
+  and how many bytes of the output are payload rather than DICOM overhead.
+
+## Verbose
+
+`-v` / `--verbose` is available on all four subcommands. It answers "why did it
+decide that?" without a second run under a debugger:
+
+```console
+$ dicom-video convert clip.mp4 --output clip.dcm --verbose
+verbose: read 376 bytes; container detected as MP4
+verbose: transfer syntax 1.2.840.10008.1.2.4.102 selected from the bitstream's codec, profile and level
+verbose: validated the stream against MPEG-4 AVC/H.264 HP @ Level 4.1: conformant
+verbose: frame count 300 from sampleTable
+verbose: SOP class Video Endoscopic Image Storage
+verbose: Study Instance UID  1.2.276.0.7230010.3.1…  (generated)
+verbose: encoded 1394 bytes: 376 bytes of bitstream carried unchanged, 1018 bytes of DICOM overhead
+Wrote clip.dcm
+```
+
+Every verbose line is prefixed `verbose:` and written to **stderr**, so stdout
+stays byte-for-byte what a non-verbose run prints and redirection keeps working:
+
+```bash
+dicom-video probe clip.mp4 --verbose > report.txt   # report.txt holds only the report
+dicom-video batch clips/ --output-dir out/ -v 2>/dev/null   # just the converted list
+```
+
+It also explains rejections, which is where it earns its keep — the commentary
+gathered before the failure is printed ahead of it, so a rejected clip still
+says which container was read. Verbose never changes a message or an exit code.
 
 ## batch
 
@@ -72,6 +104,9 @@ series. Combining it with `--series-uid` is rejected as contradictory.
 Failure is fail-fast by default, so a half-populated series is never left
 behind. `--continue-on-error` converts what it can, prints a summary and exits
 `2`; skipped clips leave no gaps in `InstanceNumber`.
+
+`--verbose` reports the grouping and the series/instance number each clip
+received, which is what to check when a series comes out wrong.
 
 ## extract
 
@@ -108,6 +143,20 @@ expected value and a remedy:
 - **Container** must be MP4 or MPEG-TS (PS3.5 §8.2.7). A `.mov` is not MP4.
 - **BD-compatible** (`…4.103`) additionally requires a resolution and frame-rate
   combination from PS3.5 Table 8-4.
+
+## Also in DICOMStudio
+
+Everything above — the planning, the validation, the batch orchestration and
+every line of console text — lives in `VideoWorkflow` and `VideoConsole` in
+`DICOMKit/Video`. This file's `main.swift` is a thin ArgumentParser adapter over
+them, and DICOMStudio's **CLI Workshop** is a second adapter over the same two
+types, so the terminal and the app cannot drift. `VideoConsoleParityTests` pins
+that.
+
+The Studio **viewer** plays these objects directly: a video instance carries an
+*image* SOP Class, so the transfer syntax is what identifies it, and the
+extracted bit stream — the same passthrough `extract` performs — is handed to a
+player, driven by the viewer's cine transport.
 
 ## References
 

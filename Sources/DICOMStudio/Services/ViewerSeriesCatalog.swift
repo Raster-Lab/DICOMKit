@@ -65,7 +65,11 @@ public enum ViewerSeriesCatalog {
             // The first instance decides: a series is one SOP Class in
             // practice, and reading every instance to confirm it would make
             // opening a study proportional to its object count.
-            contentKind: ViewerContentKind.kind(forSOPClassUID: instances.first?.sopClassUID),
+            // The transfer syntax comes too: a video instance carries an image
+            // SOP Class, so without it the pane calls a clip "Images".
+            contentKind: ViewerContentKind.kind(
+                forSOPClassUID: instances.first?.sopClassUID,
+                transferSyntaxUID: instances.first?.transferSyntaxUID),
             // What lets the pane say which slice a saved view is on: a
             // presentation state names its image by UID, and only the library
             // holds that image's Instance Number.

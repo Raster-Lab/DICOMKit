@@ -59,8 +59,8 @@ final class MP4ContainerParserTests: XCTestCase {
         return box("hdlr", payload)
     }
 
-    /// An AVCDecoderConfigurationRecord. Parameter sets are stored **without**
-    /// their NAL headers and length-prefixed (ISO/IEC 14496-15 5.3.3.1).
+    /// An AVCDecoderConfigurationRecord. Parameter sets are stored length-prefixed
+    /// and **with** their NAL headers (ISO/IEC 14496-15 5.3.3.1).
     private func avcC(sps: [Data], pps: [Data]) -> Data {
         var payload = Data([0x01, 0x64, 0x00, 0x29, 0xFF])
         payload.append(UInt8(0xE0 | sps.count))
@@ -170,9 +170,10 @@ final class MP4ContainerParserTests: XCTestCase {
 
     // MARK: - Parameter Sets
 
-    /// The 1080p High@4.1 SPS from H264ParserTests, minus its 0x67 NAL header,
-    /// which is how avcC stores it.
-    private static let spsH264Payload = Data([
+    /// The 1080p High@4.1 SPS from H264ParserTests, with its 0x67 NAL header,
+    /// which is how avcC stores it: ISO/IEC 14496-15 keeps whole NAL units.
+    private static let spsH264Unit = Data([
+        0x67,
         0x64, 0x00, 0x29, 0xAC, 0xB4, 0x03, 0xC0, 0x11, 0x3F, 0x2C, 0x20,
         0x00, 0x00, 0x03, 0x00, 0x20, 0x00, 0x00, 0x07, 0x98,
     ])
@@ -189,7 +190,7 @@ final class MP4ContainerParserTests: XCTestCase {
     private func h264MP4(frameCount: UInt32 = 300, durationSeconds: Double = 10.0) -> Data {
         let entry = visualSampleEntry(
             format: "avc1", width: 1920, height: 1080,
-            extensions: avcC(sps: [Self.spsH264Payload], pps: [Data([0xEE, 0x3C, 0xB0])])
+            extensions: avcC(sps: [Self.spsH264Unit], pps: [Data([0xEE, 0x3C, 0xB0])])
         )
         return mp4File(tracks: [videoTrack(
             sampleEntry: entry, frameCount: frameCount,
@@ -218,7 +219,7 @@ final class MP4ContainerParserTests: XCTestCase {
         // remuxed rather than passed through.
         let mov = mp4File(tracks: [videoTrack(
             sampleEntry: visualSampleEntry(format: "avc1", width: 1920, height: 1080,
-                                          extensions: avcC(sps: [Self.spsH264Payload], pps: [])),
+                                          extensions: avcC(sps: [Self.spsH264Unit], pps: [])),
             frameCount: 300, duration: 300000
         )], major: "qt  ", compatible: ["qt  "])
 
@@ -378,7 +379,7 @@ final class MP4ContainerParserTests: XCTestCase {
         // DICOM video IODs carry no audio, so the count drives a warning.
         let videoEntry = visualSampleEntry(
             format: "avc1", width: 1920, height: 1080,
-            extensions: avcC(sps: [Self.spsH264Payload], pps: []))
+            extensions: avcC(sps: [Self.spsH264Unit], pps: []))
         let audioEntry = visualSampleEntry(
             format: "mp4a", width: 0, height: 0, extensions: Data())
 
@@ -398,7 +399,7 @@ final class MP4ContainerParserTests: XCTestCase {
         // than silently picking track 0.
         let entry = visualSampleEntry(
             format: "avc1", width: 1920, height: 1080,
-            extensions: avcC(sps: [Self.spsH264Payload], pps: []))
+            extensions: avcC(sps: [Self.spsH264Unit], pps: []))
         let file = mp4File(tracks: [
             videoTrack(sampleEntry: entry, frameCount: 300, duration: 300000),
             videoTrack(sampleEntry: entry, frameCount: 300, duration: 300000),
@@ -430,10 +431,10 @@ final class MP4ContainerParserTests: XCTestCase {
         XCTAssertEqual(track.parameterSets.count, 1)
 
         let payload = try XCTUnwrap(track.parameterSets.first)
-        XCTAssertEqual(payload, Self.spsH264Payload,
-                       "avcC stores the SPS without its NAL header")
+        XCTAssertEqual(payload, Self.spsH264Unit,
+                       "avcC stores the SPS as a whole NAL unit, header included")
 
-        let sps = try XCTUnwrap(H264Parser.parseSPSPayload(payload))
+        let sps = try XCTUnwrap(H264Parser.parseSPS(nalUnit: payload))
         XCTAssertEqual(sps.width, 1920)
         XCTAssertEqual(sps.height, 1080, "frame cropping applied, not 1088")
         XCTAssertEqual(sps.profileIDC, 100)
@@ -456,10 +457,10 @@ final class MP4ContainerParserTests: XCTestCase {
     }
 
     func test_avcC_handlesMultipleParameterSets() throws {
-        let secondSPS = Data([0x64, 0x00, 0x1F, 0xAC, 0xB4, 0x02, 0x80, 0x2D, 0xD0, 0x80])
+        let secondSPS = Data([0x67, 0x64, 0x00, 0x1F, 0xAC, 0xB4, 0x02, 0x80, 0x2D, 0xD0, 0x80])
         let entry = visualSampleEntry(
             format: "avc1", width: 1280, height: 720,
-            extensions: avcC(sps: [Self.spsH264Payload, secondSPS],
+            extensions: avcC(sps: [Self.spsH264Unit, secondSPS],
                              pps: [Data([0xEE, 0x3C, 0xB0])]))
         let file = mp4File(tracks: [videoTrack(
             sampleEntry: entry, frameCount: 100, duration: 100000)])
@@ -503,7 +504,8 @@ final class MP4ContainerParserTests: XCTestCase {
 
 // MARK: - Big-Endian Append Helpers
 
-private extension Data {
+/// Shared with the other video test files, which build the same ISO-BMFF boxes.
+extension Data {
     mutating func append(uint16 value: UInt16) {
         append(UInt8(truncatingIfNeeded: value >> 8))
         append(UInt8(truncatingIfNeeded: value))

@@ -84,8 +84,9 @@ public enum MP4ContainerParser {
         /// Exact frame count from the sample table, which is cheaper and more
         /// reliable than counting access units in the bit stream.
         public let frameCount: Int
-        /// Sequence Parameter Sets from `avcC` / `hvcC`, without NAL headers for
-        /// AVC and with them for HEVC, as each box stores them.
+        /// Sequence Parameter Sets from `avcC` / `hvcC`, each a complete NAL unit
+        /// with its header in place: one byte for AVC, two for HEVC. ISO/IEC
+        /// 14496-15 stores whole NAL units in both boxes.
         public let parameterSets: [Data]
         /// Frame rate derived from the media timescale and sample durations.
         public let frameRate: Double?
@@ -222,6 +223,26 @@ public enum MP4ContainerParser {
         return result
     }
 
+    /// The end offset of the last complete top-level box, i.e. how many bytes of
+    /// `data` the ISO-BMFF structure actually accounts for.
+    ///
+    /// Returns nil when the bytes are not ISO-BMFF, when a box is malformed or
+    /// truncated, or when a box declares size 0 — such a box is defined to run to
+    /// the end of the file, so it absorbs any trailing byte and can never
+    /// distinguish padding from stream data.
+    public static func topLevelBoxExtent(_ data: Data) -> Int? {
+        guard let first = readUInt32(data, at: 0), readFourCC(data, at: 4) != nil else {
+            return nil
+        }
+        guard first != 0 else { return nil }
+
+        let parsed = boxes(in: data, range: 0..<data.count)
+        guard let last = parsed.last else { return nil }
+        // A size-0 box may only appear last; if one did, it already ran to the end.
+        guard readUInt32(data, at: last.offset) != 0 else { return nil }
+        return last.offset + last.size
+    }
+
     /// Finds the first box of a type directly inside a range.
     public static func findBox(type: String, in data: Data, range: Range<Int>) -> Box? {
         boxes(in: data, range: range).first { $0.type == type }
@@ -352,7 +373,20 @@ public enum MP4ContainerParser {
                 parameterSets = parseAVCC(data, box: avcC)
             } else if let hvcC = findBox(type: "hvcC", in: data, range: extensionRange) {
                 parameterSets = parseHVCC(data, box: hvcC)
+            } else if codec == .mpeg2,
+                      let esds = findBox(type: "esds", in: data, range: extensionRange),
+                      let config = parseESDSDecoderSpecificInfo(data, box: esds) {
+                parameterSets = [config]
             }
+        }
+
+        // MPEG-2 carries its sequence header in-band, and muxers routinely write
+        // an `esds` with no DecoderSpecificInfo at all. Falling back to the first
+        // sample keeps such files readable, since the header is required to open
+        // the first GOP and so is always present there.
+        if parameterSets.isEmpty, codec == .mpeg2,
+           let header = firstSampleSequenceHeader(data, stblRange: stblRange) {
+            parameterSets = [header]
         }
 
         // stsz gives the exact sample count — one sample is one coded picture.
@@ -439,6 +473,114 @@ public enum MP4ContainerParser {
             }
         }
         return sets
+    }
+
+    /// Extracts the DecoderSpecificInfo payload from an `esds` box.
+    ///
+    /// Unlike `avcC` and `hvcC`, an `esds` holds a chain of MPEG-4 descriptors,
+    /// each tagged and carrying a variable-length size. For MPEG-2 video the
+    /// DecoderSpecificInfo, when present, is the sequence header itself.
+    ///
+    /// Returns nil when the chain omits a DecoderSpecificInfo, which is common:
+    /// MPEG-2 repeats its sequence header in-band, so muxers often store none.
+    ///
+    /// Reference: ISO/IEC 14496-1 Section 7.2.6 (descriptors),
+    /// ISO/IEC 14496-14 Section 5.6 (ESDBox)
+    public static func parseESDSDecoderSpecificInfo(_ data: Data, box: Box) -> Data? {
+        // Payload opens with a version/flags word, then the ES_Descriptor.
+        var offset = box.payloadOffset + 4
+        let end = box.offset + box.size
+
+        /// Reads one descriptor's tag and size, advancing past its header.
+        ///
+        /// Sizes use a base-128 encoding of up to four bytes, the high bit of each
+        /// marking that another follows.
+        func readDescriptorHeader() -> (tag: UInt8, size: Int)? {
+            guard let tag = readUInt8(data, at: offset) else { return nil }
+            offset += 1
+            var size = 0
+            for _ in 0..<4 {
+                guard let byte = readUInt8(data, at: offset) else { return nil }
+                offset += 1
+                size = (size << 7) | Int(byte & 0x7F)
+                if byte & 0x80 == 0 { break }
+            }
+            return (tag, size)
+        }
+
+        // ES_DescrTag (0x03) wraps the chain.
+        guard let esDescriptor = readDescriptorHeader(), esDescriptor.tag == 0x03 else {
+            return nil
+        }
+        // ES_ID (2 bytes) then a flags byte, which can introduce three optional
+        // fields that have to be stepped over before the inner descriptors.
+        guard let flags = readUInt8(data, at: offset + 2) else { return nil }
+        offset += 3
+        if flags & 0x80 != 0 { offset += 2 }  // streamDependenceFlag: dependsOn_ES_ID
+        if flags & 0x40 != 0 {                // URL_Flag: a length-prefixed URL
+            guard let urlLength = readUInt8(data, at: offset) else { return nil }
+            offset += 1 + Int(urlLength)
+        }
+        if flags & 0x20 != 0 { offset += 2 }  // OCRstreamFlag: OCR_ES_Id
+
+        // DecoderConfigDescrTag (0x04) holds the codec identification, then the
+        // DecoderSpecificInfo nested inside it.
+        guard let decoderConfig = readDescriptorHeader(), decoderConfig.tag == 0x04 else {
+            return nil
+        }
+        // objectTypeIndication, streamType/bufferSizeDB, maxBitrate, avgBitrate.
+        offset += 13
+
+        // Walk the nested descriptors for DecSpecificInfoTag (0x05). Anything else
+        // here is skipped by its own size rather than assumed absent.
+        while offset < end {
+            guard let descriptor = readDescriptorHeader() else { return nil }
+            guard descriptor.tag != 0x05 else {
+                guard descriptor.size > 0, offset + descriptor.size <= end else { return nil }
+                return data.subdata(in: offset..<(offset + descriptor.size))
+            }
+            guard descriptor.size > 0 else { return nil }
+            offset += descriptor.size
+        }
+        return nil
+    }
+
+    /// Recovers an MPEG-2 sequence header from the start of the first sample.
+    ///
+    /// The sample tables give the first chunk's file offset; a coded MPEG-2 video
+    /// sample opens at a start code, and the sequence header precedes the first
+    /// picture of a GOP. Scanning a bounded window from there avoids reading the
+    /// whole `mdat` while tolerating a leading pack or GOP header.
+    private static func firstSampleSequenceHeader(_ data: Data, stblRange: Range<Int>) -> Data? {
+        // stco holds 32-bit chunk offsets, co64 the 64-bit form; either way the
+        // first entry sits past a version/flags word and an entry count.
+        var chunkOffset: Int?
+        if let stco = findBox(type: "stco", in: data, range: stblRange),
+           let value = readUInt32(data, at: stco.payloadOffset + 8) {
+            chunkOffset = Int(value)
+        } else if let co64 = findBox(type: "co64", in: data, range: stblRange),
+                  let value = readUInt64(data, at: co64.payloadOffset + 8),
+                  value <= UInt64(Int.max) {
+            chunkOffset = Int(value)
+        }
+        guard let start = chunkOffset, start >= 0, start < data.count else { return nil }
+
+        // A sequence header plus its extensions is well under a kilobyte; the
+        // window only has to cover any pack or GOP header sitting ahead of it.
+        let window = min(data.count - start, 4096)
+        guard window > 4 else { return nil }
+        let slice = data.subdata(in: start..<(start + window))
+
+        // Hand back the header and everything after it, so the sequence extension
+        // that carries profile, level and chroma format stays readable.
+        for index in 0...(slice.count - 4) {
+            let base = slice.startIndex + index
+            guard slice[base] == 0x00, slice[base + 1] == 0x00,
+                  slice[base + 2] == 0x01, slice[base + 3] == 0xB3
+            else { continue }
+            return slice.subdata(in: (slice.startIndex + index)..<slice.endIndex)
+        }
+        return nil
     }
 
     /// Reads the major and compatible brands from an `ftyp` box.

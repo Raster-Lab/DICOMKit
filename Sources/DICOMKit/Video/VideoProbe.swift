@@ -219,8 +219,9 @@ public enum VideoProbe {
         let stream: VideoStreamInfo
         switch track.codec {
         case .h264:
-            // avcC stores parameter sets without their NAL headers.
-            guard let sps = track.parameterSets.compactMap({ H264Parser.parseSPSPayload($0) }).first
+            // avcC stores each parameter set as a complete NAL unit, header byte
+            // included, so the header has to be validated and stripped first.
+            guard let sps = track.parameterSets.compactMap({ H264Parser.parseSPS(nalUnit: $0) }).first
             else { throw VideoProbeError.parameterSetsUnreadable }
             stream = sps.streamInfo
         case .h265:
@@ -310,8 +311,25 @@ public enum VideoProbe {
     /// one through is legal. Demuxing it — which is what validation would require —
     /// is a separate piece of work.
     private static func probeTrustedTransportStream(_ data: Data) throws -> VideoProbeResult {
-        // Nothing is claimed about the stream's geometry, because nothing was read.
-        // The caller supplies those attributes and takes responsibility for them.
+        // Geometry is read even here, because Rows and Columns are required
+        // attributes: an object carrying zeroes is one no reader can display, so
+        // "trusted" cannot extend to inventing a frame size. Only the conformance
+        // checks are skipped, which is what the caller actually asked for.
+        if let payload = TransportStreamScanner.firstVideoPayload(data),
+           let stream = elementaryStreamInfo(payload.data, codec: payload.codec) {
+            return VideoProbeResult(
+                container: .mpegTS,
+                stream: stream,
+                frameCount: 0,
+                frameCountSource: .unavailable,
+                audioTrackCount: 0,
+                suggestedTransferSyntax: nil,
+                frameRate: stream.frameRate
+            )
+        }
+
+        // The PID carried something this toolkit cannot read. The stream is still
+        // encapsulated on the caller's assertion, but nothing is claimed about it.
         let unknownStream = VideoStreamInfo(
             codec: .unknown, width: 0, height: 0,
             profileIDC: 0, levelTimesTen: 0,
@@ -330,6 +348,24 @@ public enum VideoProbe {
     }
 
     // MARK: - Private
+
+    /// Reads an elementary stream's geometry using the parser for a codec the
+    /// container has already declared.
+    ///
+    /// Content sniffing is deliberately avoided: MPEG-2 start codes share the
+    /// Annex B prefix, so an MPEG-2 sequence header parses as a plausible but
+    /// wrong H.264 SPS. Where a container names the codec, that name is used.
+    private static func elementaryStreamInfo(
+        _ data: Data,
+        codec: VideoCodec
+    ) -> VideoStreamInfo? {
+        switch codec {
+        case .h264: return H264Parser.parseFirstSPS(annexB: data)?.streamInfo
+        case .h265: return HEVCParser.parseFirstSPS(annexB: data)?.streamInfo
+        case .mpeg2: return MPEG2Parser.parseSequenceHeader(data)?.streamInfo
+        case .unknown: return nil
+        }
+    }
 
     /// Returns a copy of a stream summary carrying a different frame rate.
     private static func withFrameRate(

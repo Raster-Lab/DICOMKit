@@ -132,13 +132,40 @@ public enum VideoExtractor {
             throw VideoExtractionError.emptyPixelData
         }
 
+        // A fragment's length must be even (PS3.5 Section 7.1), so an odd-length
+        // bit stream was padded with one byte on the way in. Recover the original
+        // length from the container itself rather than trusting the parity: the
+        // trailing byte is only padding when the payload actually says it ends
+        // sooner, and stripping it from a stream that really is that long would
+        // corrupt the pixel data this whole path exists to preserve.
+        let payload = trimmingEncapsulationPadding(bitstream)
+
         return ExtractedVideo(
-            bitstream: bitstream,
+            bitstream: payload,
             transferSyntax: transferSyntax,
             codec: VideoCodec(transferSyntaxUID: transferSyntax.uid),
-            container: MP4ContainerParser.detectContainer(bitstream),
+            container: MP4ContainerParser.detectContainer(payload),
             fragmentCount: fragmentCount
         )
+    }
+
+    /// Drops the single byte an encapsulated fragment is padded with when the
+    /// payload it carries has an odd length.
+    ///
+    /// ISO-BMFF is a sequence of sized boxes, so the file's own length is the sum
+    /// of its top-level boxes; anything past that is not part of the stream. Only
+    /// a trailing byte the container excludes is treated as padding, which leaves
+    /// a stream whose real length happens to be odd untouched when its boxes say
+    /// so. Formats without such framing — MPEG-TS and raw elementary streams — are
+    /// returned unchanged, since nothing in them distinguishes a pad byte from
+    /// stream data.
+    static func trimmingEncapsulationPadding(_ bitstream: Data) -> Data {
+        guard bitstream.count % 2 == 0, bitstream.count >= 2 else { return bitstream }
+        guard let declared = MP4ContainerParser.topLevelBoxExtent(bitstream) else {
+            return bitstream
+        }
+        guard declared == bitstream.count - 1 else { return bitstream }
+        return bitstream.prefix(declared)
     }
 
     /// Extracts the video payload from a DICOM file, reading the transfer syntax
