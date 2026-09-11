@@ -314,9 +314,16 @@ struct ViewerSeriesPaneView: View {
 
     @ViewBuilder
     private func thumbnail(_ entry: ViewerSeriesEntry) -> some View {
-        // A report or a document has no frame to render, so the card shows what
-        // it holds instead of spinning forever on a thumbnail that cannot exist.
-        if !entry.isImageSeries {
+        // Several objects come first, even when none of them can be drawn: a
+        // three-clip video series that falls straight to the placeholder shows
+        // one film icon for three recordings, and the reader has no way to ask
+        // for the second. The strip handles the undrawable case itself.
+        if entry.objectPreviews.count > 1 {
+            objectStrip(entry)
+        } else if !entry.isImageSeries {
+            // A report or a document has no frame to render, so the card shows
+            // what it holds instead of spinning forever on a thumbnail that
+            // cannot exist.
             VStack(spacing: 4) {
                 Image(systemName: entry.contentKind.symbolName)
                     .font(.title2)
@@ -326,11 +333,6 @@ struct ViewerSeriesPaneView: View {
                     .foregroundStyle(.white.opacity(0.55))
                     .multilineTextAlignment(.center)
             }
-        } else if entry.objectPreviews.count > 1 {
-            // Several cines under one series: one preview per object, the way
-            // Horos shows them. A single thumbnail of the first file would
-            // claim the series is one recording when it holds two.
-            objectStrip(entry)
         } else {
             imageThumbnail(entry)
         }
@@ -406,8 +408,20 @@ struct ViewerSeriesPaneView: View {
                 entry.seriesInstanceUID, startingAtFile: preview.filePath)
         } label: {
             VStack(spacing: 2) {
-                frameThumbnail(preview.filePath)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Group {
+                    // A clip's pixels are an encoded bit stream the still
+                    // decoder cannot open, so its tile is the kind's own
+                    // symbol. The frame count below still tells the two
+                    // recordings apart, which is what the strip is for.
+                    if entry.canRenderThumbnails {
+                        frameThumbnail(preview.filePath)
+                    } else {
+                        Image(systemName: entry.contentKind.symbolName)
+                            .font(.title3)
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Text(preview.frameCountLabel)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.white.opacity(0.7))
@@ -443,7 +457,10 @@ struct ViewerSeriesPaneView: View {
     #if canImport(CoreGraphics)
     private func refreshThumbnails() {
         thumbnails.refresh(viewModel.studySeries.flatMap { entry -> [FrameImageStore.Request] in
-            guard entry.isImageSeries else { return [] }
+            // Only series whose objects the still decoder can actually open:
+            // a video series draws film tiles and would otherwise queue one
+            // doomed decode per clip.
+            guard entry.canRenderThumbnails else { return [] }
             let previews = entry.objectPreviews
             if previews.count > 1 {
                 // Only the strip's visible tiles: decoding every loop of a

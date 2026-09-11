@@ -2,6 +2,12 @@
 
 **Date:** 2026-07-04 · **Method:** 7 parallel read-only audit agents, every tool traced flag-by-flag in current working-tree code (not docs) · **Scope: all 40 `dicom-*` executables.**
 
+> **Addendum (2026-09-11):** `dicom-video` did not exist at the time of this audit and was
+> added to the tables below as a 41st tool, verified on the same three axes. It is the first
+> tool built shared-first rather than remediated: `VideoWorkflow` + `VideoConsole` were written
+> as the engine, and both adapters were thinned onto them from the start. Every other number,
+> grade and finding on this page is the 2026-07-04 snapshot and has **not** been re-verified.
+
 > **REMEDIATION STATUS (2026-07-04): batch complete for all non-held tools — see
 > [Remediation outcomes](#remediation-outcomes-2026-07-04) at the end of this document.**
 > User triage: 11 tools HELD (measure, viewer, 3d, ai, report, gateway, cloud, server,
@@ -49,7 +55,7 @@ C=architecture gap / absent from app / stub / disabled):
 
 ---
 
-## Master status table (40 tools)
+## Master status table (40 tools + `dicom-video`, added 2026-09-11)
 
 Legend — A1: ✅ shared · ◐ engine shared, edges inline · ❌ executable-local.
 A2: ✅ full parity · ◐ partial · ❌ absent from app · 🧩 app stub.
@@ -71,6 +77,7 @@ RT: round-trip suite exists in `Tests/DICOMRoundTripTest/`.
 | dicom-split | ✅ FrameSplitter incl. **shared processDirectory** | ✅ | ✅/✅/◐ | ✅ | 🟢 the model for dir-walks |
 | dicom-validate | ◐ DICOMValidator; render forked in app | ✅ | ❌/✅/❌ | ✅ | 🟡 **real render drift** (D1) |
 | dicom-image | ◐ ImageConverter; dispatch+console inline ×2 | ✅ | ❌/✅/❌ | ✅ | 🟡 `--use-exif` dead under `--split-pages` (N7) |
+| dicom-video | ✅ VideoWorkflow + VideoConsole (whole body, incl. batch) | ✅ 4 subcommands, every flag | ✅/✅/✅ | ✅ | 🟢 shared-first; help strings shared too (added 2026-09-11) |
 | dicom-export | ◐ DICOMImageExporter; CG/GIF glue inline ×2 | ✅ (+app dir-expansion) | ◐/✅/❌ | ✅ | 🟡 |
 | dicom-measure | ❌ MeasurementEngine + formatters exe-local | ❌ not in Workshop | —/—/— | ⚠️ | 🔴 RT tests test a re-implementation, not the engine (E1) |
 | dicom-viewer | ❌ TerminalRenderer exe-local | ❌ | —/—/— | ❌ | 🔴 (E2) |

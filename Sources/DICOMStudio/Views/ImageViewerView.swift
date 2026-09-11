@@ -300,7 +300,16 @@ public struct ImageViewerView: View {
                     // state, so pressing either one moves the other.
                     isPlaying: Binding(
                         get: { viewModel.playbackState == .playing },
-                        set: { viewModel.playbackState = $0 ? .playing : .paused }))
+                        set: { viewModel.playbackState = $0 ? .playing : .paused }),
+                    // Which object this is, so stepping to the next clip of a
+                    // series rebuilds the player rather than leaving the
+                    // previous recording running.
+                    instanceUID: viewModel.sopInstanceUID)
+                // Scrolling steps between the objects of a multi-clip series
+                // here too. The handler that does this for pixels lives inside
+                // `imageContent`, which this branch pre-empts, so a video
+                // series had no wheel navigation at 1×1 at all.
+                .background(ScrollWheelHandler { scrollImages($0) })
             } else if let errorMessage = viewModel.errorMessage {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")

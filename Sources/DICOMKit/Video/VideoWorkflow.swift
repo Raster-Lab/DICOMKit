@@ -676,6 +676,33 @@ public enum VideoWorkflow {
         }
     }
 
+    /// The warning for a payload that contradicts the object's declared transfer
+    /// syntax, or nil when the payload matches it or cannot be read.
+    ///
+    /// `extract` trusts the declared transfer syntax for everything it reports,
+    /// because the bytes are copied out unchanged and the UID is the only thing
+    /// that names them. That trust is misplaced when the writer mislabelled the
+    /// object: the payload leaves as a plain video file with no record that its
+    /// source disagreed with itself, and the contradiction surfaces later against
+    /// whatever reads it next rather than against the object that caused it.
+    ///
+    /// An unreadable payload yields nil rather than a warning. Extraction is
+    /// deliberately tolerant of bytes it cannot parse, and "this stream could not
+    /// be probed" is not evidence of a mismatch.
+    public static func conformanceWarning(for extracted: ExtractedVideo) -> String? {
+        guard let probe = try? VideoProbe.probe(extracted.bitstream) else { return nil }
+        let result = VideoConformanceValidator.validate(
+            stream: probe.stream,
+            transferSyntax: extracted.transferSyntax,
+            numberOfFrames: probe.frameCount
+        )
+        guard let violation = result.violations.first else { return nil }
+        return VideoConsole.payloadContradictsTransferSyntaxLine(
+            transferSyntax: extracted.transferSyntax,
+            violation: violation
+        )
+    }
+
     /// The extension warning for an output path, or nil when it suits the payload.
     ///
     /// An empty extension is accepted silently: the user asked for no extension.

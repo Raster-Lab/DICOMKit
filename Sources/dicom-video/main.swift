@@ -360,6 +360,10 @@ extension DICOMVideo {
                 throw ExitCode(1)
             }
 
+            if let warning = VideoWorkflow.conformanceWarning(for: extracted) {
+                printError(warning)
+            }
+
             if let warning = VideoWorkflow.extensionWarning(
                 for: extracted, outputPath: outputPath) {
                 printError(warning)

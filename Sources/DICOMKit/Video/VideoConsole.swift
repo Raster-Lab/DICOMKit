@@ -482,6 +482,24 @@ public enum VideoConsole {
             """)
     }
 
+    /// The warning for a payload that contradicts the transfer syntax the object
+    /// declares.
+    ///
+    /// A warning rather than an error: extracting from a non-conformant object is
+    /// a legitimate thing to want to do, often precisely because it is being
+    /// diagnosed. Refusing would make the tool useless for recovery, while saying
+    /// nothing attributes the defect to whatever reads the payload next.
+    public static func payloadContradictsTransferSyntaxLine(
+        transferSyntax: TransferSyntax,
+        violation: VideoConformanceViolation
+    ) -> String {
+        warningLine("""
+            the object declares \(transferSyntax.uid) (\(transferSyntax.displayName)) \
+            but \(violation.message); the source object is non-conformant. \
+            The bit stream was extracted unchanged.
+            """)
+    }
+
     // MARK: - Batch Results
 
     /// The per-clip success line.

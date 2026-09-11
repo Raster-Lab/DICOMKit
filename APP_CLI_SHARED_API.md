@@ -4,8 +4,12 @@ How the `dicom-*` command-line tools **and** DICOMStudio's *CLI Workshop* run th
 **same** processing code from the DICOMKit Swift package, instead of each
 mirror-implementing the logic.
 
-> **Status (2026-08-03):** every file-processing tool shares its engine, and the
-> **console/text layer is shared too** — not just the processing core. The
+> **Status (2026-09-11):** every file-processing tool shares its engine, and the
+> **console/text layer is shared too** — not just the processing core. The most
+> recent addition is `dicom-video` (convert · probe · extract · batch), built
+> shared-first: `VideoWorkflow` owns every operation and `VideoConsole` every
+> line of text, so both surfaces — and the CLI's `--help` and the Workshop form —
+> read from one source. The
 > remaining differences between App and CLI are **intentional adapter concerns**
 > (sandbox write-redirect notes, emoji vs ASCII, educational/verbose extras) or
 > **genuinely non-deterministic** output (freshly generated UIDs/timestamps, live

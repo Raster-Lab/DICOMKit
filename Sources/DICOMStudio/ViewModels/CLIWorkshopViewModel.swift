@@ -3943,6 +3943,10 @@ private func executeDicomStudy() async {
                 return (lines.joined(separator: "\n"), .inputError)
             }
 
+            if let warning = VideoWorkflow.conformanceWarning(for: extracted) {
+                lines.append(warning)
+            }
+
             if let warning = VideoWorkflow.extensionWarning(
                 for: extracted, outputPath: outputPath) {
                 lines.append(warning)

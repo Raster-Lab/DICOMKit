@@ -122,7 +122,10 @@ public enum ViewerSeriesCatalog {
                 // Numbers the index already has are trusted; a series is only
                 // read back when objects are missing theirs, which is the
                 // stale-index shape. A lone object needs no order at all.
-                guard entry.isImageSeries, entry.filePaths.count > 1,
+                // Video as well as pixels: a series of clips is ordered by
+                // Instance Number like any other, and skipping the repair left
+                // a stale index playing the recordings in file-system order.
+                guard entry.hasPerObjectFrames, entry.filePaths.count > 1,
                       entry.instanceNumbersBySOPUID.count < entry.filePaths.count
                 else { return entry }
 

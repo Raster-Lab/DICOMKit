@@ -67,6 +67,18 @@ public enum ViewerContentKind: String, Sendable, Equatable, Hashable, CaseIterab
     /// Whether this kind is displayed as pixels.
     public var isImage: Bool { self == .image }
 
+    /// Whether one object of this kind is a *recording* the reader steps
+    /// between — pictures and clips, as against a report or a presentation
+    /// state, which have no per-object frames to preview.
+    ///
+    /// Distinct from ``isImage`` because a video is not rendered through the
+    /// pixel path yet is still a series of separate acquisitions: an
+    /// endoscopy series holding three clips hides two of them behind a single
+    /// card unless the pane can preview each object. Anything that answers
+    /// yes here must be safe to describe by object and frame count; it need
+    /// not be safe to hand to the still-image decoder.
+    public var hasPerObjectFrames: Bool { self == .image || self == .video }
+
     /// Why this content cannot be displayed, when it cannot be.
     ///
     /// Raw Data Storage holds a vendor's own acquisition data — k-space,

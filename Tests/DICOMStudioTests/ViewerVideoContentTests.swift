@@ -163,11 +163,59 @@ struct ViewerVideoSeriesTests {
             contentKind: .video,
             instanceNumbersBySOPUID: [:],
             frameCountsByFilePath: ["/tmp/a.dcm": 90, "/tmp/b.dcm": 90])
-        // `isImageSeries` is what gates thumbnail decoding and the per-object
-        // preview strip: a clip has no still frames to draw either from.
+        // A clip is not rendered through the pixel path and has no still frame
+        // to decode, so it is neither an image series nor thumbnailable...
         #expect(!entry.isImageSeries)
-        #expect(entry.objectPreviews.isEmpty)
+        #expect(!entry.canRenderThumbnails)
+        // ...but it is still a series of separate recordings, which is what
+        // earns each clip its own preview.
+        #expect(entry.hasPerObjectFrames)
         #expect(entry.countsLabel.contains("video clip"))
+    }
+
+    @Test("Each clip of a multi-clip video series gets its own preview")
+    func testMultiClipSeriesPreviewsEveryClip() {
+        // The reported bug: three clips under one Series UID drew a single
+        // film icon, so the second and third recordings could not be reached
+        // from the pane at all. Filed per-file they were three cards and
+        // worked, which is what made the single-series case look broken.
+        let entry = ViewerSeriesEntry(
+            seriesInstanceUID: "1.2.3",
+            title: "Endoscopy",
+            filePaths: ["/tmp/a.dcm", "/tmp/b.dcm", "/tmp/c.dcm"],
+            frameCount: 3138,
+            contentKind: .video,
+            frameCountsByFilePath: [
+                "/tmp/a.dcm": 1325, "/tmp/b.dcm": 905, "/tmp/c.dcm": 908])
+
+        let previews = entry.objectPreviews
+        #expect(previews.map(\.filePath) == ["/tmp/a.dcm", "/tmp/b.dcm", "/tmp/c.dcm"])
+        #expect(previews.map(\.frameCount) == [1325, 905, 908])
+        #expect(previews.map(\.frameCountLabel)
+            == ["1325 frames", "905 frames", "908 frames"])
+    }
+
+    @Test("A single clip needs no strip, however many frames it holds")
+    func testSingleClipHasNoPreviews() {
+        let entry = ViewerSeriesEntry(
+            seriesInstanceUID: "1.2.4", title: "Endoscopy",
+            filePaths: ["/tmp/only.dcm"], frameCount: 1325,
+            contentKind: .video,
+            frameCountsByFilePath: ["/tmp/only.dcm": 1325])
+        #expect(entry.objectPreviews.isEmpty)
+    }
+
+    @Test("A report series still previews nothing, however many objects")
+    func testReportSeriesStillHasNoPreviews() {
+        // The gate widened to video, not to everything: a report has no frames
+        // to count and no recording to step between.
+        let entry = ViewerSeriesEntry(
+            seriesInstanceUID: "1.2.5", title: "Report",
+            filePaths: ["/tmp/r1.dcm", "/tmp/r2.dcm"], frameCount: 4,
+            contentKind: .report,
+            frameCountsByFilePath: ["/tmp/r1.dcm": 2, "/tmp/r2.dcm": 2])
+        #expect(!entry.hasPerObjectFrames)
+        #expect(entry.objectPreviews.isEmpty)
     }
 
     @Test("Video has its own name and symbol in the pane")

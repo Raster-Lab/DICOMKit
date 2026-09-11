@@ -498,6 +498,53 @@ final class VideoConsoleParityTests: XCTestCase {
             "warning: payload is MP4; '.mp4' would suit it better than '.264'.")
     }
 
+    /// A mislabelled object — one whose payload contradicts the transfer syntax it
+    /// declares — is extracted unchanged but no longer silently. Without the
+    /// warning the defect surfaces against whatever reads the payload next rather
+    /// than against the object that caused it.
+    func testExtractWarnsWhenPayloadContradictsTheDeclaredTransferSyntax() throws {
+        let outcome = try VideoWorkflow.convert(
+            bitstream: h264MP4(), type: .endoscopic, typeWasExplicit: true)
+        let object = try XCTUnwrap(outcome.data)
+
+        // Demote the SPS to Main Profile in place, which is exactly the shape of
+        // the third-party objects this warning exists for: the declared
+        // transfer syntax still says High, while the bit stream no longer does.
+        let sps = Self.spsH264Unit
+        let range = try XCTUnwrap(object.range(of: sps))
+        var mislabelled = object
+        // spsH264Unit is [NAL header, profile_idc, ...], so the profile byte is
+        // the one after the 0x67 header.
+        mislabelled[range.lowerBound + 1] = 77
+
+        let extracted = try VideoWorkflow.extract(
+            fileData: mislabelled, inputPath: "mislabelled.dcm")
+
+        XCTAssertEqual(
+            extracted.bitstream.count,
+            try VideoWorkflow.extract(
+                fileData: object, inputPath: "clip.dcm").bitstream.count,
+            "the payload is still carried out unchanged")
+
+        let warning = try XCTUnwrap(
+            VideoWorkflow.conformanceWarning(for: extracted),
+            "a payload contradicting its transfer syntax must not pass silently")
+        XCTAssertTrue(warning.hasPrefix("warning: "))
+        XCTAssertTrue(warning.contains("1.2.840.10008.1.2.4.102"))
+        XCTAssertTrue(warning.contains("profile_idc 77"))
+    }
+
+    /// The warning is for contradictions only: a conformant object must not
+    /// acquire a scary line on a path whose whole purpose is faithful recovery.
+    func testExtractIsSilentWhenThePayloadMatchesItsTransferSyntax() throws {
+        let outcome = try VideoWorkflow.convert(
+            bitstream: h264MP4(), type: .endoscopic, typeWasExplicit: true)
+        let extracted = try VideoWorkflow.extract(
+            fileData: try XCTUnwrap(outcome.data), inputPath: "clip.dcm")
+
+        XCTAssertNil(VideoWorkflow.conformanceWarning(for: extracted))
+    }
+
     /// Every video transfer syntax is encapsulated (PS3.5 A.4), and the
     /// non-fragmentable ones want the whole stream in one fragment.
     func testPixelDataIsEncapsulatedInASingleFragment() throws {

@@ -28,6 +28,14 @@ struct ViewerNonImageContentView: View {
     /// constant for the content that has nothing to play.
     var isPlaying: Binding<Bool> = .constant(false)
 
+    /// SOP Instance UID of the object on screen, which is what identifies a
+    /// clip to the player.
+    ///
+    /// The payload's byte count used to stand in for this, and two clips of
+    /// equal length — the same recording exported twice, a series of fixed
+    /// duration — then kept playing the first one silently.
+    var instanceUID: String?
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -82,7 +90,8 @@ struct ViewerNonImageContentView: View {
     @ViewBuilder
     private func videoPlayer(_ video: DICOMKit.ExtractedVideo) -> some View {
         #if canImport(AVKit)
-        ViewerVideoPlayerView(video: video, isPlaying: isPlaying)
+        ViewerVideoPlayerView(
+            video: video, isPlaying: isPlaying, instanceUID: instanceUID)
         #else
         summary([
             .init(label: "Codec", value: video.codec.displayName),
@@ -314,6 +323,12 @@ struct ViewerVideoPlayerView: View {
     /// toolbar's cine button and the player agree on one answer.
     @Binding var isPlaying: Bool
 
+    /// Identity of the clip on screen — see
+    /// ``ViewerNonImageContentView/instanceUID``. Falls back to the payload
+    /// size for a standalone file opened outside a series, which carries no
+    /// series position to confuse.
+    var instanceUID: String?
+
     @State private var player: AVPlayer?
     @State private var fileURL: URL?
     @State private var failure: String?
@@ -336,7 +351,7 @@ struct ViewerVideoPlayerView: View {
                 ProgressView().controlSize(.large)
             }
         }
-        .task(id: video.bitstream.count) { await prepare() }
+        .task(id: instanceUID ?? "size:\(video.bitstream.count)") { await prepare() }
         .onDisappear(perform: teardown)
         .onChange(of: isPlaying) { _, wants in
             guard let player else { return }
