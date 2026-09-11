@@ -4,6 +4,7 @@ import DICOMKit
 import DICOMCore
 import DICOMDictionary
 
+@main
 struct DICOMAnon: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-anon",
@@ -192,6 +193,3 @@ struct DICOMAnon: AsyncParsableCommand {
     }
 }
 
-// Pass argv explicitly: in a `main.swift` (no `@main`), `main()` would re-read
-// `CommandLine.arguments` including the program name and swallow the first flag.
-await DICOMAnon.main(Array(CommandLine.arguments.dropFirst()))
