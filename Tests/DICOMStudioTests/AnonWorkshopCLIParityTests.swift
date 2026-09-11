@@ -15,8 +15,9 @@
 //
 // Both surfaces run the shared `AnonymizationWorkflow`; this suite is what proves
 // the Workshop's parameter form and executor feed it the same request the CLI
-// parses from argv — including the PS3.15 retention flags and the whole pixel
-// pipeline (explicit regions, OCR, styles, re-encoding, refusal).
+// parses from argv — the PS3.15 retention options, the Clean Pixel Data default
+// and its Burned In Annotation policy, and the whole pixel pipeline (explicit
+// regions, OCR modes, styles, re-encoding, refusal).
 //
 // The binary is taken from this checkout's `.build/release`; the suite is skipped
 // when it has not been built (`swift build -c release --product dicom-anon`).
@@ -56,6 +57,8 @@ struct AnonWorkshopCLIParityTests {
         var phi: String { root.appendingPathComponent("phi.dcm").path }
         /// PHI in the header and Burned In Annotation = YES.
         var burnedIn: String { root.appendingPathComponent("bia.dcm").path }
+        /// PHI in the header and Burned In Annotation = NO (trusted by policy).
+        var declaredClean: String { root.appendingPathComponent("bia-no.dcm").path }
         /// 512×256 frame with "SMITH JOHN 0012345" rendered at the top; header names the same patient.
         var banner: String { root.appendingPathComponent("banner.dcm").path }
         /// Two PHI files, one nested, plus a non-DICOM file.
@@ -67,7 +70,8 @@ struct AnonWorkshopCLIParityTests {
             try fm.createDirectory(at: root.appendingPathComponent("dir/nested"), withIntermediateDirectories: true)
             let fx = Fixtures(root: root)
             try phiFile().write(to: URL(fileURLWithPath: fx.phi))
-            try phiFile(burnedIn: true).write(to: URL(fileURLWithPath: fx.burnedIn))
+            try phiFile(burnedIn: "YES").write(to: URL(fileURLWithPath: fx.burnedIn))
+            try phiFile(burnedIn: "NO").write(to: URL(fileURLWithPath: fx.declaredClean))
             try bannerFile(text: "SMITH JOHN 0012345").write(to: URL(fileURLWithPath: fx.banner))
             try phiFile(sopInstance: "1.2.3.4.5.6.7.8.10").write(to: root.appendingPathComponent("dir/a.dcm"))
             try phiFile(sopInstance: "1.2.3.4.5.6.7.8.11").write(to: root.appendingPathComponent("dir/nested/b.dcm"))
@@ -75,7 +79,7 @@ struct AnonWorkshopCLIParityTests {
             return fx
         }
 
-        nonisolated static func dataSet(rows: Int, columns: Int, pixels: Data, burnedIn: Bool, sopInstance: String) -> DataSet {
+        nonisolated static func dataSet(rows: Int, columns: Int, pixels: Data, burnedIn: String?, sopInstance: String) -> DataSet {
             var ds = DataSet()
             ds.setString("1.2.840.10008.5.1.4.1.1.7", for: .sopClassUID, vr: .UI)
             ds.setString(sopInstance, for: .sopInstanceUID, vr: .UI)
@@ -91,7 +95,7 @@ struct AnonWorkshopCLIParityTests {
             ds.setString("General Hospital", for: .institutionName, vr: .LO)
             ds.setString("ACME", for: .manufacturer, vr: .LO)
             ds.setString("Chest study", for: .studyDescription, vr: .LO)
-            if burnedIn { ds.setString("YES", for: .burnedInAnnotation, vr: .CS) }
+            if let burnedIn { ds.setString(burnedIn, for: .burnedInAnnotation, vr: .CS) }
             ds.setUInt16(UInt16(rows), for: .rows)
             ds.setUInt16(UInt16(columns), for: .columns)
             ds.setUInt16(8, for: .bitsAllocated)
@@ -110,7 +114,7 @@ struct AnonWorkshopCLIParityTests {
             return try DICOMFile(fileMetaInformation: meta, dataSet: ds).write()
         }
 
-        nonisolated static func phiFile(burnedIn: Bool = false, sopInstance: String = "1.2.3.4.5.6.7.8.9") throws -> Data {
+        nonisolated static func phiFile(burnedIn: String? = nil, sopInstance: String = "1.2.3.4.5.6.7.8.9") throws -> Data {
             try file(dataSet(rows: 8, columns: 16, pixels: Data(repeating: 200, count: 16 * 8),
                              burnedIn: burnedIn, sopInstance: sopInstance))
         }
@@ -129,7 +133,7 @@ struct AnonWorkshopCLIParityTests {
             CTLineDraw(line, ctx)
             let raw = try #require(ctx.data)
             let pixels = Data(bytes: raw, count: columns * rows)
-            return try file(dataSet(rows: rows, columns: columns, pixels: pixels, burnedIn: true,
+            return try file(dataSet(rows: rows, columns: columns, pixels: pixels, burnedIn: "YES",
                                     sopInstance: "1.2.3.4.5.6.7.8.20"))
         }
     }
@@ -281,21 +285,14 @@ struct AnonWorkshopCLIParityTests {
     nonisolated static var cases: [Case] {
         let fx = fixtures
         return [
-            // Header engines
-            Case(name: "basic defaults", input: fx.phi, params: []),
-            Case(name: "clinical-trial", input: fx.phi, params: [("profile", "clinical-trial")]),
-            Case(name: "research", input: fx.phi, params: [("profile", "research")]),
-            Case(name: "ps315 defaults", input: fx.phi, params: [("profile", "ps315")]),
-            Case(name: "ps315 all retention + shift", input: fx.phi, params: [
-                ("profile", "ps315"), ("retain-dates", "true"), ("retain-characteristics", "true"),
-                ("retain-device", "true"), ("retain-institution", "true"), ("retain-uids", "true"),
-                ("clean-descriptors", "true"), ("shift-dates", "100")]),
-            Case(name: "retain toggles hidden under basic are not applied", input: fx.phi,
-                 params: [("retain-dates", "true"), ("profile", "basic")]),
-            Case(name: "shift-dates + regenerate-uids", input: fx.phi, params: [("shift-dates", "30"), ("regenerate-uids", "true")]),
-            Case(name: "remove/replace/keep", input: fx.phi, params: [
-                ("remove", "0010,0040; StudyDescription"), ("replace", "PatientName=DOE^JANE; 0010,0020=ID-1"),
-                ("keep", "InstitutionName")]),
+            // The one profile and its options
+            Case(name: "defaults (Basic Profile, pixel cleaning on)", input: fx.phi, params: []),
+            Case(name: "all retention options", input: fx.phi, params: [
+                ("retain-dates", "true"), ("retain-characteristics", "true"), ("retain-device", "true"),
+                ("retain-institution", "true"), ("retain-uids", "true"), ("clean-descriptors", "true")]),
+            Case(name: "shift-dates (Modified Dates)", input: fx.phi, params: [("shift-dates", "100")]),
+            Case(name: "retain-dates + shift-dates conflict", input: fx.phi, params: [("retain-dates", "true"), ("shift-dates", "7")]),
+            Case(name: "header only (--no-clean-pixel-data)", input: fx.phi, params: [("clean-pixel-data", "false")]),
             Case(name: "dry-run", input: fx.phi, params: [("dry-run", "true")], noOutput: true),
             Case(name: "backup", input: fx.phi, params: [("backup", "true")]),
             Case(name: "audit-log", input: fx.phi, params: [("dry-run", "true")], noOutput: true, auditLog: true),
@@ -304,33 +301,42 @@ struct AnonWorkshopCLIParityTests {
             Case(name: "directory without --recursive", input: fx.dir, params: [], outputIsDir: true),
             Case(name: "single file without --output", input: fx.phi, params: [], noOutput: true),
             Case(name: "missing input", input: fx.root.appendingPathComponent("nope.dcm").path, params: []),
-            Case(name: "invalid profile", input: fx.phi, params: [("profile", "hipaa")]),
-            Case(name: "invalid --remove tag", input: fx.phi, params: [("remove", "bogus")]),
-            Case(name: "invalid --replace pair", input: fx.phi, params: [("replace", "0010,0010")]),
+            Case(name: "invalid --ocr-mode", input: fx.phi, params: [("ocr-mode", "fuzzy")]),
             Case(name: "invalid --redact-region", input: fx.phi, params: [("redact-region", "1,2,3")]),
-            Case(name: "--recompress without cleaning", input: fx.phi, params: [("recompress", "rle")]),
-            Case(name: "replace style without OCR", input: fx.phi, params: [("clean-pixel-data", "true"), ("redact-style", "replace")]),
-            // Refusal contract
-            Case(name: "ps315 refuses Burned In Annotation", input: fx.burnedIn, params: [("profile", "ps315")]),
-            Case(name: "ps315 --allow-burned-in-phi", input: fx.burnedIn, params: [("profile", "ps315"), ("allow-burned-in-phi", "true")]),
-            Case(name: "ps315 dry-run reports residual", input: fx.burnedIn, params: [("profile", "ps315"), ("dry-run", "true")], noOutput: true),
+            Case(name: "--recompress without cleaning", input: fx.phi, params: [("clean-pixel-data", "false"), ("recompress", "rle")]),
+            Case(name: "removed ocr-mode all", input: fx.phi, params: [("ocr-mode", "all")]),
+            Case(name: "text-only without cleaning", input: fx.phi, params: [("clean-pixel-data", "false"), ("text-only", "true")]),
+            // Burned In Annotation policy
+            Case(name: "BIA=NO trusted", input: fx.declaredClean, params: []),
+            Case(name: "BIA=NO + redact-region overrides trust", input: fx.declaredClean, params: [("redact-region", "0,0,16,2")]),
+            Case(name: "BIA=YES cleaning unresolved (no region source)", input: fx.burnedIn, params: []),
+            Case(name: "BIA=YES header-only refuses", input: fx.burnedIn, params: [("clean-pixel-data", "false")]),
+            Case(name: "BIA=YES header-only --allow-burned-in-phi", input: fx.burnedIn, params: [("clean-pixel-data", "false"), ("allow-burned-in-phi", "true")]),
+            Case(name: "BIA=YES header-only dry-run reports residual", input: fx.burnedIn, params: [("clean-pixel-data", "false"), ("dry-run", "true")], noOutput: true),
             // Pixel pipeline: explicit regions
-            Case(name: "redact-region", input: fx.burnedIn, params: [("profile", "ps315"), ("redact-region", "0,0,16,2")]),
+            Case(name: "redact-region", input: fx.burnedIn, params: [("redact-region", "0,0,16,2")]),
             Case(name: "two regions + fill", input: fx.phi, params: [("redact-region", "0,0,16,2; 0,6,4,2"), ("redact-fill", "9")]),
-            Case(name: "clean-pixel-data unresolved (no region source)", input: fx.burnedIn, params: [("profile", "ps315"), ("clean-pixel-data", "true")]),
             Case(name: "region + label style", input: fx.banner, params: [("redact-region", "0,0,512,64"), ("redact-style", "label"), ("redact-label", "CLEANED")]),
             Case(name: "region + recompress rle", input: fx.phi, params: [("redact-region", "0,0,16,2"), ("recompress", "rle")]),
             Case(name: "region + recompress source", input: fx.phi, params: [("redact-region", "0,0,16,2"), ("recompress", "source")]),
             Case(name: "region dry-run plan", input: fx.phi, params: [("redact-region", "0,0,16,2"), ("dry-run", "true")], noOutput: true),
-            // Pixel pipeline: OCR
-            Case(name: "detect-text inspection only", input: fx.banner, params: [("detect-text", "true")], noOutput: true),
-            Case(name: "detect-text + output refuses", input: fx.banner, params: [("detect-text", "true")]),
-            Case(name: "detect-text + output + allow", input: fx.banner, params: [("detect-text", "true"), ("allow-burned-in-phi", "true")]),
-            Case(name: "detect-text + clean (ps315)", input: fx.banner, params: [("profile", "ps315"), ("detect-text", "true"), ("clean-pixel-data", "true")]),
-            Case(name: "detect-text all + clean dry-run", input: fx.banner, params: [("detect-text", "true"), ("detect-text-mode", "all"), ("clean-pixel-data", "true"), ("dry-run", "true")], noOutput: true),
-            Case(name: "detect-text + clean + replace style", input: fx.banner, params: [("profile", "ps315"), ("detect-text", "true"), ("clean-pixel-data", "true"), ("redact-style", "replace")]),
-            Case(name: "detect-text + clean + ocr-all-frames + label", input: fx.banner, params: [("detect-text", "true"), ("ocr-all-frames", "true"), ("clean-pixel-data", "true"), ("redact-style", "label")]),
-            Case(name: "OCR mode hidden when OCR off is not applied", input: fx.phi, params: [("detect-text", "true"), ("detect-text-mode", "all"), ("detect-text", "false")]),
+            Case(name: "redact-region + white fill", input: fx.burnedIn, params: [("redact-region", "0,0,16,2"), ("redact-fill", "white")]),
+            Case(name: "redact-region + black fill (default, not echoed)", input: fx.burnedIn, params: [("redact-region", "0,0,16,2"), ("redact-fill", "black")]),
+            // Pixel pipeline: OCR (default classify)
+            Case(name: "banner cleaned by default", input: fx.banner, params: []),
+            Case(name: "banner dry-run", input: fx.banner, params: [("dry-run", "true")], noOutput: true),
+            Case(name: "ocr-mode classify dry-run", input: fx.banner, params: [("ocr-mode", "classify"), ("dry-run", "true")], noOutput: true),
+            Case(name: "replace style", input: fx.banner, params: [("redact-style", "replace")]),
+            Case(name: "ocr-all-frames + label", input: fx.banner, params: [("ocr-all-frames", "true"), ("redact-style", "label")]),
+            Case(name: "OCR mode hidden when cleaning off is not applied", input: fx.phi, params: [("ocr-mode", "classify"), ("clean-pixel-data", "false")]),
+            // header mode (fail-open, no keep-region bands) and the white fill
+            Case(name: "ocr-mode header dry-run", input: fx.banner, params: [("ocr-mode", "header"), ("dry-run", "true")], noOutput: true),
+            Case(name: "ocr-mode header", input: fx.banner, params: [("ocr-mode", "header")]),
+            Case(name: "ocr-mode header + replace style", input: fx.banner, params: [("ocr-mode", "header"), ("redact-style", "replace")]),
+            // text-only: flagged text at its exact position, no banner band
+            Case(name: "header + text-only dry-run", input: fx.banner, params: [("ocr-mode", "header"), ("text-only", "true"), ("dry-run", "true")], noOutput: true),
+            Case(name: "header + text-only + white fill", input: fx.banner, params: [("ocr-mode", "header"), ("text-only", "true"), ("redact-fill", "white")]),
+            Case(name: "text-only hidden when cleaning off is not applied", input: fx.phi, params: [("text-only", "true"), ("clean-pixel-data", "false")]),
         ]
     }
 

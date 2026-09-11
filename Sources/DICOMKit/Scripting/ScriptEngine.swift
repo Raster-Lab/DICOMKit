@@ -560,7 +560,7 @@ public struct TemplateGenerator {
         dicom-validate studies/*.dcm --level 2
 
         # Anonymize
-        dicom-anon studies/*.dcm --profile basic --output anon/
+        dicom-anon studies/*.dcm --output anon/
 
         # Archive
         dicom-archive create archive.db --input anon/
@@ -615,11 +615,11 @@ public struct TemplateGenerator {
         OUTPUT_DIR=/path/to/anonymized
 
         # Anonymize with basic profile
-        dicom-anon ${INPUT_DIR}/*.dcm --profile basic --output ${OUTPUT_DIR}
+        dicom-anon ${INPUT_DIR}/*.dcm --output ${OUTPUT_DIR}
 
         # Conditional anonymization
         if exists ${INPUT_DIR}/sensitive.dcm
-            dicom-anon ${INPUT_DIR}/sensitive.dcm --profile strict --output ${OUTPUT_DIR}
+            dicom-anon ${INPUT_DIR}/sensitive.dcm --ocr-mode classify --output ${OUTPUT_DIR}
         endif
 
         # Validate anonymized files

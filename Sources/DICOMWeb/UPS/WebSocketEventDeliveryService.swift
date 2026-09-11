@@ -14,7 +14,7 @@ import FoundationNetworking
 /// For client-side event reception, use `UPSWebSocketClient` instead.
 ///
 /// Reference: PS3.18 §11.11 - Open Event Channel Transaction
-#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS)
+#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public actor WebSocketEventDeliveryService: EventDeliveryService {
     
     // MARK: - Types
@@ -161,7 +161,7 @@ public actor WebSocketEventDeliveryService: EventDeliveryService {
 /// ```
 ///
 /// Reference: PS3.18 §11.8-11.11
-#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS)
+#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public final class UPSEventChannelManager: @unchecked Sendable {
     
     // MARK: - Properties

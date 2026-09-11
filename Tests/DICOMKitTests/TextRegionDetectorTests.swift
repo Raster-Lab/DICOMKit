@@ -166,7 +166,7 @@ final class TextRegionDetectorTests: XCTestCase {
 
     /// A banner that appears ONLY mid-loop is missed by first/middle/last sampling
     /// (by design — banners are static) and caught by `--ocr-all-frames`.
-    func testMidLoopOnlyTextNeedsAllFramesSampling() throws {
+    func testMidLoopOnlyTextNeedsAllFramesSampling() async throws {
         let columns = 512, rows = 256, frames = 7
         let blank = Data(repeating: 51, count: columns * rows)
         let (banner, _) = try bannerBitmap(text: "STAGE PEAK", columns: columns, rows: rows,
@@ -186,9 +186,9 @@ final class TextRegionDetectorTests: XCTestCase {
         ds[.pixelData] = DataElement.data(tag: .pixelData, vr: .OB, data: pixels)
         let file = try DICOMFile.read(from: try DICOMFile(fileMetaInformation: fileMeta(), dataSet: ds).write())
 
-        let sampled = try TextRegionDetector().detect(in: file)
+        let sampled = try await TextRegionDetector().detect(in: file)
         XCTAssertTrue(sampled.isEmpty, "sampling scans 0/3/6 only: \(sampled.map(\.frameIndex))")
-        let all = try TextRegionDetector().detect(in: file, allFrames: true)
+        let all = try await TextRegionDetector().detect(in: file, allFrames: true)
         XCTAssertEqual(Set(all.map(\.frameIndex)), [1, 5])
 
         // And once found, the region is blanked on EVERY frame, not just where it was seen.
@@ -196,7 +196,8 @@ final class TextRegionDetectorTests: XCTestCase {
         let plan = PixelRedactionPlan.plan(for: file.dataSet, detectedRegions: regions)
         let (out, outcome) = try XCTUnwrap(PixelRedactor().redact(fileData: try file.write(), plan: plan))
         XCTAssertEqual(outcome.frameCount, frames)
-        XCTAssertTrue(try TextRegionDetector().detect(in: DICOMFile.read(from: out), allFrames: true).isEmpty)
+        let ocrLeftover0 = try await TextRegionDetector().detect(in: DICOMFile.read(from: out), allFrames: true)
+        XCTAssertTrue(ocrLeftover0.isEmpty)
     }
 
     // MARK: Phase 2 — enhanced multiframe per-frame VOI
@@ -246,10 +247,10 @@ final class TextRegionDetectorTests: XCTestCase {
         return (try DICOMFile(fileMetaInformation: fileMeta(), dataSet: ds).write(), drawn)
     }
 
-    func testEnhancedMultiframeOCRHonoursEachFramesOwnVOI() throws {
+    func testEnhancedMultiframeOCRHonoursEachFramesOwnVOI() async throws {
         let (data, drawn) = try enhancedMRFixture()
         let file = try DICOMFile.read(from: data)
-        let detections = try TextRegionDetector().detect(in: file, allFrames: true)
+        let detections = try await TextRegionDetector().detect(in: file, allFrames: true)
         // Frames 0 and 2 render the text under their own window; frame 1's window
         // blacks everything out. Seeing text on frame 1 would mean frame 0's (or a
         // pixel-range) window was reused — the bug §4.3 forbids.
@@ -258,10 +259,10 @@ final class TextRegionDetectorTests: XCTestCase {
         XCTAssertTrue(union.contains { covers($0, drawn) }, "detected \(union) must cover \(drawn)")
     }
 
-    func testEnhancedMultiframeRedactionKeepsFunctionalGroupsByteStable() throws {
+    func testEnhancedMultiframeRedactionKeepsFunctionalGroupsByteStable() async throws {
         let (data, _) = try enhancedMRFixture()
         let file = try DICOMFile.read(from: data)
-        let regions = TextRegionDetector.unionedRegions(try TextRegionDetector().detect(in: file))
+        let regions = TextRegionDetector.unionedRegions(try await TextRegionDetector().detect(in: file))
         XCTAssertFalse(regions.isEmpty)
         let plan = PixelRedactionPlan.plan(for: file.dataSet, detectedRegions: regions)
         let (out, outcome) = try XCTUnwrap(PixelRedactor().redact(fileData: data, plan: plan))
@@ -290,7 +291,8 @@ final class TextRegionDetectorTests: XCTestCase {
             XCTAssertEqual(UInt16(px[j]) | UInt16(px[j + 1]) << 8, 1000, "frame \(f) anatomy")
         }
         // No detectable text remains, under any frame's window.
-        XCTAssertTrue(try TextRegionDetector().detect(in: cleaned, allFrames: true).isEmpty)
+        let ocrLeftover1 = try await TextRegionDetector().detect(in: cleaned, allFrames: true)
+        XCTAssertTrue(ocrLeftover1.isEmpty)
     }
 
     func testFunctionalGroupInvariantRefusesAMismatch() throws {
@@ -378,10 +380,10 @@ final class TextRegionDetectorTests: XCTestCase {
             && outer.y + outer.height >= inner.y + inner.height
     }
 
-    func testVisionFindsPlantedTextAndTheRegionCoversTheGlyphsWithDilation() throws {
+    func testVisionFindsPlantedTextAndTheRegionCoversTheGlyphsWithDilation() async throws {
         let (data, drawn) = try fixture(text: "SMITH JOHN 12/03/1961")
         let file = try DICOMFile.read(from: data)
-        let detections = try TextRegionDetector(dilation: 4).detect(in: file)
+        let detections = try await TextRegionDetector(dilation: 4).detect(in: file)
         XCTAssertFalse(detections.isEmpty, "Vision must detect the planted banner")
 
         // The union of detected regions must cover the drawn glyph box with the margin.
@@ -401,10 +403,10 @@ final class TextRegionDetectorTests: XCTestCase {
         XCTAssertTrue(detections.contains { $0.text.uppercased().contains("SMITH") }, "\(detections.map(\.text))")
     }
 
-    func testDetectionsCarryTheFrameIndexOfTheSampledFrame() throws {
+    func testDetectionsCarryTheFrameIndexOfTheSampledFrame() async throws {
         let (data, _) = try fixture(text: "ACC 00123456", frames: 5)
         let file = try DICOMFile.read(from: data)
-        let detections = try TextRegionDetector().detect(in: file)
+        let detections = try await TextRegionDetector().detect(in: file)
         let frames = Set(detections.map(\.frameIndex))
         XCTAssertEqual(frames, [0, 2, 4], "first/middle/last of 5 frames")
         // The same banner on every frame collapses to one region set.
@@ -412,24 +414,25 @@ final class TextRegionDetectorTests: XCTestCase {
         XCTAssertEqual(regions.count, Set(detections.filter { $0.frameIndex == 0 }.map(\.region)).count)
     }
 
-    func testExplicitFrameIndicesAreHonouredAndOutOfRangeIgnored() throws {
+    func testExplicitFrameIndicesAreHonouredAndOutOfRangeIgnored() async throws {
         let (data, _) = try fixture(text: "MRN 777", frames: 3)
         let file = try DICOMFile.read(from: data)
-        let detections = try TextRegionDetector().detect(in: file, frameIndices: [1, 9])
+        let detections = try await TextRegionDetector().detect(in: file, frameIndices: [1, 9])
         XCTAssertEqual(Set(detections.map(\.frameIndex)), [1])
     }
 
-    func testBlankFrameYieldsNoRegions() throws {
+    func testBlankFrameYieldsNoRegions() async throws {
         let (data, _) = try fixture(text: "")
         let file = try DICOMFile.read(from: data)
-        XCTAssertTrue(try TextRegionDetector().detect(in: file).isEmpty)
+        let ocrLeftover2 = try await TextRegionDetector().detect(in: file)
+        XCTAssertTrue(ocrLeftover2.isEmpty)
     }
 
     /// End-to-end: detect → plan → redact, then the redacted output has no detectable text.
-    func testDetectPlanRedactRemovesTheTextFromEveryFrame() throws {
+    func testDetectPlanRedactRemovesTheTextFromEveryFrame() async throws {
         let (data, drawn) = try fixture(text: "DOE JANE", frames: 3)
         let file = try DICOMFile.read(from: data)
-        let regions = TextRegionDetector.unionedRegions(try TextRegionDetector().detect(in: file))
+        let regions = TextRegionDetector.unionedRegions(try await TextRegionDetector().detect(in: file))
         XCTAssertFalse(regions.isEmpty)
         let plan = PixelRedactionPlan.plan(for: file.dataSet, detectedRegions: regions)
         let (out, outcome) = try XCTUnwrap(PixelRedactor().redact(fileData: data, plan: plan))
@@ -438,7 +441,7 @@ final class TextRegionDetectorTests: XCTestCase {
 
         let cleaned = try DICOMFile.read(from: out)
         // Oracle 2: OCR of the output finds nothing.
-        let after = try TextRegionDetector().detect(in: cleaned, allFrames: true)
+        let after = try await TextRegionDetector().detect(in: cleaned, allFrames: true)
         XCTAssertTrue(after.isEmpty, "text survived: \(after.map(\.text))")
         // Oracle 1: drawn glyph pixels are the fill value on every frame.
         let pixels = try XCTUnwrap(cleaned.dataSet[.pixelData]?.valueData)

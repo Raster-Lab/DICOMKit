@@ -6,11 +6,15 @@
 //
 // Both surfaces build a `Request` in the CLI's own vocabulary (flag values as
 // typed), hand it to `run(_:emit:)`, and print whatever the sink receives. Input
-// parsing (profile / tag / region / style / mode / codec), validation messages,
-// the pixel-first ordering, the refusal contract, the PS3.15 vs legacy engine
-// choice, and every console line therefore come from ONE place — the two
-// surfaces cannot drift. The CLI is a thin ArgumentParser adapter; the app adds
-// only sandbox plumbing (security-scoped URLs, a writable-output fallback).
+// parsing (option / region / style / mode / codec), validation messages, the
+// pixel-first ordering, the Burned In Annotation policy, the refusal contract and
+// every console line therefore come from ONE place — the two surfaces cannot
+// drift. The CLI is a thin ArgumentParser adapter; the app adds only sandbox
+// plumbing (security-scoped URLs, a writable-output fallback).
+//
+// There is exactly one profile: PS3.15 Annex E Basic Application Level
+// Confidentiality Profile, always applied, with the standard's named retention
+// options and the Clean Pixel Data option (on by default) as the only knobs.
 //
 
 import Foundation
@@ -38,45 +42,37 @@ public struct AnonymizationWorkflow: Sendable {
         public var inputPath: String
         /// `--output`
         public var output: String?
-        /// `--profile basic|clinical-trial|research|ps315`
-        public var profile: String = "basic"
 
-        // PS3.15 Annex E retention options (only apply to --profile ps315).
+        // PS3.15 Annex E retention options.
+        /// `--retain-dates` — Retain Longitudinal Temporal Information with Full Dates.
         public var retainDates = false
+        /// `--shift-dates N` — … with Modified Dates (every date shifted by N days).
+        public var shiftDates: Int?
         public var retainCharacteristics = false
         public var retainDevice = false
         public var retainInstitution = false
         public var retainUids = false
         public var cleanDescriptors = false
 
-        // Pixel pipeline.
-        public var cleanPixelData = false
+        // Clean Pixel Data option (on unless `--no-clean-pixel-data`).
+        public var cleanPixelData = true
         /// `--redact-region x,y,w,h` (repeatable)
         public var redactRegion: [String] = []
-        /// `--redact-fill`
-        public var redactFill: Int?
+        /// `--redact-fill black|white|<stored value>` (nil = black)
+        public var redactFill: String?
         /// `--redact-style blank|label|replace`
         public var redactStyle: String = "blank"
         /// `--redact-label`
         public var redactLabel: String?
         /// `--recompress source|<codec>`
         public var recompress: String?
-        /// `--detect-text`
-        public var detectText = false
-        /// `--detect-text-mode classify|all`
-        public var detectTextMode: String = "classify"
+        /// `--ocr-mode header|classify`
+        public var ocrMode: String = "classify"
         /// `--ocr-all-frames`
         public var ocrAllFrames = false
-
-        // Legacy engine options.
-        public var shiftDates: Int?
-        public var regenerateUids = false
-        /// `--remove` (repeatable)
-        public var remove: [String] = []
-        /// `--replace TAG=VALUE` (repeatable)
-        public var replace: [String] = []
-        /// `--keep` (repeatable)
-        public var keep: [String] = []
+        /// `--text-only`
+        public var textOnly = false
+        public var allowBurnedInPHI = false
 
         // Run control.
         public var recursive = false
@@ -85,20 +81,11 @@ public struct AnonymizationWorkflow: Sendable {
         /// `--audit-log`
         public var auditLog: String?
         public var force = false
-        public var allowBurnedInPHI = false
         public var verbose = false
-
-        /// DICOMStudio Security screen only — its "Custom Rules" profile removes
-        /// exactly these tags and nothing else. The CLI has no such profile (it
-        /// previews as `--profile basic --remove …`); leave `nil` everywhere else.
-        public var customProfileTags: [Tag]? = nil
 
         public init(inputPath: String) {
             self.inputPath = inputPath
         }
-
-        /// The de-identification engine this request selects.
-        public var usesPS315: Bool { profile.lowercased() == "ps315" }
     }
 
     // MARK: - Resolved (typed inputs the engines consume)
@@ -106,29 +93,27 @@ public struct AnonymizationWorkflow: Sendable {
     /// What ``resolve(_:)`` produces: the request with every string parsed and
     /// every cross-flag rule checked.
     public struct Resolved: Sendable {
-        public let profile: AnonymizationProfile
-        public let ps315Options: ConfidentialityProfile.Options?
-        public let customActions: [Tag: AnonymizationAction]
-        public let preserveTags: Set<Tag>
+        public let options: ConfidentialityProfile.Options
         public let pixelOptions: PixelCleaningWorkflow.Options
     }
 
     /// Parses and validates every input. Messages are the CLI's, verbatim.
     public static func resolve(_ r: Request) throws -> Resolved {
-        let profile = try parseProfile(r)
-        let customActions = try parseCustomActions(r)
-        let preserveTags = try parsePreserveTags(r)
-        let pixel = try pixelCleaningOptions(r)
-        let ps315: ConfidentialityProfile.Options? = r.usesPS315 ? ConfidentialityProfile.Options(
-            retainLongitudinalTemporal: r.retainDates,
+        if r.retainDates, r.shiftDates != nil {
+            throw ValidationError(
+                "--retain-dates and --shift-dates are alternatives: --retain-dates keeps the original "
+                + "dates (Retain Longitudinal Temporal Information with Full Dates); --shift-dates N "
+                + "replaces them with shifted dates (… with Modified Dates).")
+        }
+        let options = ConfidentialityProfile.Options(
+            retainLongitudinalTemporal: r.retainDates || r.shiftDates != nil,
             retainPatientCharacteristics: r.retainCharacteristics,
             retainDeviceIdentity: r.retainDevice,
             retainInstitutionIdentity: r.retainInstitution,
             retainUIDs: r.retainUids,
             cleanDescriptors: r.cleanDescriptors,
-            dateOffsetDays: r.shiftDates) : nil
-        return Resolved(profile: profile, ps315Options: ps315, customActions: customActions,
-                        preserveTags: preserveTags, pixelOptions: pixel)
+            dateOffsetDays: r.shiftDates)
+        return Resolved(options: options, pixelOptions: try pixelCleaningOptions(r))
     }
 
     // MARK: - Hooks
@@ -140,7 +125,14 @@ public struct AnonymizationWorkflow: Sendable {
 
     private let writeFile: FileWriter
 
-    public init(writeFile: @escaping FileWriter = { data, url in try data.write(to: url); return nil }) {
+    public init(writeFile: @escaping FileWriter = { data, url in
+        // Create the output's parent so `--output new-folder/` (or a nested file
+        // path) works the same on every surface — the Studio writer already does.
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url)
+        return nil
+    }) {
         self.writeFile = writeFile
     }
 
@@ -157,7 +149,7 @@ public struct AnonymizationWorkflow: Sendable {
     /// newline-terminated, exactly as the CLI prints it. Throws a
     /// ``ValidationError`` (or an engine error) for a fatal failure — the caller
     /// renders it as `Error: <localizedDescription>`.
-    public func run(_ request: Request, emit: (String) -> Void) throws -> Outcome {
+    public func run(_ request: Request, emit: (String) -> Void) async throws -> Outcome {
         let inputURL = URL(fileURLWithPath: request.inputPath)
 
         var isDirectory: ObjCBool = false
@@ -167,14 +159,9 @@ public struct AnonymizationWorkflow: Sendable {
 
         let resolved = try Self.resolve(request)
 
-        // Build the shared engine ONCE for the whole run so UID remapping stays
+        // Build the engine state ONCE for the whole run so UID remapping stays
         // consistent across every file in a directory.
-        let anonymizer = Anonymizer(
-            profile: resolved.profile,
-            shiftDates: request.shiftDates,
-            regenerateUIDs: request.regenerateUids,
-            preserveTags: resolved.preserveTags,
-            customActions: resolved.customActions)
+        let anonymizer = Anonymizer(options: resolved.options)
 
         var results: [AnonymizationResult] = []
         if isDirectory.boolValue {
@@ -184,20 +171,19 @@ public struct AnonymizationWorkflow: Sendable {
             guard let outputPath = request.output else {
                 throw ValidationError("Directory anonymization requires --output directory")
             }
-            results = try anonymizeDirectory(
+            results = try await anonymizeDirectory(
                 request, resolved, inputURL: inputURL,
                 outputURL: URL(fileURLWithPath: outputPath), anonymizer: anonymizer, emit: emit)
         } else {
             // Writing back over the input is never implied. Without --output there is
             // nowhere to write, so anonymizing would silently discard its result and
             // still report success — require --output unless this is a --dry-run preview.
-            // --detect-text without --output is pure inspection: report and exit.
-            guard request.dryRun || request.output != nil || request.detectText else {
+            guard request.dryRun || request.output != nil else {
                 throw ValidationError("Anonymization requires --output (or use --dry-run to preview without writing)")
             }
-            let result = try anonymizeFile(
+            let result = try await anonymizeFile(
                 request, resolved, inputURL: inputURL,
-                outputURL: request.output.map { URL(fileURLWithPath: $0) },
+                outputURL: request.output.map { Self.singleFileOutputURL($0, inputURL: inputURL) },
                 anonymizer: anonymizer, sweep: nil, emit: emit)
             results = [result]
         }
@@ -222,12 +208,40 @@ public struct AnonymizationWorkflow: Sendable {
         return Outcome(results: results)
     }
 
+    // MARK: - Burned In Annotation policy
+
+    /// The per-file pixel policy for (0028,0301) Burned In Annotation:
+    ///
+    /// - `YES` → clean (OCR, declared regions, device templates, explicit rectangles);
+    /// - absent → OCR decides whether there is anything to clean;
+    /// - `NO` → the declaration is trusted: the pixels are neither inspected nor
+    ///   modified. Two things override that trust, because they are evidence the
+    ///   declaration does not speak to: rectangles the operator named, and overlay
+    ///   planes in the file.
+    ///
+    /// Returns the options to run with and, when the pass was skipped on trust, the
+    /// note that goes to the verbose console and the audit log.
+    static func pixelPolicy(
+        for dataSet: DataSet, options: PixelCleaningWorkflow.Options
+    ) -> (options: PixelCleaningWorkflow.Options, trustedNote: String?) {
+        guard options.cleanPixelData else { return (options, nil) }
+        let declared = dataSet.string(for: .burnedInAnnotation)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard declared == "NO", options.explicitRegions.isEmpty,
+              ConfidentialityEngine.overlayGroups(in: dataSet).isEmpty
+        else { return (options, nil) }
+        var trusted = options
+        trusted.cleanPixelData = false
+        trusted.detectText = nil
+        return (trusted, AnonConsole.burnedInAnnotationTrustedNote)
+    }
+
     // MARK: - Directory
 
     private func anonymizeDirectory(
         _ request: Request, _ resolved: Resolved,
         inputURL: URL, outputURL: URL, anonymizer: Anonymizer, emit: (String) -> Void
-    ) throws -> [AnonymizationResult] {
+    ) async throws -> [AnonymizationResult] {
         try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
 
         guard let fileURLs = FileGatherer.regularFiles(under: inputURL) else {
@@ -245,7 +259,9 @@ public struct AnonymizationWorkflow: Sendable {
                       let file = try? DICOMFile.read(from: data, force: request.force),
                       MultiframeConcatenation.isPart(file.dataSet)
                 else { continue }
-                if let swept = try? PixelCleaningWorkflow().sweep(fileData: data, options: resolved.pixelOptions),
+                let (options, trusted) = Self.pixelPolicy(for: file.dataSet, options: resolved.pixelOptions)
+                guard trusted == nil else { continue }
+                if let swept = try? await PixelCleaningWorkflow().sweep(fileData: data, options: options),
                    let info = swept.info {
                     sweep.add(info, regions: swept.regions)
                 }
@@ -267,7 +283,7 @@ public struct AnonymizationWorkflow: Sendable {
                 at: outputFileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 
             do {
-                let result = try anonymizeFile(
+                let result = try await anonymizeFile(
                     request, resolved, inputURL: fileURL, outputURL: outputFileURL,
                     anonymizer: anonymizer, sweep: sweep, emit: emit)
                 results.append(result)
@@ -286,13 +302,29 @@ public struct AnonymizationWorkflow: Sendable {
         return results
     }
 
+    /// `--output` is "Output file or directory path". For a single input file a
+    /// path that is an existing directory (or is written with a trailing `/`)
+    /// names the folder to write INTO, under the input's own file name; anything
+    /// else is the output file itself. Without this, a directory output made the
+    /// writer try to save a file *onto* the folder — which is exactly what
+    /// DICOMStudio's Browse button hands the workflow, since it can only grant a folder.
+    static func singleFileOutputURL(_ output: String, inputURL: URL) -> URL {
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: output, isDirectory: &isDirectory)
+        if (exists && isDirectory.boolValue) || output.hasSuffix("/") {
+            return URL(fileURLWithPath: output, isDirectory: true)
+                .appendingPathComponent(inputURL.lastPathComponent)
+        }
+        return URL(fileURLWithPath: output)
+    }
+
     // MARK: - One file
 
     private func anonymizeFile(
         _ request: Request, _ resolved: Resolved,
         inputURL: URL, outputURL: URL?, anonymizer: Anonymizer,
         sweep: PixelCleaningWorkflow.ConcatenationSweep?, emit: (String) -> Void
-    ) throws -> AnonymizationResult {
+    ) async throws -> AnonymizationResult {
         var fileData = try Data(contentsOf: inputURL)
         var dicomFile = try DICOMFile.read(from: fileData, force: request.force)
 
@@ -303,23 +335,25 @@ public struct AnonymizationWorkflow: Sendable {
         // dependency, so the order here is a correctness requirement, not a preference.
         var pixelWarnings: [String] = []
         var pixelNotes: [String] = []
-        var pixelOptions = resolved.pixelOptions
+        var (pixelOptions, trustedNote) = Self.pixelPolicy(for: dicomFile.dataSet, options: resolved.pixelOptions)
+        if let trustedNote {
+            // The declaration was taken on trust: say so where an auditor will look.
+            if request.verbose { emit(trustedNote + "\n") }
+            anonymizer.recordPixelAudit(filePath: inputURL.path, lines: [trustedNote])
+        }
         if let sweep, let info = PixelCleaningWorkflow.concatenationInfo(of: dicomFile.dataSet) {
             pixelOptions.presetDetectedRegions = sweep.regions(for: info.uid)
             pixelOptions.concatenationAnalyzedCompletely = sweep.isComplete(info.uid)
         }
         // `replace` draws the header engine's OWN values: preview the header pass on the
         // original data set (in memory, nothing written) and read what it produces.
-        if case .replace = pixelOptions.style {
-            guard pixelOptions.detectText == .classify else {
-                throw ValidationError("--redact-style replace needs --detect-text with mode classify (replacement values come from classified matches).")
-            }
-            let preview = try previewHeaderPass(request, resolved, file: dicomFile, anonymizer: anonymizer)
+        if case .replace = pixelOptions.style, pixelOptions.detectText != nil {
+            let preview = anonymizer.preview(file: dicomFile)
             pixelOptions.replacementMapping = PixelCleaningWorkflow.ReplacementMapping.derive(
                 original: dicomFile.dataSet, deidentified: preview.dataSet)
         }
         if pixelOptions.isActive {
-            let report = try PixelCleaningWorkflow().run(
+            let report = try await PixelCleaningWorkflow().run(
                 fileData: fileData, options: pixelOptions, dryRun: request.dryRun)
             if pixelOptions.detectText != nil {
                 emit(AnonConsole.textDetectionLine(report: report))
@@ -352,49 +386,38 @@ public struct AnonymizationWorkflow: Sendable {
 
                     \(pixelWarnings.map { "  ⚠️  \($0)" }.joined(separator: "\n"))
 
-                    Pass --clean-pixel-data to blank the detected regions, or \
+                    Let pixel cleaning blank the detected regions (drop --text-only), or pass \
                     --allow-burned-in-phi to write the metadata-scrubbed file anyway \
                     (it will be marked Patient Identity Removed = NO).
                     """)
             }
         }
 
-        // Anonymize — PS3.15 Annex E engine or legacy profile.
-        var anonymizedFile: DICOMFile
-        let result: AnonymizationResult
-        if let options = resolved.ps315Options {
-            let (file, res, _) = anonymizer.deidentify(file: dicomFile, options: options)
-            // Refuse to emit a file whose pixels may still identify the patient unless
-            // the operator explicitly accepts that. Writing it silently is the harmful
-            // case: the metadata looks clean, so the file reads as safe to release.
-            if !res.warnings.isEmpty && !request.allowBurnedInPHI && !request.dryRun {
-                throw ValidationError(
-                    """
-                    Refusing to anonymize \(inputURL.lastPathComponent): the pixel data may \
-                    still contain PHI.
+        // --- Header pass: PS3.15 Annex E Basic Profile + the selected options. ---
+        var (anonymizedFile, res) = anonymizer.deidentify(file: dicomFile, filePath: inputURL.path)
+        // Refuse to emit a file whose pixels may still identify the patient unless
+        // the operator explicitly accepts that. Writing it silently is the harmful
+        // case: the metadata looks clean, so the file reads as safe to release.
+        if !res.warnings.isEmpty && !request.allowBurnedInPHI && !request.dryRun {
+            throw ValidationError(
+                """
+                Refusing to anonymize \(inputURL.lastPathComponent): the pixel data may \
+                still contain PHI.
 
-                    \(res.warnings.map { "  ⚠️  \($0)" }.joined(separator: "\n"))
+                \(res.warnings.map { "  ⚠️  \($0)" }.joined(separator: "\n"))
 
-                    Without --clean-pixel-data this tool de-identifies the DATASET ONLY, \
-                    so burned-in text survives unchanged.
+                With --no-clean-pixel-data this tool de-identifies the DATASET ONLY, \
+                so burned-in text survives unchanged.
 
-                    Pass --clean-pixel-data to blank it (add --redact-region x,y,w,h or \
-                    --detect-text if the automatic region selection cannot resolve this \
-                    device), or --allow-burned-in-phi to write the metadata-scrubbed file \
-                    anyway (it will be marked Patient Identity Removed = NO).
-                    """)
-            }
-            anonymizedFile = file
-            result = AnonymizationResult(
-                filePath: inputURL.path, success: res.success,
-                changedTags: res.changedTags, warnings: res.warnings + pixelWarnings + pixelNotes)
-        } else {
-            let (file, res) = try anonymizer.anonymize(file: dicomFile, filePath: inputURL.path)
-            anonymizedFile = file
-            result = AnonymizationResult(
-                filePath: res.filePath, success: res.success,
-                changedTags: res.changedTags, warnings: res.warnings + pixelWarnings + pixelNotes)
+                Let pixel cleaning run (add --redact-region x,y,w,h if the automatic \
+                region selection cannot resolve this device), or pass \
+                --allow-burned-in-phi to write the metadata-scrubbed file anyway \
+                (it will be marked Patient Identity Removed = NO).
+                """)
         }
+        let result = AnonymizationResult(
+            filePath: res.filePath, success: res.success,
+            changedTags: res.changedTags, warnings: res.warnings + pixelWarnings + pixelNotes)
 
         // The operator accepted detected-but-unredacted text: the output must say so.
         // A YES here would be the false attestation this whole pipeline exists to avoid.
@@ -423,69 +446,7 @@ public struct AnonymizationWorkflow: Sendable {
             changedTags: result.changedTags, warnings: result.warnings + writeNotes)
     }
 
-    /// Runs the configured header de-identification on a copy, for `replace` values.
-    /// Uses a throwaway engine so the real pass's audit log and UID map are untouched.
-    private func previewHeaderPass(
-        _ request: Request, _ resolved: Resolved, file: DICOMFile, anonymizer: Anonymizer
-    ) throws -> DICOMFile {
-        if let options = resolved.ps315Options {
-            return anonymizer.deidentify(file: file, options: options).0
-        }
-        let throwaway = Anonymizer(
-            profile: resolved.profile, shiftDates: request.shiftDates, regenerateUIDs: false,
-            preserveTags: resolved.preserveTags, customActions: resolved.customActions)
-        return try throwaway.anonymize(file: file, filePath: "preview").0
-    }
-
     // MARK: - Input parsing (the CLI's, verbatim)
-
-    private static func parseProfile(_ r: Request) throws -> AnonymizationProfile {
-        if let custom = r.customProfileTags { return .custom(custom) }
-        switch r.profile.lowercased() {
-        case "basic":
-            return .basic
-        case "clinical-trial", "clinicaltrial":
-            return .clinicalTrial
-        case "research":
-            return .research
-        case "ps315":
-            // The ps315 path bypasses the legacy engine (see anonymizeFile); this
-            // value is only used to build the shared Anonymizer instance.
-            return .basic
-        default:
-            throw ValidationError("Invalid anonymization profile")
-        }
-    }
-
-    private static func parseCustomActions(_ r: Request) throws -> [Tag: AnonymizationAction] {
-        var actions: [Tag: AnonymizationAction] = [:]
-        for tagString in r.remove {
-            actions[try parseTag(tagString)] = .remove
-        }
-        for replaceString in r.replace {
-            let parts = replaceString.split(separator: "=", maxSplits: 1)
-            guard parts.count == 2 else {
-                throw ValidationError("Invalid replace format: \(replaceString). Use TAG=VALUE")
-            }
-            actions[try parseTag(String(parts[0]))] = .replaceWithDummy(String(parts[1]))
-        }
-        return actions
-    }
-
-    private static func parsePreserveTags(_ r: Request) throws -> Set<Tag> {
-        var tags = Set<Tag>()
-        for tagString in r.keep {
-            tags.insert(try parseTag(tagString))
-        }
-        return tags
-    }
-
-    private static func parseTag(_ string: String) throws -> Tag {
-        guard let tag = Anonymizer.parseFlexibleTag(string) else {
-            throw ValidationError("Invalid tag format: \(string)")
-        }
-        return tag
-    }
 
     /// Translates the pixel-related flags into the shared pixel workflow options.
     private static func pixelCleaningOptions(_ r: Request) throws -> PixelCleaningWorkflow.Options {
@@ -494,16 +455,25 @@ public struct AnonymizationWorkflow: Sendable {
             let region = try editor.parseRegion(spec)
             return PixelRedactionPlan.Region(x: region.x, y: region.y, width: region.width, height: region.height)
         }
-        var mode: PixelCleaningWorkflow.TextDetectionMode?
-        if r.detectText {
-            guard let parsed = PixelCleaningWorkflow.TextDetectionMode.parse(r.detectTextMode) else {
-                throw ValidationError(
-                    "Invalid --detect-text-mode '\(r.detectTextMode)'. Use 'classify' (default) or 'all'.")
-            }
-            mode = parsed
+        guard let mode = PixelCleaningWorkflow.TextDetectionMode.parse(r.ocrMode) else {
+            throw ValidationError(
+                "Invalid --ocr-mode '\(r.ocrMode)'. Use 'header' or 'classify' (default).")
+        }
+        if r.textOnly, !r.cleanPixelData {
+            throw ValidationError("--text-only needs pixel cleaning; drop --no-clean-pixel-data.")
+        }
+        guard let fill = PixelCleaningWorkflow.RedactFill.parse(r.redactFill) else {
+            throw ValidationError("Invalid --redact-fill '\(r.redactFill ?? "")'. Use 'black', 'white' or a non-negative stored pixel value.")
         }
         guard let style = PixelRedactor.Style.parse(r.redactStyle, label: r.redactLabel) else {
             throw ValidationError("Invalid --redact-style '\(r.redactStyle)'. Use 'blank', 'label' or 'replace'.")
+        }
+        if case .replace = style {
+            // Replacement values come from the classifier's matched header attribute,
+            // so the pixel pass (and with it OCR) has to run at all.
+            guard r.cleanPixelData else {
+                throw ValidationError("--redact-style replace needs pixel cleaning; drop --no-clean-pixel-data (replacement values come from classified matches).")
+            }
         }
         var recompressTarget: PixelCleaningWorkflow.Recompress?
         if let raw = r.recompress {
@@ -511,13 +481,15 @@ public struct AnonymizationWorkflow: Sendable {
                 throw ValidationError("Invalid --recompress '\(raw)'. Use 'source' or a dicom-compress codec name.")
             }
             guard r.cleanPixelData || !r.redactRegion.isEmpty else {
-                throw ValidationError("--recompress only applies after pixel cleaning; add --clean-pixel-data or --redact-region.")
+                throw ValidationError("--recompress only applies after pixel cleaning; drop --no-clean-pixel-data or add --redact-region.")
             }
             recompressTarget = parsed
         }
         return PixelCleaningWorkflow.Options(
             cleanPixelData: r.cleanPixelData, explicitRegions: explicit,
-            detectText: mode, ocrAllFrames: r.ocrAllFrames, fillValue: r.redactFill, style: style,
-            recompress: recompressTarget)
+            detectText: r.cleanPixelData ? mode : nil, ocrAllFrames: r.ocrAllFrames,
+            fillValue: { if case .value(let v) = fill { return v } else { return nil } }(),
+            style: style, recompress: recompressTarget, fillWhite: fill == .white,
+            textOnly: r.textOnly)
     }
 }

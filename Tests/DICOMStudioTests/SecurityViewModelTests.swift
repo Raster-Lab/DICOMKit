@@ -128,49 +128,6 @@ struct SecurityViewModelTests {
 
     // MARK: - 11.2 Anonymization
 
-    @Test("default selectedProfile is basic")
-    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testDefaultSelectedProfile() {
-        let vm = SecurityViewModel()
-        #expect(vm.selectedProfile == .basic)
-    }
-
-    @Test("setProfile basic loads 18 default rules")
-    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testSetProfileBasicLoads18Rules() {
-        let vm = SecurityViewModel()
-        vm.setProfile(.basic)
-        #expect(vm.customRules.count == 18)
-    }
-
-    @Test("setProfile custom does not load default rules")
-    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testSetProfileCustomDoesNotLoadDefaultRules() {
-        let vm = SecurityViewModel()
-        vm.setProfile(.custom)
-        #expect(vm.customRules.isEmpty)
-    }
-
-    @Test("addCustomRule increases customRules count")
-    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testAddCustomRuleIncreasesCount() {
-        let vm = SecurityViewModel()
-        vm.setProfile(.custom)
-        vm.addCustomRule(AnonymizationTagRule(tag: "0010,0010"))
-        #expect(vm.customRules.count == 1)
-    }
-
-    @Test("removeCustomRule decreases customRules count")
-    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testRemoveCustomRuleDecreasesCount() {
-        let vm = SecurityViewModel()
-        vm.setProfile(.custom)
-        let rule = AnonymizationTagRule(tag: "0010,0010")
-        vm.addCustomRule(rule)
-        vm.removeCustomRule(id: rule.id)
-        #expect(vm.customRules.isEmpty)
-    }
-
     @Test("enqueueAnonymizationJob increases job count")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testEnqueueAnonymizationJobIncreasesCount() {

@@ -4367,13 +4367,12 @@ cp .build/release/dicom-* /usr/local/bin/
 
 | Tool | Description | Example |
 |------|-------------|---------|
-| `dicom-anon` | DICOM anonymization with HIPAA-compliant profiles | `dicom-anon study/ --profile clinical-trial --shift-dates 100` |
+| `dicom-anon` | PS3.15 Annex E de-identification of header and burned-in pixel text (OCR) | `dicom-anon study/ --output anon/ --recursive --shift-dates 100` |
 
-**Anonymization Profiles:**
-- `basic` - Remove direct identifiers
-- `clinical-trial` - HIPAA Safe Harbor method
-- `research` - IRB-compliant anonymization
-- `custom` - User-defined rules
+**One profile:** the PS3.15 Annex E Basic Application Level Confidentiality Profile,
+always applied, with the standard's retention options (`--retain-dates` /
+`--shift-dates`, `--retain-characteristics`, `--retain-device`, `--retain-institution`,
+`--retain-uids`, `--clean-descriptors`) and Clean Pixel Data on by default.
 
 </details>
 
@@ -4531,14 +4530,14 @@ dicom-convert scan.dcm --output compressed.dcm --transfer-syntax jpeg2000-lossle
 #### Anonymization
 
 ```bash
-# Anonymize a single file
-dicom-anon patient.dcm --output anon.dcm --profile clinical-trial
+# De-identify a single file (PS3.15 Basic Profile, header and pixels)
+dicom-anon patient.dcm --output anon.dcm
 
-# Anonymize a study with date shifting
+# De-identify a study keeping the intervals between dates
 dicom-anon ./study/ --output ./anon_study/ --shift-dates 100 --recursive
 
-# Check for PHI leaks
-dicom-anon scan.dcm --check-only
+# Preview the header changes and the pixel redaction plan
+dicom-anon scan.dcm --dry-run
 ```
 
 #### PACS Communication

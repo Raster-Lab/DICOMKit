@@ -196,7 +196,7 @@ public struct UPSWebSocketConfiguration: Sendable {
 /// ```
 ///
 /// Reference: DICOM PS3.18 §11.11 - Open Event Channel Transaction
-#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS)
+#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public final class UPSWebSocketClient: @unchecked Sendable {
     
     // MARK: - Connection State

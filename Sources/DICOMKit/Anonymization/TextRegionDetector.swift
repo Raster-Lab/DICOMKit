@@ -25,8 +25,19 @@ import Vision
 ///
 /// ## Platform
 ///
-/// Recognition uses Apple Vision, on device. Where Vision is unavailable ``detect(in:frameIndices:)``
-/// throws ``TextDetectionError/unavailable`` — never a silent "no text found".
+/// Recognition uses Apple Vision, on device, through the Swift-native
+/// `RecognizeTextRequest` (macOS 15 / iOS 18 / tvOS 18 / visionOS 2 — the package's own
+/// baselines). Where Vision is unavailable ``detect(in:frameIndices:)`` throws
+/// ``TextDetectionError/unavailable`` — never a silent "no text found".
+///
+/// The API generation is a *code* choice, not a detection one: `RecognizeTextRequest`
+/// and the older `VNRecognizeTextRequest` drive the same recognizer (revision 3, the
+/// only revision the Swift enum offers) and were measured token-for-token identical on
+/// the reference frames — same strings, same boxes, same confidences, one candidate per
+/// observation. In particular neither exposes per-character geometry, so a ruler tick
+/// fused into a numeral (`10` + tick → `10y`) cannot be undone here; that is the
+/// classifier's scale-zone rule, which reasons about declared geometry instead
+/// (``PHITextClassifier/scaleZones``).
 public struct TextRegionDetector: Sendable {
 
     /// One recognized text run, mapped to image pixels.
@@ -166,7 +177,7 @@ public struct TextRegionDetector: Sendable {
     ///   ``TextDetectionError/recognitionFailed(_:)`` when Vision fails.
     public func detect(
         in file: DICOMFile, frameIndices: [Int]? = nil, allFrames: Bool = false
-    ) throws -> [Detection] {
+    ) async throws -> [Detection] {
         #if canImport(Vision) && canImport(CoreGraphics)
         let pixelData = try file.tryPixelData()
         let frameCount = max(1, file.dataSet.numberOfFrames ?? 1)
@@ -192,7 +203,7 @@ public struct TextRegionDetector: Sendable {
                 // The transform assumes a 1:1 render; refuse rather than map onto the wrong pixels.
                 throw TextDetectionError.renderFailed(frame: index)
             }
-            all += try detect(in: image, frameIndex: index)
+            all += try await detect(in: image, frameIndex: index)
         }
         return all
         #else
@@ -202,20 +213,27 @@ public struct TextRegionDetector: Sendable {
 
     #if canImport(Vision) && canImport(CoreGraphics)
     /// Runs OCR on one already-rendered frame. `image` must be the 1:1 frame render.
-    public func detect(in image: CGImage, frameIndex: Int) throws -> [Detection] {
-        let request = VNRecognizeTextRequest()
+    ///
+    /// `usesLanguageCorrection` stays off and language detection is pinned off: an
+    /// autocorrected identifier is a changed identifier, and a "corrected" ID that no
+    /// longer matches the header would silently stop being redacted.
+    public func detect(in image: CGImage, frameIndex: Int) async throws -> [Detection] {
+        var request = RecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false   // never "correct" an ID into a word
-        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        request.automaticallyDetectsLanguage = false
+        let observations: [RecognizedTextObservation]
         do {
-            try handler.perform([request])
+            observations = try await request.perform(on: image)
         } catch {
             throw TextDetectionError.recognitionFailed(error.localizedDescription)
         }
-        let observations = request.results ?? []
         var out: [Detection] = []
         for observation in observations {
             guard let candidate = observation.topCandidates(1).first else { continue }
+            // `boundingBox` is Vision-normalized (lower-left origin), which is exactly
+            // what `pixelRegion(fromNormalized:…)` is pinned against — keep the raw
+            // normalized values here and let the one tested transform do the mapping.
             let bb = observation.boundingBox
             let box = NormalizedBox(x: bb.origin.x, y: bb.origin.y, width: bb.width, height: bb.height)
             guard let region = Self.pixelRegion(

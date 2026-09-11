@@ -4,11 +4,12 @@ How `dicom-anon` removes burned-in PHI from the **stored pixels** of a DICOM obj
 not just its header — across single-frame, classic multiframe, enhanced multiframe,
 concatenations, and native/compressed source encodings.
 
-Three cooperating region sources:
+Three cooperating region sources, all part of the Clean Pixel Data option (on by
+default since 2026-09-07; `--no-clean-pixel-data` opts out):
 
-1. deterministic strategies (`--clean-pixel-data`)
+1. deterministic strategies (declared Ultrasound Regions, device templates)
 2. explicit operator rectangles (`--redact-region`)
-3. OCR text detection (`--detect-text`)
+3. OCR text detection (`--ocr-mode header|classify`)
 
 **Status:** `[EXISTS]` = shipped today, `[NEW]` = to be built. **All five phases landed 2026-09-04** (branch `feature/pixel-anonymization-pipeline`, local); one open codec-layer issue is noted under Phase 5.
 
@@ -51,65 +52,94 @@ Every design choice below traces back to one of these invariants.
 
 ## 2. CLI surface
 
-```bash
-# Deterministic strategies only (US keep-region inversion, device templates)
-dicom-anon in.dcm -o out.dcm --profile ps315 --clean-pixel-data
+**2026-09-07 — one profile.** `dicom-anon` applies the PS3.15 Annex E Basic Profile
+always; `--profile`, the legacy tag-list profiles, `--regenerate-uids`,
+`--remove/--replace/--keep` and `--detect-text` are gone. Clean Pixel Data is on by
+default. The examples below are the current surface; older sections of this document
+that show `--profile ps315 --clean-pixel-data --detect-text` describe the same run
+with today's defaults.
 
-# Explicit rectangles (repeatable; implies --clean-pixel-data)
+```bash
+# Deterministic strategies + OCR (classify), the default
+dicom-anon in.dcm -o out.dcm
+
+# Explicit rectangles (repeatable; always applied)
 dicom-anon in.dcm -o out.dcm --redact-region 0,0,1024,90 --redact-region 0,700,1024,68
 
-# OCR inspection only — detect and report, write nothing                   [EXISTS]
-dicom-anon in.dcm --detect-text
+# Aggressive OCR mode: blank every detected glyph
+dicom-anon in.dcm -o out.dcm --ocr-mode classify
 
-# OCR + actual pixel cleaning (default mode: classify)                     [EXISTS]
-dicom-anon in.dcm -o out.dcm --profile ps315 --clean-pixel-data --detect-text
-
-# Aggressive OCR mode: blank every detected glyph                          [EXISTS]
-dicom-anon in.dcm -o out.dcm --clean-pixel-data --detect-text=all
-
-# All three sources, unioned
-dicom-anon in.dcm -o out.dcm --clean-pixel-data --detect-text --redact-region 0,0,1024,90
+# Preserving OCR mode: only header-matched / PHI-shaped text; scales survive
+dicom-anon in.dcm -o out.dcm --ocr-mode header --text-only --redact-fill white
 
 # Preview what would be blanked, destroy nothing
-dicom-anon in.dcm --dry-run --clean-pixel-data --detect-text
+dicom-anon in.dcm --dry-run
+
+# Header only (refuses files whose pixels may still carry PHI)
+dicom-anon in.dcm -o out.dcm --no-clean-pixel-data
 ```
 
 | Flag | Role | Status |
 |---|---|---|
-| `--clean-pixel-data` | Consent gate for irreversible pixel modification; enables deterministic strategies | EXISTS |
-| `--redact-region x,y,w,h` | Operator rectangles; deterministic, reproducible; implies cleaning | EXISTS |
-| `--redact-fill N` | Fill value for blanked samples (default 0 = black) | EXISTS |
-| `--detect-text[=classify\|all]` | OCR detection source; default `classify`. Flag + `--detect-text-mode`; the `=mode` shorthand is rewritten before parsing | EXISTS (Phase 1.3; classify real since Phase 3) |
-| `--ocr-all-frames` | OCR every frame instead of sampled frames | EXISTS (Phase 1.3) |
+| `--no-clean-pixel-data` | Opt out of Clean Pixel Data (header-only run; refusal contract still applies) | EXISTS (2026-09-07) |
+| `--redact-region x,y,w,h` | Operator rectangles; deterministic, reproducible; always applied | EXISTS |
+| `--redact-fill black\|white\|N` | Fill for blanked samples | EXISTS |
+| `--ocr-mode header\|classify` | OCR failure direction; default `classify` (fails closed) | EXISTS (was `--detect-text-mode`; `all` removed) |
+| `--ocr-all-frames` | OCR every frame instead of sampled frames | EXISTS |
+| `--text-only` | Blank only the OCR-flagged text (plus `--redact-region`) at its exact position — no banner band | EXISTS |
 | `--allow-burned-in-phi` | Write the metadata-scrubbed file anyway; marked Patient Identity Removed = NO | EXISTS |
-| `--dry-run` | Print planned regions/verdicts, write nothing | EXISTS (table: Phase 1.4) |
-| `--recompress <codec\|source>` | Re-encode clean pixels post-redaction; `source` mirrors the input transfer syntax (§5.3) | EXISTS (Phase 5) |
-| `--redact-style <blank\|label\|replace>` | What the cleaned region shows: fill value, a fixed stamp, or semantic replacement values (§6.5) | EXISTS (`blank`/`label` Phase 1.6; `replace` Phase 4.13) |
-| `--redact-label <text>` | Custom stamp text for `label` style (default `REDACTED`) | EXISTS (Phase 1.6) |
+| `--dry-run` | Print planned regions/verdicts, write nothing | EXISTS |
+| `--recompress <codec\|source>` | Re-encode clean pixels post-redaction (§5.3) | EXISTS |
+| `--redact-style <blank\|label\|replace>` | What the cleaned region shows (§6.5) | EXISTS |
+| `--redact-label <text>` | Custom stamp text for `label` style | EXISTS |
 
 ### 2.1 Option semantics
 
-- `--redact-region` **implies** `--clean-pixel-data`.
-- `--detect-text` **does not imply cleaning** — it is a detection source.
-- **Detection feeds the refusal contract.** Without `-o`, `--detect-text` is pure
-  inspection: report and exit. With `-o` but without cleaning, detected text
-  joins `residualPixelPHIWarnings` — the run **refuses** unless
-  `--clean-pixel-data` (redact it) or `--allow-burned-in-phi` (accept it,
-  output marked not clean) is passed. Detection-only must never become a
-  loophole that writes a file the tool *knows* is dirty; it is a *stronger*
-  gate than today's declaration-only check, not a way around it.
-- `--clean-pixel-data --detect-text` = detect + classify + redact.
-- `--clean-pixel-data --detect-text=all` = detect + redact every detected region.
-- `--redact-region` remains the deterministic path for validated production
-  pipelines: coordinates never depend on OCR model or OS-version behavior.
-- **Default is `classify`** (since Phase 3). Phases 1–2 shipped with an interim
-  `all` behaviour; the flip happened when `PHITextClassifier` landed.
+- **Burned In Annotation (0028,0301) policy** (operator decision, 2026-09-07):
+  `YES` → clean (refuse if no source locates the text); absent → OCR decides;
+  `NO` → trusted, pixels neither inspected nor modified, said so on the verbose
+  console and in the audit log. Overlay planes or `--redact-region` override the
+  trust. Implemented in `AnonymizationWorkflow.pixelPolicy`.
+- `--redact-region` is always applied, even under a trusted `NO`.
+- OCR is a region *source* inside Clean Pixel Data; it never runs on its own. With
+  cleaning on, every redact verdict is blanked; text the classifier keeps survives
+  (and is reported).
+- `--ocr-mode header --text-only` = remove exactly the study's own identifiers,
+  institution and dates **and nothing else**: no keep-region inversion, no
+  device-template strip. Motivating case (2026-09-07): a GE Vivid S70 Doppler frame
+  where `classify` blanked the four bands outside the declared regions and `header`
+  alone still painted the whole top strip via the generic ultrasound template.
+  `--text-only` requires cleaning (validation error with `--no-clean-pixel-data`),
+  warns on every run that the band safety net is gone, and refuses with a text-only
+  reason when OCR flagged nothing on an image that declares burned-in text.
+- `--redact-style replace` needs pixel cleaning (both OCR modes classify).
+- **Default is `classify`** (since Phase 3).
 
 ### 2.2 OCR modes
 
-**`classify` (default)** — detect, compare against harvested
-PHI terms and patterns, redact PHI and uncertain text, preserve only confidently
-allowlisted clinical/technical text (laterality, units, technique factors).
+Three modes, least → most aggressive, each a subset of the next
+(`header ⊆ classify ⊆ all`, pinned by test). Choosing a lower mode can only
+preserve more, never protect more.
+
+**`header`** — redact only text that matches the study's own header PHI
+(names, IDs, accession, institution/department/station, physicians, operators,
+DOB/study dates in any burned rendering, age) or a PHI-shaped pattern (date,
+time, ≥5-digit run, mixed alphanumeric ID). Everything else is kept — scales,
+legends, units, free annotations. On ultrasound the keep-region inversion (§2.1
+strategy b) is **skipped** and any device template strip is **clipped to the
+rows above/below the declared Ultrasound Regions bounding box** (never beside
+it), because those bands are exactly where GE/Philips draw the velocity scale,
+colour bar, its `Soft/.16` label and the time axis the mode exists to preserve. The mode **fails open**: burned-in text the header
+never carried (a sticker, a second patient, a RIS-entered name) is not
+recognised. Every run says so in the summary; the audit log records
+`OCR mode=header`; a header with no harvestable identifiers gets its own
+warning. Modality-independent — on CR/DX/CT/MR/XA/SC it changes only the OCR
+verdicts (there are no bands there).
+
+**`classify` (default)** — `header` plus PHI-keyword lines (`Pt:`, `DOB`,
+`Dr`, `Hospital`…) and **anything not positively allowlisted**; preserves only
+confidently allowlisted clinical/technical text (laterality, units, technique
+factors, bare scale numerals). Fails closed.
 
 **`all`** — redact every detected text region, no preservation attempted.
 Intentionally aggressive: maximum text removal where loss of visible clinical
@@ -416,9 +446,32 @@ bounded edit distance. Accounts for OCR substitutions `O↔0`, `I↔1`, `S↔5`.
 | Redact | blank | PHI match, pattern match, PHI-keyword proximity, or **anything uncertain** — low OCR confidence never lets text pass |
 | Keep | preserve | ONLY text positively matched against the allowlist: laterality (`L`/`R`/`RT`/`LT`), units (`cm`/`mm`), technique factors (`kVp`/`mAs`), bare scale numerals |
 
+**Scale-zone tick rule (2026-09-07).** The recognizer is Apple Vision
+(`VNRecognizeTextRequest`, `.accurate`, no language correction); it returns a
+single candidate and word-level boxes only, so a ruler tick that touches a
+numeral comes back fused into the word — `10` + tick → `10y` at confidence
+1.00, `15` + tick → `15}` (verified on a GE Vivid S70 Doppler frame; masking
+the stroke that crosses the box edge and re-reading gives `10`, but the same
+re-read turns `15}` into `15y`, so a second OCR pass is not a fix). The
+classifier therefore takes the file's own Sequence of Ultrasound Regions as
+`scaleZones`: a short numeral (≤3 integer digits, optional sign/decimal) with
+exactly ONE trailing non-digit glyph whose box intersects a declared region is
+kept as a scale numeral. Outside every declared region the same text (`72y` in
+a banner) is still redacted, and header matches, PHI patterns, keywords and low
+confidence still win inside the zone. Pinned in `PHITextClassifierTests`.
+
 Redact by default; keep only what is provably safe. Classification can only make
 redaction *less* aggressive than `all` — text Vision missed never reaches the
 classifier — so classify mode is never safer than `all`, only more preserving.
+
+**`header` policy** (`PHITextClassifier.Policy.header`): runs only the first
+two steps — harvested-term match and PHI-shaped pattern — and keeps everything
+else with reason `header mode: no header match or PHI pattern`. Low OCR
+confidence still tries the matches (a fuzzy hit on garbled PHI is the safe
+direction) and otherwise keeps, noting the confidence. Matched tags are still
+reported, so `replace` style works with it. The console's kept count says how
+many kept regions lie inside blanked regions anyway (`N kept (…; M of them
+inside blanked regions anyway)`) — "kept" must never be read as "survives".
 
 ### 6.5 Redaction styles — what the cleaned region shows [EXISTS]
 

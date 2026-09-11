@@ -4,80 +4,89 @@ import DICOMKit
 import DICOMCore
 import DICOMDictionary
 
-struct DICOMAnon: ParsableCommand {
+struct DICOMAnon: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-anon",
-        abstract: "Anonymize DICOM files by removing or replacing patient identifiers",
+        abstract: "De-identify DICOM files: PS3.15 Annex E Basic Profile, header and pixels",
         discussion: """
-            Anonymizes DICOM files according to various profiles to protect patient privacy.
-            Supports multiple anonymization strategies and batch processing.
-            
+            Applies the DICOM PS3.15 Annex E Basic Application Level Confidentiality \
+            Profile to every file — always. The standard's named retention options are \
+            the only way to keep more, and its Clean Pixel Data option is on by default: \
+            burned-in text is located (declared regions, device templates, on-device OCR) \
+            and blanked out of the pixels themselves. The output records what was done in \
+            (0012,0063)/(0012,0064).
+
+            Burned In Annotation (0028,0301) policy: YES → pixels are cleaned; absent → \
+            OCR decides; NO → the declaration is trusted and the pixels are left alone \
+            (overlay planes or --redact-region override that trust).
+
             Examples:
-              dicom-anon file.dcm --output anon.dcm --profile basic
-              dicom-anon file.dcm --output anon.dcm --profile basic --shift-dates 100
-              dicom-anon input_dir/ --output anon_dir/ --profile clinical-trial --recursive
-              dicom-anon file.dcm --output anon.dcm --remove 0010,0010 --replace 0010,0030=19700101
-              dicom-anon file.dcm --profile basic --dry-run
-              dicom-anon file.dcm --output anon.dcm --profile basic --audit-log anonymization.log
-              dicom-anon file.dcm --detect-text                       (OCR inspection only)
-              dicom-anon file.dcm --output anon.dcm --profile ps315 --clean-pixel-data --detect-text
-              dicom-anon file.dcm --dry-run --clean-pixel-data --detect-text --redact-region 0,0,1024,90
+              dicom-anon file.dcm --output anon.dcm
+              dicom-anon file.dcm --output anon.dcm --shift-dates 100 --retain-characteristics
+              dicom-anon study/ --output anon_study/ --recursive --audit-log anon.log --verbose
+              dicom-anon file.dcm --dry-run                       (preview header + pixel plan)
+              dicom-anon file.dcm --output anon.dcm --ocr-mode header --text-only --redact-fill white
+              dicom-anon file.dcm --output anon.dcm --redact-region 0,0,1024,90 --recompress source
             """,
-        version: "1.0.0"
+        version: "2.0.0"
     )
-    
+
     @Argument(help: "Path to DICOM file or directory")
     var inputPath: String
-    
+
     @Option(name: .shortAndLong, help: "Output file or directory path")
     var output: String?
-    
-    @Option(name: .long, help: "Anonymization profile: basic, clinical-trial, research, ps315 (PS3.15 Annex E)")
-    var profile: String = "basic"
 
-    // PS3.15 Annex E retention options (only apply to --profile ps315).
-    @Flag(name: .long, help: "PS3.15: Retain Longitudinal Temporal Information (keep/shift dates)")
+    // ----- PS3.15 Annex E retention options -----
+    @Flag(name: .long, help: "Retain Longitudinal Temporal Information with Full Dates: keep every date and time as-is")
     var retainDates: Bool = false
 
-    @Flag(name: .long, help: "PS3.15: Retain Patient Characteristics (age/sex/size/weight)")
+    @Option(name: .long, help: """
+        Retain Longitudinal Temporal Information with Modified Dates: shift every date by \
+        this many days (intervals survive, real dates do not). Alternative to --retain-dates.
+        """)
+    var shiftDates: Int?
+
+    @Flag(name: .long, help: "Retain Patient Characteristics (age, sex, size, weight)")
     var retainCharacteristics: Bool = false
 
-    @Flag(name: .long, help: "PS3.15: Retain Device Identity")
+    @Flag(name: .long, help: "Retain Device Identity (manufacturer model, station name, serial number)")
     var retainDevice: Bool = false
 
-    @Flag(name: .long, help: "PS3.15: Retain Institution Identity")
+    @Flag(name: .long, help: "Retain Institution Identity (institution name, address, department)")
     var retainInstitution: Bool = false
 
-    @Flag(name: .long, help: "PS3.15: Retain UIDs (do not regenerate)")
+    @Flag(name: .long, help: "Retain UIDs instead of regenerating them consistently")
     var retainUids: Bool = false
 
-    @Flag(name: .long, help: "PS3.15: Clean Descriptors (retain free-text rather than remove)")
+    @Flag(name: .long, help: "Clean Descriptors: keep free-text descriptors (study/series description, protocol) instead of blanking them")
     var cleanDescriptors: Bool = false
 
-    @Flag(name: .long, help: """
-        PS3.15: Clean Pixel Data — blank burned-in identifiers out of the image itself. \
-        Chooses the region automatically (declared clinical region, else device template) \
-        and REFUSES rather than guessing when it cannot. Records code 113101 and sets \
-        Burned In Annotation = NO only when pixels were actually blanked.
+    // ----- Clean Pixel Data option -----
+    @Flag(name: .long, inversion: .prefixedNo, help: """
+        Clean Pixel Data (default on): blank burned-in identifiers out of the image \
+        itself, from the declared clinical region, the device template, on-device OCR \
+        and any --redact-region, unioned. REFUSES rather than guessing when an image \
+        declares burned-in text and no source can locate it. --no-clean-pixel-data \
+        de-identifies the header only and refuses files whose pixels may still carry PHI.
         """)
-    var cleanPixelData: Bool = false
+    var cleanPixelData: Bool = true
 
-    @Option(name: .long, help: """
-        Region to blank as x,y,width,height (repeatable). Implies --clean-pixel-data; \
-        unioned with automatic region selection and OCR (no source shrinks another).
-        """)
+    @Option(name: .long, help: "Region to blank as x,y,width,height (repeatable); unioned with the automatic sources")
     var redactRegion: [String] = []
 
-    @Option(name: .long, help: "Fill value for blanked pixels (default: 0 = black)")
-    var redactFill: Int?
+    @Option(name: .long, help: """
+        Fill for blanked pixels: black (default, stored value 0), white (the largest \
+        stored value at the image's bit depth, resolved per file), or a stored pixel value.
+        """)
+    var redactFill: String?
 
     @Option(name: .long, help: """
         What a cleaned region shows: blank (fill value only, default), label (a fixed \
-        stamp drawn INTO the already-blanked box, so reviewers see it was cleaned \
-        deliberately), or replace (the header engine's own anonymized value for the \
-        matched attribute — name, ID, shifted date — so pixels and header tell one \
-        story; needs --detect-text classify; uncertain regions and attributes the header \
-        policy removes get the label instead). The region is always blanked first.
+        stamp drawn INTO the already-blanked box), or replace (the header engine's own \
+        de-identified value for the matched attribute — a shifted date, say — so pixels \
+        and header tell one story; needs --ocr-mode classify or header; uncertain regions \
+        and attributes the profile removes get the label instead).
         """)
     var redactStyle: String = "blank"
 
@@ -89,82 +98,69 @@ struct DICOMAnon: ParsableCommand {
         syntax (lossless sources round-trip exactly outside the redacted regions; lossy \
         sources are re-quantized — second-generation loss, header ratio/method updated), \
         or any dicom-compress codec name (jpeg-ls, rle, jpeg2000-lossless, …). Without \
-        this the output is Explicit VR Little Endian, universally readable but larger for \
-        a compressed cine. Syntaxes this toolkit cannot encode fall back to Explicit VR LE \
-        with a console note. The redacted regions are re-verified blank after re-encoding.
+        this the output is Explicit VR Little Endian. The redacted regions are re-verified \
+        blank after re-encoding.
         """)
     var recompress: String?
 
-    @Flag(name: .long, help: """
-        Detect burned-in text with on-device OCR (Apple Vision) as a region source. \
-        Does NOT imply cleaning: alone (no --output) it inspects and reports; with \
-        --output but without --clean-pixel-data the run is REFUSED because the tool \
-        now knows the pixels carry text. With --clean-pixel-data every detected region \
-        is blanked on every frame. Accepts --detect-text=classify|all as a shorthand \
-        for --detect-text-mode.
-        """)
-    var detectText: Bool = false
-
     @Option(name: .long, help: """
-        OCR mode: classify (default) redacts text matching the file's own PHI (names, \
-        IDs, dates, institution), PHI-shaped patterns and anything uncertain, keeping \
-        only positively allowlisted clinical text (laterality, units, technique); all \
-        blanks every detected region.
+        OCR mode — the two differ in which way they fail. header redacts only text \
+        matching the file's own PHI (names, IDs, dates, institution, physicians) or a \
+        PHI-shaped pattern and keeps everything else — scales, legends and free \
+        annotations survive; it FAILS OPEN (text the header never carried is not \
+        recognised) and says so. classify (default) adds PHI keywords and redacts \
+        anything not positively allowlisted (laterality, units, technique); it fails \
+        closed. To erase an area whatever it reads, name it with --redact-region.
         """)
-    var detectTextMode: String = "classify"
+    var ocrMode: String = "classify"
 
     @Flag(name: .long, help: "OCR every frame instead of the first/middle/last sample")
     var ocrAllFrames: Bool = false
 
-    @Option(name: .long, help: "Number of days to shift dates (preserves intervals)")
-    var shiftDates: Int?
-    
-    @Flag(name: .long, help: "Regenerate UIDs while preserving references")
-    var regenerateUids: Bool = false
-    
-    @Option(name: .long, help: "Tags to remove (format: 0010,0010 or name)")
-    var remove: [String] = []
-    
-    @Option(name: .long, help: "Tags to replace (format: 0010,0010=VALUE)")
-    var replace: [String] = []
-    
-    @Option(name: .long, help: "Tags to keep (preserve from anonymization)")
-    var keep: [String] = []
-    
-    @Flag(name: .long, help: "Process directories recursively")
-    var recursive: Bool = false
-    
-    @Flag(name: .long, help: "Preview changes without modifying files")
-    var dryRun: Bool = false
-    
-    @Flag(name: .long, help: "Create backup of original files")
-    var backup: Bool = false
-    
-    @Option(name: .long, help: "Path to audit log file")
-    var auditLog: String?
-    
-    @Flag(name: .long, help: "Force parsing of files without DICM prefix")
-    var force: Bool = false
+    @Flag(name: .long, help: """
+        Blank only the text OCR flagged (and any --redact-region), at its exact position: \
+        no automatic banner band from the declared Ultrasound Regions or the device \
+        template. Pair with --ocr-mode header to remove exactly the study's own \
+        identifiers, institution and dates. Drops the band safety net — text OCR misses \
+        is kept, so verify visually before release.
+        """)
+    var textOnly: Bool = false
 
     @Flag(name: .long, help: """
-        Proceed even when the pixels may still carry PHI (Burned In Annotation = YES, \
-        overlay planes present, or OCR-detected text this run leaves unredacted). \
-        Without this, such files are refused unwritten. The output is marked \
-        Patient Identity Removed = NO.
+        Proceed even when the pixels may still carry PHI (Burned In Annotation = YES with \
+        --no-clean-pixel-data, overlay planes present, or OCR-detected text this run \
+        leaves unredacted). Without this, such files are refused unwritten. The output is \
+        marked Patient Identity Removed = NO.
         """)
     var allowBurnedInPHI: Bool = false
 
+    // ----- Run control -----
+    @Flag(name: .long, help: "Process directories recursively")
+    var recursive: Bool = false
+
+    @Flag(name: .long, help: "Preview changes (header and pixel plan) without modifying files")
+    var dryRun: Bool = false
+
+    @Flag(name: .long, help: "Create backup of original files")
+    var backup: Bool = false
+
+    @Option(name: .long, help: "Path to audit log file (tags and actions, never values)")
+    var auditLog: String?
+
+    @Flag(name: .long, help: "Force parsing of files without DICM prefix")
+    var force: Bool = false
+
     @Flag(name: .long, help: "Verbose output")
     var verbose: Bool = false
-    
-    mutating func run() throws {
+
+    mutating func run() async throws {
         // Every input in the CLI's own vocabulary; parsing, validation, the
         // pixel-first ordering, the refusal contract and every console line live
         // in the shared workflow so DICOMStudio's CLI Workshop runs the same code.
         var request = AnonymizationWorkflow.Request(inputPath: inputPath)
         request.output = output
-        request.profile = profile
         request.retainDates = retainDates
+        request.shiftDates = shiftDates
         request.retainCharacteristics = retainCharacteristics
         request.retainDevice = retainDevice
         request.retainInstitution = retainInstitution
@@ -176,23 +172,18 @@ struct DICOMAnon: ParsableCommand {
         request.redactStyle = redactStyle
         request.redactLabel = redactLabel
         request.recompress = recompress
-        request.detectText = detectText
-        request.detectTextMode = detectTextMode
+        request.ocrMode = ocrMode
         request.ocrAllFrames = ocrAllFrames
-        request.shiftDates = shiftDates
-        request.regenerateUids = regenerateUids
-        request.remove = remove
-        request.replace = replace
-        request.keep = keep
+        request.textOnly = textOnly
+        request.allowBurnedInPHI = allowBurnedInPHI
         request.recursive = recursive
         request.dryRun = dryRun
         request.backup = backup
         request.auditLog = auditLog
         request.force = force
-        request.allowBurnedInPHI = allowBurnedInPHI
         request.verbose = verbose
 
-        let outcome = try AnonymizationWorkflow().run(request) { print($0, terminator: "") }
+        let outcome = try await AnonymizationWorkflow().run(request) { print($0, terminator: "") }
 
         // Exit with error if any failures
         if outcome.exitCode != 0 {
@@ -201,6 +192,6 @@ struct DICOMAnon: ParsableCommand {
     }
 }
 
-// `--detect-text=classify|all` is the documented shorthand; ArgumentParser flags take
-// no value, so rewrite it into the flag + mode pair before parsing.
-DICOMAnon.main(AnonArguments.expandDetectText(Array(CommandLine.arguments.dropFirst())))
+// Pass argv explicitly: in a `main.swift` (no `@main`), `main()` would re-read
+// `CommandLine.arguments` including the program name and swallow the first flag.
+await DICOMAnon.main(Array(CommandLine.arguments.dropFirst()))

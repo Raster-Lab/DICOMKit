@@ -136,29 +136,6 @@ struct SecurityHelpersTests {
 
     // MARK: - AnonymizationHelpers
 
-    @Test("AnonymizationHelpers hipaaDirectIdentifierTags contains 18 entries")
-    func testAnonymizationHelpersHIPAA18Identifiers() {
-        #expect(AnonymizationHelpers.hipaaDirectIdentifierTags.count == 18)
-    }
-
-    @Test("AnonymizationHelpers defaultRules basic returns 18 rules")
-    func testAnonymizationHelpersDefaultRulesBasic() {
-        let rules = AnonymizationHelpers.defaultRules(for: .basic)
-        #expect(rules.count == 18)
-    }
-
-    @Test("AnonymizationHelpers defaultRules hipaa returns 18 rules")
-    func testAnonymizationHelpersDefaultRulesHIPAA() {
-        let rules = AnonymizationHelpers.defaultRules(for: .hipaaeSafeHarbor)
-        #expect(rules.count == 18)
-    }
-
-    @Test("AnonymizationHelpers defaultRules custom returns empty")
-    func testAnonymizationHelpersDefaultRulesCustomEmpty() {
-        let rules = AnonymizationHelpers.defaultRules(for: .custom)
-        #expect(rules.isEmpty)
-    }
-
     @Test("AnonymizationHelpers tagValidationError nil for valid tag")
     func testAnonymizationHelpersTagValidNull() {
         #expect(AnonymizationHelpers.tagValidationError(for: "00100010") == nil)
@@ -217,22 +194,6 @@ struct SecurityHelpersTests {
         job.totalFiles = 5
         let text = AnonymizationHelpers.progressText(for: job)
         #expect(text.lowercased().contains("completed"))
-    }
-
-    @Test("AnonymizationHelpers previewSummary empty rules returns no rules message")
-    func testAnonymizationHelpersPreviewSummaryEmpty() {
-        let summary = AnonymizationHelpers.previewSummary(rules: [])
-        #expect(summary.lowercased().contains("no rule"))
-    }
-
-    @Test("AnonymizationHelpers previewSummary non-empty returns rule counts")
-    func testAnonymizationHelpersPreviewSummaryNonEmpty() {
-        let rules = [
-            AnonymizationTagRule(tag: "0010,0010", action: .remove),
-            AnonymizationTagRule(tag: "0010,0020", action: .hash)
-        ]
-        let summary = AnonymizationHelpers.previewSummary(rules: rules)
-        #expect(!summary.isEmpty)
     }
 
     @Test("AnonymizationHelpers isValidDateShift 365 is valid")

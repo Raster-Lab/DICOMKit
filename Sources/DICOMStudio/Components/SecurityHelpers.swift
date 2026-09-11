@@ -95,62 +95,8 @@ public enum SecurityTLSHelpers: Sendable {
 /// Platform-independent helpers for anonymization display and validation.
 public enum AnonymizationHelpers: Sendable {
 
-    /// The 18 HIPAA direct identifiers (tag, name) pairs.
-    /// Reference: HIPAA 45 CFR §164.514(b)(2)(i)
-    public static let hipaaDirectIdentifierTags: [(tag: String, name: String)] = [
-        ("0010,0010", "Patient Name"),
-        ("0010,0020", "Patient ID"),
-        ("0010,0030", "Patient Birth Date"),
-        ("0010,0040", "Patient Sex"),
-        ("0010,1000", "Other Patient IDs"),
-        ("0010,1010", "Patient Age"),
-        ("0010,1040", "Patient Telephone Numbers"),
-        ("0010,2160", "Ethnic Group"),
-        ("0010,21B0", "Additional Patient History"),
-        ("0010,4000", "Patient Comments"),
-        ("0008,0014", "Instance Creator UID"),
-        ("0008,0080", "Institution Name"),
-        ("0008,0081", "Institution Address"),
-        ("0008,0090", "Referring Physician Name"),
-        ("0008,1010", "Station Name"),
-        ("0008,1070", "Operator Name"),
-        ("0008,103E", "Series Description"),
-        ("0032,1032", "Requesting Physician")
-    ]
-
-    /// Returns default rules for the given anonymization profile.
-    public static func defaultRules(for profile: AnonymizationProfile) -> [AnonymizationTagRule] {
-        switch profile {
-        case .basic, .hipaaeSafeHarbor:
-            return hipaaDirectIdentifierTags.map { tagPair in
-                AnonymizationTagRule(
-                    tag: tagPair.tag,
-                    tagName: tagPair.name,
-                    action: .remove
-                )
-            }
-        case .clinicalTrial:
-            return hipaaDirectIdentifierTags.map { tagPair in
-                AnonymizationTagRule(
-                    tag: tagPair.tag,
-                    tagName: tagPair.name,
-                    action: .remove
-                )
-            }
-        case .research:
-            return [
-                AnonymizationTagRule(tag: "0010,0010", tagName: "Patient Name", action: .remove),
-                AnonymizationTagRule(tag: "0010,0020", tagName: "Patient ID", action: .remove),
-                AnonymizationTagRule(tag: "0010,0030", tagName: "Patient Birth Date", action: .remove),
-            ]
-        case .custom:
-            return []
-        case .ps315:
-            // The PS3.15 engine owns its own attribute table (ConfidentialityProfile);
-            // the job-queue rule list is not how that profile is expressed.
-            return []
-        }
-    }
+    /// The one profile the app applies, for display.
+    public static let profileName = "PS3.15 Annex E Basic Application Level Confidentiality Profile"
 
     /// Returns a validation error for a tag string, or nil if valid.
     public static func tagValidationError(for tag: String) -> String? {
@@ -193,16 +139,6 @@ public enum AnonymizationHelpers: Sendable {
         case .cancelled:
             return "Cancelled after \(job.processedFiles) files"
         }
-    }
-
-    /// Returns a summary for the before/after preview of a rule set.
-    public static func previewSummary(rules: [AnonymizationTagRule]) -> String {
-        let counts = rules.reduce(into: [TagAction: Int]()) { acc, rule in
-            acc[rule.action, default: 0] += 1
-        }
-        let parts = counts.sorted { $0.key.rawValue < $1.key.rawValue }.map { "\($0.value) \($0.key.displayName)" }
-        if parts.isEmpty { return "No rules defined" }
-        return parts.joined(separator: ", ")
     }
 
     /// Returns true if the date shift value is within a safe range.

@@ -9,7 +9,7 @@ import DICOMCore
 /// library-testable rather than living in `main.swift`:
 ///
 /// - `--redact-region` **implies** cleaning.
-/// - `--detect-text` **does not** imply cleaning — it is a region *source*.
+/// - OCR **does not** imply cleaning — it is a region *source*.
 /// - Detection feeds the refusal contract: text that was detected but will not be
 ///   redacted is reported in ``Report/detectedButUnredacted`` and the caller must refuse
 ///   to write (unless the operator accepts the risk explicitly).
@@ -45,17 +45,91 @@ public struct PixelCleaningWorkflow: Sendable {
         public let notes: [String]
     }
 
-    /// OCR mode. `classify` (default) redacts PHI and uncertain text and keeps only
-    /// allowlisted clinical text; `all` redacts every detected region.
+    /// OCR mode. The two modes differ on which way they fail, which is the operator's
+    /// real choice; `header`'s redaction set is a subset of `classify`'s, so choosing
+    /// it can only preserve more, never protect more.
+    ///
+    /// - `header`: redacts text that matches the study's own header PHI or a PHI-shaped
+    ///   pattern (date, time, ID run); keeps everything else. On ultrasound it also
+    ///   skips the "blank outside declared regions" strategy, so scales, colour bars
+    ///   and legends survive. Fails **open** — burned-in text the header never carried
+    ///   is not recognised.
+    /// - `classify` (default): `header` plus PHI keywords, keeping only text on the
+    ///   clinical allowlist. Fails closed.
+    ///
+    /// There is deliberately no "blank every detected region" mode: past the closed
+    /// allowlist the only text left is provably clinical (laterality, units, technique
+    /// factors), so blanking it buys no privacy. To erase an area regardless of what it
+    /// reads, name it with `--redact-region`, which is honest about being a location
+    /// rather than a PHI judgement.
     public enum TextDetectionMode: String, Sendable, CaseIterable {
+        case header
         case classify
-        case all
 
-        /// Parses `--detect-text[=classify|all]`; an empty value is the default.
+        /// Parses `--ocr-mode header|classify`; an empty value is the default.
         public static func parse(_ raw: String?) -> TextDetectionMode? {
             guard let raw = raw?.trimmingCharacters(in: .whitespaces).lowercased(), !raw.isEmpty
             else { return .classify }
             return TextDetectionMode(rawValue: raw)
+        }
+
+        /// The classifier policy behind the mode.
+        var classifierPolicy: PHITextClassifier.Policy {
+            switch self {
+            case .header: return .header
+            case .classify: return .classify
+            }
+        }
+
+        /// Whether the keep-region inversion (blank everything outside the declared
+        /// Ultrasound Regions) contributes to the plan in this mode.
+        public var blanksOutsideDeclaredRegions: Bool { self != .header }
+
+        /// True when regions the classifier keeps may still carry PHI the header never
+        /// held — the operator chose to accept that.
+        public var isFailOpen: Bool { self == .header }
+
+        /// Help-text names, least to most aggressive.
+        public static var names: [String] { allCases.map(\.rawValue) }
+    }
+
+    /// `--redact-fill black|white|<stored value>`.
+    public enum RedactFill: Sendable, Equatable {
+        case black
+        case white
+        case value(Int)
+
+        /// Parses the flag; an empty/nil value means the default (black, 0). `nil`
+        /// result = invalid.
+        public static func parse(_ raw: String?) -> RedactFill? {
+            guard let raw = raw?.trimmingCharacters(in: .whitespaces).lowercased(), !raw.isEmpty
+            else { return .black }
+            switch raw {
+            case "black": return .black
+            case "white": return .white
+            default:
+                guard let v = Int(raw), v >= 0 else { return nil }
+                return .value(v)
+            }
+        }
+
+        /// The stored pixel value for this image: `white` is the largest representable
+        /// stored value at the image's Bits Stored / Pixel Representation.
+        public func resolve(for dataSet: DataSet) -> Int {
+            switch self {
+            case .black: return 0
+            case .white: return PixelRedactor.storedRange(in: dataSet).hi
+            case .value(let v): return v
+            }
+        }
+
+        /// The flag spelling that round-trips through `parse`.
+        public var flagValue: String {
+            switch self {
+            case .black: return "black"
+            case .white: return "white"
+            case .value(let v): return String(v)
+            }
         }
     }
 
@@ -64,12 +138,21 @@ public struct PixelCleaningWorkflow: Sendable {
         public var cleanPixelData: Bool
         /// `--redact-region` rectangles (already validated).
         public var explicitRegions: [PixelRedactionPlan.Region]
-        /// `--detect-text`; `nil` when OCR is off.
+        /// `--ocr-mode`; `nil` when OCR is off (`--no-clean-pixel-data`, or a file whose
+        /// Burned In Annotation = NO was taken on trust).
         public var detectText: TextDetectionMode?
         /// `--ocr-all-frames`
         public var ocrAllFrames: Bool
-        /// `--redact-fill`
+        /// `--text-only`: blank only the OCR text the classifier flagged (plus any
+        /// explicit rectangles) — no automatic banner band from the declared
+        /// Ultrasound Regions or a device template. Everything the classifier kept
+        /// survives in place. Needs `detectText`; drops the band safety net.
+        public var textOnly: Bool
+        /// `--redact-fill` as a literal stored value (`nil` = 0). Ignored when
+        /// `fillWhite` is set.
         public var fillValue: Int?
+        /// `--redact-fill white`: resolved per file to the largest stored value.
+        public var fillWhite: Bool
         /// Safety margin around detected text.
         public var dilation: Int
         /// `--redact-style` / `--redact-label`
@@ -99,13 +182,17 @@ public struct PixelCleaningWorkflow: Sendable {
             presetDetectedRegions: [PixelRedactionPlan.Region] = [],
             concatenationAnalyzedCompletely: Bool = false,
             replacementMapping: ReplacementMapping? = nil,
-            recompress: Recompress? = nil
+            recompress: Recompress? = nil,
+            fillWhite: Bool = false,
+            textOnly: Bool = false
         ) {
             self.cleanPixelData = cleanPixelData
             self.explicitRegions = explicitRegions
             self.detectText = detectText
             self.ocrAllFrames = ocrAllFrames
+            self.textOnly = textOnly
             self.fillValue = fillValue
+            self.fillWhite = fillWhite
             self.dilation = dilation
             self.style = style
             self.presetDetectedRegions = presetDetectedRegions
@@ -114,8 +201,8 @@ public struct PixelCleaningWorkflow: Sendable {
             self.recompress = recompress
         }
 
-        /// Pixel modification is requested: `--clean-pixel-data`, or rectangles (which
-        /// imply it). `--detect-text` alone never modifies pixels.
+        /// Pixel modification is requested: Clean Pixel Data, or rectangles (which
+        /// imply it). Detection alone never modifies pixels.
         public var cleaningRequested: Bool {
             cleanPixelData || !explicitRegions.isEmpty
         }
@@ -150,6 +237,11 @@ public struct PixelCleaningWorkflow: Sendable {
         public let warnings: [String]
         /// Set when `--recompress` re-encoded the clean pixels.
         public var recompression: Recompression? = nil
+        /// The OCR mode that produced `verdicts` (`nil` when OCR was off).
+        public var mode: TextDetectionMode? = nil
+        /// The stored value actually written into blanked regions (`nil` when nothing
+        /// was planned) — `white` resolves per file, so callers read it from here.
+        public var resolvedFillValue: Int? = nil
         /// Detected text the run will **not** blank and that was not positively
         /// allowlisted. Non-empty means the caller must refuse to write an output file
         /// unless the operator accepted the risk.
@@ -160,10 +252,24 @@ public struct PixelCleaningWorkflow: Sendable {
             return wanted.filter { d in !regions.contains(d.region) }
         }
 
+        /// Keep-verdict detections that actually survive: not covered by any planned
+        /// rectangle (a keep verdict never shrinks another source's region, so text
+        /// "kept" by the classifier inside a blanked band is gone regardless).
+        public var keptAndSurviving: [TextRegionDetector.Detection] {
+            let kept = zip(detections, verdicts).filter { !$0.1.isRedact }.map(\.0)
+            guard let plan, case .redact(let regions, _) = plan.decision else { return kept }
+            return kept.filter { d in !regions.contains { $0.covers(d.region) } }
+        }
+
         /// PHI-safe audit lines: verdict, reason, confidence, rect, frame, truncated text.
         /// Never the full recognized string — the audit log must not become a PHI store.
         public var auditLines: [String] {
-            var lines = zip(detections, verdicts).map { d, v in
+            var lines: [String] = []
+            if let mode {
+                lines.append("OCR mode=\(mode.rawValue)"
+                             + (mode.isFailOpen ? " (header-scoped: text absent from the header is kept)" : ""))
+            }
+            lines += zip(detections, verdicts).map { d, v in
                 "OCR frame=\(d.frameIndex) rect=\(d.region.x),\(d.region.y),\(d.region.width),\(d.region.height) "
                 + "verdict=\(v.name) reason=\"\(v.reason)\" conf=\(String(format: "%.2f", d.confidence)) "
                 + "text=\(d.redactedForAudit)"
@@ -435,7 +541,7 @@ public struct PixelCleaningWorkflow: Sendable {
 
     /// Detects (and classifies) text in one file without cleaning, for the batch
     /// pre-pass. Returns the redact-verdict regions and the concatenation info.
-    public func sweep(fileData: Data, options: Options) throws -> (info: ConcatenationInfo?, regions: [PixelRedactionPlan.Region]) {
+    public func sweep(fileData: Data, options: Options) async throws -> (info: ConcatenationInfo?, regions: [PixelRedactionPlan.Region]) {
         let file = try DICOMFile.read(from: fileData)
         let info = Self.concatenationInfo(of: file.dataSet)
         var probe = options
@@ -443,7 +549,7 @@ public struct PixelCleaningWorkflow: Sendable {
         probe.explicitRegions = []
         probe.presetDetectedRegions = []
         probe.concatenationAnalyzedCompletely = true
-        let report = try run(fileData: fileData, options: probe, dryRun: true)
+        let report = try await run(fileData: fileData, options: probe, dryRun: true)
         let regions = TextRegionDetector.unionedRegions(
             zip(report.detections, report.verdicts).filter { $0.1.isRedact }.map(\.0))
         return (info, regions)
@@ -490,7 +596,7 @@ public struct PixelCleaningWorkflow: Sendable {
     /// - Throws: ``TextDetectionError`` when OCR was requested and cannot run;
     ///   ``PixelRedactionError/unresolvedRegion(_:)`` when cleaning was requested but
     ///   no source resolved a region; any read/decode error.
-    public func run(fileData: Data, options: Options, dryRun: Bool) throws -> Report {
+    public func run(fileData: Data, options: Options, dryRun: Bool) async throws -> Report {
         let file = try DICOMFile.read(from: fileData)
         let frameCount = max(1, file.dataSet.numberOfFrames ?? 1)
         var notes: [String] = []
@@ -513,23 +619,44 @@ public struct PixelCleaningWorkflow: Sendable {
             guard TextRegionDetector.isAvailable else { throw TextDetectionError.unavailable }
             scanned = TextRegionDetector.sampledFrameIndices(
                 frameCount: frameCount, allFrames: options.ocrAllFrames)
-            detections = try TextRegionDetector(dilation: options.dilation)
+            detections = try await TextRegionDetector(dilation: options.dilation)
                 .detect(in: file, frameIndices: scanned)
-            switch mode {
-            case .all:
-                verdicts = detections.map { _ in .redact(reason: "all detected text is redacted") }
-                matchedTags = detections.map { _ in [] }
-            case .classify:
-                let classifier = PHITextClassifier(terms: PHITextClassifier.harvestTerms(from: file.dataSet))
-                let classified = classifier.classifyDetailed(detections)
-                verdicts = classified.map(\.verdict)
-                matchedTags = classified.map(\.matchedTags)
+            let terms = PHITextClassifier.harvestTerms(from: file.dataSet)
+            let classifier = PHITextClassifier(
+                terms: terms, policy: mode.classifierPolicy,
+                scaleZones: PixelRedactionPlan.declaredRegions(for: file.dataSet))
+            let classified = classifier.classifyDetailed(detections)
+            verdicts = classified.map(\.verdict)
+            matchedTags = classified.map(\.matchedTags)
+            if mode.isFailOpen {
+                // The mode's limit, stated on every run: nothing here proves the kept
+                // text is clinical — only that the header did not contain it.
+                if terms.isEmpty {
+                    notes.append("OCR mode header: the header holds NO harvestable identifiers "
+                                 + "(already de-identified or empty), so only PHI-shaped patterns "
+                                 + "(dates, times, ID runs) can be recognised in the pixels.")
+                }
+                let kept = verdicts.filter { !$0.isRedact }.count
+                if kept > 0 {
+                    notes.append("OCR mode header: \(kept) text region\(kept == 1 ? "" : "s") kept because "
+                                 + "nothing tied \(kept == 1 ? "it" : "them") to this study's header — text the "
+                                 + "header never carried (stickers, annotations, RIS-entered names) is not "
+                                 + "recognised by this mode. Verify visually before release.")
+                }
             }
         }
 
+        func report(plan: PixelRedactionPlan?, outcome: PixelRedactor.Outcome?, data: Data,
+                    fill: Int? = nil) -> Report {
+            var r = Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned,
+                           plan: plan, outcome: outcome, data: data, frameCount: frameCount, warnings: notes)
+            r.mode = options.detectText
+            r.resolvedFillValue = fill
+            return r
+        }
+
         guard options.cleaningRequested else {
-            return Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: nil,
-                          outcome: nil, data: fileData, frameCount: frameCount, warnings: notes)
+            return report(plan: nil, outcome: nil, data: fileData)
         }
 
         // [4] Plan: union of every enabled source. Only redact verdicts contribute a
@@ -538,8 +665,26 @@ public struct PixelCleaningWorkflow: Sendable {
         var detected = TextRegionDetector.unionedRegions(
             zip(detections, verdicts).filter { $0.1.isRedact }.map(\.0))
         for r in options.presetDetectedRegions where !detected.contains(r) { detected.append(r) }
-        let plan = PixelRedactionPlan.plan(
-            for: file.dataSet, explicitRegions: options.explicitRegions, detectedRegions: detected)
+        var plan = PixelRedactionPlan.plan(
+            for: file.dataSet, explicitRegions: options.explicitRegions, detectedRegions: detected,
+            blankOutsideDeclaredRegions: options.detectText?.blanksOutsideDeclaredRegions ?? true,
+            textOnly: options.textOnly)
+        if options.textOnly {
+            // The operator gave up the band safety net; say so on every run, and make a
+            // refusal name the real cause (no flagged text) rather than the generic one.
+            notes.append("Text-only: the automatic banner band (declared-region inversion / device "
+                         + "template) is skipped — only the \(detected.count) flagged text region"
+                         + "\(detected.count == 1 ? "" : "s")\(options.explicitRegions.isEmpty ? "" : " and the explicit rectangles")"
+                         + " are blanked. Text OCR missed, or the classifier kept, stays. Verify visually before release.")
+            if case .unresolved(let reason) = plan.decision {
+                plan = PixelRedactionPlan(decision: .unresolved(
+                    reason: "--text-only: OCR flagged no text to redact and no --redact-region was given, "
+                        + "so nothing locates the burned-in content. " + reason))
+            }
+        }
+        // `white` is a per-image value (Bits Stored / Pixel Representation), resolved once
+        // here so the redactor, the recompress oracle and the console all see the same number.
+        let fill: Int? = options.fillWhite ? RedactFill.white.resolve(for: file.dataSet) : options.fillValue
 
         // [5] Dry-run gate: plan built, nothing executed. An unresolved plan is still
         // surfaced as the error it would be, so a dry run predicts the real run.
@@ -547,8 +692,7 @@ public struct PixelCleaningWorkflow: Sendable {
             if case .unresolved(let reason) = plan.decision {
                 throw PixelRedactionError.unresolvedRegion(reason)
             }
-            return Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: plan,
-                          outcome: nil, data: fileData, frameCount: frameCount, warnings: notes)
+            return report(plan: plan, outcome: nil, data: fileData, fill: fill)
         }
 
         // [6]–[10] Decode, mask every frame, strip side channels, attest.
@@ -556,7 +700,7 @@ public struct PixelCleaningWorkflow: Sendable {
             detections: detections, verdicts: verdicts, matchedTags: matchedTags,
             mapping: options.replacementMapping, style: options.style)
         if let (redacted, outcome) = try PixelRedactor().redact(
-            fileData: fileData, plan: plan, fillValue: options.fillValue, style: options.style,
+            fileData: fileData, plan: plan, fillValue: fill, style: options.style,
             replacements: replacements) {
             var data = redacted
             var recompression: Recompression?
@@ -565,33 +709,13 @@ public struct PixelCleaningWorkflow: Sendable {
                 let sourceUID = file.transferSyntaxUID ?? TransferSyntax.explicitVRLittleEndian.uid
                 (data, recompression) = try Self.recompress(
                     cleanData: redacted, target: target, sourceTransferSyntaxUID: sourceUID,
-                    sourceDataSet: file.dataSet, regions: outcome.regions, fillValue: options.fillValue ?? 0)
+                    sourceDataSet: file.dataSet, regions: outcome.regions, fillValue: fill ?? 0)
             }
-            var report = Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: plan,
-                                outcome: outcome, data: data, frameCount: frameCount, warnings: notes)
-            report.recompression = recompression
-            return report
+            var out = report(plan: plan, outcome: outcome, data: data, fill: fill)
+            out.recompression = recompression
+            return out
         }
-        return Report(detections: detections, verdicts: verdicts, matchedTags: matchedTags, scannedFrames: scanned, plan: plan,
-                      outcome: nil, data: fileData, frameCount: frameCount, warnings: notes)
+        return report(plan: plan, outcome: nil, data: fileData, fill: fill)
     }
 }
 
-/// Argument pre-processing shared by the CLI (and any front end that mirrors it).
-public enum AnonArguments {
-    /// Rewrites `--detect-text=MODE` into `--detect-text --detect-text-mode MODE` so the
-    /// documented shorthand parses; every other argument passes through unchanged.
-    public static func expandDetectText(_ arguments: [String]) -> [String] {
-        var out: [String] = []
-        for arg in arguments {
-            if arg.hasPrefix("--detect-text=") {
-                out.append("--detect-text")
-                out.append("--detect-text-mode")
-                out.append(String(arg.dropFirst("--detect-text=".count)))
-            } else {
-                out.append(arg)
-            }
-        }
-        return out
-    }
-}

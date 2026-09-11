@@ -3716,27 +3716,32 @@ private func executeDicomStudy() async {
             }
 
             // Loads, encodes and writes a single image (page 0) to a .dcm file URL
-            // via the shared engine. Output is written here so the sandbox-resolved
-            // path is honored.
+            // via the shared engine. The write goes through `OutputAccess.write`:
+            // the output Browse picker grants a FOLDER, so when the user then types
+            // a filename the file must be written INSIDE that grant, named from the
+            // typed path. Writing straight onto the scoped folder URL produced
+            // "The file "Test" couldn't be saved in the folder "Desktop"".
+            // Returns the URL actually written, or an error message.
             func convertImageFile(
                 imageURL: URL,
                 outputURL: URL,
                 studyUID: String,
                 seriesUID: String,
                 instanceNumber: Int
-            ) -> String? {
+            ) -> (written: URL?, error: String?) {
                 do {
                     let data = try ImageConverter.secondaryCaptureData(
                         imageURL: imageURL,
                         metadata: makeMetadata(studyUID: studyUID, seriesUID: seriesUID, instanceNumber: instanceNumber),
                         useExif: useExif)
-                    try fm.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try data.write(to: outputURL, options: .atomic)
-                    return nil
+                    let r = try OutputAccess.write(data, toPath: outputURL.path, scopedURL: outputScopedURL,
+                                                   subfolder: "ImageConversion")
+                    if let note = r.note { out += note + "\n" }
+                    return (r.url, nil)
                 } catch let e as ImageConversionError {
-                    return e.errorDescription
+                    return (nil, e.errorDescription)
                 } catch {
-                    return error.localizedDescription
+                    return (nil, error.localizedDescription)
                 }
             }
 
@@ -3775,17 +3780,19 @@ private func executeDicomStudy() async {
                     }
                     let baseName = fileURL.deletingPathExtension().lastPathComponent
                     let outFileURL = outputDirURL.appendingPathComponent("\(baseName).dcm")
-                    if let err = convertImageFile(
+                    let result = convertImageFile(
                         imageURL: fileURL, outputURL: outFileURL,
                         studyUID: finalStudyUID, seriesUID: finalSeriesUID,
                         instanceNumber: instanceNum
-                    ) {
+                    )
+                    if let err = result.error {
                         failureCount += 1
                         if verbose { out += ImageConsole.fileFailureLine(inputName: fileURL.lastPathComponent, message: err) + "\n" }
                     } else {
                         successCount += 1
                         instanceNum += 1
-                        if verbose { out += ImageConsole.fileSuccessLine(inputName: fileURL.lastPathComponent, outputName: outFileURL.lastPathComponent) + "\n" }
+                        let writtenName = (result.written ?? outFileURL).lastPathComponent
+                        if verbose { out += ImageConsole.fileSuccessLine(inputName: fileURL.lastPathComponent, outputName: writtenName) + "\n" }
                     }
                 }
 
@@ -3845,21 +3852,27 @@ private func executeDicomStudy() async {
 
             // ---- Single-file conversion ----
             let finalOutputURL: URL
-            if let resolved = resolvedOutputURL {
+            if outputScopedURL != nil, let op = outputPath {
+                // Browse granted a folder; the field may now hold folder + filename.
+                // Hand the TYPED path to OutputAccess.write, which places it inside
+                // the grant (or names a file after it when it falls outside).
+                finalOutputURL = URL(fileURLWithPath: op)
+            } else if let resolved = resolvedOutputURL {
                 finalOutputURL = resolved
             } else {
                 finalOutputURL = inputURL.deletingPathExtension().appendingPathExtension("dcm")
             }
             if verbose { out += ImageConsole.convertingLine(inputPath: inputURL.path) + "\n" }
-            if let err = convertImageFile(
+            let single = convertImageFile(
                 imageURL: inputURL, outputURL: finalOutputURL,
                 studyUID: studyUIDArg ?? generateUID(),
                 seriesUID: seriesUIDArg ?? generateUID(),
                 instanceNumber: instanceNumberArg ?? 1
-            ) {
-                return ("Error: \(err)\n", 1)
+            )
+            if let err = single.error {
+                return (out + "Error: \(err)\n", 1)
             }
-            out += ImageConsole.convertedLine(outputPath: finalOutputURL.path, verbose: verbose) + "\n"
+            out += ImageConsole.convertedLine(outputPath: (single.written ?? finalOutputURL).path, verbose: verbose) + "\n"
             return (out, 0)
         }.value
         #else
@@ -4961,8 +4974,8 @@ case "dicom-study":
     /// Anonymizes DICOM files, matching dicom-anon CLI output exactly.
     private func executeDicomAnon() async {
         // Read a parameter only when its visibility conditions hold, so a value
-        // left behind by a hidden control (e.g. a PS3.15 retain toggle after
-        // switching the profile back to basic) is neither previewed nor executed.
+        // left behind by a hidden control (e.g. an OCR mode after pixel cleaning
+        // was switched off) is neither previewed nor executed.
         let value: (String) -> String = { id in
             guard let def = self.parameterDefinitions.first(where: { $0.id == id }),
                   self.satisfiesVisibility(def) else { return "" }
@@ -4988,33 +5001,29 @@ case "dicom-study":
         // comma split: a tag is written `GGGG,EEEE` and a region `x,y,w,h`.
         var request = AnonymizationWorkflow.Request(inputPath: inputPath)
         request.output = optional("output")
-        request.profile = optional("profile") ?? "basic"
         request.retainDates = value("retain-dates") == "true"
+        request.shiftDates = Int(value("shift-dates"))
         request.retainCharacteristics = value("retain-characteristics") == "true"
         request.retainDevice = value("retain-device") == "true"
         request.retainInstitution = value("retain-institution") == "true"
         request.retainUids = value("retain-uids") == "true"
         request.cleanDescriptors = value("clean-descriptors") == "true"
-        request.cleanPixelData = value("clean-pixel-data") == "true"
+        // Default-on toggle: only an explicit "false" opts out (--no-clean-pixel-data).
+        request.cleanPixelData = value("clean-pixel-data") != "false"
         request.redactRegion = CommandBuilderHelpers.splitMultiValue(value("redact-region"))
-        request.redactFill = Int(value("redact-fill"))
+        request.redactFill = optional("redact-fill")
         request.redactStyle = optional("redact-style") ?? "blank"
         request.redactLabel = optional("redact-label")
         request.recompress = optional("recompress")
-        request.detectText = value("detect-text") == "true"
-        request.detectTextMode = optional("detect-text-mode") ?? "classify"
+        request.ocrMode = optional("ocr-mode") ?? "classify"
         request.ocrAllFrames = value("ocr-all-frames") == "true"
-        request.shiftDates = Int(value("shift-dates"))
-        request.regenerateUids = value("regenerate-uids") == "true"
-        request.remove = CommandBuilderHelpers.splitMultiValue(value("remove"))
-        request.replace = CommandBuilderHelpers.splitMultiValue(value("replace"))
-        request.keep = CommandBuilderHelpers.splitMultiValue(value("keep"))
+        request.textOnly = value("text-only") == "true"
+        request.allowBurnedInPHI = value("allow-burned-in-phi") == "true"
         request.recursive = value("recursive") == "true"
         request.dryRun = value("dry-run") == "true"
         request.backup = value("backup") == "true"
         request.auditLog = optional("audit-log")
         request.force = value("force") == "true"
-        request.allowBurnedInPHI = value("allow-burned-in-phi") == "true"
         request.verbose = value("verbose") == "true"
 
         // Sandbox access via the security-scoped URLs registered by the file pickers;
@@ -5023,7 +5032,7 @@ case "dicom-study":
         let inputScopedURL  = securityScopedURLs["inputPath"]
         let outputScopedURL = securityScopedURLs["output"]
         let (output, exitCode) = await Task.detached(priority: .userInitiated) {
-            SecurityViewModel.executeAnonymization(
+            await SecurityViewModel.executeAnonymization(
                 request, inputScopedURL: inputScopedURL, outputScopedURL: outputScopedURL)
         }.value
 

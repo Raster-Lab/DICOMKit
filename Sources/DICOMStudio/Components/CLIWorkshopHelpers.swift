@@ -299,7 +299,7 @@ public enum ToolCatalogHelpers: Sendable {
         case "dicom-validate":
             return "Checks a DICOM file for conformance against the matching IOD and returns a structured report."
         case "dicom-anon":
-            return "Removes or replaces patient-identifying attributes according to PS3.15 anonymization profiles."
+            return "De-identifies DICOM files with the PS3.15 Annex E Basic Confidentiality Profile — header attributes and burned-in pixel text (OCR)."
         case "dicom-compress":
             return "Compresses or decompresses DICOM pixel data using standard photometric and codec options."
         case "dicom-query":
@@ -1977,104 +1977,100 @@ public enum ToolCatalogHelpers: Sendable {
             ]
         case "dicom-anon":
             // Mirrors `dicom-anon --help` flag for flag. Execution goes through the
-            // shared `AnonymizationWorkflow` (DICOMKit) — the code the CLI runs.
-            let ps315Only = CLIParameterVisibilityCondition(parameterId: "profile", values: ["ps315"])
-            let ocrOn = CLIParameterVisibilityCondition(parameterId: "detect-text", values: ["true"])
+            // shared `AnonymizationWorkflow` (DICOMKit) — the code the CLI runs. One
+            // profile (PS3.15 Annex E Basic), its retention options, Clean Pixel Data.
+            let cleaning = CLIParameterVisibilityCondition(parameterId: "clean-pixel-data", values: ["true", ""])
             let recompressValues = ["", "source"] + CompressionManager.supportedCodecs().map { $0.name }
             return [
                 CLIParameterDefinition(
                     id: "inputPath", flag: "", displayName: "Input File/Directory",
                     parameterType: .filePath, placeholder: "Path to DICOM file or directory",
-                    helpText: "DICOM file or directory to anonymize",
+                    helpText: "DICOM file or directory to de-identify",
                     isRequired: true
                 ),
                 CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output Path",
                     parameterType: .outputPath, placeholder: "Output file or directory path",
-                    helpText: "Destination file or directory for anonymized output (required unless Dry Run, or Detect Text alone for inspection)"
-                ),
-                CLIParameterDefinition(
-                    id: "profile", flag: "--profile", displayName: "Profile",
-                    parameterType: .enumPicker, placeholder: "basic",
-                    helpText: "basic removes 18 HIPAA identifiers; clinical-trial also strips dates; research removes the minimum set; ps315 applies the PS3.15 Annex E Basic Confidentiality Profile (with the retention options below)",
-                    defaultValue: "basic",
-                    allowedValues: ["basic", "clinical-trial", "research", "ps315"]
+                    helpText: "Destination file or directory (required unless Dry Run). Browse grants a folder: a single input file is written into it under its own name."
                 ),
 
-                // ----- PS3.15 Annex E retention options (ps315 only) -----
+                // ----- PS3.15 Annex E retention options -----
                 CLIParameterDefinition(
-                    id: "retain-dates", flag: "--retain-dates", displayName: "Retain Dates (PS3.15)",
+                    id: "retain-dates", flag: "--retain-dates", displayName: "Retain Dates (Full Dates)",
                     parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Retain Longitudinal Temporal Information: keep dates (shifted when Shift Dates is set)",
-                    visibleWhen: ps315Only
+                    helpText: "Retain Longitudinal Temporal Information with Full Dates: keep every date and time as-is. Alternative to Shift Dates."
+                ),
+                CLIParameterDefinition(
+                    id: "shift-dates", flag: "--shift-dates", displayName: "Shift Dates (Modified Dates)",
+                    parameterType: .integerField, placeholder: "",
+                    helpText: "Retain Longitudinal Temporal Information with Modified Dates: shift every date by this many days so intervals survive. Alternative to Retain Dates.",
+                    minValue: -36500, maxValue: 36500
                 ),
                 CLIParameterDefinition(
                     id: "retain-characteristics", flag: "--retain-characteristics", displayName: "Retain Patient Characteristics",
                     parameterType: .booleanToggle, placeholder: "",
-                    helpText: "PS3.15: keep age, sex, size and weight",
-                    visibleWhen: ps315Only
+                    helpText: "Keep age, sex, size and weight"
                 ),
                 CLIParameterDefinition(
                     id: "retain-device", flag: "--retain-device", displayName: "Retain Device Identity",
                     parameterType: .booleanToggle, placeholder: "",
-                    helpText: "PS3.15: keep manufacturer, model, station and serial attributes",
-                    visibleWhen: ps315Only
+                    helpText: "Keep manufacturer model, station name and serial number"
                 ),
                 CLIParameterDefinition(
                     id: "retain-institution", flag: "--retain-institution", displayName: "Retain Institution Identity",
                     parameterType: .booleanToggle, placeholder: "",
-                    helpText: "PS3.15: keep institution name, address and department",
-                    visibleWhen: ps315Only
+                    helpText: "Keep institution name, address and department"
                 ),
                 CLIParameterDefinition(
                     id: "retain-uids", flag: "--retain-uids", displayName: "Retain UIDs",
                     parameterType: .booleanToggle, placeholder: "",
-                    helpText: "PS3.15: keep every UID instead of regenerating",
-                    visibleWhen: ps315Only
+                    helpText: "Keep every UID instead of regenerating them consistently"
                 ),
                 CLIParameterDefinition(
                     id: "clean-descriptors", flag: "--clean-descriptors", displayName: "Clean Descriptors",
                     parameterType: .booleanToggle, placeholder: "",
-                    helpText: "PS3.15: retain free-text descriptors (cleaned) rather than removing them",
-                    visibleWhen: ps315Only
+                    helpText: "Keep free-text descriptors (study/series description, protocol) instead of blanking them"
                 ),
 
-                // ----- Pixel pipeline: Clean Pixel Data, OCR, style, re-encode -----
+                // ----- Clean Pixel Data option (default on) -----
                 CLIParameterDefinition(
                     id: "clean-pixel-data", flag: "--clean-pixel-data", displayName: "Clean Pixel Data",
                     parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Blank burned-in identifiers out of the image itself. Region chosen automatically (declared clinical region, else device template) unioned with Redact Regions and OCR; REFUSES rather than guessing. Records DCM 113101 and Burned In Annotation = NO only when pixels were blanked."
+                    helpText: "Blank burned-in identifiers out of the image itself (declared clinical region, device template, on-device OCR and Redact Regions, unioned). Burned In Annotation = YES is cleaned; absent, OCR decides; NO is trusted and the pixels are left alone. Off = header only; files whose pixels may still carry PHI are refused.",
+                    negatedFlag: "--no-clean-pixel-data",
+                    defaultValue: "true"
                 ),
                 CLIParameterDefinition(
-                    id: "redact-region", flag: "--redact-region", displayName: "Redact Region(s)",
-                    parameterType: .textField, placeholder: "e.g. 0,0,1024,90; 0,980,1024,44",
-                    helpText: "Rectangles to blank as x,y,width,height (implies Clean Pixel Data; unioned with automatic and OCR regions). Separate with “ ; ”.",
-                    isRepeatable: true
-                ),
-                CLIParameterDefinition(
-                    id: "detect-text", flag: "--detect-text", displayName: "Detect Text (OCR)",
-                    parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Find burned-in text with on-device OCR (Apple Vision) as a region source. Alone (no Output) it inspects and reports; with Output but without Clean Pixel Data the run is refused; with Clean Pixel Data every selected region is blanked on every frame."
-                ),
-                CLIParameterDefinition(
-                    id: "detect-text-mode", flag: "--detect-text-mode", displayName: "OCR Mode",
+                    id: "ocr-mode", flag: "--ocr-mode", displayName: "OCR Mode",
                     parameterType: .enumPicker, placeholder: "classify",
-                    helpText: "classify redacts text matching the file's own PHI, PHI-shaped patterns and anything uncertain, keeping only allowlisted clinical text; all blanks every detected region",
+                    helpText: "The two modes differ in which way they fail. header: redact only text matching the file's own PHI or a PHI-shaped pattern; scales, legends and annotations survive. Fails open — text the header never carried is kept. classify: adds PHI keywords, keeping only text on the clinical allowlist; fails closed. To erase an area whatever it reads, use Redact Region.",
                     defaultValue: "classify",
-                    allowedValues: ["classify", "all"],
-                    visibleWhen: ocrOn
+                    allowedValues: PixelCleaningWorkflow.TextDetectionMode.names,
+                    visibleWhen: cleaning
+                ),
+                CLIParameterDefinition(
+                    id: "text-only", flag: "--text-only", displayName: "Text Only",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Blank only the text OCR flagged (and any Redact Regions), at its exact position — no automatic banner band from the declared Ultrasound Regions or the device template. Pair with OCR Mode header to remove exactly the study's own identifiers, institution and dates. Drops the band safety net; verify visually.",
+                    visibleWhen: cleaning
                 ),
                 CLIParameterDefinition(
                     id: "ocr-all-frames", flag: "--ocr-all-frames", displayName: "OCR Every Frame",
                     parameterType: .booleanToggle, placeholder: "",
                     helpText: "OCR every frame instead of the first/middle/last sample",
                     isAdvanced: true,
-                    visibleWhen: ocrOn
+                    visibleWhen: cleaning
+                ),
+                CLIParameterDefinition(
+                    id: "redact-region", flag: "--redact-region", displayName: "Redact Region(s)",
+                    parameterType: .textField, placeholder: "e.g. 0,0,1024,90; 0,980,1024,44",
+                    helpText: "Rectangles to blank as x,y,width,height, unioned with the automatic sources (always applied, even when Burned In Annotation = NO). Separate with “ ; ”.",
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
                     id: "redact-style", flag: "--redact-style", displayName: "Redact Style",
                     parameterType: .enumPicker, placeholder: "blank",
-                    helpText: "blank: fill value only. label: a fixed stamp drawn into the blanked box. replace: the header engine's own anonymized value for the matched attribute (needs OCR mode classify; uncertain regions get the label). The region is always blanked first.",
+                    helpText: "blank: fill only. label: a fixed stamp drawn into the blanked box. replace: the header engine's own de-identified value for the matched attribute (needs OCR mode classify or header; uncertain regions get the label). The region is always blanked first.",
                     defaultValue: "blank",
                     allowedValues: ["blank", "label", "replace"]
                 ),
@@ -2085,11 +2081,11 @@ public enum ToolCatalogHelpers: Sendable {
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "redact-style", values: ["label", "replace"])
                 ),
                 CLIParameterDefinition(
-                    id: "redact-fill", flag: "--redact-fill", displayName: "Redact Fill Value",
-                    parameterType: .integerField, placeholder: "0",
-                    helpText: "Stored pixel value written into blanked regions (default 0 = black)",
-                    isAdvanced: true,
-                    minValue: 0, maxValue: 65535
+                    id: "redact-fill", flag: "--redact-fill", displayName: "Redact Fill",
+                    parameterType: .enumPicker, placeholder: "black",
+                    helpText: "What blanked regions are filled with: black (stored value 0) or white (the largest stored value at the image's bit depth, resolved per file).",
+                    defaultValue: "black",
+                    allowedValues: ["black", "white"]
                 ),
                 CLIParameterDefinition(
                     id: "recompress", flag: "--recompress", displayName: "Re-encode Clean Pixels",
@@ -2102,44 +2098,8 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "allow-burned-in-phi", flag: "--allow-burned-in-phi", displayName: "Allow Burned-in PHI",
                     parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Write the metadata-scrubbed file even when the pixels may still carry PHI (Burned In Annotation = YES, overlays, or OCR-detected text left unredacted). The output is marked Patient Identity Removed = NO.",
+                    helpText: "Write the metadata-scrubbed file even when the pixels may still carry PHI (Burned In Annotation = YES with cleaning off, overlays, or OCR-detected text left unredacted). The output is marked Patient Identity Removed = NO.",
                     isAdvanced: true
-                ),
-
-                // ----- Legacy engine options -----
-                CLIParameterDefinition(
-                    id: "shift-dates", flag: "--shift-dates", displayName: "Shift Dates (days)",
-                    parameterType: .integerField, placeholder: "0",
-                    helpText: "Shift all date tags by this many days, preserving intervals (positive or negative)",
-                    isAdvanced: true,
-                    minValue: -36500, maxValue: 36500
-                ),
-                CLIParameterDefinition(
-                    id: "regenerate-uids", flag: "--regenerate-uids", displayName: "Regenerate UIDs",
-                    parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Regenerate UIDs while preserving references (legacy profiles; ps315 regenerates unless Retain UIDs)",
-                    isAdvanced: true
-                ),
-                CLIParameterDefinition(
-                    id: "remove", flag: "--remove", displayName: "Remove Tag(s)",
-                    parameterType: .textField, placeholder: "e.g. 0010,0040; PatientName",
-                    helpText: "Additional tags to remove (GGGG,EEEE or keyword). Separate with “ ; ”.",
-                    isAdvanced: true,
-                    isRepeatable: true
-                ),
-                CLIParameterDefinition(
-                    id: "replace", flag: "--replace", displayName: "Replace Tag(s)",
-                    parameterType: .textField, placeholder: "e.g. 0010,0010=ANON; 0010,0020=ID001",
-                    helpText: "Replace tags with fixed values in TAG=VALUE format. Separate pairs with “ ; ”.",
-                    isAdvanced: true,
-                    isRepeatable: true
-                ),
-                CLIParameterDefinition(
-                    id: "keep", flag: "--keep", displayName: "Keep Tag(s)",
-                    parameterType: .textField, placeholder: "e.g. 0008,0060; Modality",
-                    helpText: "Preserve tags the profile would otherwise remove (GGGG,EEEE or keyword). Separate with “ ; ”.",
-                    isAdvanced: true,
-                    isRepeatable: true
                 ),
 
                 // ----- Run control -----
@@ -2151,7 +2111,7 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "dry-run", flag: "--dry-run", displayName: "Dry Run",
                     parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Preview changes without writing any files (shows the pixel redaction plan when pixel work is configured)"
+                    helpText: "Preview changes without writing any files (shows the pixel redaction plan)"
                 ),
                 CLIParameterDefinition(
                     id: "backup", flag: "--backup", displayName: "Backup Originals",
@@ -2162,7 +2122,7 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "audit-log", flag: "--audit-log", displayName: "Audit Log Path",
                     parameterType: .outputPath, placeholder: "Optional audit log file path",
-                    helpText: "Write the per-tag (and PHI-safe OCR) audit log to this file — also on a dry run",
+                    helpText: "Write the per-tag action log (never values) and the PHI-safe OCR lines to this file — also on a dry run",
                     isAdvanced: true
                 ),
                 CLIParameterDefinition(
@@ -4452,24 +4412,27 @@ public enum EducationalHelpers: Sendable {
             ]
         case "dicom-anon":
             return [
-                CLIExamplePreset(toolID: toolID, title: "Basic Anonymization",
-                                 presetDescription: "Anonymize using the basic profile",
-                                 commandString: "dicom-anon --profile basic --output /output/ scan.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "De-identify (Basic Profile)",
+                                 presetDescription: "PS3.15 Annex E Basic Profile, header and pixels; nothing retained",
+                                 commandString: "dicom-anon scan.dcm --output anon.dcm"),
                 CLIExamplePreset(toolID: toolID, title: "Dry Run Preview",
-                                 presetDescription: "Preview anonymization changes without writing files",
-                                 commandString: "dicom-anon --profile basic --dry-run scan.dcm"),
-                CLIExamplePreset(toolID: toolID, title: "PS3.15 with Retained Dates",
-                                 presetDescription: "PS3.15 Annex E Basic Profile, keeping shifted dates and patient characteristics",
-                                 commandString: "dicom-anon scan.dcm --output anon.dcm --profile ps315 --retain-dates --retain-characteristics --shift-dates 100"),
-                CLIExamplePreset(toolID: toolID, title: "OCR Inspection Only",
-                                 presetDescription: "Detect burned-in text with on-device OCR and report it; nothing is written",
-                                 commandString: "dicom-anon scan.dcm --detect-text"),
-                CLIExamplePreset(toolID: toolID, title: "Clean Pixel Data with OCR",
-                                 presetDescription: "PS3.15 profile plus Clean Pixel Data: blank every PHI region OCR finds, stamped REDACTED",
-                                 commandString: "dicom-anon scan.dcm --output anon.dcm --profile ps315 --clean-pixel-data --detect-text --redact-style label"),
-                CLIExamplePreset(toolID: toolID, title: "Pixel Plan Dry Run",
-                                 presetDescription: "Show the unioned redaction plan (explicit region + OCR) without modifying anything",
-                                 commandString: "dicom-anon scan.dcm --dry-run --clean-pixel-data --detect-text --redact-region 0,0,1024,90"),
+                                 presetDescription: "Show the header changes and the pixel redaction plan without writing",
+                                 commandString: "dicom-anon scan.dcm --dry-run"),
+                CLIExamplePreset(toolID: toolID, title: "Longitudinal study (shifted dates)",
+                                 presetDescription: "Keep intervals between studies and the patient's age/sex",
+                                 commandString: "dicom-anon scan.dcm --output anon.dcm --shift-dates 100 --retain-characteristics"),
+                CLIExamplePreset(toolID: toolID, title: "Keep scales, remove only PHI (header OCR mode)",
+                                 presetDescription: "Blank only text matching the file's own PHI, at its position, in white; scales and legends survive. Fails open — verify visually",
+                                 commandString: "dicom-anon scan.dcm --output anon.dcm --ocr-mode header --text-only --redact-fill white"),
+                CLIExamplePreset(toolID: toolID, title: "Stamp cleaned regions",
+                                 presetDescription: "Blank every PHI region and stamp it REDACTED so reviewers see it was deliberate",
+                                 commandString: "dicom-anon scan.dcm --output anon.dcm --redact-style label"),
+                CLIExamplePreset(toolID: toolID, title: "Explicit banner + keep source codec",
+                                 presetDescription: "Blank a fixed banner and re-encode in the source transfer syntax",
+                                 commandString: "dicom-anon scan.dcm --output anon.dcm --redact-region 0,0,1024,90 --recompress source"),
+                CLIExamplePreset(toolID: toolID, title: "Header only",
+                                 presetDescription: "Skip pixel cleaning; files whose pixels may carry PHI are refused",
+                                 commandString: "dicom-anon scan.dcm --output anon.dcm --no-clean-pixel-data"),
             ]
         case "dicom-convert":
             return [

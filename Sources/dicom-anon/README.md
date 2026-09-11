@@ -1,229 +1,114 @@
 # dicom-anon
 
-A command-line tool for anonymizing DICOM files to protect patient privacy.
+De-identifies DICOM files to the DICOM standard: **PS3.15 Annex E, Basic Application
+Level Confidentiality Profile** — header attributes *and* text burned into the pixels.
 
-## Features
+There is one profile and it is always applied. The standard's named **retention
+options** are the only way to keep more; its **Clean Pixel Data** option is on by
+default. There is no per-tag keep/replace override: a file this tool writes either
+meets the profile it declares in (0012,0063)/(0012,0064), or is marked
+Patient Identity Removed = NO and written only if you say so.
 
-- **Multiple Anonymization Profiles**:
-  - **Basic Profile**: Removes patient name, ID, birth date, address, phone numbers, and institution information
-  - **Clinical Trial Profile**: Basic profile plus date shifting for all study dates
-  - **Research Profile**: Minimal anonymization retaining clinical data while removing direct identifiers
-  - **Custom Profile**: User-defined tag removal and replacement
+## What the Basic Profile does
 
-- **Anonymization Actions**:
-  - Remove tags entirely
-  - Replace with empty values
-  - Replace with dummy values (e.g., "ANONYMOUS")
-  - Hash values for consistent pseudonymization (SHA-256)
-  - Shift dates by random offset while preserving intervals
-  - Regenerate UIDs while maintaining study/series relationships
+- Every direct identifier in PS3.15 Table E.1-1 is handled by its action code:
+  Type 1/2 attributes such as Patient's Name are **zeroed** (present, empty — the file
+  stays conformant), Type 3 ones such as Institution Name are **removed**.
+- Every sequence item is scrubbed recursively.
+- Every remaining person-name (PN) attribute is removed; every instance UID is
+  **regenerated consistently** (one map per run, so a study still holds together);
+  every private tag is removed.
+- Dates and times are zeroed unless a temporal option is chosen.
+- The de-identification method is recorded: (0012,0062) Patient Identity Removed,
+  (0012,0063) De-identification Method, (0012,0064) with the CID 7050 codes
+  (113100 Basic Profile, plus one code per option applied, plus 113101 when pixels
+  were cleaned).
 
-- **Safety Features**:
-  - Dry-run mode to preview changes without modifying files
-  - Backup original files before anonymization
-  - Audit logging for compliance and tracking
-  - PHI leak detection in private tags
-  - Batch processing with consistent pseudonyms
+## Retention options (PS3.15 E.3)
 
-## Installation
+| Flag | Option | Code |
+|---|---|---|
+| `--retain-dates` | Retain Longitudinal Temporal Information with Full Dates | 113106 |
+| `--shift-dates N` | … with Modified Dates: every date (birth date included) shifted by N days, times untouched — intervals survive, real dates do not | 113107 |
+| `--retain-characteristics` | Retain Patient Characteristics (age, sex, size, weight) | 113108 |
+| `--retain-device` | Retain Device Identity (model, station name, serial) | 113109 |
+| `--retain-institution` | Retain Institution Identity (name, address, department) | 113112 |
+| `--retain-uids` | Retain UIDs (no regeneration) | 113110 |
+| `--clean-descriptors` | Clean Descriptors: keep study/series descriptions | 113105 |
 
-Build from source:
+`--retain-dates` and `--shift-dates` are alternatives; passing both is an error.
 
-```bash
-swift build -c release --target dicom-anon
-```
+## Clean Pixel Data (113101) — on by default
 
-The executable will be available at `.build/release/dicom-anon`.
+Burned-in identifiers are located from up to four sources, unioned: the declared
+clinical region (Ultrasound Regions, blank everything outside), a curated device
+template, on-device OCR (Apple Vision), and any `--redact-region` you name. Regions
+are blanked (decode → mask every frame → attest) and the file is re-emitted as
+Explicit VR Little Endian unless `--recompress` says otherwise. Burned In Annotation
+is set to NO and 113101 recorded **only when pixels were actually blanked**.
+
+**Burned In Annotation (0028,0301) policy**
+
+| (0028,0301) | What happens |
+|---|---|
+| `YES` | Pixels are cleaned. If no source can locate the text the run **refuses** rather than guessing. |
+| absent | OCR decides: text found → cleaned; nothing found → pixels untouched. |
+| `NO` | The declaration is trusted; pixels are neither inspected nor modified. The verbose console and the audit log say so. Overlay planes or `--redact-region` override the trust. |
+
+| Flag | Role |
+|---|---|
+| `--no-clean-pixel-data` | Header only. Files whose pixels may still carry PHI are refused unless `--allow-burned-in-phi`. |
+| `--ocr-mode header\|classify` | `header`: only text matching the file's own PHI or a PHI-shaped pattern; scales and legends survive; fails **open**. `classify` (default): plus PHI keywords, keeping only text on the clinical allowlist; fails **closed**. To erase an area whatever it reads, use `--redact-region`. |
+| `--text-only` | Blank only the flagged text at its exact position — no banner band from the declared regions or the device template. Pair with `--ocr-mode header`. Drops the safety net; verify visually. |
+| `--ocr-all-frames` | OCR every frame instead of first/middle/last. |
+| `--redact-region x,y,w,h` | Explicit rectangle (repeatable); always applied. |
+| `--redact-fill black\|white\|N` | Fill value for blanked samples. |
+| `--redact-style blank\|label\|replace` | Fill only; a `REDACTED` stamp (`--redact-label`); or the header engine's own de-identified value (a shifted date) so pixels and header agree. |
+| `--recompress source\|<codec>` | Re-encode the clean pixels; regions are re-verified blank afterwards. |
+| `--allow-burned-in-phi` | Write anyway; output marked Patient Identity Removed = NO. |
+
+## Run control
+
+`--output`, `--recursive`, `--dry-run` (header changes and the pixel redaction plan,
+nothing written), `--backup`, `--audit-log` (tags and action codes — never values),
+`--force`, `--verbose`.
 
 ## Usage
 
-### Basic Anonymization
-
 ```bash
-# Anonymize a single file with basic profile
-dicom-anon file.dcm --output anon.dcm --profile basic
+# Strict Basic Profile, header and pixels
+dicom-anon file.dcm --output anon.dcm
 
-# Preview changes without modifying (dry-run)
-dicom-anon file.dcm --profile basic --dry-run
+# Longitudinal study: keep intervals and age/sex
+dicom-anon study/ --output anon_study/ --recursive --shift-dates 100 --retain-characteristics
+
+# Preview everything, write nothing
+dicom-anon file.dcm --dry-run
+
+# Ultrasound: remove exactly the study's own identifiers, keep scales and legends
+dicom-anon echo.dcm --output anon.dcm --ocr-mode header --text-only --redact-fill white
+
+# Fixed banner, keep the source codec
+dicom-anon xa.dcm --output anon.dcm --redact-region 0,0,1024,90 --recompress source
+
+# Header only (refuses files that declare burned-in text)
+dicom-anon ct.dcm --output anon.dcm --no-clean-pixel-data
 ```
 
-### Date Shifting
+## Exit codes
 
-```bash
-# Shift all dates by 100 days
-dicom-anon file.dcm --output anon.dcm --profile basic --shift-dates 100
-```
-
-### UID Regeneration
-
-```bash
-# Regenerate UIDs while preserving references
-dicom-anon file.dcm --output anon.dcm --profile basic --regenerate-uids
-```
-
-### Batch Processing
-
-```bash
-# Anonymize entire directory recursively
-dicom-anon input_dir/ --output anon_dir/ --profile clinical-trial --recursive
-
-# With verbose output
-dicom-anon input_dir/ --output anon_dir/ --profile basic --recursive --verbose
-```
-
-### Custom Anonymization
-
-```bash
-# Remove specific tags
-dicom-anon file.dcm --output anon.dcm --remove 0010,0010 --remove PatientID
-
-# Replace specific tags with values
-dicom-anon file.dcm --output anon.dcm --replace 0010,0030=19700101
-
-# Keep specific tags from being anonymized
-dicom-anon file.dcm --output anon.dcm --profile basic --keep Modality --keep StudyDescription
-```
-
-### Audit Logging
-
-```bash
-# Generate audit log for compliance
-dicom-anon file.dcm --output anon.dcm --profile basic --audit-log anonymization.log
-
-# Review audit log
-cat anonymization.log
-```
-
-### Backup and Safety
-
-```bash
-# Create backup before anonymization
-dicom-anon file.dcm --output anon.dcm --profile basic --backup
-
-# Force parsing of non-standard DICOM files
-dicom-anon file.dcm --output anon.dcm --profile basic --force
-```
-
-## Anonymization Profiles
-
-### Basic Profile
-
-Removes or replaces:
-- Patient Name → "ANONYMOUS"
-- Patient ID → Hashed value
-- Patient Birth Date → Removed
-- Patient Address, Phone → Removed
-- Referring/Performing Physician Names → Removed
-- Institution Name/Address → Removed
-- Device Serial Number → Removed
-
-### Clinical Trial Profile
-
-Includes Basic Profile plus:
-- Study/Series/Acquisition Dates → Shifted by specified offset
-- Study/Series/Acquisition Times → Removed
-- Preserves intervals between dates
-
-### Research Profile
-
-Minimal anonymization:
-- Patient Name → "ANONYMOUS"
-- Patient ID → Hashed value
-- Patient Birth Date → Removed
-- Patient Address, Phone → Removed
-- Retains all clinical and study metadata
-
-## Examples
-
-### Example 1: Basic Anonymization
-
-```bash
-dicom-anon patient_scan.dcm --output anon_scan.dcm --profile basic
-```
-
-Output:
-```
-Anonymization Summary:
-  Total files: 1
-  Successful: 1
-  Failed: 0
-```
-
-### Example 2: Clinical Trial with Date Shifting
-
-```bash
-dicom-anon study/ --output anon_study/ \
-  --profile clinical-trial \
-  --shift-dates 90 \
-  --regenerate-uids \
-  --recursive \
-  --audit-log trial_anon.log \
-  --verbose
-```
-
-### Example 3: Custom Anonymization
-
-```bash
-dicom-anon research.dcm --output anon_research.dcm \
-  --remove PatientName \
-  --remove PatientID \
-  --replace InstitutionName="Research Site" \
-  --keep StudyDescription \
-  --keep Modality
-```
-
-## Security Considerations
-
-1. **PHI Removal**: The tool removes Protected Health Information (PHI) according to HIPAA guidelines and DICOM Supplement 142 (Attribute Confidentiality Profiles)
-
-2. **Private Tags**: Private tags are scanned for potential PHI and warnings are generated
-
-3. **Burned-in Text**: The tool cannot detect or remove burned-in annotations in pixel data. Use caution with images containing burned-in patient information.
-
-4. **Audit Trail**: Always use `--audit-log` for compliance and tracking
-
-5. **Verification**: Always verify anonymized files before distribution using:
-   ```bash
-   dicom-info anon.dcm --detailed
-   ```
-
-## DICOM Supplement 142 Compliance
-
-This tool follows DICOM Supplement 142 - Attribute Confidentiality Profiles for:
-- Basic Application Level Confidentiality Profile
-- Clean Pixel Data Option
-- Retain Longitudinal Temporal Information with Modified Dates Option
-
-## Exit Codes
-
-- `0`: Success - all files anonymized successfully
-- `1`: Failure - one or more files failed to anonymize
-
-## Performance
-
-- Single file anonymization: <100ms for typical files
-- Batch processing: ~50-100 files/second
-- Memory efficient: processes files individually
+- `0`: every file de-identified
+- `1`: one or more files failed or were refused
 
 ## Limitations
 
-1. Cannot detect or remove burned-in text in pixel data
-2. Does not modify private tags automatically (generates warnings)
-3. Sequence anonymization follows main dataset rules
-4. Compressed transfer syntaxes are preserved without modification
+1. Region selection is not verifiable by test — inspect output visually before release.
+2. `--ocr-mode header` fails open: text the header never carried is not recognised.
+3. The attribute table is the direct-identifier core of Table E.1-1 with VR sweeps
+   covering the rest; see `ConfidentialityProfile.swift`.
+4. OCR needs Apple Vision; on other platforms pixel cleaning is a hard error, not a no-op.
 
 ## See Also
 
-- `dicom-info`: Display DICOM file information
-- `dicom-validate`: Validate DICOM file conformance
-- `dicom-convert`: Convert DICOM transfer syntaxes
-
-## References
-
-- DICOM Standard PS3.15 - Security and System Management Profiles
-- DICOM Supplement 142 - Clinical Trial De-identification Profiles
-- HIPAA Privacy Rule - De-identification of Protected Health Information
-
-## License
-
-Part of DICOMKit - See LICENSE file for details.
+- `dicom-info`, `dicom-validate`, `dicom-convert`
+- DICOM PS3.15 Annex E — Attribute Confidentiality Profiles; PS3.16 CID 7050

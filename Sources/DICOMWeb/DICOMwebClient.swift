@@ -32,7 +32,7 @@ import FoundationNetworking
 ///     instanceUID: "1.2.3.4.5.6.7"
 /// )
 /// ```
-#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS)
+#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public final class DICOMwebClient: @unchecked Sendable {
     
     // MARK: - Types

@@ -367,12 +367,21 @@ public struct ImageSink: PrintOutputSink {
 
 // MARK: - Paper sink
 
+// Spooling means launching `/usr/bin/lp` as a subprocess, and `Process`/`Pipe`
+// exist only where a platform lets a program spawn one — macOS and Linux, not
+// iOS/tvOS/visionOS. The guard is the honest boundary rather than a compile
+// workaround: those platforms have no CUPS queue to spool to either. The other
+// sinks (screen, PDF, image) build everywhere.
+#if os(macOS) || os(Linux)
+
 /// Sends each film to a real printer queue via CUPS `lp`.
 ///
 /// Opt-in by construction: ``allowPaper`` must be set, so a misconfigured
 /// emulator cannot spool hundreds of pages by accident. `lp` keeps DICOMPrintKit
 /// AppKit-free and works unchanged on Linux; the macOS print panel belongs in
 /// the app layer.
+///
+/// - Note: Available on macOS and Linux only.
 public struct PaperPrinterSink: PrintOutputSink {
     /// The CUPS queue name (`lp -d`). `nil` uses the system default queue.
     public let queue: String?
@@ -459,6 +468,8 @@ public struct PaperPrinterSink: PrintOutputSink {
         return output
     }
 }
+
+#endif
 
 /// A monotonic counter shared by the value-type sinks so their file names stay
 /// distinct across emits without making the sink itself an actor.

@@ -258,6 +258,138 @@ final class PixelRedactionTests: XCTestCase {
         }
     }
 
+    /// `header` OCR mode opts out of the inversion: only OCR regions remain, nothing
+    /// outside the declared area is touched — scales and legends live there.
+    func testKeepRegionInversionCanBeSwitchedOffForHeaderMode() {
+        var ds = imageDataSet(rows: 100, columns: 100)
+        ds.setString("US", for: .modality, vr: .CS)
+        let item = SequenceItem(elements: [
+            DataElement.uint32(tag: Tag(group: 0x0018, element: 0x6018), value: 10),
+            DataElement.uint32(tag: Tag(group: 0x0018, element: 0x601A), value: 20),
+            DataElement.uint32(tag: Tag(group: 0x0018, element: 0x601C), value: 90),
+            DataElement.uint32(tag: Tag(group: 0x0018, element: 0x601E), value: 95),
+        ])
+        ds.setSequence([item], for: Tag(group: 0x0018, element: 0x6011))
+        let ocr = PixelRedactionPlan.Region(x: 5, y: 2, width: 40, height: 10)
+
+        let plan = PixelRedactionPlan.plan(for: ds, detectedRegions: [ocr], blankOutsideDeclaredRegions: false)
+        guard case .redact(let regions, _) = plan.decision else {
+            return XCTFail("expected redact, got \(plan.decision)")
+        }
+        XCTAssertFalse(plan.sources.contains { $0.basis == .keepRegionInversion })
+        XCTAssertTrue(regions.contains(ocr))
+        // None of the four bands the declaration would have produced.
+        XCTAssertFalse(regions.contains { $0.y == 0 && $0.height == 20 }, "top band: \(regions)")
+        XCTAssertFalse(regions.contains { $0.y == 95 }, "bottom band: \(regions)")
+        XCTAssertFalse(regions.contains { $0.x == 0 && $0.width == 10 }, "left band: \(regions)")
+        XCTAssertFalse(regions.contains { $0.x == 90 }, "right band: \(regions)")
+        // The device template (a curated banner strip) is still a source: switching the
+        // inversion off must not silently drop every derived strategy — but the
+        // declaration protects the scan area, so the strip is clipped to outside it.
+        XCTAssertTrue(plan.sources.contains { $0.basis == .deviceTemplate }, "\(plan.sources.map(\.basis))")
+        // Not merely outside the box: outside the ROWS it spans (the legend beside a
+        // sector — colour-bar label, TI/MI — lives in those rows and must survive).
+        let scanRows = PixelRedactionPlan.Region(x: 0, y: 20, width: 100, height: 75)
+        for r in regions where r != ocr {
+            XCTAssertTrue(r.subtracting(scanRows) == [r], "template rect \(r) reaches into the scan rows \(scanRows)")
+        }
+        XCTAssertTrue(regions.contains { $0.y == 0 && $0.height <= 20 && $0.width == 100 },
+                      "the banner rows above the scan area are still templated: \(regions)")
+
+        // With nothing detected, the inversion off and no template, there is no
+        // strategy left — nothingToDo on a clean-looking image, an honest unresolved on
+        // one that declares burned-in text. Never a silent pass.
+        ds.setString("OT", for: .modality, vr: .CS)
+        guard case .nothingToDo = PixelRedactionPlan.plan(for: ds, blankOutsideDeclaredRegions: false).decision else {
+            return XCTFail("clean-looking image with no source should be nothingToDo")
+        }
+        ds.setString("YES", for: .burnedInAnnotation, vr: .CS)
+        guard case .unresolved = PixelRedactionPlan.plan(for: ds, blankOutsideDeclaredRegions: false).decision else {
+            return XCTFail("declared burned-in text with no source must be unresolved")
+        }
+    }
+
+    /// `--text-only` opts out of EVERY derived band: neither the keep-region inversion
+    /// nor the device template contributes, whatever the OCR mode. Only explicit
+    /// rectangles and OCR verdicts blank pixels, so the scanner settings, scales and
+    /// legends the classifier kept survive in place. No source at all is still never a
+    /// silent pass.
+    func testTextOnlySkipsEveryDerivedBand() {
+        var ds = imageDataSet(rows: 100, columns: 100)
+        ds.setString("US", for: .modality, vr: .CS)
+        ds.setString("GE HEALTHCARE ULTRASOUND", for: .manufacturer, vr: .LO)
+        ds.setString("Vivid S70", for: Tag(group: 0x0008, element: 0x1090), vr: .LO)
+        let item = SequenceItem(elements: [
+            DataElement.uint32(tag: Tag(group: 0x0018, element: 0x6018), value: 10),
+            DataElement.uint32(tag: Tag(group: 0x0018, element: 0x601A), value: 20),
+            DataElement.uint32(tag: Tag(group: 0x0018, element: 0x601C), value: 90),
+            DataElement.uint32(tag: Tag(group: 0x0018, element: 0x601E), value: 95),
+        ])
+        ds.setSequence([item], for: Tag(group: 0x0018, element: 0x6011))
+        let ocr = PixelRedactionPlan.Region(x: 5, y: 2, width: 40, height: 10)
+
+        for inversion in [true, false] {
+            let plan = PixelRedactionPlan.plan(
+                for: ds, detectedRegions: [ocr], blankOutsideDeclaredRegions: inversion, textOnly: true)
+            guard case .redact(let regions, let basis) = plan.decision else {
+                return XCTFail("expected redact, got \(plan.decision)")
+            }
+            XCTAssertEqual(basis, .textDetection)
+            XCTAssertEqual(plan.sources.map(\.basis), [.textDetection], "inversion=\(inversion)")
+            XCTAssertEqual(regions, [ocr], "only the flagged text, at its exact position: \(regions)")
+        }
+
+        // Explicit rectangles still count — the operator named them.
+        let explicit = PixelRedactionPlan.Region(x: 0, y: 96, width: 100, height: 4)
+        let both = PixelRedactionPlan.plan(
+            for: ds, explicitRegions: [explicit], detectedRegions: [ocr], textOnly: true)
+        guard case .redact(let regions, let basis) = both.decision else {
+            return XCTFail("expected redact, got \(both.decision)")
+        }
+        XCTAssertEqual(basis, .explicit)
+        XCTAssertEqual(regions, [explicit, ocr])
+
+        // Nothing flagged: a clean-looking image is nothingToDo, a declared burned-in
+        // one is an honest unresolved — the band would have been the safety net.
+        guard case .nothingToDo = PixelRedactionPlan.plan(for: ds, textOnly: true).decision else {
+            return XCTFail("no text and no declaration should be nothingToDo")
+        }
+        ds.setString("YES", for: .burnedInAnnotation, vr: .CS)
+        guard case .unresolved = PixelRedactionPlan.plan(for: ds, textOnly: true).decision else {
+            return XCTFail("declared burned-in text with no flagged text must be unresolved")
+        }
+        // …and without text-only the very same data set still gets its bands.
+        guard case .redact(_, let derived) = PixelRedactionPlan.plan(for: ds).decision else {
+            return XCTFail("the derived strategies must be untouched when text-only is off")
+        }
+        XCTAssertEqual(derived, .keepRegionInversion)
+    }
+
+    func testRegionSubtracting() {
+        typealias R = PixelRedactionPlan.Region
+        let strip = R(x: 0, y: 0, width: 100, height: 91)
+        let box = R(x: 50, y: 50, width: 40, height: 100)
+        XCTAssertEqual(Set(strip.subtracting(box)), [
+            R(x: 0, y: 0, width: 100, height: 50),      // above the box
+            R(x: 0, y: 50, width: 50, height: 41),      // left of it
+            R(x: 90, y: 50, width: 10, height: 41),     // right of it
+        ])
+        XCTAssertEqual(strip.subtracting(R(x: 0, y: 200, width: 10, height: 10)), [strip], "no overlap → unchanged")
+        XCTAssertEqual(strip.subtracting(R(x: 0, y: 0, width: 100, height: 91)), [], "covered → nothing")
+        XCTAssertEqual(Set(strip.subtracting(R(x: 10, y: 10, width: 10, height: 10))).count, 4, "interior hole → four rects")
+        // Area is conserved.
+        let hole = R(x: 10, y: 10, width: 10, height: 10)
+        XCTAssertEqual(strip.subtracting(hole).reduce(0) { $0 + $1.width * $1.height }, 100 * 91 - 100)
+    }
+
+    func testRegionCovers() {
+        let band = PixelRedactionPlan.Region(x: 0, y: 0, width: 100, height: 50)
+        XCTAssertTrue(band.covers(PixelRedactionPlan.Region(x: 10, y: 5, width: 20, height: 10)))
+        XCTAssertTrue(band.covers(band))
+        XCTAssertFalse(band.covers(PixelRedactionPlan.Region(x: 90, y: 5, width: 20, height: 10)), "spills right")
+        XCTAssertFalse(band.covers(PixelRedactionPlan.Region(x: 10, y: 45, width: 20, height: 10)), "spills below")
+    }
+
     /// A declaration covering the whole frame yields nothing to blank; that must fall
     /// through to other strategies rather than reporting a clean image.
     func testFullFrameDeclarationFallsThroughInsteadOfClaimingClean() {

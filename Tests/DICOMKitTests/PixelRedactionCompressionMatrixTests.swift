@@ -113,7 +113,7 @@ final class PixelRedactionCompressionMatrixTests: XCTestCase {
         Case(codec: "jpeg-xl-lossless",   kind: .gray8,  frames: 1, lossless: true),
     ]
 
-    func testEverySourceEncodingIsDecodedMaskedOnEveryFrameAndReemittedUncompressed() throws {
+    func testEverySourceEncodingIsDecodedMaskedOnEveryFrameAndReemittedUncompressed() async throws {
         let manager = CompressionManager()
         var ran: [String] = []
         var skipped: [String] = []
@@ -160,8 +160,8 @@ final class PixelRedactionCompressionMatrixTests: XCTestCase {
             }
 
             // detect → plan → mask → write
-            let report = try PixelCleaningWorkflow().run(
-                fileData: source, options: .init(cleanPixelData: true, detectText: .all), dryRun: false)
+            let report = try await PixelCleaningWorkflow().run(
+                fileData: source, options: .init(cleanPixelData: true, detectText: .classify), dryRun: false)
             let outcome = try XCTUnwrap(report.outcome, "\(label): the banner must be detected on a \(sourceTS) source")
             XCTAssertEqual(outcome.frameCount, c.frames, label)
             let out = try DICOMFile.read(from: report.data)
@@ -206,7 +206,7 @@ final class PixelRedactionCompressionMatrixTests: XCTestCase {
             XCTAssertEqual(mismatchOutside, 0, "\(label): pixels outside the mask must equal the decoded source")
 
             // Oracle 2: no detectable text remains on any frame.
-            let leftover = try TextRegionDetector().detect(in: out, allFrames: true)
+            let leftover = try await TextRegionDetector().detect(in: out, allFrames: true)
             XCTAssertTrue(leftover.isEmpty, "\(label): text survived: \(leftover.map(\.text))")
 
             // Oracle 3: attestation earned.
@@ -238,13 +238,13 @@ final class PixelRedactionCompressionMatrixTests: XCTestCase {
 
     /// A YBR JPEG source: the decode yields RGB and the descriptor says so — the
     /// classic "masked the buffer, kept the compressed tag" failure is impossible here.
-    func testColourJPEGSourceLeavesConsistentPhotometricAndNoText() throws {
+    func testColourJPEGSourceLeavesConsistentPhotometricAndNoText() async throws {
         let native = try nativeFile(kind: .rgb, frames: 2)
         let source: Data
         do { source = try CompressionManager().compressData(native, codec: "jpeg-baseline", quality: nil) }
         catch { throw XCTSkip("jpeg baseline RGB encode unavailable: \(error)") }
-        let report = try PixelCleaningWorkflow().run(
-            fileData: source, options: .init(cleanPixelData: true, detectText: .all, style: .label("REDACTED")), dryRun: false)
+        let report = try await PixelCleaningWorkflow().run(
+            fileData: source, options: .init(cleanPixelData: true, detectText: .classify, style: .label("REDACTED")), dryRun: false)
         let out = try DICOMFile.read(from: report.data)
         let pi = out.dataSet.string(for: .photometricInterpretation)?.trimmingCharacters(in: .whitespaces)
         XCTAssertTrue(pi == "RGB" || pi == "YBR_FULL" || pi == "YBR_FULL_422", "unexpected PI \(String(describing: pi))")
@@ -252,7 +252,7 @@ final class PixelRedactionCompressionMatrixTests: XCTestCase {
         XCTAssertEqual(out.fileMetaInformation.string(for: Tag(group: 0x0002, element: 0x0010))?
             .trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")), "1.2.840.10008.1.2.1")
         // Renders (so a viewer can show it) and reads as the stamp only.
-        let texts = try TextRegionDetector().detect(in: out, allFrames: true).map { $0.text.uppercased() }
+        let texts = try await TextRegionDetector().detect(in: out, allFrames: true).map { $0.text.uppercased() }
         XCTAssertFalse(texts.contains { $0.contains("SMITH") }, "\(texts)")
         XCTAssertTrue(texts.contains { $0.contains("REDACTED") }, "\(texts)")
     }

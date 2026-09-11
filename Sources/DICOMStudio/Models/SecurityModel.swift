@@ -239,125 +239,6 @@ public extension SecurityCertificateStatus {
     static var unknown: SecurityCertificateStatus { .missing }
 }
 
-// MARK: - Anonymization Profile
-
-/// Standard anonymization profile.
-/// Reference: DICOM PS3.15 Annex E – Attribute Confidentiality Profiles
-public enum AnonymizationProfile: String, Sendable, Equatable, Hashable, CaseIterable {
-    case basic            = "BASIC"
-    case clinicalTrial    = "CLINICAL_TRIAL"
-    case research         = "RESEARCH"
-    case hipaaeSafeHarbor = "HIPAA_SAFE_HARBOR"
-    case custom           = "CUSTOM"
-    /// PS3.15 Annex E Basic Application Level Confidentiality Profile (`--profile ps315`).
-    case ps315            = "PS315"
-
-    /// Human-readable display name.
-    public var displayName: String {
-        switch self {
-        case .basic:            return "Basic (Remove Direct Identifiers)"
-        case .clinicalTrial:    return "Clinical Trial (Remove + Dates)"
-        case .research:         return "Research (Minimal Removal)"
-        case .hipaaeSafeHarbor: return "HIPAA Safe Harbor"
-        case .custom:           return "Custom Rules"
-        case .ps315:            return "PS3.15 Annex E (Confidentiality Profile)"
-        }
-    }
-
-    /// CLI flag value for --profile (matches dicom-anon).
-    public var cliFlag: String {
-        switch self {
-        case .basic:            return "basic"
-        case .clinicalTrial:    return "clinical-trial"
-        case .research:         return "research"
-        case .hipaaeSafeHarbor: return "basic"   // HIPAA Safe Harbor uses basic profile in CLI
-        case .custom:           return "basic"
-        case .ps315:            return "ps315"
-        }
-    }
-
-    /// Short description.
-    public var shortDescription: String {
-        switch self {
-        case .basic:            return "Removes 18 HIPAA direct identifiers from DICOM metadata."
-        case .clinicalTrial:    return "Removes direct identifiers plus study/acquisition dates."
-        case .research:         return "Minimal removal: PatientName, PatientID, PatientBirthDate only."
-        case .hipaaeSafeHarbor: return "Applies HIPAA Safe Harbor de-identification (45 CFR §164.514(b)(2))."
-        case .custom:           return "Apply user-defined tag-level anonymization rules."
-        case .ps315:            return "PS3.15 Annex E Basic Profile with optional retention options and Clean Pixel Data."
-        }
-    }
-}
-
-// MARK: - Tag Action
-
-/// Action to apply to a DICOM tag during anonymization.
-public enum TagAction: String, Sendable, Equatable, Hashable, CaseIterable {
-    case remove     = "REMOVE"
-    case replace    = "REPLACE"
-    case hash       = "HASH"
-    case shiftDate  = "SHIFT_DATE"
-    case keepDate   = "KEEP_DATE"
-    case remapUID   = "REMAP_UID"
-
-    /// Human-readable display name.
-    public var displayName: String {
-        switch self {
-        case .remove:    return "Remove"
-        case .replace:   return "Replace with placeholder"
-        case .hash:      return "Hash (SHA-256)"
-        case .shiftDate: return "Shift date"
-        case .keepDate:  return "Keep (do not modify)"
-        case .remapUID:  return "Remap UID"
-        }
-    }
-
-    /// SF Symbol name for this action.
-    public var sfSymbol: String {
-        switch self {
-        case .remove:    return "trash"
-        case .replace:   return "pencil"
-        case .hash:      return "number"
-        case .shiftDate: return "calendar.badge.clock"
-        case .keepDate:  return "calendar.badge.checkmark"
-        case .remapUID:  return "arrow.triangle.2.circlepath"
-        }
-    }
-}
-
-// MARK: - Anonymization Tag Rule
-
-/// A rule specifying how to handle a specific DICOM tag during anonymization.
-public struct AnonymizationTagRule: Identifiable, Sendable, Equatable, Hashable {
-    public let id: UUID
-    /// DICOM tag in (gggg,eeee) notation (e.g. "0010,0010" for Patient Name).
-    public var tag: String
-    /// Human-readable tag name.
-    public var tagName: String
-    /// Action to apply.
-    public var action: TagAction
-    /// Replacement value (used when action == .replace).
-    public var replacementValue: String
-    /// Date shift in days (used when action == .shiftDate).
-    public var dateShiftDays: Int
-
-    public init(
-        id: UUID = UUID(),
-        tag: String,
-        tagName: String = "",
-        action: TagAction = .remove,
-        replacementValue: String = "",
-        dateShiftDays: Int = 0
-    ) {
-        self.id = id
-        self.tag = tag
-        self.tagName = tagName
-        self.action = action
-        self.replacementValue = replacementValue
-        self.dateShiftDays = dateShiftDays
-    }
-}
-
 // MARK: - Anonymization Status
 
 /// Status of an anonymization job.
@@ -392,10 +273,6 @@ public struct AnonymizationJob: Identifiable, Sendable, Equatable, Hashable {
     public let id: UUID
     /// File paths staged for anonymization.
     public var filePaths: [String]
-    /// Profile applied to this job.
-    public var profile: AnonymizationProfile
-    /// Custom rules (non-empty only when profile == .custom).
-    public var customRules: [AnonymizationTagRule]
     /// Job status.
     public var status: AnonymizationStatus
     /// Total number of files.
@@ -418,8 +295,6 @@ public struct AnonymizationJob: Identifiable, Sendable, Equatable, Hashable {
     public init(
         id: UUID = UUID(),
         filePaths: [String] = [],
-        profile: AnonymizationProfile = .basic,
-        customRules: [AnonymizationTagRule] = [],
         status: AnonymizationStatus = .pending,
         totalFiles: Int = 0,
         processedFiles: Int = 0,
@@ -432,8 +307,6 @@ public struct AnonymizationJob: Identifiable, Sendable, Equatable, Hashable {
     ) {
         self.id = id
         self.filePaths = filePaths
-        self.profile = profile
-        self.customRules = customRules
         self.status = status
         self.totalFiles = totalFiles
         self.processedFiles = processedFiles
@@ -874,35 +747,28 @@ public enum AnonHelpers: Sendable {
         guard !r.inputPath.isEmpty else { return "dicom-anon <input>" }
         var cmd = "dicom-anon \"\(r.inputPath)\""
         if let out = r.output, !out.isEmpty { cmd += " --output \"\(out)\"" }
-        if r.profile != "basic" { cmd += " --profile \(r.profile)" }
         if r.retainDates           { cmd += " --retain-dates" }
+        if let days = r.shiftDates { cmd += " --shift-dates \(days)" }
         if r.retainCharacteristics { cmd += " --retain-characteristics" }
         if r.retainDevice          { cmd += " --retain-device" }
         if r.retainInstitution     { cmd += " --retain-institution" }
         if r.retainUids            { cmd += " --retain-uids" }
         if r.cleanDescriptors      { cmd += " --clean-descriptors" }
-        if r.cleanPixelData        { cmd += " --clean-pixel-data" }
+        if !r.cleanPixelData       { cmd += " --no-clean-pixel-data" }
         for region in r.redactRegion where !region.isEmpty { cmd += " --redact-region \(region)" }
-        if let fill = r.redactFill { cmd += " --redact-fill \(fill)" }
+        if let fill = r.redactFill, !fill.isEmpty, fill != "black" { cmd += " --redact-fill \(fill)" }
         if r.redactStyle != "blank" { cmd += " --redact-style \(r.redactStyle)" }
         if let label = r.redactLabel, !label.isEmpty { cmd += " --redact-label \"\(label)\"" }
         if let codec = r.recompress, !codec.isEmpty { cmd += " --recompress \(codec)" }
-        if r.detectText {
-            cmd += " --detect-text"
-            if r.detectTextMode != "classify" { cmd += " --detect-text-mode \(r.detectTextMode)" }
-            if r.ocrAllFrames { cmd += " --ocr-all-frames" }
-        }
-        if let days = r.shiftDates { cmd += " --shift-dates \(days)" }
-        if r.regenerateUids { cmd += " --regenerate-uids" }
-        for tag in r.remove  where !tag.isEmpty { cmd += " --remove \(tag)" }
-        for pair in r.replace where !pair.isEmpty { cmd += " --replace \(pair)" }
-        for tag in r.keep    where !tag.isEmpty { cmd += " --keep \(tag)" }
+        if r.ocrMode != "classify" { cmd += " --ocr-mode \(r.ocrMode)" }
+        if r.ocrAllFrames { cmd += " --ocr-all-frames" }
+        if r.textOnly     { cmd += " --text-only" }
+        if r.allowBurnedInPHI { cmd += " --allow-burned-in-phi" }
         if r.recursive   { cmd += " --recursive" }
         if r.dryRun      { cmd += " --dry-run" }
         if r.backup      { cmd += " --backup" }
         if let log = r.auditLog, !log.isEmpty { cmd += " --audit-log \"\(log)\"" }
         if r.force       { cmd += " --force" }
-        if r.allowBurnedInPHI { cmd += " --allow-burned-in-phi" }
         if r.verbose     { cmd += " --verbose" }
         return cmd
     }

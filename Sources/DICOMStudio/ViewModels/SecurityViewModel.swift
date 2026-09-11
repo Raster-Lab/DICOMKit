@@ -55,10 +55,6 @@ public final class SecurityViewModel {
 
     // MARK: - 11.2 Anonymization
 
-    /// Currently selected anonymization profile.
-    public var selectedProfile: AnonymizationProfile = .basic
-    /// Custom rules (active when profile == .custom).
-    public var customRules: [AnonymizationTagRule] = []
     /// Files staged for anonymization.
     public var stagedFilePaths: [String] = []
     /// Output directory for anonymized files.
@@ -82,19 +78,11 @@ public final class SecurityViewModel {
     public var anonInputPath: String = ""
     /// --output path
     public var anonOutputPath: String = ""
-    /// --profile
-    public var anonProfile: AnonymizationProfile = .basic
-    /// --shift-dates N (nil = disabled)
-    public var anonShiftDatesEnabled: Bool = false
+    /// Dates: `keep` = --retain-dates (Full Dates), `shift` = --shift-dates N
+    /// (Modified Dates), `remove` = neither (the Basic Profile zeroes them).
+    public enum AnonDatePolicy: String, CaseIterable, Sendable { case remove, keep, shift }
+    public var anonDatePolicy: AnonDatePolicy = .remove
     public var anonShiftDays: Int = 0
-    /// --regenerate-uids
-    public var anonRegenerateUIDs: Bool = false
-    /// --remove tag (one per entry, format: 0010,0010 or PatientName)
-    public var anonRemoveTags: [String] = []
-    /// --replace tag=value
-    public var anonReplacePairs: [String] = []
-    /// --keep tag
-    public var anonKeepTags: [String] = []
     /// --recursive
     public var anonRecursive: Bool = false
     /// --dry-run
@@ -108,8 +96,7 @@ public final class SecurityViewModel {
     /// --verbose
     public var anonVerbose: Bool = false
 
-    // PS3.15 Annex E retention options (--profile ps315 only)
-    public var anonRetainDates: Bool = false
+    // PS3.15 Annex E retention options
     public var anonRetainCharacteristics: Bool = false
     public var anonRetainDevice: Bool = false
     public var anonRetainInstitution: Bool = false
@@ -117,26 +104,28 @@ public final class SecurityViewModel {
     public var anonCleanDescriptors: Bool = false
 
     // Pixel pipeline (Clean Pixel Data, OCR, styles, re-encode)
-    /// --clean-pixel-data
-    public var anonCleanPixelData: Bool = false
+    /// Clean Pixel Data (default on; off = --no-clean-pixel-data)
+    public var anonCleanPixelData: Bool = true
     /// --redact-region x,y,w,h (one per entry)
     public var anonRedactRegions: [String] = []
-    /// --redact-fill (nil = codec default 0)
-    public var anonRedactFill: Int? = nil
+    /// --redact-fill black|white|<value> (nil = black)
+    public var anonRedactFill: String? = nil
     /// --redact-style blank|label|replace
     public var anonRedactStyle: String = "blank"
     /// --redact-label (empty = REDACTED)
     public var anonRedactLabel: String = ""
     /// --recompress source|<codec> (empty = Explicit VR LE)
     public var anonRecompress: String = ""
-    /// --detect-text
-    public var anonDetectText: Bool = false
-    /// --detect-text-mode classify|all
-    public var anonDetectTextMode: String = "classify"
+    /// --ocr-mode header|classify
+    public var anonOCRMode: String = "classify"
     /// --ocr-all-frames
     public var anonOCRAllFrames: Bool = false
+    /// --text-only
+    public var anonTextOnly: Bool = false
     /// --allow-burned-in-phi
     public var anonAllowBurnedInPHI: Bool = false
+    /// Transient entry state for a new --redact-region.
+    public var anonNewRedactRegion: String = ""
 
     /// Running flag
     public var anonIsRunning: Bool = false
@@ -152,12 +141,6 @@ public final class SecurityViewModel {
     // NSSavePanel so the sandbox can read/write those paths.
     public var anonInputScopedURL: URL?
     public var anonOutputScopedURL: URL?
-
-    /// Transient new-tag entry state
-    public var anonNewRemoveTag: String = ""
-    public var anonNewReplaceTag: String = ""
-    public var anonNewReplaceValue: String = ""
-    public var anonNewKeepTag: String = ""
 
     // MARK: - 11.3 Audit Log
 
@@ -208,8 +191,6 @@ public final class SecurityViewModel {
         globalTLSMode = service.getGlobalTLSMode()
         certificates = service.getCertificates()
         serverSecurityEntries = service.getServerSecurityEntries()
-        selectedProfile = service.getSelectedProfile()
-        customRules = service.getCustomRules()
         anonymizationJobs = service.getAnonymizationJobs()
         phiDetectionResults = service.getPHIDetectionResults()
         auditEntries = service.getAuditEntries()
@@ -279,38 +260,10 @@ public final class SecurityViewModel {
 
     // MARK: - 11.2 Anonymization Actions
 
-    /// Sets the anonymization profile and loads its default rules if not custom.
-    public func setProfile(_ profile: AnonymizationProfile) {
-        selectedProfile = profile
-        service.setSelectedProfile(profile)
-        if profile != .custom {
-            let rules = AnonymizationHelpers.defaultRules(for: profile)
-            customRules = rules
-            service.setCustomRules(rules)
-        }
-    }
-
-    /// Adds a custom rule.
-    public func addCustomRule(_ rule: AnonymizationTagRule) {
-        service.addCustomRule(rule)
-        customRules = service.getCustomRules()
-    }
-
-    /// Removes a custom rule by ID.
-    public func removeCustomRule(id: UUID) {
-        service.removeCustomRule(id: id)
-        customRules = service.getCustomRules()
-    }
-
     /// Enqueues a new anonymization job with the current settings.
     public func enqueueAnonymizationJob() {
-        let rules = selectedProfile == .custom
-            ? customRules
-            : AnonymizationHelpers.defaultRules(for: selectedProfile)
         var job = AnonymizationJob(
             filePaths: stagedFilePaths,
-            profile: selectedProfile,
-            customRules: rules,
             status: .pending,
             totalFiles: stagedFilePaths.count,
             outputDirectory: outputDirectory,
@@ -358,8 +311,8 @@ public final class SecurityViewModel {
     public var anonRequest: AnonymizationWorkflow.Request {
         var r = AnonymizationWorkflow.Request(inputPath: anonInputPath)
         r.output = anonOutputPath.isEmpty ? nil : anonOutputPath
-        r.profile = anonProfile.cliFlag
-        r.retainDates = anonRetainDates
+        r.retainDates = anonDatePolicy == .keep
+        r.shiftDates = anonDatePolicy == .shift ? anonShiftDays : nil
         r.retainCharacteristics = anonRetainCharacteristics
         r.retainDevice = anonRetainDevice
         r.retainInstitution = anonRetainInstitution
@@ -371,25 +324,16 @@ public final class SecurityViewModel {
         r.redactStyle = anonRedactStyle
         r.redactLabel = anonRedactLabel.isEmpty ? nil : anonRedactLabel
         r.recompress = anonRecompress.isEmpty ? nil : anonRecompress
-        r.detectText = anonDetectText
-        r.detectTextMode = anonDetectTextMode
+        r.ocrMode = anonOCRMode
         r.ocrAllFrames = anonOCRAllFrames
-        r.shiftDates = anonShiftDatesEnabled ? anonShiftDays : nil
-        r.regenerateUids = anonRegenerateUIDs
-        r.remove = anonRemoveTags
-        r.replace = anonReplacePairs
-        r.keep = anonKeepTags
+        r.textOnly = anonTextOnly
+        r.allowBurnedInPHI = anonAllowBurnedInPHI
         r.recursive = anonRecursive
         r.dryRun = anonDryRun
         r.backup = anonBackup
         r.auditLog = anonAuditLogPath.isEmpty ? nil : anonAuditLogPath
         r.force = anonForce
-        r.allowBurnedInPHI = anonAllowBurnedInPHI
         r.verbose = anonVerbose
-        // "Custom Rules" has no CLI profile: it removes exactly the listed tags.
-        if anonProfile == .custom {
-            r.customProfileTags = anonRemoveTags.compactMap { DICOMKit.Anonymizer.parseFlexibleTag($0) }
-        }
         return r
     }
 
@@ -398,42 +342,11 @@ public final class SecurityViewModel {
         AnonHelpers.buildCommand(anonRequest)
     }
 
-    public func addRemoveTag() {
-        let tag = anonNewRemoveTag.trimmingCharacters(in: .whitespaces)
-        guard !tag.isEmpty, !anonRemoveTags.contains(tag) else { return }
-        anonRemoveTags.append(tag)
-        anonNewRemoveTag = ""
-    }
-
-    public func removeRemoveTag(_ tag: String) {
-        anonRemoveTags.removeAll { $0 == tag }
-    }
-
-    public func addReplacePair() {
-        let tag   = anonNewReplaceTag.trimmingCharacters(in: .whitespaces)
-        let value = anonNewReplaceValue.trimmingCharacters(in: .whitespaces)
-        guard !tag.isEmpty else { return }
-        let pair = "\(tag)=\(value)"
-        if !anonReplacePairs.contains(pair) {
-            anonReplacePairs.append(pair)
-        }
-        anonNewReplaceTag = ""
-        anonNewReplaceValue = ""
-    }
-
-    public func removeReplacePair(_ pair: String) {
-        anonReplacePairs.removeAll { $0 == pair }
-    }
-
-    public func addKeepTag() {
-        let tag = anonNewKeepTag.trimmingCharacters(in: .whitespaces)
-        guard !tag.isEmpty, !anonKeepTags.contains(tag) else { return }
-        anonKeepTags.append(tag)
-        anonNewKeepTag = ""
-    }
-
-    public func removeKeepTag(_ tag: String) {
-        anonKeepTags.removeAll { $0 == tag }
+    public func addRedactRegion() {
+        let region = anonNewRedactRegion.trimmingCharacters(in: .whitespaces)
+        guard !region.isEmpty, !anonRedactRegions.contains(region) else { return }
+        anonRedactRegions.append(region)
+        anonNewRedactRegion = ""
     }
 
     /// Runs anonymization natively through the shared workflow (fire-and-forget
@@ -457,7 +370,7 @@ public final class SecurityViewModel {
         let inputScoped = anonInputScopedURL
         let outputScoped = anonOutputScopedURL
         let result = await Task.detached(priority: .userInitiated) {
-            Self.executeAnonymization(request, inputScopedURL: inputScoped, outputScopedURL: outputScoped)
+            await Self.executeAnonymization(request, inputScopedURL: inputScoped, outputScopedURL: outputScoped)
         }.value
         anonOutput = result.output
         anonLastExitCode = result.exitCode
@@ -480,7 +393,7 @@ public final class SecurityViewModel {
         _ base: AnonymizationWorkflow.Request,
         inputScopedURL: URL?,
         outputScopedURL: URL?
-    ) -> (output: String, exitCode: Int) {
+    ) async -> (output: String, exitCode: Int) {
         let inputAccessing  = inputScopedURL?.startAccessingSecurityScopedResource()  ?? false
         let outputAccessing = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
         defer {
@@ -505,7 +418,7 @@ public final class SecurityViewModel {
             try OutputAccess.write(data, toPath: url.path, scopedURL: nil, subfolder: "Anonymized").note
         })
         do {
-            let outcome = try workflow.run(request) { output += $0 }
+            let outcome = try await workflow.run(request) { output += $0 }
             return (output, Int(outcome.exitCode))
         } catch {
             // The CLI prints `Error: <message>` (ArgumentParser) and exits 1.

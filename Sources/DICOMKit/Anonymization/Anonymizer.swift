@@ -2,82 +2,7 @@ import Foundation
 import DICOMCore
 import DICOMDictionary
 
-#if canImport(CryptoKit)
-import CryptoKit
-#endif
-
-/// Anonymization profile types
-public enum AnonymizationProfile: Sendable {
-    case basic
-    case clinicalTrial
-    case research
-    case custom([Tag])
-    
-    var tagsToRemove: Set<Tag> {
-        switch self {
-        case .basic:
-            return basicProfileTags
-        case .clinicalTrial:
-            return clinicalTrialProfileTags
-        case .research:
-            return researchProfileTags
-        case .custom(let tags):
-            return Set(tags)
-        }
-    }
-    
-    private var basicProfileTags: Set<Tag> {
-        Set([
-            .patientName,
-            .patientID,
-            .patientBirthDate,
-            .patientBirthTime,
-            .otherPatientIDs,
-            .otherPatientNames,
-            .patientComments,
-            .referringPhysicianName,
-            .performingPhysicianName,
-            .operatorName,
-            .institutionName,
-            .institutionAddress,
-            .stationName,
-            .deviceSerialNumber
-        ])
-    }
-    
-    private var clinicalTrialProfileTags: Set<Tag> {
-        basicProfileTags.union([
-            .studyDate,
-            .seriesDate,
-            .acquisitionDate,
-            .contentDate,
-            .studyTime,
-            .seriesTime,
-            .acquisitionTime,
-            .contentTime
-        ])
-    }
-    
-    private var researchProfileTags: Set<Tag> {
-        Set([
-            .patientName,
-            .patientID,
-            .patientBirthDate
-        ])
-    }
-}
-
-/// Anonymization action for a tag
-public enum AnonymizationAction: Sendable {
-    case remove
-    case replaceWithEmpty
-    case replaceWithDummy(String)
-    case hash
-    case shiftDate(days: Int)
-    case regenerateUID
-}
-
-/// Result of anonymization
+/// Result of anonymizing one file.
 public struct AnonymizationResult: Sendable {
     public let filePath: String
     public let success: Bool
@@ -92,403 +17,113 @@ public struct AnonymizationResult: Sendable {
     }
 }
 
-/// Audit log entry
+/// Audit log entry. Carries no attribute values: an audit log that stored the
+/// original identifiers would itself be a PHI store.
 public struct AuditLogEntry {
     public let timestamp: Date
     public let filePath: String
     public let action: String
     public let tag: Tag
-    public let originalValue: String?
-    public let newValue: String?
+    public let note: String?
 
-    public init(timestamp: Date, filePath: String, action: String, tag: Tag, originalValue: String?, newValue: String?) {
+    public init(timestamp: Date, filePath: String, action: String, tag: Tag, note: String? = nil) {
         self.timestamp = timestamp
         self.filePath = filePath
         self.action = action
         self.tag = tag
-        self.originalValue = originalValue
-        self.newValue = newValue
+        self.note = note
     }
 }
 
-/// Main anonymizer class
-public class Anonymizer {
-    let profile: AnonymizationProfile
-    let shiftDates: Int?
-    let regenerateUIDs: Bool
-    let preserveTags: Set<Tag>
-    let customActions: [Tag: AnonymizationAction]
-    
-    private var dateOffset: Int?
-    private var uidMapping: [String: String] = [:]
+/// One `dicom-anon` run's de-identification state: the PS3.15 Annex E options, the
+/// UID map shared by every file of the run (so a study's instances keep referencing
+/// each other after their UIDs are regenerated) and the audit log.
+///
+/// The profile applied is always the Basic Application Level Confidentiality
+/// Profile (``ConfidentialityEngine``); ``ConfidentialityProfile/Options`` are the
+/// only knobs.
+public final class Anonymizer {
+    public let options: ConfidentialityProfile.Options
+
+    private var uidMap: [String: String] = [:]
     private var auditLog: [AuditLogEntry] = []
-    
-    public init(
-        profile: AnonymizationProfile,
-        shiftDates: Int? = nil,
-        regenerateUIDs: Bool = true,
-        preserveTags: Set<Tag> = [],
-        customActions: [Tag: AnonymizationAction] = [:]
-    ) {
-        self.profile = profile
-        self.shiftDates = shiftDates
-        self.regenerateUIDs = regenerateUIDs
-        self.preserveTags = preserveTags
-        self.customActions = customActions
-        
-        if let shift = shiftDates {
-            self.dateOffset = shift
-        }
+
+    public init(options: ConfidentialityProfile.Options = .basic) {
+        self.options = options
     }
-    
-    public func anonymize(file: DICOMFile, filePath: String) throws -> (DICOMFile, AnonymizationResult) {
-        var newDataSet = file.dataSet
-        var changedTags: [Tag] = []
-        var warnings: [String] = []
-        
-        // Process every tag the profile removes PLUS any tag named explicitly via
-        // customActions (--remove / --replace), minus preserved (--keep) tags.
-        // Unioning customActions.keys is the shared-engine home of the F19 fix:
-        // without it, `--remove`/`--replace` only affected tags already in the
-        // profile set, silently dropping custom actions on any other tag.
-        let tagsToProcess = profile.tagsToRemove.union(customActions.keys).subtracting(preserveTags)
-        
-        for tag in tagsToProcess {
-            guard let element = newDataSet[tag] else { continue }
-            
-            let action = customActions[tag] ?? defaultAction(for: tag)
-            
-            switch action {
-            case .remove:
-                let originalValue = extractValue(from: element)
-                newDataSet.remove(tag: tag)
-                changedTags.append(tag)
-                logChange(filePath: filePath, action: "remove", tag: tag, originalValue: originalValue, newValue: nil)
-                
-            case .replaceWithEmpty:
-                let originalValue = extractValue(from: element)
-                replaceWithEmpty(tag: tag, vr: element.vr, in: &newDataSet)
-                changedTags.append(tag)
-                logChange(filePath: filePath, action: "replace_empty", tag: tag, originalValue: originalValue, newValue: "")
-                
-            case .replaceWithDummy(let dummy):
-                let originalValue = extractValue(from: element)
-                replaceWithDummy(tag: tag, vr: element.vr, value: dummy, in: &newDataSet)
-                changedTags.append(tag)
-                logChange(filePath: filePath, action: "replace_dummy", tag: tag, originalValue: originalValue, newValue: dummy)
-                
-            case .hash:
-                if let originalValue = extractValue(from: element) {
-                    let hashed = hashValue(originalValue)
-                    replaceWithDummy(tag: tag, vr: element.vr, value: hashed, in: &newDataSet)
-                    changedTags.append(tag)
-                    logChange(filePath: filePath, action: "hash", tag: tag, originalValue: originalValue, newValue: hashed)
-                }
-                
-            case .shiftDate(let days):
-                if let originalDate = newDataSet.string(for: tag) {
-                    if let shifted = shiftDate(originalDate, byDays: days) {
-                        newDataSet.setString(shifted, for: tag, vr: element.vr)
-                        changedTags.append(tag)
-                        logChange(filePath: filePath, action: "shift_date", tag: tag, originalValue: originalDate, newValue: shifted)
-                    }
-                }
-                
-            case .regenerateUID:
-                if let originalUID = newDataSet.string(for: tag) {
-                    let newUID = getMappedUID(originalUID)
-                    newDataSet.setString(newUID, for: tag, vr: element.vr)
-                    changedTags.append(tag)
-                    logChange(filePath: filePath, action: "regenerate_uid", tag: tag, originalValue: originalUID, newValue: newUID)
-                }
-            }
-        }
-        
-        // Handle date shifting if specified
-        if let offset = dateOffset {
-            shiftAllDates(in: &newDataSet, byDays: offset, changedTags: &changedTags, filePath: filePath)
-        }
-        
-        // Regenerate UIDs if specified
-        if regenerateUIDs {
-            regenerateAllUIDs(in: &newDataSet, changedTags: &changedTags, filePath: filePath)
-        }
-        
-        // Scan for potential PHI leaks in private tags
-        let phiWarnings = scanForPHILeaks(in: newDataSet)
-        warnings.append(contentsOf: phiWarnings)
-        
-        let newFile = DICOMFile(fileMetaInformation: file.fileMetaInformation, dataSet: newDataSet)
-        let result = AnonymizationResult(
-            filePath: filePath,
-            success: true,
-            changedTags: changedTags,
-            warnings: warnings
-        )
-        
-        return (newFile, result)
-    }
-    
-    private func defaultAction(for tag: Tag) -> AnonymizationAction {
-        if tag == .patientName {
-            return .replaceWithDummy("ANONYMOUS")
-        } else if tag == .patientID {
-            return .hash
-        } else if isDateTag(tag) {
-            return shiftDates != nil ? .shiftDate(days: shiftDates!) : .remove
-        } else if isUIDTag(tag) {
-            return regenerateUIDs ? .regenerateUID : .remove
-        } else {
-            return .remove
-        }
-    }
-    
-    private func isDateTag(_ tag: Tag) -> Bool {
-        [.studyDate, .seriesDate, .acquisitionDate, .contentDate, .patientBirthDate].contains(tag)
-    }
-    
-    private func isUIDTag(_ tag: Tag) -> Bool {
-        [.studyInstanceUID, .seriesInstanceUID, .sopInstanceUID].contains(tag)
-    }
-    
-    private func extractValue(from element: DataElement) -> String? {
-        if let str = element.stringValue {
-            return str
-        }
-        // Convert to a simple string representation
-        return "\(element.tag)"
-    }
-    
-    private func replaceWithEmpty(tag: Tag, vr: VR, in dataSet: inout DataSet) {
-        dataSet.setString("", for: tag, vr: vr)
-    }
-    
-    private func replaceWithDummy(tag: Tag, vr: VR, value: String, in dataSet: inout DataSet) {
-        dataSet.setString(value, for: tag, vr: vr)
-    }
-    
-    private func hashValue(_ value: String) -> String {
-        #if canImport(CryptoKit)
-        let data = Data(value.utf8)
-        let hash = SHA256.hash(data: data)
-        // Use 32 hex characters (128 bits) for pseudonymization.
-        // This provides 2^128 possible values, significantly reducing collision
-        // probability for large medical datasets while keeping values human-readable
-        // in DICOM tags.
-        let fullHex = hash.map { String(format: "%02x", $0) }.joined().uppercased()
-        return String(fullHex.prefix(32))
-        #else
-        // Fallback to a deterministic 128-bit hex representation for platforms
-        // without CryptoKit by combining two 64-bit hash values.
-        let h1 = UInt64(bitPattern: Int64(value.hashValue))
-        let reversedValue = String(value.reversed())
-        let h2 = UInt64(bitPattern: Int64(reversedValue.hashValue))
-        return String(format: "%016llX%016llX", h1, h2)
-        #endif
-    }
-    
-    private func shiftDate(_ dateString: String, byDays days: Int) -> String? {
-        let formatter = DateFormatter()
-        
-        // Try DICOM date format (YYYYMMDD)
-        formatter.dateFormat = "yyyyMMdd"
-        if let date = formatter.date(from: dateString) {
-            if let shifted = Calendar.current.date(byAdding: .day, value: days, to: date) {
-                return formatter.string(from: shifted)
-            }
-        }
-        
-        return nil
-    }
-    
-    private func shiftAllDates(in dataSet: inout DataSet, byDays days: Int, changedTags: inout [Tag], filePath: String) {
-        let dateTags: [Tag] = [.studyDate, .seriesDate, .acquisitionDate, .contentDate]
-        
-        for tag in dateTags {
-            if let originalDate = dataSet.string(for: tag), !changedTags.contains(tag) {
-                if let shifted = shiftDate(originalDate, byDays: days) {
-                    if let element = dataSet[tag] {
-                        dataSet.setString(shifted, for: tag, vr: element.vr)
-                        changedTags.append(tag)
-                        logChange(filePath: filePath, action: "shift_date", tag: tag, originalValue: originalDate, newValue: shifted)
-                    }
-                }
-            }
-        }
-    }
-    
-    private func regenerateAllUIDs(in dataSet: inout DataSet, changedTags: inout [Tag], filePath: String) {
-        let uidTags: [Tag] = [.studyInstanceUID, .seriesInstanceUID, .sopInstanceUID]
-        
-        for tag in uidTags {
-            if let originalUID = dataSet.string(for: tag), !changedTags.contains(tag) {
-                let newUID = getMappedUID(originalUID)
-                if let element = dataSet[tag] {
-                    dataSet.setString(newUID, for: tag, vr: element.vr)
-                    changedTags.append(tag)
-                    logChange(filePath: filePath, action: "regenerate_uid", tag: tag, originalValue: originalUID, newValue: newUID)
-                }
-            }
-        }
-    }
-    
-    private func getMappedUID(_ originalUID: String) -> String {
-        if let mapped = uidMapping[originalUID] {
-            return mapped
-        }
-        
-        let newUID = UIDGenerator.generateUID().value
-        uidMapping[originalUID] = newUID
-        return newUID
-    }
-    
-    private func scanForPHILeaks(in dataSet: DataSet) -> [String] {
-        var warnings: [String] = []
-        
-        for tag in dataSet.tags {
-            // Check private tags
-            if tag.isPrivate {
-                if let element = dataSet[tag], let value = extractValue(from: element) {
-                    if containsSuspiciousPHI(value) {
-                        warnings.append("Potential PHI detected in private tag \(tag); value omitted to protect privacy.")
-                    }
-                }
-            }
-        }
-        
-        return warnings
-    }
-    
-    private func containsSuspiciousPHI(_ value: String) -> Bool {
-        let patterns = [
-            "\\b[A-Z][a-z]+\\s[A-Z][a-z]+\\b", // Name pattern
-            "\\b\\d{3}-\\d{2}-\\d{4}\\b", // SSN pattern
-            "\\b\\d{10}\\b", // Phone number pattern
-            "\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b" // Date pattern
-        ]
-        
-        for pattern in patterns {
-            if let _ = value.range(of: pattern, options: .regularExpression) {
-                return true
-            }
-        }
-        
-        return false
-    }
-    
-    private func logChange(filePath: String, action: String, tag: Tag, originalValue: String?, newValue: String?) {
-        let entry = AuditLogEntry(
-            timestamp: Date(),
-            filePath: filePath,
-            action: action,
-            tag: tag,
-            originalValue: originalValue,
-            newValue: newValue
-        )
-        auditLog.append(entry)
-    }
-    
-    /// De-identifies a file with the PS3.15 Annex E Basic Application Level
-    /// Confidentiality Profile — the standards-grounded path.
+
+    /// De-identifies one file's data set, extending the run-wide UID map and audit log.
     ///
-    /// Unlike ``anonymize(file:filePath:)`` (which applies the legacy fixed tag lists),
-    /// this walks Table E.1-1 action codes, recurses into every sequence item, sweeps by
-    /// VR (all residual PN removed, all instance UIDs consistently regenerated, all
-    /// private tags removed), and records the de-identification method attributes.
-    ///
-    /// - Parameters:
-    ///   - file: The source file.
-    ///   - options: PS3.15 E.3 retention options; default is the strict Basic Profile.
-    ///   - uidMap: Optional shared UID map for cross-file consistency within a study.
-    /// - Returns: The de-identified file, a result summary, and the (possibly extended)
-    ///   UID map for reuse on sibling files.
-    public func deidentify(
-        file: DICOMFile,
-        options: ConfidentialityProfile.Options = .basic,
-        uidMap: [String: String] = [:]
-    ) -> (DICOMFile, AnonymizationResult, [String: String]) {
+    /// Pixels are out of scope here (the pixel pass runs first), so a declared
+    /// burned-in annotation or overlay plane surfaces as a warning and (0012,0062) NO
+    /// rather than being silently certified as removed.
+    public func deidentify(file: DICOMFile, filePath: String) -> (DICOMFile, AnonymizationResult) {
         var engine = ConfidentialityEngine(options: options, uidMap: uidMap)
-        // Use the residual-PHI-reporting pass: pixels are out of scope for this engine,
-        // so burned-in annotation / overlay planes must reach the caller as warnings
-        // rather than being silently certified as de-identified.
         let (scrubbed, changed, warnings) = engine.deidentifyReportingResidualPHI(file.dataSet)
+        uidMap = engine.uidMap
+        for change in engine.changes {
+            auditLog.append(AuditLogEntry(
+                timestamp: Date(), filePath: filePath,
+                action: Self.actionName(change.action), tag: change.tag))
+        }
         let newFile = DICOMFile(fileMetaInformation: file.fileMetaInformation, dataSet: scrubbed)
-        let result = AnonymizationResult(
-            filePath: "", success: true, changedTags: changed, warnings: warnings)
-        return (newFile, result, engine.uidMap)
+        return (newFile, AnonymizationResult(
+            filePath: filePath, success: true, changedTags: changed, warnings: warnings))
+    }
+
+    /// The header pass on a copy — nothing recorded, the run's UID map untouched.
+    /// Used to learn the engine's own replacement values for `--redact-style replace`.
+    public func preview(file: DICOMFile) -> DICOMFile {
+        var engine = ConfidentialityEngine(options: options, uidMap: uidMap)
+        let (scrubbed, _) = engine.deidentify(file.dataSet)
+        return DICOMFile(fileMetaInformation: file.fileMetaInformation, dataSet: scrubbed)
+    }
+
+    /// Table E.1-1 action code names as they appear in the audit log.
+    static func actionName(_ action: ConfidentialityProfile.Action) -> String {
+        switch action {
+        case .remove, .removePreferred: return "X remove"
+        case .zero:                     return "Z zero"
+        case .zeroOrDummy:              return "Z/D zero-or-shift"
+        case .replaceDummy:             return "D dummy"
+        case .clean:                    return "C clean"
+        case .replaceUID:               return "U replace-uid"
+        case .keep:                     return "K keep"
+        }
     }
 
     public func getAuditLog() -> [AuditLogEntry] {
-        return auditLog
+        auditLog
     }
-    
+
     /// Records pixel-work audit lines (PHI-safe — callers pass
     /// `PixelCleaningWorkflow.Report.auditLines`, never raw OCR strings).
     public func recordPixelAudit(filePath: String, lines: [String]) {
         for line in lines {
             auditLog.append(AuditLogEntry(
-                timestamp: Date(), filePath: filePath, action: "pixel-redaction",
-                tag: .pixelData, originalValue: nil, newValue: line))
+                timestamp: Date(), filePath: filePath, action: "pixel-data",
+                tag: .pixelData, note: line))
         }
     }
 
     public func writeAuditLog(to url: URL) throws {
         let dateFormatter = ISO8601DateFormatter()
-        var logText = "DICOM Anonymization Audit Log\n"
+        var logText = "DICOM De-identification Audit Log (PS3.15 Annex E)\n"
         logText += "Generated: \(dateFormatter.string(from: Date()))\n\n"
-        
-        // Sort by file then tag so the audit log is deterministic (the rules are applied
-        // in an unordered fashion, so the raw collection order varies run-to-run).
+
+        // Sort by file then tag so the audit log is deterministic.
         let sorted = auditLog.sorted {
             ($0.filePath, $0.tag.group, $0.tag.element) < ($1.filePath, $1.tag.group, $1.tag.element)
         }
         for entry in sorted {
             logText += "[\(dateFormatter.string(from: entry.timestamp))] "
             logText += "\(entry.filePath) - \(entry.action) - \(entry.tag)\n"
-            if let orig = entry.originalValue {
-                logText += "  Original: \(orig)\n"
+            if let note = entry.note {
+                logText += "  \(note)\n"
             }
-            if let new = entry.newValue {
-                logText += "  New: \(new)\n"
-            }
-            logText += "\n"
         }
-        
+
         try logText.write(to: url, atomically: true, encoding: .utf8)
-    }
-}
-
-// MARK: - Flexible tag parsing (shared by dicom-anon CLI and the Workshop executor)
-
-extension Anonymizer {
-    /// Parses a user-supplied tag spec: hex `(0010,0010)` / `0010,0010` / `00100010`,
-    /// or one of the well-known keyword names the anon tool accepts.
-    /// Returns nil when the spec is unparseable (callers decide how to error).
-    public static func parseFlexibleTag(_ string: String) -> Tag? {
-        let clean = string
-            .replacingOccurrences(of: ",", with: "")
-            .replacingOccurrences(of: "(", with: "")
-            .replacingOccurrences(of: ")", with: "")
-            .trimmingCharacters(in: .whitespaces)
-        if clean.count == 8, let value = UInt32(clean, radix: 16) {
-            let group = UInt16((value >> 16) & 0xFFFF)
-            let element = UInt16(value & 0xFFFF)
-            return Tag(group: group, element: element)
-        }
-        let keywordMap: [String: Tag] = [
-            "PatientName": .patientName,
-            "PatientID": .patientID,
-            "PatientBirthDate": .patientBirthDate,
-            "StudyDate": .studyDate,
-            "SeriesDate": .seriesDate,
-            "Modality": .modality,
-            "StudyDescription": .studyDescription,
-            "SeriesDescription": .seriesDescription,
-            "StudyInstanceUID": .studyInstanceUID,
-            "SeriesInstanceUID": .seriesInstanceUID,
-            "SOPInstanceUID": .sopInstanceUID
-        ]
-        return keywordMap[string] ?? keywordMap[string.lowercased()]
     }
 }
 
@@ -511,6 +146,11 @@ public enum AnonConsole {
     public static func auditLogLine(path: String) -> String {
         "Audit log written to: \(path)"
     }
+
+    /// The operator's Burned In Annotation policy took the file past the pixel pass:
+    /// the declaration was trusted, nothing was inspected. Console (verbose) and audit.
+    public static let burnedInAnnotationTrustedNote =
+        "Pixel data: Burned In Annotation (0028,0301) = NO — trusted; pixels were not inspected or modified."
 
     /// Verbose report of a pixel-redaction pass. States the basis for the region
     /// choice, not just the rectangle — an operator has to be able to judge whether
@@ -574,7 +214,15 @@ public enum AnonConsole {
         let kept = report.verdicts.filter { !$0.isRedact }.count
         let frames = report.scannedFrames.count
         var line = "OCR: \(n) candidate region\(n == 1 ? "" : "s"); \(selected) selected for redaction"
-        if kept > 0 { line += "; \(kept) kept (allowlisted clinical text)" }
+        if kept > 0 {
+            let why = report.mode == .header ? "no header match" : "allowlisted clinical text"
+            line += "; \(kept) kept (\(why)"
+            // A keep verdict never shrinks another source's region: say how many of the
+            // kept regions are blanked anyway, so "kept" is never read as "survives".
+            let buried = kept - report.keptAndSurviving.count
+            if buried > 0 { line += "; \(buried) of them inside blanked regions anyway" }
+            line += ")"
+        }
         line += " across \(frames) sampled frame\(frames == 1 ? "" : "s").\n"
         return line
     }
@@ -672,4 +320,3 @@ public enum AnonConsole {
         return out
     }
 }
-

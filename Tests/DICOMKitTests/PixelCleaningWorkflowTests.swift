@@ -2,6 +2,21 @@ import XCTest
 import Foundation
 import DICOMCore
 @testable import DICOMKit
+
+/// `XCTAssertThrowsError` for an `async` expression: its autoclosure cannot `await`,
+/// so the call is made here and the error handed to `verify`.
+func assertThrowsErrorAsync<T>(
+    _ expression: @autoclosure () async throws -> T,
+    file: StaticString = #filePath, line: UInt = #line,
+    _ verify: (Error) -> Void = { _ in }
+) async {
+    do {
+        _ = try await expression()
+        XCTFail("expected an error, but the call succeeded", file: file, line: line)
+    } catch {
+        verify(error)
+    }
+}
 #if canImport(CoreGraphics)
 import CoreGraphics
 import CoreText
@@ -55,15 +70,39 @@ final class PixelCleaningWorkflowTests: XCTestCase {
     func testModeParsing() {
         XCTAssertEqual(PixelCleaningWorkflow.TextDetectionMode.parse(nil), .classify)
         XCTAssertEqual(PixelCleaningWorkflow.TextDetectionMode.parse(""), .classify)
-        XCTAssertEqual(PixelCleaningWorkflow.TextDetectionMode.parse("ALL"), .all)
+        XCTAssertEqual(PixelCleaningWorkflow.TextDetectionMode.parse("CLASSIFY"), .classify)
+        XCTAssertEqual(PixelCleaningWorkflow.TextDetectionMode.parse(" header "), .header)
         XCTAssertNil(PixelCleaningWorkflow.TextDetectionMode.parse("fuzzy"))
+        // `all` was removed: past the closed allowlist the remaining text is provably
+        // clinical, so blanking it bought no privacy. --redact-region covers that intent.
+        XCTAssertNil(PixelCleaningWorkflow.TextDetectionMode.parse("all"))
+        // Subset order is the documented contract (header ⊆ classify).
+        XCTAssertEqual(PixelCleaningWorkflow.TextDetectionMode.names, ["header", "classify"])
+        XCTAssertFalse(PixelCleaningWorkflow.TextDetectionMode.header.blanksOutsideDeclaredRegions)
+        XCTAssertTrue(PixelCleaningWorkflow.TextDetectionMode.classify.blanksOutsideDeclaredRegions)
+        XCTAssertTrue(PixelCleaningWorkflow.TextDetectionMode.header.isFailOpen)
+        XCTAssertFalse(PixelCleaningWorkflow.TextDetectionMode.classify.isFailOpen)
     }
 
-    func testDetectTextShorthandIsExpandedForTheParser() {
-        XCTAssertEqual(
-            AnonArguments.expandDetectText(["in.dcm", "--detect-text=all", "-o", "out.dcm"]),
-            ["in.dcm", "--detect-text", "--detect-text-mode", "all", "-o", "out.dcm"])
-        XCTAssertEqual(AnonArguments.expandDetectText(["--detect-text"]), ["--detect-text"])
+    func testFillParsing() {
+        typealias Fill = PixelCleaningWorkflow.RedactFill
+        XCTAssertEqual(Fill.parse(nil), .black)
+        XCTAssertEqual(Fill.parse(""), .black)
+        XCTAssertEqual(Fill.parse("Black"), .black)
+        XCTAssertEqual(Fill.parse(" white"), .white)
+        XCTAssertEqual(Fill.parse("255"), .value(255))
+        XCTAssertNil(Fill.parse("-1"))
+        XCTAssertNil(Fill.parse("grey"))
+        for f in [Fill.black, .white, .value(4095)] { XCTAssertEqual(Fill.parse(f.flagValue), f) }
+
+        var ds = DataSet()
+        ds.setUInt16(8, for: .bitsAllocated); ds.setUInt16(8, for: .bitsStored); ds.setUInt16(0, for: .pixelRepresentation)
+        XCTAssertEqual(Fill.white.resolve(for: ds), 255)
+        XCTAssertEqual(Fill.black.resolve(for: ds), 0)
+        ds.setUInt16(16, for: .bitsAllocated); ds.setUInt16(12, for: .bitsStored)
+        XCTAssertEqual(Fill.white.resolve(for: ds), 4095)
+        ds.setUInt16(1, for: .pixelRepresentation)
+        XCTAssertEqual(Fill.white.resolve(for: ds), 2047, "signed: largest positive stored value")
     }
 
     func testRetainedDetectedTextIsNeverAttestedAsIdentityRemoved() throws {
@@ -74,18 +113,18 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertEqual(ds.string(for: .burnedInAnnotation)?.trimmingCharacters(in: .whitespaces), "YES")
     }
 
-    func testNoPixelOptionsPassesBytesThroughUntouched() throws {
+    func testNoPixelOptionsPassesBytesThroughUntouched() async throws {
         let data = try plainImage()
-        let report = try PixelCleaningWorkflow().run(fileData: data, options: Options(), dryRun: false)
+        let report = try await PixelCleaningWorkflow().run(fileData: data, options: Options(), dryRun: false)
         XCTAssertNil(report.plan)
         XCTAssertNil(report.outcome)
         XCTAssertEqual(report.data, data)
         XCTAssertTrue(report.residualWarnings.isEmpty)
     }
 
-    func testExplicitRegionRedactsAndReportsOutcome() throws {
+    func testExplicitRegionRedactsAndReportsOutcome() async throws {
         let data = try plainImage(frames: 3)
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: data,
             options: Options(explicitRegions: [Region(x: 0, y: 0, width: 10, height: 2)]),
             dryRun: false)
@@ -97,9 +136,9 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertEqual(cleaned.dataSet.string(for: .burnedInAnnotation)?.trimmingCharacters(in: .whitespaces), "NO")
     }
 
-    func testDryRunBuildsThePlanButNeverModifies() throws {
+    func testDryRunBuildsThePlanButNeverModifies() async throws {
         let data = try plainImage()
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: data,
             options: Options(explicitRegions: [Region(x: 0, y: 0, width: 10, height: 2)]),
             dryRun: true)
@@ -112,13 +151,13 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertTrue(table.contains("Frames affected: all (1)"), table)
     }
 
-    func testDryRunStillSurfacesAnUnresolvedRefusal() throws {
+    func testDryRunStillSurfacesAnUnresolvedRefusal() async throws {
         var ds = try DICOMFile.read(from: plainImage()).dataSet
         ds.setString("YES", for: .burnedInAnnotation, vr: .CS)
         var meta = DataSet()
         meta.setString("1.2.840.10008.1.2.1", for: Tag(group: 0x0002, element: 0x0010), vr: .UI)
         let data = try DICOMFile(fileMetaInformation: meta, dataSet: ds).write()
-        XCTAssertThrowsError(try PixelCleaningWorkflow().run(
+        await assertThrowsErrorAsync(try await PixelCleaningWorkflow().run(
             fileData: data, options: Options(cleanPixelData: true), dryRun: true)) { error in
             guard case PixelRedactionError.unresolvedRegion = error else {
                 return XCTFail("expected unresolvedRegion, got \(error)")
@@ -126,9 +165,9 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         }
     }
 
-    func testCleanWithNothingDeclaredIsAPassThroughWithoutAttestation() throws {
+    func testCleanWithNothingDeclaredIsAPassThroughWithoutAttestation() async throws {
         let data = try plainImage()
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: data, options: Options(cleanPixelData: true), dryRun: false)
         guard case .nothingToDo = try XCTUnwrap(report.plan).decision else {
             return XCTFail("expected nothingToDo")
@@ -197,9 +236,9 @@ final class PixelCleaningWorkflowTests: XCTestCase {
 
     /// `--detect-text` alone: report, modify nothing, and flag the leftover text so the
     /// caller refuses to write.
-    func testDetectionOnlyReportsAndFlagsUnredactedText() throws {
+    func testDetectionOnlyReportsAndFlagsUnredactedText() async throws {
         let data = try bannerImage(text: "SMITH JOHN")
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: data, options: Options(detectText: .classify), dryRun: false)
         XCTAssertFalse(report.detections.isEmpty)
         XCTAssertNil(report.plan)
@@ -222,9 +261,9 @@ final class PixelCleaningWorkflowTests: XCTestCase {
 
     /// `--clean-pixel-data --detect-text`: every detected region is blanked (interim
     /// `all` semantics) on every frame and nothing is left flagged.
-    func testCleanWithDetectionRedactsEverythingDetectedOnEveryFrame() throws {
+    func testCleanWithDetectionRedactsEverythingDetectedOnEveryFrame() async throws {
         let data = try bannerImage(text: "DOE JANE 1961", frames: 4)
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: data, options: Options(cleanPixelData: true, detectText: .classify), dryRun: false)
         XCTAssertFalse(report.detections.isEmpty)
         XCTAssertEqual(report.scannedFrames, [0, 1, 3])
@@ -239,14 +278,44 @@ final class PixelCleaningWorkflowTests: XCTestCase {
 
         // Oracle: OCR of the output finds nothing on any frame.
         let cleaned = try DICOMFile.read(from: report.data)
-        XCTAssertTrue(try TextRegionDetector().detect(in: cleaned, allFrames: true).isEmpty)
+        let ocrLeftover3 = try await TextRegionDetector().detect(in: cleaned, allFrames: true)
+        XCTAssertTrue(ocrLeftover3.isEmpty)
+    }
+
+    /// `--text-only` blanks the flagged text and nothing else, says so on every run,
+    /// and refuses with a text-only reason when OCR flagged nothing on a declared
+    /// burned-in image. Requires OCR (pinned in the workflow resolve tests).
+    func testTextOnlyBlanksOnlyTheFlaggedTextAndSaysSo() async throws {
+        let data = try bannerImage(text: "DOE JANE 1961", frames: 1)
+        let report = try await PixelCleaningWorkflow().run(
+            fileData: data, options: Options(cleanPixelData: true, detectText: .classify, textOnly: true), dryRun: false)
+        let plan = try XCTUnwrap(report.plan)
+        XCTAssertEqual(plan.sources.map(\.basis), [.textDetection], "no derived band may contribute")
+        let outcome = try XCTUnwrap(report.outcome)
+        XCTAssertEqual(outcome.basis, .textDetection)
+        XCTAssertEqual(Set(outcome.regions), Set(report.detections.map(\.region)))
+        XCTAssertTrue(report.warnings.contains { $0.hasPrefix("Text-only:") && $0.contains("Verify visually") },
+                      "\(report.warnings)")
+
+        // The same file with OCR that flags nothing: the band was the safety net, and it
+        // is gone — an honest text-only refusal, not a silent pass.
+        var ds = try DICOMFile.read(from: plainImage()).dataSet
+        ds.setString("YES", for: .burnedInAnnotation, vr: .CS)
+        var meta = DataSet()
+        meta.setString("1.2.840.10008.1.2.1", for: Tag(group: 0x0002, element: 0x0010), vr: .UI)
+        let declared = try DICOMFile(fileMetaInformation: meta, dataSet: ds).write()
+        await assertThrowsErrorAsync(try await PixelCleaningWorkflow().run(
+            fileData: declared, options: Options(cleanPixelData: true, detectText: .classify, textOnly: true), dryRun: true)) {
+            guard case PixelRedactionError.unresolvedRegion(let reason) = $0 else { return XCTFail("\($0)") }
+            XCTAssertTrue(reason.hasPrefix("--text-only: OCR flagged no text to redact"), reason)
+        }
     }
 
     /// Classify keeps allowlisted clinical text and redacts PHI; `all` blanks both.
-    func testClassifyKeepsLateralityWhileAllBlanksIt() throws {
+    func testClassifyKeepsLateralityWhileRedactingTheBanner() async throws {
         // Two lines: a PHI banner at the top and a laterality/scale label lower down.
         let data = try twoLineImage(top: "SMITH JOHN 0012345", bottom: "R 10 cm")
-        let c = try PixelCleaningWorkflow().run(
+        let c = try await PixelCleaningWorkflow().run(
             fileData: data, options: Options(cleanPixelData: true, detectText: .classify), dryRun: false)
         XCTAssertEqual(c.detections.count, 2, "\(c.detections.map(\.text))")
         XCTAssertEqual(c.verdicts.filter(\.isRedact).count, 1, "\(zip(c.detections, c.verdicts).map { ($0.text, $1) })")
@@ -255,20 +324,16 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertTrue(c.residualWarnings.isEmpty)
         let line = AnonConsole.textDetectionLine(report: c)
         XCTAssertTrue(line.contains("1 selected for redaction; 1 kept"), line)
-        let after = try TextRegionDetector().detect(in: DICOMFile.read(from: c.data)).map { $0.text.uppercased() }
+        let after = try await TextRegionDetector().detect(in: DICOMFile.read(from: c.data)).map { $0.text.uppercased() }
         XCTAssertFalse(after.contains { $0.contains("SMITH") }, "\(after)")
         XCTAssertTrue(after.contains { $0.contains("CM") }, "clinical label must survive: \(after)")
-
-        let a = try PixelCleaningWorkflow().run(
-            fileData: data, options: Options(cleanPixelData: true, detectText: .all), dryRun: false)
-        XCTAssertEqual(a.outcome?.regions.count, 2)
-        XCTAssertTrue(try TextRegionDetector().detect(in: DICOMFile.read(from: a.data)).isEmpty)
 
         // Dry-run table shows both verdicts; audit lines never carry the string.
         let table = AnonConsole.pixelPlanTable(report: c, showText: true)
         XCTAssertTrue(table.contains("verdict=keep"), table)
         XCTAssertTrue(table.contains("verdict=redact"), table)
-        for l in c.auditLines {
+        XCTAssertEqual(c.auditLines.first, "OCR mode=classify", "the mode is part of the audit trail")
+        for l in c.auditLines.dropFirst() {
             XCTAssertFalse(l.contains("SMITH"), l)
             XCTAssertTrue(l.contains("verdict="), l)
         }
@@ -276,9 +341,9 @@ final class PixelCleaningWorkflowTests: XCTestCase {
 
     /// Classify harvests the ORIGINAL header: a name that is only PHI because the header
     /// says so is redacted; the same word with a different header is uncertain → still redacted.
-    func testClassifyUsesTheFilesOwnHeaderTerms() throws {
+    func testClassifyUsesTheFilesOwnHeaderTerms() async throws {
         let data = try twoLineImage(top: "Patient SMITH", bottom: "R")
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: data, options: Options(detectText: .classify), dryRun: false)
         let byText = Dictionary(uniqueKeysWithValues: zip(report.detections.map { $0.text.uppercased() }, report.verdicts))
         XCTAssertTrue(byText.first { $0.key.contains("SMITH") }?.value.isRedact ?? false)
@@ -286,16 +351,16 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertFalse(byText["R"]?.isRedact ?? true, "\(byText)")
     }
 
-    func testOcrAllFramesScansEveryFrame() throws {
+    func testOcrAllFramesScansEveryFrame() async throws {
         let data = try bannerImage(text: "MRN 9", frames: 4)
-        let report = try PixelCleaningWorkflow().run(
-            fileData: data, options: Options(detectText: .all, ocrAllFrames: true), dryRun: false)
+        let report = try await PixelCleaningWorkflow().run(
+            fileData: data, options: Options(detectText: .classify, ocrAllFrames: true), dryRun: false)
         XCTAssertEqual(report.scannedFrames, [0, 1, 2, 3])
     }
 
-    func testDryRunWithDetectionPrintsTheTableAndWritesNothing() throws {
+    func testDryRunWithDetectionPrintsTheTableAndWritesNothing() async throws {
         let data = try bannerImage(text: "SMITH JOHN")
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: data,
             options: Options(cleanPixelData: true, explicitRegions: [Region(x: 0, y: 250, width: 512, height: 6)],
                              detectText: .classify),
@@ -312,16 +377,16 @@ final class PixelCleaningWorkflowTests: XCTestCase {
 
     /// `label` style end-to-end: OCR of the output finds the stamp and none of the
     /// original strings — the original is 100% gone regardless of style.
-    func testLabelStyleOutputReadsAsTheStampAndNeverTheOriginal() throws {
+    func testLabelStyleOutputReadsAsTheStampAndNeverTheOriginal() async throws {
         let data = try bannerImage(text: "SMITH JOHN 0012345")
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: data,
-            options: Options(cleanPixelData: true, detectText: .all, style: .label("REDACTED")),
+            options: Options(cleanPixelData: true, detectText: .classify, style: .label("REDACTED")),
             dryRun: false)
         let outcome = try XCTUnwrap(report.outcome)
         XCTAssertEqual(outcome.style, .label("REDACTED"))
         let cleaned = try DICOMFile.read(from: report.data)
-        let after = try TextRegionDetector().detect(in: cleaned)
+        let after = try await TextRegionDetector().detect(in: cleaned)
         let texts = after.map { $0.text.uppercased() }
         XCTAssertTrue(texts.contains { $0.contains("REDACTED") }, "stamp should be legible: \(texts)")
         XCTAssertFalse(texts.contains { $0.contains("SMITH") || $0.contains("0012345") }, "\(texts)")
@@ -343,15 +408,15 @@ final class PixelCleaningWorkflowTests: XCTestCase {
     /// `--recompress source` on a lossless source: same UID out, redacted rects still
     /// blank after the codec round-trip, pixels outside byte-identical to the clean
     /// uncompressed output, attestation intact.
-    func testRecompressSourceMirrorsALosslessSourceExactly() throws {
+    func testRecompressSourceMirrorsALosslessSourceExactly() async throws {
         let native = try bannerImage(text: "SMITH JOHN", frames: 3)
         let rle = try CompressionManager().compressData(native, codec: "rle", quality: nil)
         XCTAssertEqual(try tsUID(rle), TransferSyntax.rleLossless.uid)
 
-        let plain = try PixelCleaningWorkflow().run(
-            fileData: rle, options: Options(cleanPixelData: true, detectText: .all), dryRun: false)
-        let parity = try PixelCleaningWorkflow().run(
-            fileData: rle, options: Options(cleanPixelData: true, detectText: .all, recompress: .source), dryRun: false)
+        let plain = try await PixelCleaningWorkflow().run(
+            fileData: rle, options: Options(cleanPixelData: true, detectText: .classify), dryRun: false)
+        let parity = try await PixelCleaningWorkflow().run(
+            fileData: rle, options: Options(cleanPixelData: true, detectText: .classify, recompress: .source), dryRun: false)
         let r = try XCTUnwrap(parity.recompression)
         XCTAssertEqual(r.codec, "rle")
         XCTAssertFalse(r.lossy)
@@ -367,18 +432,19 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertNotEqual(parity.data, plain.data)
         let out = try DICOMFile.read(from: parity.data)
         XCTAssertEqual(out.dataSet.string(for: .burnedInAnnotation)?.trimmingCharacters(in: .whitespaces), "NO")
-        XCTAssertTrue(try TextRegionDetector().detect(in: out, allFrames: true).isEmpty)
+        let ocrLeftover5 = try await TextRegionDetector().detect(in: out, allFrames: true)
+        XCTAssertTrue(ocrLeftover5.isEmpty)
         XCTAssertTrue(parity.auditLines.last?.contains("re-encoded to \(TransferSyntax.rleLossless.uid)") ?? false, "\(parity.auditLines)")
         XCTAssertTrue(AnonConsole.recompressionLines(r).hasPrefix("Re-encoded to source syntax"), AnonConsole.recompressionLines(r))
     }
 
     /// A named lossy codec: warns about second-generation loss, updates the lossy
     /// attributes for the new generation, and the rects survive as flat black.
-    func testRecompressLossyCodecWarnsAndKeepsRectsBlank() throws {
+    func testRecompressLossyCodecWarnsAndKeepsRectsBlank() async throws {
         let native = try bannerImage(text: "DOE JANE 0012345", frames: 2)
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: native,
-            options: Options(cleanPixelData: true, detectText: .all, recompress: .codec("jpeg-baseline")), dryRun: false)
+            options: Options(cleanPixelData: true, detectText: .classify, recompress: .codec("jpeg-baseline")), dryRun: false)
         let r = try XCTUnwrap(report.recompression)
         XCTAssertTrue(r.lossy)
         XCTAssertEqual(try tsUID(report.data), TransferSyntax.jpegBaseline.uid)
@@ -388,19 +454,20 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         XCTAssertEqual(ds.strings(for: .lossyImageCompressionMethod)?.count, 1)
         XCTAssertEqual(ds.strings(for: .lossyImageCompressionRatio)?.count, 1)
         XCTAssertEqual(ds.string(for: .burnedInAnnotation)?.trimmingCharacters(in: .whitespaces), "NO")
-        XCTAssertTrue(try TextRegionDetector().detect(in: DICOMFile.read(from: report.data), allFrames: true).isEmpty)
+        let ocrLeftover6 = try await TextRegionDetector().detect(in: DICOMFile.read(from: report.data), allFrames: true)
+        XCTAssertTrue(ocrLeftover6.isEmpty)
         // The console line carries the warning.
         XCTAssertTrue(AnonConsole.recompressionLines(r).contains("⚠️"), AnonConsole.recompressionLines(r))
     }
 
     /// `source` on a lossy JPEG source re-targets the same syntax with a lossy warning
     /// and appends a second generation to the lossy history.
-    func testRecompressSourceOnALossySourceIsSecondGeneration() throws {
+    func testRecompressSourceOnALossySourceIsSecondGeneration() async throws {
         let native = try bannerImage(text: "SMITH JOHN")
         let jpeg = try CompressionManager().compressData(native, codec: "jpeg-baseline", quality: nil)
         XCTAssertEqual(try DICOMFile.read(from: jpeg).dataSet.strings(for: .lossyImageCompressionMethod)?.count, 1)
-        let report = try PixelCleaningWorkflow().run(
-            fileData: jpeg, options: Options(cleanPixelData: true, detectText: .all, recompress: .source), dryRun: false)
+        let report = try await PixelCleaningWorkflow().run(
+            fileData: jpeg, options: Options(cleanPixelData: true, detectText: .classify, recompress: .source), dryRun: false)
         let r = try XCTUnwrap(report.recompression)
         XCTAssertEqual(r.codec, "jpeg", "the codec map's canonical name for JPEG baseline")
         XCTAssertTrue(r.lossy)
@@ -410,18 +477,19 @@ final class PixelCleaningWorkflowTests: XCTestCase {
     }
 
     /// Uncompressed sources: `source` keeps them uncompressed (implicit stays implicit).
-    func testRecompressSourceOnUncompressedSourcesIsParity() throws {
+    func testRecompressSourceOnUncompressedSourcesIsParity() async throws {
         let native = try bannerImage(text: "SMITH JOHN")
         let implicit = try CompressionManager().compressData(native, codec: "implicit-le", quality: nil)
-        let report = try PixelCleaningWorkflow().run(
-            fileData: implicit, options: Options(cleanPixelData: true, detectText: .all, recompress: .source), dryRun: false)
+        let report = try await PixelCleaningWorkflow().run(
+            fileData: implicit, options: Options(cleanPixelData: true, detectText: .classify, recompress: .source), dryRun: false)
         XCTAssertEqual(try tsUID(report.data), TransferSyntax.implicitVRLittleEndian.uid)
         XCTAssertEqual(report.recompression?.codec, "implicit-le")
         let deflated = try CompressionManager().compressData(native, codec: "deflate", quality: nil)
-        let d = try PixelCleaningWorkflow().run(
-            fileData: deflated, options: Options(cleanPixelData: true, detectText: .all, recompress: .source), dryRun: false)
+        let d = try await PixelCleaningWorkflow().run(
+            fileData: deflated, options: Options(cleanPixelData: true, detectText: .classify, recompress: .source), dryRun: false)
         XCTAssertEqual(try tsUID(d.data), TransferSyntax.deflatedExplicitVRLittleEndian.uid)
-        XCTAssertTrue(try TextRegionDetector().detect(in: DICOMFile.read(from: d.data)).isEmpty)
+        let ocrLeftover7 = try await TextRegionDetector().detect(in: DICOMFile.read(from: d.data))
+        XCTAssertTrue(ocrLeftover7.isEmpty)
     }
 
     /// A source syntax the toolkit cannot encode falls back to Explicit VR LE with a
@@ -454,26 +522,21 @@ final class PixelCleaningWorkflowTests: XCTestCase {
 
     // MARK: Phase 4 — replace style
 
-    /// Pixels and header tell ONE story: the burned name/ID/date are replaced with the
-    /// header engine's own values for the same file, dates only under --shift-dates.
-    func testReplaceStyleUsesTheHeaderEnginesOwnValues() throws {
-        let data = try twoLineImage(top: "SMITH JOHN", bottom: "R 10 cm")
+    /// Pixels and header tell ONE story: a burned date is replaced with the header
+    /// engine's own shifted value for the same file (Modified Dates). Name and ID are
+    /// zeroed by the Basic Profile, so they honestly have no replacement.
+    func testReplaceStyleUsesTheHeaderEnginesOwnValues() async throws {
+        let data = try twoLineImage(top: "DOB 12/03/1961", bottom: "R 10 cm")
         let file = try DICOMFile.read(from: data)
-        // The header engine, previewed the way the CLI does it (legacy basic profile,
-        // shifted dates): name → ANONYMOUS, ID → SHA-256 pseudonym, DOB → +30 days.
-        let header = try Anonymizer(profile: .basic, shiftDates: 30).anonymize(file: file, filePath: "preview").0.dataSet
+        // The header engine, previewed the way the CLI does it: DOB → +30 days.
+        let header = Anonymizer(options: .init(retainLongitudinalTemporal: true, dateOffsetDays: 30))
+            .preview(file: file).dataSet
         let mapping = PixelCleaningWorkflow.ReplacementMapping.derive(original: file.dataSet, deidentified: header)
-        XCTAssertEqual(mapping.values[.patientName], "ANONYMOUS")
-        XCTAssertEqual(mapping.values[.patientID]?.count, 32, "\(String(describing: mapping.values[.patientID]))")
+        XCTAssertNil(mapping.values[.patientName], "PS3.15 Basic zeroes the name: nothing truthful to draw")
+        XCTAssertNil(mapping.values[.patientID])
         XCTAssertEqual(mapping.values[.patientBirthDate], "1962-01-02", "19611203 + 30 days, rendered ISO")
 
-        // PS3.15 Basic zeroes name and ID: there the mapping honestly has nothing.
-        let ps315 = Anonymizer(profile: .basic).deidentify(file: file, options: .basic).0.dataSet
-        let strict = PixelCleaningWorkflow.ReplacementMapping.derive(original: file.dataSet, deidentified: ps315)
-        XCTAssertNil(strict.values[.patientName])
-        XCTAssertNil(strict.values[.patientID])
-
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: data,
             options: Options(cleanPixelData: true, detectText: .classify,
                              style: .replace(fallback: "REDACTED"), replacementMapping: mapping),
@@ -481,29 +544,29 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         let outcome = try XCTUnwrap(report.outcome)
         XCTAssertEqual(outcome.regions.count, 1, "the clinical label is kept, not replaced")
         let drawn = try XCTUnwrap(outcome.replacements.values.first)
-        XCTAssertEqual(drawn, "ANONYMOUS", "the header's own value")
+        XCTAssertEqual(drawn, "1962-01-02", "the header's own value")
         XCTAssertTrue(outcome.replacementFallbackNotes.isEmpty)
 
         // Detection oracle: the output reads as the replacement and never the original.
-        let after = try TextRegionDetector().detect(in: DICOMFile.read(from: report.data)).map { $0.text.uppercased() }
-        XCTAssertTrue(after.contains { $0.contains("ANONYMOUS") }, "\(after)")
-        XCTAssertFalse(after.contains { $0.contains("SMITH") || $0.contains("0012345") }, "\(after)")
+        let after = try await TextRegionDetector().detect(in: DICOMFile.read(from: report.data)).map { $0.text.uppercased() }
+        XCTAssertTrue(after.contains { $0.contains("1962") }, "\(after)")
+        XCTAssertFalse(after.contains { $0.contains("1961") }, "\(after)")
         XCTAssertTrue(after.contains { $0.contains("CM") }, "\(after)")
     }
 
     /// If the header policy removes dates (no --shift-dates), a burned date is blanked/
     /// labelled — pixels never retain what the header dropped. Uncertain text is never
     /// replaced.
-    func testReplaceFallsBackWhenTheHeaderRemovesTheAttributeOrTheTextIsUncertain() throws {
+    func testReplaceFallsBackWhenTheHeaderRemovesTheAttributeOrTheTextIsUncertain() async throws {
         let data = try twoLineImage(top: "DOB 12/03/1961", bottom: "Zebra 77")
         let file = try DICOMFile.read(from: data)
-        // No --shift-dates: the legacy engine REMOVES dates.
-        let header = try Anonymizer(profile: .basic).anonymize(file: file, filePath: "preview").0.dataSet
+        // No --shift-dates: the Basic Profile zeroes dates.
+        let header = Anonymizer().preview(file: file).dataSet
         let mapping = PixelCleaningWorkflow.ReplacementMapping.derive(original: file.dataSet, deidentified: header)
         XCTAssertNil(mapping.values[.patientBirthDate], "a zeroed date has no truthful replacement")
-        XCTAssertEqual(mapping.values[.patientName], "ANONYMOUS")
+        XCTAssertNil(mapping.values[.patientName])
 
-        let report = try PixelCleaningWorkflow().run(
+        let report = try await PixelCleaningWorkflow().run(
             fileData: data,
             options: Options(cleanPixelData: true, detectText: .classify,
                              style: .replace(fallback: "REDACTED"), replacementMapping: mapping),
@@ -515,22 +578,10 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         let notes = outcome.replacementFallbackNotes.values.joined(separator: " | ")
         XCTAssertTrue(notes.contains("header policy removed"), notes)
         XCTAssertTrue(notes.contains("uncertain"), notes)
-        let after = try TextRegionDetector().detect(in: DICOMFile.read(from: report.data)).map { $0.text.uppercased() }
+        let after = try await TextRegionDetector().detect(in: DICOMFile.read(from: report.data)).map { $0.text.uppercased() }
         XCTAssertFalse(after.contains { $0.contains("1961") || $0.contains("ZEBRA") }, "\(after)")
         XCTAssertTrue(after.allSatisfy { $0.contains("REDACTED") }, "\(after)")
         for l in report.auditLines { XCTAssertFalse(l.contains("1961"), l) }
-    }
-
-    func testReplaceInAllModeNeverInventsValues() throws {
-        let data = try twoLineImage(top: "SMITH JOHN", bottom: "R")
-        let report = try PixelCleaningWorkflow().run(
-            fileData: data,
-            options: Options(cleanPixelData: true, detectText: .all, style: .replace(fallback: "REDACTED"),
-                             replacementMapping: .init(values: [.patientName: "ANONYMOUS"])),
-            dryRun: false)
-        let outcome = try XCTUnwrap(report.outcome)
-        XCTAssertTrue(outcome.replacements.isEmpty, "all mode has no classified matches")
-        XCTAssertEqual(outcome.replacementFallbackNotes.count, outcome.regions.count)
     }
 
     // MARK: Phase 4 — concatenations
@@ -546,52 +597,53 @@ final class PixelCleaningWorkflowTests: XCTestCase {
         return try DICOMFile(fileMetaInformation: meta, dataSet: ds).write()
     }
 
-    func testSinglePartWarnsThatCoverageIsIncompleteOnlyWhenOCRRuns() throws {
+    func testSinglePartWarnsThatCoverageIsIncompleteOnlyWhenOCRRuns() async throws {
         let part = try concatenationPart(text: "SMITH JOHN", uid: "1.2.3.9", number: 1, total: 2)
-        let withOCR = try PixelCleaningWorkflow().run(
-            fileData: part, options: Options(cleanPixelData: true, detectText: .all), dryRun: false)
+        let withOCR = try await PixelCleaningWorkflow().run(
+            fileData: part, options: Options(cleanPixelData: true, detectText: .classify), dryRun: false)
         XCTAssertEqual(withOCR.warnings.count, 1)
         XCTAssertTrue(withOCR.warnings[0].contains("part 1 of 2") && withOCR.warnings[0].contains("analyzed alone"), withOCR.warnings[0])
         XCTAssertTrue(withOCR.residualWarnings.isEmpty, "a coverage note must never refuse")
         XCTAssertNotNil(withOCR.outcome, "cleaning still happens")
 
-        let noOCR = try PixelCleaningWorkflow().run(
+        let noOCR = try await PixelCleaningWorkflow().run(
             fileData: part, options: Options(explicitRegions: [Region(x: 0, y: 0, width: 512, height: 60)]), dryRun: false)
         XCTAssertTrue(noOCR.warnings.isEmpty, "no OCR claim, no OCR coverage caveat")
 
-        let swept = try PixelCleaningWorkflow().run(
-            fileData: part, options: Options(cleanPixelData: true, detectText: .all, concatenationAnalyzedCompletely: true), dryRun: false)
+        let swept = try await PixelCleaningWorkflow().run(
+            fileData: part, options: Options(cleanPixelData: true, detectText: .classify, concatenationAnalyzedCompletely: true), dryRun: false)
         XCTAssertTrue(swept.warnings.isEmpty)
     }
 
     /// Text found only in part 2 must be blanked in part 1 as well (§4.4).
-    func testConcatenationSweepUnionsRegionsAcrossParts() throws {
+    func testConcatenationSweepUnionsRegionsAcrossParts() async throws {
         let uid = "1.2.3.10"
         let part1 = try concatenationPart(text: "", uid: uid, number: 1, total: 2)          // clean-looking
         let part2 = try concatenationPart(text: "DOE JANE 0012345", uid: uid, number: 2, total: 2)
         let wf = PixelCleaningWorkflow()
         var sweep = PixelCleaningWorkflow.ConcatenationSweep()
         for data in [part1, part2] {
-            let (info, regions) = try wf.sweep(fileData: data, options: Options(detectText: .all))
+            let (info, regions) = try await wf.sweep(fileData: data, options: Options(detectText: .classify))
             sweep.add(try XCTUnwrap(info), regions: regions)
         }
         XCTAssertTrue(sweep.isComplete(uid))
         XCTAssertFalse(sweep.regions(for: uid).isEmpty)
 
         // Part 1 alone would be nothingToDo; with the sweep it gets part 2's regions.
-        let alone = try wf.run(fileData: part1, options: Options(cleanPixelData: true, detectText: .all), dryRun: false)
+        let alone = try await wf.run(fileData: part1, options: Options(cleanPixelData: true, detectText: .classify), dryRun: false)
         XCTAssertNil(alone.outcome)
-        let options = Options(cleanPixelData: true, detectText: .all,
+        let options = Options(cleanPixelData: true, detectText: .classify,
                               presetDetectedRegions: sweep.regions(for: uid), concatenationAnalyzedCompletely: true)
-        let r1 = try wf.run(fileData: part1, options: options, dryRun: false)
+        let r1 = try await wf.run(fileData: part1, options: options, dryRun: false)
         let o1 = try XCTUnwrap(r1.outcome)
         XCTAssertEqual(o1.basis, .textDetection)
         XCTAssertEqual(Set(o1.regions), Set(sweep.regions(for: uid)))
         XCTAssertEqual(o1.frameCount, 2)
         XCTAssertTrue(r1.warnings.isEmpty)
-        let r2 = try wf.run(fileData: part2, options: options, dryRun: false)
+        let r2 = try await wf.run(fileData: part2, options: options, dryRun: false)
         XCTAssertEqual(Set(try XCTUnwrap(r2.outcome).regions), Set(sweep.regions(for: uid)))
-        XCTAssertTrue(try TextRegionDetector().detect(in: DICOMFile.read(from: r2.data), allFrames: true).isEmpty)
+        let ocrLeftover8 = try await TextRegionDetector().detect(in: DICOMFile.read(from: r2.data), allFrames: true)
+        XCTAssertTrue(ocrLeftover8.isEmpty)
     }
 
     func testSweepCompletenessNeedsEveryDeclaredPart() {
@@ -608,11 +660,11 @@ final class PixelCleaningWorkflowTests: XCTestCase {
     }
 
     /// OCR and explicit rectangles union: the rectangle never suppresses detection.
-    func testExplicitAndDetectedRegionsUnion() throws {
+    func testExplicitAndDetectedRegionsUnion() async throws {
         let data = try bannerImage(text: "SMITH JOHN")
         let rect = Region(x: 0, y: 250, width: 512, height: 6)
-        let report = try PixelCleaningWorkflow().run(
-            fileData: data, options: Options(explicitRegions: [rect], detectText: .all), dryRun: false)
+        let report = try await PixelCleaningWorkflow().run(
+            fileData: data, options: Options(explicitRegions: [rect], detectText: .classify), dryRun: false)
         let outcome = try XCTUnwrap(report.outcome)
         XCTAssertEqual(outcome.basis, .explicit)
         XCTAssertTrue(outcome.regions.contains(rect))
@@ -622,7 +674,7 @@ final class PixelCleaningWorkflowTests: XCTestCase {
     #else
     func testDetectTextIsAHardErrorWithoutVision() throws {
         let data = try plainImage()
-        XCTAssertThrowsError(try PixelCleaningWorkflow().run(
+        await assertThrowsErrorAsync(try await PixelCleaningWorkflow().run(
             fileData: data, options: Options(detectText: .classify), dryRun: false)) { error in
             XCTAssertEqual(error as? TextDetectionError, .unavailable)
         }

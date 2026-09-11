@@ -275,11 +275,18 @@ public struct PixelRedactor {
     /// a stamp contrasts with its blanked background at the image's real bit depth
     /// (MONOCHROME1/2 alike — contrast, not "brightness", is what a reviewer needs).
     static func contrastingStoredValue(to fill: Int, in dataSet: DataSet) -> Int {
+        let (lo, hi) = storedRange(in: dataSet)
+        return (fill - lo) >= (hi - fill) ? lo : hi
+    }
+
+    /// The representable stored-value range at the image's Bits Stored / Pixel
+    /// Representation — `hi` is what "white" means for this image.
+    public static func storedRange(in dataSet: DataSet) -> (lo: Int, hi: Int) {
         let bitsStored = Int(dataSet.uint16(for: .bitsStored) ?? dataSet.uint16(for: .bitsAllocated) ?? 8)
         let signed = (dataSet.uint16(for: .pixelRepresentation) ?? 0) == 1
         let lo = signed ? -(1 << (bitsStored - 1)) : 0
         let hi = signed ? (1 << (bitsStored - 1)) - 1 : (1 << bitsStored) - 1
-        return (fill - lo) >= (hi - fill) ? lo : hi
+        return (lo, hi)
     }
 
     /// One note per contributing source when the plan unioned several; the single
@@ -335,26 +342,8 @@ public struct PixelRedactor {
         dataSet.setString("NO", for: .burnedInAnnotation, vr: .CS)
 
         // (0012,0064) De-identification Method Code Sequence — append DCM 113101 rather
-        // than replacing, so a Basic-Profile item written by the header pass survives.
-        var items = dataSet.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []
-        let alreadyRecorded = items.contains { item in
-            let set = DataSet(elements: item.allElements)
-            return set.string(for: Tag(group: 0x0008, element: 0x0100))?
-                .trimmingCharacters(in: .whitespaces) == "113101"
-        }
-        if !alreadyRecorded {
-            // Code Value / Coding Scheme Designator / Code Meaning (PS3.3 C.8-2).
-            items.append(SequenceItem(elements: [
-                DataElement.string(
-                    tag: Tag(group: 0x0008, element: 0x0100), vr: .SH, value: "113101"),
-                DataElement.string(
-                    tag: Tag(group: 0x0008, element: 0x0102), vr: .SH, value: "DCM"),
-                DataElement.string(
-                    tag: Tag(group: 0x0008, element: 0x0104), vr: .LO,
-                    value: "Clean Pixel Data Option"),
-            ]))
-            dataSet.setSequence(items, for: Tag(group: 0x0012, element: 0x0064))
-        }
+        // than replacing, so an item written by another pass survives.
+        ConfidentialityProfile.MethodCode.record(.cleanPixelData, in: &dataSet)
     }
 }
 

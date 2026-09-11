@@ -4,9 +4,12 @@ import DICOMCore
 /// PS3.15 Annex E — Attribute Confidentiality Profiles.
 ///
 /// This models the *action codes* of Table E.1-1 and a curated table of the attributes
-/// that carry direct identifiers. It is deliberately additive: the legacy
-/// ``AnonymizationProfile`` (basic/clinicalTrial/research) is unchanged; this type is the
-/// standards-grounded engine used by the new ``Anonymizer/deidentify(file:)`` path.
+/// that carry direct identifiers. It is the ONLY de-identification profile `dicom-anon`
+/// and DICOMStudio apply: the Basic Application Level Confidentiality Profile is always
+/// on, and the named E.3 retention options (``Options``) are the only way to keep more.
+/// There is no per-tag keep/replace override — a file this tool writes either meets the
+/// profile it declares in (0012,0063)/(0012,0064) or is marked Patient Identity Removed
+/// = NO.
 ///
 /// ## Coverage
 ///
@@ -43,15 +46,92 @@ public enum ConfidentialityProfile {
         case removePreferred
     }
 
+    /// A DCM code from CID 7050 "De-identification Method" — what (0012,0064) records.
+    public struct MethodCode: Sendable, Equatable, Hashable {
+        public let value: String
+        public let meaning: String
+        /// Short form for the human-readable (0012,0063) list.
+        public let shortName: String
+
+        public static let basicProfile = MethodCode(
+            value: "113100", meaning: "Basic Application Confidentiality Profile",
+            shortName: "PS3.15 Basic Application Level Confidentiality Profile")
+        public static let cleanPixelData = MethodCode(
+            value: "113101", meaning: "Clean Pixel Data Option", shortName: "Clean Pixel Data")
+        public static let cleanDescriptors = MethodCode(
+            value: "113105", meaning: "Clean Descriptors Option", shortName: "Clean Descriptors")
+        public static let retainFullDates = MethodCode(
+            value: "113106", meaning: "Retain Longitudinal Temporal Information Full Dates Option",
+            shortName: "Retain Longitudinal Temporal Information (Full Dates)")
+        public static let retainModifiedDates = MethodCode(
+            value: "113107", meaning: "Retain Longitudinal Temporal Information Modified Dates Option",
+            shortName: "Retain Longitudinal Temporal Information (Modified Dates)")
+        public static let retainPatientCharacteristics = MethodCode(
+            value: "113108", meaning: "Retain Patient Characteristics Option",
+            shortName: "Retain Patient Characteristics")
+        public static let retainDeviceIdentity = MethodCode(
+            value: "113109", meaning: "Retain Device Identity Option", shortName: "Retain Device Identity")
+        public static let retainUIDs = MethodCode(
+            value: "113110", meaning: "Retain UIDs Option", shortName: "Retain UIDs")
+        public static let retainInstitutionIdentity = MethodCode(
+            value: "113112", meaning: "Retain Institution Identity Option",
+            shortName: "Retain Institution Identity")
+
+        /// The (0012,0064) item for this code (Code Value / Scheme / Meaning, PS3.3 C.8-2).
+        public var sequenceItem: SequenceItem {
+            SequenceItem(elements: [
+                DataElement.string(tag: Tag(group: 0x0008, element: 0x0100), vr: .SH, value: value),
+                DataElement.string(tag: Tag(group: 0x0008, element: 0x0102), vr: .SH, value: "DCM"),
+                DataElement.string(tag: Tag(group: 0x0008, element: 0x0104), vr: .LO, value: meaning),
+            ])
+        }
+
+        /// Code values already listed in a data set's (0012,0064).
+        public static func recorded(in dataSet: DataSet) -> Set<String> {
+            let items = dataSet.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []
+            return Set(items.compactMap {
+                DataSet(elements: $0.allElements).string(for: Tag(group: 0x0008, element: 0x0100))?
+                    .trimmingCharacters(in: .whitespaces)
+            })
+        }
+
+        /// Appends `code` to (0012,0064) unless it is already recorded.
+        public static func record(_ code: MethodCode, in dataSet: inout DataSet) {
+            guard !recorded(in: dataSet).contains(code.value) else { return }
+            var items = dataSet.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []
+            items.append(code.sequenceItem)
+            dataSet.setSequence(items, for: Tag(group: 0x0012, element: 0x0064))
+        }
+    }
+
     /// Named retention options from PS3.15 E.3 that relax specific actions.
+    ///
+    /// Two of the standard's options share one switch here: `retainLongitudinalTemporal`
+    /// alone is *Retain Longitudinal Temporal Information with Full Dates* (113106);
+    /// with `dateOffsetDays` set it is *… with Modified Dates* (113107) — every date is
+    /// shifted by the same offset, so intervals survive while the real dates do not.
     public struct Options: Sendable, Equatable {
-        public var retainLongitudinalTemporal: Bool  // dates/times kept (else removed/shifted)
+        public var retainLongitudinalTemporal: Bool  // dates/times kept (else zeroed)
         public var retainPatientCharacteristics: Bool // age/sex/weight/size kept
         public var retainDeviceIdentity: Bool          // device serial/UID/station kept
         public var retainInstitutionIdentity: Bool     // institution name/address kept
         public var retainUIDs: Bool                    // UIDs kept unchanged (else regenerated)
-        public var cleanDescriptors: Bool              // scrub free-text rather than remove
-        public var dateOffsetDays: Int?                // if set with retainLongitudinalTemporal, shift instead of remove
+        public var cleanDescriptors: Bool              // keep free-text descriptors rather than zero them
+        public var dateOffsetDays: Int?                // with retainLongitudinalTemporal: shift dates by this (Modified Dates)
+
+        /// The CID 7050 codes this option set declares, Basic Profile first.
+        public var methodCodes: [MethodCode] {
+            var codes: [MethodCode] = [.basicProfile]
+            if retainLongitudinalTemporal {
+                codes.append(dateOffsetDays == nil ? .retainFullDates : .retainModifiedDates)
+            }
+            if retainPatientCharacteristics { codes.append(.retainPatientCharacteristics) }
+            if retainDeviceIdentity { codes.append(.retainDeviceIdentity) }
+            if retainInstitutionIdentity { codes.append(.retainInstitutionIdentity) }
+            if retainUIDs { codes.append(.retainUIDs) }
+            if cleanDescriptors { codes.append(.cleanDescriptors) }
+            return codes
+        }
 
         public init(
             retainLongitudinalTemporal: Bool = false,
@@ -206,12 +286,13 @@ public enum ConfidentialityProfile {
         guard let rule = table[tag] else { return nil }
         if let key = rule.relaxedBy, isRelaxed(key, options) {
             // "Retain Longitudinal Temporal Information with Modified Dates": when an
-            // offset is set, dates are *shifted*, not kept verbatim. Leave the original
-            // action (.zeroOrDummy) so the engine's date-shift path runs; only a
-            // no-offset retention becomes a plain keep.
+            // offset is set, dates are *shifted*, not kept verbatim — the birth date
+            // (a Z row) as much as the study date (a Z/D row). Route every zeroing
+            // date row through the engine's shift path; only a no-offset retention
+            // (Full Dates) becomes a plain keep.
             if key == .longitudinalTemporal, options.dateOffsetDays != nil,
-               rule.action == .zeroOrDummy {
-                return rule.action
+               rule.action == .zeroOrDummy || rule.action == .zero {
+                return .zeroOrDummy
             }
             return .keep
         }

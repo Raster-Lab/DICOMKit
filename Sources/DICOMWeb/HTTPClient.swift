@@ -7,7 +7,7 @@ import FoundationNetworking
 ///
 /// Provides a configurable HTTP client layer with retry support,
 /// interceptors, and progress reporting.
-#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS)
+#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public final class HTTPClient: @unchecked Sendable {
     
     // MARK: - Types

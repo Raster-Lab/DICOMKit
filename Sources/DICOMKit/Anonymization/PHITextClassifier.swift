@@ -65,15 +65,41 @@ public struct PHITextClassifier: Sendable, Equatable {
         public let matchedTags: [Tag]
     }
 
+    /// Which of the four decision steps run.
+    ///
+    /// - `classify` (default): all four — header matches, PHI-shaped patterns, PHI
+    ///   keywords, then keep **only** allowlisted text. Fails closed.
+    /// - `header`: header matches and PHI-shaped patterns only; everything else is
+    ///   kept. Fails **open** — text not present in the header (a sticker, a second
+    ///   patient, a RIS-entered name the modality never received) passes. The mode
+    ///   exists so scales, legends and free annotations survive on images where the
+    ///   operator accepts that limit; it never earns more than `classify` does.
+    public enum Policy: String, Sendable, Equatable {
+        case classify
+        case header
+    }
+
     /// OCR confidence below this is treated as uncertain → redact, whatever the text.
     public static let defaultMinimumConfidence: Float = 0.5
 
     public var terms: Terms
     public var minimumConfidence: Float
+    public var policy: Policy
+    /// Pixel rectangles the file itself declares as calibrated image content
+    /// (Sequence of Ultrasound Regions). Vendors draw the depth/velocity/time scale
+    /// along their edges, and the OCR engine reads a ruler tick that touches a numeral
+    /// as a trailing glyph (`10` + tick → `10y`, `15` + tick → `15}`). Only there does
+    /// ``classify(_:confidence:)``'s allowlist forgive ONE such trailing glyph on a
+    /// short numeral; a banner outside every declared region gets no such forgiveness,
+    /// so an age like `72y` in a banner is still redacted. Empty = rule off.
+    public var scaleZones: [PixelRedactionPlan.Region]
 
-    public init(terms: Terms = Terms(), minimumConfidence: Float = PHITextClassifier.defaultMinimumConfidence) {
+    public init(terms: Terms = Terms(), minimumConfidence: Float = PHITextClassifier.defaultMinimumConfidence,
+                policy: Policy = .classify, scaleZones: [PixelRedactionPlan.Region] = []) {
         self.terms = terms
         self.minimumConfidence = minimumConfidence
+        self.policy = policy
+        self.scaleZones = scaleZones
     }
 
     // MARK: - Allowlist
@@ -88,7 +114,8 @@ public struct PHITextClassifier: Sendable, Equatable {
         "DEG", "FPS", "BPM", "MGY", "GY", "MSV", "SV", "MAS", "MA", "KV", "KVP", "MV", "W", "T", "PPM",
         // technique / display labels
         "KVP", "MAS", "FOV", "TR", "TE", "TI", "TA", "SL", "THK", "SP", "NEX", "FA", "ETL", "BW",
-        "WW", "WL", "WC", "WIN", "LEV", "ZOOM", "MAG", "SCALE", "DEPTH", "GAIN", "MI", "TIS", "TIB",
+        "WW", "WL", "WC", "WIN", "LEV", "ZOOM", "MAG", "SCALE", "DEPTH", "GAIN", "MI", "TIS", "TIB", "TIC",
+        "TLS", "TLB", "TLC",   // OCR's lowercase-L reading of TIs / TIb / TIc (thermal indices)
         "FR", "FRQ", "FREQ", "PRF", "DR", "GN", "DYN", "MHZ", "HR",
         "AXIAL", "SAGITTAL", "CORONAL", "AX", "SAG", "COR", "TRA",
         "T1", "T2", "PD", "FLAIR", "DWI", "ADC", "STIR", "SWI", "TOF", "MIP", "MPR",
@@ -265,12 +292,21 @@ public struct PHITextClassifier: Sendable, Equatable {
     }
 
     /// Classifies one recognized string and reports which header attributes matched.
-    public func classifyDetailed(_ text: String, confidence: Float) -> Classification {
-        if confidence < minimumConfidence {
+    /// `region` is where the text sits; it only matters for the scale-zone rule.
+    public func classifyDetailed(_ text: String, confidence: Float,
+                                 region: PixelRedactionPlan.Region? = nil) -> Classification {
+        let uncertain = confidence < minimumConfidence
+        // `classify` refuses to reason about text it cannot read; `header` still tries
+        // the matches (a fuzzy hit on garbled PHI is the safe direction) and otherwise
+        // keeps — that is the mode's contract.
+        if uncertain, policy == .classify {
             return Classification(verdict: .redact(reason: "uncertain: OCR confidence \(String(format: "%.2f", confidence)) below \(String(format: "%.2f", minimumConfidence))"), matchedTags: [])
         }
         let normalized = Self.normalize(text)
         guard !normalized.isEmpty else {
+            if policy == .header {
+                return Classification(verdict: .keep(reason: "header mode: no recognizable characters"), matchedTags: [])
+            }
             return Classification(verdict: .redact(reason: "uncertain: no recognizable characters"), matchedTags: [])
         }
         let folded = Self.foldConfusions(normalized)
@@ -305,6 +341,12 @@ public struct PHITextClassifier: Sendable, Equatable {
             return Classification(verdict: .redact(reason: "pattern: \(pattern)"), matchedTags: [])
         }
 
+        // `header` stops here: nothing tied it to this study's PHI, so it stays.
+        if policy == .header {
+            let note = uncertain ? " (low OCR confidence \(String(format: "%.2f", confidence)))" : ""
+            return Classification(verdict: .keep(reason: "header mode: no header match or PHI pattern" + note), matchedTags: [])
+        }
+
         // 3. Keyword proximity: a PHI label on the line taints the whole line.
         let tokens = Self.tokens(of: text)
         if let keyword = tokens.first(where: { Self.phiKeywords.contains($0) }) {
@@ -315,7 +357,26 @@ public struct PHITextClassifier: Sendable, Equatable {
         if !tokens.isEmpty, tokens.allSatisfy(Self.isAllowlisted) {
             return Classification(verdict: .keep(reason: "allowlist: " + Self.allowlistCategory(tokens)), matchedTags: [])
         }
+        // 4b. A short numeral with ONE trailing glyph, sitting on a declared scale zone:
+        //     the glyph is the ruler tick the OCR engine fused into the word. Steps 1–3
+        //     ran first, so a header match, a PHI pattern or a keyword still wins.
+        if let region, Self.isScaleNumeralWithTickGlyph(text), scaleZones.contains(where: { $0.intersects(region) }) {
+            return Classification(verdict: .keep(reason: "allowlist: scale numeral on a declared ultrasound region (trailing tick glyph ignored)"), matchedTags: [])
+        }
         return Classification(verdict: .redact(reason: "uncertain: not on the allowlist"), matchedTags: [])
+    }
+
+    /// `10y`, `15}`, `-5)`, `2.5|`: an optionally signed numeral of at most three
+    /// integer digits, then exactly one character that is not a digit. Two trailing
+    /// characters (`10cm` is handled by the unit allowlist; `10yo` is not a tick) fail.
+    static func isScaleNumeralWithTickGlyph(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        guard let last = t.last, !last.isNumber, !last.isWhitespace else { return false }
+        var body = Substring(t.dropLast())
+        if let sign = body.first, sign == "-" || sign == "+" || sign == "–" { body = body.dropFirst() }
+        guard !body.isEmpty, body.allSatisfy({ $0.isNumber || $0 == "." }), Double(body) != nil else { return false }
+        let integerDigits = body.split(separator: ".", omittingEmptySubsequences: false).first?.count ?? 0
+        return integerDigits >= 1 && integerDigits <= 3
     }
 
     /// Classifies every detection.
@@ -325,7 +386,7 @@ public struct PHITextClassifier: Sendable, Equatable {
 
     /// Classifies every detection with matched attributes.
     public func classifyDetailed(_ detections: [TextRegionDetector.Detection]) -> [Classification] {
-        detections.map { classifyDetailed($0.text, confidence: $0.confidence) }
+        detections.map { classifyDetailed($0.text, confidence: $0.confidence, region: $0.region) }
     }
 
     // MARK: Helpers

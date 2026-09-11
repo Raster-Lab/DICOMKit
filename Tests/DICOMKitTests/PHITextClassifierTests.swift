@@ -95,6 +95,109 @@ final class PHITextClassifierTests: XCTestCase {
         }
     }
 
+    /// The OCR engine fuses a ruler tick into the numeral beside it (`10` + tick →
+    /// `10y`, verified on a GE Vivid S70 Doppler frame, single candidate at 1.00).
+    /// Only ON a declared Ultrasound Region is that one trailing glyph forgiven; the
+    /// same text in a banner is still an age and still redacted, and steps 1–3 still
+    /// win inside the zone.
+    func testTickGlyphOnAScaleNumeralIsForgivenOnlyOnADeclaredRegion() {
+        typealias Region = PixelRedactionPlan.Region
+        let zone = Region(x: 389, y: 50, width: 236, height: 204)          // the sector
+        let onScale = Region(x: 400, y: 130, width: 45, height: 33)         // "10" + tick
+        let banner = Region(x: 700, y: 2, width: 40, height: 25)            // top strip
+        let c = PHITextClassifier(terms: PHITextClassifier.harvestTerms(from: header()), scaleZones: [zone])
+
+        // A LETTER glyph is the case that matters: it is exactly what an age looks like.
+        for text in ["10y", "+10y", "15y", "-5v", "2.5y"] {
+            let on = c.classifyDetailed(text, confidence: 1, region: onScale).verdict
+            XCTAssertFalse(on.isRedact, "\(text) on the scale: \(on.reason)")
+            XCTAssertTrue(on.reason.contains("trailing tick glyph ignored"), on.reason)
+            let off = c.classifyDetailed(text, confidence: 1, region: banner).verdict
+            XCTAssertTrue(off.isRedact, "\(text) in the banner must stay redacted: \(off.reason)")
+            XCTAssertEqual(off.reason, "uncertain: not on the allowlist")
+        }
+        // A punctuation glyph (`15}`, `-5)`) never needed the rule: the tokenizer
+        // treats punctuation as a separator, so it is a bare numeral anywhere.
+        for text in ["15}", "-5)", "2.5|"] {
+            XCTAssertEqual(c.classifyDetailed(text, confidence: 1, region: banner).verdict.reason, "allowlist: numeral/unit")
+        }
+        // No region, or no zones: the rule is off.
+        XCTAssertTrue(c.classifyDetailed("10y", confidence: 1).verdict.isRedact)
+        XCTAssertTrue(PHITextClassifier().classifyDetailed("10y", confidence: 1, region: onScale).verdict.isRedact)
+        // Two trailing glyphs, four digits, or an ID run are not ticks.
+        for text in ["10yo", "1234y", "12345y", "y10", "SMITH"] {
+            XCTAssertTrue(c.classifyDetailed(text, confidence: 1, region: onScale).verdict.isRedact, text)
+        }
+        // Steps 1–3 still win on the scale: header age, a date, a PHI keyword.
+        XCTAssertEqual(c.classifyDetailed("45Y", confidence: 1, region: onScale).verdict.reason, "matched header date/age")
+        XCTAssertTrue(c.classifyDetailed("12/03/1961", confidence: 1, region: onScale).verdict.isRedact)
+        XCTAssertTrue(c.classifyDetailed("DOB 10y", confidence: 1, region: onScale).verdict.isRedact)
+        // Low confidence never lets it pass.
+        XCTAssertTrue(c.classifyDetailed("10y", confidence: 0.2, region: onScale).verdict.isRedact)
+        // header policy is unaffected (it kept it anyway).
+        let h = PHITextClassifier(terms: PHITextClassifier.harvestTerms(from: header()), policy: .header, scaleZones: [zone])
+        XCTAssertFalse(h.classifyDetailed("10y", confidence: 1, region: banner).verdict.isRedact)
+    }
+
+    // MARK: - header policy
+
+    /// `header` redacts only what the study's own header (or a PHI-shaped pattern)
+    /// ties to the pixels; everything else — including text `classify` would call
+    /// uncertain — is kept. The mode is fail-open and the reasons say so.
+    func testHeaderPolicyKeepsEverythingNotTiedToTheHeader() {
+        let c = PHITextClassifier(terms: PHITextClassifier.harvestTerms(from: header()), policy: .header)
+        // Still redacted: header PHI in burned forms, and PHI-shaped patterns.
+        for text in ["SMITH JOHN", "J SMITH", "0012345", "12345", "03/12/1961", "General Hospital",
+                     "Dr Doe", "45Y", "09/09/2001", "12:34:56", "987654321", "AB12CD34"] {
+            XCTAssertTrue(c.classify(text, confidence: 0.99).isRedact, text)
+        }
+        // Kept: allowlisted clinical text AND text classify would redact as uncertain/keyword.
+        for text in ["10", "- 5", "[cm/s]", "Soft", "10y", "Zebra", "Tls 0.5", "4Vc", "66.67 mm/s",
+                     "Patient position supine", "Tech notes"] {
+            let v = c.classify(text, confidence: 0.99)
+            XCTAssertFalse(v.isRedact, "\(text): \(v.reason)")
+            XCTAssertTrue(v.reason.hasPrefix("header mode:"), v.reason)
+        }
+        // Low confidence: a fuzzy header hit still redacts; otherwise keep, saying why.
+        XCTAssertTrue(c.classify("SM1TH", confidence: 0.2).isRedact)
+        let low = c.classify("Zebra", confidence: 0.2)
+        XCTAssertFalse(low.isRedact)
+        XCTAssertTrue(low.reason.contains("low OCR confidence"), low.reason)
+        XCTAssertFalse(c.classify("", confidence: 0.99).isRedact, "unreadable text is kept in header mode")
+    }
+
+    /// Ordering pin: header ⊆ classify — nothing `header` redacts is kept by `classify`.
+    func testHeaderRedactionsAreASubsetOfClassifyRedactions() {
+        let terms = PHITextClassifier.harvestTerms(from: header())
+        let h = PHITextClassifier(terms: terms, policy: .header)
+        let k = PHITextClassifier(terms: terms, policy: .classify)
+        let corpus = ["SMITH JOHN", "0012345", "03/12/1961", "Dr Doe", "45Y", "12:34", "987654321",
+                      "10", "- 5", "[cm/s]", "Soft", "10y", "Zebra", "Tls 0.5", "R", "", "MI 1.1",
+                      "Pt: Zebra", "General Hospital", "AB12CD34", "120 kVp"]
+        for text in corpus where h.classify(text, confidence: 0.99).isRedact {
+            XCTAssertTrue(k.classify(text, confidence: 0.99).isRedact, "\(text): header redacts but classify keeps")
+        }
+        for text in corpus where h.classify(text, confidence: 0.3).isRedact {
+            XCTAssertTrue(k.classify(text, confidence: 0.3).isRedact, "\(text) @0.3: header redacts but classify keeps")
+        }
+    }
+
+    /// `header` still reports the matched attributes, so `replace` style works with it.
+    func testHeaderPolicyReportsMatchedTags() {
+        let c = PHITextClassifier(terms: PHITextClassifier.harvestTerms(from: header()), policy: .header)
+        XCTAssertEqual(c.classifyDetailed("SMITH JOHN 0012345", confidence: 0.99).matchedTags, [.patientName, .patientID])
+        XCTAssertEqual(c.classifyDetailed("Soft", confidence: 0.99).matchedTags, [])
+    }
+
+    /// OCR reads GE's thermal indices `TIs`/`TIb` with a lowercase L; those are technical.
+    func testThermalIndexMisreadsAreAllowlisted() {
+        let c = classifier()
+        for text in ["Tls 0.5", "TIs 0.5", "TIb 1.2", "Tlb 1.2", "MI 1.1 TIS 0.7"] {
+            let v = c.classify(text, confidence: 0.99)
+            XCTAssertFalse(v.isRedact, "\(text): \(v.reason)")
+        }
+    }
+
     func testUncertainTextIsRedactedNeverKept() {
         let c = classifier()
         XCTAssertTrue(c.classify("R", confidence: 0.2).isRedact, "low confidence never passes")

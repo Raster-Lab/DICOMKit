@@ -178,63 +178,6 @@ struct SecurityModelTests {
         #expect(a.id != b.id)
     }
 
-    // MARK: - AnonymizationProfile
-
-    @Test("AnonymizationProfile all cases have non-empty display names")
-    func testAnonymizationProfileDisplayNames() {
-        for profile in AnonymizationProfile.allCases {
-            #expect(!profile.displayName.isEmpty)
-        }
-    }
-
-    @Test("AnonymizationProfile all cases have non-empty short descriptions")
-    func testAnonymizationProfileShortDescriptions() {
-        for profile in AnonymizationProfile.allCases {
-            #expect(!profile.shortDescription.isEmpty)
-        }
-    }
-
-    @Test("AnonymizationProfile has 6 cases")
-    func testAnonymizationProfileCaseCount() {
-        #expect(AnonymizationProfile.allCases.count == 6)
-    }
-
-    // MARK: - TagAction
-
-    @Test("TagAction all cases have non-empty display names")
-    func testTagActionDisplayNames() {
-        for action in TagAction.allCases {
-            #expect(!action.displayName.isEmpty)
-        }
-    }
-
-    @Test("TagAction all cases have non-empty SF symbols")
-    func testTagActionSFSymbols() {
-        for action in TagAction.allCases {
-            #expect(!action.sfSymbol.isEmpty)
-        }
-    }
-
-    @Test("TagAction has 6 cases")
-    func testTagActionCaseCount() {
-        #expect(TagAction.allCases.count == 6)
-    }
-
-    // MARK: - AnonymizationTagRule
-
-    @Test("AnonymizationTagRule default action is remove")
-    func testTagRuleDefaultAction() {
-        let rule = AnonymizationTagRule(tag: "0010,0010")
-        #expect(rule.action == .remove)
-    }
-
-    @Test("AnonymizationTagRule default id is unique")
-    func testTagRuleUniqueID() {
-        let a = AnonymizationTagRule(tag: "0010,0010")
-        let b = AnonymizationTagRule(tag: "0010,0020")
-        #expect(a.id != b.id)
-    }
-
     // MARK: - AnonymizationStatus
 
     @Test("AnonymizationStatus completed is terminal")

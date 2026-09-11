@@ -1,7 +1,15 @@
 import Foundation
 
+// Running a command means spawning `/bin/bash`, and `Process`/`Pipe` exist only
+// where a platform permits subprocesses — macOS and Linux, not iOS/tvOS/visionOS.
+// The guard is the real boundary, not a compile workaround: those platforms have
+// no shell to run a CLI in.
+#if os(macOS) || os(Linux)
+
 /// Actor that executes CLI commands via `Process` with real-time output streaming,
 /// cancellation support, and exit code reporting.
+///
+/// - Note: Available on macOS and Linux only.
 public actor CommandExecutor {
     /// The currently running process, if any
     private var currentProcess: Process?
@@ -95,3 +103,5 @@ public actor CommandExecutor {
         currentProcess = nil
     }
 }
+
+#endif

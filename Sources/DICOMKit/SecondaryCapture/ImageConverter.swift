@@ -196,43 +196,71 @@ public enum ImageConverter {
     private static func extractPixelData(from image: CGImage, samplesPerPixel: Int) throws -> Data {
         let width = image.width
         let height = image.height
-        let bytesPerPixel = samplesPerPixel
-        let bytesPerRow = width * bytesPerPixel
-        let bufferSize = bytesPerRow * height
 
-        var pixelData = Data(count: bufferSize)
+        if samplesPerPixel == 3 {
+            // Core Graphics has no packed 24-bit RGB layout for 8-bit components; the
+            // only supported RGB layouts are 32 bits per pixel. Render into RGBX,
+            // compositing any alpha onto white, then strip the padding byte.
+            let bytesPerRow = width * 4
+            var rgbx = Data(count: bytesPerRow * height)
+            try rgbx.withUnsafeMutableBytes { buffer in
+                guard let baseAddress = buffer.baseAddress else {
+                    throw ImageConversionError.pixelDataExtractionFailed
+                }
+                guard let context = CGContext(
+                    data: baseAddress,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: bytesPerRow,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+                ) else {
+                    throw ImageConversionError.contextCreationFailed
+                }
+                context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+                context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+                context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            }
 
+            var rgb = Data(count: width * height * 3)
+            rgb.withUnsafeMutableBytes { dst in
+                rgbx.withUnsafeBytes { src in
+                    let s = src.bindMemory(to: UInt8.self)
+                    let d = dst.bindMemory(to: UInt8.self)
+                    var di = 0
+                    for si in stride(from: 0, to: s.count, by: 4) {
+                        d[di] = s[si]
+                        d[di + 1] = s[si + 1]
+                        d[di + 2] = s[si + 2]
+                        di += 3
+                    }
+                }
+            }
+            return rgb
+        }
+
+        let bytesPerRow = width
+        var pixelData = Data(count: bytesPerRow * height)
         try pixelData.withUnsafeMutableBytes { buffer in
             guard let baseAddress = buffer.baseAddress else {
                 throw ImageConversionError.pixelDataExtractionFailed
             }
-
-            let colorSpace: CGColorSpace
-            let bitmapInfo: CGBitmapInfo
-
-            if samplesPerPixel == 3 {
-                colorSpace = CGColorSpaceCreateDeviceRGB()
-                bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
-            } else {
-                colorSpace = CGColorSpaceCreateDeviceGray()
-                bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
-            }
-
             guard let context = CGContext(
                 data: baseAddress,
                 width: width,
                 height: height,
                 bitsPerComponent: 8,
                 bytesPerRow: bytesPerRow,
-                space: colorSpace,
-                bitmapInfo: bitmapInfo.rawValue
+                space: CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: CGImageAlphaInfo.none.rawValue
             ) else {
                 throw ImageConversionError.contextCreationFailed
             }
-
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
             context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         }
-
         return pixelData
     }
 
