@@ -633,4 +633,39 @@ extension DataElement {
         }
         return DataElement(tag: tag, vr: vr, length: UInt32(paddedData.count), valueData: paddedData)
     }
+
+    /// Creates an Attribute Tag (AT) data element holding a single tag value.
+    ///
+    /// An AT value is encoded as two consecutive 16-bit unsigned integers — the
+    /// group number followed by the element number — each in the transfer syntax's
+    /// byte order. This is the encoding required by, for example,
+    /// Frame Increment Pointer (0028,0009).
+    ///
+    /// Reference: PS3.5 Section 6.2, Table 6.2-1 (AT Value Representation)
+    ///
+    /// - Parameters:
+    ///   - tag: The data element tag to create
+    ///   - value: The tag to encode as the element's value
+    /// - Returns: A new data element with AT VR
+    public static func attributeTag(tag: Tag, value: Tag) -> DataElement {
+        return attributeTags(tag: tag, values: [value])
+    }
+
+    /// Creates an Attribute Tag (AT) data element holding one or more tag values.
+    ///
+    /// Reference: PS3.5 Section 6.2, Table 6.2-1 (AT Value Representation)
+    ///
+    /// - Parameters:
+    ///   - tag: The data element tag to create
+    ///   - values: The tags to encode as the element's value
+    /// - Returns: A new data element with AT VR
+    public static func attributeTags(tag: Tag, values: [Tag]) -> DataElement {
+        let writer = DICOMWriter()
+        var valueData = Data()
+        for value in values {
+            valueData.append(writer.serializeUInt16(value.group))
+            valueData.append(writer.serializeUInt16(value.element))
+        }
+        return DataElement(tag: tag, vr: .AT, length: UInt32(valueData.count), valueData: valueData)
+    }
 }

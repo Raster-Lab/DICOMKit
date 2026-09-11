@@ -77,7 +77,8 @@ public struct VideoParser {
 
         // Parse Image Pixel Module attributes
         let samplesPerPixel = Int(dataSet[.samplesPerPixel]?.uint16Value ?? 3)
-        let photometricInterpretation = dataSet.string(for: .photometricInterpretation) ?? "YBR_FULL_422"
+        let photometricInterpretation = dataSet.string(for: .photometricInterpretation)
+            ?? Video.defaultPhotometricInterpretation
         let bitsAllocated = Int(dataSet[.bitsAllocated]?.uint16Value ?? 8)
         let bitsStored = Int(dataSet[.bitsStored]?.uint16Value ?? 8)
         let highBit = Int(dataSet[.highBit]?.uint16Value ?? 7)
@@ -109,8 +110,51 @@ public struct VideoParser {
         let lossyImageCompressionRatio = dataSet[.lossyImageCompressionRatio]?.decimalStringValue?.value
         let lossyImageCompressionMethod = dataSet.string(for: .lossyImageCompressionMethod)
 
-        // Parse pixel data
-        let pixelData = dataSet[.pixelData]?.valueData
+        // Parse pixel data.
+        //
+        // Every video transfer syntax is encapsulated (PS3.5 A.4), so a conformant
+        // file carries the bit stream in fragments and leaves `valueData` empty.
+        // Fragments are concatenated in order: for the non-fragmentable UIDs there
+        // is exactly one, and for the "….1" fragmentable variants the bit stream is
+        // the concatenation of them all. The `valueData` branch is a fallback for
+        // legacy files that (incorrectly) stored the stream as a native OB value.
+        let pixelData: Data?
+        if let pixelElement = dataSet[.pixelData] {
+            if let fragments = pixelElement.encapsulatedFragments, !fragments.isEmpty {
+                var combined = Data()
+                for fragment in fragments {
+                    combined.append(fragment)
+                }
+                pixelData = combined
+            } else if !pixelElement.valueData.isEmpty {
+                pixelData = pixelElement.valueData
+            } else {
+                pixelData = nil
+            }
+        } else {
+            pixelData = nil
+        }
+
+        // Parse VL Image / General Equipment / General Acquisition / General Image
+        // and the Type 2 study and patient identifiers. Zero-length Type 2 values
+        // read back as empty strings; normalize those to nil so a round trip does
+        // not turn "absent" into "present and empty" at the model level.
+        let imageType = dataSet[.imageType]?.stringValues?.filter { !$0.isEmpty }
+        let manufacturer = Self.nonEmpty(dataSet.string(for: .manufacturer))
+        let manufacturerModelName = Self.nonEmpty(dataSet.string(for: .manufacturerModelName))
+        let deviceSerialNumber = Self.nonEmpty(dataSet.string(for: .deviceSerialNumber))
+        let softwareVersions = Self.nonEmpty(dataSet.string(for: .softwareVersions))
+        let institutionName = Self.nonEmpty(dataSet.string(for: .institutionName))
+        let acquisitionDate = dataSet.date(for: .acquisitionDate)
+        let acquisitionTime = dataSet.time(for: .acquisitionTime)
+        let patientOrientation = Self.nonEmpty(dataSet.string(for: .patientOrientation))
+        let studyDate = dataSet.date(for: .studyDate)
+        let studyTime = dataSet.time(for: .studyTime)
+        let referringPhysicianName = Self.nonEmpty(dataSet.string(for: .referringPhysicianName))
+        let studyID = Self.nonEmpty(dataSet.string(for: .studyID))
+        let accessionNumber = Self.nonEmpty(dataSet.string(for: .accessionNumber))
+        let patientBirthDate = dataSet.date(for: .patientBirthDate)
+        let patientSex = Self.nonEmpty(dataSet.string(for: .patientSex))
 
         return Video(
             sopInstanceUID: sopInstanceUID,
@@ -145,7 +189,34 @@ public struct VideoParser {
             lossyImageCompression: lossyImageCompression,
             lossyImageCompressionRatio: lossyImageCompressionRatio,
             lossyImageCompressionMethod: lossyImageCompressionMethod,
+            imageType: imageType ?? Video.defaultImageType,
+            manufacturer: manufacturer,
+            manufacturerModelName: manufacturerModelName,
+            deviceSerialNumber: deviceSerialNumber,
+            softwareVersions: softwareVersions,
+            institutionName: institutionName,
+            acquisitionDate: acquisitionDate,
+            acquisitionTime: acquisitionTime,
+            patientOrientation: patientOrientation,
+            studyDate: studyDate,
+            studyTime: studyTime,
+            referringPhysicianName: referringPhysicianName,
+            studyID: studyID,
+            accessionNumber: accessionNumber,
+            patientBirthDate: patientBirthDate,
+            patientSex: patientSex,
             pixelData: pixelData
         )
+    }
+
+    /// Maps an empty or whitespace-only string to nil.
+    ///
+    /// Type 2 attributes are written zero-length when unknown; reading one back as
+    /// `""` would misrepresent "not supplied" as "supplied as empty".
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value = value, !value.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return nil
+        }
+        return value
     }
 }

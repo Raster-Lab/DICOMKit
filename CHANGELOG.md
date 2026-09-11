@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — dicom-video: video conversion, playback and Workshop parity (2026-09-10)
+
+*Plan and per-phase status: `DICOM_VIDEO_CONVERSION_PLAN.md`. Phases 1-10 — the
+whole of v1 — are delivered; transcoding stays out of scope.*
+
+`dicom-video` wraps an already-conformant H.264/HEVC/MPEG-2 bit stream in a DICOM
+Video IOD and extracts it back out, without re-encoding. Remuxing keeps the
+diagnostic pixel data bit-for-bit; non-conformant input is **rejected with the
+violated constraint named**, never silently "fixed".
+
+- **One shared engine, `Sources/DICOMKit/Video/`**, used by the CLI, the Studio
+  CLI Workshop and the Studio viewer alike (the same `*Console` pattern as
+  `SplitConsole` / `CompressionConsole`):
+  - `VideoWorkflow` — plan, build, encode, probe, extract and batch-orchestrate.
+    It returns bytes and never writes a file, prints or parses argv, so the CLI
+    writes with `Data.write(to:)` and the sandboxed app writes through
+    `OutputAccess`.
+  - `VideoConsole` — every console line, help string, argument enum and exit
+    code, so the CLI's `--help` and the Workshop's field help cannot drift.
+  - `Sources/dicom-video/main.swift` shrank from 921 to 500 lines and is now a
+    thin ArgumentParser adapter over the two.
+- **Four subcommands**: `convert` (one clip), `probe` (geometry and conformance,
+  writes nothing), `extract` (recover the bit stream) and `batch` (a folder, with
+  `--series-mode single|per-file` defaulting to `single`, which IHE ENDO
+  §3.10.4.1.1.1 requires for one procedure step on one piece of equipment).
+- **`-v/--verbose` on all four subcommands**, explaining which container was
+  recognised, why that transfer syntax was chosen, where the frame count came
+  from, the UIDs minted and how much of the output is payload rather than DICOM
+  overhead. Commentary goes to **stderr**, so stdout stays byte-for-byte what a
+  non-verbose run prints and redirection keeps working. It also explains
+  rejections, printing what was learned before the failure; it never changes a
+  message or an exit code.
+- **DICOMStudio CLI Workshop** gained `dicom-video` with all four subcommands and
+  every option, driven by the same `VideoWorkflow`/`VideoConsole` the terminal
+  uses.
+- **DICOMStudio viewer plays clips.** A video instance carries an *image* SOP
+  Class, so the transfer syntax — not the SOP Class — now decides:
+  `ViewerContentKind.kind(forSOPClassUID:transferSyntaxUID:)` classifies it as
+  `.video` and the series pane labels it "Video" rather than "Images". The clip is
+  handed to an `AVKit` player, and the toolbar's cine transport drives it through
+  the same play/stop state that drives multi-frame images.
+
+### Fixed — video probing and extraction defects found while wiring the CLI (2026-09-10)
+
+- **H.264 parameter sets from `avcC` were parsed one byte short.** `avcC` stores
+  each parameter set as a complete NAL unit, header byte included; `VideoProbe`
+  called `parseSPSPayload` as though the header had already been stripped, so
+  every MP4-sourced H.264 clip probed with wrong geometry or failed outright. It
+  now calls `parseSPS(nalUnit:)`, which validates and strips the header.
+- **`--trust-input` on an MPEG-TS emitted Rows and Columns of zero.** "Trusted"
+  was taken to mean nothing at all was read, but Rows and Columns are required
+  attributes and an object carrying zeroes is one no reader can display. New
+  `TransportStreamScanner` reassembles just enough of the first video PID to reach
+  a sequence or parameter set header (ISO/IEC 13818-1 §2.4.3.2, §2.4.3.6), so
+  geometry is recovered while only the *conformance checks* are skipped — which is
+  what the caller actually asked for. Full PAT/PMT/PES demuxing remains Phase 11.
+  The codec is taken from the container's own declaration rather than sniffed,
+  because an MPEG-2 sequence header parses as a plausible but wrong H.264 SPS.
+- **Extraction returned one byte too many for odd-length streams.** A fragment's
+  length must be even (PS3.5 §7.1), so an odd-length bit stream is padded on the
+  way in. `VideoExtractor` now recovers the true length from the container's own
+  top-level box extent (`MP4ContainerParser.topLevelBoxExtent`) rather than
+  trusting parity: a stream whose real length happens to be odd is left untouched,
+  and MPEG-TS and raw elementary streams — which have no such framing — are
+  returned unchanged.
+- **MPEG-2 in MP4 had no parameter sets to validate.** The parser now reads the
+  decoder-specific info out of the `esds` descriptor chain (ISO/IEC 14496-1), and
+  falls back to the sequence header in the first sample.
+
+### Added — dicom-video test matrix (2026-09-10)
+
+47 tests across seven suites, all passing:
+
+- `Tests/DICOMRoundTripTest/VideoConsoleParityTests.swift` locks every console
+  line and workflow behaviour the CLI shares with the Workshop, so drift would
+  have to be introduced deliberately. Fixtures are ISO-BMFF files assembled from
+  the box layouts in the specifications, so expected values follow from the
+  standard rather than from an encoder.
+- `Tests/DICOMRoundTripTest/VideoCLIEndToEndTests.swift` drives the real binary.
+- `Tests/DICOMStudioTests/CLIWorkshopVideoTests.swift` pins the Workshop's tool
+  definition, subcommands and options.
+- `Tests/DICOMStudioTests/ViewerVideoContentTests.swift` and
+  `ViewerVideoTransitionTests.swift` pin classification, and the state left behind
+  when the reader steps between a clip, a picture and a report — in both
+  directions and round trip.
+- `Tests/DICOMKitTests/Video/VideoProbeTests.swift` and
+  `MP4ContainerParserTests.swift` / `VideoExtractorTests.swift` cover the fixes
+  above.
+
+
 ### Fixed — CLI Workshop dicom-image wrote onto the browsed output folder (2026-09-07)
 
 The output Browse picker grants a *folder*; typing a filename after it left the

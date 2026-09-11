@@ -42,4 +42,11 @@ extension Tag {
     /// VR: DS, VM: 2
     /// Physical distance between adjacent pixels in mm
     public static let nominalScannedPixelSpacing = Tag(group: 0x0018, element: 0x2010)
+
+    /// Acquisition Context Sequence (0040,0555)
+    /// VR: SQ, VM: 1
+    /// Type 2 in the Acquisition Context Module; may be present with zero items.
+    ///
+    /// Reference: PS3.3 C.7.6.14 - Acquisition Context Module
+    public static let acquisitionContextSequence = Tag(group: 0x0040, element: 0x0555)
 }

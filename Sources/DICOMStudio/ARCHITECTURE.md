@@ -105,7 +105,7 @@ Platform-guarded SwiftUI components with full accessibility support:
 | Destination | SF Symbol | Description |
 |------------|-----------|-------------|
 | Library | `folder` | DICOM file browser (Milestone 2) |
-| Viewer | `photo` | Image viewer (Milestone 3) |
+| Viewer | `photo` | Image viewer (Milestone 3); also plays video instances and renders SR / encapsulated documents |
 | Networking | `network` | DICOM/DICOMweb hub (Milestone 9–10) |
 | Reporting | `doc.text` | Structured reports (Milestone 7) |
 | Tools | `wrench.and.screwdriver` | Data exchange tools (Milestone 12–13) |

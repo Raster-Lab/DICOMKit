@@ -65,7 +65,11 @@ public enum ViewerSeriesCatalog {
             // The first instance decides: a series is one SOP Class in
             // practice, and reading every instance to confirm it would make
             // opening a study proportional to its object count.
-            contentKind: ViewerContentKind.kind(forSOPClassUID: instances.first?.sopClassUID),
+            // The transfer syntax comes too: a video instance carries an image
+            // SOP Class, so without it the pane calls a clip "Images".
+            contentKind: ViewerContentKind.kind(
+                forSOPClassUID: instances.first?.sopClassUID,
+                transferSyntaxUID: instances.first?.transferSyntaxUID),
             // What lets the pane say which slice a saved view is on: a
             // presentation state names its image by UID, and only the library
             // holds that image's Instance Number.
@@ -118,7 +122,10 @@ public enum ViewerSeriesCatalog {
                 // Numbers the index already has are trusted; a series is only
                 // read back when objects are missing theirs, which is the
                 // stale-index shape. A lone object needs no order at all.
-                guard entry.isImageSeries, entry.filePaths.count > 1,
+                // Video as well as pixels: a series of clips is ordered by
+                // Instance Number like any other, and skipping the repair left
+                // a stale index playing the recordings in file-system order.
+                guard entry.hasPerObjectFrames, entry.filePaths.count > 1,
                       entry.instanceNumbersBySOPUID.count < entry.filePaths.count
                 else { return entry }
 

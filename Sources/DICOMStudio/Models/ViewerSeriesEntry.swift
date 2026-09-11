@@ -116,6 +116,7 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
     private var objectNoun: String {
         switch contentKind {
         case .image:              return "image"
+        case .video:              return "video clip"
         case .waveform:           return "waveform"
         case .report:             return "report"
         case .keyObjectSelection: return "key object selection"
@@ -152,6 +153,17 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
     /// Whether this series is shown as pixels.
     public var isImageSeries: Bool { contentKind.isImage }
 
+    /// Whether this series' objects are recordings the reader steps between —
+    /// images or video clips. See ``ViewerContentKind/hasPerObjectFrames``.
+    public var hasPerObjectFrames: Bool { contentKind.hasPerObjectFrames }
+
+    /// Whether a still frame can be decoded for this series' objects.
+    ///
+    /// A clip's Pixel Data is an encoded bit stream that the still-image path
+    /// cannot decode, so a video series is previewed by a film tile carrying
+    /// its loop length rather than by a thumbnail.
+    public var canRenderThumbnails: Bool { contentKind.isImage }
+
     // MARK: - Per-object previews
 
     /// The card's previews when the series is several cines: one per
@@ -163,8 +175,13 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
     /// "more than one object AND at least one of them is a cine": that is the
     /// series whose single thumbnail hides whole recordings, and it is the
     /// case Horos answers with one preview per object.
+    ///
+    /// Video counts as much as pixels do: a series of three endoscopy clips is
+    /// exactly the case this strip exists for, and gating it on "renders as
+    /// pixels" left those series with one film icon and no way to reach the
+    /// second and third recordings at all.
     public var objectPreviews: [SeriesObjectPreview] {
-        guard isImageSeries, filePaths.count > 1 else { return [] }
+        guard hasPerObjectFrames, filePaths.count > 1 else { return [] }
         let previews = filePaths.map {
             SeriesObjectPreview(filePath: $0, frameCount: frameCountsByFilePath[$0] ?? 1)
         }
