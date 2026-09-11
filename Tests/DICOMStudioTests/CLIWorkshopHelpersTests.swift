@@ -98,14 +98,14 @@ struct CLIWorkshopHelpersTests {
 
     // MARK: - ToolCatalogHelpers
 
-    @Test("allTools returns exactly 32 tools")
+    @Test("allTools returns exactly 33 tools")
     func testAllToolsCount() {
-        #expect(ToolCatalogHelpers.allTools().count == 32)
+        #expect(ToolCatalogHelpers.allTools().count == 33)
     }
 
-    @Test("totalToolCount is 32")
+    @Test("totalToolCount is 33")
     func testTotalToolCount() {
-        #expect(ToolCatalogHelpers.totalToolCount == 32)
+        #expect(ToolCatalogHelpers.totalToolCount == 33)
     }
 
     @Test("fileInspectionTools returns 4 tools")
@@ -123,9 +123,9 @@ struct CLIWorkshopHelpersTests {
         #expect(ToolCatalogHelpers.fileOrganizationTools().count == 4)
     }
 
-    @Test("dataExportTools returns 6 tools")
+    @Test("dataExportTools returns 7 tools")
     func testDataExportToolsCount() {
-        #expect(ToolCatalogHelpers.dataExportTools().count == 6)
+        #expect(ToolCatalogHelpers.dataExportTools().count == 7)
     }
 
     @Test("networkOperationsTools returns 11 tools")

@@ -36,6 +36,20 @@ public struct Video: Sendable {
     /// Video Photographic Image Storage SOP Class UID
     public static let videoPhotographicImageStorageUID = "1.2.840.10008.5.1.4.1.1.77.1.4.1"
 
+    // MARK: - Standard-Mandated Defaults
+
+    /// Photometric Interpretation required of every DICOM video transfer syntax.
+    ///
+    /// PS3.5 Sections 8.2.7, 8.2.10 and 8.2.11 each state "Photometric Interpretation
+    /// (0028,0004) shall be YBR_PARTIAL_420". Note that `YBR_PARTIAL_422` is retired
+    /// (PS3.3 C.7.6.3) and `YBR_FULL_422` describes a different subsampling entirely.
+    public static let defaultPhotometricInterpretation = "YBR_PARTIAL_420"
+
+    /// Default Image Type (0008,0008) for camera-captured video.
+    ///
+    /// `ImageType` is Type 1 in the VL Image Module (PS3.3 C.8.12).
+    public static let defaultImageType = ["ORIGINAL", "PRIMARY"]
+
     // MARK: - Identification
 
     /// SOP Instance UID
@@ -146,6 +160,68 @@ public struct Video: Sendable {
     /// Lossy Image Compression Method (e.g., "ISO_14496_10" for H.264)
     public let lossyImageCompressionMethod: String?
 
+    // MARK: - VL Image Module (PS3.3 C.8.12)
+
+    /// Image Type (0008,0008) — Type 1 in the VL Image Module.
+    ///
+    /// Defaults to `ORIGINAL\PRIMARY` for camera-captured video.
+    public let imageType: [String]
+
+    // MARK: - General Equipment Module (PS3.3 C.7.5.1)
+
+    /// Manufacturer (0008,0070) — Type 2; emitted zero-length when nil.
+    public let manufacturer: String?
+
+    /// Manufacturer's Model Name (0008,1090) — Type 3.
+    public let manufacturerModelName: String?
+
+    /// Device Serial Number (0018,1000) — Type 3.
+    public let deviceSerialNumber: String?
+
+    /// Software Versions (0018,1020) — Type 3.
+    public let softwareVersions: String?
+
+    /// Institution Name (0008,0080) — Type 3.
+    public let institutionName: String?
+
+    // MARK: - General Acquisition Module (PS3.3 C.7.10.1)
+
+    /// Acquisition Date (0008,0022) — Type 3.
+    public let acquisitionDate: DICOMDate?
+
+    /// Acquisition Time (0008,0032) — Type 3.
+    public let acquisitionTime: DICOMTime?
+
+    // MARK: - General Image Module (PS3.3 C.7.6.1)
+
+    /// Patient Orientation (0020,0020) — Type 2C; emitted zero-length when nil.
+    public let patientOrientation: String?
+
+    // MARK: - General Study Module (PS3.3 C.7.2.1)
+
+    /// Study Date (0008,0020) — Type 2; emitted zero-length when nil.
+    public let studyDate: DICOMDate?
+
+    /// Study Time (0008,0030) — Type 2; emitted zero-length when nil.
+    public let studyTime: DICOMTime?
+
+    /// Referring Physician's Name (0008,0090) — Type 2; emitted zero-length when nil.
+    public let referringPhysicianName: String?
+
+    /// Study ID (0020,0010) — Type 2; emitted zero-length when nil.
+    public let studyID: String?
+
+    /// Accession Number (0008,0050) — Type 2; emitted zero-length when nil.
+    public let accessionNumber: String?
+
+    // MARK: - Patient Module (PS3.3 C.7.1.1)
+
+    /// Patient's Birth Date (0010,0030) — Type 2; emitted zero-length when nil.
+    public let patientBirthDate: DICOMDate?
+
+    /// Patient's Sex (0010,0040) — Type 2; emitted zero-length when nil.
+    public let patientSex: String?
+
     // MARK: - Pixel Data
 
     /// The encapsulated video pixel data
@@ -169,7 +245,7 @@ public struct Video: Sendable {
         columns: Int,
         numberOfFrames: Int,
         samplesPerPixel: Int = 3,
-        photometricInterpretation: String = "YBR_FULL_422",
+        photometricInterpretation: String = Video.defaultPhotometricInterpretation,
         bitsAllocated: Int = 8,
         bitsStored: Int = 8,
         highBit: Int = 7,
@@ -187,6 +263,22 @@ public struct Video: Sendable {
         lossyImageCompression: String? = nil,
         lossyImageCompressionRatio: Double? = nil,
         lossyImageCompressionMethod: String? = nil,
+        imageType: [String] = Video.defaultImageType,
+        manufacturer: String? = nil,
+        manufacturerModelName: String? = nil,
+        deviceSerialNumber: String? = nil,
+        softwareVersions: String? = nil,
+        institutionName: String? = nil,
+        acquisitionDate: DICOMDate? = nil,
+        acquisitionTime: DICOMTime? = nil,
+        patientOrientation: String? = nil,
+        studyDate: DICOMDate? = nil,
+        studyTime: DICOMTime? = nil,
+        referringPhysicianName: String? = nil,
+        studyID: String? = nil,
+        accessionNumber: String? = nil,
+        patientBirthDate: DICOMDate? = nil,
+        patientSex: String? = nil,
         pixelData: Data? = nil
     ) {
         self.sopInstanceUID = sopInstanceUID
@@ -221,6 +313,22 @@ public struct Video: Sendable {
         self.lossyImageCompression = lossyImageCompression
         self.lossyImageCompressionRatio = lossyImageCompressionRatio
         self.lossyImageCompressionMethod = lossyImageCompressionMethod
+        self.imageType = imageType
+        self.manufacturer = manufacturer
+        self.manufacturerModelName = manufacturerModelName
+        self.deviceSerialNumber = deviceSerialNumber
+        self.softwareVersions = softwareVersions
+        self.institutionName = institutionName
+        self.acquisitionDate = acquisitionDate
+        self.acquisitionTime = acquisitionTime
+        self.patientOrientation = patientOrientation
+        self.studyDate = studyDate
+        self.studyTime = studyTime
+        self.referringPhysicianName = referringPhysicianName
+        self.studyID = studyID
+        self.accessionNumber = accessionNumber
+        self.patientBirthDate = patientBirthDate
+        self.patientSex = patientSex
         self.pixelData = pixelData
     }
 
@@ -350,18 +458,21 @@ public enum VideoCodec: String, Sendable {
     case unknown
 
     /// Creates a video codec from a transfer syntax UID
+    ///
+    /// Recognizes all 20 registered video transfer syntaxes, including the
+    /// H.264 Level 4.2 UIDs and every fragmentable "….1" variant.
     public init(transferSyntaxUID: String) {
-        switch transferSyntaxUID {
-        case "1.2.840.10008.1.2.4.100",
-             "1.2.840.10008.1.2.4.101":
+        guard let ts = TransferSyntax.from(uid: transferSyntaxUID) else {
+            self = .unknown
+            return
+        }
+        if ts.isMPEG2 {
             self = .mpeg2
-        case "1.2.840.10008.1.2.4.102",
-             "1.2.840.10008.1.2.4.103":
+        } else if ts.isH264 {
             self = .h264
-        case "1.2.840.10008.1.2.4.107",
-             "1.2.840.10008.1.2.4.108":
+        } else if ts.isH265 {
             self = .h265
-        default:
+        } else {
             self = .unknown
         }
     }
@@ -383,6 +494,47 @@ public enum VideoCodec: String, Sendable {
         case .h264: return "H.264/AVC"
         case .h265: return "H.265/HEVC"
         case .unknown: return "Unknown"
+        }
+    }
+}
+
+// MARK: - Bit Depth
+
+/// The DICOM bit-depth triple for a coded video profile.
+///
+/// DICOM allocates pixel storage on byte boundaries, so a 10-bit stream is
+/// `BitsAllocated` 16 rather than 10.
+///
+/// Reference: PS3.5 Sections 8.2.7, 8.2.10, 8.2.11
+public struct VideoBitDepth: Sendable, Hashable {
+    /// Bits Allocated (0028,0100)
+    public let bitsAllocated: Int
+    /// Bits Stored (0028,0101)
+    public let bitsStored: Int
+    /// High Bit (0028,0102)
+    public let highBit: Int
+
+    public init(bitsAllocated: Int, bitsStored: Int, highBit: Int) {
+        self.bitsAllocated = bitsAllocated
+        self.bitsStored = bitsStored
+        self.highBit = highBit
+    }
+
+    /// 8-bit video: MPEG-2, H.264 High Profile, and HEVC Main.
+    public static let eightBit = VideoBitDepth(bitsAllocated: 8, bitsStored: 8, highBit: 7)
+
+    /// 10-bit video: HEVC Main 10. Allocated on a 16-bit boundary per PS3.5 8.2.11.
+    public static let tenBit = VideoBitDepth(bitsAllocated: 16, bitsStored: 10, highBit: 9)
+
+    /// The DICOM bit depth for a coded luma bit depth.
+    ///
+    /// Only 8-bit and 10-bit are representable by the DICOM video transfer syntaxes;
+    /// any other depth returns nil so callers reject rather than silently mislabel.
+    public static func forLumaBitDepth(_ bitDepth: Int) -> VideoBitDepth? {
+        switch bitDepth {
+        case 8: return .eightBit
+        case 10: return .tenBit
+        default: return nil
         }
     }
 }

@@ -174,6 +174,10 @@ public enum ToolCatalogHelpers: Sendable {
             CLIToolDefinition(id: "dicom-pixedit", name: "dicom-pixedit", displayName: "Pixel Edit",
                               category: .dataExport, sfSymbol: "pencil.and.outline",
                               briefDescription: "Edit pixel data: mask, crop, fill, and invert"),
+            CLIToolDefinition(id: "dicom-video", name: "dicom-video", displayName: "DICOM Video",
+                              category: .dataExport, sfSymbol: "film",
+                              briefDescription: "Wrap H.264/HEVC/MPEG-2 video in DICOM Video IODs and extract it back",
+                              dicomStandardRef: "PS3.3 A.32.5", hasSubcommands: true),
         ]
     }
 
@@ -271,7 +275,7 @@ public enum ToolCatalogHelpers: Sendable {
     }
 
     /// Returns the total count of tools.
-    public static var totalToolCount: Int { 32 }
+    public static var totalToolCount: Int { 33 }
 
     // MARK: - Tool Purpose Descriptions
 
@@ -310,6 +314,14 @@ public enum ToolCatalogHelpers: Sendable {
             return "Retrieves DICOM objects from a remote server using C-MOVE or C-GET."
         case "dicom-echo":
             return "Sends one or more C-ECHO requests to verify DICOM network connectivity and round-trip latency."
+        case "dicom-video":
+            return """
+                dicom-video wraps an already-conformant H.264/HEVC/MPEG-2 bitstream in a \
+                DICOM Video IOD without re-encoding it, and extracts it back out. Remuxing \
+                preserves the camera's pixel data bit-for-bit; non-conformant input is \
+                rejected with the specific violated constraint rather than silently \
+                re-encoded, because re-encoding degrades diagnostic imagery on every pass.
+                """
         default:
             return ""
         }
@@ -329,6 +341,16 @@ public enum ToolCatalogHelpers: Sendable {
                 "Batch directory conversion",
                 "Strip private tags",
                 "Post-conversion DICOM validation",
+            ]
+        case "dicom-video":
+            return [
+                "Remux without re-encoding (bit-for-bit pixel data)",
+                "H.264 / HEVC / MPEG-2 in MP4 or MPEG-TS",
+                "Conformance rejection naming the violated constraint",
+                "Attributes derived from the bitstream, not the caller",
+                "Endoscopic / microscopic / photographic SOP classes",
+                "Batch a folder as one series or one series per clip",
+                "Extract the bitstream back out",
             ]
         default:
             return []
@@ -3260,6 +3282,297 @@ case "dicom-pixedit":
             isAdvanced: true
         ),
     ]
+        case "dicom-video":
+            // Every option, its help text and its allowed values come from the
+            // shared `VideoConsole` in DICOMKit, which the `dicom-video` CLI also
+            // declares its `@Option(help:)` strings from — so the form and the
+            // CLI's `--help` cannot drift.
+            return [
+                CLIParameterDefinition(
+                    id: "operation", flag: "", displayName: "Operation",
+                    parameterType: .subcommand, placeholder: "convert",
+                    helpText: "convert: wrap one clip in a Video IOD · probe: report geometry and conformance · extract: recover the bitstream · batch: convert a folder",
+                    isRequired: true,
+                    defaultValue: "convert",
+                    allowedValues: ["convert", "probe", "extract", "batch"]
+                ),
+
+                // ----- convert / probe: a single video input -----
+                CLIParameterDefinition(
+                    id: "input", flag: "", displayName: "Input Video",
+                    parameterType: .filePath, placeholder: "clip.mp4",
+                    helpText: VideoConsole.Help.input,
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "probe"])
+                ),
+
+                // ----- extract: a DICOM input -----
+                CLIParameterDefinition(
+                    id: "dicomInput", flag: "", displayName: "Input DICOM File",
+                    parameterType: .filePath, placeholder: "clip.dcm",
+                    helpText: VideoConsole.Help.extractInput,
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["extract"])
+                ),
+
+                // ----- batch: a directory of clips -----
+                CLIParameterDefinition(
+                    id: "inputDirectory", flag: "", displayName: "Input Directory",
+                    parameterType: .filePath, placeholder: "clips/",
+                    helpText: VideoConsole.Help.batchInput,
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["batch"])
+                ),
+
+                // ----- outputs -----
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output DICOM File",
+                    parameterType: .outputPath, placeholder: "clip.dcm",
+                    helpText: VideoConsole.Help.output,
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert"])
+                ),
+                CLIParameterDefinition(
+                    id: "videoOutput", flag: "--output", displayName: "Output Video File",
+                    parameterType: .outputPath, placeholder: "clip.mp4",
+                    helpText: VideoConsole.Help.extractOutput,
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["extract"])
+                ),
+                CLIParameterDefinition(
+                    id: "outputDir", flag: "--output-dir", displayName: "Output Directory",
+                    parameterType: .outputPath, placeholder: "out/",
+                    helpText: VideoConsole.Help.batchOutputDir,
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["batch"])
+                ),
+
+                // ----- SOP class selection (convert / batch) -----
+                CLIParameterDefinition(
+                    id: "type", flag: "--type", displayName: "Video Type",
+                    parameterType: .enumPicker, placeholder: "endoscopic",
+                    helpText: VideoConsole.Help.type
+                        + ". Left empty the tool defaults to endoscopic and says so, because a wrong type yields a valid but mislabelled object.",
+                    defaultValue: "",
+                    allowedValues: [""] + VideoConsole.TypeArgument.allCases.map(\.rawValue),
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "transferSyntax", flag: "--transfer-syntax", displayName: "Transfer Syntax UID",
+                    parameterType: .textField, placeholder: "auto-detected",
+                    helpText: VideoConsole.Help.transferSyntax
+                        + ". An explicit UID is still validated: a mislabelled object is worse than a rejected one.",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+
+                // ----- convert-only tuning -----
+                CLIParameterDefinition(
+                    id: "frameRate", flag: "--frame-rate", displayName: "Frame Rate Override",
+                    parameterType: .textField, placeholder: "e.g. 30",
+                    helpText: VideoConsole.Help.frameRate
+                        + ". Use when the bitstream declares no VUI timing.",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert"])
+                ),
+                CLIParameterDefinition(
+                    id: "instanceNumber", flag: "--instance-number", displayName: "Instance Number",
+                    parameterType: .integerField, placeholder: "1",
+                    helpText: VideoConsole.Help.instanceNumber,
+                    isAdvanced: true,
+                    defaultValue: "1", minValue: 0, maxValue: 999999,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert"])
+                ),
+                CLIParameterDefinition(
+                    id: "seriesNumber", flag: "--series-number", displayName: "Series Number",
+                    parameterType: .integerField, placeholder: "1",
+                    helpText: VideoConsole.Help.seriesNumber,
+                    isAdvanced: true,
+                    defaultValue: "1", minValue: 0, maxValue: 999999,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert"])
+                ),
+
+                // ----- batch-only grouping and traversal -----
+                CLIParameterDefinition(
+                    id: "seriesMode", flag: "--series-mode", displayName: "Series Mode",
+                    parameterType: .enumPicker, placeholder: "single",
+                    helpText: VideoConsole.Help.seriesMode
+                        + ". single is what IHE Endoscopy requires of clips from one procedure step on one piece of equipment.",
+                    defaultValue: "single",
+                    allowedValues: VideoConsole.SeriesMode.allCases.map(\.rawValue),
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: VideoConsole.Help.recursive,
+                    defaultValue: "false",
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "continueOnError", flag: "--continue-on-error", displayName: "Continue On Error",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: VideoConsole.Help.continueOnError
+                        + ". Off by default, so a half-populated series is never left behind.",
+                    defaultValue: "false",
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["batch"])
+                ),
+
+                // ----- shared flags -----
+                CLIParameterDefinition(
+                    id: "dryRun", flag: "--dry-run", displayName: "Dry Run",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: VideoConsole.Help.dryRun,
+                    defaultValue: "false",
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "trustInput", flag: "--trust-input", displayName: "Trust Input",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Encapsulate an MPEG-2 Transport Stream without validating it. TS demuxing is deferred, so convert also requires an explicit Transfer Syntax UID.",
+                    isAdvanced: true,
+                    defaultValue: "false",
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "probe"])
+                ),
+                CLIParameterDefinition(
+                    id: "force", flag: "--force", displayName: "Overwrite Existing",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: VideoConsole.Help.force,
+                    defaultValue: "false",
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "extract", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: VideoConsole.Help.verbose
+                        + ". Explains which container was recognised, why a transfer syntax was chosen, where the frame count came from and which UIDs were minted.",
+                    defaultValue: "false"
+                ),
+
+                // ----- patient / study / series metadata (convert / batch) -----
+                CLIParameterDefinition(
+                    id: "patientName", flag: "--patient-name", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "Doe^Jane",
+                    helpText: VideoConsole.Help.patientName,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "patientID", flag: "--patient-id", displayName: "Patient ID",
+                    parameterType: .textField, placeholder: "12345",
+                    helpText: VideoConsole.Help.patientID,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "patientBirthDate", flag: "--patient-birth-date", displayName: "Patient Birth Date",
+                    parameterType: .textField, placeholder: "YYYYMMDD",
+                    helpText: VideoConsole.Help.patientBirthDate,
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "patientSex", flag: "--patient-sex", displayName: "Patient Sex",
+                    parameterType: .enumPicker, placeholder: "",
+                    helpText: VideoConsole.Help.patientSex,
+                    isAdvanced: true,
+                    defaultValue: "",
+                    allowedValues: ["", "M", "F", "O"],
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "studyUID", flag: "--study-uid", displayName: "Study Instance UID",
+                    parameterType: .textField, placeholder: "auto-generated",
+                    helpText: VideoConsole.Help.studyUID,
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "seriesUID", flag: "--series-uid", displayName: "Series Instance UID",
+                    parameterType: .textField, placeholder: "auto-generated",
+                    helpText: VideoConsole.Help.seriesUID
+                        + ". Cannot be combined with Series Mode per-file, which mints a UID per clip.",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "accessionNumber", flag: "--accession-number", displayName: "Accession Number",
+                    parameterType: .textField, placeholder: "A12345",
+                    helpText: VideoConsole.Help.accessionNumber,
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "studyID", flag: "--study-id", displayName: "Study ID",
+                    parameterType: .textField, placeholder: "1",
+                    helpText: VideoConsole.Help.studyID,
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "referringPhysician", flag: "--referring-physician", displayName: "Referring Physician",
+                    parameterType: .textField, placeholder: "Smith^Robert",
+                    helpText: VideoConsole.Help.referringPhysician,
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "seriesDescription", flag: "--series-description", displayName: "Series Description",
+                    parameterType: .textField, placeholder: "Endoscopy clip",
+                    helpText: VideoConsole.Help.seriesDescription,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "modality", flag: "--modality", displayName: "Modality",
+                    parameterType: .textField, placeholder: "ES / GM / XC",
+                    helpText: VideoConsole.Help.modality,
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "manufacturer", flag: "--manufacturer", displayName: "Manufacturer",
+                    parameterType: .textField, placeholder: "Acme Endoscopes",
+                    helpText: VideoConsole.Help.manufacturer,
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+                CLIParameterDefinition(
+                    id: "institutionName", flag: "--institution-name", displayName: "Institution Name",
+                    parameterType: .textField, placeholder: "General Hospital",
+                    helpText: VideoConsole.Help.institutionName,
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "operation", values: ["convert", "batch"])
+                ),
+            ]
+
         case "dicom-image":
             return [
                 CLIParameterDefinition(

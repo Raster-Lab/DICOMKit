@@ -436,6 +436,126 @@ extension TransferSyntax {
         byteOrder: .littleEndian,
         isEncapsulated: true
     )
+
+    // MARK: - Video Transfer Syntaxes (H.264 Level 4.2 and Stereo)
+
+    /// MPEG-4 AVC/H.264 High Profile / Level 4.2 For 2D Video (1.2.840.10008.1.2.4.104)
+    ///
+    /// H.264/AVC video at High Profile, Level 4.2. Level 4.2 covers 1920x1080 at
+    /// 60fps, which Level 4.1 cannot represent. Required of endoscopy Image Archives
+    /// by IHE Endoscopy Image Archiving (EIA) Table 3.10.4.1.3.1-2.
+    ///
+    /// Reference: PS3.5 Section A.4.6, Section 8.2.8
+    public static let mpeg4AVCHP42For2DVideo = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.104",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// MPEG-4 AVC/H.264 High Profile / Level 4.2 For 3D Video (1.2.840.10008.1.2.4.105)
+    ///
+    /// H.264/AVC video at High Profile, Level 4.2, carrying 3D video.
+    ///
+    /// Reference: PS3.5 Section A.4.6, Section 8.2.8
+    public static let mpeg4AVCHP42For3DVideo = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.105",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// MPEG-4 AVC/H.264 Stereo High Profile / Level 4.2 (1.2.840.10008.1.2.4.106)
+    ///
+    /// H.264/AVC video at Stereo High Profile, Level 4.2 (MVC stereo pair).
+    ///
+    /// Reference: PS3.5 Section A.4.6, Section 8.2.9
+    public static let mpeg4AVCStereoHP42 = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.106",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    // MARK: - Video Transfer Syntaxes (Fragmentable Variants)
+    //
+    // Each non-fragmentable video UID has a "….1" twin in which the bit stream MAY
+    // be split across multiple fragments. The non-fragmentable form requires exactly
+    // one fragment holding the whole bit stream. See `allowsMultipleFragments`.
+    //
+    // Reference: PS3.5 Sections A.4.5 - A.4.7
+
+    /// Fragmentable MPEG2 Main Profile @ Main Level (1.2.840.10008.1.2.4.100.1)
+    public static let mpeg2MainProfileFragmentable = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.100.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// Fragmentable MPEG2 Main Profile @ High Level (1.2.840.10008.1.2.4.101.1)
+    public static let mpeg2MainProfileHighLevelFragmentable = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.101.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// Fragmentable MPEG-4 AVC/H.264 High Profile / Level 4.1 (1.2.840.10008.1.2.4.102.1)
+    public static let mpeg4AVCHP41Fragmentable = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.102.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// Fragmentable MPEG-4 AVC/H.264 BD-compatible High Profile / Level 4.1 (1.2.840.10008.1.2.4.103.1)
+    public static let mpeg4AVCHP41BDFragmentable = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.103.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// Fragmentable MPEG-4 AVC/H.264 High Profile / Level 4.2 For 2D Video (1.2.840.10008.1.2.4.104.1)
+    public static let mpeg4AVCHP42For2DVideoFragmentable = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.104.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// Fragmentable MPEG-4 AVC/H.264 High Profile / Level 4.2 For 3D Video (1.2.840.10008.1.2.4.105.1)
+    public static let mpeg4AVCHP42For3DVideoFragmentable = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.105.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// Fragmentable MPEG-4 AVC/H.264 Stereo High Profile / Level 4.2 (1.2.840.10008.1.2.4.106.1)
+    public static let mpeg4AVCStereoHP42Fragmentable = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.106.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// Fragmentable HEVC/H.265 Main Profile / Level 5.1 (1.2.840.10008.1.2.4.107.1)
+    public static let hevcH265MainProfileFragmentable = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.107.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// Fragmentable HEVC/H.265 Main 10 Profile / Level 5.1 (1.2.840.10008.1.2.4.108.1)
+    public static let hevcH265Main10ProfileFragmentable = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.108.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
     
     /// Creates a TransferSyntax from a UID string
     ///
@@ -511,10 +631,35 @@ extension TransferSyntax {
             return .mpeg4AVCHP41
         case mpeg4AVCHP41BD.uid:
             return .mpeg4AVCHP41BD
+        case mpeg4AVCHP42For2DVideo.uid:
+            return .mpeg4AVCHP42For2DVideo
+        case mpeg4AVCHP42For3DVideo.uid:
+            return .mpeg4AVCHP42For3DVideo
+        case mpeg4AVCStereoHP42.uid:
+            return .mpeg4AVCStereoHP42
         case hevcH265MainProfile.uid:
             return .hevcH265MainProfile
         case hevcH265Main10Profile.uid:
             return .hevcH265Main10Profile
+        // Video (fragmentable variants)
+        case mpeg2MainProfileFragmentable.uid:
+            return .mpeg2MainProfileFragmentable
+        case mpeg2MainProfileHighLevelFragmentable.uid:
+            return .mpeg2MainProfileHighLevelFragmentable
+        case mpeg4AVCHP41Fragmentable.uid:
+            return .mpeg4AVCHP41Fragmentable
+        case mpeg4AVCHP41BDFragmentable.uid:
+            return .mpeg4AVCHP41BDFragmentable
+        case mpeg4AVCHP42For2DVideoFragmentable.uid:
+            return .mpeg4AVCHP42For2DVideoFragmentable
+        case mpeg4AVCHP42For3DVideoFragmentable.uid:
+            return .mpeg4AVCHP42For3DVideoFragmentable
+        case mpeg4AVCStereoHP42Fragmentable.uid:
+            return .mpeg4AVCStereoHP42Fragmentable
+        case hevcH265MainProfileFragmentable.uid:
+            return .hevcH265MainProfileFragmentable
+        case hevcH265Main10ProfileFragmentable.uid:
+            return .hevcH265Main10ProfileFragmentable
         default:
             return nil
         }
@@ -712,24 +857,31 @@ extension TransferSyntax {
     
     /// Whether this transfer syntax uses video compression (MPEG2, H.264, or H.265)
     public var isVideo: Bool {
-        switch uid {
-        case TransferSyntax.mpeg2MainProfile.uid,
-             TransferSyntax.mpeg2MainProfileHighLevel.uid,
-             TransferSyntax.mpeg4AVCHP41.uid,
-             TransferSyntax.mpeg4AVCHP41BD.uid,
-             TransferSyntax.hevcH265MainProfile.uid,
-             TransferSyntax.hevcH265Main10Profile.uid:
-            return true
-        default:
-            return false
-        }
+        return isMPEG2 || isH264 || isH265
+    }
+
+    /// Whether this video transfer syntax permits the bit stream to span multiple
+    /// fragments.
+    ///
+    /// The "….1" variants are the fragmentable forms. For every other video transfer
+    /// syntax, PS3.5 requires that "one Fragment shall contain the whole bit stream",
+    /// so exactly one fragment must be written.
+    ///
+    /// Non-video transfer syntaxes return `false`; fragmentation of, say, a JPEG
+    /// codestream is governed by different rules and is not what this property models.
+    ///
+    /// Reference: PS3.5 Sections A.4.5 - A.4.7
+    public var allowsMultipleFragments: Bool {
+        return isVideo && uid.hasSuffix(".1")
     }
     
     /// Whether this transfer syntax uses MPEG2 compression
     public var isMPEG2: Bool {
         switch uid {
         case TransferSyntax.mpeg2MainProfile.uid,
-             TransferSyntax.mpeg2MainProfileHighLevel.uid:
+             TransferSyntax.mpeg2MainProfileHighLevel.uid,
+             TransferSyntax.mpeg2MainProfileFragmentable.uid,
+             TransferSyntax.mpeg2MainProfileHighLevelFragmentable.uid:
             return true
         default:
             return false
@@ -740,7 +892,15 @@ extension TransferSyntax {
     public var isH264: Bool {
         switch uid {
         case TransferSyntax.mpeg4AVCHP41.uid,
-             TransferSyntax.mpeg4AVCHP41BD.uid:
+             TransferSyntax.mpeg4AVCHP41BD.uid,
+             TransferSyntax.mpeg4AVCHP42For2DVideo.uid,
+             TransferSyntax.mpeg4AVCHP42For3DVideo.uid,
+             TransferSyntax.mpeg4AVCStereoHP42.uid,
+             TransferSyntax.mpeg4AVCHP41Fragmentable.uid,
+             TransferSyntax.mpeg4AVCHP41BDFragmentable.uid,
+             TransferSyntax.mpeg4AVCHP42For2DVideoFragmentable.uid,
+             TransferSyntax.mpeg4AVCHP42For3DVideoFragmentable.uid,
+             TransferSyntax.mpeg4AVCStereoHP42Fragmentable.uid:
             return true
         default:
             return false
@@ -751,7 +911,9 @@ extension TransferSyntax {
     public var isH265: Bool {
         switch uid {
         case TransferSyntax.hevcH265MainProfile.uid,
-             TransferSyntax.hevcH265Main10Profile.uid:
+             TransferSyntax.hevcH265Main10Profile.uid,
+             TransferSyntax.hevcH265MainProfileFragmentable.uid,
+             TransferSyntax.hevcH265Main10ProfileFragmentable.uid:
             return true
         default:
             return false
@@ -818,7 +980,14 @@ extension TransferSyntax {
         // Video
         .mpeg2MainProfile, .mpeg2MainProfileHighLevel,
         .mpeg4AVCHP41, .mpeg4AVCHP41BD,
+        .mpeg4AVCHP42For2DVideo, .mpeg4AVCHP42For3DVideo, .mpeg4AVCStereoHP42,
         .hevcH265MainProfile, .hevcH265Main10Profile,
+        // Video (fragmentable variants)
+        .mpeg2MainProfileFragmentable, .mpeg2MainProfileHighLevelFragmentable,
+        .mpeg4AVCHP41Fragmentable, .mpeg4AVCHP41BDFragmentable,
+        .mpeg4AVCHP42For2DVideoFragmentable, .mpeg4AVCHP42For3DVideoFragmentable,
+        .mpeg4AVCStereoHP42Fragmentable,
+        .hevcH265MainProfileFragmentable, .hevcH265Main10ProfileFragmentable,
         // JPIP
         .jpipReferenced, .jpipReferencedDeflate,
         // JP3D (experimental / private)
@@ -855,7 +1024,26 @@ extension TransferSyntax {
         case TransferSyntax.mpeg4AVCHP41.uid:                  return "MPEG-4 AVC/H.264 HP @ Level 4.1"
         case TransferSyntax.mpeg4AVCHP41BD.uid:                return "MPEG-4 AVC/H.264 BD-compatible HP @ Level 4.1"
         case TransferSyntax.hevcH265MainProfile.uid:           return "HEVC/H.265 Main Profile @ Level 5.1"
+        case TransferSyntax.mpeg4AVCHP42For2DVideo.uid:        return "MPEG-4 AVC/H.264 HP @ Level 4.2 For 2D Video"
+        case TransferSyntax.mpeg4AVCHP42For3DVideo.uid:        return "MPEG-4 AVC/H.264 HP @ Level 4.2 For 3D Video"
+        case TransferSyntax.mpeg4AVCStereoHP42.uid:            return "MPEG-4 AVC/H.264 Stereo HP @ Level 4.2"
         case TransferSyntax.hevcH265Main10Profile.uid:         return "HEVC/H.265 Main 10 Profile @ Level 5.1"
+        case TransferSyntax.mpeg2MainProfileFragmentable.uid:  return "Fragmentable MPEG2 Main Profile @ Main Level"
+        case TransferSyntax.mpeg2MainProfileHighLevelFragmentable.uid:
+            return "Fragmentable MPEG2 Main Profile @ High Level"
+        case TransferSyntax.mpeg4AVCHP41Fragmentable.uid:      return "Fragmentable MPEG-4 AVC/H.264 HP @ Level 4.1"
+        case TransferSyntax.mpeg4AVCHP41BDFragmentable.uid:
+            return "Fragmentable MPEG-4 AVC/H.264 BD-compatible HP @ Level 4.1"
+        case TransferSyntax.mpeg4AVCHP42For2DVideoFragmentable.uid:
+            return "Fragmentable MPEG-4 AVC/H.264 HP @ Level 4.2 For 2D Video"
+        case TransferSyntax.mpeg4AVCHP42For3DVideoFragmentable.uid:
+            return "Fragmentable MPEG-4 AVC/H.264 HP @ Level 4.2 For 3D Video"
+        case TransferSyntax.mpeg4AVCStereoHP42Fragmentable.uid:
+            return "Fragmentable MPEG-4 AVC/H.264 Stereo HP @ Level 4.2"
+        case TransferSyntax.hevcH265MainProfileFragmentable.uid:
+            return "Fragmentable HEVC/H.265 Main Profile @ Level 5.1"
+        case TransferSyntax.hevcH265Main10ProfileFragmentable.uid:
+            return "Fragmentable HEVC/H.265 Main 10 Profile @ Level 5.1"
         case TransferSyntax.jpipReferenced.uid:                return "JPIP Referenced"
         case TransferSyntax.jpipReferencedDeflate.uid:         return "JPIP Referenced Deflate"
         case TransferSyntax.jp3dLossless.uid:                  return "JP3D Lossless (experimental)"

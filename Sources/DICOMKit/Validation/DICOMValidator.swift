@@ -167,9 +167,12 @@ public struct DICOMValidator {
     }
     
     private func validateValueFormat(element: DataElement, entry: DataElementEntry, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
+        // A zero-length value is legal for any Type 2 attribute: PS3.5 5 defines
+        // it as "present with zero length" when the value is unknown. Only a
+        // non-empty value can be malformed, so empty values skip format checks.
         switch element.vr {
         case .UI:
-            if let value = element.stringValue {
+            if let value = element.stringValue, !value.isEmpty {
                 if !isValidUID(value) {
                     errors.append(ValidationIssue(
                         level: .error,
@@ -179,7 +182,7 @@ public struct DICOMValidator {
                 }
             }
         case .DA:
-            if let value = element.stringValue {
+            if let value = element.stringValue, !value.isEmpty {
                 if !isValidDate(value) {
                     errors.append(ValidationIssue(
                         level: .error,
@@ -189,7 +192,7 @@ public struct DICOMValidator {
                 }
             }
         case .TM:
-            if let value = element.stringValue {
+            if let value = element.stringValue, !value.isEmpty {
                 if !isValidTime(value) {
                     errors.append(ValidationIssue(
                         level: .error,

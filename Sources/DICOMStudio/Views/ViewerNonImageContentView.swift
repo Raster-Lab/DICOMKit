@@ -16,10 +16,25 @@ import DICOMKit
 #if canImport(PDFKit)
 import PDFKit
 #endif
+#if canImport(AVKit)
+import AVKit
+#endif
 
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 struct ViewerNonImageContentView: View {
     let content: ViewerNonImageContent
+    /// Whether a clip should be running. Bound to the view model's cine state
+    /// so the toolbar's play/stop and the player move together. Defaults to a
+    /// constant for the content that has nothing to play.
+    var isPlaying: Binding<Bool> = .constant(false)
+
+    /// SOP Instance UID of the object on screen, which is what identifies a
+    /// clip to the player.
+    ///
+    /// The payload's byte count used to stand in for this, and two clips of
+    /// equal length — the same recording exported twice, a series of fixed
+    /// duration — then kept playing the first one silently.
+    var instanceUID: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,6 +58,8 @@ struct ViewerNonImageContentView: View {
                 StructuredReportNarrativeView(document: document)
             case .document(let document):
                 encapsulatedDocument(document)
+            case .video(let video):
+                videoPlayer(video)
             case .summary(_, _, let rows):
                 summary(rows)
             }
@@ -66,6 +83,23 @@ struct ViewerNonImageContentView: View {
             Spacer()
         }
         .padding(10)
+    }
+
+    // MARK: - Video
+
+    @ViewBuilder
+    private func videoPlayer(_ video: DICOMKit.ExtractedVideo) -> some View {
+        #if canImport(AVKit)
+        ViewerVideoPlayerView(
+            video: video, isPlaying: isPlaying, instanceUID: instanceUID)
+        #else
+        summary([
+            .init(label: "Codec", value: video.codec.displayName),
+            .init(label: "Transfer Syntax", value: video.transferSyntax.uid),
+            .init(label: "Size", value: "\(video.bitstream.count) bytes"),
+            .init(label: "Playback", value: "Not available on this platform")
+        ])
+        #endif
     }
 
     // MARK: - Encapsulated document
@@ -268,6 +302,129 @@ struct PDFDocumentView: NSViewRepresentable {
     func updateNSView(_ view: PDFView, context: Context) {
         if view.document !== document {
             view.document = document
+        }
+    }
+}
+#endif
+// MARK: - Video
+
+#if canImport(AVKit)
+/// The clip, in a player that brings its own transport.
+///
+/// AVFoundation reads from a URL rather than from data in memory, so the bit
+/// stream is spilled to a temporary file first. The payload is a whole
+/// container — `dicom-video` refuses a raw elementary stream on the way in
+/// (PS3.5 8.2.7) — so what lands on disk is a file a player can open, and the
+/// extension follows the container the bytes actually are.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+struct ViewerVideoPlayerView: View {
+    let video: DICOMKit.ExtractedVideo
+    /// Whether the clip should be running. Owned by the view model so the
+    /// toolbar's cine button and the player agree on one answer.
+    @Binding var isPlaying: Bool
+
+    /// Identity of the clip on screen — see
+    /// ``ViewerNonImageContentView/instanceUID``. Falls back to the payload
+    /// size for a standalone file opened outside a series, which carries no
+    /// series position to confuse.
+    var instanceUID: String?
+
+    @State private var player: AVPlayer?
+    @State private var fileURL: URL?
+    @State private var failure: String?
+    /// Set when playback reaches the end, so the loop restarts from the top
+    /// rather than sitting on a last frame that looks like a stall.
+    @State private var endObserver: NSObjectProtocol?
+
+    var body: some View {
+        Group {
+            if let player {
+                VideoPlayer(player: player)
+                    .background(Color.black)
+            } else if let failure {
+                ContentUnavailableView(
+                    "Cannot Play This Clip",
+                    systemImage: "film.slash",
+                    description: Text(failure))
+                .foregroundStyle(.white)
+            } else {
+                ProgressView().controlSize(.large)
+            }
+        }
+        .task(id: instanceUID ?? "size:\(video.bitstream.count)") { await prepare() }
+        .onDisappear(perform: teardown)
+        .onChange(of: isPlaying) { _, wants in
+            guard let player else { return }
+            // The transport inside `VideoPlayer` moves the same player, so this
+            // only pushes the state the view model asked for; it does not fight
+            // the reader's own play/pause.
+            if wants { player.play() } else { player.pause() }
+        }
+    }
+
+    /// Writes the payload out and hands it to a player.
+    private func prepare() async {
+        teardown()
+        do {
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("DICOMStudioVideo", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(
+                UUID().uuidString).appendingPathExtension(video.suggestedFileExtension)
+            try video.bitstream.write(to: url, options: .atomic)
+
+            let asset = AVURLAsset(url: url)
+            // Asking before building the player turns "the window is black" into
+            // a sentence naming the codec.
+            guard try await asset.load(.isPlayable) else {
+                try? FileManager.default.removeItem(at: url)
+                failure = "\(video.codec.displayName) in a \(containerName) container "
+                    + "is not playable on this system."
+                return
+            }
+            let item = AVPlayerItem(asset: asset)
+            let newPlayer = AVPlayer(playerItem: item)
+            newPlayer.actionAtItemEnd = .none
+            endObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
+                    newPlayer.seek(to: .zero)
+                    if isPlaying { newPlayer.play() }
+                }
+            fileURL = url
+            player = newPlayer
+            if isPlaying { newPlayer.play() }
+        } catch {
+            failure = error.localizedDescription
+        }
+    }
+
+    /// Stops the clip and removes the file it was playing.
+    ///
+    /// Both halves matter: a player left running keeps decoding a study the
+    /// reader has already left, and a file left behind accumulates one copy of
+    /// every clip opened this session.
+    private func teardown() {
+        player?.pause()
+        player = nil
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
+        if let fileURL {
+            try? FileManager.default.removeItem(at: fileURL)
+            self.fileURL = nil
+        }
+        failure = nil
+    }
+
+    private var containerName: String {
+        switch video.container {
+        case .mp4:              return "MP4"
+        case .quickTime:        return "QuickTime"
+        case .mpegTS:           return "MPEG-TS"
+        case .elementaryStream: return "elementary stream"
+        case .unknown:          return "unrecognised"
         }
     }
 }

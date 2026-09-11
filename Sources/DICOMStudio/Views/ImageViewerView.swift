@@ -294,7 +294,22 @@ public struct ImageViewerView: View {
                 // Reports, encapsulated documents and the rest are read, not
                 // rendered. This branch sits ahead of the error branch because
                 // such an object is not a picture that failed — it never was one.
-                ViewerNonImageContentView(content: content)
+                ViewerNonImageContentView(
+                    content: content,
+                    // The clip and the toolbar's cine button read and write one
+                    // state, so pressing either one moves the other.
+                    isPlaying: Binding(
+                        get: { viewModel.playbackState == .playing },
+                        set: { viewModel.playbackState = $0 ? .playing : .paused }),
+                    // Which object this is, so stepping to the next clip of a
+                    // series rebuilds the player rather than leaving the
+                    // previous recording running.
+                    instanceUID: viewModel.sopInstanceUID)
+                // Scrolling steps between the objects of a multi-clip series
+                // here too. The handler that does this for pixels lives inside
+                // `imageContent`, which this branch pre-empts, so a video
+                // series had no wheel navigation at 1×1 at all.
+                .background(ScrollWheelHandler { scrollImages($0) })
             } else if let errorMessage = viewModel.errorMessage {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
@@ -527,6 +542,8 @@ public struct ImageViewerView: View {
             }
         }
         .overlay(alignment: .bottom) {
+            // Images only: this bar scrubs a frame index, and a clip has none —
+            // the player brings its own transport for that.
             if viewModel.isMultiFrame && viewModel.hasImage && !viewModel.isWaveform {
                 CineControlsView(viewModel: viewModel)
                     .padding(.bottom, 40)
@@ -1485,11 +1502,12 @@ public struct ImageViewerView: View {
             }
         }
 
-        // Cine transport for a multi-frame image, which opens already looping.
+        // Cine transport for anything that runs — a multi-frame image or a
+        // video clip, which both open already looping.
         // The overlay bar at the bottom of the picture carries the full set of
         // controls; this is the stop/start alone, kept in the toolbar so the
         // reader can halt the motion without first going hunting for that bar.
-        if viewModel.isMultiFrame && viewModel.hasImage && !viewModel.isWaveform {
+        if viewModel.hasCineTransport {
             ToolbarItem(placement: .automatic) {
                 Button {
                     viewModel.togglePlayback()
@@ -1515,140 +1533,144 @@ public struct ImageViewerView: View {
         }
 
         // Tile layout — the viewer grid, which is also the film grid
-        ToolbarItem(placement: .automatic) {
-            Menu {
-                // What the grid is a grid *of*, before its shape: the shapes
-                // below all mean something different depending on this answer,
-                // so it reads top-down as "a grid of images, three by three".
-                Section("Fill with") {
-                    ForEach(ViewerLayoutFill.allCases) { fill in
+        if showsImageTools {
+            ToolbarItem(placement: .automatic) {
+                Menu {
+                    // What the grid is a grid *of*, before its shape: the shapes
+                    // below all mean something different depending on this answer,
+                    // so it reads top-down as "a grid of images, three by three".
+                    Section("Fill with") {
+                        ForEach(ViewerLayoutFill.allCases) { fill in
+                            Button {
+                                viewModel.applyLayoutFill(fill)
+                            } label: {
+                                if fill == viewModel.layoutFill {
+                                    Label(fill.displayName, systemImage: "checkmark")
+                                } else {
+                                    Label(fill.displayName, systemImage: fill.symbolName)
+                                }
+                            }
+                            .help(fill.note)
+                        }
+                    }
+
+                    Section("Grid") {
+                    ForEach(ViewerTileLayout.allCases) { option in
                         Button {
-                            viewModel.applyLayoutFill(fill)
+                            viewModel.applyLayout(option)
                         } label: {
-                            if fill == viewModel.layoutFill {
-                                Label(fill.displayName, systemImage: "checkmark")
+                            if option == viewModel.layout {
+                                Label(option.displayName, systemImage: "checkmark")
                             } else {
-                                Label(fill.displayName, systemImage: fill.symbolName)
+                                Text(option.displayName)
                             }
                         }
-                        .help(fill.note)
+                        // The square grids get a digit each — the digit is the side,
+                        // so ⌘3 is 3×3. The oblong layouts stay menu-only rather than
+                        // taking digits whose number means nothing.
+                        .modifier(SquareLayoutShortcut(layout: option))
                     }
-                }
-
-                Section("Grid") {
-                ForEach(ViewerTileLayout.allCases) { option in
-                    Button {
-                        viewModel.applyLayout(option)
-                    } label: {
-                        if option == viewModel.layout {
-                            Label(option.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(option.displayName)
-                        }
                     }
-                    // The square grids get a digit each — the digit is the side,
-                    // so ⌘3 is 3×3. The oblong layouts stay menu-only rather than
-                    // taking digits whose number means nothing.
-                    .modifier(SquareLayoutShortcut(layout: option))
+                } label: {
+                    Label(layoutMenuLabel, systemImage: "square.grid.2x2")
                 }
-                }
-            } label: {
-                Label(layoutMenuLabel, systemImage: "square.grid.2x2")
+                .disabled(!viewModel.hasImage)
+                // A fresh menu whenever the shape or the fill changes, for the same
+                // reason the print menu carries one: a toolbar `Menu` is bridged to
+                // an AppKit menu that is built once and re-used, so the ticks beside
+                // the items would otherwise keep the state they were born with.
+                .id("\(viewModel.layout.id)|\(viewModel.layoutFill.rawValue)")
+                .accessibilityLabel("Tile layout, currently \(layoutMenuLabel)")
+                .help("Tile layout (⌘1–⌘4 for 1×1 to 4×4) — splits the reading area into tiles; "
+                      + "they map to film cells in the same order. Fill them with one series "
+                      + "each, or with consecutive images of this series.")
             }
-            .disabled(!viewModel.hasImage)
-            // A fresh menu whenever the shape or the fill changes, for the same
-            // reason the print menu carries one: a toolbar `Menu` is bridged to
-            // an AppKit menu that is built once and re-used, so the ticks beside
-            // the items would otherwise keep the state they were born with.
-            .id("\(viewModel.layout.id)|\(viewModel.layoutFill.rawValue)")
-            .accessibilityLabel("Tile layout, currently \(layoutMenuLabel)")
-            .help("Tile layout (⌘1–⌘4 for 1×1 to 4×4) — splits the reading area into tiles; "
-                  + "they map to film cells in the same order. Fill them with one series "
-                  + "each, or with consecutive images of this series.")
         }
 
         // DICOM print — mark the current frame, then open the print sheet
-        ToolbarItemGroup(placement: .automatic) {
-            // Clicking marks the image on screen; the menu offers the bulk
-            // selections, so "select all" is one click from where marking lives.
-            Menu {
-                Button("Select All for Print") {
-                    viewModel.markLayoutForPrint()
-                }
-                .disabled(viewModel.isLayoutFullyMarkedForPrint)
-                // Every mark comes off, wherever it was made — see the same item
-                // in the image's context menu.
-                Button("Unselect All for Print") {
-                    viewModel.clearAllPrintMarks()
-                }
-                .disabled(viewModel.printSelection.isEmpty)
-                if viewModel.isInSeries {
-                    Button("Mark Whole Series for Print") {
-                        viewModel.markWholeSeriesForPrint()
+        if showsImageTools {
+            ToolbarItemGroup(placement: .automatic) {
+                // Clicking marks the image on screen; the menu offers the bulk
+                // selections, so "select all" is one click from where marking lives.
+                Menu {
+                    Button("Select All for Print") {
+                        viewModel.markLayoutForPrint()
                     }
-                }
-                if viewModel.isMultiFrame {
-                    Button("Mark All Frames for Print") {
-                        viewModel.markAllFramesOfCurrentFileForPrint()
+                    .disabled(viewModel.isLayoutFullyMarkedForPrint)
+                    // Every mark comes off, wherever it was made — see the same item
+                    // in the image's context menu.
+                    Button("Unselect All for Print") {
+                        viewModel.clearAllPrintMarks()
                     }
-                }
-            } label: {
-                Image(systemName: viewModel.isCurrentFrameMarkedForPrint
-                      ? "checkmark.rectangle.stack.fill"
-                      : "checkmark.rectangle.stack")
-            } primaryAction: {
-                viewModel.togglePrintMarkForCurrentFrame()
-            }
-            // A new menu whenever anything the items above read has changed.
-            //
-            // Not decoration: a toolbar `Menu` with a `primaryAction` is bridged
-            // to an AppKit menu that is built once and then re-used, so the
-            // items keep the enabled state they were *born* with. The menu is
-            // first built with an empty film, and "Unselect All for Print" then
-            // stayed greyed out with four images on the film — while the printer
-            // button beside it, reading the same `printSelection.isEmpty` from
-            // the same body, was correctly live. Changing the identity is what
-            // makes SwiftUI build a fresh menu rather than hand back the stale
-            // one; it also covers the two items that come and go below.
-            .id(printMenuIdentity)
-            .disabled(!viewModel.hasImage)
-            .accessibilityLabel(viewModel.isCurrentFrameMarkedForPrint
-                                ? "Unmark image for print" : "Mark image for print")
-            .help("Mark this image for print (M) — click to mark the image on screen; "
-                  + "the menu marks a whole series or every frame at once")
-            .keyboardShortcut("m", modifiers: [])
-
-            Button {
-                viewModel.isPrintTrayVisible.toggle()
-            } label: {
-                Image(systemName: viewModel.isPrintTrayVisible
-                      ? "sidebar.trailing" : "sidebar.right")
-            }
-            .keyboardShortcut("t", modifiers: [])
-            .accessibilityLabel(viewModel.isPrintTrayVisible
-                                ? "Hide selected images" : "Show selected images")
-            .help("Selected-images tray (T) — the images marked for print, in film order")
-
-            Button {
-                openPrintSheet()
-            } label: {
-                Image(systemName: "printer")
-                    .overlay(alignment: .topTrailing) {
-                        if viewModel.printSelection.count > 0 {
-                            Text("\(viewModel.printSelection.count)")
-                                .font(.system(size: 9).monospacedDigit())
-                                .padding(3)
-                                .background(.tint, in: Circle())
-                                .foregroundStyle(.white)
-                                .offset(x: 8, y: -8)
+                    .disabled(viewModel.printSelection.isEmpty)
+                    if viewModel.isInSeries {
+                        Button("Mark Whole Series for Print") {
+                            viewModel.markWholeSeriesForPrint()
                         }
                     }
+                    if viewModel.isMultiFrame {
+                        Button("Mark All Frames for Print") {
+                            viewModel.markAllFramesOfCurrentFileForPrint()
+                        }
+                    }
+                } label: {
+                    Image(systemName: viewModel.isCurrentFrameMarkedForPrint
+                          ? "checkmark.rectangle.stack.fill"
+                          : "checkmark.rectangle.stack")
+                } primaryAction: {
+                    viewModel.togglePrintMarkForCurrentFrame()
+                }
+                // A new menu whenever anything the items above read has changed.
+                //
+                // Not decoration: a toolbar `Menu` with a `primaryAction` is bridged
+                // to an AppKit menu that is built once and then re-used, so the
+                // items keep the enabled state they were *born* with. The menu is
+                // first built with an empty film, and "Unselect All for Print" then
+                // stayed greyed out with four images on the film — while the printer
+                // button beside it, reading the same `printSelection.isEmpty` from
+                // the same body, was correctly live. Changing the identity is what
+                // makes SwiftUI build a fresh menu rather than hand back the stale
+                // one; it also covers the two items that come and go below.
+                .id(printMenuIdentity)
+                .disabled(!viewModel.hasImage)
+                .accessibilityLabel(viewModel.isCurrentFrameMarkedForPrint
+                                    ? "Unmark image for print" : "Mark image for print")
+                .help("Mark this image for print (M) — click to mark the image on screen; "
+                      + "the menu marks a whole series or every frame at once")
+                .keyboardShortcut("m", modifiers: [])
+
+                Button {
+                    viewModel.isPrintTrayVisible.toggle()
+                } label: {
+                    Image(systemName: viewModel.isPrintTrayVisible
+                          ? "sidebar.trailing" : "sidebar.right")
+                }
+                .keyboardShortcut("t", modifiers: [])
+                .accessibilityLabel(viewModel.isPrintTrayVisible
+                                    ? "Hide selected images" : "Show selected images")
+                .help("Selected-images tray (T) — the images marked for print, in film order")
+
+                Button {
+                    openPrintSheet()
+                } label: {
+                    Image(systemName: "printer")
+                        .overlay(alignment: .topTrailing) {
+                            if viewModel.printSelection.count > 0 {
+                                Text("\(viewModel.printSelection.count)")
+                                    .font(.system(size: 9).monospacedDigit())
+                                    .padding(3)
+                                    .background(.tint, in: Circle())
+                                    .foregroundStyle(.white)
+                                    .offset(x: 8, y: -8)
+                            }
+                        }
+                }
+                .disabled(viewModel.printSelection.isEmpty)
+                .accessibilityLabel("Print marked images")
+                .help("Print marked images (⌘P) — opens the print sheet with everything marked, "
+                      + "laid onto film")
+                .keyboardShortcut("p", modifiers: .command)
             }
-            .disabled(viewModel.printSelection.isEmpty)
-            .accessibilityLabel("Print marked images")
-            .help("Print marked images (⌘P) — opens the print sheet with everything marked, "
-                  + "laid onto film")
-            .keyboardShortcut("p", modifiers: .command)
         }
 
         // Tools — pan, windowing, zoom and rotate are click-and-drag tools,
@@ -1657,100 +1679,104 @@ public struct ImageViewerView: View {
         // and the image's context menu, for when an exact 90° is what's wanted —
         // the toolbar icon arms the free-turn drag. No dropdown: every tool is a
         // single visible icon, and every one of them has a key.
-        ToolbarItemGroup(placement: .automatic) {
-            // The drag tools, in the order pan, windowing, zoom, rotate. Built
-            // from the enum so the icon, the tooltip and the key can only ever
-            // describe the tool the button actually arms.
-            ForEach(ImageViewerDragTool.allCases) { tool in
-                toolButton(
-                    systemImage: tool.symbolName,
-                    isActive: activeTool == tool,
-                    label: "\(tool.displayName) tool",
-                    help: tool.help
-                ) {
-                    arm(tool)
+        if showsImageTools {
+            ToolbarItemGroup(placement: .automatic) {
+                // The drag tools, in the order pan, windowing, zoom, rotate. Built
+                // from the enum so the icon, the tooltip and the key can only ever
+                // describe the tool the button actually arms.
+                ForEach(ImageViewerDragTool.allCases) { tool in
+                    toolButton(
+                        systemImage: tool.symbolName,
+                        isActive: activeTool == tool,
+                        label: "\(tool.displayName) tool",
+                        help: tool.help
+                    ) {
+                        arm(tool)
+                    }
                 }
-            }
 
-            if viewModel.isMonochrome {
-                // The half-filled circle — the lightbox glyph every viewer
-                // uses for invert. It had to be a square while the windowing
-                // tool wore the other half-filled circle; windowing is the sun
-                // now, so the circle reads unambiguously as invert again.
+                if viewModel.isMonochrome {
+                    // The half-filled circle — the lightbox glyph every viewer
+                    // uses for invert. It had to be a square while the windowing
+                    // tool wore the other half-filled circle; windowing is the sun
+                    // now, so the circle reads unambiguously as invert again.
+                    Button {
+                        viewModel.toggleInversion()
+                    } label: {
+                        Image(systemName: viewModel.isInverted
+                              ? "circle.lefthalf.filled" : "circle.righthalf.filled")
+                    }
+                    .accessibilityLabel(viewModel.isInverted ? "Remove inversion" : "Invert grayscale")
+                    // The key lives on the hidden button in `toolShortcuts`, not
+                    // here: this button is only on the toolbar for monochrome
+                    // images, and a key that vanishes with its button is worse than
+                    // one that is always delivered. Same for the two flips below.
+                    .help(viewModel.isInverted
+                          ? "Remove grayscale inversion (V) — back to black-on-white as stored"
+                          : "Invert grayscale (V) — swaps black and white, as on a lightbox")
+                }
+
+                // Pseudo-colour palette — the CLUT the image is read through. In
+                // the tools group and next to inversion because it belongs to the
+                // same question those two answer: how the stored values are turned
+                // into what the reader sees. It is not a print setting; it only
+                // reaches the film because a mark carries whatever was on screen.
+                ViewerPalettePickerView(viewModel: viewModel)
+
+                Button { viewModel.flipHorizontal() } label: {
+                    Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+                }
+                .accessibilityLabel("Flip horizontal")
+                .help("Flip horizontally ([) — mirrors left to right; laterality markers move with it")
+
+                Button { viewModel.flipVertical() } label: {
+                    Image(systemName: "arrow.up.and.down.righttriangle.up.righttriangle.down")
+                }
+                .accessibilityLabel("Flip vertical")
+                .help("Flip vertically (]) — mirrors top to bottom")
+
                 Button {
-                    viewModel.toggleInversion()
+                    viewModel.fitToView(viewWidth: viewSize.width, viewHeight: viewSize.height)
                 } label: {
-                    Image(systemName: viewModel.isInverted
-                          ? "circle.lefthalf.filled" : "circle.righthalf.filled")
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
                 }
-                .accessibilityLabel(viewModel.isInverted ? "Remove inversion" : "Invert grayscale")
-                // The key lives on the hidden button in `toolShortcuts`, not
-                // here: this button is only on the toolbar for monochrome
-                // images, and a key that vanishes with its button is worse than
-                // one that is always delivered. Same for the two flips below.
-                .help(viewModel.isInverted
-                      ? "Remove grayscale inversion (V) — back to black-on-white as stored"
-                      : "Invert grayscale (V) — swaps black and white, as on a lightbox")
-            }
+                .accessibilityLabel("Fit image to view")
+                .help("Fit image to view (F) — sizes it so the whole picture is on screen, and re-centres it")
+                .keyboardShortcut("f", modifiers: [])
 
-            // Pseudo-colour palette — the CLUT the image is read through. In
-            // the tools group and next to inversion because it belongs to the
-            // same question those two answer: how the stored values are turned
-            // into what the reader sees. It is not a print setting; it only
-            // reaches the film because a mark carries whatever was on screen.
-            ViewerPalettePickerView(viewModel: viewModel)
-
-            Button { viewModel.flipHorizontal() } label: {
-                Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+                Button { viewModel.resetView() } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .accessibilityLabel("Reset to original image")
+                .help("Reset to original image (R) — undoes zoom, pan, rotation, flip, "
+                      + "windowing, inversion, colour, and drawn annotations")
+                .keyboardShortcut("r", modifiers: [])
             }
-            .accessibilityLabel("Flip horizontal")
-            .help("Flip horizontally ([) — mirrors left to right; laterality markers move with it")
-
-            Button { viewModel.flipVertical() } label: {
-                Image(systemName: "arrow.up.and.down.righttriangle.up.righttriangle.down")
-            }
-            .accessibilityLabel("Flip vertical")
-            .help("Flip vertically (]) — mirrors top to bottom")
-
-            Button {
-                viewModel.fitToView(viewWidth: viewSize.width, viewHeight: viewSize.height)
-            } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-            }
-            .accessibilityLabel("Fit image to view")
-            .help("Fit image to view (F) — sizes it so the whole picture is on screen, and re-centres it")
-            .keyboardShortcut("f", modifiers: [])
-
-            Button { viewModel.resetView() } label: {
-                Image(systemName: "arrow.counterclockwise")
-            }
-            .accessibilityLabel("Reset to original image")
-            .help("Reset to original image (R) — undoes zoom, pan, rotation, flip, "
-                  + "windowing, inversion, colour, and drawn annotations")
-            .keyboardShortcut("r", modifiers: [])
         }
 
         // Overlays & Panels menu — collapses toggles and panels into one button
-        ToolbarItem(placement: .automatic) {
-            Menu {
-                // Both open a panel now, so both are buttons rather than
-                // toggles: a tick beside an item that raises a window claims
-                // the window is a state of the picture, which it is not.
-                Button {
-                    viewModel.showMetadataOverlay = true
+        if showsImageTools {
+            ToolbarItem(placement: .automatic) {
+                Menu {
+                    // Both open a panel now, so both are buttons rather than
+                    // toggles: a tick beside an item that raises a window claims
+                    // the window is a state of the picture, which it is not.
+                    Button {
+                        viewModel.showMetadataOverlay = true
+                    } label: {
+                        Label("Image Metadata", systemImage: "info.circle")
+                    }
+                    .disabled(!viewModel.hasImage)
+                    Divider()
+                    Toggle(isOn: Bindable(viewModel).showDICOMInspector) {
+                        Label("DICOM Tag Inspector", systemImage: "list.bullet.rectangle")
+                    }
+                    .disabled(viewModel.dicomFile == nil)
                 } label: {
-                    Label("Image Metadata", systemImage: "info.circle")
+                    Image(systemName: "square.stack.3d.up")
                 }
-                .disabled(!viewModel.hasImage)
-                Divider()
-                Toggle(isOn: Bindable(viewModel).showDICOMInspector) {
-                    Label("DICOM Tag Inspector", systemImage: "list.bullet.rectangle")
-                }
-                .disabled(viewModel.dicomFile == nil)
-            } label: {
-                Image(systemName: "square.stack.3d.up")
+                .help("Panels — this image's pixel metadata, and the DICOM tag inspector")
             }
-            .help("Panels — this image's pixel metadata, and the DICOM tag inspector")
         }
 
         // Study download — the whole study out as one ZIP: every series' files
@@ -1792,6 +1818,21 @@ extension ImageViewerView {
 
     /// The download button with a rule on either side of it.
     ///
+    /// Whether the picture tools belong on the toolbar for what is on screen.
+    ///
+    /// Windowing, zoom, rotation, the tile grid, print and the overlay panels
+    /// all act on pixels the viewer has decoded. A clip, a report and a
+    /// document have none, so the tools are absent rather than present and
+    /// inert — a disabled row of icons invites the reader to wonder what is
+    /// wrong with the study, and nothing is.
+    ///
+    /// Computed with no stored half on purpose: it is derived from whatever
+    /// instance is loaded right now, so stepping from a clip back to an image
+    /// restores the tools with no reset step that could be forgotten.
+    private var showsImageTools: Bool {
+        !viewModel.isNonImageContent && !viewModel.isWaveform
+    }
+
     /// Extracted from the toolbar builder rather than written inline: the
     /// builder is long enough that adding the two rules as their own
     /// `ToolbarItem`s tipped it past what the type-checker will infer in one

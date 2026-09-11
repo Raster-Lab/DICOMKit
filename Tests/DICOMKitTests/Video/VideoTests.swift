@@ -377,7 +377,10 @@ final class VideoTests: XCTestCase {
         XCTAssertEqual(dataSet[.rows]?.uint16Value, 1080)
         XCTAssertEqual(dataSet[.columns]?.uint16Value, 1920)
         XCTAssertEqual(dataSet[.samplesPerPixel]?.uint16Value, 3)
-        XCTAssertEqual(dataSet.string(for: .photometricInterpretation), "YBR_FULL_422")
+        // PS3.5 8.2.7 / 8.2.10 / 8.2.11 each require YBR_PARTIAL_420 of every video
+        // transfer syntax. YBR_PARTIAL_422 is retired (PS3.3 C.7.6.3), and
+        // YBR_FULL_422 describes different subsampling entirely.
+        XCTAssertEqual(dataSet.string(for: .photometricInterpretation), "YBR_PARTIAL_420")
         XCTAssertEqual(dataSet.string(for: .modality), "ES")
     }
 
