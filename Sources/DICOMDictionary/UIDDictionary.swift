@@ -293,6 +293,35 @@ public struct UIDDictionary {
             type: .sopClass
         )
         
+        // Visible Light (still image) SOP Class UIDs
+        dict["1.2.840.10008.5.1.4.1.1.77.1.1"] = UIDEntry(
+            uid: "1.2.840.10008.5.1.4.1.1.77.1.1",
+            name: "VL Endoscopic Image Storage",
+            keyword: "VLEndoscopicImageStorage",
+            type: .sopClass
+        )
+
+        dict["1.2.840.10008.5.1.4.1.1.77.1.2"] = UIDEntry(
+            uid: "1.2.840.10008.5.1.4.1.1.77.1.2",
+            name: "VL Microscopic Image Storage",
+            keyword: "VLMicroscopicImageStorage",
+            type: .sopClass
+        )
+
+        dict["1.2.840.10008.5.1.4.1.1.77.1.3"] = UIDEntry(
+            uid: "1.2.840.10008.5.1.4.1.1.77.1.3",
+            name: "VL Slide-Coordinates Microscopic Image Storage",
+            keyword: "VLSlideCoordinatesMicroscopicImageStorage",
+            type: .sopClass
+        )
+
+        dict["1.2.840.10008.5.1.4.1.1.77.1.4"] = UIDEntry(
+            uid: "1.2.840.10008.5.1.4.1.1.77.1.4",
+            name: "VL Photographic Image Storage",
+            keyword: "VLPhotographicImageStorage",
+            type: .sopClass
+        )
+
         // Video SOP Class UIDs
         dict["1.2.840.10008.5.1.4.1.1.77.1.1.1"] = UIDEntry(
             uid: "1.2.840.10008.5.1.4.1.1.77.1.1.1",

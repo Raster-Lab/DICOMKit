@@ -9371,8 +9371,10 @@ case "dicom-study":
         callingAET: String, calledAET: String,
         timeout: TimeInterval
     ) async {
-        // "Date" field (flag --date): a single scheduled-date filter, matching the CLI.
+        // "Date" field (flag --date): a scheduled-date filter (single value or DICOM
+        // range), matching the CLI. "Time" field (flag --time): scheduled-time filter.
         let date = paramValue("date-from")
+        let time = paramValue("time-from")
         let station = paramValue("station")
         let patient = paramValue("patient")
         let patientID = paramValue("patient-id")
@@ -9393,6 +9395,7 @@ case "dicom-study":
                 if !value.isEmpty { filters.append((label, value)) }
             }
             addFilter("Date:", date)
+            addFilter("Time:", time)
             addFilter("Station AET:", station)
             addFilter("Patient Name:", patient)
             addFilter("Patient ID:", patientID)
@@ -9413,6 +9416,7 @@ case "dicom-study":
         do {
             queryKeys = try WorklistQueryKeys.forQuery(
                 date: date,
+                time: time,
                 station: station,
                 patientName: patient,
                 patientID: patientID,

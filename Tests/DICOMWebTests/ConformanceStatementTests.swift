@@ -477,6 +477,35 @@ final class ConformanceStatementGeneratorTests: XCTestCase {
         XCTAssertEqual(statement.implementation.vendor, "Custom Vendor")
     }
     
+    func testVisibleLightSOPClassesResolveToNames() {
+        // A server configured to accept the VL/video classes must report their
+        // names, not bare UIDs, in its conformance statement.
+        let uids: [String: String] = [
+            "1.2.840.10008.5.1.4.1.1.77.1.1": "VL Endoscopic Image Storage",
+            "1.2.840.10008.5.1.4.1.1.77.1.2": "VL Microscopic Image Storage",
+            "1.2.840.10008.5.1.4.1.1.77.1.3": "VL Slide-Coordinates Microscopic Image Storage",
+            "1.2.840.10008.5.1.4.1.1.77.1.4": "VL Photographic Image Storage",
+            "1.2.840.10008.5.1.4.1.1.77.1.1.1": "Video Endoscopic Image Storage",
+            "1.2.840.10008.5.1.4.1.1.77.1.2.1": "Video Microscopic Image Storage",
+            "1.2.840.10008.5.1.4.1.1.77.1.4.1": "Video Photographic Image Storage"
+        ]
+        let configuration = DICOMwebServerConfiguration(
+            stowConfiguration: .init(allowedSOPClasses: Set(uids.keys))
+        )
+        let statement = ConformanceStatementGenerator.generate(
+            from: configuration,
+            capabilities: .dicomKitServer
+        )
+
+        let reported = statement.networkServices.dicomWeb.stowRS?.supportedSOPClasses ?? []
+        XCTAssertEqual(reported.count, uids.count)
+        for info in reported {
+            XCTAssertEqual(info.name, uids[info.uid], "Wrong name for \(info.uid)")
+            XCTAssertEqual(info.category, "Image")
+            XCTAssertNotEqual(info.name, info.uid, "\(info.uid) fell through to raw UID")
+        }
+    }
+
     func testGenerateFromConfiguration() {
         let configuration = DICOMwebServerConfiguration.development
         let capabilities = DICOMwebCapabilities.dicomKitServer

@@ -112,6 +112,16 @@ public struct WorklistQueryKeys: Sendable {
         return copy
     }
 
+    /// Scheduled Procedure Step Start Time (TM) — encoded inside the SPS sequence.
+    /// - Parameter value: Time in HHMMSS format, or a DICOM time range such as
+    ///   "1000-1800" (PS3.4 C.2.2.2.5.2). Pass "" to request all times.
+    public func scheduledTime(_ value: String) -> WorklistQueryKeys {
+        var copy = self
+        // (0040,0003) Scheduled Procedure Step Start Time — inside (0040,0100) SPS Sequence
+        copy.spsKeys[Tag(group: 0x0040, element: 0x0003)] = value
+        return copy
+    }
+
     /// Scheduled Station AE Title (AE) — encoded inside the SPS sequence.
     public func scheduledStationAET(_ value: String) -> WorklistQueryKeys {
         var copy = self
@@ -186,48 +196,145 @@ public struct WorklistQueryKeys: Sendable {
     }
 }
 
-/// Error thrown when an MWL scheduled-date filter cannot be resolved.
+/// Error thrown when an MWL scheduled-date or scheduled-time filter cannot be resolved.
 public enum WorklistDateFilterError: Error, CustomStringConvertible, Sendable {
-    /// The supplied filter was neither `today`/`tomorrow` nor a valid `YYYYMMDD` date.
-    case invalidFormat(String)
+    /// The supplied date filter was neither `today`/`tomorrow`, a valid `YYYYMMDD`
+    /// Single Value Match, nor a valid DA Range Match per PS3.4 C.2.2.2.5.1.
+    case invalidDateFormat(String)
+    /// The supplied time filter was neither a valid `HHMMSS` Single Value Match nor
+    /// a valid TM Range Match per PS3.4 C.2.2.2.5.2.
+    case invalidTimeFormat(String)
 
     public var description: String {
         switch self {
-        case .invalidFormat(let filter):
-            return "Invalid date filter '\(filter)'. Use YYYYMMDD, 'today', or 'tomorrow'."
+        case .invalidDateFormat(let filter):
+            return "Invalid date filter '\(filter)'. Use YYYYMMDD, 'today', 'tomorrow', " +
+                "or a DICOM date range (YYYYMMDD-YYYYMMDD, YYYYMMDD-, or -YYYYMMDD)."
+        case .invalidTimeFormat(let filter):
+            return "Invalid time filter '\(filter)'. Use HHMMSS, or a DICOM time range " +
+                "(HHMMSS-HHMMSS, HHMMSS-, or -HHMMSS)."
         }
     }
 }
 
 extension WorklistQueryKeys {
 
-    /// Resolves an MWL scheduled-date filter to a DICOM `YYYYMMDD` date string.
-    ///
-    /// This is the SINGLE source of truth shared by the `dicom-mwl` CLI, DICOMStudio's
-    /// in-app worklist query, and the CLI-parity reference, so their date handling
-    /// cannot drift. `today`/`tomorrow` resolve to the corresponding day; an 8-digit
-    /// `YYYYMMDD` passes through; anything else throws ``WorklistDateFilterError``.
-    ///
-    /// The formatter is pinned to `en_US_POSIX` so the result is always a Gregorian
-    /// calendar date regardless of the host device's locale/calendar.
-    public static func resolveScheduledDate(_ filter: String) throws -> String {
+    /// Formats today (or a day offset from today) as a DICOM `YYYYMMDD` date string,
+    /// pinned to `en_US_POSIX` so the result is always a Gregorian calendar date
+    /// regardless of the host device's locale/calendar.
+    private static func formattedDate(daysFromToday offset: Int) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd"
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        switch filter.lowercased() {
-        case "today":
-            return formatter.string(from: Date())
-        case "tomorrow":
-            guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else {
-                throw WorklistDateFilterError.invalidFormat(filter)
-            }
-            return formatter.string(from: tomorrow)
-        default:
-            guard filter.count == 8, Int(filter) != nil else {
-                throw WorklistDateFilterError.invalidFormat(filter)
-            }
-            return filter
+        let day = offset == 0 ? Date() : Calendar.current.date(byAdding: .day, value: offset, to: Date()) ?? Date()
+        return formatter.string(from: day)
+    }
+
+    /// True if `value` is a valid DA (date) value per PS3.4: 8 digits `YYYYMMDD`.
+    private static func isValidDAComponent(_ value: String) -> Bool {
+        value.count == 8 && value.allSatisfy(\.isNumber)
+    }
+
+    /// True if `value` is a valid TM (time) component per PS3.4: `HH`, `HHMM`,
+    /// `HHMMSS`, or `HHMMSS.FFFFFF`, all digits (plus one optional `.`).
+    private static func isValidTMComponent(_ value: String) -> Bool {
+        let parts = value.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count <= 2 else { return false }
+        let hhmmss = parts[0]
+        guard [2, 4, 6].contains(hhmmss.count), hhmmss.allSatisfy(\.isNumber) else { return false }
+        if parts.count == 2 {
+            let fraction = parts[1]
+            guard !fraction.isEmpty, fraction.count <= 6, fraction.allSatisfy(\.isNumber) else { return false }
         }
+        return true
+    }
+
+    /// Resolves an MWL scheduled-date filter to a DICOM DA Single Value Match or
+    /// Range Match string per PS3.4 C.2.2.2.5.1.
+    ///
+    /// This is the SINGLE source of truth shared by the `dicom-mwl` CLI, DICOMStudio's
+    /// in-app worklist query, and the CLI-parity reference, so their date handling
+    /// cannot drift.
+    ///
+    /// Accepts:
+    /// - `today` / `tomorrow` (case-insensitive convenience shorthands)
+    /// - A bare `YYYYMMDD` (Single Value Matching)
+    /// - `YYYYMMDD-YYYYMMDD`, `YYYYMMDD-`, or `-YYYYMMDD` (Range Matching, both bounds
+    ///   inclusive; `today`/`tomorrow` may be used as either bound)
+    ///
+    /// Anything else throws ``WorklistDateFilterError/invalidDateFormat(_:)``.
+    public static func resolveScheduledDate(_ filter: String) throws -> String {
+        func resolveBound(_ raw: String) -> String? {
+            switch raw.lowercased() {
+            case "today": return formattedDate(daysFromToday: 0)
+            case "tomorrow": return formattedDate(daysFromToday: 1)
+            default: return isValidDAComponent(raw) ? raw : nil
+            }
+        }
+
+        if let hyphenIndex = filter.firstIndex(of: "-") {
+            let fromRaw = String(filter[filter.startIndex..<hyphenIndex])
+            let toRaw = String(filter[filter.index(after: hyphenIndex)...])
+            guard filter[filter.index(after: hyphenIndex)...].firstIndex(of: "-") == nil else {
+                throw WorklistDateFilterError.invalidDateFormat(filter)
+            }
+            switch (fromRaw.isEmpty, toRaw.isEmpty) {
+            case (true, true):
+                throw WorklistDateFilterError.invalidDateFormat(filter)
+            case (true, false):
+                guard let to = resolveBound(toRaw) else { throw WorklistDateFilterError.invalidDateFormat(filter) }
+                return "-\(to)"
+            case (false, true):
+                guard let from = resolveBound(fromRaw) else { throw WorklistDateFilterError.invalidDateFormat(filter) }
+                return "\(from)-"
+            case (false, false):
+                guard let from = resolveBound(fromRaw), let to = resolveBound(toRaw) else {
+                    throw WorklistDateFilterError.invalidDateFormat(filter)
+                }
+                return "\(from)-\(to)"
+            }
+        }
+
+        guard let resolved = resolveBound(filter) else {
+            throw WorklistDateFilterError.invalidDateFormat(filter)
+        }
+        return resolved
+    }
+
+    /// Resolves an MWL scheduled-time filter to a DICOM TM Single Value Match or
+    /// Range Match string per PS3.4 C.2.2.2.5.2.
+    ///
+    /// Accepts a bare `HHMMSS`-style value (Single Value Matching) or
+    /// `HHMMSS-HHMMSS`, `HHMMSS-`, or `-HHMMSS` (Range Matching, both bounds
+    /// inclusive). Anything else throws ``WorklistDateFilterError/invalidTimeFormat(_:)``.
+    public static func resolveScheduledTime(_ filter: String) throws -> String {
+        if let hyphenIndex = filter.firstIndex(of: "-") {
+            let fromRaw = String(filter[filter.startIndex..<hyphenIndex])
+            let toRaw = String(filter[filter.index(after: hyphenIndex)...])
+            guard filter[filter.index(after: hyphenIndex)...].firstIndex(of: "-") == nil else {
+                throw WorklistDateFilterError.invalidTimeFormat(filter)
+            }
+            switch (fromRaw.isEmpty, toRaw.isEmpty) {
+            case (true, true):
+                throw WorklistDateFilterError.invalidTimeFormat(filter)
+            case (true, false):
+                guard isValidTMComponent(toRaw) else { throw WorklistDateFilterError.invalidTimeFormat(filter) }
+                return "-\(toRaw)"
+            case (false, true):
+                guard isValidTMComponent(fromRaw) else { throw WorklistDateFilterError.invalidTimeFormat(filter) }
+                return "\(fromRaw)-"
+            case (false, false):
+                guard isValidTMComponent(fromRaw), isValidTMComponent(toRaw) else {
+                    throw WorklistDateFilterError.invalidTimeFormat(filter)
+                }
+                return "\(fromRaw)-\(toRaw)"
+            }
+        }
+
+        guard isValidTMComponent(filter) else {
+            throw WorklistDateFilterError.invalidTimeFormat(filter)
+        }
+        return filter
     }
 
     /// Builds MWL C-FIND query keys from raw filter strings — the SINGLE source of
@@ -235,12 +342,26 @@ extension WorklistQueryKeys {
     /// the CLI-parity reference, so their input→C-FIND mapping cannot drift.
     ///
     /// Starts from ``default()`` (all common return keys) and adds a MATCHING key for
-    /// each non-empty filter. `date` accepts `today`/`tomorrow`/`YYYYMMDD` (resolved by
-    /// ``resolveScheduledDate(_:)``); an unparseable date throws ``WorklistDateFilterError``.
+    /// each non-empty filter.
+    ///
+    /// `date` accepts `today`/`tomorrow`/`YYYYMMDD` Single Value Matching, or DA Range
+    /// Matching (resolved by ``resolveScheduledDate(_:)``); an unparseable date throws
+    /// ``WorklistDateFilterError/invalidDateFormat(_:)``.
+    ///
+    /// `time` accepts `HHMMSS` Single Value Matching, or TM Range Matching (resolved by
+    /// ``resolveScheduledTime(_:)``); an unparseable time throws
+    /// ``WorklistDateFilterError/invalidTimeFormat(_:)``.
+    ///
+    /// Per PS3.4 K.6.1, when both `date` and `time` are supplied as Range Matches, the
+    /// SCP interprets the pair as one continuous date-time interval rather than two
+    /// independently-matched attributes — this method emits both matching keys as-is
+    /// and relies on the SCP for that combined interpretation.
+    ///
     /// `patientName` is passed through verbatim — callers add `*` wildcards explicitly,
     /// matching the `dicom-mwl --patient` semantics.
     public static func forQuery(
         date: String = "",
+        time: String = "",
         station: String = "",
         patientName: String = "",
         patientID: String = "",
@@ -250,6 +371,7 @@ extension WorklistQueryKeys {
     ) throws -> WorklistQueryKeys {
         var keys = WorklistQueryKeys.default()
         if !date.isEmpty        { keys = keys.scheduledDate(try resolveScheduledDate(date)) }
+        if !time.isEmpty        { keys = keys.scheduledTime(try resolveScheduledTime(time)) }
         if !station.isEmpty     { keys = keys.scheduledStationAET(station) }
         if !patientName.isEmpty { keys = keys.patientName(patientName) }
         if !patientID.isEmpty   { keys = keys.patientID(patientID) }
@@ -749,13 +871,16 @@ public enum DICOMModalityWorklistService {
     /// Recursively parses DICOM tags from `data[offset..<end]`, merging every encountered
     /// attribute (including items within SPS sequences) into `out`.
     /// Returns early when a delimiter tag `(FFFE,E00D)` or `(FFFE,E0DD)` is encountered.
-    private static func parseMWLDataSet(
-        data: Data,
+    internal static func parseMWLDataSet(
+        data rawData: Data,
         offset: inout Int,
         end: Int,
         isExplicitVR: Bool,
         into out: inout [Tag: Data]
     ) {
+        // Indexing below is zero-based, which a Data slice (startIndex != 0) would
+        // trap on, so rebase before parsing.
+        let data = rawData.startIndex == 0 ? rawData : Data(rawData)
         while offset + 4 <= end {
             let group   = UInt16(data[offset])     | (UInt16(data[offset + 1]) << 8)
             let element = UInt16(data[offset + 2]) | (UInt16(data[offset + 3]) << 8)

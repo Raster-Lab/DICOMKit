@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — dicom-mwl: date/time Range Matching and a scheduled-time filter (2026-09-17)
+
+MWL scheduled-date filtering accepted only a single day; there was no way to ask
+for a week's worklist, or for a window within a day. Both the date and the new
+time filter now speak DICOM Range Matching (PS3.4 C.2.2.2.5), and the pair is
+emitted so an SCP can read it as one continuous interval per PS3.4 K.6.1.
+
+- **`--date` accepts ranges.** `YYYYMMDD-YYYYMMDD` (both bounds inclusive),
+  `YYYYMMDD-` and `-YYYYMMDD` alongside the existing `YYYYMMDD` Single Value
+  Match. `today`/`tomorrow` still work, and may now be used as either bound
+  (`--date today-`, `--date today-tomorrow`). A range that *starts* with a hyphen
+  must use the equals form — `--date=-20240707` — or ArgumentParser reads the
+  value as another flag.
+- **New `--time` filter**, mapping to (0040,0003) Scheduled Procedure Step Start
+  Time inside the SPS sequence, with the same Single Value / Range grammar:
+  `HHMMSS`, `HHMMSS-HHMMSS`, `HHMMSS-`, `-HHMMSS`. TM components validate at
+  `HH`, `HHMM`, `HHMMSS` and `HHMMSS.FFFFFF` widths.
+- **Combined date+time intervals.** When both filters are ranges, DICOMKit emits
+  both matching keys as-is and the SCP interprets them as one continuous
+  date-time interval (PS3.4 K.6.1) — `--date 20240705-20240707 --time 1000-1800`
+  means "July 5 10:00 through July 7 18:00", not "those three days, 10:00-18:00
+  each".
+- **One source of truth.** `WorklistQueryKeys.resolveScheduledDate(_:)`, the new
+  `resolveScheduledTime(_:)` and `forQuery(date:time:…)` are shared by the
+  `dicom-mwl` CLI, DICOMStudio's in-app worklist query and the CLI Workshop, so
+  the three cannot drift. The Workshop's `dicom-mwl` panel gained the matching
+  **Time** field and range-aware help on **Date**.
+- **Portability note, documented in `Sources/dicom-mwl/README.md`:** open-ended
+  ranges are valid DICOM but not universally implemented — dcm4chee rejects them
+  with `0x0110 Unable to process`. Closed ranges are the portable form.
+
+**Breaking (source):** `WorklistDateFilterError.invalidFormat` is split into
+`.invalidDateFormat` and `.invalidTimeFormat`, each naming the accepted grammar
+in its message.
+
+### Added — visible-light and video SOP Classes, and the modalities that carry them (2026-09-17)
+
+Wrapping video surfaced gaps on either side of it: the still-image SOP Classes in
+the same VL family were missing from the UID dictionary, and the modality codes
+`dicom-video` emits had no icon or display name.
+
+- **`UIDDictionary` gained the four VL still-image SOP Classes** — VL Endoscopic
+  (`…77.1.1`), VL Microscopic (`…77.1.2`), VL Slide-Coordinates Microscopic
+  (`…77.1.3`) and VL Photographic (`…77.1.4`) Image Storage — so they resolve to
+  a name rather than the bare UID.
+- **`ConformanceStatementGenerator` names seven more SOP Classes** in generated
+  statements: those four, plus Video Endoscopic, Video Microscopic and Video
+  Photographic Image Storage.
+- **`ModalityMapping.StandardModality` gained ES, GM and XC** — Endoscopy,
+  General Microscopy and External-Camera Photography — the codes
+  `VideoType.defaultModality` emits, each with its own SF Symbol and display
+  name. Previously they fell through to the generic badge.
+
 ### Added — dicom-video: video conversion, playback and Workshop parity (2026-09-10)
 
 *Plan and per-phase status: `DICOM_VIDEO_CONVERSION_PLAN.md`. Phases 1-10 — the
