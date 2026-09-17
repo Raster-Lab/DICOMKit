@@ -18,7 +18,9 @@ public enum ModalityMapping: Sendable {
     /// human-readable name. Alias codes (e.g. "MRI", "PET", "RTPLAN", "PDF")
     /// normalize onto these primaries via ``ModalityMapping/normalize(_:)``.
     /// The set mirrors the DICOM object types DICOMKit models with dedicated
-    /// tag modules (CT/MR/US/NM/PT, RT, SEG, PR, SR, waveform, video, document, …).
+    /// tag modules (CT/MR/US/NM/PT, RT, SEG, PR, SR, waveform, video, document, …),
+    /// including the visible-light family codes the video module emits
+    /// (see ``VideoType/defaultModality``): ES, GM and XC alongside VL.
     public enum StandardModality: String, CaseIterable, Sendable {
         case ct = "CT"
         case mr = "MR"
@@ -43,6 +45,9 @@ public enum ModalityMapping: Sendable {
         case op = "OP"
         case doc = "DOC"
         case vl = "VL"
+        case es = "ES"
+        case gm = "GM"
+        case xc = "XC"
 
         /// SF Symbol name for this modality.
         var systemImage: String {
@@ -69,6 +74,9 @@ public enum ModalityMapping: Sendable {
             case .op: return "eye"
             case .doc: return "doc.richtext"
             case .vl: return "video"
+            case .es: return "stethoscope"
+            case .gm: return "microbe"
+            case .xc: return "camera.fill"
             }
         }
 
@@ -98,6 +106,9 @@ public enum ModalityMapping: Sendable {
             case .op: return "Ophthalmic Photography"
             case .doc: return "Document"
             case .vl: return "Visible Light"
+            case .es: return "Endoscopy"
+            case .gm: return "General Microscopy"
+            case .xc: return "External-Camera Photography"
             }
         }
     }

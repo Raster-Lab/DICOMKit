@@ -21,23 +21,44 @@ struct DICOMMWLCommand: AsyncParsableCommand {
             Examples:
               # Query worklist for today
               dicom-mwl query server --port 11112 --aet MODALITY --date today
-              
+
               # Query with filters
               dicom-mwl query server:11112 --aet MODALITY \\
                 --date 20240315 --station CT1 --patient "DOE^JOHN"
-              
+
+              # Query a date range (both bounds inclusive)
+              dicom-mwl query server --port 11112 --aet MODALITY \\
+                --date 20240705-20240707
+
+              # Query an open-ended date range (everything from today onward)
+              dicom-mwl query server --port 11112 --aet MODALITY \\
+                --date today-
+
+              # Query a combined date+time range as one continuous interval
+              # (PS3.4 K.6.1): July 5 10:00 through July 7 18:00
+              dicom-mwl query server --port 11112 --aet MODALITY \\
+                --date 20240705-20240707 --time 1000-1800
+
               # Filter to only SCHEDULED items
               dicom-mwl query server --port 11112 --aet MODALITY \\
                 --sps-status SCHEDULED
-              
+
               # Filter by modality and date with JSON output
               dicom-mwl query 192.168.1.100 --port 11112 --aet MODALITY \\
                 --modality CT --date today --json
-              
+
               # Verbose output showing all attributes
               dicom-mwl query server --port 11112 --aet MODALITY \\
                 --date today --verbose
-            
+
+            Date/Time filter syntax (PS3.4 C.2.2.2.5):
+              --date YYYYMMDD              Single Value Matching
+              --date YYYYMMDD-YYYYMMDD     Range Matching (both bounds inclusive)
+              --date YYYYMMDD-             Open-ended range (that date onward)
+              --date -YYYYMMDD             Open-ended range (up to and including that date)
+              --date today | tomorrow      Convenience shorthands, usable as a bound too
+              --time HHMMSS[-HHMMSS]       Same Single Value / Range Matching for time
+
             SPS Status values: SCHEDULED, IN PROGRESS, DISCONTINUED, COMPLETED
             
             Note: If the server returns a limited number of results, adjust the
@@ -72,9 +93,12 @@ extension DICOMMWLCommand {
         @Option(name: .long, help: "Remote Application Entity Title (default: ANY-SCP)")
         var calledAet: String = "ANY-SCP"
         
-        @Option(name: .long, help: "Scheduled date filter (YYYYMMDD or 'today', 'tomorrow')")
+        @Option(name: .long, help: "Scheduled date filter: YYYYMMDD, 'today', 'tomorrow', or a DICOM date range (YYYYMMDD-YYYYMMDD, YYYYMMDD-, -YYYYMMDD). A leading-hyphen range needs the equals form: --date=-YYYYMMDD")
         var date: String?
-        
+
+        @Option(name: .long, help: "Scheduled time filter: HHMMSS, or a DICOM time range (HHMMSS-HHMMSS, HHMMSS-, -HHMMSS). Combined with --date as one continuous interval per PS3.4 K.6.1 when both are ranges. A leading-hyphen range needs the equals form: --time=-HHMMSS")
+        var time: String?
+
         @Option(name: .long, help: "Scheduled Station AE Title filter")
         var station: String?
         
@@ -134,6 +158,7 @@ extension DICOMMWLCommand {
             do {
                 queryKeys = try WorklistQueryKeys.forQuery(
                     date: date ?? "",
+                    time: time ?? "",
                     station: station ?? "",
                     patientName: patient ?? "",
                     patientID: patientId ?? "",
@@ -186,6 +211,7 @@ extension DICOMMWLCommand {
                 if let v = value, !v.isEmpty { f.append((label, v)) }
             }
             add("Date:", date)
+            add("Time:", time)
             add("Station AET:", station)
             add("Patient Name:", patient)
             add("Patient ID:", patientId)

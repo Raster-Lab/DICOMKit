@@ -92,4 +92,31 @@ struct DictionaryTests {
         #expect(ctImage?.name == "CT Image Storage")
         #expect(ctImage?.type == .sopClass)
     }
+
+    @Test("Visible Light still-image SOP classes resolve to names")
+    func testVisibleLightStillSOPClasses() {
+        let expected = [
+            "1.2.840.10008.5.1.4.1.1.77.1.1": "VL Endoscopic Image Storage",
+            "1.2.840.10008.5.1.4.1.1.77.1.2": "VL Microscopic Image Storage",
+            "1.2.840.10008.5.1.4.1.1.77.1.3": "VL Slide-Coordinates Microscopic Image Storage",
+            "1.2.840.10008.5.1.4.1.1.77.1.4": "VL Photographic Image Storage"
+        ]
+        for (uid, name) in expected {
+            let entry = UIDDictionary.lookup(uid: uid)
+            #expect(entry != nil, "No entry for \(uid)")
+            #expect(entry?.name == name)
+            #expect(entry?.type == .sopClass)
+        }
+    }
+
+    @Test("Still and video VL SOP classes are distinct entries")
+    func testStillAndVideoVLAreDistinct() {
+        // The trailing ".1" distinguishes the video class from the still class;
+        // both must resolve, and to different names.
+        let still = UIDDictionary.lookup(uid: "1.2.840.10008.5.1.4.1.1.77.1.4")
+        let video = UIDDictionary.lookup(uid: "1.2.840.10008.5.1.4.1.1.77.1.4.1")
+        #expect(still?.name == "VL Photographic Image Storage")
+        #expect(video?.name == "Video Photographic Image Storage")
+        #expect(still?.name != video?.name)
+    }
 }

@@ -133,7 +133,7 @@ Tools for DICOM network communication (DIMSE and DICOMweb).
 | **dicom-retrieve** | C-MOVE/C-GET retrieval | `url`, `--aet`, `--called-aet`, `--study-uid`, `--series-uid`, `--instance-uid`, `--output`, `--method`, `--move-dest`, `--parallel` |
 | **dicom-qr** | Combined query-retrieve | Subcommand: `query` with `--aet`, `--called-aet`, `--move-dest`, `--method`, `--interactive`, `--auto`, `--hierarchical` |
 | **dicom-wado** | DICOMweb access | Subcommands: `retrieve`, `query`, `store`, `ups` with `--study`, `--series`, `--instance`, `--token`, `--metadata`, `--rendered` |
-| **dicom-mwl** | Modality Worklist | Subcommand: `query` with `--aet`, `--called-aet`, `--date`, `--station`, `--patient`, `--modality`, `--json` |
+| **dicom-mwl** | Modality Worklist | Subcommand: `query` with `--aet`, `--called-aet`, `--date`, `--time`, `--station`, `--patient`, `--modality`, `--json` |
 | **dicom-mpps** | Modality Performed Procedure | Subcommands: `create`, `update` with `--aet`, `--called-aet`, `--study-uid`, `--status` |
 
 ### Tab 6: Automation (3 tools)

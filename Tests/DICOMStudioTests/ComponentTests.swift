@@ -148,6 +148,21 @@ struct ModalityMappingTests {
         #expect(ModalityMapping.systemImage(for: "VL") == "video")
     }
 
+    @Test("ES maps to stethoscope symbol")
+    func testSystemImageES() {
+        #expect(ModalityMapping.systemImage(for: "ES") == "stethoscope")
+    }
+
+    @Test("GM maps to microbe symbol")
+    func testSystemImageGM() {
+        #expect(ModalityMapping.systemImage(for: "GM") == "microbe")
+    }
+
+    @Test("XC maps to camera symbol")
+    func testSystemImageXC() {
+        #expect(ModalityMapping.systemImage(for: "XC") == "camera.fill")
+    }
+
     @Test("Unknown modality returns grid symbol")
     func testSystemImageUnknown() {
         #expect(ModalityMapping.systemImage(for: "ZZ") == "square.grid.2x2")
@@ -165,7 +180,7 @@ struct ModalityMappingTests {
         let modalities = ["CT", "MR", "MRI", "US", "CR", "DX", "NM", "PT", "PET",
                           "MG", "RF", "XA", "SC", "OT", "SR", "PR", "KO", "SEG",
                           "RT", "RTPLAN", "RTDOSE", "RTSTRUCT", "ECG", "HD", "IO",
-                          "OP", "DOC", "PDF", "VL"]
+                          "OP", "DOC", "PDF", "VL", "ES", "GM", "XC"]
         for mod in modalities {
             #expect(!ModalityMapping.systemImage(for: mod).isEmpty, "Empty image for \(mod)")
         }
@@ -240,9 +255,37 @@ struct ModalityMappingTests {
     func testAllFullNamesNonEmpty() {
         let modalities = ["CT", "MR", "US", "CR", "DX", "NM", "PT", "MG", "RF",
                           "XA", "SC", "OT", "SR", "PR", "KO", "SEG", "RT", "ECG",
-                          "HD", "IO", "OP", "DOC", "PDF", "VL"]
+                          "HD", "IO", "OP", "DOC", "PDF", "VL", "ES", "GM", "XC"]
         for mod in modalities {
             #expect(!ModalityMapping.fullName(for: mod).isEmpty, "Empty name for \(mod)")
+        }
+    }
+
+    @Test("Visible-light family full names")
+    func testFullNameVisibleLightFamily() {
+        #expect(ModalityMapping.fullName(for: "ES") == "Endoscopy")
+        #expect(ModalityMapping.fullName(for: "GM") == "General Microscopy")
+        #expect(ModalityMapping.fullName(for: "XC") == "External-Camera Photography")
+    }
+
+    // MARK: - allCodes
+
+    @Test("allCodes covers every modality the video module emits")
+    func testAllCodesCoversVideoModalities() {
+        // VideoType.defaultModality emits these; the picker list must recognize
+        // each one rather than falling through to the unknown-modality icon.
+        for mod in ["ES", "GM", "XC", "OT"] {
+            #expect(ModalityMapping.allCodes.contains(mod), "allCodes missing \(mod)")
+        }
+    }
+
+    @Test("allCodes entries all normalize to a standard modality")
+    func testAllCodesNormalize() {
+        for code in ModalityMapping.allCodes {
+            #expect(
+                ModalityMapping.systemImage(for: code) != "square.grid.2x2",
+                "allCodes entry \(code) has no dedicated icon"
+            )
         }
     }
 }

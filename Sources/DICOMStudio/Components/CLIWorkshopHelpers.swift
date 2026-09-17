@@ -877,8 +877,17 @@ public enum ToolCatalogHelpers: Sendable {
                 // ----- Query parameters (C-FIND) -----
                 CLIParameterDefinition(
                     id: "date-from", flag: "--date", displayName: "Date",
-                    parameterType: .textField, placeholder: "today / YYYYMMDD",
-                    helpText: "Scheduled date filter — use 'today', 'tomorrow', or YYYYMMDD format (0040,0002)",
+                    parameterType: .textField, placeholder: "today / YYYYMMDD / YYYYMMDD-YYYYMMDD",
+                    helpText: "Scheduled date filter — 'today', 'tomorrow', YYYYMMDD, or a DICOM date range " +
+                        "YYYYMMDD-YYYYMMDD, YYYYMMDD-, -YYYYMMDD (0040,0002)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
+                ),
+                CLIParameterDefinition(
+                    id: "time-from", flag: "--time", displayName: "Time",
+                    parameterType: .textField, placeholder: "HHMMSS / HHMMSS-HHMMSS",
+                    helpText: "Scheduled time filter — HHMMSS, or a DICOM time range " +
+                        "HHMMSS-HHMMSS, HHMMSS-, -HHMMSS (0040,0003). Combined with Date as a " +
+                        "continuous interval per PS3.4 K.6.1 when both are ranges.",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
