@@ -203,8 +203,8 @@
 0008|0409|File Access URI|FileAccessURI|UR|1
 0008|040A|Container File Type|ContainerFileType|CS|1
 0008|040B|Filename in Container|FilenameInContainer|UR|1
-0008|040C|File Offset in Container|FileOffsetInContainer|UL|1
-0008|040D|File Length in Container|FileLengthInContainer|UL|1
+0008|040C|File Offset in Container|FileOffsetInContainer|UV|1
+0008|040D|File Length in Container|FileLengthInContainer|UV|1
 0008|040E|Stored Instance Transfer Syntax UID|StoredInstanceTransferSyntaxUID|UI|1
 0008|040F|Extended Matching Mechanisms|ExtendedMatchingMechanisms|CS|1-n
 0008|0410|Range Matching Sequence|RangeMatchingSequence|SQ|1
@@ -231,8 +231,8 @@
 0008|0425|Inventoried Instances Sequence|InventoriedInstancesSequence|SQ|1
 0008|0426|Inventory Completion Status|InventoryCompletionStatus|CS|1
 0008|0427|Number of Study Records in Instance|NumberOfStudyRecordsInInstance|UL|1
-0008|0428|Total Number of Study Records|TotalNumberOfStudyRecords|UL|1
-0008|0429|Maximum Number of Records|MaximumNumberOfRecords|UL|1
+0008|0428|Total Number of Study Records|TotalNumberOfStudyRecords|UV|1
+0008|0429|Maximum Number of Records|MaximumNumberOfRecords|UV|1
 0008|1000|Network ID|NetworkID|AE|1
 0008|1010|Station Name|StationName|SH|1
 0008|1030|Study Description|StudyDescription|LO|1
@@ -3451,9 +3451,9 @@
 0072|007E|Selector SS Value|SelectorSSValue|SS|1-n
 0072|007F|Selector UI Value|SelectorUIValue|UI|1-n
 0072|0080|Selector Code Sequence Value|SelectorCodeSequenceValue|SQ|1
-0072|0081|Selector OV Value|SelectorOVValue|UN|1
-0072|0082|Selector SV Value|SelectorSVValue|SL|1-n
-0072|0083|Selector UV Value|SelectorUVValue|UL|1-n
+0072|0081|Selector OV Value|SelectorOVValue|OV|1
+0072|0082|Selector SV Value|SelectorSVValue|SV|1-n
+0072|0083|Selector UV Value|SelectorUVValue|UV|1-n
 0072|0100|Number of Screens|NumberOfScreens|US|1
 0072|0102|Nominal Screen Definition Sequence|NominalScreenDefinitionSequence|SQ|1
 0072|0104|Number of Vertical Pixels|NumberOfVerticalPixels|US|1
@@ -5023,9 +5023,9 @@
 5400|1010|Waveform Data|WaveformData|OB|1
 5600|0010|First Order Phase Correction Angle|FirstOrderPhaseCorrectionAngle|OF|1
 5600|0020|Spectroscopy Data|SpectroscopyData|OF|1
-7FE0|0001|Extended Offset Table|ExtendedOffsetTable|UN|1
-7FE0|0002|Extended Offset Table Lengths|ExtendedOffsetTableLengths|UN|1
-7FE0|0003|Encapsulated Pixel Data Value Total Length|EncapsulatedPixelDataValueTotalLength|UL|1
+7FE0|0001|Extended Offset Table|ExtendedOffsetTable|OV|1
+7FE0|0002|Extended Offset Table Lengths|ExtendedOffsetTableLengths|OV|1
+7FE0|0003|Encapsulated Pixel Data Value Total Length|EncapsulatedPixelDataValueTotalLength|UV|1
 7FE0|0008|Float Pixel Data|FloatPixelData|OF|1
 7FE0|0009|Double Float Pixel Data|DoubleFloatPixelData|OD|1
 7FE0|0010|Pixel Data|PixelData|OB|1

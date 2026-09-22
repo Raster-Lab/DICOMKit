@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.16] - 2026-09-22
+
+### Fixed — The 64-bit Value Representations OV, SV and UV were missing
+
+- `VR` had no `OV`, `SV` or `UV` case (PS3.5 2026d Table 6.2-1, CP-1818), so an
+  explicit "OV" element — notably Extended Offset Table (7FE0,0001) and Extended
+  Offset Table Lengths (7FE0,0002) — was read as `UN` and the dictionary listed
+  those tags as UN; `uses32BitLength` now covers OV, SV and UV (PS3.5 Table
+  7.1-1), the parser retains the declared VR and value bytes exactly, and the
+  writer emits the two reserved bytes and 32-bit length for them.
+- Dictionary corrections: (7FE0,0001)/(7FE0,0002) OV, (7FE0,0003) UV,
+  (0072,0081) OV, (0072,0082) SV, (0072,0083) UV, (0008,040C)/(0008,040D)/
+  (0008,0428)/(0008,0429) UV.
+- `EncapsulatedPixelData` still exposes only the Basic Offset Table; readers that
+  need the extended table consult the two elements directly.
+
 ## [2.2.15] - 2026-09-22
 
 ### Fixed — Deflated Explicit VR Little Endian data sets were silently truncated on read

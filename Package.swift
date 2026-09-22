@@ -334,6 +334,7 @@ let package = Package(
             ],
             sources: [
                 "DeflatedDataSetTests.swift",
+                "ExtendedOffsetTableParsingTests.swift",
                 "JP3DVolumeDocumentTests.swift",
                 "JPIPTests.swift",
                 "DICOMConverterTests.swift",
