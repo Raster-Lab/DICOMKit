@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — RLE Lossless decoder silently repaired malformed segments (v2.2.13)
+
+- `RLECodec.decodeRLESegment` now decodes strictly per PS3.5 Annex G: a segment
+  that ends before the declared length throws instead of being zero-filled, a
+  literal or repeat run that overshoots the declared length throws instead of
+  being truncated, and more than one trailing byte after the declared length
+  (the G.3.2 even-length pad) throws instead of being ignored.
+- Well-formed streams, including every `RLECodec.encodeFrame` output, decode
+  byte-identically as before. Added strict-decoding contract tests.
+- Released as v2.2.13 from the v2.2.12 line.
+
+
 ### Added — dicom-mwl: date/time Range Matching and a scheduled-time filter (2026-09-17)
 
 MWL scheduled-date filtering accepted only a single day; there was no way to ask
