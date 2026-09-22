@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.15] - 2026-09-22
+
+### Fixed — Deflated Explicit VR Little Endian data sets were silently truncated on read
+
+- The reader inflated a deflated Data Set (PS3.5 A.5) into a fixed buffer of
+  four times the compressed size (minimum 64 KiB) with `compression_decode_buffer`
+  and kept whatever fit, so any file whose Data Set expanded more than four-fold
+  (typical for segmentations and constant regions) parsed as a silently
+  truncated object. New `DeflatedDataSet.inflate(_:maximumOutputByteCount:)`
+  streams the inflation, requires the DEFLATE end-of-stream marker exactly at
+  the last input byte, and reports `truncated`, `corrupt`, `trailingBytes` and
+  `outputLimitExceeded` as distinct failures; `DICOMParser` maps them to
+  `DICOMError.parsingFailed`.
+- `ParsingOptions.maximumInflatedByteCount` (default 1 GiB) bounds the inflated
+  size so a small compressed file cannot expand without limit.
+- The private `Data.decompress()` helper was removed; `Data.deflateCompressed()`
+  (the writer) is unchanged.
+
 ## [2.2.14] - 2026-09-22
 
 ### Fixed — JPEG-LS and JPEG 2000 decoders accepted frames that did not match the descriptor

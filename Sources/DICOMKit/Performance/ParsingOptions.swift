@@ -30,6 +30,14 @@ public struct ParsingOptions: Sendable {
     /// Whether to use memory-mapped file access for large files
     /// More memory-efficient for files > 100MB
     public let useMemoryMapping: Bool
+
+    /// Hard limit on the inflated size of a Deflated Explicit VR Little Endian Data
+    /// Set (PS3.5 A.5). Inflation stops and the read fails once the limit would be
+    /// exceeded, so a small compressed file cannot expand without bound.
+    public let maximumInflatedByteCount: Int
+
+    /// Default inflation limit: 1 GiB.
+    public static let defaultMaximumInflatedByteCount = 1 << 30
     
     /// Default parsing options (full parsing)
     public static let `default` = ParsingOptions()
@@ -47,11 +55,13 @@ public struct ParsingOptions: Sendable {
         mode: Mode = .full,
         stopAfterTag: Tag? = nil,
         maxElements: Int? = nil,
-        useMemoryMapping: Bool = false
+        useMemoryMapping: Bool = false,
+        maximumInflatedByteCount: Int = ParsingOptions.defaultMaximumInflatedByteCount
     ) {
         self.mode = mode
         self.stopAfterTag = stopAfterTag
         self.maxElements = maxElements
         self.useMemoryMapping = useMemoryMapping
+        self.maximumInflatedByteCount = maximumInflatedByteCount
     }
 }

@@ -554,10 +554,16 @@ struct DICOMParser {
     private mutating func decompressDeflatedData() throws {
         // Get the deflated portion (everything from current offset to end)
         let deflatedData = data.subdata(in: offset..<data.count)
-        
-        // Decompress using zlib
-        guard let decompressedData = deflatedData.decompress() else {
-            throw DICOMError.parsingFailed("Failed to decompress deflated data")
+
+        // Inflate strictly (PS3.5 A.5): a truncated, corrupt or over-long stream,
+        // trailing bytes or an inflated size beyond the option limit all fail the
+        // read instead of yielding a silently truncated Data Set.
+        let decompressedData: Data
+        do {
+            decompressedData = try DeflatedDataSet.inflate(
+                deflatedData, maximumOutputByteCount: options.maximumInflatedByteCount)
+        } catch let failure as DeflatedDataSet.Failure {
+            throw DICOMError.parsingFailed("Failed to inflate deflated data set: \(failure)")
         }
         
         // Replace the data from current offset with decompressed data
@@ -924,44 +930,9 @@ struct DICOMParser {
 import Compression
 
 extension Data {
-    /// Decompresses data using the deflate algorithm (RFC 1951)
-    ///
-    /// Uses Foundation's built-in compression support via the Compression framework.
-    /// Reference: PS3.5 Section A.5 - Deflated Explicit VR Little Endian
-    func decompress() -> Data? {
-        // For DICOM deflated data, we use raw DEFLATE (no zlib header)
-        // The data should be pure deflate-compressed bytes
-        return self.withUnsafeBytes { sourceBuffer in
-            guard let sourcePointer = sourceBuffer.baseAddress else {
-                return nil
-            }
-            
-            // Allocate destination buffer - start with 4x source size as initial estimate
-            let destinationCapacity = Swift.max(count * 4, 64 * 1024)
-            let destinationBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: destinationCapacity)
-            defer { destinationBuffer.deallocate() }
-            
-            // Decompress using compression framework
-            let decompressedSize = compression_decode_buffer(
-                destinationBuffer,
-                destinationCapacity,
-                sourcePointer.assumingMemoryBound(to: UInt8.self),
-                count,
-                nil,
-                COMPRESSION_ZLIB
-            )
-            
-            guard decompressedSize > 0 else {
-                return nil
-            }
-
-            return Data(bytes: destinationBuffer, count: decompressedSize)
-        }
-    }
-
     /// Compresses data using the raw deflate algorithm (RFC 1951).
     ///
-    /// Produces the exact bitstream `decompress()` consumes — raw DEFLATE with no
+    /// Produces the exact bitstream `DeflatedDataSet.inflate` consumes — raw DEFLATE with no
     /// zlib header/trailer (Apple's `COMPRESSION_ZLIB` operates on raw DEFLATE),
     /// so the two are a faithful inverse pair. Used to write the Data Set of a
     /// Deflated Explicit VR Little Endian file (the File Meta Information is never
@@ -1002,17 +973,6 @@ extension Data {
 #else
 
 extension Data {
-    /// Decompresses data using the deflate algorithm (RFC 1951)
-    ///
-    /// On platforms without Compression framework, this returns nil.
-    /// The deflated transfer syntax will be reported as unsupported.
-    /// Reference: PS3.5 Section A.5 - Deflated Explicit VR Little Endian
-    func decompress() -> Data? {
-        // Decompression not available on this platform
-        // The parser will throw an appropriate error
-        return nil
-    }
-
     /// Compresses data using the deflate algorithm (RFC 1951)
     ///
     /// On platforms without Compression framework, this returns nil so callers can

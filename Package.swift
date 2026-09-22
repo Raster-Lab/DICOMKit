@@ -333,6 +333,7 @@ let package = Package(
                 "PerformanceTests/ImageCacheTests.swift"
             ],
             sources: [
+                "DeflatedDataSetTests.swift",
                 "JP3DVolumeDocumentTests.swift",
                 "JPIPTests.swift",
                 "DICOMConverterTests.swift",
