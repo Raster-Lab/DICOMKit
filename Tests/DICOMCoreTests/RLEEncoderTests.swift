@@ -142,3 +142,63 @@ struct RLEEncoderTests {
         }
     }
 }
+
+
+@Suite("RLECodec strict segment decoding")
+struct RLECodecStrictDecodingTests {
+    private let descriptor = PixelDataDescriptor(
+        rows: 2, columns: 2, numberOfFrames: 1, bitsAllocated: 8, bitsStored: 8, highBit: 7,
+        isSigned: false, samplesPerPixel: 1, photometricInterpretation: .monochrome2)
+
+    /// One-segment RLE frame: 64-byte header (1 segment at offset 64) + segment bytes.
+    private func frame(_ segment: [UInt8]) -> Data {
+        var header = [UInt8](repeating: 0, count: 64)
+        header[0] = 1
+        header[4] = 64
+        return Data(header + segment)
+    }
+
+    @Test("Exact literal, repeat and a single pad byte decode byte-identically")
+    func testWellFormed() throws {
+        let codec = RLECodec()
+        // literal 2 bytes [1,2] then repeat 0x09 twice, then one even-length pad byte.
+        let decoded = try codec.decodeFrame(
+            frame([0x01, 1, 2, 0xFF, 9, 0x80]), descriptor: descriptor, frameIndex: 0)
+        #expect([UInt8](decoded) == [1, 2, 9, 9])
+        let noPad = try codec.decodeFrame(
+            frame([0x03, 1, 2, 3, 4]), descriptor: descriptor, frameIndex: 0)
+        #expect([UInt8](noPad) == [1, 2, 3, 4])
+    }
+
+    @Test("A segment that ends before the declared length throws instead of zero-filling")
+    func testShortSegmentThrows() {
+        #expect(throws: DICOMError.self) {
+            try RLECodec().decodeFrame(frame([0x01, 1, 2]), descriptor: descriptor, frameIndex: 0)
+        }
+        #expect(throws: DICOMError.self) {
+            try RLECodec().decodeFrame(frame([0x01, 1, 2, 0x80, 0x80]), descriptor: descriptor, frameIndex: 0)
+        }
+    }
+
+    @Test("A run that overshoots the declared length throws instead of truncating")
+    func testOvershootThrows() {
+        // repeat 5 times into a 4-byte segment
+        #expect(throws: DICOMError.self) {
+            try RLECodec().decodeFrame(frame([0xFC, 7]), descriptor: descriptor, frameIndex: 0)
+        }
+        // literal 5 bytes into a 4-byte segment
+        #expect(throws: DICOMError.self) {
+            try RLECodec().decodeFrame(frame([0x04, 1, 2, 3, 4, 5]), descriptor: descriptor, frameIndex: 0)
+        }
+    }
+
+    @Test("More than one trailing byte after the declared length throws")
+    func testTrailingBytesThrow() {
+        #expect(throws: DICOMError.self) {
+            try RLECodec().decodeFrame(frame([0x03, 1, 2, 3, 4, 0x80, 0x80]), descriptor: descriptor, frameIndex: 0)
+        }
+        #expect(throws: DICOMError.self) {
+            try RLECodec().decodeFrame(frame([0x03, 1, 2, 3, 4, 0x00, 9]), descriptor: descriptor, frameIndex: 0)
+        }
+    }
+}

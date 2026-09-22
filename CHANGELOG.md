@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.13] - 2026-09-22
+
+### Fixed — RLE Lossless decoder silently repaired malformed segments
+
+- `RLECodec.decodeRLESegment` now decodes strictly per PS3.5 Annex G: a segment
+  that ends before the declared length throws instead of being zero-filled, a
+  literal or repeat run that overshoots the declared length throws instead of
+  being truncated, and more than one trailing byte after the declared length
+  (the G.3.2 even-length pad) throws instead of being ignored.
+- Well-formed streams, including every `RLECodec.encodeFrame` output, decode
+  byte-identically as before. Added strict-decoding contract tests.
+
 ### Fixed — Bug review pass (library crashes/correctness + CLI hardening)
 
 - **STOW-RS server (critical):** the multipart parser decoded the entire body as UTF-8
