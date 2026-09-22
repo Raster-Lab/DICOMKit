@@ -4,9 +4,9 @@ import Testing
 @Suite("VR Tests")
 struct VRTests {
     
-    @Test("All 31 VRs are defined")
+    @Test("All 34 VRs are defined")
     func testAllVRsDefined() {
-        #expect(VR.allCases.count == 31)
+        #expect(VR.allCases.count == 34)
     }
     
     @Test("VR raw values are correct")
