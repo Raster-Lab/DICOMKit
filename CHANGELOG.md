@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.14] - 2026-09-22
+
+### Fixed — JPEG-LS and JPEG 2000 decoders accepted frames that did not match the descriptor
+
+- `JPEGLSCodec.decodeFrame` now verifies the decoded frame against the
+  `PixelDataDescriptor`: width/height must equal Columns/Rows, the component
+  count must equal Samples per Pixel, the sample precision P must equal Bits
+  Stored (as DCMTK's decoder requires) and every component must be a full-size
+  plane. A mismatch throws `DICOMError`; previously the output was silently
+  zero-filled, truncated, widened or clamped to the descriptor's byte count.
+- `JPEGLSCodec(decodingTransferSyntaxUID:)` pins a decoder to a transfer
+  syntax. Under JPEG-LS Lossless (…4.80) a scan with NEAR > 0 is refused
+  (ITU-T T.87 C.2.4.1.1); the registry now wires one decoder per syntax. The
+  default initializer accepts both scans as before.
+- `J2KSwiftCodec.packPixels` now requires the decoded component count to equal
+  Samples per Pixel (also for single-sample frames), every component precision
+  to fit Bits Allocated and every component buffer to be exactly the declared
+  frame's byte count. Previously a surplus component was ignored and an
+  over-long buffer (for example a 16-bit codestream under an 8-bit descriptor)
+  was silently truncated.
+- `J2KSwiftCodec(decodingTransferSyntaxUID:)` and the new
+  `J2KCodestreamInspector.usesIrreversibleWavelet(in:)` refuse a codestream
+  whose COD/COC selects the irreversible 9/7 wavelet under a lossless-only
+  transfer syntax (…4.90, …4.92, …4.201, …4.202). The registry, `HTJ2KCodec`
+  and `CompressionManager` decode paths pass the source syntax through. The
+  default initializer still decodes any Part-1 / HTJ2K codestream.
+- Added strict-decoding contract tests for both codecs and the inspector.
+
+### Changed — JLSwift floor raised to 0.9.2
+
+- JPEG-LS streams whose entropy data is followed by a legal 0xFF fill byte
+  before EOI (ITU-T T.81 B.1.1.2; CharLS / DCMTK `dcmcjpls` writes one on many
+  single-row frames) failed to parse in JLSwift ≤ 0.9.1 ("premature end of
+  bitstream"). Fixed upstream in JLSwift 0.9.2; `Package.swift` now requires
+  `from: "0.9.2"` and a CharLS-authored regression stream is decoded in
+  `JPEGLSCodecTests`.
+
 ## [2.2.13] - 2026-09-22
 
 ### Fixed — RLE Lossless decoder silently repaired malformed segments

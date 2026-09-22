@@ -373,9 +373,9 @@ public struct CodecRegistry: Sendable {
         // Register the preferred JPEG 2000 adapter.
         // Phase 1 uses J2KSwift directly; the native Apple codec remains available
         // as a separate platform codec, not as a runtime workaround path.
-        let jpeg2000Decoder = J2KSwiftCodec()
+        // One decoder per syntax: lossless-only UIDs refuse irreversible codestreams.
         for uid in J2KSwiftCodec.supportedTransferSyntaxes {
-            decoderRegistry[uid] = jpeg2000Decoder
+            decoderRegistry[uid] = J2KSwiftCodec(decodingTransferSyntaxUID: uid)
         }
         for uid in J2KSwiftCodec.supportedEncodingTransferSyntaxes {
             encoderRegistry[uid] = J2KSwiftCodec(encodingTransferSyntaxUID: uid)
@@ -400,10 +400,11 @@ public struct CodecRegistry: Sendable {
             encoderRegistry[uid] = rleCodec
         }
         
-        // JPEG-LS codec (pure Swift implementation - encode and decode)
+        // JPEG-LS codec (pure Swift implementation - encode and decode).
+        // One decoder per syntax: the lossless UID refuses near-lossless scans.
         let jpegLSCodec = JPEGLSCodec()
         for uid in JPEGLSCodec.supportedTransferSyntaxes {
-            decoderRegistry[uid] = jpegLSCodec
+            decoderRegistry[uid] = JPEGLSCodec(decodingTransferSyntaxUID: uid)
         }
         for uid in JPEGLSCodec.supportedEncodingTransferSyntaxes {
             encoderRegistry[uid] = jpegLSCodec

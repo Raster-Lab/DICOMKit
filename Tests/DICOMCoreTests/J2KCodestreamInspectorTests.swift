@@ -20,13 +20,26 @@ final class J2KCodestreamInspectorTests: XCTestCase {
         be16(marker) + be16(UInt16(payload.count + 2)) + payload
     }
 
-    /// SIZ is never inspected for content here — only its length must be walkable.
+    /// SIZ content is only read for Csiz (the last two payload bytes) by the wavelet check.
     private static var siz: [UInt8] { segment(0xFF51, payload: [UInt8](repeating: 0x00, count: 36)) }
+    private static func siz(components: UInt16) -> [UInt8] {
+        segment(0xFF51, payload: [UInt8](repeating: 0x00, count: 34) + be16(components))
+    }
+    /// COD payload: Scod(1) SGcod(4) SPcod NL xcb ycb cbstyle transformation — all zero
+    /// selects the irreversible 9/7 filter (transformation 0).
     private static var cod: [UInt8] { segment(0xFF52, payload: [UInt8](repeating: 0x00, count: 10)) }
+    private static func cod(transformation: UInt8) -> [UInt8] {
+        segment(0xFF52, payload: [UInt8](repeating: 0x00, count: 9) + [transformation])
+    }
+    private static func coc(componentIndexWidth: Int, transformation: UInt8) -> [UInt8] {
+        segment(0xFF53, payload: [UInt8](repeating: 0x00, count: componentIndexWidth + 5) + [transformation])
+    }
     private static var qcd: [UInt8] { segment(0xFF5C, payload: [UInt8](repeating: 0x00, count: 4)) }
 
     /// SOC + main header + optional extra segments, then a tile-part running to EOC.
-    private static func codestream(mainHeaderExtras: [UInt8] = [], tileHeaderExtras: [UInt8] = []) -> Data {
+    private static func codestream(
+        siz: [UInt8] = siz, cod: [UInt8] = cod, mainHeaderExtras: [UInt8] = [], tileHeaderExtras: [UInt8] = []
+    ) -> Data {
         var bytes: [UInt8] = be16(0xFF4F)          // SOC
         bytes += siz + cod + qcd
         bytes += mainHeaderExtras
@@ -152,5 +165,66 @@ final class J2KCodestreamInspectorTests: XCTestCase {
             }
             XCTAssertTrue(reason.contains("multi-component transform"))
         }
+    }
+}
+
+
+// MARK: - Irreversible wavelet detection
+
+extension J2KCodestreamInspectorTests {
+
+    func testReversibleCODIsNotIrreversible() {
+        let stream = Self.codestream(siz: Self.siz(components: 1), cod: Self.cod(transformation: 1))
+        XCTAssertFalse(J2KCodestreamInspector.usesIrreversibleWavelet(in: stream))
+    }
+
+    func testIrreversibleCODInMainHeader() {
+        let stream = Self.codestream(siz: Self.siz(components: 1), cod: Self.cod(transformation: 0))
+        XCTAssertTrue(J2KCodestreamInspector.usesIrreversibleWavelet(in: stream))
+    }
+
+    func testIrreversibleCOCOverridesReversibleCOD() {
+        let oneByte = Self.codestream(
+            siz: Self.siz(components: 3), cod: Self.cod(transformation: 1),
+            mainHeaderExtras: Self.coc(componentIndexWidth: 1, transformation: 0))
+        XCTAssertTrue(J2KCodestreamInspector.usesIrreversibleWavelet(in: oneByte))
+        let twoByte = Self.codestream(
+            siz: Self.siz(components: 300), cod: Self.cod(transformation: 1),
+            mainHeaderExtras: Self.coc(componentIndexWidth: 2, transformation: 0))
+        XCTAssertTrue(J2KCodestreamInspector.usesIrreversibleWavelet(in: twoByte))
+        let reversibleCOC = Self.codestream(
+            siz: Self.siz(components: 3), cod: Self.cod(transformation: 1),
+            mainHeaderExtras: Self.coc(componentIndexWidth: 1, transformation: 1))
+        XCTAssertFalse(J2KCodestreamInspector.usesIrreversibleWavelet(in: reversibleCOC))
+    }
+
+    func testIrreversibleCODInTileHeader() {
+        let stream = Self.codestream(
+            siz: Self.siz(components: 1), cod: Self.cod(transformation: 1),
+            tileHeaderExtras: Self.cod(transformation: 0))
+        XCTAssertTrue(J2KCodestreamInspector.usesIrreversibleWavelet(in: stream))
+    }
+
+    func testIrreversibleInsideJP2Container() {
+        let stream = Self.codestream(siz: Self.siz(components: 1), cod: Self.cod(transformation: 0))
+        var jp2: [UInt8] = Self.be32(12) + Array("jP  ".utf8) + [0x0D, 0x0A, 0x87, 0x0A]
+        jp2 += Self.be32(UInt32(8 + stream.count)) + Array("jp2c".utf8) + [UInt8](stream)
+        XCTAssertTrue(J2KCodestreamInspector.usesIrreversibleWavelet(in: Data(jp2)))
+    }
+
+    func testMalformedInputIsNotIrreversible() {
+        XCTAssertFalse(J2KCodestreamInspector.usesIrreversibleWavelet(in: Data()))
+        XCTAssertFalse(J2KCodestreamInspector.usesIrreversibleWavelet(in: Data([0xFF, 0x4F, 0xFF])))
+        XCTAssertFalse(J2KCodestreamInspector.usesIrreversibleWavelet(in: Data([0x00, 0x01, 0x02])))
+        // A COD too short to hold the transformation byte is not read past its length.
+        let short = Self.codestream(siz: Self.siz(components: 1), cod: Self.segment(0xFF52, payload: [0x00, 0x00]))
+        XCTAssertFalse(J2KCodestreamInspector.usesIrreversibleWavelet(in: short))
+    }
+
+    func testPart2ScanUnchangedByWaveletWalk() {
+        let stream = Self.codestream(siz: Self.siz(components: 1), cod: Self.cod(transformation: 1),
+                                     mainHeaderExtras: Self.segment(0xFF74, payload: [0x00, 0x00]))
+        XCTAssertEqual(J2KCodestreamInspector.part2MultiComponentMarkers(in: stream), [.mct])
+        XCTAssertFalse(J2KCodestreamInspector.usesIrreversibleWavelet(in: stream))
     }
 }
