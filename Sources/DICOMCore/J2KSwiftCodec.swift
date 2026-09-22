@@ -85,9 +85,43 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
     /// `.metal` → GPU decode; `.accelerate` / `.scalar` → CPU.
     private let decodeBackend: CodecBackend?
 
-    public init(encodingTransferSyntaxUID: String? = nil, decodeBackend: CodecBackend? = nil) {
+    /// The transfer syntax this decoder instance serves, when known.
+    ///
+    /// The registry wires one instance per syntax. Under a lossless-only syntax
+    /// (`losslessOnlyTransferSyntaxes`) a codestream whose COD/COC selects the
+    /// irreversible 9/7 wavelet is refused before decoding: its samples are not
+    /// the encoder's input, which the syntax promises. `nil` (the default)
+    /// decodes any Part-1 / HTJ2K codestream.
+    private let decodingTransferSyntaxUID: String?
+
+    /// Transfer syntaxes whose name promises exact reconstruction (PS3.5 A.4.4,
+    /// A.4.6). A reversible 5/3 codestream that was rate-truncated is still
+    /// undetectable here; only the wavelet kernel is checked.
+    public static let losslessOnlyTransferSyntaxes: Set<String> = [
+        TransferSyntax.jpeg2000Lossless.uid,
+        TransferSyntax.jpeg2000Part2Lossless.uid,
+        TransferSyntax.htj2kLossless.uid,
+        TransferSyntax.htj2kRPCLLossless.uid
+    ]
+
+    public init(
+        encodingTransferSyntaxUID: String? = nil,
+        decodeBackend: CodecBackend? = nil,
+        decodingTransferSyntaxUID: String? = nil
+    ) {
         self.encodingTransferSyntaxUID = encodingTransferSyntaxUID
         self.decodeBackend = decodeBackend
+        self.decodingTransferSyntaxUID = decodingTransferSyntaxUID
+    }
+
+    /// The refusal for an irreversible codestream under a lossless-only syntax,
+    /// or `nil` when `transferSyntaxUID` is not lossless-only or the codestream
+    /// uses the reversible 5/3 wavelet throughout.
+    public static func irreversibleWaveletRefusal(frameData: Data, transferSyntaxUID: String?) -> String? {
+        guard let uid = transferSyntaxUID, losslessOnlyTransferSyntaxes.contains(uid),
+              J2KCodestreamInspector.usesIrreversibleWavelet(in: frameData) else { return nil }
+        return "JPEG 2000 codestream selects the irreversible 9/7 wavelet under lossless-only transfer syntax "
+            + "\(uid); refusing to decode inexact samples"
     }
 
     /// Explicit J2KSwift decode entry point selectable by mode. Bypasses the
@@ -289,6 +323,10 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
     public func decodeFrame(_ frameData: Data, descriptor: PixelDataDescriptor, frameIndex: Int) throws -> Data {
         guard !frameData.isEmpty else {
             throw DICOMError.parsingFailed("Empty JPEG 2000 data")
+        }
+
+        if let reason = Self.irreversibleWaveletRefusal(frameData: frameData, transferSyntaxUID: decodingTransferSyntaxUID) {
+            throw DICOMError.parsingFailed(reason)
         }
 
         #if canImport(J2KCore) && canImport(J2KCodec)
@@ -691,25 +729,16 @@ private extension J2KSwiftCodec {
         return [r, g, b]
     }
 
+    /// Packs the decoded components into DICOM pixel bytes, strictly.
+    ///
+    /// The component count must equal Samples per Pixel, every component's
+    /// precision must fit Bits Allocated and every component's sample buffer
+    /// must be exactly the declared frame's byte count. Previously a surplus
+    /// component was ignored and an over-long buffer (for example a 16-bit
+    /// codestream under an 8-bit descriptor) was silently truncated.
     static func packPixels(from image: J2KImage, descriptor: PixelDataDescriptor) throws -> Data {
         let bytesPerSample = descriptor.bytesPerSample
         let expectedComponentByteCount = descriptor.rows * descriptor.columns * bytesPerSample
-
-        if descriptor.samplesPerPixel == 1 {
-            guard let component = image.components.first else {
-                throw DICOMError.parsingFailed("Decoded JPEG 2000 image contains no components")
-            }
-            guard component.data.count >= expectedComponentByteCount else {
-                throw DICOMError.parsingFailed(
-                    "Decoded component data too short: expected \(expectedComponentByteCount) bytes, got \(component.data.count)"
-                )
-            }
-            var output = component.data.count == expectedComponentByteCount
-                ? component.data
-                : component.data.subdata(in: component.data.startIndex..<component.data.startIndex + expectedComponentByteCount)
-            swapBytesInPlaceIfNeeded(&output, bytesPerSample: bytesPerSample)
-            return output
-        }
 
         guard image.components.count == descriptor.samplesPerPixel else {
             throw DICOMError.parsingFailed(
@@ -719,17 +748,27 @@ private extension J2KSwiftCodec {
 
         var components: [Data] = []
         components.reserveCapacity(descriptor.samplesPerPixel)
-        for component in image.components.prefix(descriptor.samplesPerPixel) {
-            guard component.data.count >= expectedComponentByteCount else {
+        for component in image.components {
+            guard component.bitDepth <= descriptor.bitsAllocated else {
                 throw DICOMError.parsingFailed(
-                    "Decoded RGB component data too short: expected \(expectedComponentByteCount) bytes, got \(component.data.count)"
+                    "Decoded JPEG 2000 component \(component.index) precision \(component.bitDepth) bits exceeds "
+                        + "Bits Allocated \(descriptor.bitsAllocated)"
                 )
             }
-            var plane = component.data.count == expectedComponentByteCount
-                ? component.data
-                : component.data.subdata(in: component.data.startIndex..<component.data.startIndex + expectedComponentByteCount)
+            guard component.data.count == expectedComponentByteCount else {
+                throw DICOMError.parsingFailed(
+                    "Decoded JPEG 2000 component \(component.index) has \(component.data.count) bytes, expected exactly "
+                        + "\(expectedComponentByteCount) for \(descriptor.columns)x\(descriptor.rows) at "
+                        + "\(descriptor.bitsAllocated) bits allocated"
+                )
+            }
+            var plane = component.data
             swapBytesInPlaceIfNeeded(&plane, bytesPerSample: bytesPerSample)
             components.append(plane)
+        }
+
+        if descriptor.samplesPerPixel == 1 {
+            return components[0]
         }
 
         if descriptor.planarConfiguration == 1 {

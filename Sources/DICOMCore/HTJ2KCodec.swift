@@ -34,9 +34,8 @@ public struct HTJ2KCodec: ImageCodec, ImageEncoder, Sendable {
     ///   When `nil`, defaults to HTJ2K Lossless.
     public init(targetTransferSyntaxUID: String? = nil) {
         self.targetTransferSyntaxUID = targetTransferSyntaxUID
-        self.backing = J2KSwiftCodec(
-            encodingTransferSyntaxUID: targetTransferSyntaxUID ?? TransferSyntax.htj2kLossless.uid
-        )
+        let uid = targetTransferSyntaxUID ?? TransferSyntax.htj2kLossless.uid
+        self.backing = J2KSwiftCodec(encodingTransferSyntaxUID: uid, decodingTransferSyntaxUID: uid)
     }
 
     // MARK: - ImageCodec

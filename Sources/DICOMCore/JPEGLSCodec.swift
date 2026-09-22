@@ -24,20 +24,43 @@ public struct JPEGLSCodec: ImageCodec, ImageEncoder, Sendable {
         TransferSyntax.jpegLSNearLossless.uid    // 1.2.840.10008.1.2.4.81
     ]
 
-    public init() {}
+    /// The transfer syntax this decoder instance serves, when known.
+    ///
+    /// The registry wires one instance per syntax. Under JPEG-LS Lossless
+    /// (1.2.840.10008.1.2.4.80) a scan whose NEAR parameter is non-zero is a
+    /// near-lossless scan and is refused: decoding it would return samples that
+    /// differ from the encoder's input under a syntax that promises exactness.
+    /// `nil` (the default) accepts both lossless and near-lossless scans.
+    private let decodingTransferSyntaxUID: String?
+
+    public init(decodingTransferSyntaxUID: String? = nil) {
+        self.decodingTransferSyntaxUID = decodingTransferSyntaxUID
+    }
 
     // MARK: - Decoding
 
-    /// Decodes a JPEG-LS compressed frame
+    /// Decodes a JPEG-LS compressed frame strictly against `descriptor`.
+    ///
+    /// The decoded frame header must match the descriptor exactly: width and
+    /// height equal Columns and Rows, the component count equals Samples per
+    /// Pixel and the sample precision P equals Bits Stored (PS3.5 A.4.3; DCMTK
+    /// refuses the same mismatch); every component must be a full-size plane.
+    /// Any mismatch throws. Previously a mis-sized frame was silently
+    /// zero-filled or truncated to the descriptor's byte count and an
+    /// over-precise frame was silently clamped.
     /// - Parameters:
     ///   - frameData: JPEG-LS compressed data
     ///   - descriptor: Pixel data descriptor
     ///   - frameIndex: Frame index (unused for single frame decode)
     /// - Returns: Uncompressed pixel data laid out per `descriptor`
-    /// - Throws: `DICOMError` if decoding fails
+    /// - Throws: `DICOMError` if decoding fails or the frame does not match `descriptor`
     public func decodeFrame(_ frameData: Data, descriptor: PixelDataDescriptor, frameIndex: Int) throws -> Data {
         guard !frameData.isEmpty else {
             throw DICOMError.parsingFailed("Empty JPEG-LS data")
+        }
+
+        if decodingTransferSyntaxUID == TransferSyntax.jpegLSLossless.uid {
+            try Self.requireLosslessScans(in: frameData)
         }
 
         let image: MultiComponentImageData
@@ -47,7 +70,61 @@ public struct JPEGLSCodec: ImageCodec, ImageEncoder, Sendable {
             throw DICOMError.parsingFailed("JPEG-LS decode failed: \(error)")
         }
 
+        try Self.validate(image, against: descriptor)
         return serialize(image, descriptor: descriptor)
+    }
+
+    /// Throws when any scan in `frameData` carries NEAR > 0 (ITU-T T.87 C.2.4.1.1).
+    ///
+    /// Only the marker structure is parsed; no sample is decoded.
+    static func requireLosslessScans(in frameData: Data) throws {
+        // JLSwift's parser walks zero-based offsets; rebase a slice first.
+        let data = frameData.startIndex == 0 ? frameData : Data(frameData)
+        let parsed: JPEGLSParseResult
+        do {
+            parsed = try JPEGLSParser(data: data).parse()
+        } catch {
+            throw DICOMError.parsingFailed("JPEG-LS decode failed: \(error)")
+        }
+        if let scan = parsed.scanHeaders.first(where: { $0.near > 0 }) {
+            throw DICOMError.parsingFailed(
+                "JPEG-LS Lossless (\(TransferSyntax.jpegLSLossless.uid)) frame carries a near-lossless scan "
+                    + "(NEAR = \(scan.near)); refusing to decode inexact samples under a lossless transfer syntax"
+            )
+        }
+    }
+
+    /// Verifies that the decoded image is exactly the frame `descriptor` declares.
+    static func validate(_ image: MultiComponentImageData, against descriptor: PixelDataDescriptor) throws {
+        let header = image.frameHeader
+        guard header.width == descriptor.columns, header.height == descriptor.rows else {
+            throw DICOMError.parsingFailed(
+                "Decoded JPEG-LS dimensions (\(header.width)x\(header.height)) do not match expected "
+                    + "(\(descriptor.columns)x\(descriptor.rows))"
+            )
+        }
+        guard header.componentCount == descriptor.samplesPerPixel,
+              image.components.count == descriptor.samplesPerPixel else {
+            throw DICOMError.parsingFailed(
+                "Decoded JPEG-LS component count \(image.components.count) (frame header "
+                    + "\(header.componentCount)) does not match samples per pixel \(descriptor.samplesPerPixel)"
+            )
+        }
+        guard header.bitsPerSample == descriptor.bitsStored, header.bitsPerSample <= descriptor.bitsAllocated else {
+            throw DICOMError.parsingFailed(
+                "Decoded JPEG-LS precision \(header.bitsPerSample) bits does not match Bits Stored "
+                    + "\(descriptor.bitsStored) (Bits Allocated \(descriptor.bitsAllocated))"
+            )
+        }
+        for component in image.components {
+            guard component.pixels.count == descriptor.rows,
+                  component.pixels.allSatisfy({ $0.count == descriptor.columns }) else {
+                throw DICOMError.parsingFailed(
+                    "Decoded JPEG-LS component \(component.id) is not a full \(descriptor.columns)x\(descriptor.rows) "
+                        + "plane; sub-sampled components are not supported"
+                )
+            }
+        }
     }
 
     // MARK: - Encoding
@@ -132,6 +209,7 @@ public struct JPEGLSCodec: ImageCodec, ImageEncoder, Sendable {
     /// Serializes JLSwift's row-major `[[Int]]` components into DICOM pixel bytes
     /// matching `descriptor` (Bits Allocated, Samples per Pixel, Planar
     /// Configuration). 16-bit samples are written little-endian per DICOM.
+    /// Callers must `validate` first: every plane is exactly `columns` x `rows`.
     private func serialize(_ image: MultiComponentImageData, descriptor: PixelDataDescriptor) -> Data {
         let width = descriptor.columns
         let height = descriptor.rows
@@ -143,11 +221,11 @@ public struct JPEGLSCodec: ImageCodec, ImageEncoder, Sendable {
         output.withUnsafeMutableBytes { raw in
             guard let base = raw.baseAddress else { return }
             let buffer = base.assumingMemoryBound(to: UInt8.self)
-            for c in 0..<min(samples, image.components.count) {
+            for c in 0..<samples {
                 let pixels = image.components[c].pixels
-                for y in 0..<min(height, pixels.count) {
+                for y in 0..<height {
                     let row = pixels[y]
-                    for x in 0..<min(width, row.count) {
+                    for x in 0..<width {
                         let value = row[x]
                         let byteIndex = pixelIndex(component: c, x: x, y: y, width: width, height: height, samples: samples, planar: planar) * bps
                         if bps == 1 {

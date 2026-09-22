@@ -246,7 +246,7 @@ let package = Package(
         .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "11.0.3"),
         // JLSwift — pure-Swift JPEG-LS (ITU-T T.87 / ISO-IEC 14495-1) codec.
         // Provides the `JPEGLS` product, which backs DICOMCore.JPEGLSCodec.
-        .package(url: "https://github.com/Raster-Lab/JLSwift.git", from: "0.9.0"),
+        .package(url: "https://github.com/Raster-Lab/JLSwift.git", from: "0.9.2"),
         // JLISwift — native-Swift JPEG codec (baseline/extended/progressive/
         // lossless SOF0–3, 8/12/16-bit, Accelerate-backed; jpegli-parity target).
         // Distinct from JLSwift (JPEG-LS). Products: `JLISwift` (core codec) and
