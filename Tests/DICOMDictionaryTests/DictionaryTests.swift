@@ -56,6 +56,19 @@ struct DictionaryTests {
         #expect(sopClassUID?.keyword == "MediaStorageSOPClassUID")
     }
     
+    @Test("64-bit Value Representations are declared for the CP-1818 elements")
+    func testSixtyFourBitElements() {
+        #expect(DataElementDictionary.lookup(tag: .extendedOffsetTable)?.vr == [.OV])
+        #expect(DataElementDictionary.lookup(tag: .extendedOffsetTableLengths)?.vr == [.OV])
+        #expect(DataElementDictionary.lookup(tag: Tag(group: 0x7FE0, element: 0x0003))?.vr == [.UV])
+        #expect(DataElementDictionary.lookup(tag: Tag(group: 0x0072, element: 0x0081))?.vr == [.OV])
+        #expect(DataElementDictionary.lookup(tag: Tag(group: 0x0072, element: 0x0082))?.vr == [.SV])
+        #expect(DataElementDictionary.lookup(tag: Tag(group: 0x0072, element: 0x0083))?.vr == [.UV])
+        for element: UInt16 in [0x040C, 0x040D, 0x0428, 0x0429] {
+            #expect(DataElementDictionary.lookup(tag: Tag(group: 0x0008, element: element))?.vr == [.UV])
+        }
+    }
+
     @Test("UID dictionary lookup by UID")
     func testUIDLookupByUID() {
         let entry = UIDDictionary.lookup(uid: "1.2.840.10008.1.2.1")
