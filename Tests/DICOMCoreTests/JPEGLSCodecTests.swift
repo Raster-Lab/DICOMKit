@@ -403,3 +403,149 @@ struct JPEGLSCodecRegistryTests {
 // type) was retired in favour of the JLSwift `JPEGLS` package. Preset-parameter
 // behaviour is now owned and tested by JLSwift; DICOMCore validates JPEG-LS only
 // through the public JPEGLSCodec encode/decode round-trips above.
+
+
+@Suite("JPEGLSCodec strict frame decoding")
+struct JPEGLSCodecStrictDecodingTests {
+    private static let lossless = TransferSyntax.jpegLSLossless.uid
+    private static let nearLossless = TransferSyntax.jpegLSNearLossless.uid
+
+    private func descriptor(
+        rows: Int, columns: Int, bitsAllocated: Int = 8, bitsStored: Int = 8, samples: Int = 1
+    ) -> PixelDataDescriptor {
+        PixelDataDescriptor(
+            rows: rows, columns: columns, bitsAllocated: bitsAllocated, bitsStored: bitsStored,
+            highBit: bitsStored - 1, isSigned: false, samplesPerPixel: samples,
+            photometricInterpretation: samples == 3 ? .rgb : .monochrome2)
+    }
+
+    private func frame(_ descriptor: PixelDataDescriptor) -> Data {
+        let count = descriptor.rows * descriptor.columns * descriptor.samplesPerPixel
+        if descriptor.bitsAllocated == 8 {
+            return Data((0..<count).map { UInt8(($0 * 37 + 11) % 256) })
+        }
+        let maximum = (1 << descriptor.bitsStored) - 1
+        var bytes = Data(capacity: count * 2)
+        for index in 0..<count {
+            let value = UInt16((index * 611 + 5) % (maximum + 1))
+            bytes.append(UInt8(value & 0xFF))
+            bytes.append(UInt8(value >> 8))
+        }
+        return bytes
+    }
+
+    private func encode(_ descriptor: PixelDataDescriptor, configuration: CompressionConfiguration = .lossless) throws -> (Data, Data) {
+        let original = frame(descriptor)
+        let encoded = try JPEGLSCodec().encodeFrame(original, descriptor: descriptor, frameIndex: 0, configuration: configuration)
+        return (original, encoded)
+    }
+
+    /// NEAR of the first scan: SOS = FFDA Ls Ns (Ci Tmi)×Ns NEAR ILV Ah/Al.
+    private func near(of stream: Data) -> Int? {
+        let bytes = [UInt8](stream)
+        guard let sos = (0..<(bytes.count - 1)).first(where: { bytes[$0] == 0xFF && bytes[$0 + 1] == 0xDA }) else { return nil }
+        let ns = Int(bytes[sos + 4])
+        return Int(bytes[sos + 5 + 2 * ns])
+    }
+
+    @Test("An exact lossless frame decodes byte-identically under every decoder instance")
+    func exactFrame() throws {
+        let descriptor = descriptor(rows: 5, columns: 7)
+        let (original, encoded) = try encode(descriptor)
+        for codec in [JPEGLSCodec(), JPEGLSCodec(decodingTransferSyntaxUID: Self.lossless), JPEGLSCodec(decodingTransferSyntaxUID: Self.nearLossless)] {
+            #expect(try codec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0) == original)
+        }
+    }
+
+    @Test("Dimension mismatches throw instead of zero-filling or truncating")
+    func dimensionMismatch() throws {
+        let (_, encoded) = try encode(descriptor(rows: 4, columns: 4))
+        for (rows, columns) in [(4, 3), (3, 4), (2, 8), (8, 8), (4, 5), (1, 16)] {
+            #expect(throws: DICOMError.self, "\(columns)x\(rows)") {
+                try JPEGLSCodec().decodeFrame(encoded, descriptor: descriptor(rows: rows, columns: columns), frameIndex: 0)
+            }
+        }
+    }
+
+    @Test("Component count mismatches throw")
+    func componentMismatch() throws {
+        let gray = descriptor(rows: 4, columns: 4)
+        let rgb = descriptor(rows: 4, columns: 4, samples: 3)
+        let (_, grayEncoded) = try encode(gray)
+        let (_, rgbEncoded) = try encode(rgb)
+        #expect(throws: DICOMError.self) { try JPEGLSCodec().decodeFrame(rgbEncoded, descriptor: gray, frameIndex: 0) }
+        #expect(throws: DICOMError.self) { try JPEGLSCodec().decodeFrame(grayEncoded, descriptor: rgb, frameIndex: 0) }
+    }
+
+    @Test("Precision differing from Bits Stored throws instead of clamping or widening")
+    func precisionMismatch() throws {
+        let wide = descriptor(rows: 4, columns: 4, bitsAllocated: 16, bitsStored: 12)
+        let (original, encoded) = try encode(wide)
+        #expect(try JPEGLSCodec().decodeFrame(encoded, descriptor: wide, frameIndex: 0) == original)
+        #expect(throws: DICOMError.self) {
+            try JPEGLSCodec().decodeFrame(encoded, descriptor: descriptor(rows: 4, columns: 4), frameIndex: 0)
+        }
+        #expect(throws: DICOMError.self) {
+            try JPEGLSCodec().decodeFrame(encoded, descriptor: descriptor(rows: 4, columns: 4, bitsAllocated: 16, bitsStored: 16), frameIndex: 0)
+        }
+        // An 8-bit scan under Bits Stored 16 is a header/bitstream mismatch (DCMTK refuses it too).
+        let narrow = descriptor(rows: 4, columns: 4)
+        let (narrowOriginal, narrowEncoded) = try encode(narrow)
+        #expect(throws: DICOMError.self) {
+            try JPEGLSCodec().decodeFrame(narrowEncoded, descriptor: descriptor(rows: 4, columns: 4, bitsAllocated: 16, bitsStored: 16), frameIndex: 0)
+        }
+        // With Bits Stored 8 in a 16-bit container the samples widen exactly.
+        let widened = try JPEGLSCodec().decodeFrame(
+            narrowEncoded, descriptor: descriptor(rows: 4, columns: 4, bitsAllocated: 16, bitsStored: 8), frameIndex: 0)
+        #expect(widened.count == narrowOriginal.count * 2)
+        #expect(stride(from: 0, to: widened.count, by: 2).map { widened[$0] } == [UInt8](narrowOriginal))
+        #expect(stride(from: 1, to: widened.count, by: 2).allSatisfy { widened[$0] == 0 })
+    }
+
+    @Test("Near-lossless scans are refused under the lossless syntax only")
+    func nearLosslessScan() throws {
+        let descriptor = descriptor(rows: 8, columns: 8)
+        let lossy = CompressionConfiguration(quality: .low, speed: .balanced, progressive: false, preferLossless: false)
+        let (_, encoded) = try encode(descriptor, configuration: lossy)
+        let (_, exact) = try encode(descriptor)
+        try #require(near(of: encoded) ?? 0 > 0)
+        try #require(near(of: exact) == 0)
+
+        #expect(throws: DICOMError.self) {
+            try JPEGLSCodec(decodingTransferSyntaxUID: Self.lossless).decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
+        }
+        #expect(throws: DICOMError.self) { try JPEGLSCodec.requireLosslessScans(in: encoded) }
+        #expect(try JPEGLSCodec(decodingTransferSyntaxUID: Self.nearLossless).decodeFrame(encoded, descriptor: descriptor, frameIndex: 0).count == 64)
+        #expect(try JPEGLSCodec().decodeFrame(encoded, descriptor: descriptor, frameIndex: 0).count == 64)
+        #expect(try JPEGLSCodec(decodingTransferSyntaxUID: Self.lossless).decodeFrame(exact, descriptor: descriptor, frameIndex: 0).count == 64)
+
+        let registry = CodecRegistry.shared
+        let losslessCodec = try #require(registry.codec(for: Self.lossless))
+        let nearCodec = try #require(registry.codec(for: Self.nearLossless))
+        #expect(throws: DICOMError.self) { try losslessCodec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0) }
+        #expect(try nearCodec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0).count == 64)
+    }
+
+    @Test("A CharLS stream with a fill byte before EOI decodes (JLSwift 0.9.2)")
+    func charLSFillByteBeforeEOI() throws {
+        // 1x3 8-bit lossless [0, 1, 255] as written by DCMTK 3.7.0 dcmcjpls: the
+        // entropy data `AA 00` is followed by a legal 0xFF fill byte, then EOI.
+        let stream = Data([
+            0xFF, 0xD8, 0xFF, 0xF7, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00, 0x03, 0x01, 0x01, 0x11, 0x00,
+            0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0xAA, 0x00, 0xFF, 0xFF, 0xD9,
+        ])
+        let descriptor = descriptor(rows: 1, columns: 3)
+        #expect(try JPEGLSCodec(decodingTransferSyntaxUID: Self.lossless).decodeFrame(stream, descriptor: descriptor, frameIndex: 0) == Data([0, 1, 255]))
+    }
+
+    @Test("Truncated and empty streams throw")
+    func malformed() throws {
+        let descriptor = descriptor(rows: 4, columns: 4)
+        let (_, encoded) = try encode(descriptor)
+        #expect(throws: DICOMError.self) { try JPEGLSCodec().decodeFrame(Data(), descriptor: descriptor, frameIndex: 0) }
+        #expect(throws: DICOMError.self) { try JPEGLSCodec().decodeFrame(encoded.prefix(encoded.count / 2), descriptor: descriptor, frameIndex: 0) }
+        #expect(throws: DICOMError.self) {
+            try JPEGLSCodec(decodingTransferSyntaxUID: Self.lossless).decodeFrame(Data([0, 1, 2, 3]), descriptor: descriptor, frameIndex: 0)
+        }
+    }
+}

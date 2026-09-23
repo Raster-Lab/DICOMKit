@@ -1,6 +1,7 @@
 /// Value Representation (VR) enumeration
 ///
-/// Defines all 34 Value Representations from DICOM PS3.5 2026a Table 6.2-1.
+/// Defines all 34 Value Representations from DICOM PS3.5 2026d Table 6.2-1,
+/// including the 64-bit OV, SV and UV representations added by CP-1818.
 /// Each VR specifies the data type and format of a DICOM data element value.
 ///
 /// Reference: DICOM PS3.5 Section 6.2 - Value Representation (VR)
@@ -54,6 +55,10 @@ public enum VR: String, Sendable, Hashable, CaseIterable {
     case OF
     /// Other Long (PS3.5 Section 6.2)
     case OL
+    /// Other 64-bit Very Long (PS3.5 Section 6.2): a stream of 64-bit words
+    /// whose encoding is specified by the Transfer Syntax, e.g. Extended Offset
+    /// Table (7FE0,0001) and Extended Offset Table Lengths (7FE0,0002)
+    case OV
     /// Other Word (PS3.5 Section 6.2)
     case OW
     /// Signed Long (PS3.5 Section 6.2)
@@ -62,6 +67,8 @@ public enum VR: String, Sendable, Hashable, CaseIterable {
     case SQ
     /// Signed Short (PS3.5 Section 6.2)
     case SS
+    /// Signed 64-bit Very Long (PS3.5 Section 6.2)
+    case SV
     /// Unsigned Long (PS3.5 Section 6.2)
     case UL
     /// Unknown (PS3.5 Section 6.2)
@@ -70,17 +77,14 @@ public enum VR: String, Sendable, Hashable, CaseIterable {
     case UR
     /// Unsigned Short (PS3.5 Section 6.2)
     case US
-    /// Other 64-bit Very Long (PS3.5 Section 6.2)
-    case OV
-    /// Signed 64-bit Very Long (PS3.5 Section 6.2)
-    case SV
     /// Unsigned 64-bit Very Long (PS3.5 Section 6.2)
     case UV
     
     /// Indicates whether this VR uses a 32-bit length field in Explicit VR encoding
     ///
-    /// Per PS3.5 Section 7.1.2, most VRs use a 16-bit length field, but certain VRs
-    /// (OB, OD, OF, OL, OV, OW, SQ, SV, UC, UN, UR, UT, UV) use a 32-bit length field.
+    /// Per PS3.5 Section 7.1.2 Table 7.1-1, most VRs use a 16-bit length field, but
+    /// OB, OD, OF, OL, OV, OW, SQ, SV, UC, UN, UR, UT and UV are encoded with two
+    /// reserved bytes followed by a 32-bit length field.
     public var uses32BitLength: Bool {
         switch self {
         case .OB, .OD, .OF, .OL, .OV, .OW, .SQ, .SV, .UC, .UN, .UR, .UT, .UV:

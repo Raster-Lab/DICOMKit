@@ -604,7 +604,7 @@ public struct CompressionManager {
         // before (their decode has no GPU path / backend axis).
         let codec: ImageCodec
         if sourceSyntax.isJPEG2000 {
-            codec = J2KSwiftCodec(decodeBackend: backend.forced)
+            codec = J2KSwiftCodec(decodeBackend: backend.forced, decodingTransferSyntaxUID: sourceSyntax.uid)
         } else if let registryCodec = CodecRegistry.shared.codec(for: sourceSyntax.uid) {
             codec = registryCodec
         } else {

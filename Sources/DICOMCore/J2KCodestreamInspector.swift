@@ -17,6 +17,9 @@ public enum J2KCodestreamInspector {
     private static let sot: UInt16 = 0xFF90  // Start of tile-part
     private static let sod: UInt16 = 0xFF93  // Start of data
     private static let eoc: UInt16 = 0xFFD9  // End of codestream
+    private static let siz: UInt16 = 0xFF51  // Image and tile size
+    private static let cod: UInt16 = 0xFF52  // Coding style default
+    private static let coc: UInt16 = 0xFF53  // Coding style component
 
     /// ISO/IEC 15444-2 (Part 2) multi-component transform marker segments.
     ///
@@ -68,6 +71,49 @@ public enum J2KCodestreamInspector {
     /// would ignore rather than invert.
     public static func containsPart2MultiComponentTransform(in data: Data) -> Bool {
         !part2MultiComponentMarkers(in: data).isEmpty
+    }
+
+    /// Whether any COD or COC marker segment in the main header or a tile-part
+    /// header selects the irreversible 9/7 wavelet (ISO/IEC 15444-1 Table A.20:
+    /// SPcod/SPcoc transformation byte 0; 1 is the reversible 5/3 filter).
+    ///
+    /// A lossless-only DICOM transfer syntax (PS3.5 A.4.4 `…4.90`, A.4.6 `…4.201`
+    /// / `…4.202`) promises exact reconstruction, which a 9/7 codestream cannot
+    /// deliver, so the codec refuses such a frame instead of returning
+    /// approximated samples. Rate truncation of a reversible codestream is not
+    /// detectable from headers and is not claimed here.
+    ///
+    /// This never throws and returns `false` for malformed or truncated input;
+    /// rejecting malformed input is the decoder's job.
+    public static func usesIrreversibleWavelet(in data: Data) -> Bool {
+        guard let codestream = locateCodestream(in: data) else { return false }
+        var componentCount = 0
+        var irreversible = false
+        forEachHeaderSegment(in: codestream) { marker, offset, length in
+            switch marker {
+            case siz:
+                // Lsiz(2) Rsiz(2) Xsiz…YTOsiz(8×4) Csiz(2): Csiz sits 38 bytes past the marker.
+                if length >= 38, let csiz = readUInt16(codestream, at: offset + 38) {
+                    componentCount = Int(csiz)
+                }
+            case cod:
+                // Lcod(2) Scod(1) SGcod(4) SPcod: NL xcb ycb cbstyle transformation.
+                if length >= 12, let transformation = readUInt8(codestream, at: offset + 13), transformation == 0 {
+                    irreversible = true
+                }
+            case coc:
+                // Lcoc(2) Ccoc(1 or 2, by Csiz) Scoc(1) SPcoc: NL xcb ycb cbstyle transformation.
+                let componentIndexWidth = componentCount < 257 ? 1 : 2
+                if length >= 8 + componentIndexWidth,
+                   let transformation = readUInt8(codestream, at: offset + 9 + componentIndexWidth),
+                   transformation == 0 {
+                    irreversible = true
+                }
+            default:
+                break
+            }
+        }
+        return irreversible
     }
 
     // MARK: - Container handling
@@ -133,24 +179,29 @@ public enum J2KCodestreamInspector {
 
     private static func scanHeaders(_ data: Data) -> [Part2MultiComponentMarker] {
         var found: [Part2MultiComponentMarker] = []
+        forEachHeaderSegment(in: data) { marker, _, _ in
+            // Keep scanning after a hit: reporting every marker present makes the
+            // eventual error message specific rather than naming whichever came first.
+            if let part2 = Part2MultiComponentMarker(rawValue: marker), !found.contains(part2) {
+                found.append(part2)
+            }
+        }
+        return found
+    }
+
+    /// Visits every marker segment of the main header and of each tile-part header
+    /// as `(marker, offset of the marker, segment length field)`; packet bodies are
+    /// skipped via `Psot`. SOT itself is visited; SOC, SOD and EOC are not.
+    ///
+    /// A well-formed header position always begins 0xFF..; anything else means the
+    /// walk lost sync (truncated or malformed input) and it stops rather than guess.
+    private static func forEachHeaderSegment(in data: Data, _ visit: (UInt16, Int, Int) -> Void) {
         var offset = 2  // Past SOC.
 
-        func record(_ marker: Part2MultiComponentMarker) {
-            if !found.contains(marker) { found.append(marker) }
-        }
-
         while let marker = readUInt16(data, at: offset) {
-            // A well-formed header position always begins 0xFF..; anything else means
-            // we've lost sync (truncated or malformed input) — stop rather than guess.
             guard marker & 0xFF00 == 0xFF00 else { break }
 
             if marker == eoc || marker == sod { break }
-
-            if let part2 = Part2MultiComponentMarker(rawValue: marker) {
-                record(part2)
-                // Keep scanning: reporting every marker present makes the eventual
-                // error message specific rather than naming whichever came first.
-            }
 
             // Delimiting markers carry no length segment.
             if marker == soc {
@@ -159,10 +210,9 @@ public enum J2KCodestreamInspector {
             }
 
             if marker == sot {
-                // Skip the whole tile-part: its header may hold MCT/MCC/MCO too, so
-                // scan it, then hop to the next tile-part via Psot.
-                guard let (tileScan, next) = scanTilePart(data, sotOffset: offset) else { break }
-                tileScan.forEach(record)
+                // Walk the tile-part header (it may hold COD/COC/MCT… too), then hop
+                // to the next tile-part via Psot.
+                guard let next = walkTilePart(data, sotOffset: offset, visit) else { break }
                 guard let next, next > offset else { break }
                 offset = next
                 continue
@@ -171,47 +221,50 @@ public enum J2KCodestreamInspector {
             guard let segmentLength = readUInt16(data, at: offset + 2) else { break }
             // Lsiz-style length counts itself but not the 2-byte marker.
             guard segmentLength >= 2 else { break }
+            visit(marker, offset, Int(segmentLength))
             offset += 2 + Int(segmentLength)
         }
-
-        return found
     }
 
-    /// Scans a single tile-part header, returning any Part 2 markers found and the
-    /// offset of the next tile-part (`nil` when this tile-part runs to EOC).
-    private static func scanTilePart(
+    /// Visits a single tile-part header and returns the offset of the next tile-part
+    /// (`.some(nil)` when this tile-part runs to EOC, `nil` when SOT is malformed).
+    private static func walkTilePart(
         _ data: Data,
-        sotOffset: Int
-    ) -> (markers: [Part2MultiComponentMarker], nextTilePart: Int?)? {
+        sotOffset: Int,
+        _ visit: (UInt16, Int, Int) -> Void
+    ) -> Int?? {
         // SOT: Lsot(2) Isot(2) Psot(4) TPsot(1) TNsot(1) — Psot spans SOT..tile end.
         guard let lsot = readUInt16(data, at: sotOffset + 2), lsot == 10,
               let psot = readUInt32(data, at: sotOffset + 6) else { return nil }
+        visit(sot, sotOffset, Int(lsot))
 
-        var markers: [Part2MultiComponentMarker] = []
         var offset = sotOffset + 2 + Int(lsot)
 
         // Walk the tile-part header up to SOD.
         while let marker = readUInt16(data, at: offset) {
             guard marker & 0xFF00 == 0xFF00 else { break }
             if marker == sod || marker == eoc { break }
-            if let part2 = Part2MultiComponentMarker(rawValue: marker), !markers.contains(part2) {
-                markers.append(part2)
-            }
             guard let segmentLength = readUInt16(data, at: offset + 2), segmentLength >= 2 else { break }
+            visit(marker, offset, Int(segmentLength))
             offset += 2 + Int(segmentLength)
         }
 
         // Psot == 0 means the tile-part extends to EOC: nothing further to scan.
-        guard psot != 0 else { return (markers, nil) }
+        guard psot != 0 else { return .some(nil) }
         let next = sotOffset + Int(psot)
-        guard next <= data.count else { return (markers, nil) }
-        return (markers, next)
+        guard next <= data.count else { return .some(nil) }
+        return .some(next)
     }
 
     // MARK: - Big-endian readers (offsets are relative to `data.startIndex`)
 
     private static func absolute(_ data: Data, _ offset: Int) -> Data.Index {
         data.index(data.startIndex, offsetBy: offset)
+    }
+
+    private static func readUInt8(_ data: Data, at offset: Int) -> UInt8? {
+        guard offset >= 0, offset + 1 <= data.count else { return nil }
+        return data[absolute(data, offset)]
     }
 
     private static func readUInt16(_ data: Data, at offset: Int) -> UInt16? {

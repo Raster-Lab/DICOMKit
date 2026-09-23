@@ -66,6 +66,14 @@ public struct ParsingOptions: Sendable {
     /// Exceeding this throws `DICOMError.limitExceeded`.
     public let maxFragmentCount: Int?
 
+    /// Hard limit on the inflated size of a Deflated Explicit VR Little Endian Data
+    /// Set (PS3.5 A.5). Inflation stops and the read fails once the limit would be
+    /// exceeded, so a small compressed file cannot expand without bound.
+    public let maximumInflatedByteCount: Int
+
+    /// Default inflation limit: 1 GiB.
+    public static let defaultMaximumInflatedByteCount = 1 << 30
+    
     /// Default parsing options (full parsing)
     public static let `default` = ParsingOptions()
     
@@ -88,7 +96,8 @@ public struct ParsingOptions: Sendable {
         maxSequenceDepth: Int = 64,
         maxElementLength: Int? = nil,
         maxTotalElements: Int? = nil,
-        maxFragmentCount: Int? = nil
+        maxFragmentCount: Int? = nil,
+        maximumInflatedByteCount: Int = ParsingOptions.defaultMaximumInflatedByteCount
     ) {
         self.mode = mode
         self.stopAfterTag = stopAfterTag
@@ -98,5 +107,6 @@ public struct ParsingOptions: Sendable {
         self.maxElementLength = maxElementLength
         self.maxTotalElements = maxTotalElements
         self.maxFragmentCount = maxFragmentCount
+        self.maximumInflatedByteCount = maximumInflatedByteCount
     }
 }

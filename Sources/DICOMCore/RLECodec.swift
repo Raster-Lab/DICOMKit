@@ -313,13 +313,21 @@ public struct RLECodec: ImageCodec, ImageEncoder, Sendable {
     private func decodeRLESegment(_ data: Data, expectedLength: Int) throws -> Data {
         var output = Data()
         output.reserveCapacity(expectedLength)
-        
+
         var offset = 0
-        
-        while offset < data.count && output.count < expectedLength {
+
+        // Strict PS3.5 Annex G decoding: the segment must produce exactly
+        // `expectedLength` bytes. A run that overshoots, a segment that ends early,
+        // or more than one trailing byte (the G.3.2 even-length pad) is an error;
+        // output is never truncated or zero-filled to hide a malformed segment.
+        while output.count < expectedLength {
+            guard offset < data.count else {
+                throw DICOMError.parsingFailed(
+                    "RLE segment ended after \(output.count) of \(expectedLength) bytes")
+            }
             let controlByte = Int8(bitPattern: data[offset])
             offset += 1
-            
+
             if controlByte == -128 {
                 // No operation - skip
                 continue
@@ -329,12 +337,11 @@ public struct RLECodec: ImageCodec, ImageEncoder, Sendable {
                 guard offset + count <= data.count else {
                     throw DICOMError.parsingFailed("RLE literal run exceeds data bounds")
                 }
-                
-                for i in 0..<count {
-                    if output.count < expectedLength {
-                        output.append(data[offset + i])
-                    }
+                guard output.count + count <= expectedLength else {
+                    throw DICOMError.parsingFailed(
+                        "RLE literal run exceeds the declared segment length \(expectedLength)")
                 }
+                output.append(data[offset..<(offset + count)])
                 offset += count
             } else {
                 // Repeat run: repeat next byte -n+1 times
@@ -342,26 +349,24 @@ public struct RLECodec: ImageCodec, ImageEncoder, Sendable {
                 guard offset < data.count else {
                     throw DICOMError.parsingFailed("RLE repeat run missing byte value")
                 }
-                
-                let repeatByte = data[offset]
-                offset += 1
-                
-                for _ in 0..<count {
-                    if output.count < expectedLength {
-                        output.append(repeatByte)
-                    }
+                guard output.count + count <= expectedLength else {
+                    throw DICOMError.parsingFailed(
+                        "RLE repeat run exceeds the declared segment length \(expectedLength)")
                 }
+                output.append(contentsOf: repeatElement(data[offset], count: count))
+                offset += 1
             }
         }
-        
-        // Pad with zeros if needed
-        while output.count < expectedLength {
-            output.append(0)
+
+        let trailing = data.count - offset
+        guard trailing <= 1 else {
+            throw DICOMError.parsingFailed(
+                "RLE segment carries \(trailing) bytes beyond the declared length \(expectedLength)")
         }
-        
+
         return output
     }
-    
+
     /// Interleaves decoded segments into the final pixel data
     ///
     /// For multi-byte samples, high-order bytes come first in separate segments.

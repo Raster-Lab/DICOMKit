@@ -184,6 +184,88 @@ network layer or the CLI tools.
   `Tag` constant against the dictionary; `TagAuditRegressionTests` rebuilds inputs from
   numeric tags.
 
+## [2.2.16] - 2026-09-22 (released on the 2.2 line; cherry-picked to main)
+
+### Fixed — The 64-bit Value Representations OV, SV and UV were missing
+
+- `VR` had no `OV`, `SV` or `UV` case (PS3.5 2026d Table 6.2-1, CP-1818), so an
+  explicit "OV" element — notably Extended Offset Table (7FE0,0001) and Extended
+  Offset Table Lengths (7FE0,0002) — was read as `UN` and the dictionary listed
+  those tags as UN; `uses32BitLength` now covers OV, SV and UV (PS3.5 Table
+  7.1-1), the parser retains the declared VR and value bytes exactly, and the
+  writer emits the two reserved bytes and 32-bit length for them.
+- Dictionary corrections: (7FE0,0001)/(7FE0,0002) OV, (7FE0,0003) UV,
+  (0072,0081) OV, (0072,0082) SV, (0072,0083) UV, (0008,040C)/(0008,040D)/
+  (0008,0428)/(0008,0429) UV.
+- `EncapsulatedPixelData` still exposes only the Basic Offset Table; readers that
+  need the extended table consult the two elements directly.
+
+## [2.2.15] - 2026-09-22 (released on the 2.2 line; cherry-picked to main)
+
+### Fixed — Deflated Explicit VR Little Endian data sets were silently truncated on read
+
+- The reader inflated a deflated Data Set (PS3.5 A.5) into a fixed buffer of
+  four times the compressed size (minimum 64 KiB) with `compression_decode_buffer`
+  and kept whatever fit, so any file whose Data Set expanded more than four-fold
+  (typical for segmentations and constant regions) parsed as a silently
+  truncated object. New `DeflatedDataSet.inflate(_:maximumOutputByteCount:)`
+  streams the inflation, requires the DEFLATE end-of-stream marker exactly at
+  the last input byte, and reports `truncated`, `corrupt`, `trailingBytes` and
+  `outputLimitExceeded` as distinct failures; `DICOMParser` maps them to
+  `DICOMError.parsingFailed`.
+- `ParsingOptions.maximumInflatedByteCount` (default 1 GiB) bounds the inflated
+  size so a small compressed file cannot expand without limit.
+- The private `Data.decompress()` helper was removed; `Data.deflateCompressed()`
+  (the writer) is unchanged.
+
+## [2.2.14] - 2026-09-22 (released on the 2.2 line; cherry-picked to main)
+
+### Fixed — JPEG-LS and JPEG 2000 decoders accepted frames that did not match the descriptor
+
+- `JPEGLSCodec.decodeFrame` now verifies the decoded frame against the
+  `PixelDataDescriptor`: width/height must equal Columns/Rows, the component
+  count must equal Samples per Pixel, the sample precision P must equal Bits
+  Stored (as DCMTK's decoder requires) and every component must be a full-size
+  plane. A mismatch throws `DICOMError`; previously the output was silently
+  zero-filled, truncated, widened or clamped to the descriptor's byte count.
+- `JPEGLSCodec(decodingTransferSyntaxUID:)` pins a decoder to a transfer
+  syntax. Under JPEG-LS Lossless (…4.80) a scan with NEAR > 0 is refused
+  (ITU-T T.87 C.2.4.1.1); the registry now wires one decoder per syntax. The
+  default initializer accepts both scans as before.
+- `J2KSwiftCodec.packPixels` now requires the decoded component count to equal
+  Samples per Pixel (also for single-sample frames), every component precision
+  to fit Bits Allocated and every component buffer to be exactly the declared
+  frame's byte count. Previously a surplus component was ignored and an
+  over-long buffer (for example a 16-bit codestream under an 8-bit descriptor)
+  was silently truncated.
+- `J2KSwiftCodec(decodingTransferSyntaxUID:)` and the new
+  `J2KCodestreamInspector.usesIrreversibleWavelet(in:)` refuse a codestream
+  whose COD/COC selects the irreversible 9/7 wavelet under a lossless-only
+  transfer syntax (…4.90, …4.92, …4.201, …4.202). The registry, `HTJ2KCodec`
+  and `CompressionManager` decode paths pass the source syntax through. The
+  default initializer still decodes any Part-1 / HTJ2K codestream.
+- Added strict-decoding contract tests for both codecs and the inspector.
+
+### Changed — JLSwift floor raised to 0.9.2
+
+- JPEG-LS streams whose entropy data is followed by a legal 0xFF fill byte
+  before EOI (ITU-T T.81 B.1.1.2; CharLS / DCMTK `dcmcjpls` writes one on many
+  single-row frames) failed to parse in JLSwift ≤ 0.9.1 ("premature end of
+  bitstream"). Fixed upstream in JLSwift 0.9.2; `Package.swift` now requires
+  `from: "0.9.2"` and a CharLS-authored regression stream is decoded in
+  `JPEGLSCodecTests`.
+
+### Fixed — RLE Lossless decoder silently repaired malformed segments (v2.2.13)
+
+- `RLECodec.decodeRLESegment` now decodes strictly per PS3.5 Annex G: a segment
+  that ends before the declared length throws instead of being zero-filled, a
+  literal or repeat run that overshoots the declared length throws instead of
+  being truncated, and more than one trailing byte after the declared length
+  (the G.3.2 even-length pad) throws instead of being ignored.
+- Well-formed streams, including every `RLECodec.encodeFrame` output, decode
+  byte-identically as before. Added strict-decoding contract tests.
+- Released as v2.2.13 from the v2.2.12 line.
+
 ### Added — dicom-mwl: date/time Range Matching and a scheduled-time filter (2026-09-17)
 
 MWL scheduled-date filtering accepted only a single day; there was no way to ask
