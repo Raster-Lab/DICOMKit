@@ -336,6 +336,54 @@ public struct DICOMValidator {
                 tag: nil
             ))
         }
+
+        validateModalityDefinedTerm(dataSet: dataSet, warnings: &warnings)
+    }
+
+    /// Checks Modality (0008,0060) against the PS3.3 C.7.3.1.1.1 Defined Terms.
+    ///
+    /// Modality is a Defined Term, not an Enumerated Value, so a code outside the
+    /// list is legal and warns rather than errors. Retired codes warn separately:
+    /// they are valid in legacy data but should not be written by new equipment.
+    private func validateModalityDefinedTerm(dataSet: DataSet, warnings: inout [ValidationIssue]) {
+        guard let raw = dataSet.string(for: .modality)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return }
+
+        guard let modality = Modality(rawValue: raw) else {
+            // An alias is still wrong on the wire, so name the code it should be.
+            if let normalized = Modality.normalized(raw) {
+                warnings.append(ValidationIssue(
+                    level: .warning,
+                    message: "Modality '\(raw)' is not a DICOM Defined Term "
+                        + "(did you mean '\(normalized.rawValue)' — \(normalized.name)?)",
+                    tag: .modality
+                ))
+            } else {
+                warnings.append(ValidationIssue(
+                    level: .warning,
+                    message: "Modality '\(raw)' is not a DICOM Defined Term "
+                        + "(PS3.3 C.7.3.1.1.1); private codes are permitted but reduce interoperability",
+                    tag: .modality
+                ))
+            }
+            return
+        }
+
+        if modality.isRetired {
+            warnings.append(ValidationIssue(
+                level: .warning,
+                message: "Modality '\(modality.rawValue)' (\(modality.name)) is retired "
+                    + "and should not be used in new objects",
+                tag: .modality
+            ))
+        } else if !modality.isStandard {
+            warnings.append(ValidationIssue(
+                level: .warning,
+                message: "Modality '\(modality.rawValue)' is conventional but not a "
+                    + "DICOM Defined Term (PS3.3 C.7.3.1.1.1)",
+                tag: .modality
+            ))
+        }
     }
     
     private func detectIOD(from dataSet: DataSet) -> String? {
@@ -612,7 +660,8 @@ struct CTImageStorageValidator: IODValidator {
         }
         
         // Validate modality
-        if let modality = dataSet.string(for: .modality), modality != "CT" {
+        if let raw = dataSet.string(for: .modality),
+           Modality.normalized(raw) != Modality.ct {
             errors.append(ValidationIssue(
                 level: .error,
                 message: "CT Image Storage: Modality must be 'CT'",
@@ -645,7 +694,8 @@ struct MRImageStorageValidator: IODValidator {
             }
         }
         
-        if let modality = dataSet.string(for: .modality), modality != "MR" {
+        if let raw = dataSet.string(for: .modality),
+           Modality.normalized(raw) != Modality.mr {
             errors.append(ValidationIssue(
                 level: .error,
                 message: "MR Image Storage: Modality must be 'MR'",
@@ -676,7 +726,8 @@ struct CRImageStorageValidator: IODValidator {
             }
         }
         
-        if let modality = dataSet.string(for: .modality), modality != "CR" {
+        if let raw = dataSet.string(for: .modality),
+           Modality.normalized(raw) != Modality.cr {
             errors.append(ValidationIssue(
                 level: .error,
                 message: "CR Image Storage: Modality must be 'CR'",
@@ -707,7 +758,8 @@ struct USImageStorageValidator: IODValidator {
             }
         }
         
-        if let modality = dataSet.string(for: .modality), modality != "US" {
+        if let raw = dataSet.string(for: .modality),
+           Modality.normalized(raw) != Modality.us {
             errors.append(ValidationIssue(
                 level: .error,
                 message: "US Image Storage: Modality must be 'US'",
@@ -761,7 +813,8 @@ struct GrayscaleSoftcopyPresentationStateValidator: IODValidator {
             }
         }
         
-        if let modality = dataSet.string(for: .modality), modality != "PR" {
+        if let raw = dataSet.string(for: .modality),
+           Modality.normalized(raw) != Modality.pr {
             warnings.append(ValidationIssue(
                 level: .warning,
                 message: "GSPS: Modality should be 'PR'",
@@ -831,7 +884,8 @@ struct StructuredReportValidator: IODValidator {
             }
         }
         
-        if let modality = dataSet.string(for: .modality), modality != "SR" {
+        if let raw = dataSet.string(for: .modality),
+           Modality.normalized(raw) != Modality.sr {
             errors.append(ValidationIssue(
                 level: .error,
                 message: "Structured Report: Modality must be 'SR'",

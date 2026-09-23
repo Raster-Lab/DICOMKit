@@ -87,12 +87,12 @@ public struct GrayscalePresentationStateParser: Sendable {
         }
         
         // Parse Presentation State Identification Module
-        let instanceNumber = dataSet.integerString(for: .presentationInstanceNumber)?.value
-        let presentationLabel = dataSet.string(for: .presentationLabel)
-        let presentationDescription = dataSet.string(for: .presentationDescription)
+        let instanceNumber = dataSet.integerString(for: .instanceNumber)?.value
+        let presentationLabel = dataSet.string(for: .contentLabel)
+        let presentationDescription = dataSet.string(for: .contentDescription)
         let presentationCreationDate = dataSet.date(for: .presentationCreationDate)
         let presentationCreationTime = dataSet.time(for: .presentationCreationTime)
-        let presentationCreatorsName = dataSet.personName(for: .presentationCreatorsName)
+        let presentationCreatorsName = dataSet.personName(for: .contentCreatorName)
         
         // Parse Presentation State Relationship Module
         let referencedSeries = try parseReferencedSeries(from: dataSet)
@@ -434,8 +434,8 @@ public struct GrayscalePresentationStateParser: Sendable {
         // (0070,0006) is the Text Object's own Unformatted Text Value; (0040,A160)
         // is SR's Text Value, read as a fallback for files written when this
         // parser used the wrong tag.
-        guard let text = item.string(for: .textObjectUnformattedTextValue)
-                ?? item.string(for: .unformattedTextValue),
+        guard let text = item.string(for: .unformattedTextValue)
+                ?? item.string(for: .textValue),
               let topLeftValues = item[.boundingBoxTopLeftHandCorner]?.realValuesTolerant,
               topLeftValues.count == 2,
               let bottomRightValues = item[.boundingBoxBottomRightHandCorner]?.realValuesTolerant,

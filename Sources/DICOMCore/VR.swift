@@ -1,6 +1,6 @@
 /// Value Representation (VR) enumeration
 ///
-/// Defines all 31 Value Representations from DICOM PS3.5 2026a Table 6.2-1.
+/// Defines all 34 Value Representations from DICOM PS3.5 2026a Table 6.2-1.
 /// Each VR specifies the data type and format of a DICOM data element value.
 ///
 /// Reference: DICOM PS3.5 Section 6.2 - Value Representation (VR)
@@ -70,14 +70,20 @@ public enum VR: String, Sendable, Hashable, CaseIterable {
     case UR
     /// Unsigned Short (PS3.5 Section 6.2)
     case US
+    /// Other 64-bit Very Long (PS3.5 Section 6.2)
+    case OV
+    /// Signed 64-bit Very Long (PS3.5 Section 6.2)
+    case SV
+    /// Unsigned 64-bit Very Long (PS3.5 Section 6.2)
+    case UV
     
     /// Indicates whether this VR uses a 32-bit length field in Explicit VR encoding
     ///
     /// Per PS3.5 Section 7.1.2, most VRs use a 16-bit length field, but certain VRs
-    /// (OB, OD, OF, OL, OW, SQ, UC, UN, UR, UT) use a 32-bit length field.
+    /// (OB, OD, OF, OL, OV, OW, SQ, SV, UC, UN, UR, UT, UV) use a 32-bit length field.
     public var uses32BitLength: Bool {
         switch self {
-        case .OB, .OD, .OF, .OL, .OW, .SQ, .UC, .UN, .UR, .UT:
+        case .OB, .OD, .OF, .OL, .OV, .OW, .SQ, .SV, .UC, .UN, .UR, .UT, .UV:
             return true
         default:
             return false

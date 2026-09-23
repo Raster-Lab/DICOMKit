@@ -120,11 +120,26 @@ struct MetadataOptions: ParsableArguments {
     @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.modality))
     var modality: String?
 
+    @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
+    var strictModality: Bool = false
+
     @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.manufacturer))
     var manufacturer: String?
 
     @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.institutionName))
     var institutionName: String?
+
+    /// The shared metadata value the engine takes, with `--modality` validated.
+    ///
+    /// Throwing so `--strict-modality` can stop the run; the non-throwing
+    /// `shared` below stays for callers that have already validated.
+    func validatedShared() throws -> VideoWorkflow.Metadata {
+        var metadata = shared
+        if let resolved = try ModalityOptionValidator.resolve(modality, strict: strictModality) {
+            metadata.modality = resolved
+        }
+        return metadata
+    }
 
     /// The shared metadata value the engine takes.
     var shared: VideoWorkflow.Metadata {
@@ -216,7 +231,7 @@ extension DICOMVideo {
                     frameRateOverride: frameRate,
                     dryRun: dryRun,
                     verbose: verbose,
-                    metadata: metadata.shared,
+                    metadata: try metadata.validatedShared(),
                     seriesNumber: seriesNumber,
                     instanceNumber: instanceNumber
                 )
@@ -449,7 +464,7 @@ extension DICOMVideo {
             // UID per clip. Rejecting beats silently ignoring the flag.
             do {
                 try VideoWorkflow.validateBatchOptions(
-                    seriesMode: seriesMode, metadata: metadata.shared)
+                    seriesMode: seriesMode, metadata: try metadata.validatedShared())
             } catch let failure as VideoWorkflow.Failure {
                 throw fail(failure)
             }
@@ -477,7 +492,7 @@ extension DICOMVideo {
                 dryRun: dryRun,
                 verbose: verbose,
                 recursive: recursive,
-                metadata: metadata.shared,
+                metadata: try metadata.validatedShared(),
                 readFile: { FileManager.default.contents(atPath: $0.path) },
                 writeFile: { item in
                     let destination = outputURL.appendingPathComponent(item.outputName)

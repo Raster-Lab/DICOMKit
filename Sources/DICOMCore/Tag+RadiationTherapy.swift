@@ -114,8 +114,11 @@ extension Tag {
     /// ROI Physical Property Value (3006,00B4)
     public static let roiPhysicalPropertyValue = Tag(group: 0x3006, element: 0x00B4)
     
-    /// ROI Elemental Composition Sequence (3006,00B7)
-    public static let roiElementalCompositionSequence = Tag(group: 0x3006, element: 0x00B7)
+    /// ROI Elemental Composition Sequence (3006,00B6)
+    public static let roiElementalCompositionSequence = Tag(group: 0x3006, element: 0x00B6)
+    
+    /// ROI Elemental Composition Atomic Number (3006,00B7)
+    public static let roiElementalCompositionAtomicNumber = Tag(group: 0x3006, element: 0x00B7)
     
     // MARK: - RT Series Module (PS3.3 C.8.8.1)
     
@@ -321,11 +324,11 @@ extension Tag {
     /// Brachy Application Setup Sequence (300A,0230)
     public static let brachyApplicationSetupSequence = Tag(group: 0x300A, element: 0x0230)
     
-    /// Application Setup Number (300A,0232)
-    public static let applicationSetupNumber = Tag(group: 0x300A, element: 0x0232)
+    /// Application Setup Type (300A,0232)
+    public static let applicationSetupType = Tag(group: 0x300A, element: 0x0232)
     
-    /// Application Setup Type (300A,0234)
-    public static let applicationSetupType = Tag(group: 0x300A, element: 0x0234)
+    /// Application Setup Number (300A,0234)
+    public static let applicationSetupNumber = Tag(group: 0x300A, element: 0x0234)
     
     // MARK: - RT Dose Module (PS3.3 C.8.8.3)
     // Group 3004

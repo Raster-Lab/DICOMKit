@@ -651,9 +651,8 @@ public struct DataExchangeView: View {
                         GridRow {
                             Text("Modality")
                                 .gridColumnAlignment(.trailing)
-                            TextField("SC", text: $viewModel.secondaryCaptureModality)
-                                .textFieldStyle(.roundedBorder)
-                                .accessibilityLabel("Modality")
+                            ModalityPicker("Modality",
+                                           selection: $viewModel.secondaryCaptureModality)
                         }
                     }
                 }

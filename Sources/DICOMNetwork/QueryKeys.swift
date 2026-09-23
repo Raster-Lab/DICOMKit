@@ -97,6 +97,10 @@ public struct QueryKeys: Sendable, Hashable {
     /// - Returns: Updated query keys
     public func matching(_ tag: Tag, value: String, vr: VR) -> QueryKeys {
         var copy = self
+        // A data set holds each tag once (PS3.5 7.1): a later key for the same
+        // tag replaces the earlier one, so `.requestPatientID().patientID("P1")`
+        // yields a single (0010,0020) element carrying "P1".
+        copy.keys.removeAll { $0.tag == tag }
         copy.keys.append(QueryKey(tag: tag, value: value, vr: vr))
         return copy
     }
@@ -109,6 +113,8 @@ public struct QueryKeys: Sendable, Hashable {
     /// - Returns: Updated query keys
     public func returning(_ tag: Tag, vr: VR) -> QueryKeys {
         var copy = self
+        // Never downgrade a matching key already set for this tag to a return key.
+        guard !copy.keys.contains(where: { $0.tag == tag }) else { return copy }
         copy.keys.append(QueryKey(tag: tag, value: "", vr: vr))
         return copy
     }

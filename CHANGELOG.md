@@ -7,6 +7,183 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Full DICOM 2026a modality coverage and a canonical `Modality` type (2026-09-23)
+
+- **`DICOMCore.Modality`** — one type for Modality (0008,0060), carrying every
+  PS3.3 C.7.3.1.1.1 defined term in 2026a: **79 current codes and 18 retired**,
+  against the 26 the app previously recognized. It is a `struct`, not an `enum`,
+  because Modality is a *Defined Term* rather than an Enumerated Value: private
+  and vendor codes are legal on the wire, so `init(unchecked:)` round-trips any
+  CS value losslessly while `isStandard` / `isRetired` / `isCurrent` report the
+  truth about it. A `Category` (cross-sectional, radiography, ultrasound,
+  visible light, ophthalmic, waveform, radiotherapy, derived, …) lets UI group
+  79 codes and lets icons, colors and presets fall back per family.
+- **Ophthalmic imaging is representable at all.** `OPT`, `OPTENF`, `OPTBSV`,
+  `OCT`, `IVOCT`, `OPM`, `OAM`, `OPV`, `KER`, `LEN`, `SRF`, `VA` and `IOL`
+  appeared nowhere in the codebase before; only `OP` existed.
+- **`--modality` is validated for the first time.** No CLI checked the option at
+  all, so a typo reached the PACS as a filter that silently matched nothing.
+  `ModalityOptionValidator` now backs `dicom-query`, `dicom-qr`, `dicom-mwl`,
+  `dicom-wado`, `dicom-mpps`, `dicom-archive`, `dicom-image`, `dicom-pdf` and
+  `dicom-video`: an unknown code warns with the nearest defined terms ("Did you
+  mean CT, CFM, CR?") and is still sent, since private codes are legal; a
+  retired code warns; an alias is normalized. `--strict-modality` turns any of
+  those into an error before the tool connects.
+- **`dicom-tags --list-modalities`** prints all 79 codes grouped by category.
+  (It lives here because every tool that takes `--modality` has a required
+  positional argument, so a listing flag on those commands could never run.)
+- **A sectioned `ModalityPicker`** replaces free-text modality fields in
+  Networking, Data Exchange and Archive Management. It keeps an out-of-list
+  bound value — a retired or private code already in the data — selectable
+  rather than silently resetting the field.
+
+### Changed
+
+- **`ModalityMapping.StandardModality` is removed.** Its 26-code enum is
+  replaced by `DICOMCore.Modality`; `allCodes`, `systemImage(for:)`,
+  `fullName(for:)` and `normalize(_:)` keep their signatures, and `allCodes`
+  grows from 26 to 79. The type was `public` but unreachable from outside the
+  package (`DICOMStudio` is not a published product) and was referenced only by
+  its own file.
+- **`RT` is demoted to a legacy alias.** It was never a DICOM code: the standard
+  defines eight distinct RT codes, and `normalize` collapsed `RTPLAN`, `RTDOSE`
+  and `RTSTRUCT` onto a single invented `RT`, losing which object it was. Each
+  now keeps its own name and identity; bare `RT` resolves to `RTIMAGE` so
+  existing data still renders. **RT series will show different icons and names
+  than before.**
+- **One alias table for the whole project.** Two existed and disagreed:
+  `ModalityMapping.normalize` knew `MRI`/`PET`/`RT*`/`PDF`, while
+  `WindowLevelPresets` separately knew `MRI`/`RG`/`RF`. `Modality.normalized`
+  is now the single table, and also absorbs the non-DICOM spellings `XR` and
+  `DR` (→ `DX`) and `SPECT` (→ `NM`) that were buried in a private switch.
+- **Four divergent icon/color/preset maps now agree.** `ModalityIcon` (26
+  codes), `DICOMFileDropHelpers` (9 groups, using the non-DICOM `XR`),
+  `StudioTheme` (4 color groups) and `ThumbnailHelpers` (7 groups) each had
+  their own switch; CT was `lungs` in one and `cylinder.split.1x2` in another.
+  All four now resolve through `Modality`/`Modality.Category`.
+- **Window/level presets: 25 → 37**, adding `RG`, `PX`, `IO`, `BMD`, `IVUS` and
+  `OPT`. Presets remain deliberately curated: display-ready modalities (US, ES,
+  GM, SM, XC, …) and non-image objects (SR, PR, KO, SEG, DOC) still have none,
+  because a fixed window for them would be an invented number, not a clinical one.
+- **Inbound HL7 and FHIR modality values are normalized** rather than written
+  straight into (0008,0060) as received.
+- **`SC` and `VL` are recognized but never offered.** Neither is a Defined Term
+  (verified absent from PS3.3 C.7.3.1.1.1 and CID 32 in 2026a). `SC` is not
+  merely unlisted: PS3.3 C.8.6.1 makes Modality Type 3 on the Secondary Capture
+  IOD and says the value describes "the equipment that originally created or
+  generated the data, not the equipment performing the digitization or capture"
+  — so a digitized film radiograph should carry `CR`/`XA`, not `SC`. Existing
+  files using them still parse and display; nothing new is written with them.
+- **IOD validation resolves aliases.** The six per-IOD checks compared raw
+  strings, so a file with `Modality = "MRI"` was reported as *"MR Image Storage:
+  Modality must be 'MR'"*. A new Defined-Term check also warns on unknown,
+  retired and conventional codes.
+
+### Fixed
+
+- **Codes the library itself emitted were not displayable.** `WaveformBuilder`
+  writes `AU`, `EPS` and `RESP`; `EncapsulatedDocumentWorkflow` writes `M3D`.
+  None were in the app's 26-code list, so they rendered with the unknown-modality
+  icon and a raw uppercased string instead of a name. A regression test now
+  asserts every modality the library writes is displayable.
+- **`XX` is no longer written as a modality.** `StudyOrganizer` and
+  `FrameSplitter` used it as a filename placeholder; it is not a DICOM code, and
+  is now `OT`.
+- **Duplicated Enhanced-IOD logic.** `["CT","MR","PT"].contains(modality)` and
+  `modality == "MR"` existed verbatim in both `FunctionalGroupBuilder` and
+  `FrameMerger`. Both now call one documented
+  `Modality.usesEnhancedFrameTypeDescriptors`.
+- **Six defined terms had no icon.** `BI`, `DG`, `LS`, `OSS`, `PA` and `TG` were
+  offered in pickers but fell back to the unknown-modality symbol.
+
+
+### Fixed — Hanging Protocol selector values and five never-run test suites (2026-09-18, audit Phase 3)
+
+- **Hanging Protocol selector values** — `HangingProtocolSerializer` wrote an Image Set
+  Selector's values under the selected attribute's own tag (a Modality selector put "CT" in
+  (0008,0060) as LO inside the selector item), and the parser read them back the same way.
+  PS3.3 Table C.23.4-1 carries them in Selector Attribute VR (0072,0050) plus the Selector
+  *xx* Value element for that VR ((0072,005E)–(0072,0083)). Both now do; every VR is covered,
+  including the binary ones and Selector Code Sequence Value (0072,0080) for SQ attributes.
+  `ImageSetSelector` gains `attributeVR` (nil = dictionary lookup, required for private
+  attributes), `sequencePointer` (0072,0052) and `codeValues`. The parser still reads the
+  old layout, and a Selector *xx* Value with no (0072,0050) beside it.
+- **Tests** — the `ParametricMap`, `RadiationTherapy`, `Segmentation`, `StructuredReporting`
+  and `Waveform` suites in `DICOMKitTests` were excluded from the build and had never run
+  (`DICOM_TAG_AUDIT_FINDINGS.md` #54), as were the DisplaySet, Matcher and ImageSetDefinition
+  Hanging Protocol suites. They are in the allowlist now, together with the
+  `DataSet` test builders they depend on, which write each element in its dictionary VR.
+  Running them surfaced (audit §J):
+  - **CAD SR** — `CADFindingsExtractor` looked for the probability under (111023, DCM) while
+    the builders and TID 4021/4104 use (111047, DCM), so every finding was dropped; the
+    manufacturer was expected as CODE but written as TEXT; characteristics overwrote the
+    finding type. CIRCLE coordinates were written as (cx, cy, r) instead of the PS3.3
+    C.18.6.1.2 centre + circumference point, and read back with the wrong radius.
+  - **Measurement Report (TID 1500)** — `addQualitativeEvaluation` dropped the concept name;
+    the extractor did not look inside the Qualitative Evaluations container.
+    `addMeasurementGroup` gains `finding:` and `findingSite:`.
+  - **Parametric Map** — Real World Value Slope/Intercept were read as DS; they are FD, so
+    no linear mapping ever parsed.
+
+### Fixed — DICOM key-set conformance per service (2026-09-18, audit Phase 2)
+
+Each network service's request/response key set was checked against the standard's table
+(`DICOM_TAG_AUDIT_PHASE2_FINDINGS.md`). Q/R C-FIND/C-MOVE, Storage Commitment and Print were
+already conformant; MPPS, MWL and the QIDO-RS server were not.
+
+- **MPPS** — Referenced SOP Class UID was hard-coded to Secondary Capture for every image;
+  Protocol Name (Type 1) was never sent; eight Type 2 attributes were missing; Performing
+  Physician and Study Instance UID were sent at root where the table forbids them; the
+  `attributes` extension point was silently dropped; the Scheduled Step Attributes Sequence was
+  sent in N-SET (forbidden — now opt-in `--legacy-nset-scheduled-attributes`). New
+  `MPPSPerformedSeries` / `MPPSReferencedInstance` / `MPPSCodedEntry` models and matching
+  `dicom-mpps` options.
+- **MWL** — responses were decoded as ASCII (non-ASCII names became nil); code sequences and
+  Referenced Study Sequence were neither requested nor storable; fifteen Type 2 return keys were
+  not requested. `WorklistItem.sequences`, `requestedProcedureCode`, `scheduledProtocolCodes`,
+  `referencedStudies`, patient-safety attributes; `WorklistQueryKeys.matching/spsMatching`.
+- **Q/R** — series/instance queries without the parent UIDs are rejected locally with a PS3.4
+  C.4.1.2.1 message instead of a server 0xA900; `QueryKeys.matching` no longer emits duplicate
+  elements for a tag.
+- **QIDO-RS server** — StudyDate/StudyTime/ModalitiesInStudy/StudyID/SeriesNumber/SOPClassUID
+  filters were ignored; hex-tag `{attributeID}` form was rejected; Retrieve URL, Instance
+  Availability, Referring Physician, Study ID, Birth Date/Sex missing from results.
+- **QIDO-RS client** — PPS Start Time and Request Attributes Sequence filter/result support.
+- **Print** — optional Illumination / Reflected Ambient Light with a Presentation LUT.
+
+### Fixed — DICOM attribute ↔ tag audit (2026-09-18)
+
+A package-wide audit of every hand-written DICOM tag against the bundled PS3.6 dictionary
+(`DICOM_TAG_AUDIT_FINDINGS.md`), prompted by the MWL Requested Procedure Description bug
+((0032,1070) where (0032,1060) was meant). 36 wrong tags corrected; none were in the
+network layer or the CLI tools.
+
+- **Hanging Protocol** — thirteen `Tag+HangingProtocol` constants carried a neighbour's tag
+  (Number of Priors Referenced, User Group Name, Image Set Selector Sequence/Usage Flag,
+  Selector Attribute/Value Number, …). Parser and serializer now use the PS3.6 group 0072
+  layout; US attributes are read as US (they were read as IS and always came back nil).
+- **Real World Value LUT** — LUT-form mappings never parsed: first/last value were read from
+  LUT Data and Double Float *Last*, and LUT data from First Value Mapped. `doubleFloat…First/
+  LastValueMapped` constants were swapped.
+- **Waveform annotations** — text was written to SR Text Value (0040,A160) instead of
+  Unformatted Text Value (0070,0006); the parser still reads the old tag as a fallback.
+- **RT Plan** — `applicationSetupNumber`/`applicationSetupType` swapped (300A,0232/0234).
+- **UPS-RS** — `humanPerformerCodeSequence`/`humanPerformerOrganization` swapped;
+  `retrieveURI` was (0040,1002) Reason for Requested Procedure; discontinuation reason was
+  (0074,1236) Requesting AE; cancel-request contact info went to (0040,1005)/(0040,1006).
+- **Enhanced MR flattening** read Segmented k-Space Traversal from Slab Orientation.
+- **Dictionary** — repeating groups (50xx Curve, 60xx Overlay) were absent, so overlay
+  attributes displayed as unknown; multi-VR attributes were collapsed to one VR; Extended
+  Offset Table was UN instead of OV. `VR` gains `OV`, `SV`, `UV`.
+- Renamed to the PS3.6 keyword (old names deprecated): `cranialThermalIndex`,
+  `operatorsName`, `physiciansOfRecord`, `nameOfPhysiciansReadingStudy`, `contentLabel`/
+  `contentDescription`/`contentCreatorName` (for `presentation*`), `unformattedTextValue`
+  (0070,0006), `hangingProtocolDefinitionSequence`, `imageSetSelectorSequence`,
+  `UPSQueryAttribute.scheduledStationNameCodeSequence`.
+- Guardrails: `Scripts/audit_tags.py --strict` in CI; `TagConstantAuditTests` checks every
+  `Tag` constant against the dictionary; `TagAuditRegressionTests` rebuilds inputs from
+  numeric tags.
+
 ### Added — dicom-mwl: date/time Range Matching and a scheduled-time filter (2026-09-17)
 
 MWL scheduled-date filtering accepted only a single day; there was no way to ask

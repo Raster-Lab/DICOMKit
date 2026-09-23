@@ -456,14 +456,21 @@ struct FileOperationsHelpersTests {
         #expect(DICOMFileDropHelpers.validateMagicBytes(data) == .validWithoutPreamble)
     }
 
-    @Test("DICOMFileDropHelpers.symbolName returns 'lungs' for CT")
+    // symbolName previously carried its own icon switch, which disagreed with
+    // ModalityMapping (CT was "lungs" here and "cylinder.split.1x2" there).
+    // The 2026a adoption made ModalityMapping the one icon map; these now
+    // assert the two entry points agree rather than pinning the old values.
+
+    @Test("DICOMFileDropHelpers.symbolName agrees with ModalityMapping for CT")
     func test_fileDropHelpers_symbolName_CT() {
-        #expect(DICOMFileDropHelpers.symbolName(for: "CT") == "lungs")
+        #expect(DICOMFileDropHelpers.symbolName(for: "CT")
+                == ModalityMapping.systemImage(for: "CT"))
     }
 
-    @Test("DICOMFileDropHelpers.symbolName returns 'waveform.path' for US")
+    @Test("DICOMFileDropHelpers.symbolName agrees with ModalityMapping for US")
     func test_fileDropHelpers_symbolName_US() {
-        #expect(DICOMFileDropHelpers.symbolName(for: "US") == "waveform.path")
+        #expect(DICOMFileDropHelpers.symbolName(for: "US")
+                == ModalityMapping.systemImage(for: "US"))
     }
 
     @Test("DICOMFileDropHelpers.symbolName returns default for unknown modality")

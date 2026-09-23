@@ -264,9 +264,10 @@ public struct ArchiveManagementView: View {
                         TextField("Study date (YYYYMMDD or range)", text: $viewModel.searchQuery.studyDate)
                             .textFieldStyle(.roundedBorder)
                             .accessibilityLabel("Study date filter")
-                        TextField("Modality (CT, MR, …)", text: $viewModel.searchQuery.modality)
-                            .textFieldStyle(.roundedBorder)
-                            .accessibilityLabel("Modality filter")
+                        ModalityPicker("Modality",
+                                       selection: $viewModel.searchQuery.modality,
+                                       includeAnyOption: true,
+                                       anyOptionLabel: "Any modality")
                         TextField("Accession number", text: $viewModel.searchQuery.accessionNumber)
                             .textFieldStyle(.roundedBorder)
                             .accessibilityLabel("Accession number filter")

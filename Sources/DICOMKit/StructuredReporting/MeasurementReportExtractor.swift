@@ -227,10 +227,16 @@ public struct MeasurementReport: Sendable, Equatable {
         var evaluations: [CodedConcept] = []
         
         for item in container.contentItems {
-            if let codeItem = item.asCode,
-               let conceptName = codeItem.conceptName,
-               // Common qualitative evaluation concept names
-               ["121071", "121073", "121074"].contains(conceptName.codeValue) {
+            // TID 1500 row 9: a "Qualitative Evaluations" (C0034375, UMLS)
+            // container whose CODE children are the evaluations.
+            if let evaluationsContainer = item.asContainer,
+               evaluationsContainer.conceptName?.codeValue == "C0034375" {
+                evaluations += evaluationsContainer.contentItems.compactMap { $0.asCode?.conceptCode }
+            }
+            // Evaluations written directly under the root.
+            else if let codeItem = item.asCode,
+                    let conceptName = codeItem.conceptName,
+                    ["121071", "121073", "121074"].contains(conceptName.codeValue) {
                 evaluations.append(codeItem.conceptCode)
             }
         }

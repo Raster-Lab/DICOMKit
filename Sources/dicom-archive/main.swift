@@ -140,8 +140,11 @@ extension DICOMArchive {
         @Option(name: .long, help: "Filter by study UID")
         var studyUID: String?
 
-        @Option(name: .long, help: "Filter by modality")
+        @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("filter")))
         var modality: String?
+
+        @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
+        var strictModality: Bool = false
 
         @Option(name: .long, help: "Filter by study date (YYYYMMDD)")
         var studyDate: String?
@@ -150,6 +153,10 @@ extension DICOMArchive {
         var format: String = "table"
 
         mutating func run() throws {
+            // One answer to "is that a modality?" across every dicom-* tool.
+            modality = try ModalityOptionValidator.resolve(
+                modality, strict: strictModality)
+
             try runArchive { try ArchiveStore.query(
                 in: archive, patientName: patientName, patientID: patientID,
                 studyUID: studyUID, modality: modality, studyDate: studyDate,

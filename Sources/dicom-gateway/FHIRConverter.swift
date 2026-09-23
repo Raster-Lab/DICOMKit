@@ -238,7 +238,11 @@ class FHIRConverter {
         if let modalities = fhir["modality"] as? [[String: Any]],
            let firstModality = modalities.first,
            let code = firstModality["code"] as? String {
-            try setElement(&dicomFile, tag: .modality, value: code, vr: .CS)
+            // Same normalization as the HL7 path: FHIR is an external source,
+            // so resolve aliases and canonicalize to CS form, keeping an
+            // unrecognized code rather than dropping it.
+            let modality = Modality.normalized(code) ?? Modality(unchecked: code)
+            try setElement(&dicomFile, tag: .modality, value: modality.rawValue, vr: .CS)
         }
     }
     
@@ -300,7 +304,7 @@ class FHIRConverter {
         dataset.setString(sopInstanceUID, for: .sopInstanceUID, vr: .UI)
         dataset.setString(generateUID(), for: .studyInstanceUID, vr: .UI)
         dataset.setString(generateUID(), for: .seriesInstanceUID, vr: .UI)
-        dataset.setString("OT", for: .modality, vr: .CS)
+        dataset.setString(Modality.ot.rawValue, for: .modality, vr: .CS)
         
         return DICOMFile(fileMetaInformation: fileMetaInformation, dataSet: dataset)
     }

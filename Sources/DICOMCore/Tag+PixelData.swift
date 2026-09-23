@@ -18,7 +18,7 @@ extension Tag {
     public static let doubleFloatPixelData = Tag(group: 0x7FE0, element: 0x0009)
     
     /// Pixel Data Provider URL (0028,7FE0)
-    /// VR: UT, VM: 1
+    /// VR: UR, VM: 1
     public static let pixelDataProviderURL = Tag(group: 0x0028, element: 0x7FE0)
     
     /// Extended Offset Table (7FE0,0001)

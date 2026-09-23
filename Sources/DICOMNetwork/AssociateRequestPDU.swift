@@ -39,6 +39,14 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
     /// Reference: PS3.7 Section D.3.3.7 - User Identity Negotiation
     public let userIdentity: UserIdentity?
     
+    /// Proposed SCP/SCU Role Selections (optional)
+    ///
+    /// One entry per Abstract Syntax for which the requestor wants a role other
+    /// than the default (SCU only). Required for C-GET storage contexts.
+    ///
+    /// Reference: PS3.7 Section D.3.3.4 - SCP/SCU Role Selection Negotiation
+    public let roleSelections: [SCPSCURoleSelection]
+    
     /// DICOM Application Context Name UID
     ///
     /// Reference: PS3.7 Annex A
@@ -55,6 +63,7 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
     ///   - implementationVersionName: The Implementation Version Name (optional)
     ///   - userIdentity: User identity for authentication (optional)
     ///   - applicationContextName: Application Context Name (defaults to DICOM)
+    ///   - roleSelections: Proposed SCP/SCU Role Selections (optional)
     public init(
         calledAETitle: AETitle,
         callingAETitle: AETitle,
@@ -63,7 +72,8 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         implementationClassUID: String,
         implementationVersionName: String? = nil,
         userIdentity: UserIdentity? = nil,
-        applicationContextName: String = dicomApplicationContextName
+        applicationContextName: String = dicomApplicationContextName,
+        roleSelections: [SCPSCURoleSelection] = []
     ) {
         self.calledAETitle = calledAETitle
         self.callingAETitle = callingAETitle
@@ -73,6 +83,7 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         self.implementationVersionName = implementationVersionName
         self.userIdentity = userIdentity
         self.applicationContextName = applicationContextName
+        self.roleSelections = roleSelections
     }
     
     /// Encodes the PDU for network transmission
@@ -240,6 +251,11 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         // Implementation Version Name Sub-Item (optional)
         if let versionName = implementationVersionName {
             subItems.append(encodeImplementationVersionNameSubItem(versionName))
+        }
+        
+        // SCP/SCU Role Selection Sub-Items (optional, PS3.7 D.3.3.4)
+        for role in roleSelections {
+            subItems.append(role.encode())
         }
         
         // User Identity Sub-Item (optional)

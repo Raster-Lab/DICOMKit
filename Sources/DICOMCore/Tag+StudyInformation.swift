@@ -59,19 +59,28 @@ extension Tag {
     
     /// Physician(s) of Record (0008,1048)
     /// VR: PN, VM: 1-n
-    public static let physicianOfRecord = Tag(group: 0x0008, element: 0x1048)
+    public static let physiciansOfRecord = Tag(group: 0x0008, element: 0x1048)
     
     /// Physician(s) of Record Identification Sequence (0008,1049)
     /// VR: SQ, VM: 1
-    public static let physicianOfRecordIdentificationSequence = Tag(group: 0x0008, element: 0x1049)
+    public static let physiciansOfRecordIdentificationSequence = Tag(group: 0x0008, element: 0x1049)
     
     /// Name of Physician(s) Reading Study (0008,1060)
     /// VR: PN, VM: 1-n
-    public static let nameOfPhysicianReadingStudy = Tag(group: 0x0008, element: 0x1060)
+    public static let nameOfPhysiciansReadingStudy = Tag(group: 0x0008, element: 0x1060)
     
     /// Physician(s) Reading Study Identification Sequence (0008,1062)
     /// VR: SQ, VM: 1
-    public static let physicianReadingStudyIdentificationSequence = Tag(group: 0x0008, element: 0x1062)
+    public static let physiciansReadingStudyIdentificationSequence = Tag(group: 0x0008, element: 0x1062)
+    
+    @available(*, deprecated, renamed: "physiciansOfRecord")
+    public static let physicianOfRecord = Tag.physiciansOfRecord
+    @available(*, deprecated, renamed: "physiciansOfRecordIdentificationSequence")
+    public static let physicianOfRecordIdentificationSequence = Tag.physiciansOfRecordIdentificationSequence
+    @available(*, deprecated, renamed: "nameOfPhysiciansReadingStudy")
+    public static let nameOfPhysicianReadingStudy = Tag.nameOfPhysiciansReadingStudy
+    @available(*, deprecated, renamed: "physiciansReadingStudyIdentificationSequence")
+    public static let physicianReadingStudyIdentificationSequence = Tag.physiciansReadingStudyIdentificationSequence
     
     /// Requesting Service Code Sequence (0032,1034)
     /// VR: SQ, VM: 1

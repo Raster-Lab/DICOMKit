@@ -143,12 +143,12 @@ public struct DICOMQueryResultFormatter {
         var jsonArray: [[String: String]] = []
         for result in results {
             var jsonObject: [String: String] = [:]
+            // Decode with the response's declared (0008,0005), like QueryResult.string(for:).
+            let characterSet = result.specificCharacterSet
             for (tag, data) in result.attributes {
                 let key = tag.description
-                if let string = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) {
-                    let trimmed = string.trimmingCharacters(in: CharacterSet(charactersIn: " \0"))
-                    if !trimmed.isEmpty { jsonObject[key] = trimmed }
-                }
+                let trimmed = QueryResultDecoding.decodeString(data, specificCharacterSet: characterSet)
+                if !trimmed.isEmpty { jsonObject[key] = trimmed }
             }
             jsonArray.append(jsonObject)
         }
@@ -169,10 +169,10 @@ public struct DICOMQueryResultFormatter {
         let columns = results[0].attributes.keys.sorted { $0.description < $1.description }
         output += columns.map { escapeCSV($0.description) }.joined(separator: ",") + "\n"
         for result in results {
+            let characterSet = result.specificCharacterSet
             let row = columns.map { tag -> String in
-                if let data = result.attributes[tag],
-                   let string = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) {
-                    return escapeCSV(string.trimmingCharacters(in: CharacterSet(charactersIn: " \0")))
+                if let data = result.attributes[tag] {
+                    return escapeCSV(QueryResultDecoding.decodeString(data, specificCharacterSet: characterSet))
                 }
                 return ""
             }

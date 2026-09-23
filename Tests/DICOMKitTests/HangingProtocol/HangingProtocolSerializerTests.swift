@@ -86,7 +86,7 @@ final class HangingProtocolSerializerTests: XCTestCase {
         
         let dataSet = try serializer.serialize(protocol: hangingProtocol)
         
-        XCTAssertNil(dataSet.sequence(for: .hangingProtocolEnvironmentSequence),
+        XCTAssertNil(dataSet.sequence(for: .hangingProtocolDefinitionSequence),
                      "Should not include empty environment sequence")
     }
     
@@ -96,7 +96,7 @@ final class HangingProtocolSerializerTests: XCTestCase {
         
         let dataSet = try serializer.serialize(protocol: hangingProtocol)
         
-        let envSequence = dataSet.sequence(for: .hangingProtocolEnvironmentSequence)
+        let envSequence = dataSet.sequence(for: .hangingProtocolDefinitionSequence)
         XCTAssertNotNil(envSequence)
         XCTAssertEqual(envSequence?.count, 1)
         
@@ -111,7 +111,7 @@ final class HangingProtocolSerializerTests: XCTestCase {
         
         let dataSet = try serializer.serialize(protocol: hangingProtocol)
         
-        let envSequence = dataSet.sequence(for: .hangingProtocolEnvironmentSequence)
+        let envSequence = dataSet.sequence(for: .hangingProtocolDefinitionSequence)
         XCTAssertEqual(envSequence?.count, 2)
         
         XCTAssertEqual(envSequence?[0].string(for: .modality), "CT")
@@ -206,10 +206,21 @@ final class HangingProtocolSerializerTests: XCTestCase {
         
         let imageSetSequence = dataSet.sequence(for: .imageSetsSequence)
         let imageSetItem = imageSetSequence?[0]
-        let selectorSequence = imageSetItem?[.selectorSequence]?.sequenceItems
+        let selectorSequence = imageSetItem?[.imageSetSelectorSequence]?.sequenceItems
         
         XCTAssertNotNil(selectorSequence)
         XCTAssertEqual(selectorSequence?.count, 1)
+        
+        // PS3.3 Table C.23.4-1: the value travels in Selector Attribute VR
+        // (0072,0050) + Selector CS Value (0072,0062), not under (0008,0060).
+        let item = selectorSequence?[0]
+        XCTAssertEqual(item?[.selectorAttribute]?.attributeTagValue, .modality)
+        XCTAssertEqual(item?[.selectorValueNumber]?.uint16Value, 1)
+        XCTAssertEqual(item?.string(for: .filterByOperator), "EQUAL")
+        XCTAssertEqual(item?.string(for: .selectorAttributeVR), "CS")
+        XCTAssertEqual(item?[.selectorCSValue]?.stringValue, "CT")
+        XCTAssertNil(item?[.modality])
+        XCTAssertEqual(item?.string(for: .imageSetSelectorUsageFlag), "MATCH")
     }
     
     // MARK: - Display Set Serialization Tests

@@ -320,7 +320,7 @@ final class GrayscalePresentationStateBuilderTests: XCTestCase {
             elements.append(DataElement(
                 tag: .textObjectSequence, vr: .SQ, length: 0, valueData: Data(),
                 sequenceItems: [SequenceItem(elements: [
-                    DataElement.string(tag: .unformattedTextValue, vr: .ST, value: "Legacy"),
+                    DataElement.string(tag: .textValue, vr: .ST, value: "Legacy"),
                     DataElement.string(
                         tag: .boundingBoxTopLeftHandCorner, vr: .DS, value: "1\\2"),
                     DataElement.string(

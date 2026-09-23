@@ -4,6 +4,7 @@
 // DICOM Studio — Platform-independent thumbnail generation helpers
 
 import Foundation
+import DICOMCore
 
 /// Platform-independent helpers for thumbnail generation sizing and metadata.
 ///
@@ -46,23 +47,26 @@ public enum ThumbnailHelpers: Sendable {
     /// - Parameter modality: The DICOM modality code (e.g., "CT", "MR", "CR").
     /// - Returns: A tuple of (center, width) values.
     public static func defaultWindowSettings(for modality: String) -> (center: Double, width: Double) {
-        switch modality.uppercased() {
-        case "CT":
+        // Display-ready 8-bit frames (US, endoscopy, visible light) and anything
+        // unrecognized share the neutral 128/256 default.
+        let fallback = (center: 128.0, width: 256.0)
+        guard let resolved = Modality.normalized(modality) else { return fallback }
+        switch resolved {
+        case .ct:
             return (center: 40.0, width: 400.0) // Soft tissue
-        case "MR":
+        case .mr:
             return (center: 500.0, width: 1000.0)
-        case "CR", "DX":
-            return (center: 2048.0, width: 4096.0)
-        case "MG":
+        case .mg:
             return (center: 3000.0, width: 6000.0)
-        case "NM", "PT":
+        case .nm, .pt:
             return (center: 500.0, width: 1000.0)
-        case "US":
-            return (center: 128.0, width: 256.0)
-        case "XA":
-            return (center: 128.0, width: 256.0)
         default:
-            return (center: 128.0, width: 256.0)
+            // Projection X-ray is wide-latitude; everything else is display-ready.
+            // XA/RF are 8-bit in practice, so they keep the neutral default.
+            if resolved.category == .radiography, resolved != .xa, resolved != .rf {
+                return (center: 2048.0, width: 4096.0)
+            }
+            return fallback
         }
     }
 

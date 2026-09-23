@@ -283,7 +283,11 @@ public struct WaveformParser {
 
     /// Parse a single annotation
     private static func parseAnnotation(from item: SequenceItem) -> WaveformAnnotation {
+        // Unformatted Text Value (0070,0006) per PS3.3 C.10.9; (0040,A160) is
+        // SR's Text Value, read as a fallback for files DICOMKit wrote before
+        // the two were distinguished.
         let textValue = item.elements[.unformattedTextValue]?.stringValue
+            ?? item.elements[.textValue]?.stringValue
 
         let conceptNameCode = parseCodedConceptDirect(from: item, tag: .conceptNameCodeSequence)
 

@@ -934,8 +934,7 @@ struct CreateMPPSSheet: View {
                 Section("Station") {
                     TextField("Station AE Title", text: $stationAETitle)
                         .accessibilityLabel("Performing station AE title")
-                    TextField("Modality", text: $modality)
-                        .accessibilityLabel("Modality type")
+                    ModalityPicker("Modality", selection: $modality)
                 }
             }
             .formStyle(.grouped)

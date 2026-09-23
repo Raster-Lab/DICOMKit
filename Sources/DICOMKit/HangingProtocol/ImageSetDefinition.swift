@@ -53,9 +53,25 @@ public struct ImageSetDefinition: Sendable {
 // MARK: - Image Set Selector
 
 /// Selector for filtering images based on DICOM attributes
+///
+/// One item of the Image Set Selector Sequence (0072,0022). The attribute's
+/// values are carried in the Selector *xx* Value element that matches
+/// Selector Attribute VR (0072,0050), never in the attribute's own tag
+/// (PS3.3 Table C.23.4-1). `values` holds every VR as text: numeric VRs as
+/// decimal, AT as "(GGGG,EEEE)", the byte VRs (OB/OW/OD/OF/OL/OV/UN) as one
+/// hexadecimal string, and SQ as the Code Value of each `codeValues` item.
 public struct ImageSetSelector: Sendable {
-    /// DICOM tag to filter on
+    /// DICOM tag to filter on — Selector Attribute (0072,0026)
     public let attribute: Tag
+    
+    /// Selector Attribute VR (0072,0050). `nil` means "look it up in the data
+    /// dictionary when serialising", which covers every standard attribute; a
+    /// private attribute needs it set explicitly before it can carry values.
+    public let attributeVR: VR?
+    
+    /// Selector Sequence Pointer (0072,0052): the sequence that contains
+    /// `attribute` when it is not a top-level attribute of the instance.
+    public let sequencePointer: Tag?
     
     /// Value number for multi-valued attributes (1-based)
     public let valueNumber: Int?
@@ -66,20 +82,30 @@ public struct ImageSetSelector: Sendable {
     /// Expected values for the attribute
     public let values: [String]
     
+    /// Selector Code Sequence Value (0072,0080) items, used when the
+    /// attribute is a code sequence (`attributeVR == .SQ`).
+    public let codeValues: [CodedConcept]
+    
     /// Usage flag (MATCH, NO_MATCH)
     public let usageFlag: SelectorUsageFlag
     
     public init(
         attribute: Tag,
+        attributeVR: VR? = nil,
+        sequencePointer: Tag? = nil,
         valueNumber: Int? = nil,
         operator: FilterOperator? = nil,
         values: [String] = [],
+        codeValues: [CodedConcept] = [],
         usageFlag: SelectorUsageFlag = .match
     ) {
         self.attribute = attribute
+        self.attributeVR = attributeVR
+        self.sequencePointer = sequencePointer
         self.valueNumber = valueNumber
         self.operator = `operator`
         self.values = values
+        self.codeValues = codeValues
         self.usageFlag = usageFlag
     }
 }

@@ -70,7 +70,7 @@ public struct HangingProtocolSerializer {
             )
         }
         
-        // Number of Priors Referenced (0072,000E) - Optional, Type 3
+        // Number of Priors Referenced (0072,0014) - Optional, Type 3
         if let numberOfPriors = hangingProtocol.numberOfPriorsReferenced {
             dataSet[.numberOfPriorsReferenced] = DataElement.uint16(
                 tag: .numberOfPriorsReferenced,
@@ -80,15 +80,15 @@ public struct HangingProtocolSerializer {
         
         // MARK: - Hanging Protocol Environment Module (C.23.2)
         
-        // Hanging Protocol Environment Sequence (0072,0010) - Optional, Type 3
+        // Hanging Protocol Definition Sequence (0072,000C) - Required, Type 1
         if !hangingProtocol.environments.isEmpty {
             let environmentItems = serializeEnvironments(hangingProtocol.environments)
-            dataSet.setSequence(environmentItems, for: .hangingProtocolEnvironmentSequence)
+            dataSet.setSequence(environmentItems, for: .hangingProtocolDefinitionSequence)
         }
         
         // MARK: - Hanging Protocol User Identification Module (C.23.3)
         
-        // Hanging Protocol User Group Name (0072,0016) - Optional, Type 3
+        // Hanging Protocol User Group Name (0072,0010) - Optional, Type 3
         if !hangingProtocol.userGroups.isEmpty {
             // Serialize first user group (DICOM allows only one in practice)
             if let firstGroup = hangingProtocol.userGroups.first {
@@ -197,11 +197,11 @@ public struct HangingProtocolSerializer {
                 ))
             }
             
-            // Selector Sequence (0072,0050) - Conditional, Type 1C
+            // Image Set Selector Sequence (0072,0022) - Required, Type 1
             if !imageSet.selectors.isEmpty {
                 let selectorItems = try serializeSelectors(imageSet.selectors)
                 let selectorSequence = createSequenceElement(
-                    tag: .selectorSequence,
+                    tag: .imageSetSelectorSequence,
                     items: selectorItems
                 )
                 elements.append(selectorSequence)
@@ -234,13 +234,13 @@ public struct HangingProtocolSerializer {
         for selector in selectors {
             var elements: [DataElement] = []
             
-            // Selector Attribute (0072,0024) - Required, Type 1
+            // Selector Attribute (0072,0026) - Required, Type 1
             elements.append(serializeTagAsAttributeTag(
                 tag: .selectorAttribute,
                 value: selector.attribute
             ))
             
-            // Selector Value Number (0072,0026) - Optional, Type 3
+            // Selector Value Number (0072,0028) - Optional, Type 3
             if let valueNumber = selector.valueNumber {
                 elements.append(DataElement.uint16(
                     tag: .selectorValueNumber,
@@ -257,18 +257,39 @@ public struct HangingProtocolSerializer {
                 ))
             }
             
-            // Selector values are stored using the attribute tag itself
-            if !selector.values.isEmpty {
-                // Join values with backslash separator per DICOM multi-value standard
-                let valueString = selector.values.joined(separator: "\\")
-                elements.append(DataElement.string(
-                    tag: selector.attribute,
-                    vr: .LO,
-                    value: valueString
+            // Selector Sequence Pointer (0072,0052) - Conditional, Type 1C
+            if let sequencePointer = selector.sequencePointer {
+                elements.append(serializeTagAsAttributeTag(
+                    tag: .selectorSequencePointer,
+                    value: sequencePointer
                 ))
             }
             
-            // Image Set Selector Usage Flag (0072,0022) - Required, Type 1
+            // Selector Attribute VR (0072,0050) and the matching Selector xx
+            // Value (0072,005E-0083) - PS3.3 Table C.23.4-1. The values never
+            // go under the attribute's own tag.
+            let attributeVR = selector.attributeVR
+                ?? SelectorAttributeValueCoding.dictionaryVR(for: selector.attribute)
+            let hasValues = !selector.values.isEmpty || !selector.codeValues.isEmpty
+            if let attributeVR {
+                elements.append(DataElement.string(
+                    tag: .selectorAttributeVR,
+                    vr: .CS,
+                    value: attributeVR.rawValue
+                ))
+                if hasValues {
+                    elements.append(try SelectorAttributeValueCoding.encode(
+                        values: selector.values,
+                        codeValues: selector.codeValues,
+                        vr: attributeVR
+                    ))
+                }
+            } else if hasValues {
+                throw HangingProtocolError.invalidAttributeValue(
+                    "Selector Attribute \(selector.attribute) has no dictionary VR; set ImageSetSelector.attributeVR to encode its values")
+            }
+            
+            // Image Set Selector Usage Flag (0072,0024) - Required, Type 1
             elements.append(DataElement.string(
                 tag: .imageSetSelectorUsageFlag,
                 vr: .CS,
@@ -301,7 +322,7 @@ public struct HangingProtocolSerializer {
                 value: operation.direction.rawValue
             ))
             
-            // Selector Attribute (0072,0024) - Conditional, Type 1C
+            // Selector Attribute (0072,0026) - Conditional, Type 1C
             // Required when Sort-by Category is ATTRIBUTE
             if let attribute = operation.attribute {
                 elements.append(serializeTagAsAttributeTag(
@@ -317,11 +338,11 @@ public struct HangingProtocolSerializer {
     }
     
     private func serializeTimeSelection(_ timeSelection: TimeBasedSelection, into elements: inout [DataElement]) {
-        // Relative Time (0072,0038) - Optional, Type 3
+        // Relative Time (0072,0038) US - Optional, Type 3
         if let relativeTime = timeSelection.relativeTime {
-            elements.append(DataElement.int32(
+            elements.append(DataElement.uint16(
                 tag: .relativeTime,
-                value: Int32(relativeTime)
+                value: UInt16(clamping: relativeTime)
             ))
         }
         
@@ -366,11 +387,9 @@ public struct HangingProtocolSerializer {
             
             // Display Environment Spatial Position (0072,0108) - Optional, Type 3
             if let spatialPosition = definition.spatialPosition {
-                let values = spatialPosition.map { Float64($0) }
-                elements.append(DataElement.string(
+                elements.append(DataElement.float64s(
                     tag: .displayEnvironmentSpatialPosition,
-                    vr: .FD,
-                    value: values.map { String($0) }.joined(separator: "\\")
+                    values: spatialPosition.map { Float64($0) }
                 ))
             }
             

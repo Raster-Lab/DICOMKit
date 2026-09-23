@@ -298,7 +298,7 @@ public enum SecondaryCaptureType: String, Sendable {
 
     /// The default modality for Secondary Capture
     public var defaultModality: String {
-        return "OT"
+        return Modality.ot.rawValue
     }
 
     /// Default pixel characteristics for this type

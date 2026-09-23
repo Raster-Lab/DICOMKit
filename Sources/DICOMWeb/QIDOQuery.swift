@@ -226,6 +226,32 @@ public struct QIDOQuery: Sendable, Equatable {
         return with(parameter: QIDOQueryAttribute.performedProcedureStepStartDate, value: value)
     }
     
+    /// Filter by Performed Procedure Step Start Time (0040,0245)
+    ///
+    /// - Parameter value: Time in HHMMSS format, or a range HHMMSS-HHMMSS
+    /// - Returns: Updated query
+    public func performedProcedureStepStartTime(_ value: String) -> QIDOQuery {
+        return with(parameter: QIDOQueryAttribute.performedProcedureStepStartTime, value: value)
+    }
+
+    /// Filter by Scheduled Procedure Step ID inside Request Attributes Sequence
+    /// (0040,0275.0040,0009) — PS3.18 8.3.4.1 sequence-attribute matching.
+    ///
+    /// - Parameter value: Scheduled Procedure Step ID
+    /// - Returns: Updated query
+    public func scheduledProcedureStepID(_ value: String) -> QIDOQuery {
+        return with(parameter: "\(QIDOQueryAttribute.requestAttributesSequence).\(QIDOQueryAttribute.scheduledProcedureStepID)", value: value)
+    }
+
+    /// Filter by Requested Procedure ID inside Request Attributes Sequence
+    /// (0040,0275.0040,1001).
+    ///
+    /// - Parameter value: Requested Procedure ID
+    /// - Returns: Updated query
+    public func requestedProcedureID(_ value: String) -> QIDOQuery {
+        return with(parameter: "\(QIDOQueryAttribute.requestAttributesSequence).\(QIDOQueryAttribute.requestedProcedureID)", value: value)
+    }
+
     /// Filter by Body Part Examined (0018,0015)
     ///
     /// - Parameter value: Body part code
@@ -469,6 +495,19 @@ public enum QIDOQueryAttribute {
     
     /// Performed Procedure Step Start Date (0040,0244)
     public static let performedProcedureStepStartDate = "00400244"
+
+    /// Performed Procedure Step Start Time (0040,0245)
+    public static let performedProcedureStepStartTime = "00400245"
+
+    /// Request Attributes Sequence (0040,0275) — carries Scheduled Procedure Step ID
+    /// and Requested Procedure ID (PS3.18 Table 10.6.1-5 series-level keys)
+    public static let requestAttributesSequence = "00400275"
+
+    /// Scheduled Procedure Step ID (0040,0009) — inside Request Attributes Sequence
+    public static let scheduledProcedureStepID = "00400009"
+
+    /// Requested Procedure ID (0040,1001) — inside Request Attributes Sequence
+    public static let requestedProcedureID = "00401001"
     
     /// Number of Series Related Instances (0020,1209)
     public static let numberOfSeriesRelatedInstances = "00201209"

@@ -161,9 +161,28 @@ struct RetrieveExecutor {
             warning: result.progress.warning,
             isSuccess: result.isSuccess), terminator: "")
 
-        if !result.isSuccess {
-            throw RetrieveError.retrievalFailed(status: result.status)
+        // PS3.4 C.4.2.1.4.2: success means status 0x0000 and no failed
+        // sub-operations. Anything else exits non-zero, with the Failed SOP
+        // Instance UID List (0008,0058) when the SCP supplied one.
+        try Self.checkResult(result)
+    }
+
+    /// Prints failed/warning details to stderr and throws unless `result.isSuccess`.
+    static func checkResult(_ result: RetrieveResult) throws {
+        if !result.failedSOPInstanceUIDs.isEmpty {
+            fprintln("Failed SOP Instance UIDs (\(result.failedSOPInstanceUIDs.count)):")
+            for uid in result.failedSOPInstanceUIDs { fprintln("  \(uid)") }
         }
+        if result.isSuccess { return }
+        if result.isWarning {
+            fprintln("Warning: retrieve finished with status \(result.status) — "
+                + "\(result.progress.completed) completed, \(result.progress.failed) failed, "
+                + "\(result.progress.warning) warning(s)")
+        }
+        throw RetrieveError.retrievalFailed(status: result.status,
+                                            failed: result.progress.failed,
+                                            warning: result.progress.warning,
+                                            failedSOPInstanceUIDs: result.failedSOPInstanceUIDs)
     }
     
     // MARK: - C-GET Implementation
@@ -244,8 +263,9 @@ struct RetrieveExecutor {
         // C-GET summary via the SHARED formatter (handles the 0-instances warning).
         print(NetworkConsole.cGetSummary(received: filesReceived), terminator: "")
 
-        if let result = finalResult, !result.isSuccess {
-            throw RetrieveError.retrievalFailed(status: result.status)
+        // PS3.4 C.4.3.1.4.2: same success rule as C-MOVE.
+        if let result = finalResult {
+            try Self.checkResult(result)
         }
     }
 
@@ -392,21 +412,25 @@ struct RetrieveExecutor {
 
 // MARK: - Errors
 
-enum RetrieveError: Error, CustomStringConvertible {
+enum RetrieveError: Error, CustomStringConvertible, LocalizedError {
     case missingMoveDestination
-    case retrievalFailed(status: DIMSEStatus)
+    case retrievalFailed(status: DIMSEStatus, failed: Int, warning: Int, failedSOPInstanceUIDs: [String])
     case partialFailure(succeeded: Int, failed: Int)
     
     var description: String {
         switch self {
         case .missingMoveDestination:
             return "C-MOVE requires a move destination AE title"
-        case .retrievalFailed(let status):
-            return "Retrieval failed with status: \(status)"
+        case .retrievalFailed(let status, let failed, let warning, let uids):
+            var text = "Retrieval failed with status: \(status) (\(failed) failed, \(warning) warning sub-operations)"
+            if !uids.isEmpty { text += "; failed SOP Instance UIDs: " + uids.joined(separator: ", ") }
+            return text
         case .partialFailure(let succeeded, let failed):
             return "Bulk retrieval partially failed: \(succeeded) succeeded, \(failed) failed"
         }
     }
+
+    var errorDescription: String? { description }
 }
 
 // MARK: - Utilities

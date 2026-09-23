@@ -4,6 +4,7 @@
 // DICOM Studio — Helper enums for File Operations & Drag-and-Drop (Milestone 22)
 
 import Foundation
+import DICOMCore
 
 // MARK: - DICOMFileDropHelpers
 
@@ -52,19 +53,17 @@ public enum DICOMFileDropHelpers {
     // MARK: Modality icon names
 
     /// Returns the SF Symbol name that best represents the given DICOM modality code.
+    ///
+    /// Delegates to ``ModalityMapping/systemImage(for:)`` so the app has one
+    /// icon map rather than two that disagree. This previously carried its own
+    /// switch over nine codes, including the non-DICOM spelling `XR`, which now
+    /// resolves as an alias of `DX`.
     public static func symbolName(for modality: String?) -> String {
-        switch modality?.uppercased() {
-        case "CT":          return "lungs"
-        case "MR", "MRI":   return "brain.head.profile"
-        case "US":          return "waveform.path"
-        case "XR", "DX", "CR": return "rays"
-        case "NM":          return "atom"
-        case "PT":          return "figure.arms.open"
-        case "MG":          return "waveform.and.person.filled"
-        case "OT", "SC":    return "photo"
-        case "DOC", "SR":   return "doc.text"
-        default:            return "cross.case"
-        }
+        guard let modality, !modality.isEmpty,
+              ModalityMapping.category(for: modality) != .other
+                || Modality.normalized(modality) != nil
+        else { return "cross.case" }
+        return ModalityMapping.systemImage(for: modality)
     }
 
     // MARK: File size formatting

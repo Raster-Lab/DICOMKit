@@ -6381,6 +6381,21 @@ case "dicom-study":
             if !accession.isEmpty { query = query.accessionNumber(accession) }
             if !studyDesc.isEmpty { query = query.studyDescription(studyDesc) }
 
+            // Series-level matching keys (PS3.18 Table 10.6.1-5). The parameter
+            // definitions hide these outside the series level, so no misplaced-key
+            // warning is reachable here — unlike the CLI, where the flags can be
+            // typed at any level.
+            let ppsStartDate = paramValue("pps-start-date")
+            let ppsStartTime = paramValue("pps-start-time")
+            let qidoSPSID = paramValue("qido-sps-id")
+            let qidoRequestedProcedureID = paramValue("qido-requested-procedure-id")
+            if !ppsStartDate.isEmpty { query = query.performedProcedureStepStartDate(ppsStartDate) }
+            if !ppsStartTime.isEmpty { query = query.performedProcedureStepStartTime(ppsStartTime) }
+            if !qidoSPSID.isEmpty { query = query.scheduledProcedureStepID(qidoSPSID) }
+            if !qidoRequestedProcedureID.isEmpty {
+                query = query.requestedProcedureID(qidoRequestedProcedureID)
+            }
+
             // Dispatch mirrors the CLI run(): when the scoping UIDs are present the
             // query is path-scoped (GET /studies/{uid}/series, /studies/{uid}/series/{uid}/instances,
             // /studies/{uid}/instances); the root all-series/all-instances resources are
@@ -7863,6 +7878,8 @@ case "dicom-study":
         let studyDesc = paramValue("study-description")
         let referringPhysician = paramValue("referring-physician")
 
+        let includeParentKeys = paramValue("include-parent-keys") == "true"
+
         // Build C-FIND keys via the SHARED package mapping (DICOMNetwork) — the same
         // code the dicom-query CLI and the CLI-parity reference use, so input→C-FIND
         // cannot drift. Pass the SAME argument set as the CLI (incl. accession and
@@ -7874,7 +7891,29 @@ case "dicom-study":
             accession: accession, studyDescription: studyDesc,
             referringPhysician: referringPhysician,
             studyUID: studyUID, seriesUID: seriesUID,
-            seriesDate: seriesDate, instanceUID: instanceUID)
+            seriesDate: seriesDate, instanceUID: instanceUID,
+            includeParentLevelReturnKeys: includeParentKeys)
+
+        // PS3.4 C.4.1.2.1: patient/study filters cannot be matched at SERIES or
+        // INSTANCE level under the hierarchical model. The CLI warns on stderr
+        // rather than dropping them silently; the Workshop prints the SAME text
+        // into the console so neither surface loses the diagnosis.
+        let ignoredFilters = DICOMQueryService.ignoredParentLevelFilters(
+            level: level,
+            patientName: patientName, patientID: patientID,
+            studyDate: studyDate, accession: accession,
+            studyDescription: studyDesc, referringPhysician: referringPhysician)
+        if !ignoredFilters.isEmpty {
+            // The CLI names the level with its own option spelling, where the
+            // instance level is "INSTANCE"; the shared QueryLevel.image rawValue
+            // is "IMAGE". Use the CLI's wording so the two consoles read alike.
+            let levelName = (level == .image) ? "INSTANCE" : level.rawValue
+            appendConsoleOutput(
+                "Warning: \(ignoredFilters.joined(separator: ", ")) cannot be matched at "
+                + "\(levelName) level under the hierarchical query model and "
+                + "will be ignored (PS3.4 C.4.1.2.1: only the Unique Keys of the levels above "
+                + "may be sent). Query at STUDY level first, then narrow with --study-uid.\n")
+        }
 
         // Verbose header via the SHARED NetworkConsole formatter (DICOMNetwork), gated on
         // --verbose so a plain run is just the results table — identical to the CLI. The
@@ -9381,6 +9420,7 @@ case "dicom-study":
         let modality = paramValue("modality")
         let spsStatus = paramValue("sps-status")
         let accession = paramValue("query-accession-number")
+        let performingPhysician = paramValue("query-performing-physician")
         let verbose = paramValue("verbose") == "true"
         let jsonOutput = paramValue("json") == "true"
 
@@ -9402,6 +9442,7 @@ case "dicom-study":
             addFilter("Modality:", modality)
             addFilter("SPS Status:", spsStatus)
             addFilter("Accession:", accession)
+            addFilter("Performing Physician:", performingPhysician)
             appendConsoleOutput(NetworkConsole.mwlQueryHeader(
                 host: host, port: port,
                 callingAE: callingAET, calledAE: calledAET,
@@ -9422,7 +9463,8 @@ case "dicom-study":
                 patientID: patientID,
                 modality: modality,
                 spsStatus: spsStatus,
-                accession: accession
+                accession: accession,
+                performingPhysician: performingPhysician
             )
         } catch {
             let msg = (error as? WorklistDateFilterError)?.description ?? "\(error)"
@@ -9762,6 +9804,16 @@ case "dicom-study":
 
     // MARK: - MPPS Execution (dicom-mpps)
 
+    /// Reports an SCP warning status: the operation was performed, but the SCP
+    /// coerced or dropped attributes (PS3.7 Annex C). The CLI writes the same
+    /// sentence to stderr; the Workshop has no stderr, so it goes to the console.
+    private func reportMPPSWarning(_ result: MPPSOperationResult) {
+        guard let warning = result.warning else { return }
+        appendConsoleOutput(
+            "warning: SCP completed the operation with \(warning) — attributes may have "
+            + "been coerced or dropped\n")
+    }
+
     /// Performs an MPPS N-CREATE or N-SET operation.
     private func executeDicomMPPS() async {
         let hostValue = paramValue("host")
@@ -9780,10 +9832,36 @@ case "dicom-study":
         let patientID = paramValue("patient-id")
         let spsID = paramValue("sps-id")
         let accessionNumber = paramValue("accession-number")
+        let modality = paramValue("modality")
+        let patientBirthDate = paramValue("patient-birth-date")
+        let patientSex = paramValue("patient-sex")
+        let studyID = paramValue("study-id")
+        let stationName = paramValue("station-name")
+        let performedLocation = paramValue("performed-location")
+        let procedureStepID = paramValue("procedure-step-id")
+        let procedureStepDescription = paramValue("procedure-step-description")
+        let createPerformingPhysician = paramValue("create-performing-physician")
+        let requestedProcedureID = paramValue("requested-procedure-id")
+        let requestedProcedureDescription = paramValue("requested-procedure-description")
+        let spsDescription = paramValue("sps-description")
+        let referencedStudyUID = paramValue("referenced-study-uid")
         // N-SET attributes
         let seriesUID = paramValue("series-uid")
         let imageUIDsRaw = paramValue("image-uid")
+        let sopClassUID = paramValue("sop-class-uid")
+        let protocolName = paramValue("protocol-name")
+        let seriesDescription = paramValue("series-description")
+        let operatorName = paramValue("operator-name")
+        let updatePerformingPhysician = paramValue("update-performing-physician")
+        let discontinuationReasonRaw = paramValue("discontinuation-reason")
+        let legacyNSetScheduledAttributes = paramValue("legacy-nset-scheduled-attributes") == "true"
+        // Shared
+        let specificCharacterSet = paramValue("specific-character-set")
         let verbose = paramValue("verbose") == "true"
+
+        /// Nil for an empty field so a blank Workshop input never overrides a
+        /// library default (e.g. Protocol Name's "UNSPECIFIED").
+        func optional(_ value: String) -> String? { value.isEmpty ? nil : value }
 
         guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
             appendConsoleOutput("Error: A valid host is required (e.g. hostname or hostname:11112).\n")
@@ -9827,6 +9905,30 @@ case "dicom-study":
             mppsStatus = isCreate ? DICOMNetwork.MPPSStatus.inProgress : DICOMNetwork.MPPSStatus.completed
         }
 
+        // Discontinuation reason: parsed through the SHARED MPPSCodedEntry grammar
+        // (DICOMNetwork) before any connection, so a malformed code fails the same
+        // way — and with the same message — as the CLI's --discontinuation-reason.
+        var discontinuationReason: MPPSCodedEntry?
+        if !isCreate, !discontinuationReasonRaw.isEmpty {
+            guard mppsStatus == .discontinued else {
+                let msg = "--discontinuation-reason is only valid with --status DISCONTINUED"
+                appendConsoleOutput("Error: \(msg)\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+                addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1, output: msg)
+                return
+            }
+            guard let parsed = MPPSCodedEntry.parse(discontinuationReasonRaw) else {
+                let msg = MPPSCodedEntry.parseErrorMessage(option: "--discontinuation-reason")
+                appendConsoleOutput("Error: \(msg)\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+                addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1, output: msg)
+                return
+            }
+            discontinuationReason = parsed
+        }
+
         // Header via the SHARED NetworkConsole formatter (DICOMNetwork) — the IDENTICAL
         // builder the dicom-mpps CLI uses. Operation-specific rows are supplied as an
         // ordered field list (the app exposes more attributes than the CLI; each side
@@ -9842,6 +9944,9 @@ case "dicom-study":
                 addHeaderField("Patient ID:", patientID)
                 addHeaderField("SPS ID:", spsID)
                 addHeaderField("Accession Number:", accessionNumber)
+                addHeaderField("Modality:", modality)
+                addHeaderField("Requested Procedure ID:", requestedProcedureID)
+                addHeaderField("Procedure Step ID:", procedureStepID)
             } else {
                 addHeaderField("MPPS UID:", mppsUID)
                 // Same gate as the CLI's verbose header: the Referenced Images row
@@ -9862,7 +9967,10 @@ case "dicom-study":
         do {
             if isCreate {
                 appendConsoleOutput(NetworkConsole.mppsProgress(isCreate: true))
-                let createdUID = try await DICOMMPPSService.create(
+                // createDetailed (not create) so the SCP's warning status and any
+                // reassigned SOP Instance UID reach the console, exactly as the CLI
+                // reports them on stderr.
+                let result = try await DICOMMPPSService.createDetailed(
                     host: host,
                     port: port,
                     callingAE: callingAET,
@@ -9870,11 +9978,33 @@ case "dicom-study":
                     studyInstanceUID: studyUID,
                     status: mppsStatus,
                     timeout: timeout,
-                    patientName: patientName.isEmpty ? nil : patientName,
-                    patientID: patientID.isEmpty ? nil : patientID,
-                    accessionNumber: accessionNumber.isEmpty ? nil : accessionNumber,
-                    scheduledProcedureStepID: spsID.isEmpty ? nil : spsID
+                    patientName: optional(patientName),
+                    patientID: optional(patientID),
+                    modality: optional(modality),
+                    procedureStepID: optional(procedureStepID),
+                    procedureStepDescription: optional(procedureStepDescription),
+                    performingPhysicianName: optional(createPerformingPhysician),
+                    performedStationName: optional(stationName),
+                    accessionNumber: optional(accessionNumber),
+                    scheduledProcedureStepID: optional(spsID),
+                    patientBirthDate: optional(patientBirthDate),
+                    patientSex: optional(patientSex),
+                    studyID: optional(studyID),
+                    performedLocation: optional(performedLocation),
+                    requestedProcedureID: optional(requestedProcedureID),
+                    requestedProcedureDescription: optional(requestedProcedureDescription),
+                    scheduledProcedureStepDescription: optional(spsDescription),
+                    referencedStudySOPInstanceUID: optional(referencedStudyUID),
+                    specificCharacterSet: optional(specificCharacterSet)
                 )
+                let createdUID = result.sopInstanceUID
+                reportMPPSWarning(result)
+                if result.sopInstanceUIDWasReassigned {
+                    appendConsoleOutput(
+                        "note: SCP assigned MPPS SOP Instance UID \(result.sopInstanceUID) "
+                        + "(requested \(result.requestedSOPInstanceUID)); use the assigned UID "
+                        + "for the N-SET (PS3.7 10.1.5.1.4)\n")
+                }
                 // Result via the SHARED formatter (preserves the "MPPS Instance UID:"
                 // marker). The UI-specific next-step hint stays local.
                 appendConsoleOutput(NetworkConsole.mppsCreateResult(uid: createdUID))
@@ -9898,6 +10028,15 @@ case "dicom-study":
                         referencedSOPs.append((studyUID: studyUID, seriesUID: seriesUID, sopInstanceUID: uid))
                     }
                 }
+                // Mirrors the CLI: warn when images are referenced without their real
+                // SOP Class, because the Secondary Capture placeholder is then sent and
+                // is non-conformant for anything but SC.
+                if !referencedSOPs.isEmpty, sopClassUID.isEmpty {
+                    appendConsoleOutput(
+                        "warning: Referenced SOP Class UID not given; it defaults to Secondary "
+                        + "Capture (1.2.840.10008.5.1.4.1.1.7), which is non-conformant for "
+                        + "CT/MR/… images\n")
+                }
                 // NOTE: accessionNumber is deliberately NOT forwarded here — the CLI's
                 // update subcommand has no --accession-number option, and the field is
                 // hidden in update mode (a stale value would silently leak into the N-SET).
@@ -9905,7 +10044,7 @@ case "dicom-study":
                 // (DICOMMPPSCommand) never sets it — the study/series UIDs flow only
                 // into the Referenced SOP Sequence — so forwarding it here would emit
                 // an N-SET dataset the pasted CLI command could never produce.
-                try await DICOMMPPSService.update(
+                let result = try await DICOMMPPSService.update(
                     host: host,
                     port: port,
                     callingAE: callingAET,
@@ -9913,8 +10052,17 @@ case "dicom-study":
                     mppsInstanceUID: mppsUID,
                     status: mppsStatus,
                     referencedSOPs: referencedSOPs,
-                    timeout: timeout
+                    timeout: timeout,
+                    referencedSOPClassUID: optional(sopClassUID),
+                    protocolName: optional(protocolName),
+                    seriesDescription: optional(seriesDescription),
+                    operatorsName: optional(operatorName),
+                    performingPhysicianName: optional(updatePerformingPhysician),
+                    legacyNSetScheduledStepAttributes: legacyNSetScheduledAttributes,
+                    discontinuationReason: discontinuationReason,
+                    specificCharacterSet: optional(specificCharacterSet)
                 )
+                reportMPPSWarning(result)
                 // Result via the SHARED formatter (preserves the "New Status:" /
                 // "Referenced Images:" markers).
                 appendConsoleOutput(NetworkConsole.mppsUpdateResult(

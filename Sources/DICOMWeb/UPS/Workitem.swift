@@ -1365,9 +1365,9 @@ public enum UPSTag {
     public static let scheduledStationGeographicLocationCodeSequence = "00404027"
     public static let scheduledHumanPerformersSequence = "00404034"
     public static let actualHumanPerformersSequence = "00404035"
-    public static let humanPerformerCodeSequence = "00404036"
+    public static let humanPerformerCodeSequence = "00404009"
     public static let humanPerformerName = "00404037"
-    public static let humanPerformerOrganization = "00404009"
+    public static let humanPerformerOrganization = "00404036"
     
     // UPS Scheduled Procedure Step
     public static let scheduledProcedureStepStartDateTime = "00404005"
@@ -1388,7 +1388,7 @@ public enum UPSTag {
     public static let inputReadinessState = "00404041"
     public static let procedureStepCancellationDateTime = "00404052"
     public static let reasonForCancellation = "00741238"
-    public static let procedureStepDiscontinuationReasonCodeSequence = "00741236"
+    public static let procedureStepDiscontinuationReasonCodeSequence = "0074100E"
     
     // Transaction
     public static let transactionUID = "00081195"
@@ -1401,7 +1401,7 @@ public enum UPSTag {
     public static let referencedSOPSequence = "00081199"
     public static let referencedSOPClassUID = "00081150"
     public static let referencedSOPInstanceUID = "00081155"
-    public static let retrieveURI = "00401002"
+    public static let retrieveURI = "0040E010"
     public static let typeOfInstances = "0040E020"
     
     // Study Reference

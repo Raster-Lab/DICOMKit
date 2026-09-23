@@ -83,8 +83,11 @@ struct DICOMImage: ParsableCommand {
     @Option(name: .long, help: "Instance Number (starting value for batch)")
     var instanceNumber: Int?
 
-    @Option(name: .long, help: "Modality (default: OT - Other)")
+    @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("to write (default: OT)")))
     var modality: String?
+
+    @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
+    var strictModality: Bool = false
 
     @Flag(name: .long, help: "Use EXIF metadata from images")
     var useExif: Bool = false
@@ -122,12 +125,17 @@ struct DICOMImage: ParsableCommand {
 
     #if canImport(CoreGraphics)
     private func metadata(studyUID: String, seriesUID: String, instanceNumber: Int,
-                          patientName: String, patientID: String) -> ImageConverter.Metadata {
-        ImageConverter.Metadata(
+                          patientName: String, patientID: String) throws -> ImageConverter.Metadata {
+        // Throws rather than defaulting on a bad value: --strict-modality has to
+        // be able to stop the run, and this is where the value is consumed.
+        let resolved = try ModalityOptionValidator.resolve(
+            modality, strict: strictModality, verbose: verbose)
+        return ImageConverter.Metadata(
             patientName: patientName, patientID: patientID,
             studyUID: studyUID, seriesUID: seriesUID, instanceNumber: instanceNumber,
             studyDescription: studyDescription, seriesDescription: seriesDescription,
-            modality: modality ?? "OT", seriesNumber: seriesNumber)
+            modality: resolved ?? Modality.ot.rawValue,
+            seriesNumber: seriesNumber)
     }
 
     // MARK: - Directory Processing

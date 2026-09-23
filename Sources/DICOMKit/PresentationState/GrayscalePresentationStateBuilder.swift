@@ -30,7 +30,7 @@ public struct GrayscalePresentationStateBuilder: Sendable {
     public static let sopClassUID = "1.2.840.10008.5.1.4.1.1.11.1"
 
     /// Modality of a presentation state series — fixed by PS3.3 C.11.10.
-    public static let modality = "PR"
+    public static let modality = Modality.pr.rawValue
 
     public init() {}
 
@@ -365,7 +365,7 @@ public struct GrayscalePresentationStateBuilder: Sendable {
                 tag: .boundingBoxAnnotationUnits, vr: .CS,
                 value: text.boundingBoxUnits.rawValue),
             DataElement.string(
-                tag: .textObjectUnformattedTextValue, vr: .ST, value: text.text),
+                tag: .unformattedTextValue, vr: .ST, value: text.text),
             Self.reals([text.boundingBoxTopLeft.column, text.boundingBoxTopLeft.row],
                        for: .boundingBoxTopLeftHandCorner),
             Self.reals([text.boundingBoxBottomRight.column, text.boundingBoxBottomRight.row],

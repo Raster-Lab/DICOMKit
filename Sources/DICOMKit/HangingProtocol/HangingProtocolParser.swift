@@ -70,7 +70,7 @@ public struct HangingProtocolParser {
     // MARK: - Environment Parsing
     
     private func parseEnvironments(from dataSet: DataSet) throws -> [HangingProtocolEnvironment] {
-        guard let envSequence = dataSet.sequence(for: .hangingProtocolEnvironmentSequence) else {
+        guard let envSequence = dataSet.sequence(for: .hangingProtocolDefinitionSequence) else {
             return []
         }
         
@@ -111,7 +111,7 @@ public struct HangingProtocolParser {
         var imageSets: [ImageSetDefinition] = []
         
         for (index, imageSetItem) in imageSetsSequence.enumerated() {
-            let number = imageSetItem[.imageSetNumber]?.integerStringValue?.value ?? (index + 1)
+            let number = imageSetItem[.imageSetNumber]?.uint16Value.map(Int.init) ?? (index + 1)
             let label = imageSetItem.string(for: .imageSetLabel)
             let selectors = try parseSelectors(from: imageSetItem)
             let sortOperations = parseSortOperations(from: imageSetItem)
@@ -133,7 +133,7 @@ public struct HangingProtocolParser {
     }
     
     private func parseSelectors(from imageSetItem: SequenceItem) throws -> [ImageSetSelector] {
-        guard let selectorSequence = imageSetItem[.selectorSequence]?.sequenceItems else {
+        guard let selectorSequence = imageSetItem[.imageSetSelectorSequence]?.sequenceItems else {
             return []
         }
         
@@ -146,16 +146,35 @@ public struct HangingProtocolParser {
                 continue
             }
             
-            let valueNumber = selectorItem[.selectorValueNumber]?.integerStringValue?.value
+            let valueNumber = selectorItem[.selectorValueNumber]?.uint16Value.map(Int.init)
             let operatorString = selectorItem.string(for: .filterByOperator)
             let filterOperator = operatorString.flatMap { FilterOperator(rawValue: $0) }
+            let sequencePointer = selectorItem[.selectorSequencePointer].flatMap { try? Self.parseAttributeTag(from: $0) }
             
-            // Parse selector values
-            var values: [String] = []
-            if let valueElement = selectorItem[attributeTag] {
-                if let strValue = valueElement.stringValue {
-                    values = strValue.components(separatedBy: "\\")
+            // Selector Attribute VR (0072,0050) names the Selector xx Value
+            // element that carries the values (PS3.3 Table C.23.4-1). Without
+            // it, take whichever Selector xx Value element is present; failing
+            // that, the attribute's own tag, which is where DICOMKit wrote the
+            // values before it followed the macro.
+            var attributeVR = selectorItem.string(for: .selectorAttributeVR)
+                .flatMap { VR(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+            var valueElement = attributeVR.flatMap { selectorItem[SelectorAttributeValueCoding.valueTag(for: $0)] }
+            if valueElement == nil {
+                valueElement = selectorItem.allElements
+                    .filter { SelectorAttributeValueCoding.vr(forValueTag: $0.tag) != nil }
+                    .min { $0.tag < $1.tag }
+                if attributeVR == nil, let found = valueElement {
+                    attributeVR = SelectorAttributeValueCoding.vr(forValueTag: found.tag)
                 }
+            }
+            if valueElement == nil {
+                valueElement = selectorItem[attributeTag]
+            }
+            
+            var values: [String] = []
+            var codeValues: [CodedConcept] = []
+            if let valueElement {
+                (values, codeValues) = SelectorAttributeValueCoding.decode(valueElement)
             }
             
             let usageFlagString = selectorItem.string(for: .imageSetSelectorUsageFlag)
@@ -163,9 +182,12 @@ public struct HangingProtocolParser {
             
             selectors.append(ImageSetSelector(
                 attribute: attributeTag,
+                attributeVR: attributeVR,
+                sequencePointer: sequencePointer,
                 valueNumber: valueNumber,
                 operator: filterOperator,
                 values: values,
+                codeValues: codeValues,
                 usageFlag: usageFlag
             ))
         }
@@ -206,7 +228,7 @@ public struct HangingProtocolParser {
     }
     
     private func parseTimeSelection(from imageSetItem: SequenceItem) -> TimeBasedSelection? {
-        let relativeTime = imageSetItem[.relativeTime]?.integerStringValue?.value
+        let relativeTime = imageSetItem[.relativeTime]?.uint16Value.map(Int.init)
         let relativeTimeUnitsString = imageSetItem.string(for: .relativeTimeUnits)
         let relativeTimeUnits = relativeTimeUnitsString.flatMap { RelativeTimeUnits(rawValue: $0) }
         let abstractPriorValue = imageSetItem.string(for: .abstractPriorValue)
@@ -232,15 +254,15 @@ public struct HangingProtocolParser {
         var definitions: [ScreenDefinition] = []
         
         for screenItem in screenSequence {
-            guard let verticalPixels = screenItem[.numberOfVerticalPixels]?.integerStringValue?.value,
-                  let horizontalPixels = screenItem[.numberOfHorizontalPixels]?.integerStringValue?.value else {
+            guard let verticalPixels = screenItem[.numberOfVerticalPixels]?.uint16Value.map(Int.init),
+                  let horizontalPixels = screenItem[.numberOfHorizontalPixels]?.uint16Value.map(Int.init) else {
                 continue
             }
             
-            let spatialPosition = screenItem[.displayEnvironmentSpatialPosition]?.decimalStringValues?.compactMap { $0.value }
-            let minGrayscaleBitDepth = screenItem[.screenMinimumGrayscaleBitDepth]?.integerStringValue?.value
-            let minColorBitDepth = screenItem[.screenMinimumColorBitDepth]?.integerStringValue?.value
-            let maxRepaintTime = screenItem[.applicationMaximumRepaintTime]?.integerStringValue?.value
+            let spatialPosition = screenItem[.displayEnvironmentSpatialPosition]?.float64Values
+            let minGrayscaleBitDepth = screenItem[.screenMinimumGrayscaleBitDepth]?.uint16Value.map(Int.init)
+            let minColorBitDepth = screenItem[.screenMinimumColorBitDepth]?.uint16Value.map(Int.init)
+            let maxRepaintTime = screenItem[.applicationMaximumRepaintTime]?.uint16Value.map(Int.init)
             
             definitions.append(ScreenDefinition(
                 verticalPixels: verticalPixels,
@@ -265,12 +287,12 @@ public struct HangingProtocolParser {
         var displaySets: [DisplaySet] = []
         
         for (index, displaySetItem) in displaySetsSequence.enumerated() {
-            let number = displaySetItem[.displaySetNumber]?.integerStringValue?.value ?? (index + 1)
+            let number = displaySetItem[.displaySetNumber]?.uint16Value.map(Int.init) ?? (index + 1)
             let label = displaySetItem.string(for: .displaySetLabel)
-            let presentationGroup = displaySetItem[.displaySetPresentationGroup]?.integerStringValue?.value
+            let presentationGroup = displaySetItem[.displaySetPresentationGroup]?.uint16Value.map(Int.init)
             let groupDescription = displaySetItem.string(for: .displaySetPresentationGroupDescription)
             let partialDataHandling = displaySetItem.string(for: .partialDataDisplayHandling)
-            let scrollingGroup = displaySetItem[.displaySetScrollingGroup]?.integerStringValue?.value
+            let scrollingGroup = displaySetItem[.displaySetScrollingGroup]?.uint16Value.map(Int.init)
             let imageBoxes = try parseImageBoxes(from: displaySetItem)
             let displayOptions = parseDisplayOptions(from: displaySetItem)
             
@@ -297,7 +319,7 @@ public struct HangingProtocolParser {
         var imageBoxes: [ImageBox] = []
         
         for (index, boxItem) in imageBoxSequence.enumerated() {
-            let number = boxItem[.imageBoxNumber]?.integerStringValue?.value ?? (index + 1)
+            let number = boxItem[.imageBoxNumber]?.uint16Value.map(Int.init) ?? (index + 1)
             let layoutTypeString = boxItem.string(for: .imageBoxLayoutType)
             let layoutType = layoutTypeString.flatMap { ImageBoxLayoutType(rawValue: $0) } ?? .stack
             
@@ -305,22 +327,22 @@ public struct HangingProtocolParser {
             let imageSetNumbers: [Int] = []
             // This would typically come from a reference sequence
             
-            let tileHorizontal = boxItem[.imageBoxTileHorizontalDimension]?.integerStringValue?.value
-            let tileVertical = boxItem[.imageBoxTileVerticalDimension]?.integerStringValue?.value
+            let tileHorizontal = boxItem[.imageBoxTileHorizontalDimension]?.uint16Value.map(Int.init)
+            let tileVertical = boxItem[.imageBoxTileVerticalDimension]?.uint16Value.map(Int.init)
             
             let scrollDirectionString = boxItem.string(for: .imageBoxScrollDirection)
             let scrollDirection = scrollDirectionString.flatMap { ScrollDirection(rawValue: $0) }
             
             let smallScrollTypeString = boxItem.string(for: .imageBoxSmallScrollType)
             let smallScrollType = smallScrollTypeString.flatMap { ScrollType(rawValue: $0) }
-            let smallScrollAmount = boxItem[.imageBoxSmallScrollAmount]?.integerStringValue?.value
+            let smallScrollAmount = boxItem[.imageBoxSmallScrollAmount]?.uint16Value.map(Int.init)
             
             let largeScrollTypeString = boxItem.string(for: .imageBoxLargeScrollType)
             let largeScrollType = largeScrollTypeString.flatMap { ScrollType(rawValue: $0) }
-            let largeScrollAmount = boxItem[.imageBoxLargeScrollAmount]?.integerStringValue?.value
+            let largeScrollAmount = boxItem[.imageBoxLargeScrollAmount]?.uint16Value.map(Int.init)
             
-            let overlapPriority = boxItem[.imageBoxOverlapPriority]?.integerStringValue?.value
-            let cineRelative = boxItem[.cineRelativeToRealTime]?.decimalStringValue?.value
+            let overlapPriority = boxItem[.imageBoxOverlapPriority]?.uint16Value.map(Int.init)
+            let cineRelative = boxItem[.cineRelativeToRealTime]?.float64Value
             
             let reformattingOp = parseReformattingOperation(from: boxItem)
             
@@ -354,8 +376,8 @@ public struct HangingProtocolParser {
             return nil
         }
         
-        let thickness = boxItem[.reformattingThickness]?.decimalStringValue?.value
-        let interval = boxItem[.reformattingInterval]?.decimalStringValue?.value
+        let thickness = boxItem[.reformattingThickness]?.float64Value
+        let interval = boxItem[.reformattingInterval]?.float64Value
         let initialViewDirection = boxItem.string(for: .reformattingOperationInitialViewDirection)
         
         return ReformattingOperation(

@@ -2038,15 +2038,15 @@ extension DICOMwebClient {
             
             if let name = contactDisplayName {
                 // Contact Display Name
-                contactItem["00401006"] = [
-                    "vr": "SH",
+                contactItem["0074100C"] = [
+                    "vr": "LO",
                     "Value": [name]
                 ]
             }
             
             if let uri = contactURI {
                 // Contact URI
-                contactItem["00401005"] = [
+                contactItem["0074100A"] = [
                     "vr": "UR",
                     "Value": [uri]
                 ]

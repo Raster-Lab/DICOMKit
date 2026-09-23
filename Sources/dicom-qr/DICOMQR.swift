@@ -104,8 +104,11 @@ extension DICOMQR {
         @Option(name: .long, help: "Accession Number")
         var accessionNumber: String?
         
-        @Option(name: .long, help: "Modality (e.g., CT, MR, US)")
+        @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("filter")))
         var modality: String?
+
+        @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
+        var strictModality: Bool = false
         
         @Option(name: .long, help: "Study description (wildcards supported)")
         var studyDescription: String?
@@ -145,6 +148,9 @@ extension DICOMQR {
 
         @Flag(name: .long, help: "Show verbose output")
         var verbose: Bool = false
+
+        @Flag(name: .long, help: "Non-baseline: also request parent-level attributes as return keys at SERIES/INSTANCE level (dicom-qr queries at STUDY level, where every requested key is already level-appropriate; accepted for parity with dicom-query)")
+        var includeParentKeys: Bool = false
         
         /// Resolves the final host and port.
         func resolveHostPort() -> (host: String, port: UInt16) {
@@ -152,6 +158,11 @@ extension DICOMQR {
         }
         
         mutating func run() async throws {
+            // Validate --modality up front: an unrecognized code otherwise
+            // reaches the PACS as a filter that silently matches nothing.
+            modality = try ModalityOptionValidator.resolve(
+                modality, strict: strictModality, verbose: verbose)
+
             #if canImport(Network)
             // Validate mode selection
             let modeCount = [interactive, auto, review].filter { $0 }.count
@@ -335,43 +346,22 @@ extension DICOMQR {
         // MARK: - Helper Methods
         
         private func buildQueryKeys() -> QueryKeys {
-            // Always request all standard return keys first, then add
-            // matching keys for user-supplied filter values.  This mirrors
-            // the approach used by the DICOMStudio ViewModel.
-            var keys = QueryKeys(level: .study)
-                .requestStudyInstanceUID()
-                .requestPatientName()
-                .requestPatientID()
-                .requestStudyDate()
-                .requestStudyDescription()
-                .requestAccessionNumber()
-                .requestModalitiesInStudy()
-                .requestNumberOfStudyRelatedSeries()
-                .requestNumberOfStudyRelatedInstances()
-            
-            if let name = patientName {
-                keys = keys.patientName(name.uppercased())
-            }
-            if let id = patientId {
-                keys = keys.patientID(id)
-            }
-            if let date = studyDate {
-                keys = keys.studyDate(date)
-            }
-            if let uid = studyUid {
-                keys = keys.studyInstanceUID(uid)
-            }
-            if let accession = accessionNumber {
-                keys = keys.accessionNumber(accession)
-            }
-            if let mod = modality {
-                keys = keys.modalitiesInStudy(mod)
-            }
-            if let desc = studyDescription {
-                keys = keys.studyDescription(desc)
-            }
-            
-            return keys
+            // dicom-qr always queries at STUDY level, so every filter here is a
+            // level-appropriate key (PS3.4 C.4.1.2.1). Keys are built through the
+            // SHARED DICOMNetwork mapping (the same one dicom-query and the app
+            // use) so the input→C-FIND mapping cannot drift; the patient-name
+            // match key is upper-cased as before.
+            DICOMQueryService.buildQueryKeys(
+                level: .study,
+                patientName: patientName?.uppercased() ?? "",
+                patientID: patientId ?? "",
+                studyDate: studyDate ?? "",
+                modality: modality ?? "",
+                accession: accessionNumber ?? "",
+                studyDescription: studyDescription ?? "",
+                studyUID: studyUid ?? "",
+                includeParentLevelReturnKeys: includeParentKeys
+            )
         }
 
         /// Applied, non-empty match filters in the canonical order shared with the
@@ -622,15 +612,25 @@ private func resolveHostPort(host: String, port: UInt16?) -> (host: String, port
 // the other. Local names are kept as typealiases.
 typealias RetrievalMethod = QRRetrievalMethod
 
-enum DICOMQRError: Error, CustomStringConvertible {
+enum DICOMQRError: Error, CustomStringConvertible, LocalizedError {
     case missingMoveDestination
+    /// The SCP's final response was not a full success (PS3.4 C.4.2.1.4.2 / C.4.3.1.4.2)
+    case retrievalFailed(summary: String, failedSOPInstanceUIDs: [String])
     
     var description: String {
         switch self {
         case .missingMoveDestination:
             return "Move destination AE title is required for C-MOVE retrieval"
+        case .retrievalFailed(let summary, let failed):
+            var text = "Retrieval failed with \(summary)"
+            if !failed.isEmpty {
+                text += "; failed SOP Instance UIDs: " + failed.joined(separator: ", ")
+            }
+            return text
         }
     }
+
+    var errorDescription: String? { description }
 }
 
 #if canImport(Network)
@@ -690,7 +690,7 @@ struct RetrieveExecutor {
             guard let moveDestination = moveDestination else {
                 throw DICOMQRError.missingMoveDestination
             }
-            _ = try await DICOMRetrieveService.moveStudy(
+            let result = try await DICOMRetrieveService.moveStudy(
                 host: host,
                 port: port,
                 callingAE: callingAE,
@@ -699,6 +699,10 @@ struct RetrieveExecutor {
                 moveDestination: moveDestination,
                 timeout: timeout
             )
+            // PS3.4 C.4.2.1.4.2: a failure/warning status or any failed
+            // sub-operation is not success; surface counts and the Failed SOP
+            // Instance UID List instead of ignoring the result.
+            try Self.checkRetrieveResult(result)
         case .cGet:
             let stream = try await DICOMRetrieveService.getStudy(
                 host: host,
@@ -709,6 +713,7 @@ struct RetrieveExecutor {
                 preferredTransferSyntaxUID: preferredTransferSyntaxUID,
                 timeout: timeout
             )
+            var finalResult: RetrieveResult?
             for await event in stream {
                 switch event {
                 case .instance(let sopInstanceUID, let sopClassUID, let transferSyntaxUID, let data):
@@ -719,13 +724,34 @@ struct RetrieveExecutor {
                         data: data,
                         studyUID: studyUID
                     )
-                case .progress, .completed:
+                case .progress:
                     break
+                case .completed(let result):
+                    finalResult = result
                 case .error(let err):
                     throw err
                 }
             }
+            // PS3.4 C.4.3.1.4.2: check the final status and sub-operation counts.
+            if let result = finalResult {
+                try Self.checkRetrieveResult(result)
+            }
         }
+    }
+
+    /// Throws `DICOMQRError.retrievalFailed` unless the result is a full success
+    /// (status 0x0000 and no failed sub-operations, PS3.4 C.4.2.1.4.2). A warning
+    /// status (0xB000) is therefore a failure for the exit code; the counts and
+    /// the Failed SOP Instance UID List are printed to stderr first.
+    static func checkRetrieveResult(_ result: RetrieveResult) throws {
+        if result.isSuccess { return }
+        let summary = "status \(result.status): \(result.progress.completed) completed, "
+            + "\(result.progress.failed) failed, \(result.progress.warning) warning(s)"
+        if !result.failedSOPInstanceUIDs.isEmpty {
+            FileHandle.standardError.write(("  Failed SOP Instance UIDs:\n"
+                + result.failedSOPInstanceUIDs.map { "    \($0)\n" }.joined()).data(using: .utf8) ?? Data())
+        }
+        throw DICOMQRError.retrievalFailed(summary: summary, failedSOPInstanceUIDs: result.failedSOPInstanceUIDs)
     }
     
     // MARK: - File Management

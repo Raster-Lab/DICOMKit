@@ -178,9 +178,14 @@ public struct NegotiatedAssociation: Sendable {
     /// The raw A-ASSOCIATE-AC PDU
     public let acceptPDU: AssociateAcceptPDU
     
+    /// Role selections proposed in the A-ASSOCIATE-RQ
+    public let proposedRoleSelections: [SCPSCURoleSelection]
+    
     /// Creates negotiated association info
-    init(acceptPDU: AssociateAcceptPDU, localMaxPDUSize: UInt32) {
+    init(acceptPDU: AssociateAcceptPDU, localMaxPDUSize: UInt32,
+         proposedRoleSelections: [SCPSCURoleSelection] = []) {
         self.acceptPDU = acceptPDU
+        self.proposedRoleSelections = proposedRoleSelections
         self.acceptedPresentationContexts = acceptPDU.presentationContexts
         self.maxPDUSize = min(localMaxPDUSize, acceptPDU.maxPDUSize)
         self.remoteImplementationClassUID = acceptPDU.implementationClassUID
@@ -204,6 +209,22 @@ public struct NegotiatedAssociation: Sendable {
     /// - Returns: True if the context was accepted
     public func isContextAccepted(_ contextID: UInt8) -> Bool {
         acceptedPresentationContexts.contains { $0.id == contextID && $0.isAccepted }
+    }
+    
+    /// The roles in effect for a SOP Class after SCP/SCU Role Selection
+    /// Negotiation (PS3.7 D.3.3.4). Without a negotiated answer the default
+    /// roles apply: this side is SCU only.
+    public func negotiatedRoles(for sopClassUID: String) -> NegotiatedRoles {
+        NegotiatedRoles.resolve(
+            proposed: proposedRoleSelections,
+            accepted: acceptPDU.roleSelections,
+            sopClassUID: sopClassUID
+        )
+    }
+    
+    /// Whether this side (the requestor) was granted the SCP role for a SOP Class
+    public func isSCPRoleAccepted(for sopClassUID: String) -> Bool {
+        negotiatedRoles(for: sopClassUID).requestorIsSCP
     }
 }
 
@@ -321,9 +342,13 @@ public final class Association: @unchecked Sendable {
     /// - Throws: `DICOMNetworkError.connectionFailed` if connection fails
     /// - Throws: `DICOMNetworkError.associationRejected` if association is rejected
     /// - Throws: `DICOMNetworkError.artimTimerExpired` if ARTIM timer expires
-    public func request(presentationContexts: [PresentationContext]) async throws
-        -> NegotiatedAssociation
-    {
+    ///   - roleSelections: SCP/SCU Role Selections to propose (PS3.7 D.3.3.4).
+    ///     Required when this side must receive requests on the association,
+    ///     e.g. C-STORE sub-operations of a C-GET.
+    public func request(
+        presentationContexts: [PresentationContext],
+        roleSelections: [SCPSCURoleSelection] = []
+    ) async throws -> NegotiatedAssociation {
         // Ensure we're in idle state
         guard state == .idle else {
             throw DICOMNetworkError.invalidState(
@@ -353,7 +378,8 @@ public final class Association: @unchecked Sendable {
             maxPDUSize: configuration.maxPDUSize,
             implementationClassUID: configuration.implementationClassUID,
             implementationVersionName: configuration.implementationVersionName,
-            userIdentity: configuration.userIdentity
+            userIdentity: configuration.userIdentity,
+            roleSelections: roleSelections
         )
         
         if Task.isCancelled {
@@ -397,7 +423,8 @@ public final class Association: @unchecked Sendable {
             
             let negotiatedAssoc = NegotiatedAssociation(
                 acceptPDU: acceptPDU,
-                localMaxPDUSize: configuration.maxPDUSize
+                localMaxPDUSize: configuration.maxPDUSize,
+                proposedRoleSelections: roleSelections
             )
             self.negotiated = negotiatedAssoc
             return negotiatedAssoc

@@ -72,7 +72,13 @@ class HL7ToDICOMConverter {
             let components = serviceID.split(separator: "^")
             if components.count >= 2 {
                 try setElement(&dicomFile, tag: .studyDescription, value: String(components[1]), vr: .LO)
-                try setElement(&dicomFile, tag: .modality, value: String(components[0]), vr: .CS)
+                // Normalize the inbound code: an HL7 feed is an external system
+                // and commonly sends a spelling ("MRI", "PET") rather than the
+                // DICOM defined term. An unrecognized code is kept as sent —
+                // private codes are legal — but uppercased and trimmed to CS form.
+                let raw = String(components[0])
+                let modality = Modality.normalized(raw) ?? Modality(unchecked: raw)
+                try setElement(&dicomFile, tag: .modality, value: modality.rawValue, vr: .CS)
             }
         }
         
@@ -135,7 +141,7 @@ class HL7ToDICOMConverter {
         dataset.setString(generateUID(), for: .seriesInstanceUID, vr: .UI)
         
         // Modality
-        dataset.setString("OT", for: .modality, vr: .CS)
+        dataset.setString(Modality.ot.rawValue, for: .modality, vr: .CS)
         
         return DICOMFile(fileMetaInformation: fileMetaInformation, dataSet: dataset)
     }

@@ -25,12 +25,16 @@ struct DICOMTags: ParsableCommand {
               dicom-tags file.dcm --delete-private --output clean.dcm
               dicom-tags file.dcm --copy-from source.dcm --tags PatientName,PatientID
               dicom-tags file.dcm --set StudyDescription=Research --delete AccessionNumber --dry-run
+              dicom-tags --list-modalities
             """,
         version: "1.3.1"
     )
 
-    @Argument(help: "Input DICOM file path")
-    var input: String
+    @Argument(help: "Input DICOM file path (omit with --list-modalities)")
+    var input: String?
+
+    @Flag(name: .long, help: "Print every DICOM Modality (0008,0060) defined term and exit")
+    var listModalities: Bool = false
 
     @Option(name: .shortAndLong, help: "Output file path (defaults to overwrite input)")
     var output: String?
@@ -57,6 +61,13 @@ struct DICOMTags: ParsableCommand {
     var dryRun: Bool = false
 
     mutating func run() throws {
+        if listModalities {
+            print(ModalityOptionValidator.listing())
+            return
+        }
+        guard let input else {
+            throw ValidationError("Missing expected argument '<input>'")
+        }
         guard FileManager.default.fileExists(atPath: input) else {
             throw TagEditorError.fileNotFound(input)
         }

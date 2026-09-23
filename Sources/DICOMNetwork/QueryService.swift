@@ -33,6 +33,16 @@ public struct QueryConfiguration: Sendable, Hashable {
     ///
     /// Reference: PS3.7 Section D.3.3.7 - User Identity Negotiation
     public let userIdentity: UserIdentity?
+
+    /// Specific Character Set (0008,0005) to declare in the C-FIND Identifier.
+    ///
+    /// `nil` (the default) lets the service pick the narrowest repertoire that
+    /// represents every text-VR key value (none for pure ISO 646, "ISO_IR 100"
+    /// for Latin-1, "ISO_IR 192" otherwise). A non-nil value forces that defined
+    /// term and encodes all text keys with it.
+    ///
+    /// Reference: PS3.4 C.4.1.1.3.1, PS3.5 6.1.2
+    public let specificCharacterSet: String?
     
     /// Default Implementation Class UID for DICOMKit
     public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
@@ -61,6 +71,38 @@ public struct QueryConfiguration: Sendable, Hashable {
         informationModel: QueryRetrieveInformationModel = .studyRoot,
         userIdentity: UserIdentity? = nil
     ) {
+        self.init(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            timeout: timeout,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            informationModel: informationModel,
+            userIdentity: userIdentity,
+            specificCharacterSet: nil
+        )
+    }
+
+    /// Creates a query configuration with a forced Specific Character Set.
+    ///
+    /// - Parameters:
+    ///   - specificCharacterSet: The (0008,0005) defined term to declare in the
+    ///     C-FIND Identifier and encode text keys with, or nil for automatic
+    ///     selection (PS3.4 C.4.1.1.3.1).
+    ///
+    /// Other parameters are as in the primary initializer.
+    public init(
+        callingAETitle: AETitle,
+        calledAETitle: AETitle,
+        timeout: TimeInterval = 60,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String = defaultImplementationClassUID,
+        implementationVersionName: String? = defaultImplementationVersionName,
+        informationModel: QueryRetrieveInformationModel = .studyRoot,
+        userIdentity: UserIdentity? = nil,
+        specificCharacterSet: String?
+    ) {
         self.callingAETitle = callingAETitle
         self.calledAETitle = calledAETitle
         self.timeout = timeout
@@ -72,6 +114,7 @@ public struct QueryConfiguration: Sendable, Hashable {
         self.tlsConfiguration = nil
 #endif
         self.userIdentity = userIdentity
+        self.specificCharacterSet = specificCharacterSet
     }
 
 #if canImport(Network)
@@ -87,6 +130,34 @@ public struct QueryConfiguration: Sendable, Hashable {
         tlsConfiguration: TLSConfiguration?,
         userIdentity: UserIdentity? = nil
     ) {
+        self.init(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            timeout: timeout,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            informationModel: informationModel,
+            tlsConfiguration: tlsConfiguration,
+            userIdentity: userIdentity,
+            specificCharacterSet: nil
+        )
+    }
+
+    /// Creates a query configuration with an exact TLS transport policy and a
+    /// forced Specific Character Set (see the non-TLS variant).
+    public init(
+        callingAETitle: AETitle,
+        calledAETitle: AETitle,
+        timeout: TimeInterval = 60,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String = defaultImplementationClassUID,
+        implementationVersionName: String? = defaultImplementationVersionName,
+        informationModel: QueryRetrieveInformationModel = .studyRoot,
+        tlsConfiguration: TLSConfiguration?,
+        userIdentity: UserIdentity? = nil,
+        specificCharacterSet: String?
+    ) {
         self.callingAETitle = callingAETitle
         self.calledAETitle = calledAETitle
         self.timeout = timeout
@@ -96,6 +167,7 @@ public struct QueryConfiguration: Sendable, Hashable {
         self.informationModel = informationModel
         self.tlsConfiguration = tlsConfiguration
         self.userIdentity = userIdentity
+        self.specificCharacterSet = specificCharacterSet
     }
 
     /// Builds the exact association configuration used by query operations.
@@ -399,6 +471,16 @@ public enum DICOMQueryService {
     /// modality filter silently returned every study.)
     ///
     /// Return keys are the union needed by all callers; superfluous ones are harmless.
+    ///
+    /// Hierarchical identifier content (PS3.4 C.4.1.2.1, C.4.1.3.2.1): a SERIES or
+    /// IMAGE level Identifier carries only the Unique Keys of the levels above plus
+    /// attributes of its own level. Patient/Study attributes (Patient Name/ID,
+    /// Study Date/Description, Accession) are therefore NOT emitted at those levels
+    /// by default: an SCP may reject them or, worse, silently ignore them. Passing
+    /// `includeParentLevelReturnKeys: true` re-adds them as zero-length return
+    /// keys for lenient SCPs such as dcm4chee that populate parent-level
+    /// attributes in child-level responses. This is a non-baseline extension and
+    /// is never used for matching.
     public static func buildQueryKeys(
         level: QueryLevel,
         patientName: String = "",
@@ -411,7 +493,8 @@ public enum DICOMQueryService {
         studyUID: String = "",
         seriesUID: String = "",
         seriesDate: String = "",
-        instanceUID: String = ""
+        instanceUID: String = "",
+        includeParentLevelReturnKeys: Bool = false
     ) -> QueryKeys {
         var keys = QueryKeys(level: level)
         switch level {
@@ -448,9 +531,11 @@ public enum DICOMQueryService {
             if !seriesDate.isEmpty { keys = keys.seriesDate(seriesDate) }
             keys = keys.requestSeriesNumber().requestSeriesDescription()
                 .requestNumberOfSeriesRelatedInstances()
-                // Parent-level return keys (dcm4chee5 style).
-                .requestPatientName().requestPatientID().requestStudyDate()
-                .requestStudyDescription().requestAccessionNumber()
+            if includeParentLevelReturnKeys {
+                // Non-baseline: parent-level return keys (dcm4chee5 style).
+                keys = keys.requestPatientName().requestPatientID().requestStudyDate()
+                    .requestStudyDescription().requestAccessionNumber()
+            }
 
         case .image:
             keys = studyUID.isEmpty ? keys.requestStudyInstanceUID() : keys.studyInstanceUID(studyUID)
@@ -458,12 +543,42 @@ public enum DICOMQueryService {
             keys = instanceUID.isEmpty ? keys.requestSOPInstanceUID() : keys.sopInstanceUID(instanceUID)
             keys = keys.requestSOPClassUID().requestInstanceNumber().requestContentDate()
                 .requestRows().requestColumns().requestNumberOfFrames()
-                // Parent-level return keys.
-                .requestPatientName().requestPatientID().requestStudyDate()
-                .requestStudyDescription().requestAccessionNumber()
-                .requestModality().requestSeriesNumber().requestSeriesDescription()
+            if includeParentLevelReturnKeys {
+                // Non-baseline: parent-level return keys.
+                keys = keys.requestPatientName().requestPatientID().requestStudyDate()
+                    .requestStudyDescription().requestAccessionNumber()
+                    .requestModality().requestSeriesNumber().requestSeriesDescription()
+            }
         }
         return keys
+    }
+
+    /// Patient/Study filter values that a caller supplied for a SERIES or IMAGE
+    /// level query. Under the hierarchical model (PS3.4 C.4.1.2.1) these attributes
+    /// belong to levels above the Query/Retrieve level and cannot be matched
+    /// there, so `buildQueryKeys` does not emit them. CLIs use this to warn the
+    /// user rather than dropping the filters silently.
+    ///
+    /// - Returns: The human-readable names of the ignored filters, or an empty
+    ///   array when nothing is ignored (including at PATIENT/STUDY level).
+    public static func ignoredParentLevelFilters(
+        level: QueryLevel,
+        patientName: String = "",
+        patientID: String = "",
+        studyDate: String = "",
+        accession: String = "",
+        studyDescription: String = "",
+        referringPhysician: String = ""
+    ) -> [String] {
+        guard level == .series || level == .image else { return [] }
+        var ignored: [String] = []
+        if !patientName.isEmpty { ignored.append("Patient Name") }
+        if !patientID.isEmpty { ignored.append("Patient ID") }
+        if !studyDate.isEmpty { ignored.append("Study Date") }
+        if !accession.isEmpty { ignored.append("Accession Number") }
+        if !studyDescription.isEmpty { ignored.append("Study Description") }
+        if !referringPhysician.isEmpty { ignored.append("Referring Physician") }
+        return ignored
     }
 
     // MARK: - Private Implementation
@@ -482,6 +597,16 @@ public enum DICOMQueryService {
             throw DICOMNetworkError.invalidState(
                 "Query level \(level) is not supported by \(configuration.informationModel)"
             )
+        }
+
+        // PS3.4 C.4.1.2.1 (baseline hierarchical search): the Identifier shall
+        // contain a single value in the Unique Key of every level above the
+        // Query/Retrieve level. Relational queries lift this, but DICOMKit does not
+        // negotiate them, so fail here with a readable message instead of letting
+        // the SCP answer 0xA900.
+        if let missing = missingHigherLevelUniqueKey(level: level, queryKeys: queryKeys,
+                                                     informationModel: configuration.informationModel) {
+            throw DICOMNetworkError.invalidState(missing)
         }
         
         // Create association configuration
@@ -522,7 +647,8 @@ public enum DICOMQueryService {
                 level: level,
                 queryKeys: queryKeys,
                 transferSyntax: acceptedTransferSyntax,
-                sopClassUID: configuration.informationModel.findSOPClassUID
+                sopClassUID: configuration.informationModel.findSOPClassUID,
+                specificCharacterSet: configuration.specificCharacterSet
             )
             
             // Release association gracefully
@@ -545,10 +671,16 @@ public enum DICOMQueryService {
         level: QueryLevel,
         queryKeys: QueryKeys,
         transferSyntax: String,
-        sopClassUID: String
+        sopClassUID: String,
+        specificCharacterSet: String? = nil
     ) async throws -> [GenericQueryResult] {
         // Build the query identifier data set
-        let identifierData = buildQueryIdentifier(level: level, queryKeys: queryKeys, transferSyntax: transferSyntax)
+        let identifierData = buildQueryIdentifier(
+            level: level,
+            queryKeys: queryKeys,
+            transferSyntax: transferSyntax,
+            specificCharacterSet: specificCharacterSet
+        )
         
         // Create C-FIND request using the correct SOP Class UID from the information model
         let request = CFindRequest(
@@ -615,25 +747,87 @@ public enum DICOMQueryService {
         return results
     }
     
-    /// Builds the query identifier data set
-    private static func buildQueryIdentifier(
+    /// The PS3.4 C.4.1.2.1 rule: Unique Keys of all levels above `level` must be
+    /// present with a single value (no wildcard, no UID list). Returns a message
+    /// naming the first missing key, or nil when the identifier is well-formed.
+    internal static func missingHigherLevelUniqueKey(
         level: QueryLevel,
         queryKeys: QueryKeys,
-        transferSyntax: String
+        informationModel: QueryRetrieveInformationModel
+    ) -> String? {
+        func singleValue(_ tag: Tag) -> Bool {
+            guard let key = queryKeys.keys.first(where: { $0.tag == tag }) else { return false }
+            let v = key.value.trimmingCharacters(in: .whitespaces)
+            return !v.isEmpty && !v.contains("*") && !v.contains("?") && !v.contains("\\")
+        }
+        var required: [(Tag, String)] = []
+        if informationModel == .patientRoot, level != .patient {
+            required.append((.patientID, "Patient ID (0010,0020)"))
+        }
+        if level == .series || level == .image {
+            required.append((.studyInstanceUID, "Study Instance UID (0020,000D)"))
+        }
+        if level == .image {
+            required.append((.seriesInstanceUID, "Series Instance UID (0020,000E)"))
+        }
+        for (tag, name) in required where !singleValue(tag) {
+            return "A \(level.rawValue)-level query must carry a single value for \(name) "
+                + "(PS3.4 C.4.1.2.1: the Unique Key of every level above the query level is required)"
+        }
+        return nil
+    }
+
+    /// Value Representations whose values are text in the declared character
+    /// repertoire (PS3.5 6.1.2). Every other string VR (UI, CS, DA, TM, DT, IS,
+    /// DS, AE, AS) is restricted to the default repertoire by definition.
+    static let textVRs: Set<VR> = [.PN, .LO, .SH, .ST, .LT, .UT, .UC]
+
+    /// Builds the query identifier data set
+    ///
+    /// Chooses a character set over all text-VR key values (or uses the forced
+    /// `specificCharacterSet` / a caller-supplied (0008,0005) key) and, when the
+    /// default repertoire does not suffice, inserts (0008,0005) into the
+    /// Identifier as PS3.4 C.4.1.1.3.1 requires. Text values are encoded with the
+    /// chosen set so a non-ASCII key never degrades to a zero-length (universal
+    /// match) element.
+    static func buildQueryIdentifier(
+        level: QueryLevel,
+        queryKeys: QueryKeys,
+        transferSyntax: String,
+        specificCharacterSet: String? = nil
     ) -> Data {
         var data = Data()
         let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
+
+        // A caller-supplied (0008,0005) matching key wins over the configuration
+        // override; both win over automatic selection.
+        var keys = queryKeys.keys
+        let callerCharacterSetKey = keys.first { $0.tag == .specificCharacterSet }
+        let callerValue = callerCharacterSetKey?.value.trimmingCharacters(in: .whitespaces)
+        let override = (callerValue?.isEmpty == false) ? callerValue : specificCharacterSet
+
+        let textValues = keys.filter { textVRs.contains($0.vr) }.map { $0.value }
+        let characterSet = DIMSECharacterSet.choose(for: textValues, override: override)
+
+        if let chosen = characterSet.specificCharacterSet {
+            keys.removeAll { $0.tag == .specificCharacterSet }
+            keys.append(QueryKey(tag: .specificCharacterSet, value: chosen, vr: .CS))
+        } else if callerCharacterSetKey != nil, callerValue?.isEmpty ?? true {
+            // A (0008,0005) return key is meaningless in a C-FIND request; drop it.
+            keys.removeAll { $0.tag == .specificCharacterSet }
+        }
         
         // Merge Query/Retrieve Level into the key set and sort everything
         // by ascending tag order per DICOM PS3.5 Section 7.1.
         let levelKey = QueryKey(tag: .queryRetrieveLevel, value: level.queryRetrieveLevel, vr: .CS)
-        let allKeys = (queryKeys.keys + [levelKey]).sorted { $0.tag < $1.tag }
+        let allKeys = (keys + [levelKey]).sorted { $0.tag < $1.tag }
         for key in allKeys {
             data.append(encodeElement(
                 tag: key.tag,
                 vr: key.vr,
                 value: key.value,
-                explicit: isExplicitVR
+                explicit: isExplicitVR,
+                characterSet: characterSet
             ))
         }
         
@@ -641,7 +835,17 @@ public enum DICOMQueryService {
     }
     
     /// Encodes a single data element for the query identifier
-    private static func encodeElement(tag: Tag, vr: VR, value: String, explicit: Bool) -> Data {
+    ///
+    /// Text VRs are encoded with `characterSet`; the default-repertoire VRs are
+    /// encoded as ISO 646. In neither case is a non-empty value allowed to become
+    /// a zero-length element: if the bytes cannot be produced, UTF-8 is used.
+    static func encodeElement(
+        tag: Tag,
+        vr: VR,
+        value: String,
+        explicit: Bool,
+        characterSet: DIMSECharacterSet = DIMSECharacterSet(specificCharacterSet: nil)
+    ) -> Data {
         var data = Data()
         
         // Tag (4 bytes, little endian)
@@ -651,7 +855,12 @@ public enum DICOMQueryService {
         data.append(Data(bytes: &element, count: 2))
         
         // Prepare value data with padding
-        var valueData = value.data(using: .ascii) ?? Data()
+        var valueData: Data
+        if textVRs.contains(vr) {
+            valueData = characterSet.encode(value)
+        } else {
+            valueData = value.data(using: .ascii) ?? Data(value.utf8)
+        }
         
         // Pad to even length per DICOM rules
         if valueData.count % 2 != 0 {
@@ -694,8 +903,10 @@ public enum DICOMQueryService {
         return data
     }
     
-    /// Parses the query response data set into attributes
-    private static func parseQueryResponse(data: Data, transferSyntax: String) -> [Tag: Data] {
+    /// Parses a response data set (C-FIND Identifier, or the final C-MOVE/C-GET
+    /// response Identifier) into top-level attributes. Shared with
+    /// `DICOMRetrieveService`.
+    static func parseQueryResponse(data: Data, transferSyntax: String) -> [Tag: Data] {
         var attributes: [Tag: Data] = [:]
         var offset = 0
         let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID

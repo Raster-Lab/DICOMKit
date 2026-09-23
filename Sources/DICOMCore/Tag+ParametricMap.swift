@@ -82,13 +82,13 @@ extension Tag {
     /// Defines the physical quantity being mapped
     public static let quantityDefinitionSequence = Tag(group: 0x0040, element: 0x9220)
     
-    /// Double Float Real World Value First Value Mapped (0040,9213)
-    /// 64-bit float: First pixel value mapped in the LUT
-    public static let doubleFloatRealWorldValueFirstValueMapped = Tag(group: 0x0040, element: 0x9213)
+    /// Double Float Real World Value First Value Mapped (0040,9214)
+    /// VR: FD, VM: 1 — first pixel value mapped in the LUT
+    public static let doubleFloatRealWorldValueFirstValueMapped = Tag(group: 0x0040, element: 0x9214)
     
-    /// Double Float Real World Value Last Value Mapped (0040,9214)
-    /// 64-bit float: Last pixel value mapped in the LUT
-    public static let doubleFloatRealWorldValueLastValueMapped = Tag(group: 0x0040, element: 0x9214)
+    /// Double Float Real World Value Last Value Mapped (0040,9213)
+    /// VR: FD, VM: 1 — last pixel value mapped in the LUT
+    public static let doubleFloatRealWorldValueLastValueMapped = Tag(group: 0x0040, element: 0x9213)
     
     /// LUT Label (0040,9210)
     /// Label for the LUT

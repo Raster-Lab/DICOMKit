@@ -309,3 +309,77 @@ final class QueryServiceTests: XCTestCase {
         XCTAssertTrue(description.contains("Query failed"))
     }
 }
+
+// MARK: - C-FIND Identifier Character Set Tests (PS3.4 C.4.1.1.3.1, PS3.5 6.1.2)
+
+final class QueryIdentifierCharacterSetTests: XCTestCase {
+
+    /// Parses an Explicit VR LE identifier back into attributes with the same
+    /// parser the service uses for responses.
+    private func parse(_ data: Data) -> [Tag: Data] {
+        DICOMQueryService.parseQueryResponse(data: data, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+    }
+
+    func testASCIIKeysCarryNoSpecificCharacterSet() {
+        let keys = QueryKeys(level: .study).patientName("DOE^JOHN*")
+        let data = DICOMQueryService.buildQueryIdentifier(
+            level: .study, queryKeys: keys, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        let attrs = parse(data)
+        XCTAssertNil(attrs[.specificCharacterSet], "ISO 646 values need no (0008,0005)")
+        XCTAssertEqual(attrs[.patientName], "DOE^JOHN*".data(using: .ascii)! + Data([0x20]))
+    }
+
+    func testLatin1PatientNameInsertsISOIR100AndEncodesLatin1() {
+        let keys = QueryKeys(level: .study).patientName("MÜLLER^HANS")
+        let data = DICOMQueryService.buildQueryIdentifier(
+            level: .study, queryKeys: keys, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        let attrs = parse(data)
+        XCTAssertEqual(attrs[.specificCharacterSet].flatMap { String(data: $0, encoding: .ascii) }, "ISO_IR 100")
+        // Ü is a single 0xDC byte in ISO 8859-1; the value must not be empty (universal match).
+        let expected = "MÜLLER^HANS".data(using: .isoLatin1)! + Data([0x20])
+        XCTAssertEqual(attrs[.patientName], expected)
+        XCTAssertTrue(attrs[.patientName]!.contains(0xDC))
+    }
+
+    func testNonLatin1PatientNameInsertsISOIR192AndEncodesUTF8() {
+        let keys = QueryKeys(level: .study).patientName("山田^太郎")
+        let data = DICOMQueryService.buildQueryIdentifier(
+            level: .study, queryKeys: keys, transferSyntax: implicitVRLittleEndianTransferSyntaxUID)
+        let attrs = DICOMQueryService.parseQueryResponse(data: data, transferSyntax: implicitVRLittleEndianTransferSyntaxUID)
+        XCTAssertEqual(attrs[.specificCharacterSet].flatMap { String(data: $0, encoding: .ascii) }, "ISO_IR 192")
+        XCTAssertEqual(attrs[.patientName], Data("山田^太郎".utf8))
+    }
+
+    func testConfigurationOverrideForcesCharacterSet() {
+        let keys = QueryKeys(level: .study).patientName("MÜLLER^HANS")
+        let data = DICOMQueryService.buildQueryIdentifier(
+            level: .study, queryKeys: keys, transferSyntax: explicitVRLittleEndianTransferSyntaxUID,
+            specificCharacterSet: "ISO_IR 192")
+        let attrs = parse(data)
+        XCTAssertEqual(attrs[.specificCharacterSet].flatMap { String(data: $0, encoding: .ascii) }, "ISO_IR 192")
+        XCTAssertEqual(attrs[.patientName], Data("MÜLLER^HANS".utf8) + Data([0x20]))
+    }
+
+    func testCallerSuppliedSpecificCharacterSetKeyWinsOverOverride() {
+        let keys = QueryKeys(level: .study)
+            .matching(.specificCharacterSet, value: "ISO_IR 100", vr: .CS)
+            .patientName("MÜLLER^HANS")
+        let data = DICOMQueryService.buildQueryIdentifier(
+            level: .study, queryKeys: keys, transferSyntax: explicitVRLittleEndianTransferSyntaxUID,
+            specificCharacterSet: "ISO_IR 192")
+        let attrs = parse(data)
+        XCTAssertEqual(attrs[.specificCharacterSet].flatMap { String(data: $0, encoding: .ascii) }, "ISO_IR 100")
+        XCTAssertTrue(attrs[.patientName]!.contains(0xDC))
+        // Exactly one (0008,0005) element, ordered first (PS3.5 7.1)
+        XCTAssertEqual(data[0..<4], Data([0x08, 0x00, 0x05, 0x00]))
+    }
+
+    func testQueryConfigurationCarriesSpecificCharacterSet() throws {
+        let config = QueryConfiguration(
+            callingAETitle: try AETitle("SCU"), calledAETitle: try AETitle("SCP"),
+            specificCharacterSet: "ISO_IR 100")
+        XCTAssertEqual(config.specificCharacterSet, "ISO_IR 100")
+        let plain = QueryConfiguration(callingAETitle: try AETitle("SCU"), calledAETitle: try AETitle("SCP"))
+        XCTAssertNil(plain.specificCharacterSet)
+    }
+}

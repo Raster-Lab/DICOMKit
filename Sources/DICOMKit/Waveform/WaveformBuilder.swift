@@ -290,19 +290,19 @@ public final class WaveformBuilder {
     private func defaultModality() -> String {
         switch waveformType {
         case .twelveLeadECG, .generalECG, .ambulatoryECG:
-            return "ECG"
+            return Modality.ecg.rawValue
         case .hemodynamic:
-            return "HD"
+            return Modality.hd.rawValue
         case .cardiacElectrophysiology:
-            return "EPS"
+            return Modality.eps.rawValue
         case .basicVoiceAudio, .generalAudio:
-            return "AU"
+            return Modality.au.rawValue
         case .arterialPulse:
-            return "HD"
+            return Modality.hd.rawValue
         case .respiratoryWaveform:
-            return "RESP"
+            return Modality.resp.rawValue
         case .unknown:
-            return "OT"
+            return Modality.ot.rawValue
         }
     }
 }

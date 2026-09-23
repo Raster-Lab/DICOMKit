@@ -650,7 +650,9 @@ public struct MammographyCADSRBuilder: Sendable {
                     codeMeaning: "ROI"
                 ),
                 graphicType: .circle,
-                graphicData: [Float(centerX), Float(centerY), Float(radius)],
+                // PS3.3 C.18.6.1.2: CIRCLE is two points, the centre and a
+                // point on the circumference.
+                graphicData: [Float(centerX), Float(centerY), Float(centerX + radius), Float(centerY)],
                 relationshipType: .contains
             )
             contentItems.append(AnyContentItem(coordItem))

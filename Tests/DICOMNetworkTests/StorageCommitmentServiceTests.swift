@@ -92,9 +92,9 @@ final class StorageCommitmentServiceTests: XCTestCase {
         let classInstanceConflict = FailedSOPReference(reference: reference, failureReason: 0x0119)
         XCTAssertEqual(classInstanceConflict.failureReasonDescription, "Class/Instance conflict")
         
-        // Duplicate SOP Instance
-        let duplicateSOP = FailedSOPReference(reference: reference, failureReason: 0x0131)
-        XCTAssertEqual(duplicateSOP.failureReasonDescription, "Duplicate SOP Instance")
+        // Duplicate transaction UID (PS3.4 Table J.3-3)
+        let duplicateTransaction = FailedSOPReference(reference: reference, failureReason: 0x0131)
+        XCTAssertEqual(duplicateTransaction.failureReasonDescription, "Duplicate transaction UID")
         
         // Unknown failure reason
         let unknown = FailedSOPReference(reference: reference, failureReason: 0x9999)

@@ -67,9 +67,10 @@ public enum NetworkConfigHelpers: Sendable {
 public enum ToolCatalogHelpers: Sendable {
 
     /// Canonical modality codes for CLI Workshop modality pickers, drawn from
-    /// ``ModalityMapping/allCodes`` so the app offers every modality DICOMKit
-    /// recognizes rather than a hand-maintained subset. These affect only the
-    /// app's picker UI; the CLI tools themselves accept `--modality` as free text.
+    /// ``ModalityMapping/allCodes`` — every current PS3.3 C.7.3.1.1.1 defined
+    /// term (2026a), not a hand-maintained subset. Sorted alphabetically here
+    /// because this flat list has no section headers; views that can show
+    /// sections should prefer ``ModalityPicker``, which groups by category.
     private static let modalityAllowedValues: [String] = ModalityMapping.allCodes.sorted()
 
     /// Modality picker values including a leading empty "any modality" option,
@@ -513,6 +514,12 @@ public enum ToolCatalogHelpers: Sendable {
                     allowedValues: ["table", "json", "csv", "compact"]
                 ),
                 CLIParameterDefinition(
+                    id: "include-parent-keys", flag: "--include-parent-keys", displayName: "Include Parent Keys",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Non-baseline: at SERIES/INSTANCE level also request parent-level attributes (Patient Name/ID, Study Date/Description, Accession) as return keys, for lenient SCPs such as dcm4chee (PS3.4 C.4.1.2.1 does not allow them)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "level", values: ["series", "instance"])
+                ),
+                CLIParameterDefinition(
                     id: "verbose", flag: "--verbose", displayName: "Verbose",
                     parameterType: .booleanToggle, placeholder: "",
                     helpText: "Show verbose output including query details"
@@ -911,14 +918,14 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "modality", flag: "--modality", displayName: "Modality",
                     parameterType: .enumPicker, placeholder: "Any",
-                    helpText: "Filter by scheduled imaging modality (0040,0001)",
+                    helpText: "Filter by scheduled imaging modality (0008,0060)",
                     allowedValues: optionalModalityAllowedValues,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
                     id: "sps-status", flag: "--sps-status", displayName: "SPS Status",
                     parameterType: .enumPicker, placeholder: "Any",
-                    helpText: "Filter by Scheduled Procedure Step Status (0040,0004)",
+                    helpText: "Filter by Scheduled Procedure Step Status (0040,0020)",
                     allowedValues: ["", "SCHEDULED", "IN PROGRESS", "DISCONTINUED", "COMPLETED"],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
@@ -926,6 +933,16 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "query-accession-number", flag: "--accession-number", displayName: "Accession Number",
                     parameterType: .textField, placeholder: "e.g. ACC12345",
                     helpText: "Filter by accession number (0008,0050)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
+                ),
+                CLIParameterDefinition(
+                    // `query-` prefixed, like `query-accession-number`: the create form
+                    // has its own Performing Physician field (`--physician`, internal),
+                    // and a shared id would make the two forms read each other's value
+                    // — paramValue() keys on the id alone.
+                    id: "query-performing-physician", flag: "--performing-physician", displayName: "Performing Physician",
+                    parameterType: .textField, placeholder: "e.g. SMITH^JOHN or SMITH*",
+                    helpText: "Filter by Scheduled Performing Physician's Name — supports wildcards (0040,0006)",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 // ----- Create parameters (DICOMStudio-internal, no CLI equivalent) -----
@@ -1005,7 +1022,7 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "procedure-desc", flag: "--procedure-desc", displayName: "Procedure Description",
                     parameterType: .textField, placeholder: "e.g. CT Head Without Contrast",
-                    helpText: "Requested Procedure Description (0032,1070)",
+                    helpText: "Requested Procedure Description (0032,1060)",
                     isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
@@ -1196,6 +1213,94 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Accession Number (0008,0050) — links the MPPS to the imaging order and helps the server match the MWL item",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
+                CLIParameterDefinition(
+                    id: "modality", flag: "--modality", displayName: "Modality",
+                    parameterType: .enumPicker, placeholder: "Any",
+                    helpText: "Modality (0008,0060) — Type 1 in the MPPS; strict SCPs reject an N-CREATE without it",
+                    allowedValues: optionalModalityAllowedValues,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "patient-birth-date", flag: "--patient-birth-date", displayName: "Patient Birth Date",
+                    parameterType: .textField, placeholder: "YYYYMMDD",
+                    helpText: "Patient's Birth Date (0010,0030) — Type 2, sent empty when unknown",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "patient-sex", flag: "--patient-sex", displayName: "Patient Sex",
+                    parameterType: .enumPicker, placeholder: "Unspecified",
+                    helpText: "Patient's Sex (0010,0040) — Type 2, sent empty when unknown",
+                    allowedValues: ["", "M", "F", "O"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "study-id", flag: "--study-id", displayName: "Study ID",
+                    parameterType: .textField, placeholder: "e.g. 1",
+                    helpText: "Study ID (0020,0010) — Type 2",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "station-name", flag: "--station-name", displayName: "Performed Station Name",
+                    parameterType: .textField, placeholder: "e.g. CT_SCANNER_1",
+                    helpText: "Performed Station Name (0040,0242) — Type 2",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "performed-location", flag: "--performed-location", displayName: "Performed Location",
+                    parameterType: .textField, placeholder: "e.g. Radiology Room 2",
+                    helpText: "Performed Location (0040,0243) — Type 2",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "procedure-step-id", flag: "--procedure-step-id", displayName: "Performed Procedure Step ID",
+                    parameterType: .textField, placeholder: "e.g. PPS1 (default: 1)",
+                    helpText: "Performed Procedure Step ID (0040,0253) — Type 1. Distinct from the Requested Procedure ID; previously the two were conflated",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "procedure-step-description", flag: "--procedure-step-description", displayName: "Performed Procedure Step Description",
+                    parameterType: .textField, placeholder: "e.g. CT Chest with contrast",
+                    helpText: "Performed Procedure Step Description (0040,0254) — Type 2",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-performing-physician", flag: "--performing-physician", displayName: "Performing Physician",
+                    parameterType: .textField, placeholder: "e.g. SMITH^JOHN",
+                    helpText: "Performing Physician's Name (0008,1050), DICOM PN format — carried in the Performed Series items, not at the data set root (PS3.4 Table F.7.2-1)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "requested-procedure-id", flag: "--requested-procedure-id", displayName: "Requested Procedure ID",
+                    parameterType: .textField, placeholder: "e.g. RP1",
+                    helpText: "Requested Procedure ID (0040,1001) from the MWL item — sent inside the Scheduled Step Attributes Sequence",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "requested-procedure-description", flag: "--requested-procedure-description", displayName: "Requested Procedure Description",
+                    parameterType: .textField, placeholder: "e.g. CT Head Without Contrast",
+                    helpText: "Requested Procedure Description (0032,1060) from the MWL item — Type 2 in the Scheduled Step Attributes Sequence",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "sps-description", flag: "--sps-description", displayName: "Scheduled Procedure Step Description",
+                    parameterType: .textField, placeholder: "e.g. CT Chest",
+                    helpText: "Scheduled Procedure Step Description (0040,0007) from the MWL item",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "referenced-study-uid", flag: "--referenced-study-uid", displayName: "Referenced Study UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Referenced Study SOP Instance UID (0008,1155) from the MWL item's Referenced Study Sequence",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
                 // ----- N-SET parameters -----
                 CLIParameterDefinition(
                     id: "mpps-uid", flag: "--mpps-uid", displayName: "MPPS Instance UID",
@@ -1235,6 +1340,62 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "SOP Instance UIDs of acquired images — used in N-SET for the Referenced SOP Sequence (one --image-uid per value). Separate with “ ; ”.",
                     isRepeatable: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
+                ),
+                CLIParameterDefinition(
+                    id: "sop-class-uid", flag: "--sop-class-uid", displayName: "Referenced SOP Class UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.10008.5.1.4.1.1.2 (CT)",
+                    helpText: "SOP Class UID (0008,1150) of the referenced images. Without it the Secondary Capture class is sent, which is non-conformant for anything but SC",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
+                ),
+                CLIParameterDefinition(
+                    id: "protocol-name", flag: "--protocol-name", displayName: "Protocol Name",
+                    parameterType: .textField, placeholder: "UNSPECIFIED",
+                    helpText: "Protocol Name (0018,1030) — Type 1 in every Performed Series item; dcm4chee/DCMTK reject a COMPLETED step without it (default: UNSPECIFIED)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
+                ),
+                CLIParameterDefinition(
+                    id: "series-description", flag: "--series-description", displayName: "Series Description",
+                    parameterType: .textField, placeholder: "e.g. Axial 1mm",
+                    helpText: "Series Description (0008,103E) for the performed series",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
+                ),
+                CLIParameterDefinition(
+                    id: "operator-name", flag: "--operator-name", displayName: "Operators' Name",
+                    parameterType: .textField, placeholder: "e.g. JONES^MARY",
+                    helpText: "Operators' Name (0008,1070), DICOM PN format — Type 2 in the Performed Series items",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
+                ),
+                CLIParameterDefinition(
+                    id: "update-performing-physician", flag: "--performing-physician", displayName: "Performing Physician",
+                    parameterType: .textField, placeholder: "e.g. SMITH^JOHN",
+                    helpText: "Performing Physician's Name (0008,1050), DICOM PN format — Type 2 in the Performed Series items",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
+                ),
+                CLIParameterDefinition(
+                    id: "discontinuation-reason", flag: "--discontinuation-reason", displayName: "Discontinuation Reason",
+                    parameterType: .textField, placeholder: "110513|DCM|Doctor cancelled procedure",
+                    helpText: "Procedure Step Discontinuation Reason Code Sequence (0040,0281) as CODE|SCHEME|MEANING. Codes normally come from CID 9300 with scheme DCM, e.g. \"110514|DCM|Equipment failure\", \"110518|DCM|Patient did not arrive\". Only valid with status DISCONTINUED",
+                    visibleWhenAll: [
+                        CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"]),
+                        CLIParameterVisibilityCondition(parameterId: "status-update", values: ["DISCONTINUED"])
+                    ]
+                ),
+                CLIParameterDefinition(
+                    id: "legacy-nset-scheduled-attributes", flag: "--legacy-nset-scheduled-attributes",
+                    displayName: "Legacy N-SET Scheduled Attributes",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Also send the Scheduled Step Attributes Sequence (0040,0270) in the N-SET. PS3.4 Table F.7.2-1 forbids it; enable only for an SCP known to require it (e.g. some Orthanc builds)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
+                ),
+                CLIParameterDefinition(
+                    id: "specific-character-set", flag: "--specific-character-set", displayName: "Specific Character Set",
+                    parameterType: .textField, placeholder: "e.g. ISO_IR 100 or ISO_IR 192",
+                    helpText: "Force the Specific Character Set (0008,0005). By default the narrowest set that represents every text value is chosen",
+                    isAdvanced: true
                 ),
                 CLIParameterDefinition(
                     id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
@@ -1305,6 +1466,37 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .textField, placeholder: "e.g. Chest CT or CHEST*",
                     helpText: "Study description filter — supports wildcards (0008,1030)",
                     isAdvanced: true
+                ),
+                // Series-level matching keys of PS3.18 Table 10.6.1-5. They only match at
+                // the series level, so — exactly like the CLI, which warns and ignores them
+                // elsewhere — the fields appear only when Query Level is `series`.
+                CLIParameterDefinition(
+                    id: "pps-start-date", flag: "--pps-start-date", displayName: "PPS Start Date",
+                    parameterType: .textField, placeholder: "e.g. 20260101 or 20260101-20260310",
+                    helpText: "Performed Procedure Step Start Date (0040,0244) — YYYYMMDD or a range",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "level", values: ["series"])
+                ),
+                CLIParameterDefinition(
+                    id: "pps-start-time", flag: "--pps-start-time", displayName: "PPS Start Time",
+                    parameterType: .textField, placeholder: "e.g. 101500 or 100000-180000",
+                    helpText: "Performed Procedure Step Start Time (0040,0245) — HHMMSS or a range",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "level", values: ["series"])
+                ),
+                CLIParameterDefinition(
+                    id: "qido-sps-id", flag: "--sps-id", displayName: "Scheduled Procedure Step ID",
+                    parameterType: .textField, placeholder: "e.g. SPS001",
+                    helpText: "Scheduled Procedure Step ID inside Request Attributes Sequence (0040,0275.0040,0009)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "level", values: ["series"])
+                ),
+                CLIParameterDefinition(
+                    id: "qido-requested-procedure-id", flag: "--requested-procedure-id", displayName: "Requested Procedure ID",
+                    parameterType: .textField, placeholder: "e.g. RP1",
+                    helpText: "Requested Procedure ID inside Request Attributes Sequence (0040,0275.0040,1001)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "level", values: ["series"])
                 ),
                 CLIParameterDefinition(
                     id: "limit", flag: "--limit", displayName: "Result Limit",
@@ -4395,18 +4587,48 @@ public enum CommandBuilderHelpers: Sendable {
     /// Command-preview, required-field validation, and the ViewModel's form rendering all
     /// route through this one predicate — a hidden parameter must never emit a CLI flag
     /// nor block the Run button, and three hand-rolled copies of the rule would drift.
+    ///
+    /// Visibility is **transitive**: a condition on a parameter that is itself hidden cannot
+    /// hold. ``satisfies`` falls back to the referenced parameter's `defaultValue` when the
+    /// user has not set it, so a hidden controller still reports its default and would
+    /// otherwise leak its dependents into unrelated forms — e.g. dicom-mwl's `create-method`
+    /// (visible only for `operation == create`, default `hl7`) made the HL7 Port and the
+    /// MSH-3…MSH-6 fields appear under the `query` form, which speaks DIMSE and has no HL7
+    /// leg at all. Requiring the controller to be visible too keeps a chained condition
+    /// anchored to the branch that introduced it.
     public static func isVisible(
         _ def: CLIParameterDefinition,
         parameterValues: [CLIParameterValue],
         parameterDefinitions: [CLIParameterDefinition]
     ) -> Bool {
-        if let condition = def.visibleWhen,
-           !satisfies(condition, parameterValues: parameterValues, parameterDefinitions: parameterDefinitions) {
-            return false
+        isVisible(def, parameterValues: parameterValues,
+                  parameterDefinitions: parameterDefinitions, visiting: [])
+    }
+
+    /// Transitive visibility check. `visiting` carries the ids already being resolved on the
+    /// current chain so a malformed spec with a circular dependency terminates (treating the
+    /// cycle as satisfied) instead of recursing until the stack overflows.
+    private static func isVisible(
+        _ def: CLIParameterDefinition,
+        parameterValues: [CLIParameterValue],
+        parameterDefinitions: [CLIParameterDefinition],
+        visiting: Set<String>
+    ) -> Bool {
+        guard !visiting.contains(def.id) else { return true }
+        let chain = visiting.union([def.id])
+
+        let holds: (CLIParameterVisibilityCondition) -> Bool = { condition in
+            guard satisfies(condition, parameterValues: parameterValues,
+                            parameterDefinitions: parameterDefinitions) else { return false }
+            // The referenced parameter must itself be reachable in the current form.
+            guard let controller = parameterDefinitions.first(where: { $0.id == condition.parameterId })
+            else { return true }
+            return isVisible(controller, parameterValues: parameterValues,
+                             parameterDefinitions: parameterDefinitions, visiting: chain)
         }
-        return def.visibleWhenAll.allSatisfy {
-            satisfies($0, parameterValues: parameterValues, parameterDefinitions: parameterDefinitions)
-        }
+
+        if let condition = def.visibleWhen, !holds(condition) { return false }
+        return def.visibleWhenAll.allSatisfy(holds)
     }
 
     /// Validates that all required parameters have values.
@@ -4744,19 +4966,23 @@ public enum EducationalHelpers: Sendable {
         "00404033": "Output Information Sequence",
         "00404034": "Scheduled Human Performers Sequence",
         "00404035": "Actual Human Performers Sequence",
-        "00404036": "Human Performer Code Sequence",
+        "00404009": "Human Performer Code Sequence",
+        "00404036": "Human Performer's Organization",
         "00404037": "Human Performer's Name",
         "00404041": "Input Readiness State",
         "00404052": "Procedure Step Cancellation DateTime",
         "00741000": "Procedure Step State",
-        "00741002": "Contact URI",
+        "00741002": "Procedure Step Progress Information Sequence",
+        "0074100A": "Contact URI",
+        "0074100C": "Contact Display Name",
         "00741004": "Procedure Step Progress",
         "00741006": "Procedure Step Progress Description",
         "00741200": "Scheduled Procedure Step Priority",
         "00741202": "Worklist Label",
         "00741204": "Procedure Step Label",
         "00741210": "Scheduled Processing Parameters Sequence",
-        "00741236": "Procedure Step Discontinuation Reason Code Sequence",
+        "0074100E": "Procedure Step Discontinuation Reason Code Sequence",
+        "00741236": "Requesting AE",
         "00741238": "Reason for Cancellation",
     ]
 

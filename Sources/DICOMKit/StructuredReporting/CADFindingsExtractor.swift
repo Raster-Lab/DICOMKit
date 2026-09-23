@@ -112,8 +112,14 @@ public struct CADFindings: Sendable, Equatable {
                             algorithmVersion = textItem.textValue
                         }
                     } else if let codeItem = summaryItem.asCode,
-                              codeItem.conceptName?.codeValue == "113878" { // Device Manufacturer
+                              codeItem.conceptName?.codeValue == "113878" { // Manufacturer, as a CODE
                         manufacturer = codeItem.conceptCode.codeMeaning
+                    }
+                    // Manufacturer (113878, DCM) as TEXT is what the CAD SR
+                    // builders write (TID 4001 Algorithm Identification).
+                    if let textItem = summaryItem.asText,
+                       textItem.conceptName?.codeValue == "113878" {
+                        manufacturer = textItem.textValue
                     }
                 }
             }
@@ -135,6 +141,16 @@ public struct CADFindings: Sendable, Equatable {
         )
     }
     
+    /// Concept names that carry a finding's probability: (111047, DCM)
+    /// "Probability of cancer" is what the builders write and what PS3.16
+    /// TID 4021 / 4104 specify; (111023, DCM) is kept for documents that
+    /// used it.
+    private static let probabilityConceptCodes: Set<String> = ["111047", "111023"]
+    
+    private static func isProbability(_ item: NumericContentItem) -> Bool {
+        item.conceptName.map { probabilityConceptCodes.contains($0.codeValue) } ?? false
+    }
+    
     private static func extractFindings(from container: ContainerContentItem) -> [ExtractedCADFinding] {
         var findings: [ExtractedCADFinding] = []
         
@@ -143,8 +159,7 @@ public struct CADFindings: Sendable, Equatable {
             if let findingContainer = item.asContainer {
                 // Check if this looks like a CAD finding container
                 let hasFindingContent = findingContainer.contentItems.contains { contentItem in
-                    if let numItem = contentItem.asNumeric,
-                       numItem.conceptName?.codeValue == "111023" { // CAD Probability
+                    if let numItem = contentItem.asNumeric, isProbability(numItem) {
                         return true
                     }
                     return false
@@ -167,6 +182,11 @@ public struct CADFindings: Sendable, Equatable {
         var location: CADFindingLocation?
         var characteristics: [CodedConcept] = []
         var imageReference: ImageReference?
+        // The builders write the finding type and each characteristic as a
+        // CODE item under the same concept name (121071, DCM) "Finding", type
+        // first. The first one is therefore the type; the rest are
+        // characteristics.
+        var hasExplicitType = false
         
         for item in container.contentItems {
             // Extract finding type from concept name or CODE items
@@ -175,15 +195,16 @@ public struct CADFindings: Sendable, Equatable {
             }
             
             // Extract probability
-            if let numItem = item.asNumeric,
-               numItem.conceptName?.codeValue == "111023" { // CAD Probability
+            if let numItem = item.asNumeric, isProbability(numItem) {
                 probability = numItem.numericValues.first
             }
             
             // Extract finding type from CODE items  
             else if let codeItem = item.asCode,
-                    codeItem.conceptName?.codeValue == "121071" { // Finding
+                    codeItem.conceptName?.codeValue == "121071", // Finding
+                    !hasExplicitType {
                 findingType = codeItem.conceptCode
+                hasExplicitType = true
             }
             
             // Extract spatial coordinates (location)
@@ -250,15 +271,16 @@ public struct CADFindings: Sendable, Equatable {
             
         case .circle:
             if scoordItem.graphicData.count >= 4 {
+                // PS3.3 C.18.6.1.2: the second point lies on the
+                // circumference, so the radius is its distance from the centre.
                 let centerX = scoordItem.graphicData[0]
                 let centerY = scoordItem.graphicData[1]
-                let radiusX = scoordItem.graphicData[2] - centerX
-                let radiusY = scoordItem.graphicData[3] - centerY
+                let radius = hypot(scoordItem.graphicData[2] - centerX, scoordItem.graphicData[3] - centerY)
                 return .circle(
                     centerX: centerX,
                     centerY: centerY,
-                    radiusX: radiusX,
-                    radiusY: radiusY,
+                    radiusX: radius,
+                    radiusY: radius,
                     imageReference: imageRef
                 )
             }

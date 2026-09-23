@@ -696,3 +696,138 @@ final class RetrieveServiceTests: XCTestCase {
         XCTAssertTrue(studyRootQueryRetrieveGetSOPClassUID.hasPrefix("1.2.840.10008"))
     }
 }
+
+// MARK: - Retrieve conformance (PS3.4 C.4.2.1.4.2, C.4.3.1.4.2, Table C.4-2, C.4.2.1.4.1)
+
+final class RetrieveConformanceTests: XCTestCase {
+
+    // MARK: RetrieveResult status semantics
+
+    func testWarningStatusIsNotSuccess() {
+        // PS3.4 C.4.2.1.4.2: 0xB000 = "Sub-operations Complete – One or more
+        // Failures or Warnings"; only 0x0000 with zero failures is success.
+        let result = RetrieveResult(
+            status: DIMSEStatus.from(0xB000),
+            progress: RetrieveProgress(remaining: 0, completed: 9, failed: 1, warning: 0))
+        XCTAssertFalse(result.isSuccess)
+        XCTAssertTrue(result.isWarning)
+        XCTAssertTrue(result.hasFailures)
+        XCTAssertFalse(result.isFailure)
+    }
+
+    func testWarningStatusWithZeroCountersIsWarningNotSuccess() {
+        let result = RetrieveResult(status: .warningCoercionOfDataElements,
+                                    progress: RetrieveProgress(remaining: 0, completed: 5))
+        XCTAssertFalse(result.isSuccess)
+        XCTAssertTrue(result.isWarning)
+        XCTAssertFalse(result.hasFailures)
+    }
+
+    func testSuccessStatusWithWarningCounterIsWarning() {
+        let result = RetrieveResult(status: .success,
+                                    progress: RetrieveProgress(remaining: 0, completed: 5, warning: 1))
+        XCTAssertTrue(result.isSuccess, "0x0000 with zero failures is success even with warning sub-ops")
+        XCTAssertTrue(result.isWarning)
+    }
+
+    func testFailureStatusIsReportedNotThrown() {
+        let result = RetrieveResult(status: .failedUnableToProcess,
+                                    progress: RetrieveProgress(remaining: 3, completed: 2, failed: 1),
+                                    failedSOPInstanceUIDs: ["1.2.3.4"])
+        XCTAssertFalse(result.isSuccess)
+        XCTAssertTrue(result.isFailure)
+        XCTAssertTrue(result.hasFailures)
+        XCTAssertEqual(result.progress.completed, 2)
+        XCTAssertEqual(result.failedSOPInstanceUIDs, ["1.2.3.4"])
+        XCTAssertTrue(result.description.contains("1.2.3.4"))
+    }
+
+    func testFailedListAloneMeansHasFailures() {
+        let result = RetrieveResult(status: .success, progress: RetrieveProgress(remaining: 0, completed: 1),
+                                    failedSOPInstanceUIDs: ["1.2"])
+        XCTAssertTrue(result.hasFailures)
+    }
+
+    // MARK: Failed SOP Instance UID List (0008,0058)
+
+    func testFailedSOPInstanceUIDTag() {
+        XCTAssertEqual(Tag.failedSOPInstanceUIDList, Tag(group: 0x0008, element: 0x0058))
+    }
+
+    func testFailedSOPInstanceUIDListParsedFromExplicitVRIdentifier() {
+        let ts = explicitVRLittleEndianTransferSyntaxUID
+        var identifier = Data()
+        identifier += DICOMQueryService.encodeElement(tag: .queryRetrieveLevel, vr: .CS, value: "STUDY", explicit: true)
+        identifier += DICOMQueryService.encodeElement(
+            tag: .failedSOPInstanceUIDList, vr: .UI, value: "1.2.3.4.5\\1.2.3.4.6\\1.2.3.4.7", explicit: true)
+        let failed = DICOMRetrieveService.failedSOPInstanceUIDs(from: identifier, transferSyntax: ts)
+        XCTAssertEqual(failed, ["1.2.3.4.5", "1.2.3.4.6", "1.2.3.4.7"])
+    }
+
+    func testFailedSOPInstanceUIDListParsedFromImplicitVRIdentifier() {
+        let ts = implicitVRLittleEndianTransferSyntaxUID
+        let identifier = DICOMQueryService.encodeElement(
+            tag: .failedSOPInstanceUIDList, vr: .UI, value: "1.2.3.4.5", explicit: false)
+        XCTAssertEqual(DICOMRetrieveService.failedSOPInstanceUIDs(from: identifier, transferSyntax: ts), ["1.2.3.4.5"])
+    }
+
+    func testNoIdentifierYieldsEmptyFailedList() {
+        XCTAssertEqual(DICOMRetrieveService.failedSOPInstanceUIDs(from: nil, transferSyntax: explicitVRLittleEndianTransferSyntaxUID), [])
+        XCTAssertEqual(DICOMRetrieveService.failedSOPInstanceUIDs(from: Data(), transferSyntax: explicitVRLittleEndianTransferSyntaxUID), [])
+    }
+
+    // MARK: Patient Root unique keys (Tables C.6-2/C.6-3, C.4.2.1.4.1)
+
+    func testPatientRootStudyRetrieveWithoutPatientIDThrows() {
+        XCTAssertThrowsError(try DICOMRetrieveService.validateRetrieveKeys(.forStudy("1.2.3"), informationModel: .patientRoot)) { error in
+            guard case DICOMNetworkError.invalidState(let message) = error else {
+                return XCTFail("expected invalidState, got \(error)")
+            }
+            XCTAssertTrue(message.contains("Patient ID (0010,0020)"))
+            XCTAssertTrue(message.contains("C.4.2.1.4.1"))
+        }
+    }
+
+    func testPatientRootRetrievesWithPatientIDValidate() throws {
+        try DICOMRetrieveService.validateRetrieveKeys(.forPatient(patientID: "P1"), informationModel: .patientRoot)
+        try DICOMRetrieveService.validateRetrieveKeys(.forStudy("1.2.3", patientID: "P1"), informationModel: .patientRoot)
+        try DICOMRetrieveService.validateRetrieveKeys(.forSeries(studyUID: "1.2.3", seriesUID: "1.2.3.4", patientID: "P1"), informationModel: .patientRoot)
+        try DICOMRetrieveService.validateRetrieveKeys(
+            .forInstance(studyUID: "1.2.3", seriesUID: "1.2.3.4", instanceUID: "1.2.3.4.5", patientID: "P1"), informationModel: .patientRoot)
+    }
+
+    func testPatientRootPatientLevelAllowsOnlyPatientID() {
+        let keys = RetrieveKeys(level: .patient).patientID("P1").studyInstanceUID("1.2.3")
+        XCTAssertThrowsError(try DICOMRetrieveService.validateRetrieveKeys(keys, informationModel: .patientRoot))
+    }
+
+    func testStudyRootDoesNotRequirePatientID() throws {
+        try DICOMRetrieveService.validateRetrieveKeys(.forStudy("1.2.3"), informationModel: .studyRoot)
+    }
+
+    func testSeriesRetrieveRequiresStudyUID() {
+        let keys = RetrieveKeys(level: .series).seriesInstanceUID("1.2.3.4")
+        XCTAssertThrowsError(try DICOMRetrieveService.validateRetrieveKeys(keys, informationModel: .studyRoot))
+    }
+
+    func testImageRetrieveRequiresStudyAndSeriesUID() {
+        let keys = RetrieveKeys(level: .image).studyInstanceUID("1.2.3").sopInstanceUID("1.2.3.4.5")
+        XCTAssertThrowsError(try DICOMRetrieveService.validateRetrieveKeys(keys, informationModel: .studyRoot))
+    }
+
+    func testPatientLevelUnsupportedByStudyRootThrows() {
+        XCTAssertThrowsError(try DICOMRetrieveService.validateRetrieveKeys(.forPatient(patientID: "P1"), informationModel: .studyRoot))
+    }
+
+    func testRetrieveKeysForPatientAndPatientIDInIdentifier() {
+        let keys = RetrieveKeys.forSeries(studyUID: "1.2.3", seriesUID: "1.2.3.4", patientID: "P1")
+        XCTAssertEqual(keys.keys.filter { $0.tag == .patientID }.count, 1)
+        XCTAssertEqual(keys.value(for: .patientID), "P1")
+        let identifier = DICOMRetrieveService.buildRetrieveIdentifier(keys: keys, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        let attrs = DICOMQueryService.parseQueryResponse(data: identifier, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        XCTAssertEqual(attrs[.patientID], "P1".data(using: .ascii)! + Data([0x20]))
+        XCTAssertEqual(attrs[.queryRetrieveLevel].flatMap { String(data: $0, encoding: .ascii) }, "SERIES")
+        // patientID(_:) replaces an earlier value rather than duplicating the element
+        XCTAssertEqual(keys.patientID("P2").keys.filter { $0.tag == .patientID }.count, 1)
+    }
+}

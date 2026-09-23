@@ -467,12 +467,27 @@ struct QueryCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Accession number")
     var accessionNumber: String?
     
-    @Option(name: .long, help: "Modality (e.g., CT, MR, US)")
+    @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("filter")))
     var modality: String?
+
+    @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
+    var strictModality: Bool = false
     
     @Option(name: .long, help: "Study description")
     var studyDescription: String?
-    
+
+    @Option(name: .long, help: "Series level: Performed Procedure Step Start Date (0040,0244), YYYYMMDD or a YYYYMMDD-YYYYMMDD range")
+    var ppsStartDate: String?
+
+    @Option(name: .long, help: "Series level: Performed Procedure Step Start Time (0040,0245), HHMMSS or an HHMMSS-HHMMSS range")
+    var ppsStartTime: String?
+
+    @Option(name: .long, help: "Series level: Scheduled Procedure Step ID inside Request Attributes Sequence (0040,0275.0040,0009)")
+    var spsId: String?
+
+    @Option(name: .long, help: "Series level: Requested Procedure ID inside Request Attributes Sequence (0040,0275.0040,1001)")
+    var requestedProcedureId: String?
+
     @Option(name: .long, help: "Maximum number of results (default: 100)")
     var limit: Int = 100
     
@@ -520,7 +535,10 @@ struct QueryCommand: AsyncParsableCommand {
         if let accessionNumber = accessionNumber {
             query = query.accessionNumber(accessionNumber)
         }
-        if let modality = modality {
+        // Validated here rather than at parse time: this builder is the one
+        // place the value is consumed, and resolve() normalizes aliases.
+        if let modality = try ModalityOptionValidator.resolve(
+            modality, strict: strictModality, verbose: verbose) {
             // Use the correct DICOM matching key per query level (PS3.18 §10.6),
             // mirroring the app's in-process path (CLIWorkshopViewModel.executeDicomQIDO)
             // and the sibling dicom-query / dicom-qr tools:
@@ -539,7 +557,34 @@ struct QueryCommand: AsyncParsableCommand {
         if let studyDescription = studyDescription {
             query = query.studyDescription(studyDescription)
         }
-        
+        // Series-level keys of PS3.18 Table 10.6.1-5. They are only matching keys
+        // at the series level; sending them at study/instance level would be
+        // ignored by the server, so say so rather than issuing a silent no-op.
+        if level != .series {
+            var misplaced: [String] = []
+            if ppsStartDate != nil { misplaced.append("--pps-start-date") }
+            if ppsStartTime != nil { misplaced.append("--pps-start-time") }
+            if spsId != nil { misplaced.append("--sps-id") }
+            if requestedProcedureId != nil { misplaced.append("--requested-procedure-id") }
+            if !misplaced.isEmpty {
+                fprintln("Warning: \(misplaced.joined(separator: ", ")) "
+                    + "\(misplaced.count == 1 ? "is a series-level matching key" : "are series-level matching keys") "
+                    + "(PS3.18 Table 10.6.1-5) and will be ignored at \(level) level. Use --level series.")
+            }
+        }
+        if let ppsStartDate = ppsStartDate {
+            query = query.performedProcedureStepStartDate(ppsStartDate)
+        }
+        if let ppsStartTime = ppsStartTime {
+            query = query.performedProcedureStepStartTime(ppsStartTime)
+        }
+        if let spsId = spsId {
+            query = query.scheduledProcedureStepID(spsId)
+        }
+        if let requestedProcedureId = requestedProcedureId {
+            query = query.requestedProcedureID(requestedProcedureId)
+        }
+
         if verbose {
             fprintln("DICOMweb Server: \(baseURL)")
             fprintln("Query Level: \(level)")

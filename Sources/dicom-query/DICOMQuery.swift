@@ -58,8 +58,11 @@ struct DICOMQuery: AsyncParsableCommand {
     @Option(name: .long, help: "Accession Number")
     var accessionNumber: String?
     
-    @Option(name: .long, help: "Modality (e.g., CT, MR, US)")
+    @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("filter")))
     var modality: String?
+
+    @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
+    var strictModality: Bool = false
     
     @Option(name: .long, help: "Study description (wildcards supported)")
     var studyDescription: String?
@@ -75,8 +78,34 @@ struct DICOMQuery: AsyncParsableCommand {
     
     @Flag(name: .long, help: "Show verbose output including query details")
     var verbose: Bool = false
+
+    @Flag(name: .long, help: "Non-baseline: at SERIES/INSTANCE level also request parent-level attributes (Patient Name/ID, Study Date/Description, Accession) as return keys, for lenient SCPs such as dcm4chee (PS3.4 C.4.1.2.1 does not allow them)")
+    var includeParentKeys: Bool = false
     
+    /// PS3.4 C.4.1.2.1: a SERIES query needs the parent Study UID, an INSTANCE
+    /// query needs Study and Series UIDs. Checked here so the message names the
+    /// flag, before any connection is opened.
+    func validate() throws {
+        switch level {
+        case .series:
+            if (studyUid ?? "").isEmpty {
+                throw ValidationError("--level series requires --study-uid (PS3.4 C.4.1.2.1: the Study Instance UID of the level above must be given)")
+            }
+        case .instance:
+            if (studyUid ?? "").isEmpty || (seriesUid ?? "").isEmpty {
+                throw ValidationError("--level instance requires --study-uid and --series-uid (PS3.4 C.4.1.2.1)")
+            }
+        default:
+            break
+        }
+    }
+
     mutating func run() async throws {
+        // Validate --modality once, up front: an unrecognized code otherwise
+        // reaches the PACS as a filter that silently matches nothing.
+        modality = try ModalityOptionValidator.resolve(
+            modality, strict: strictModality, verbose: verbose)
+
         #if canImport(Network)
         let serverInfo = resolveHostPort()
 
@@ -91,6 +120,13 @@ struct DICOMQuery: AsyncParsableCommand {
                 callingAE: aet, calledAE: calledAet,
                 level: level.queryLevel, informationModel: model,
                 timeout: timeout, filters: appliedFilters()), terminator: "")
+        }
+
+        // PS3.4 C.4.1.2.1: patient/study filters cannot be matched at SERIES or
+        // INSTANCE level under the hierarchical model. Say so instead of dropping
+        // them silently.
+        if let warning = parentLevelFilterWarning() {
+            FileHandle.standardError.write((warning + "\n").data(using: .utf8) ?? Data())
         }
 
         // Build query keys
@@ -152,8 +188,28 @@ struct DICOMQuery: AsyncParsableCommand {
             studyDescription: studyDescription ?? "",
             referringPhysician: referringPhysician ?? "",
             studyUID: studyUid ?? "",
-            seriesUID: seriesUid ?? ""
+            seriesUID: seriesUid ?? "",
+            includeParentLevelReturnKeys: includeParentKeys
         )
+    }
+
+    /// The stderr warning for patient/study filters given at SERIES/INSTANCE
+    /// level, or nil when nothing is ignored (PS3.4 C.4.1.2.1).
+    func parentLevelFilterWarning() -> String? {
+        let ignored = DICOMQueryService.ignoredParentLevelFilters(
+            level: level.queryLevel,
+            patientName: patientName ?? "",
+            patientID: patientId ?? "",
+            studyDate: studyDate ?? "",
+            accession: accessionNumber ?? "",
+            studyDescription: studyDescription ?? "",
+            referringPhysician: referringPhysician ?? ""
+        )
+        guard !ignored.isEmpty else { return nil }
+        return "Warning: \(ignored.joined(separator: ", ")) cannot be matched at \(level.rawValue.uppercased()) level "
+            + "under the hierarchical query model and will be ignored "
+            + "(PS3.4 C.4.1.2.1: only the Unique Keys of the levels above may be sent). "
+            + "Query at STUDY level first, then narrow with --study-uid."
     }
     
     /// Resolves the final host and port from ``--host`` and ``--port`` options.

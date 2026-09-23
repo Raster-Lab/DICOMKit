@@ -131,8 +131,8 @@ final class MergeFormatMatrixTests: XCTestCase {
                        "file meta SOP Class", file: file, line: line)
         XCTAssertEqual(ds.numberOfFrames, frames, "NumberOfFrames", file: file, line: line)
         if let modality = MultiframeSOPClassMap.modality(forTarget: expectTarget) {
-            XCTAssertEqual(ds.string(for: .modality)?.trimmingCharacters(in: .whitespaces), modality,
-                           "Modality", file: file, line: line)
+            XCTAssertEqual(ds.string(for: .modality)?.trimmingCharacters(in: .whitespaces),
+                           modality.rawValue, "Modality", file: file, line: line)
         }
         let entry = MultiframeSOPClassMap.entry(for: expectTarget)
         if entry?.hasFunctionalGroups == true {

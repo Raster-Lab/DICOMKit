@@ -45,6 +45,11 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-spm-
     
+    # DICOM_TAG_ATTRIBUTE_AUDIT_PLAN.md Phase 5: every hand-written tag must agree
+    # with the PS3.6 dictionary it sits next to. Fails on any BLOCKER/MAJOR.
+    - name: Audit DICOM tags against PS3.6
+      run: python3 Scripts/audit_tags.py . --strict
+
     - name: Build package
       run: swift build -v
       

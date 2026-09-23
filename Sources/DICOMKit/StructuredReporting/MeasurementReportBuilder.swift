@@ -148,6 +148,9 @@ public struct MeasurementReportBuilder: Sendable {
     /// Qualitative evaluations
     public private(set) var qualitativeEvaluations: [CodedConcept] = []
     
+    /// Concept name of each entry in `qualitativeEvaluations`, by index.
+    public private(set) var qualitativeEvaluationConceptNames: [CodedConcept] = []
+    
     // MARK: - Initialization
     
     /// Creates a new Measurement Report builder
@@ -438,6 +441,8 @@ public struct MeasurementReportBuilder: Sendable {
     public func addMeasurementGroup(
         trackingIdentifier: String,
         trackingUID: String? = nil,
+        finding: CodedConcept? = nil,
+        findingSite: CodedConcept? = nil,
         @MeasurementGroupContentBuilder builder: () -> [MeasurementGroupContent]
     ) -> MeasurementReportBuilder {
         var copy = self
@@ -445,6 +450,8 @@ public struct MeasurementReportBuilder: Sendable {
         let group = MeasurementGroupData(
             trackingIdentifier: trackingIdentifier,
             trackingUID: trackingUID ?? UIDGenerator.generateUID().value,
+            finding: finding,
+            findingSite: findingSite,
             contents: contents
         )
         copy.measurementGroups.append(group)
@@ -472,8 +479,8 @@ public struct MeasurementReportBuilder: Sendable {
         value: CodedConcept
     ) -> MeasurementReportBuilder {
         var copy = self
-        // Store as a pair encoded in the evaluations array
         copy.qualitativeEvaluations.append(value)
+        copy.qualitativeEvaluationConceptNames.append(conceptName)
         return copy
     }
     
@@ -568,9 +575,10 @@ public struct MeasurementReportBuilder: Sendable {
         
         // Add Qualitative Evaluations container (Row 9 of TID 1500)
         if !qualitativeEvaluations.isEmpty {
-            let evaluationItems = qualitativeEvaluations.map { evaluation in
+            let evaluationItems = qualitativeEvaluations.enumerated().map { index, evaluation in
                 AnyContentItem(CodeContentItem(
-                    conceptName: nil,
+                    conceptName: index < qualitativeEvaluationConceptNames.count
+                        ? qualitativeEvaluationConceptNames[index] : nil,
                     conceptCode: evaluation,
                     relationshipType: .contains
                 ))

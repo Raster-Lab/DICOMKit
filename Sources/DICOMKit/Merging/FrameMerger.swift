@@ -539,7 +539,8 @@ public struct FrameMerger {
     /// Multi-frame Functional Groups + Dimension + Enhanced image/series modules.
     private func buildEnhancedModules(into ds: inout DataSet, frames: [DataSet], targetUID: String) throws {
         let modality = MultiframeSOPClassMap.modality(forTarget: targetUID)
-            ?? ds.string(for: .modality)?.trimmingCharacters(in: .whitespaces) ?? ""
+            ?? ds.string(for: .modality).flatMap { Modality.normalized($0) }
+            ?? Modality(unchecked: ds.string(for: .modality) ?? "")
         let legacy = format.isLegacyConverted
         let builderOptions = FunctionalGroupBuilder.Options(
             targetSOPClassUID: targetUID, modality: modality, legacyConverted: legacy,
@@ -572,12 +573,12 @@ public struct FrameMerger {
         }
 
         // Enhanced image module attributes (top level).
-        ds.setString(modality, for: .modality, vr: .CS)
+        ds.setString(modality.rawValue, for: .modality, vr: .CS)
         var imageType = (ds.strings(for: .imageType) ?? []).map { $0.trimmingCharacters(in: .whitespaces) }
         if imageType.isEmpty { imageType = ["ORIGINAL", "PRIMARY"] }
         while imageType.count < 4 { imageType.append(imageType.count == 2 ? "VOLUME" : "NONE") }
         ds.setStrings(Array(imageType.prefix(4)), for: .imageType, vr: .CS)
-        if ["CT", "MR", "PT"].contains(modality) {
+        if modality.usesEnhancedFrameTypeDescriptors {
             let samples = ds.uint16(for: .samplesPerPixel) ?? 1
             ds.setString(samples > 1 ? "COLOR" : "MONOCHROME", for: .pixelPresentation, vr: .CS)
             ds.setString("VOLUME", for: .volumetricProperties, vr: .CS)
@@ -586,7 +587,7 @@ public struct FrameMerger {
                 ds.setString("IDENTITY", for: .presentationLUTShape, vr: .CS)
             }
         }
-        if modality == "MR" {
+        if modality == .mr {
             ds.setString("MAGNITUDE", for: .complexImageComponent, vr: .CS)
             ds.setString("UNKNOWN", for: .acquisitionContrast, vr: .CS)
         }

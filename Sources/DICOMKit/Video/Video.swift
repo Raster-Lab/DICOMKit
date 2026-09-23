@@ -423,10 +423,10 @@ public enum VideoType: String, Sendable {
     /// The default modality for this video type
     public var defaultModality: String {
         switch self {
-        case .endoscopic: return "ES"
-        case .microscopic: return "GM"
-        case .photographic: return "XC"
-        case .unknown: return "OT"
+        case .endoscopic: return Modality.es.rawValue
+        case .microscopic: return Modality.gm.rawValue
+        case .photographic: return Modality.xc.rawValue
+        case .unknown: return Modality.ot.rawValue
         }
     }
 

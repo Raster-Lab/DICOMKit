@@ -263,7 +263,7 @@ public struct UPSAssignedEvent: UPSEvent, Sendable, Equatable {
         }
         
         if let org = performer.performerOrganization {
-            performerItem["00404009"] = ["vr": "LO", "Value": [org]]  // Human Performer Organization
+            performerItem["00404036"] = ["vr": "LO", "Value": [org]]  // Human Performer's Organization
         }
         
         if !performerItem.isEmpty {

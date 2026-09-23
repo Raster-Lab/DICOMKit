@@ -2,6 +2,18 @@ import Foundation
 import DICOMCore
 import DICOMDictionary
 
+// MARK: - Retrieve Tags
+
+extension Tag {
+    /// Failed SOP Instance UID List (0008,0058), VR UI, VM 1-n.
+    ///
+    /// Carried in the Identifier of a final C-MOVE/C-GET response (status
+    /// warning or failure) to name the sub-operations that failed.
+    ///
+    /// Reference: PS3.4 C.4.2.1.4.2, C.4.3.1.4.2, Table C.4-2
+    public static let failedSOPInstanceUIDList = Tag(group: 0x0008, element: 0x0058)
+}
+
 // MARK: - Retrieve Progress
 
 /// Progress information for a retrieve operation
@@ -86,25 +98,48 @@ extension RetrieveProgress: CustomStringConvertible {
 
 /// Result of a retrieve operation
 ///
-/// Contains information about the completed C-MOVE or C-GET operation.
+/// Contains information about the completed C-MOVE or C-GET operation. A
+/// failure status from the SCP is reported here (see `isSuccess`), not thrown:
+/// only protocol/transport errors throw, so the sub-operation counters and the
+/// Failed SOP Instance UID List survive for the caller.
+///
+/// Reference: PS3.4 C.4.2.1.4.2, C.4.3.1.4.2, Table C.4-2
 public struct RetrieveResult: Sendable, Hashable {
     /// The final status of the retrieve operation
     public let status: DIMSEStatus
     
     /// The final progress information
     public let progress: RetrieveProgress
+
+    /// Failed SOP Instance UID List (0008,0058) from the final response
+    /// Identifier, empty when the SCP sent none.
+    public let failedSOPInstanceUIDs: [String]
     
-    /// Whether the retrieve was successful (all sub-operations completed successfully)
+    /// Whether the retrieve was fully successful: final status 0x0000 (Success)
+    /// and no failed sub-operations (PS3.4 C.4.2.1.4.2 / C.4.3.1.4.2).
     ///
-    /// Warning statuses (e.g. 0xB000 "Coercion of data elements") are treated as
-    /// successful because the SCP completed the operation. When the overall status
-    /// is a warning, the failed sub-operation count is ignored because some SCPs
-    /// (e.g. DCM4CHEE) count coerced sub-operations as both completed and failed.
+    /// A warning status (0xB000, "sub-operations complete, one or more failures
+    /// or warnings") is NOT success. Some SCPs (e.g. DCM4CHEE) have been seen to
+    /// count coerced sub-operations as both completed and failed; conformance
+    /// wins here, so such a run reports `isWarning` and the caller decides.
     public var isSuccess: Bool {
-        if status.isWarning {
-            return true
-        }
-        return status.isSuccess && progress.failed == 0
+        status.isSuccess && progress.failed == 0
+    }
+
+    /// Whether the retrieve completed with a warning: status 0xBxxx, or a
+    /// non-zero failed or warning sub-operation count.
+    public var isWarning: Bool {
+        status.isWarning || progress.failed > 0 || progress.warning > 0
+    }
+
+    /// Whether any sub-operation failed (counter or Failed SOP Instance UID List).
+    public var hasFailures: Bool {
+        progress.failed > 0 || !failedSOPInstanceUIDs.isEmpty
+    }
+
+    /// Whether the SCP reported a failure status (0xAxxx / 0xCxxx / 0x01xx).
+    public var isFailure: Bool {
+        status.isFailure
     }
     
     /// Whether the retrieve completed with some failures
@@ -122,9 +157,11 @@ public struct RetrieveResult: Sendable, Hashable {
     /// - Parameters:
     ///   - status: The final DIMSE status
     ///   - progress: The final progress information
-    public init(status: DIMSEStatus, progress: RetrieveProgress) {
+    ///   - failedSOPInstanceUIDs: Failed SOP Instance UID List (0008,0058)
+    public init(status: DIMSEStatus, progress: RetrieveProgress, failedSOPInstanceUIDs: [String] = []) {
         self.status = status
         self.progress = progress
+        self.failedSOPInstanceUIDs = failedSOPInstanceUIDs
     }
 }
 
@@ -132,11 +169,15 @@ public struct RetrieveResult: Sendable, Hashable {
 
 extension RetrieveResult: CustomStringConvertible {
     public var description: String {
-        """
+        var text = """
         RetrieveResult:
           Status: \(status)
           \(progress)
         """
+        if !failedSOPInstanceUIDs.isEmpty {
+            text += "\n  Failed SOP Instances: " + failedSOPInstanceUIDs.joined(separator: ", ")
+        }
+        return text
     }
 }
 
@@ -312,21 +353,46 @@ public struct RetrieveKeys: Sendable, Hashable {
     }
     
     /// Sets the Patient ID
+    ///
+    /// The Unique Key of the PATIENT level. Required at every level under the
+    /// Patient Root model (PS3.4 Tables C.6-2/C.6-3, C.4.2.1.4.1).
     public func patientID(_ id: String) -> RetrieveKeys {
         var copy = self
+        copy.keys.removeAll { $0.tag == .patientID }
         copy.keys.append(RetrieveKey(tag: .patientID, vr: .LO, value: id))
         return copy
     }
+
+    /// The single value of a key, or nil when absent/empty
+    func value(for tag: Tag) -> String? {
+        let value = keys.first { $0.tag == tag }?.value.trimmingCharacters(in: .whitespaces)
+        return (value?.isEmpty ?? true) ? nil : value
+    }
     
     // MARK: - Default Keys
+
+    /// Creates retrieve keys for a patient-level retrieval (Patient Root only)
+    ///
+    /// Patient ID is the only key at PATIENT level (PS3.4 Table C.6-2).
+    ///
+    /// - Parameter patientID: The Patient ID to retrieve
+    /// - Returns: Configured retrieve keys
+    public static func forPatient(patientID: String) -> RetrieveKeys {
+        RetrieveKeys(level: .patient)
+            .patientID(patientID)
+    }
     
     /// Creates retrieve keys for a study-level retrieval
     ///
-    /// - Parameter studyUID: The Study Instance UID to retrieve
+    /// - Parameters:
+    ///   - studyUID: The Study Instance UID to retrieve
+    ///   - patientID: The Patient ID (required under the Patient Root model)
     /// - Returns: Configured retrieve keys
-    public static func forStudy(_ studyUID: String) -> RetrieveKeys {
-        RetrieveKeys(level: .study)
+    public static func forStudy(_ studyUID: String, patientID: String? = nil) -> RetrieveKeys {
+        var keys = RetrieveKeys(level: .study)
             .studyInstanceUID(studyUID)
+        if let patientID, !patientID.isEmpty { keys = keys.patientID(patientID) }
+        return keys
     }
     
     /// Creates retrieve keys for a series-level retrieval
@@ -334,11 +400,14 @@ public struct RetrieveKeys: Sendable, Hashable {
     /// - Parameters:
     ///   - studyUID: The Study Instance UID
     ///   - seriesUID: The Series Instance UID to retrieve
+    ///   - patientID: The Patient ID (required under the Patient Root model)
     /// - Returns: Configured retrieve keys
-    public static func forSeries(studyUID: String, seriesUID: String) -> RetrieveKeys {
-        RetrieveKeys(level: .series)
+    public static func forSeries(studyUID: String, seriesUID: String, patientID: String? = nil) -> RetrieveKeys {
+        var keys = RetrieveKeys(level: .series)
             .studyInstanceUID(studyUID)
             .seriesInstanceUID(seriesUID)
+        if let patientID, !patientID.isEmpty { keys = keys.patientID(patientID) }
+        return keys
     }
     
     /// Creates retrieve keys for an instance-level retrieval
@@ -347,12 +416,16 @@ public struct RetrieveKeys: Sendable, Hashable {
     ///   - studyUID: The Study Instance UID
     ///   - seriesUID: The Series Instance UID
     ///   - instanceUID: The SOP Instance UID to retrieve
+    ///   - patientID: The Patient ID (required under the Patient Root model)
     /// - Returns: Configured retrieve keys
-    public static func forInstance(studyUID: String, seriesUID: String, instanceUID: String) -> RetrieveKeys {
-        RetrieveKeys(level: .image)
+    public static func forInstance(studyUID: String, seriesUID: String, instanceUID: String,
+                                   patientID: String? = nil) -> RetrieveKeys {
+        var keys = RetrieveKeys(level: .image)
             .studyInstanceUID(studyUID)
             .seriesInstanceUID(seriesUID)
             .sopInstanceUID(instanceUID)
+        if let patientID, !patientID.isEmpty { keys = keys.patientID(patientID) }
+        return keys
     }
 }
 
@@ -770,12 +843,8 @@ public enum DICOMRetrieveService {
         onProgress: (@Sendable (RetrieveProgress) -> Void)?
     ) async throws -> RetrieveResult {
         
-        // Validate that the level is supported by the information model
-        guard configuration.informationModel.supportsLevel(keys.level) else {
-            throw DICOMNetworkError.invalidState(
-                "Retrieve level \(keys.level) is not supported by \(configuration.informationModel)"
-            )
-        }
+        // Validate the identifier against the information model (PS3.4 C.4.2.1.4.1)
+        try validateRetrieveKeys(keys, informationModel: configuration.informationModel)
         
         // Create association configuration
         let associationConfig = configuration.associationConfiguration(host: host, port: port)
@@ -892,19 +961,14 @@ public enum DICOMRetrieveService {
                 if status.isPending {
                     // Pending - continue receiving responses
                     continue
-                } else if status.isSuccess {
-                    // Success - operation complete
-                    return RetrieveResult(status: status, progress: progress)
-                } else if status.isCancel {
-                    // Cancelled
-                    return RetrieveResult(status: status, progress: progress)
-                } else if status.isFailure {
-                    // Failure
-                    throw DICOMNetworkError.retrieveFailed(status)
-                } else {
-                    // Unknown status - treat as completion
-                    return RetrieveResult(status: status, progress: progress)
                 }
+
+                // Final response (success, warning, failure or cancel): the
+                // Identifier may carry the Failed SOP Instance UID List
+                // (PS3.4 C.4.2.1.4.2, Table C.4-2). A failure status is returned
+                // in the result, not thrown, so the counters are not lost.
+                let failed = failedSOPInstanceUIDs(from: message.dataSet, transferSyntax: transferSyntax)
+                return RetrieveResult(status: status, progress: progress, failedSOPInstanceUIDs: failed)
             }
         }
     }
@@ -923,14 +987,8 @@ public enum DICOMRetrieveService {
         AsyncStream { continuation in
             let producer = Task {
                 do {
-                    // Validate that the level is supported by the information model
-                    guard configuration.informationModel.supportsLevel(keys.level) else {
-                        continuation.yield(.error(DICOMNetworkError.invalidState(
-                            "Retrieve level \(keys.level) is not supported by \(configuration.informationModel)"
-                        )))
-                        continuation.finish()
-                        return
-                    }
+                    // Validate the identifier against the information model (PS3.4 C.4.2.1.4.1)
+                    try validateRetrieveKeys(keys, informationModel: configuration.informationModel)
                     
                     // Create association configuration
                     let associationConfig = configuration.associationConfiguration(host: host, port: port)
@@ -970,19 +1028,37 @@ public enum DICOMRetrieveService {
                         where !storageTransferSyntaxes.contains(ts) {
                         storageTransferSyntaxes.append(ts)
                     }
-                    for sopClassUID in storageSopClasses {
-                        if contextID > 255 { break }
+                    // Presentation context IDs are odd, 1...255 (PS3.8 9.3.2.2), so at
+                    // most 127 storage contexts fit after the C-GET context (ID 1,
+                    // always first). Extra classes are dropped from the proposal, never
+                    // the C-GET context. Duplicate UIDs are proposed once.
+                    var proposedStorageUIDs: [String] = []
+                    var storageContextIDToUID: [UInt8: String] = [:]
+                    var nextContextID = Int(contextID)
+                    for sopClassUID in storageSopClasses where !proposedStorageUIDs.contains(sopClassUID) {
+                        guard nextContextID <= 255 else { break }
+                        let id = UInt8(nextContextID)
                         let storageContext = try PresentationContext(
-                            id: contextID,
+                            id: id,
                             abstractSyntax: sopClassUID,
                             transferSyntaxes: storageTransferSyntaxes
                         )
                         presentationContexts.append(storageContext)
-                        contextID += 2
+                        proposedStorageUIDs.append(sopClassUID)
+                        storageContextIDToUID[id] = sopClassUID
+                        nextContextID += 2
                     }
                     
+                    // PS3.4 C.4.3.1.1 / C.5.3, PS3.7 D.3.3.4: the C-GET SCU must
+                    // negotiate the SCP role for every Storage SOP Class it is
+                    // willing to receive as a C-STORE sub-operation.
+                    let roleSelections = proposedStorageUIDs.map { SCPSCURoleSelection.both($0) }
+                    
                     // Establish association
-                    let negotiated = try await association.request(presentationContexts: presentationContexts)
+                    let negotiated = try await association.request(
+                        presentationContexts: presentationContexts,
+                        roleSelections: roleSelections
+                    )
                     
                     // Verify that the C-GET SOP Class was accepted
                     guard negotiated.isContextAccepted(1) else {
@@ -992,6 +1068,20 @@ public enum DICOMRetrieveService {
                         )))
                         continuation.finish()
                         return
+                    }
+                    
+                    // Storage contexts usable for C-STORE sub-operations: when the SCP
+                    // answered the role selection (PS3.7 D.3.3.4.2) only contexts whose
+                    // SOP Class was granted the SCP role count. An SCP that sent no
+                    // role selection sub-item at all (older implementations) is taken
+                    // to apply the default roles for our proposal, so every accepted
+                    // storage context stays usable, as before.
+                    let scpAnsweredRoles = !negotiated.acceptPDU.roleSelections.isEmpty
+                    var usableStorageContextIDs: Set<UInt8>? = nil
+                    if scpAnsweredRoles {
+                        usableStorageContextIDs = Set(storageContextIDToUID.compactMap { id, uid in
+                            negotiated.isContextAccepted(id) && negotiated.isSCPRoleAccepted(for: uid) ? id : nil
+                        })
                     }
                     
                     // Get the accepted transfer syntax
@@ -1007,6 +1097,7 @@ public enum DICOMRetrieveService {
                         transferSyntax: acceptedTransferSyntax,
                         sopClassUID: configuration.informationModel.getSOPClassUID,
                         negotiated: negotiated,
+                        usableStorageContextIDs: usableStorageContextIDs,
                         continuation: continuation
                     )
                     
@@ -1038,6 +1129,7 @@ public enum DICOMRetrieveService {
         transferSyntax: String,
         sopClassUID: String,
         negotiated: NegotiatedAssociation,
+        usableStorageContextIDs: Set<UInt8>? = nil,
         continuation: AsyncStream<GetEvent>.Continuation
     ) async throws {
         // Build the retrieve identifier data set
@@ -1091,8 +1183,11 @@ public enum DICOMRetrieveService {
                         // Pending - continue receiving
                         continue
                     } else {
-                        // Complete (success, failure, or cancel)
-                        let result = RetrieveResult(status: status, progress: progress)
+                        // Complete (success, warning, failure, or cancel). The final
+                        // Identifier may carry the Failed SOP Instance UID List
+                        // (PS3.4 C.4.3.1.4.2, Table C.4-2).
+                        let failed = failedSOPInstanceUIDs(from: message.dataSet, transferSyntax: transferSyntax)
+                        let result = RetrieveResult(status: status, progress: progress, failedSOPInstanceUIDs: failed)
                         continuation.yield(.completed(result))
                         continuation.finish()
                         return
@@ -1112,8 +1207,12 @@ public enum DICOMRetrieveService {
                         forContextID: message.presentationContextID
                     ) ?? implicitVRLittleEndianTransferSyntaxUID
                     
+                    // A sub-operation on a context for which we were not granted the
+                    // SCP role (PS3.7 D.3.3.4) is refused rather than accepted.
+                    let roleAccepted = usableStorageContextIDs?.contains(message.presentationContextID) ?? true
+                    
                     // Yield the instance data
-                    if let dataSetData = message.dataSet {
+                    if roleAccepted, let dataSetData = message.dataSet {
                         continuation.yield(.instance(
                             sopInstanceUID: sopInstanceUID,
                             sopClassUID: sopClassUID,
@@ -1127,7 +1226,7 @@ public enum DICOMRetrieveService {
                         messageIDBeingRespondedTo: storeRequest.messageID,
                         affectedSOPClassUID: sopClassUID,
                         affectedSOPInstanceUID: sopInstanceUID,
-                        status: .success,
+                        status: roleAccepted ? .success : .refusedSOPClassNotSupported,
                         presentationContextID: message.presentationContextID
                     )
                     
@@ -1153,9 +1252,73 @@ public enum DICOMRetrieveService {
     }
     
     // MARK: - Helper Methods
+
+    /// Validates a retrieve identifier against the information model.
+    ///
+    /// - The level must be supported by the model.
+    /// - Unique Keys of every level above the retrieve level must be present
+    ///   (PS3.4 C.4.2.1.4.1 / C.4.3.1.4.1): Study Instance UID at SERIES,
+    ///   Study + Series Instance UID at IMAGE.
+    /// - Under the Patient Root model (Tables C.6-2/C.6-3) Patient ID is required
+    ///   at every level; at PATIENT level it is the only key.
+    ///
+    /// - Throws: `DICOMNetworkError.invalidState` naming the missing key.
+    static func validateRetrieveKeys(
+        _ keys: RetrieveKeys,
+        informationModel: QueryRetrieveInformationModel
+    ) throws {
+        guard informationModel.supportsLevel(keys.level) else {
+            throw DICOMNetworkError.invalidState(
+                "Retrieve level \(keys.level) is not supported by \(informationModel)"
+            )
+        }
+        let level = keys.level.rawValue
+        if informationModel == .patientRoot {
+            guard keys.value(for: .patientID) != nil else {
+                throw DICOMNetworkError.invalidState(
+                    "A Patient Root \(level)-level retrieve requires Patient ID (0010,0020) "
+                    + "(PS3.4 C.4.2.1.4.1, Tables C.6-2/C.6-3: the PATIENT level Unique Key is required at every level)"
+                )
+            }
+            if keys.level == .patient,
+               keys.keys.contains(where: { $0.tag != .patientID && !$0.value.isEmpty }) {
+                throw DICOMNetworkError.invalidState(
+                    "A Patient Root PATIENT-level retrieve identifier shall contain only Patient ID (0010,0020) "
+                    + "(PS3.4 Table C.6-2)"
+                )
+            }
+        }
+        if keys.level == .series || keys.level == .image {
+            guard keys.value(for: .studyInstanceUID) != nil else {
+                throw DICOMNetworkError.invalidState(
+                    "A \(level)-level retrieve requires Study Instance UID (0020,000D) (PS3.4 C.4.2.1.4.1)"
+                )
+            }
+        }
+        if keys.level == .image {
+            guard keys.value(for: .seriesInstanceUID) != nil else {
+                throw DICOMNetworkError.invalidState(
+                    "An IMAGE-level retrieve requires Series Instance UID (0020,000E) (PS3.4 C.4.2.1.4.1)"
+                )
+            }
+        }
+    }
+
+    /// Extracts the Failed SOP Instance UID List (0008,0058) from a final
+    /// C-MOVE/C-GET response Identifier, or an empty list when the response
+    /// carried no data set or no such element.
+    static func failedSOPInstanceUIDs(from dataSet: Data?, transferSyntax: String) -> [String] {
+        guard let dataSet, !dataSet.isEmpty else { return [] }
+        let attributes = DICOMQueryService.parseQueryResponse(data: dataSet, transferSyntax: transferSyntax)
+        guard let raw = attributes[.failedSOPInstanceUIDList] else { return [] }
+        let value = String(data: raw, encoding: .ascii) ?? String(decoding: raw, as: UTF8.self)
+        return value.split(separator: "\\")
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \0")) }
+            .filter { !$0.isEmpty }
+    }
     
     /// Builds the retrieve identifier data set
-    private static func buildRetrieveIdentifier(keys: RetrieveKeys, transferSyntax: String) -> Data {
+    static func buildRetrieveIdentifier(keys: RetrieveKeys, transferSyntax: String) -> Data {
         var data = Data()
         let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
         

@@ -224,7 +224,7 @@ struct AIDICOMOutputGenerator {
         dataSet.setString(UIDGenerator.generateSOPInstanceUID().value, for: .sopInstanceUID, vr: .UI)
         dataSet.setString(studyInstanceUID, for: .studyInstanceUID, vr: .UI)
         dataSet.setString(seriesInstanceUID, for: .seriesInstanceUID, vr: .UI)
-        dataSet.setString("SEG", for: .modality, vr: .CS)
+        dataSet.setString(Modality.seg.rawValue, for: .modality, vr: .CS)
         dataSet.setUInt16(UInt16(segmentationMask.height), for: .rows)
         dataSet.setUInt16(UInt16(segmentationMask.width), for: .columns)
         dataSet.setUInt16(1, for: .bitsAllocated)
@@ -290,11 +290,11 @@ struct AIDICOMOutputGenerator {
 
         // General Series Module
         dataSet.setString(seriesInstanceUID, for: .seriesInstanceUID, vr: .UI)
-        dataSet.setString("PR", for: .modality, vr: .CS)
+        dataSet.setString(Modality.pr.rawValue, for: .modality, vr: .CS)
 
         // Presentation State Module
-        dataSet.setString("AI_ANNOTATIONS", for: .presentationLabel, vr: .CS)
-        dataSet.setString("AI annotations from \(modelName)", for: .presentationDescription, vr: .LO)
+        dataSet.setString("AI_ANNOTATIONS", for: .contentLabel, vr: .CS)
+        dataSet.setString("AI annotations from \(modelName)", for: .contentDescription, vr: .LO)
 
         // Copy patient info from source
         if let patientName = sourceDataSet.string(for: .patientName) {

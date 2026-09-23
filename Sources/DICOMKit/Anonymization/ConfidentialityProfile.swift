@@ -136,7 +136,7 @@ public enum ConfidentialityProfile {
         t[Tag(group: 0x0008, element: 0x1052)] = Rule(.remove)     // Performing Physician ID Sequence X
         t[Tag(group: 0x0008, element: 0x1060)] = Rule(.remove)     // Name of Physician(s) Reading Study X
         t[Tag(group: 0x0008, element: 0x1062)] = Rule(.remove)     // Physician(s) Reading Study ID Sequence X
-        t[.operatorName]             = Rule(.remove)               // (0008,1070) X
+        t[.operatorsName]             = Rule(.remove)               // (0008,1070) X
         t[Tag(group: 0x0008, element: 0x1072)] = Rule(.remove)     // Operator Identification Sequence X
         t[Tag(group: 0x0032, element: 0x1032)] = Rule(.remove)     // Requesting Physician X
         t[Tag(group: 0x0040, element: 0x0006)] = Rule(.remove)     // Scheduled Performing Physician's Name X

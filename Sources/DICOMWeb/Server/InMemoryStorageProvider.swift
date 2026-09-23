@@ -544,6 +544,33 @@ public actor InMemoryStorageProvider: DICOMwebStorageProvider {
         if let acc = query.accessionNumber, study.accessionNumber != acc {
             return false
         }
+
+        // Study ID
+        if let id = query.studyID, study.studyID != id {
+            return false
+        }
+
+        // Study Date / Time — DA/TM single value or range (PS3.4 C.2.2.2.5)
+        if let range = query.studyDate, !range.contains(dicomValue: study.studyDate) {
+            return false
+        }
+        if let range = query.studyTime, !range.contains(dicomValue: study.studyTime, format: "HHmmss") {
+            return false
+        }
+
+        // Study Description / Referring Physician — wildcard
+        if let pattern = query.studyDescription {
+            guard let desc = study.studyDescription,
+                  matchesWildcard(value: desc, pattern: pattern, fuzzy: query.fuzzyMatching) else {
+                return false
+            }
+        }
+        if let pattern = query.referringPhysicianName {
+            guard let name = study.referringPhysicianName,
+                  matchesWildcard(value: name, pattern: pattern, fuzzy: query.fuzzyMatching) else {
+                return false
+            }
+        }
         
         // Modalities in study
         if let modalities = query.modalitiesInStudy {
@@ -571,6 +598,16 @@ public actor InMemoryStorageProvider: DICOMwebStorageProvider {
         if let num = query.seriesNumber, series.seriesNumber != num {
             return false
         }
+
+        if let pattern = query.seriesDescription {
+            guard let desc = series.seriesDescription,
+                  matchesWildcard(value: desc, pattern: pattern, fuzzy: query.fuzzyMatching) else {
+                return false
+            }
+        }
+        if let bodyPart = query.bodyPartExamined, series.bodyPartExamined != bodyPart {
+            return false
+        }
         
         return true
     }
@@ -580,6 +617,11 @@ public actor InMemoryStorageProvider: DICOMwebStorageProvider {
         if let uid = query.sopInstanceUID, instance.instanceUID != uid {
             return false
         }
+        if let classUID = query.sopClassUID, instance.sopClassUID != classUID {
+            return false
+        }
+        // Instance Number is not indexed by the in-memory provider; a filter on it
+        // cannot be honoured here and is ignored (persistent providers match it).
         
         return true
     }

@@ -225,9 +225,13 @@ extension Tag {
     /// VR: AT, VM: 1-n
     public static let frameIncrementPointer = Tag(group: 0x0028, element: 0x0009)
     
-    /// Frame Dimension Pointer (0028,0014)
+    /// Frame Dimension Pointer (0028,000A)
     /// VR: AT, VM: 1-n
-    public static let frameDimensionPointer = Tag(group: 0x0028, element: 0x0014)
+    public static let frameDimensionPointer = Tag(group: 0x0028, element: 0x000A)
+    
+    /// Ultrasound Color Data Present (0028,0014)
+    /// VR: US, VM: 1
+    public static let ultrasoundColorDataPresent = Tag(group: 0x0028, element: 0x0014)
     
     /// Frame Time (0018,1063)
     /// VR: DS, VM: 1

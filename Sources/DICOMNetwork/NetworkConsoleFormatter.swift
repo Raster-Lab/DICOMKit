@@ -413,6 +413,27 @@ public enum NetworkConsole {
         if let v = item.scheduledStationAETitle           { out += mwlField("Station AE Title:", v) }
         if let v = item.scheduledStationName              { out += mwlField("Station Name:", v) }
         if let v = item.scheduledPerformingPhysicianName  { out += mwlField("Performing Physician:", v) }
+        if let v = item.scheduledProcedureStepLocation    { out += mwlField("SPS Location:", v) }
+        if let c = item.requestedProcedureCode {
+            out += mwlField("Requested Proc. Code:", "\(c.codeValue) (\(c.codingSchemeDesignator)) \(c.codeMeaning)")
+        }
+        for c in item.scheduledProtocolCodes {
+            out += mwlField("Protocol Code:", "\(c.codeValue) (\(c.codingSchemeDesignator)) \(c.codeMeaning)")
+        }
+        if let v = item.requestedProcedurePriority        { out += mwlField("Priority:", v) }
+        if let v = item.requestedContrastAgent            { out += mwlField("Contrast Agent:", v) }
+        if let v = item.preMedication                     { out += mwlField("Pre-Medication:", v) }
+        if let v = item.patientWeight                     { out += mwlField("Patient Weight (kg):", v) }
+        if let v = item.patientSize                       { out += mwlField("Patient Size (m):", v) }
+        if let v = item.pregnancyStatus                   { out += mwlField("Pregnancy Status:", "\(v)") }
+        if let v = item.medicalAlerts                     { out += mwlField("Medical Alerts:", v) }
+        if let v = item.allergies                         { out += mwlField("Allergies:", v) }
+        if let v = item.specialNeeds                      { out += mwlField("Special Needs:", v) }
+        if let v = item.patientState                      { out += mwlField("Patient State:", v) }
+        if let v = item.admissionID                       { out += mwlField("Admission ID:", v) }
+        if let v = item.currentPatientLocation            { out += mwlField("Patient Location:", v) }
+        if let v = item.requestingPhysician               { out += mwlField("Requesting Physician:", v) }
+        if let v = item.referencedStudies.first?.sopInstanceUID { out += mwlField("Referenced Study:", v) }
         if verbose {
             out += "  Raw Attributes:\n"
             for (tag, data) in item.attributes.sorted(by: { $0.key < $1.key }) {
@@ -498,6 +519,31 @@ public enum NetworkConsole {
             if let v = item.scheduledProcedureStepStatus      { jsonItem["SPSStatus"] = v }
             if let v = item.scheduledProcedureStepID          { jsonItem["SPSID"] = v }
             if let v = item.scheduledProcedureStepDescription { jsonItem["SPSDescription"] = v }
+            if let v = item.scheduledProcedureStepLocation    { jsonItem["SPSLocation"] = v }
+            if let c = item.requestedProcedureCode {
+                jsonItem["RequestedProcedureCode"] = ["CodeValue": c.codeValue,
+                                                      "CodingSchemeDesignator": c.codingSchemeDesignator,
+                                                      "CodeMeaning": c.codeMeaning]
+            }
+            if !item.scheduledProtocolCodes.isEmpty {
+                jsonItem["ScheduledProtocolCodes"] = item.scheduledProtocolCodes.map {
+                    ["CodeValue": $0.codeValue, "CodingSchemeDesignator": $0.codingSchemeDesignator, "CodeMeaning": $0.codeMeaning]
+                }
+            }
+            if let v = item.requestedProcedurePriority        { jsonItem["RequestedProcedurePriority"] = v }
+            if let v = item.requestedContrastAgent            { jsonItem["RequestedContrastAgent"] = v }
+            if let v = item.preMedication                     { jsonItem["PreMedication"] = v }
+            if let v = item.patientWeight                     { jsonItem["PatientWeight"] = v }
+            if let v = item.patientSize                       { jsonItem["PatientSize"] = v }
+            if let v = item.pregnancyStatus                   { jsonItem["PregnancyStatus"] = Int(v) }
+            if let v = item.medicalAlerts                     { jsonItem["MedicalAlerts"] = v }
+            if let v = item.allergies                         { jsonItem["Allergies"] = v }
+            if let v = item.specialNeeds                      { jsonItem["SpecialNeeds"] = v }
+            if let v = item.patientState                      { jsonItem["PatientState"] = v }
+            if let v = item.admissionID                       { jsonItem["AdmissionID"] = v }
+            if let v = item.currentPatientLocation            { jsonItem["CurrentPatientLocation"] = v }
+            if let v = item.requestingPhysician               { jsonItem["RequestingPhysician"] = v }
+            if let v = item.referencedStudies.first?.sopInstanceUID { jsonItem["ReferencedStudySOPInstanceUID"] = v }
             if let v = item.scheduledPerformingPhysicianName  { jsonItem["ScheduledPerformingPhysician"] = v }
             jsonItems.append(jsonItem)
         }

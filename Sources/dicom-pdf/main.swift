@@ -67,8 +67,11 @@ struct DICOMPdf: ParsableCommand {
     @Option(name: .long, help: "Series Instance UID (auto-generated if not provided)")
     var seriesUid: String?
     
-    @Option(name: .long, help: "Modality (default: DOC for documents, M3D for 3D models)")
+    @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("to write (default: DOC, or M3D for 3D models)")))
     var modality: String?
+
+    @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
+    var strictModality: Bool = false
     
     @Option(name: .long, help: "Series Description")
     var seriesDescription: String?
@@ -256,12 +259,10 @@ struct DICOMPdf: ParsableCommand {
         let finalSeriesUID = seriesUid ?? UIDGenerator.generateUID().value
 
         // Determine modality (explicit override, else the document-type default).
-        let finalModality: String
-        if let m = modality, !m.isEmpty {
-            finalModality = m
-        } else {
-            finalModality = documentType.defaultModality
-        }
+        // resolve() normalizes aliases and honours --strict-modality.
+        let finalModality = try ModalityOptionValidator.resolve(
+            modality, strict: strictModality, verbose: verbose)
+            ?? documentType.defaultModality
 
         // Build encapsulated document (shared option chain).
         let builder = EncapsulatedDocumentBuilder(
@@ -371,12 +372,10 @@ struct DICOMPdf: ParsableCommand {
                 let documentData = try Data(contentsOf: fileURL)
 
                 // Determine modality (explicit override, else the document-type default).
-                let finalModality: String
-                if let m = modality, !m.isEmpty {
-                    finalModality = m
-                } else {
-                    finalModality = documentType.defaultModality
-                }
+                // resolve() normalizes aliases and honours --strict-modality.
+                let finalModality = try ModalityOptionValidator.resolve(
+                    modality, strict: strictModality, verbose: verbose)
+                    ?? documentType.defaultModality
 
                 // Build encapsulated document (shared option chain; batch uses the running instance counter).
                 let builder = EncapsulatedDocumentBuilder(

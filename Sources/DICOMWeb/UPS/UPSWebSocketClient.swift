@@ -539,7 +539,7 @@ public final class UPSWebSocketClient: @unchecked Sendable {
     ///
     /// UPS event messages are delivered as DICOM JSON objects per PS3.18 §F.2.
     /// The event contains:
-    /// - Event Type ID (00000100) or EventType attribute
+    /// - Event Type ID (00001002) or EventType attribute
     /// - Affected SOP Instance UID (00001000) — the workitem UID
     /// - Transaction UID (00081195)
     /// - Procedure Step State (00741000) for state reports
@@ -601,8 +601,8 @@ public final class UPSWebSocketClient: @unchecked Sendable {
     ///   4 = SCP Status Change
     /// PS3.18 §11.6 also uses string-based event types in JSON.
     private func parseEventType(from json: [String: Any]) throws -> UPSEventType {
-        // Try DICOM Event Type ID (0000,0100)
-        if let element = json["00000100"] as? [String: Any],
+        // Try DICOM Event Type ID (0000,1002). (0000,0100) is Command Field.
+        if let element = json["00001002"] as? [String: Any],
            let values = element["Value"] as? [Int],
            let typeID = values.first {
             switch typeID {

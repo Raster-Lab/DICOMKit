@@ -567,7 +567,7 @@ public struct FrameSplitter {
                 let filename: String
                 if let pattern = namingPattern {
                     filename = Self.expandPattern(pattern, frameIndex: part.index, instance: String(part.index + 1), stack: "1",
-                                                  modality: source.string(for: .modality) ?? "XX",
+                                                  modality: source.string(for: .modality) ?? Modality.ot.rawValue,
                                                   series: source.string(for: .seriesNumber) ?? "0")
                 } else {
                     filename = "\(baseName)_part_\(String(format: "%04d", part.index + 1)).dcm"
@@ -669,7 +669,8 @@ public struct FrameSplitter {
         plan: SplitPlan
     ) -> String {
         let baseName = (originalPath as NSString).deletingPathExtension.components(separatedBy: "/").last ?? "frame"
-        let modality = dicomFile.dataSet.string(for: .modality) ?? "XX"
+        // "XX" is not a DICOM code; OT (Other) is the standard unknown.
+        let modality = dicomFile.dataSet.string(for: .modality) ?? Modality.ot.rawValue
         let seriesNumber = dicomFile.dataSet.string(for: .seriesNumber) ?? "0"
 
         if let pattern = namingPattern {

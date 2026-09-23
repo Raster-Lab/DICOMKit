@@ -171,13 +171,17 @@ extension Tag {
     /// VR: SQ, VM: 1
     public static let equivalentCodeSequence = Tag(group: 0x0008, element: 0x0121)
     
-    /// Mapping Resource UID (0008,0117)
+    /// Context UID (0008,0117)
     /// VR: UI, VM: 1
-    public static let mappingResourceUID = Tag(group: 0x0008, element: 0x0117)
+    public static let contextUID = Tag(group: 0x0008, element: 0x0117)
     
-    /// Mapping Resource Name (0008,0118)
+    /// Mapping Resource UID (0008,0118)
+    /// VR: UI, VM: 1
+    public static let mappingResourceUID = Tag(group: 0x0008, element: 0x0118)
+    
+    /// Mapping Resource Name (0008,0122)
     /// VR: LO, VM: 1
-    public static let mappingResourceName = Tag(group: 0x0008, element: 0x0118)
+    public static let mappingResourceName = Tag(group: 0x0008, element: 0x0122)
     
     /// Long Code Value (0008,0119)
     /// VR: UC, VM: 1

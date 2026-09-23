@@ -119,7 +119,7 @@ final class HangingProtocolParserTests: XCTestCase {
         var envItem = DataSet()
         envItem[.modality] = DataElement.string(tag: .modality, vr: .CS, value: "CT")
         
-        dataSet.setSequence([SequenceItem(elements: envItem.allElements)], for: .hangingProtocolEnvironmentSequence)
+        dataSet.setSequence([SequenceItem(elements: envItem.allElements)], for: .hangingProtocolDefinitionSequence)
         
         let hangingProtocol = try parser.parse(from: dataSet)
         
@@ -140,7 +140,7 @@ final class HangingProtocolParserTests: XCTestCase {
         dataSet.setSequence([
             SequenceItem(elements: env1.allElements),
             SequenceItem(elements: env2.allElements)
-        ], for: .hangingProtocolEnvironmentSequence)
+        ], for: .hangingProtocolDefinitionSequence)
         
         let hangingProtocol = try parser.parse(from: dataSet)
         
@@ -243,10 +243,13 @@ final class HangingProtocolParserTests: XCTestCase {
         let attrTagData = writer.serializeTag(.modality)
         selectorItem[.selectorAttribute] = DataElement(tag: .selectorAttribute, vr: .AT, length: 4, valueData: attrTagData)
         selectorItem[.selectorValueNumber] = DataElement.uint16(tag: .selectorValueNumber, value: 1)
+        selectorItem[.selectorAttributeVR] = DataElement.string(tag: .selectorAttributeVR, vr: .CS, value: "CS")
+        selectorItem[.selectorCSValue] = DataElement.strings(tag: .selectorCSValue, vr: .CS, values: ["CT", "MR"])
+        selectorItem[.imageSetSelectorUsageFlag] = DataElement.string(tag: .imageSetSelectorUsageFlag, vr: .CS, value: "NO_MATCH")
         
         var imageSetItem = DataSet()
         imageSetItem[.imageSetNumber] = DataElement.uint16(tag: .imageSetNumber, value: 1)
-        imageSetItem.setSequence([SequenceItem(elements: selectorItem.allElements)], for: .selectorSequence)
+        imageSetItem.setSequence([SequenceItem(elements: selectorItem.allElements)], for: .imageSetSelectorSequence)
         
         dataSet.setSequence([SequenceItem(elements: imageSetItem.allElements)], for: .imageSetsSequence)
         
@@ -255,6 +258,10 @@ final class HangingProtocolParserTests: XCTestCase {
         XCTAssertEqual(hangingProtocol.imageSets.count, 1)
         XCTAssertEqual(hangingProtocol.imageSets[0].selectors.count, 1)
         XCTAssertEqual(hangingProtocol.imageSets[0].selectors[0].attribute, .modality)
+        XCTAssertEqual(hangingProtocol.imageSets[0].selectors[0].valueNumber, 1)
+        XCTAssertEqual(hangingProtocol.imageSets[0].selectors[0].attributeVR, .CS)
+        XCTAssertEqual(hangingProtocol.imageSets[0].selectors[0].values, ["CT", "MR"])
+        XCTAssertEqual(hangingProtocol.imageSets[0].selectors[0].usageFlag, .noMatch)
     }
     
     // MARK: - Display Set Parsing Tests

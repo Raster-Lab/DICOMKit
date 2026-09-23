@@ -40,6 +40,12 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
     /// Reference: PS3.7 Section D.3.3.7.2 - Server Response
     public let userIdentityServerResponse: UserIdentityServerResponse?
     
+    /// SCP/SCU Role Selections granted by the acceptor (optional)
+    ///
+    /// Per PS3.7 D.3.3.4.2 the acceptor answers each proposed role selection;
+    /// a missing answer means the default roles apply for that SOP Class.
+    public let roleSelections: [SCPSCURoleSelection]
+    
     /// Creates an A-ASSOCIATE-AC PDU
     public init(
         protocolVersion: UInt16 = 1,
@@ -50,7 +56,8 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
         maxPDUSize: UInt32,
         implementationClassUID: String,
         implementationVersionName: String? = nil,
-        userIdentityServerResponse: UserIdentityServerResponse? = nil
+        userIdentityServerResponse: UserIdentityServerResponse? = nil,
+        roleSelections: [SCPSCURoleSelection] = []
     ) {
         self.protocolVersion = protocolVersion
         self.calledAETitle = calledAETitle
@@ -61,6 +68,7 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
         self.userIdentityServerResponse = userIdentityServerResponse
+        self.roleSelections = roleSelections
     }
     
     /// Encodes the PDU for network transmission
@@ -201,6 +209,11 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
             subItems.append(versionSubItem)
         }
         
+        // SCP/SCU Role Selection Sub-Items (optional, PS3.7 D.3.3.4.2)
+        for role in roleSelections {
+            subItems.append(role.encode())
+        }
+        
         // User Identity Server Response Sub-Item (optional)
         if let serverResponse = userIdentityServerResponse {
             subItems.append(serverResponse.encode())
@@ -214,6 +227,11 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
         item.append(subItems)
         
         return item
+    }
+    
+    /// The role selection answer for a SOP Class, if the acceptor sent one
+    public func roleSelection(for sopClassUID: String) -> SCPSCURoleSelection? {
+        roleSelections.first { $0.sopClassUID == sopClassUID }
     }
     
     /// Gets the accepted transfer syntax for a given presentation context ID

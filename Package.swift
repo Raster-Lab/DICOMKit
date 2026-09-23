@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 
 import PackageDescription
 
@@ -376,19 +376,17 @@ let package = Package(
             exclude: [
                 "AI",
                 "EncapsulatedDocument",
-                "HangingProtocol",
-                "ParametricMap",
+                // RealWorldValue: the parser suite is in the sources allowlist below
+                // (DICOM_TAG_AUDIT_FINDINGS.md); the remaining files are listed here
+                // so they stay out of the build.
+                "RealWorldValue/RealWorldValueLUTTests.swift",
+                "RealWorldValue/RealWorldValueRendererTests.swift",
+                "RealWorldValue/SUVCalculatorTests.swift",
                 "PresentationStateTests",
-                "RadiationTherapy",
-                "RealWorldValue",
                 "SecondaryCapture",
-                "Segmentation",
-                "StructuredReporting",
-                "TestHelpers",
                 // "Video" is NOT excluded: its files are in the sources allowlist
                 // below. An excluded directory wins over the allowlist, which is
                 // how the Video suite silently never ran.
-                "Waveform",
                 "DICOMFileTests.swift",
                 "DICOMWritingTests.swift",
                 "DataSetTests.swift",
@@ -447,6 +445,20 @@ let package = Package(
                 // GSPS writer ⇄ parser round trip: a saved presentation state
                 // the parser cannot read back is not worth storing.
                 "GrayscalePresentationStateBuilderTests.swift",
+                // DICOM_TAG_AUDIT_FINDINGS.md: parsers rebuilt from numeric PS3.6
+                // tags, so a wrong Tag constant cannot round-trip through itself.
+                "TagAuditRegressionTests.swift",
+                // End-user harness over the pydicom fixtures from Scripts/audit_fixtures
+                // (skips unless AUDIT_FIXTURES is set).
+                "AuditFixtureHarnessTests.swift",
+                "HangingProtocol/HangingProtocolParserTests.swift",
+                "HangingProtocol/HangingProtocolSerializerTests.swift",
+                "HangingProtocol/HangingProtocolTests.swift",
+                "HangingProtocol/SelectorAttributeValueTests.swift",
+                "HangingProtocol/DisplaySetTests.swift",
+                "HangingProtocol/HangingProtocolMatcherTests.swift",
+                "HangingProtocol/ImageSetDefinitionTests.swift",
+                "RealWorldValue/RealWorldValueLUTParserTests.swift",
                 // DICOM_VIDEO_CONVERSION_PLAN.md: the Video IOD suite. The
                 // encapsulation tests write through DICOMWriter and re-parse
                 // through DICOMParser, which is what an in-memory DataSet
@@ -463,6 +475,42 @@ let package = Package(
                 "Video/MP4ContainerParserTests.swift",
                 "Video/VideoProbeTests.swift",
                 "Video/VideoExtractorTests.swift",
+                // Builders (append / appendSequence) shared by the suites below.
+                "TestHelpers/DataSet+TestHelpers.swift",
+                // DICOM_TAG_AUDIT_FINDINGS.md #54: the ParametricMap, RadiationTherapy,
+                // Segmentation, StructuredReporting and Waveform suites, previously
+                // excluded and never run.
+                "ParametricMap/ParametricMapAdditionalTests.swift",
+                "ParametricMap/ParametricMapParserTests.swift",
+                "ParametricMap/ParametricMapPixelDataExtractorTests.swift",
+                "ParametricMap/ParametricMapRendererTests.swift",
+                "ParametricMap/ParametricMapTests.swift",
+                "RadiationTherapy/RTBeamTests.swift",
+                "RadiationTherapy/RTDoseTests.swift",
+                "RadiationTherapy/RTPlanTests.swift",
+                "RadiationTherapy/RTStructureSetParserTests.swift",
+                "RadiationTherapy/RTStructureSetTests.swift",
+                "Segmentation/SegmentationBuilderTests.swift",
+                "Segmentation/SegmentationParserTests.swift",
+                "Segmentation/SegmentationPixelDataExtractorTests.swift",
+                "Segmentation/SegmentationRendererTests.swift",
+                "Segmentation/SegmentationTests.swift",
+                "StructuredReporting/BasicTextSRBuilderTests.swift",
+                "StructuredReporting/CADFindingsExtractorTests.swift",
+                "StructuredReporting/ChestCADSRBuilderTests.swift",
+                "StructuredReporting/Comprehensive3DSRBuilderTests.swift",
+                "StructuredReporting/ComprehensiveSRBuilderTests.swift",
+                "StructuredReporting/ContentTreeNavigatorTests.swift",
+                "StructuredReporting/EnhancedSRBuilderTests.swift",
+                "StructuredReporting/KeyObjectExtractorTests.swift",
+                "StructuredReporting/KeyObjectSelectionBuilderTests.swift",
+                "StructuredReporting/MammographyCADSRBuilderTests.swift",
+                "StructuredReporting/MeasurementExtractorTests.swift",
+                "StructuredReporting/MeasurementReportBuilderTests.swift",
+                "StructuredReporting/MeasurementReportExtractorTests.swift",
+                "StructuredReporting/SRDocumentBuilderTests.swift",
+                "StructuredReporting/SRDocumentParserTests.swift",
+                "Waveform/WaveformTests.swift",
                 "PerformanceTests/SIMDImageProcessorTests.swift"
             ]
         ),

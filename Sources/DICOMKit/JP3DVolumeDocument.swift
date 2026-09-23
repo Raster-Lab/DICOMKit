@@ -175,7 +175,7 @@ public enum JP3DVolumeDocument: Sendable {
 
         // General Series Module
         ds.setString(seriesUID, for: .seriesInstanceUID, vr: .UI)
-        ds.setString("DOC", for: .modality, vr: .CS)
+        ds.setString(Modality.doc.rawValue, for: .modality, vr: .CS)
         ds.setInt(1, for: .seriesNumber, vr: .IS)
 
         // SOP Common Module

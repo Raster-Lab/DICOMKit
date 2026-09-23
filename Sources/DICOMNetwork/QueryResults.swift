@@ -21,12 +21,21 @@ public protocol QueryResult: Sendable, Hashable {
 // MARK: - Default Implementation
 
 extension QueryResult {
-    /// Gets a string value for a tag
+    /// The Specific Character Set (0008,0005) the SCP declared for this
+    /// response, or nil when it declared none (default repertoire, PS3.4
+    /// C.4.1.1.3.1).
+    public var specificCharacterSet: String? {
+        guard let data = attributes[.specificCharacterSet] else { return nil }
+        let value = String(data: data, encoding: .ascii)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: " \0"))
+        return (value?.isEmpty ?? true) ? nil : value
+    }
+
+    /// Gets a string value for a tag, decoded with the response's declared
+    /// Specific Character Set (see `QueryResultDecoding.decodeString`).
     public func string(for tag: Tag) -> String? {
         guard let data = attributes[tag] else { return nil }
-        let string = String(data: data, encoding: .utf8) ??
-                     String(data: data, encoding: .ascii) ?? ""
-        return string.trimmingCharacters(in: CharacterSet(charactersIn: " \0"))
+        return QueryResultDecoding.decodeString(data, specificCharacterSet: specificCharacterSet)
     }
     
     /// Gets a UID value for a tag (same as string but semantically distinct)
@@ -38,6 +47,30 @@ extension QueryResult {
     public func integer(for tag: Tag) -> Int? {
         guard let string = string(for: tag) else { return nil }
         return Int(string.trimmingCharacters(in: .whitespaces))
+    }
+}
+
+// MARK: - Response String Decoding
+
+/// Decodes raw attribute bytes from a C-FIND response.
+public enum QueryResultDecoding {
+    /// Decodes `data` using the response's declared (0008,0005) value.
+    ///
+    /// PS3.5 6.1.2 makes the declared set authoritative; the PS3.4 default
+    /// repertoire is ISO 646. Many SCPs nevertheless send ISO 8859-1 bytes without
+    /// declaring it, so the fallback order is: declared set, then UTF-8, then
+    /// ISO Latin-1 (which accepts any byte sequence, so the value is never lost).
+    /// Trailing space/NUL padding is removed.
+    public static func decodeString(_ data: Data, specificCharacterSet: String?) -> String {
+        var decoded: String? = nil
+        if let declared = specificCharacterSet {
+            decoded = CharacterSetHandler.from(specificCharacterSet: declared).decode(data)
+        }
+        let string = decoded
+            ?? String(data: data, encoding: .utf8)
+            ?? String(data: data, encoding: .isoLatin1)
+            ?? ""
+        return string.trimmingCharacters(in: CharacterSet(charactersIn: " \0"))
     }
 }
 

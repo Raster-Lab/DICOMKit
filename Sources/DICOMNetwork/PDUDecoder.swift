@@ -140,6 +140,7 @@ public enum PDUDecoder {
         var implementationClassUID = ""
         var implementationVersionName: String?
         var userIdentity: UserIdentity?
+        var roleSelections: [SCPSCURoleSelection] = []
         
         while offset < data.endIndex {
             guard offset + 4 <= data.endIndex else { break }
@@ -170,6 +171,7 @@ public enum PDUDecoder {
                 implementationClassUID = userInfo.implementationClassUID ?? implementationClassUID
                 implementationVersionName = userInfo.implementationVersionName
                 userIdentity = userInfo.userIdentity
+                roleSelections = userInfo.roleSelections
                 
             default:
                 break // Unknown item type, skip
@@ -184,7 +186,8 @@ public enum PDUDecoder {
             implementationClassUID: implementationClassUID,
             implementationVersionName: implementationVersionName,
             userIdentity: userIdentity,
-            applicationContextName: applicationContextName
+            applicationContextName: applicationContextName,
+            roleSelections: roleSelections
         )
     }
     
@@ -233,6 +236,7 @@ public enum PDUDecoder {
         var implementationVersionName: String?
         var userIdentity: UserIdentity?
         var userIdentityServerResponse: UserIdentityServerResponse?
+        var roleSelections: [SCPSCURoleSelection] = []
     }
     
     private static func decodeUserInformationFull(from data: Data) throws -> UserInformationResult {
@@ -259,6 +263,10 @@ public enum PDUDecoder {
                 }
             case 0x52: // Implementation Class UID
                 result.implementationClassUID = String(data: subItemData, encoding: .ascii)
+            case SCPSCURoleSelection.subItemType: // SCP/SCU Role Selection (PS3.7 D.3.3.4)
+                if let role = try? SCPSCURoleSelection.decode(from: subItemData) {
+                    result.roleSelections.append(role)
+                }
             case 0x55: // Implementation Version Name
                 result.implementationVersionName = String(data: subItemData, encoding: .ascii)
             case 0x58: // User Identity (A-ASSOCIATE-RQ)
@@ -391,6 +399,7 @@ public enum PDUDecoder {
         var implementationClassUID = ""
         var implementationVersionName: String?
         var userIdentityServerResponse: UserIdentityServerResponse?
+        var roleSelections: [SCPSCURoleSelection] = []
         
         while offset < data.endIndex {
             guard offset + 4 <= data.endIndex else { break }
@@ -420,6 +429,7 @@ public enum PDUDecoder {
                 implementationClassUID = userInfo.implementationClassUID ?? implementationClassUID
                 implementationVersionName = userInfo.implementationVersionName
                 userIdentityServerResponse = userInfo.userIdentityServerResponse
+                roleSelections = userInfo.roleSelections
                 
             default:
                 break
@@ -435,7 +445,8 @@ public enum PDUDecoder {
             maxPDUSize: maxPDUSize,
             implementationClassUID: implementationClassUID,
             implementationVersionName: implementationVersionName,
-            userIdentityServerResponse: userIdentityServerResponse
+            userIdentityServerResponse: userIdentityServerResponse,
+            roleSelections: roleSelections
         )
     }
     

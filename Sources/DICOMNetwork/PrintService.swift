@@ -149,6 +149,12 @@ extension Tag {
     public static let creationTime = Tag(group: 0x2100, element: 0x0050)
     /// Originating Print Management (2100,0070)
     public static let originatingPrintManagement = Tag(group: 0x2100, element: 0x0070)
+
+    // MARK: - Presentation LUT viewing conditions (Film Box, PS3.4 Table H.4-6)
+    /// Illumination (2010,015E) US — cd/m², used with a Presentation LUT
+    public static let illumination = Tag(group: 0x2010, element: 0x015E)
+    /// Reflected Ambient Light (2010,0160) US — cd/m², used with a Presentation LUT
+    public static let reflectedAmbientLight = Tag(group: 0x2010, element: 0x0160)
 }
 
 // MARK: - Print Configuration
@@ -933,6 +939,16 @@ public struct PrintOptions: Sendable {
     /// jobs before this attribute existed were sent.
     public let imageBoxOptions: [PrintImageBoxOptions]
 
+    /// Illumination (2010,015E) in cd/m² — the viewing-condition input a
+    /// Presentation LUT printer uses. Optional on the SCU side (PS3.4 Table H.4-6);
+    /// when nil the printer assumes its default (2000 cd/m² transmissive,
+    /// 150 cd/m² reflective). Sent only when a Presentation LUT is referenced.
+    public let illumination: UInt16?
+
+    /// Reflected Ambient Light (2010,0160) in cd/m² — companion to ``illumination``
+    /// (printer default 10 cd/m²). Sent only when a Presentation LUT is referenced.
+    public let reflectedAmbientLight: UInt16?
+
     /// Creates print options with specified parameters
     public init(
         numberOfCopies: Int = 1,
@@ -953,8 +969,12 @@ public struct PrintOptions: Sendable {
         annotationDisplayFormatID: String? = nil,
         configurationInformation: String? = nil,
         filmAnnotations: [[PrintAnnotation]] = [],
-        imageBoxOptions: [PrintImageBoxOptions] = []
+        imageBoxOptions: [PrintImageBoxOptions] = [],
+        illumination: UInt16? = nil,
+        reflectedAmbientLight: UInt16? = nil
     ) {
+        self.illumination = illumination
+        self.reflectedAmbientLight = reflectedAmbientLight
         self.numberOfCopies = numberOfCopies
         self.priority = priority
         self.filmSize = filmSize
@@ -3988,6 +4008,15 @@ public enum DICOMPrintService {
                         valueData: lutSeqData,
                         sequenceItems: [lutSeqItem]
                     ))
+                    // Illumination / Reflected Ambient Light (2010,015E/0160) — the
+                    // viewing conditions the Presentation LUT is calibrated for.
+                    // Optional for the SCU; sent only when the caller set them.
+                    if let illumination = options.illumination {
+                        filmBoxElements.append(DataElement.uint16(tag: .illumination, value: illumination))
+                    }
+                    if let ambient = options.reflectedAmbientLight {
+                        filmBoxElements.append(DataElement.uint16(tag: .reflectedAmbientLight, value: ambient))
+                    }
                 }
 
                 // Annotation Display Format ID (2010,0030) — enables annotation

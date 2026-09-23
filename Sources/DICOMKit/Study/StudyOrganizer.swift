@@ -112,7 +112,8 @@ public struct StudyOrganizer {
                 if pattern == "descriptive" {
                     let num = series.seriesNumber ?? "0"
                     let desc = series.seriesDescription ?? "Unknown"
-                    let mod = series.modality ?? "XX"
+                    // "XX" is not a DICOM code; OT (Other) is the standard unknown.
+                    let mod = series.modality ?? Modality.ot.rawValue
                     seriesDirName = sanitizeFilename("\(num)_\(mod)_\(desc)")
                 } else {
                     seriesDirName = seriesUID

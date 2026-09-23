@@ -239,9 +239,14 @@ extension Tag {
     /// VR: DS, VM: 1
     public static let mechanicalIndex = Tag(group: 0x0018, element: 0x5022)
     
-    /// Thermal Index (0018,5026)
+    /// Cranial Thermal Index (0018,5026)
     /// VR: DS, VM: 1
-    public static let thermalIndex = Tag(group: 0x0018, element: 0x5026)
+    public static let cranialThermalIndex = Tag(group: 0x0018, element: 0x5026)
+    
+    /// (0018,5026) is the *Cranial* Thermal Index; Soft Tissue (0018,5027) and
+    /// Bone (0018,5024) Thermal Index are separate attributes.
+    @available(*, deprecated, renamed: "cranialThermalIndex")
+    public static let thermalIndex = Tag.cranialThermalIndex
     
     /// Depth of Scan Field (0018,5050)
     /// VR: IS, VM: 1

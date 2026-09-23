@@ -108,14 +108,23 @@ extension DICOMMWLCommand {
         @Option(name: .long, help: "Patient ID filter")
         var patientId: String?
         
-        @Option(name: .long, help: "Modality filter (e.g., CT, MR, US)")
+        @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("filter")))
         var modality: String?
+
+        @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
+        var strictModality: Bool = false
         
         @Option(name: .long, help: "SPS Status filter (SCHEDULED, IN PROGRESS, DISCONTINUED, COMPLETED)")
         var spsStatus: String?
         
         @Option(name: .long, help: "Accession number filter")
         var accessionNumber: String?
+        
+        @Option(name: .long, help: "Scheduled Performing Physician's Name filter (supports wildcards: *)")
+        var performingPhysician: String?
+
+        @Option(name: .long, help: "Force the Specific Character Set (0008,0005) of the query, e.g. ISO_IR 100 or ISO_IR 192. By default the narrowest set that represents every text key is chosen (none for pure ASCII)")
+        var specificCharacterSet: String?
         
         @Option(name: .long, help: "Connection timeout in seconds (default: 60)")
         var timeout: Int = 60
@@ -127,6 +136,11 @@ extension DICOMMWLCommand {
         var json: Bool = false
         
         mutating func run() async throws {
+            // Validate --modality up front: an unrecognized code otherwise
+            // reaches the PACS as a filter that silently matches nothing.
+            modality = try ModalityOptionValidator.resolve(
+                modality, strict: strictModality, verbose: verbose)
+
             #if canImport(Network)
             // Resolve host and port
             let serverInfo = resolveHostPort()
@@ -164,7 +178,8 @@ extension DICOMMWLCommand {
                     patientID: patientId ?? "",
                     modality: modality ?? "",
                     spsStatus: spsStatus ?? "",
-                    accession: accessionNumber ?? ""
+                    accession: accessionNumber ?? "",
+                    performingPhysician: performingPhysician ?? ""
                 )
             } catch {
                 throw ValidationError((error as? WorklistDateFilterError)?.description ?? "\(error)")
@@ -177,7 +192,8 @@ extension DICOMMWLCommand {
                 callingAE: aet,
                 calledAE: calledAet,
                 matching: queryKeys,
-                timeout: TimeInterval(timeout)
+                timeout: TimeInterval(timeout),
+                specificCharacterSet: specificCharacterSet
             )
 
             // Render via the SHARED NetworkConsole formatter (DICOMNetwork) to STDOUT —
@@ -218,6 +234,7 @@ extension DICOMMWLCommand {
             add("Modality:", modality)
             add("SPS Status:", spsStatus)
             add("Accession:", accessionNumber)
+            add("Performing Physician:", performingPhysician)
             return f
         }
         

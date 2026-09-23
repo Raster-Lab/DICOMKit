@@ -230,7 +230,7 @@ public struct UPSQuery: Sendable, Equatable {
     /// - Parameter value: Station name or wildcard pattern
     /// - Returns: Updated query
     public func scheduledStationName(_ value: String) -> UPSQuery {
-        return with(parameter: UPSQueryAttribute.scheduledStationName, value: value)
+        return with(parameter: UPSQueryAttribute.scheduledStationNameCodeSequence, value: value)
     }
     
     /// Filter by Scheduled Station Class
@@ -238,7 +238,7 @@ public struct UPSQuery: Sendable, Equatable {
     /// - Parameter value: Station class or wildcard pattern
     /// - Returns: Updated query
     public func scheduledStationClass(_ value: String) -> UPSQuery {
-        return with(parameter: UPSQueryAttribute.scheduledStationClass, value: value)
+        return with(parameter: UPSQueryAttribute.scheduledStationClassCodeSequence, value: value)
     }
     
     /// Filter by Scheduled Station Geographic Location
@@ -460,11 +460,17 @@ public enum UPSQueryAttribute {
     
     // MARK: - Station (Coded Sequence attributes - for matching on code values)
     
-    /// Scheduled Station Name (matches against Scheduled Station Name Code Sequence)
-    public static let scheduledStationName = "00404025"
+    /// Scheduled Station Name Code Sequence (0040,4025) — matching is on the
+    /// code sequence; there is no plain-string station name in UPS.
+    public static let scheduledStationNameCodeSequence = "00404025"
     
-    /// Scheduled Station Class (matches against Scheduled Station Class Code Sequence)
-    public static let scheduledStationClass = "00404026"
+    /// Scheduled Station Class Code Sequence (0040,4026)
+    public static let scheduledStationClassCodeSequence = "00404026"
+    
+    @available(*, deprecated, renamed: "scheduledStationNameCodeSequence")
+    public static let scheduledStationName = scheduledStationNameCodeSequence
+    @available(*, deprecated, renamed: "scheduledStationClassCodeSequence")
+    public static let scheduledStationClass = scheduledStationClassCodeSequence
     
     /// Scheduled Station Geographic Location
     public static let scheduledStationGeographicLocation = "00404027"

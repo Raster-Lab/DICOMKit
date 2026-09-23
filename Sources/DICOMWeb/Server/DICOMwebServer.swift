@@ -1614,20 +1614,71 @@ public actor DICOMwebServer {
     
     // MARK: - Helper Methods
     
+    /// Maps QIDO-RS query parameters to a `StorageQuery`.
+    ///
+    /// PS3.18 8.3.4.1: `{attributeID}` may be the keyword *or* the 8-hex tag
+    /// (`PatientName=` and `00100010=` are equivalent), so both are accepted for
+    /// every key. Covers every required matching attribute of PS3.18 Table
+    /// 10.6.1-5 plus the common optional ones.
     private func parseQIDOQuery(from parameters: [String: String]) -> StorageQuery {
         var query = StorageQuery()
-        
-        query.patientName = parameters["PatientName"]
-        query.patientID = parameters["PatientID"]
-        query.accessionNumber = parameters["AccessionNumber"]
-        query.studyInstanceUID = parameters["StudyInstanceUID"]
-        query.seriesInstanceUID = parameters["SeriesInstanceUID"]
-        query.sopInstanceUID = parameters["SOPInstanceUID"]
-        query.modality = parameters["Modality"]
-        query.studyDescription = parameters["StudyDescription"]
-        query.seriesDescription = parameters["SeriesDescription"]
-        query.referringPhysicianName = parameters["ReferringPhysicianName"]
-        
+        func value(_ keyword: String, _ tag: String) -> String? {
+            let v = parameters[keyword] ?? parameters[tag]
+            return (v?.isEmpty ?? true) ? nil : v
+        }
+
+        // Study level
+        query.patientName = value("PatientName", "00100010")
+        query.patientID = value("PatientID", "00100020")
+        query.accessionNumber = value("AccessionNumber", "00080050")
+        query.studyInstanceUID = value("StudyInstanceUID", "0020000D")
+        query.studyID = value("StudyID", "00200010")
+        query.studyDescription = value("StudyDescription", "00081030")
+        query.referringPhysicianName = value("ReferringPhysicianName", "00080090")
+        if let date = value("StudyDate", "00080020") {
+            query.studyDate = StorageQuery.DateRange(dicomValue: date)
+        }
+        if let time = value("StudyTime", "00080030") {
+            query.studyTime = StorageQuery.DateRange(dicomValue: time, format: "HHmmss")
+        }
+        if let modalities = value("ModalitiesInStudy", "00080061") {
+            query.modalitiesInStudy = modalities
+                .split(whereSeparator: { $0 == "\\" || $0 == "," })
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        }
+
+        // Series level
+        query.seriesInstanceUID = value("SeriesInstanceUID", "0020000E")
+        query.modality = value("Modality", "00080060")
+        query.seriesDescription = value("SeriesDescription", "0008103E")
+        query.bodyPartExamined = value("BodyPartExamined", "00180015")
+        if let number = value("SeriesNumber", "00200011").flatMap({ Int($0) }) {
+            query.seriesNumber = number
+        }
+
+        // Instance level
+        query.sopInstanceUID = value("SOPInstanceUID", "00080018")
+        query.sopClassUID = value("SOPClassUID", "00080016")
+        if let number = value("InstanceNumber", "00200013").flatMap({ Int($0) }) {
+            query.instanceNumber = number
+        }
+
+        // Anything else (e.g. PerformedProcedureStepStartDate) is kept for
+        // providers that can match on it.
+        let handled: Set<String> = [
+            "PatientName", "00100010", "PatientID", "00100020", "AccessionNumber", "00080050",
+            "StudyInstanceUID", "0020000D", "StudyID", "00200010", "StudyDescription", "00081030",
+            "ReferringPhysicianName", "00080090", "StudyDate", "00080020", "StudyTime", "00080030",
+            "ModalitiesInStudy", "00080061", "SeriesInstanceUID", "0020000E", "Modality", "00080060",
+            "SeriesDescription", "0008103E", "BodyPartExamined", "00180015", "SeriesNumber", "00200011",
+            "SOPInstanceUID", "00080018", "SOPClassUID", "00080016", "InstanceNumber", "00200013",
+            "offset", "limit", "fuzzymatching", "includefield",
+        ]
+        for (k, v) in parameters where !handled.contains(k) {
+            query.customParameters[k] = v
+        }
+
         if let offset = parameters["offset"], let value = Int(offset) {
             query.offset = value
         }
@@ -1695,6 +1746,22 @@ public actor DICOMwebServer {
             if !study.modalitiesInStudy.isEmpty {
                 dict["00080061"] = createDICOMJSONValue(vr: "CS", values: study.modalitiesInStudy)
             }
+            // Remaining required return attributes (PS3.18 Table 10.6.1-5)
+            if let referring = study.referringPhysicianName {
+                dict["00080090"] = createDICOMJSONValue(vr: "PN", value: referring)
+            }
+            if let birthDate = study.patientBirthDate {
+                dict["00100030"] = createDICOMJSONValue(vr: "DA", value: birthDate)
+            }
+            if let sex = study.patientSex {
+                dict["00100040"] = createDICOMJSONValue(vr: "CS", value: sex)
+            }
+            if let studyID = study.studyID {
+                dict["00200010"] = createDICOMJSONValue(vr: "SH", value: studyID)
+            }
+            dict["00080056"] = createDICOMJSONValue(vr: "CS", value: "ONLINE")   // Instance Availability
+            dict["00081190"] = createDICOMJSONValue(vr: "UR",                   // Retrieve URL
+                value: "\(configuration.baseURL.absoluteString)/studies/\(study.studyInstanceUID)")
             
             dict["00201206"] = createDICOMJSONValue(vr: "IS", value: "\(study.numberOfStudyRelatedSeries)")
             dict["00201208"] = createDICOMJSONValue(vr: "IS", value: "\(study.numberOfStudyRelatedInstances)")
@@ -1723,6 +1790,11 @@ public actor DICOMwebServer {
             if let desc = s.seriesDescription {
                 dict["0008103E"] = createDICOMJSONValue(vr: "LO", value: desc)
             }
+            if let bodyPart = s.bodyPartExamined {
+                dict["00180015"] = createDICOMJSONValue(vr: "CS", value: bodyPart)
+            }
+            dict["00081190"] = createDICOMJSONValue(vr: "UR",                   // Retrieve URL
+                value: "\(configuration.baseURL.absoluteString)/studies/\(s.studyInstanceUID)/series/\(s.seriesInstanceUID)")
             
             dict["00201209"] = createDICOMJSONValue(vr: "IS", value: "\(s.numberOfSeriesRelatedInstances)")
             
@@ -1748,6 +1820,20 @@ public actor DICOMwebServer {
             if let num = instance.instanceNumber {
                 dict["00200013"] = createDICOMJSONValue(vr: "IS", value: "\(num)")
             }
+            if let frames = instance.numberOfFrames {
+                dict["00280008"] = createDICOMJSONValue(vr: "IS", value: "\(frames)")
+            }
+            if let rows = instance.rows {
+                dict["00280010"] = ["vr": "US", "Value": [rows]]
+            }
+            if let columns = instance.columns {
+                dict["00280011"] = ["vr": "US", "Value": [columns]]
+            }
+            if let bits = instance.bitsAllocated {
+                dict["00280100"] = ["vr": "US", "Value": [bits]]
+            }
+            dict["00081190"] = createDICOMJSONValue(vr: "UR",                   // Retrieve URL
+                value: "\(configuration.baseURL.absoluteString)/studies/\(instance.studyInstanceUID)/series/\(instance.seriesInstanceUID)/instances/\(instance.sopInstanceUID)")
             
             results.append(dict)
         }

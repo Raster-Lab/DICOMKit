@@ -576,7 +576,7 @@ public struct PresentationStateStore: Sendable {
             // name lives in Content Description (0070,0081) — read it back, or
             // "Lung window" returns as "LUNG WINDOW" and no longer matches the
             // label a delete or a re-save is looking for.
-            let displayLabel = file.dataSet.string(for: .presentationDescription)?
+            let displayLabel = file.dataSet.string(for: .contentDescription)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let sidecar = AnnotationSidecar.read(forStateAt: url)
 
@@ -1091,7 +1091,7 @@ public struct PresentationStateStore: Sendable {
             // Content Description holds the reader's own wording; Presentation
             // Label is the CS-folded one. Matching either is what makes this
             // agree with the grouping `views(forStudy:)` does.
-            let described = file.dataSet.string(for: .presentationDescription)?
+            let described = file.dataSet.string(for: .contentDescription)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             return described == label
                 || file.dataSet.string(for: .contentLabel)

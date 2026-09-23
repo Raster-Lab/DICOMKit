@@ -4,6 +4,7 @@
 // DICOM Studio — Window/level preset definitions for common modalities
 
 import Foundation
+import DICOMCore
 
 /// A single window/level preset with descriptive metadata.
 public struct WindowLevelPreset: Sendable, Equatable, Identifiable, Hashable {
@@ -110,42 +111,78 @@ public enum WindowLevelPresets: Sendable {
         WindowLevelPreset(name: "Subtracted", center: 128, width: 180, modality: "XA"),
     ]
 
+    /// Conventional radiography (film/screen equivalent), same latitude as CR.
+    public static let rgPresets: [WindowLevelPreset] = [
+        WindowLevelPreset(name: "Standard", center: 2048, width: 4096, modality: "RG"),
+        WindowLevelPreset(name: "Bone", center: 2048, width: 2500, modality: "RG"),
+        WindowLevelPreset(name: "Soft Tissue", center: 1800, width: 3000, modality: "RG"),
+    ]
+
+    /// Panoramic dental X-ray.
+    public static let pxPresets: [WindowLevelPreset] = [
+        WindowLevelPreset(name: "Standard", center: 2048, width: 4096, modality: "PX"),
+        WindowLevelPreset(name: "Bone", center: 2048, width: 2500, modality: "PX"),
+    ]
+
+    /// Intra-oral dental radiography.
+    public static let ioPresets: [WindowLevelPreset] = [
+        WindowLevelPreset(name: "Standard", center: 2048, width: 4096, modality: "IO"),
+        WindowLevelPreset(name: "Bone", center: 2048, width: 2500, modality: "IO"),
+    ]
+
+    /// Bone densitometry (X-ray).
+    public static let bmdPresets: [WindowLevelPreset] = [
+        WindowLevelPreset(name: "Standard", center: 2048, width: 4096, modality: "BMD"),
+    ]
+
+    /// Intravascular ultrasound — 8-bit, but benefits from a contrast option.
+    public static let ivusPresets: [WindowLevelPreset] = [
+        WindowLevelPreset(name: "Standard", center: 128, width: 256, modality: "IVUS"),
+        WindowLevelPreset(name: "High Contrast", center: 128, width: 160, modality: "IVUS"),
+    ]
+
+    /// Optical coherence tomography (ophthalmic and intravascular).
+    public static let octPresets: [WindowLevelPreset] = [
+        WindowLevelPreset(name: "Standard", center: 128, width: 256, modality: "OPT"),
+        WindowLevelPreset(name: "High Contrast", center: 128, width: 160, modality: "OPT"),
+    ]
+
     // MARK: - Lookup
 
     /// Returns the preset list for the given modality.
     ///
-    /// US has no entry deliberately: ultrasound frames are display-ready 8-bit
-    /// and a fixed window would be an invented number, not a clinical one.
+    /// Presets are deliberately curated, not exhaustive. Display-ready
+    /// modalities (US, ES, GM, SM, XC, DMS…) have no entry: their frames are
+    /// 8-bit and already windowed, so a fixed window would be an invented
+    /// number rather than a clinical one. The same reasoning excludes the
+    /// non-image codes (SR, PR, KO, SEG, DOC…), which have no pixels to window.
     ///
     /// - Parameter modality: DICOM modality code (e.g., "CT", "MR").
     /// - Returns: Array of presets, empty if no presets are defined for the modality.
     public static func presets(for modality: String) -> [WindowLevelPreset] {
-        switch modality.uppercased() {
-        case "CT":
-            return ctPresets
-        case "MR", "MRI":
-            return mrPresets
-        case "CR":
-            return crPresets
-        case "DX", "RG":
-            return dxPresets
-        case "MG":
-            return mgPresets
-        case "PT":
-            return ptPresets
-        case "NM":
-            return nmPresets
-        case "XA", "RF":
-            return xaPresets
-        default:
-            return []
+        guard let resolved = Modality.normalized(modality) else { return [] }
+        switch resolved {
+        case .ct:    return ctPresets
+        case .mr:    return mrPresets
+        case .cr:    return crPresets
+        case .dx:    return dxPresets
+        case .rg:    return rgPresets
+        case .px:    return pxPresets
+        case .io:    return ioPresets
+        case .bmd:   return bmdPresets
+        case .mg:    return mgPresets
+        case .pt:    return ptPresets
+        case .nm:    return nmPresets
+        case .xa, .rf: return xaPresets
+        case .ivus:  return ivusPresets
+        case .opt, .oct, .ivoct, .optenf, .optbsv: return octPresets
+        default:     return []
         }
     }
 
     /// Returns all available presets across all modalities.
     public static var allPresets: [WindowLevelPreset] {
-        ctPresets + mrPresets + crPresets + dxPresets + mgPresets
-            + ptPresets + nmPresets + xaPresets
+        presetsByModality.flatMap { $0.presets }
     }
 
     /// Every preset list, grouped and labelled by modality — for menus that
@@ -153,7 +190,9 @@ public enum WindowLevelPresets: Sendable {
     /// run of prefixed names.
     public static let presetsByModality: [(modality: String, presets: [WindowLevelPreset])] = [
         ("CT", ctPresets), ("MR", mrPresets), ("CR", crPresets), ("DX", dxPresets),
+        ("RG", rgPresets), ("PX", pxPresets), ("IO", ioPresets), ("BMD", bmdPresets),
         ("MG", mgPresets), ("PT", ptPresets), ("NM", nmPresets), ("XA", xaPresets),
+        ("IVUS", ivusPresets), ("OPT", octPresets),
     ]
 
     /// Finds a preset by name and modality.

@@ -245,6 +245,38 @@ public struct QIDOSeriesResult: QIDOResult {
     public var performedProcedureStepStartDate: String? {
         return string(forTag: QIDOQueryAttribute.performedProcedureStepStartDate)
     }
+
+    /// Performed Procedure Step Start Time (0040,0245)
+    public var performedProcedureStepStartTime: String? {
+        return string(forTag: QIDOQueryAttribute.performedProcedureStepStartTime)
+    }
+
+    /// One item of the Request Attributes Sequence (0040,0275).
+    public struct RequestAttributes: Sendable, Hashable {
+        /// Scheduled Procedure Step ID (0040,0009)
+        public let scheduledProcedureStepID: String?
+        /// Requested Procedure ID (0040,1001)
+        public let requestedProcedureID: String?
+    }
+
+    /// Request Attributes Sequence (0040,0275) items — the link from a series
+    /// back to the worklist step and requested procedure.
+    public var requestAttributes: [RequestAttributes] {
+        guard let attr = attributes[QIDOQueryAttribute.requestAttributesSequence] as? [String: Any],
+              let items = attr["Value"] as? [[String: Any]] else { return [] }
+        func first(_ item: [String: Any], _ tag: String) -> String? {
+            guard let element = item[tag] as? [String: Any],
+                  let values = element["Value"] as? [Any], let v = values.first else { return nil }
+            if let str = v as? String { return str }
+            if let num = v as? NSNumber { return num.stringValue }
+            return nil
+        }
+        return items.map {
+            RequestAttributes(
+                scheduledProcedureStepID: first($0, QIDOQueryAttribute.scheduledProcedureStepID),
+                requestedProcedureID: first($0, QIDOQueryAttribute.requestedProcedureID))
+        }
+    }
     
     /// Number of Series Related Instances (0020,1209)
     public var numberOfSeriesRelatedInstances: Int? {

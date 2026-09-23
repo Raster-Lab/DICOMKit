@@ -41,9 +41,12 @@ extension Tag {
     /// VR: SQ, VM: 1
     public static let performingPhysicianIdentificationSequence = Tag(group: 0x0008, element: 0x1052)
     
-    /// Operator's Name (0008,1070)
+    /// Operators' Name (0008,1070)
     /// VR: PN, VM: 1-n
-    public static let operatorName = Tag(group: 0x0008, element: 0x1070)
+    public static let operatorsName = Tag(group: 0x0008, element: 0x1070)
+    
+    @available(*, deprecated, renamed: "operatorsName")
+    public static let operatorName = Tag.operatorsName
     
     /// Operators' Identification Sequence (0008,1072)
     /// VR: SQ, VM: 1

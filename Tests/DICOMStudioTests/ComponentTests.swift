@@ -233,11 +233,20 @@ struct ModalityMappingTests {
         #expect(ModalityMapping.fullName(for: "PET") == "Positron Emission Tomography")
     }
 
-    @Test("All RT modalities return Radiation Therapy")
+    @Test("RT modalities resolve to their own standard names")
     func testFullNameRT() {
-        let rtModalities = ["RT", "RTPLAN", "RTDOSE", "RTSTRUCT"]
-        for mod in rtModalities {
-            #expect(ModalityMapping.fullName(for: mod) == "Radiation Therapy", "Expected Radiation Therapy for \(mod)")
+        // Before the 2026a adoption every RT* code collapsed onto a single
+        // pseudo-modality "RT" named "Radiation Therapy". "RT" is not a DICOM
+        // code; PS3.3 C.7.3.1.1.1 defines eight distinct RT codes, and each now
+        // keeps its own name. Bare "RT" survives only as a legacy alias.
+        #expect(ModalityMapping.fullName(for: "RTPLAN") == "Radiotherapy Plan")
+        #expect(ModalityMapping.fullName(for: "RTDOSE") == "Radiotherapy Dose")
+        #expect(ModalityMapping.fullName(for: "RTSTRUCT") == "Radiotherapy Structure Set")
+        #expect(ModalityMapping.fullName(for: "RT") == "Radiotherapy Image")
+        // All of them still share the radiotherapy icon.
+        for mod in ["RT", "RTPLAN", "RTDOSE", "RTSTRUCT"] {
+            #expect(ModalityMapping.systemImage(for: mod) == "target",
+                    "Expected target icon for \(mod)")
         }
     }
 
