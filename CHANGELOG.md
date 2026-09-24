@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — DICOMDIR record types and hierarchy validation per PS3.3 2026a (2026-09-24)
+
+- **New public enum cases on `DirectoryRecordType`:** `plan`, `tract`,
+  `assessment`, `radiotherapy`, `annotation`, `inventory` and `wfPresentation`
+  (current), plus `printQueue`, `filmSession`, `filmBox`, `imageBox` and `mrdr`
+  (retired, for reading legacy DICOMDIRs). All 35 current and 16 retired
+  Enumerated Values of Directory Record Type (0004,1430) in Table F.3-3 are now
+  covered. **Source-breaking for exhaustive switches** over `DirectoryRecordType`.
+- **`DICOMDirectory.validate()` follows Table F.4-1.** It previously accepted
+  only 7 of the 25 record types allowed under SERIES, and rejected PRIVATE
+  children, so valid DICOMDIRs failed validation. Root-level records are now
+  checked too. Retired record types are tolerated wherever they appear.
+
 ### Fixed — Specific Character Set (0008,0005): all 2026a Defined Terms, correct decoding, ISO 2022 per PS3.5 (2026-09-24)
 
 - **New public enum cases on `CharacterSetEncoding`: `isoIR203` (Latin-9),

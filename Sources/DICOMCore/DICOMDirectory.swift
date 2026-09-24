@@ -273,37 +273,28 @@ extension DICOMDirectory {
             }
         }
         
-        // Validate hierarchy: PATIENT -> STUDY -> SERIES -> IMAGE
-        func validateHierarchy(_ record: DirectoryRecord, allowedChildTypes: [DirectoryRecordType]) throws {
+        // Validate the hierarchy against PS3.3 Table F.4-1. Retired record types (and
+        // PRIVATE, which may contain anything) are not checked below themselves, since the
+        // Standard no longer defines what they may contain.
+        func validateChildren(of record: DirectoryRecord) throws {
+            guard let allowed = record.recordType.allowedChildTypes else { return }
             for child in record.children {
-                if !allowedChildTypes.contains(child.recordType) {
+                if !allowed.contains(child.recordType) && !child.recordType.isRetired {
                     throw ValidationError.invalidRecordTypeInHierarchy(
                         "\(child.recordType.rawValue) cannot be child of \(record.recordType.rawValue)"
                     )
                 }
-                
-                // Recursively validate children
-                switch child.recordType {
-                case .patient:
-                    try validateHierarchy(child, allowedChildTypes: [.study])
-                case .study:
-                    try validateHierarchy(child, allowedChildTypes: [.series])
-                case .series:
-                    try validateHierarchy(child, allowedChildTypes: [.image, .presentation, .srDocument, .waveform, .rtDose, .rtStructureSet, .rtPlan])
-                default:
-                    // Leaf nodes typically don't have children
-                    if !child.children.isEmpty {
-                        throw ValidationError.invalidHierarchy("Leaf node \(child.recordType.rawValue) should not have children")
-                    }
-                }
+                try validateChildren(of: child)
             }
         }
-        
-        // Validate root level records (should be PATIENT records typically)
+
         for root in rootRecords {
-            if root.recordType == .patient {
-                try validateHierarchy(root, allowedChildTypes: [.study])
+            if !DirectoryRecordType.rootLevelTypes.contains(root.recordType) && !root.recordType.isRetired {
+                throw ValidationError.invalidRecordTypeInHierarchy(
+                    "\(root.recordType.rawValue) cannot be a root-level record"
+                )
             }
+            try validateChildren(of: root)
         }
         
         // Optionally check file existence
