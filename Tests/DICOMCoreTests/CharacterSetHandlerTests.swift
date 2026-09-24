@@ -811,16 +811,12 @@ struct CharacterSetHandlerTests {
     
     @Test("Encoding with multi-valued character set includes escape sequences")
     func testEncodingMultiValuedIncludesEscapeSequence() {
-        // ISO_IR 87 (Kanji) should get an escape sequence
-        let handler = CharacterSetHandler(characterSets: [.isoIR87, .isoIR6])
-        let text = "Test"
-        let encoded = handler.encode(text)
-        
-        // Should start with escape sequence ESC $ B (0x1B 0x24 0x42)
-        #expect(encoded.count > 3)
-        #expect(encoded[0] == 0x1B)
-        #expect(encoded[1] == 0x24)
-        #expect(encoded[2] == 0x42)
+        // JIS X 0208 is only allowed as Value 2..n (PS3.3 C.12.1.1.2): ASCII stays in
+        // ISO-IR 6, and the Kanji are wrapped in ESC $ B ... ESC ( B (PS3.5 Annex H).
+        let handler = CharacterSetHandler.from(specificCharacterSet: "\\ISO 2022 IR 87")
+        let encoded = handler.encode("Test山")
+        #expect(encoded == Data([0x54, 0x65, 0x73, 0x74, 0x1B, 0x24, 0x42, 0x3B, 0x33, 0x1B, 0x28, 0x42]))
+        #expect(handler.decode(encoded) == "Test山")
     }
     
     @Test("Encoding with UTF-8 does not include escape sequences")

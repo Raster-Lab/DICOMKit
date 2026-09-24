@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Specific Character Set (0008,0005): all 2026a Defined Terms, correct decoding, ISO 2022 per PS3.5 (2026-09-24)
+
+- **New public enum cases on `CharacterSetEncoding`: `isoIR203` (Latin-9),
+  `isoIR58` (Simplified Chinese GB 2312), `gb18030` and `gbk`.** With these, all
+  20 Defined Terms of PS3.3 2026a Tables C.12-2 to C.12-5 are recognized, and so
+  are the escape sequences ESC - b and ESC $ ) A.
+  **Source-breaking for exhaustive switches** over `CharacterSetEncoding`.
+- **Nine character sets were decoded with the wrong encoding.** Latin-3 and
+  Latin-4 were decoded as Latin-1. Greek, Arabic, Hebrew, Cyrillic, Turkish,
+  Korean and Thai were decoded as UTF-8, so non-ASCII text came out wrong or
+  empty. Each set now uses its ISO 8859 part, EUC-KR or TIS-620.
+- **ISO 2022 code extensions rewritten to follow PS3.5 §6.1.2.5.** G0 is read in
+  GL and G1 in GR. The Value 1 sets are active again after control characters.
+  Unrecognized escape sequences are skipped. JIS X 0208/0212, KS X 1001 and
+  GB 2312 are decoded correctly. The encoder designates each set only when a
+  character needs it, and restores Value 1 before delimiters and at the end of
+  the value. Output matches the PS3.5 Annex H.3.1, H.3.2 and I.2 examples byte
+  for byte.
+- **An empty Value 1 is kept.** `"\\ISO 2022 IR 87"` previously lost the empty
+  Value 1, so JIS X 0208 took over the default repertoire's role.
+
 ### Added — `PhotometricInterpretation.xyb` (JPEG XL XYB color) (2026-09-24)
 
 - **New public enum case `PhotometricInterpretation.xyb` (`"XYB"`).** XYB is a
