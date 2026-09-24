@@ -253,7 +253,8 @@ public struct CharacterSetHandler: Sendable {
 
 /// Character set encoding definitions for DICOM
 ///
-/// Reference: DICOM PS3.5 Table 6.2-1 - Defined Terms for Specific Character Set
+/// Reference: DICOM PS3.3 C.12.1.1.2, Tables C.12-2 to C.12-5 - Defined Terms for
+/// Specific Character Set (0008,0005); PS3.5 Section 6.1 - character repertoires
 public enum CharacterSetEncoding: Sendable, Hashable {
     /// ISO IR 6 - ASCII (G0 default)
     case isoIR6
@@ -312,7 +313,7 @@ public enum CharacterSetEncoding: Sendable, Hashable {
     /// - Returns: The corresponding encoding, or nil if unknown
     public static func from(definedTerm: String) -> CharacterSetEncoding? {
         switch definedTerm {
-        case "ISO_IR 6", "": // Empty defaults to ISO IR 6
+        case "ISO_IR 6", "ISO 2022 IR 6", "": // Empty defaults to ISO IR 6
             return .isoIR6
         case "ISO_IR 13", "ISO 2022 IR 13":
             return .isoIR13
@@ -353,8 +354,10 @@ public enum CharacterSetEncoding: Sendable, Hashable {
     
     /// Returns the Foundation String.Encoding for this character set
     ///
-    /// Note: Not all DICOM character sets map cleanly to Foundation encodings.
-    /// For character sets without direct Foundation support, fallback to UTF-8.
+    /// Each ISO-IR registration maps to the ISO/IEC 8859 part (or national standard) that
+    /// defines it: G0 ISO-IR 6 plus the G1 set in the upper half is exactly that 8859 part.
+    /// ISO-IR 149 (KS X 1001) invoked into G1 is byte-identical to EUC-KR. ISO-IR 13
+    /// (Katakana) is approximated with Shift JIS.
     public var stringEncoding: String.Encoding {
         switch self {
         case .isoIR6, .isoIR14: // ASCII and Japanese Romaji
@@ -367,29 +370,34 @@ public enum CharacterSetEncoding: Sendable, Hashable {
             return .isoLatin1
         case .isoIR101: // Latin-2
             return .isoLatin2
-        case .isoIR109: // Latin-3 (fallback to Latin-1)
-            return .isoLatin1
-        case .isoIR110: // Latin-4 (fallback to Latin-1)
-            return .isoLatin1
-        case .isoIR126: // Greek (fallback to UTF-8)
-            return .utf8
-        case .isoIR127: // Arabic (fallback to UTF-8)
-            return .utf8
-        case .isoIR138: // Hebrew (fallback to UTF-8)
-            return .utf8
-        case .isoIR144: // Cyrillic (fallback to UTF-8)
-            return .utf8
-        case .isoIR148: // Turkish (fallback to UTF-8)
-            return .utf8
-        case .isoIR149: // Korean (fallback to UTF-8)
-            return .utf8
-        case .isoIR166: // Thai (fallback to UTF-8)
-            return .utf8
+        case .isoIR109: // Latin-3, ISO 8859-3
+            return Self.coreFoundation(0x0203) // kCFStringEncodingISOLatin3
+        case .isoIR110: // Latin-4, ISO 8859-4
+            return Self.coreFoundation(0x0204) // kCFStringEncodingISOLatin4
+        case .isoIR126: // Greek, ISO 8859-7
+            return Self.coreFoundation(0x0207) // kCFStringEncodingISOLatinGreek
+        case .isoIR127: // Arabic, ISO 8859-6
+            return Self.coreFoundation(0x0206) // kCFStringEncodingISOLatinArabic
+        case .isoIR138: // Hebrew, ISO 8859-8
+            return Self.coreFoundation(0x0208) // kCFStringEncodingISOLatinHebrew
+        case .isoIR144: // Cyrillic, ISO 8859-5
+            return Self.coreFoundation(0x0205) // kCFStringEncodingISOLatinCyrillic
+        case .isoIR148: // Latin-5 (Turkish), ISO 8859-9
+            return Self.coreFoundation(0x0209) // kCFStringEncodingISOLatin5
+        case .isoIR149: // Korean, KS X 1001 in G1 = EUC-KR
+            return Self.coreFoundation(0x0940) // kCFStringEncodingEUC_KR
+        case .isoIR166: // Thai, TIS 620-2533 = ISO 8859-11
+            return Self.coreFoundation(0x020B) // kCFStringEncodingISOLatinThai
         case .isoIR192: // UTF-8
             return .utf8
         }
     }
     
+    /// Foundation encoding for a CFStringEncoding constant.
+    private static func coreFoundation(_ cfEncoding: UInt32) -> String.Encoding {
+        String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(cfEncoding))
+    }
+
     /// Decodes data using this character set encoding
     ///
     /// - Parameter data: The data to decode

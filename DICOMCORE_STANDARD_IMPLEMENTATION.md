@@ -76,6 +76,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 | 2026-09-24 | — | Decision: bugs found outside DICOMCore are deferred until their module is audited. Added a [Deferred findings](#deferred-findings--outside-dicomcore) section (D1–D9). D1, the DICOMNetwork length bug, is rated High. Added P7 (JPEG XL one fragment per frame) for the C2 audit. |
 | 2026-09-24 | B2 | Loop started. `PhotometricInterpretation.swift`: text-diffed against PS3.3 2026a C.7.6.3.1.2 and PS3.5 2026a Table 8.2.15-1. XYB is confirmed missing. Paused for approval because the fix adds a public enum case. |
 | 2026-09-24 | B2 / P3 | Adding XYB approved. Added `PhotometricInterpretation.xyb`, plus the RGB relabel after JPEG XL XYB decode in `TransferSyntaxConverter` (PS3.3 2026a C.7.6.3.1.2). 4 new tests; 7,284 Swift Testing tests plus all XCTest suites pass. CHANGELOG updated, which also resolves D8. Deferred D10–D12 added (DICOMStudio thumbnails and label, CompressionManager). |
+| 2026-09-24 | B2 / P5 | `CharacterSetHandler.swift` text-diffed against PS3.3 2026a C.12-2 to C.12-5. Part 1 fixed the wrong decoders for 9 character sets and added the `ISO 2022 IR 6` alias, with 11 tests; DICOMCore, DICOMKit and DICOMWeb tests pass. Part 2 (4 new public enum cases) is paused for approval. |
 
 ---
 
@@ -130,6 +131,7 @@ Extended Offset Table CP. NEMA's 2019a release notes show the 64-bit VRs came fr
 
 - **`CharacterSetHandler.swift:313-351`** — missing GB18030, GBK, ISO_IR 203 (Latin-9), ISO 2022 IR
   58. Affects real-world files from regional PACS deployments using these character sets.
+  *Checked 2026-09-24 against 2026a:* confirmed. Also missing are ISO 2022 IR 203 and ISO 2022 IR 6, and 9 existing sets were being decoded with the wrong encoding (now fixed). See B2.
 - **`DirectoryRecord.swift:9-126`** — 39 record types; missing PLAN, TRACT, ASSESSMENT,
   RADIOTHERAPY, ANNOTATION, INVENTORY (roughly a mid-2010s snapshot).
 - **`DICOMDirectory.swift:9-33`** — media application profile names appear wrong (e.g. "STD-GEN-DVD"
@@ -340,7 +342,7 @@ Out of scope for DICOMCore: the CP-1818 mislabels in `CHANGELOG.md` and `Diction
 | [PhotometricInterpretation.swift](Sources/DICOMCore/PhotometricInterpretation.swift#L1) | ✅ **Fixed 2026-09-24.** Text-diffed against PS3.3 2026a C.7.6.3.1.2 and PS3.5 2026a Table 8.2.15-1. Added `case xyb`, which has 3 samples per pixel and is not YBR. `TransferSyntaxConverter` now relabels a decoded JPEG XL XYB dataset to RGB, as PS3.3 requires; before, it also read XYB as MONOCHROME2. Adding the case was approved as a public API change and is noted in the CHANGELOG. The other 9 current terms match. See P3 |
 | [TransferSyntaxConverter.swift:1300](Sources/DICOMCore/TransferSyntaxConverter.swift#L1300) | ✅ **Fixed 2026-09-24:** OV/SV/UV are now byte-swapped per PS3.5 2026a §7.3. See P1 |
 | [DataElement.swift:295-298,389-392](Sources/DICOMCore/DataElement.swift#L295) | ✅ **Fixed 2026-09-24:** UInt64/Int64 accessors added per PS3.5 2026a Table 6.2-1. See P1 |
-| [CharacterSetHandler.swift:313-351](Sources/DICOMCore/CharacterSetHandler.swift#L313) | Missing GB18030, GBK, ISO_IR 203, ISO 2022 IR 58 — see P5 |
+| [CharacterSetHandler.swift](Sources/DICOMCore/CharacterSetHandler.swift#L257) | 🔄 **Part 1 of 2 fixed 2026-09-24.** Text-diffed against PS3.3 2026a Tables C.12-2 to C.12-5, which list 20 Defined Terms plus the default repertoire. **The P5 claim is confirmed and was incomplete.** Six terms are missing: ISO_IR 203, ISO 2022 IR 203, ISO 2022 IR 58, GB18030, GBK and ISO 2022 IR 6. The parser also lacks the escapes ESC - b (IR 203) and ESC $ ) A (IR 58). The other escapes match the tables byte for byte. **A bigger bug, not in P5:** `stringEncoding` decoded 9 existing sets with the wrong encoding. IR 109 and 110 were decoded as Latin-1, and IR 126, 127, 138, 144, 148, 149 and 166 as UTF-8, so any non-ASCII text came out garbled or nil. **Part 1 (no API change, done):** each set is now mapped to its ISO 8859 part, EUC-KR or TIS-620; `ISO 2022 IR 6` is accepted; the enum's citation is corrected; 11 tests added. **Part 2 ⏸ awaiting approval:** adding new cases for ISO_IR 203, IR 58, GB18030 and GBK to the public enum `CharacterSetEncoding`. See P5 |
 | [DirectoryRecord.swift:9-126](Sources/DICOMCore/DirectoryRecord.swift#L9) | Missing PLAN, TRACT, ASSESSMENT, RADIOTHERAPY, ANNOTATION, INVENTORY — see P5 |
 | [DICOMDirectory.swift:9-33](Sources/DICOMCore/DICOMDirectory.swift#L9) | Wrong/incomplete media application profile names — see P5 |
 | [StructuredReporting/SRDocumentType.swift:13-143](Sources/DICOMCore/StructuredReporting/SRDocumentType.swift#L13) | Missing Procedure Log Storage SOP class — see P6 |
