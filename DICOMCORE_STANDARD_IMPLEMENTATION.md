@@ -73,6 +73,8 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 | 2026-09-24 | A | Stage 3: every table compared row by row with the frozen NEMA **2026a** text (PS3.3, PS3.6 and PS3.16 downloaded from `/2026a/`). All six files match. Markers upgraded to "text-diffed". **Bucket A complete.** |
 | 2026-09-24 | B1 | Redone as a Stage 3 text diff: PS3.3, PS3.5 and PS3.6 from `/2026a/`, plus PS3.5 2026d from `/current/`, because NEMA has no frozen `/2026d/` copy (404). All 4 files match. CP 1819 confirmed from the 2019a release notes, and Sup 232 from the 2024d notes. Markers upgraded to "text-diffed". Two cosmetic findings (the .110 display name and a padding comment) were fixed later the same day with approval. DICOMCore still builds. **Bucket B1 complete.** |
 | 2026-09-24 | B2 / P1 | Fixed 64-bit VR support after checking PS3.5 2026a (Table 6.2-1, §7.3) and PS3.18 2026a (F.2.2, Table F.2.3-1). `DataElement.swift` and `TransferSyntaxConverter.swift` fixed, plus the DICOMWeb JSON encoder and decoder. 12 new tests; the full DICOMCore, DICOMWeb and round-trip test runs pass. Found 5 related gaps outside DICOMCore (see P1), not fixed yet. |
+| 2026-09-24 | — | Decision: bugs found outside DICOMCore are deferred until their module is audited. Added a [Deferred findings](#deferred-findings--outside-dicomcore) section (D1–D9). D1, the DICOMNetwork length bug, is rated High. Added P7 (JPEG XL one fragment per frame) for the C2 audit. |
+| 2026-09-24 | B2 | Loop started. `PhotometricInterpretation.swift`: text-diffed against PS3.3 2026a C.7.6.3.1.2 and PS3.5 2026a Table 8.2.15-1. XYB is confirmed missing. Paused for approval because the fix adds a public enum case. |
 
 ---
 
@@ -92,13 +94,7 @@ VR.swift declared `.OV`, `.SV` and `.UV`, but the code that encodes and decodes 
 
 Tests: `Tests/DICOMCoreTests/SixtyFourBitVRTests.swift` (6) and `Tests/DICOMWebTests/DICOMJSON64BitVRTests.swift` (6). They cover the accessors, a big-endian element, an LE→BE→LE round trip with a byte-exact check, and a JSON round trip. The full DICOMCore, DICOMWeb and round-trip test runs pass.
 
-**Found while fixing P1, and not fixed yet** (needs a decision):
-
-- **`DICOMNetwork/QueryService.swift:1000` (`VR.uses4ByteLength`) omits OV, SV and UV.** It duplicates `VR.uses32BitLength` and is used by the Explicit VR parsing and encoding code in Query, Retrieve, Storage, MPPS, Modality Worklist and Storage Commitment. An SV or UV element in a DIMSE dataset would get a 2-byte length header, which corrupts it on the wire. The fix is to have it return `uses32BitLength`. **Highest priority of these.**
-- **`DICOMWeb/DICOMJSONEncoder.swift` puts `InlineBinary` and `BulkDataURI` inside the `Value` array.** PS3.18 F.2.2 says an attribute object has "at most one of" `Value`, `BulkDataURI` or `InlineBinary`, as sibling keys. The decoder and the existing tests follow the same non-standard layout, so DICOMKit round-trips with itself but not with other DICOMweb servers. This affects every binary VR (OB, OD, OF, OL, OV, OW, UN), not only OV.
-- **`DICOMWeb/DICOMJSONEncoder.swift`: AT encoding.** The AT case calls `uint32Values`, which returns nil for VR AT, so AT falls through to the string fallback. Even if it returned values, it would give the wrong "GGGGEEEE" value for little-endian data. `attributeTagValues` should be used instead.
-- **`DICOMWeb/DICOMXMLEncoder.swift:233` `isBinaryVR` omits OV.** Same fix as the JSON encoder.
-- **Display only:** `DICOMStudio/Views/DICOMInspectorView.swift:41` and `DICOMKit/Comparison/ComparisonReport.swift:169` omit OV from their "binary" checks.
+**Related bugs outside DICOMCore:** five were found while fixing P1. By decision (2026-09-24) they are deferred until their module is audited. See [Deferred findings](#deferred-findings--outside-dicomcore) (D1–D5).
 
 ### P2 — `TransferSyntax.swift`: verify and close the UID registry gap
 
@@ -157,12 +153,36 @@ that exercise the affected codes:
   (should be SCOORD3D-only, per reviewer recollection); :135-147 is missing the `MULTISEGMENT` TCOORD
   range type.
 
+### P7 — JPEG XL: one fragment per frame (Bucket C2)
+
+PS3.5 2026a §A.4.12 says "each Frame shall be encoded separately as a single Fragment". The Bucket B1 files do not enforce this; the encapsulation code does. That code is `EncapsulatedPixelData.swift`, `DICOMWriter.swift` and the fragment-level JPEG XL recompression path in `TransferSyntaxConverter.swift`, all in Bucket C2. When auditing C2:
+1. Confirm that each JPEG XL frame (.110, .111, .112) is written as exactly one fragment and never split.
+2. Add a multi-frame test that checks the fragment count equals the frame count.
+
 ### Explicitly out of scope — do not chase
 
 Codec wrapper files (`HTJ2KCodec`, `J2KSwiftCodec`, `JLICodec`, `JPEGLSCodec`,
 `NativeJPEG2000Codec`, `NativeJPEGCodec`, `RLECodec`) and all Bucket C1/C2 plumbing files below.
 Adding DICOM edition labels to these would be noise: the algorithms they wrap are ISO/IEC/ITU-T
 territory, not DICOM's.
+
+---
+
+## Deferred findings — outside DICOMCore
+
+**Decision (2026-09-24):** bugs found in other modules while auditing DICOMCore are recorded here, not fixed now. Each one is fixed when its module is audited. When starting a module, work through its rows first, then mark each one ✅ with the date and commit.
+
+| ID | Module | Location | Problem | Standard (2026a) | Severity | Status |
+|---|---|---|---|---|---|---|
+| D1 | DICOMNetwork | [QueryService.swift:1000](Sources/DICOMNetwork/QueryService.swift#L1000) `VR.uses4ByteLength` | A second copy of `VR.uses32BitLength` that omits OV, SV and UV. The Explicit VR encode and parse code in Query, Retrieve, Storage, MPPS, Modality Worklist and Storage Commitment calls it, so an SV or UV element gets a 2-byte length header and is corrupted on the wire. Fix: return `uses32BitLength`, and delete the duplicate if possible. | PS3.5 §7.1.2, Tables 7.1-1 and 7.1-2 | **High:** data corruption on the wire. Rare in practice, since SV/UV mostly appear in Hanging Protocol selectors and a few UV counters | ⏳ Open |
+| D2 | DICOMWeb | [DICOMJSONEncoder.swift](Sources/DICOMWeb/DICOMJSONEncoder.swift) `encodeValue`, `encodeBulkData`; matching [DICOMJSONDecoder.swift](Sources/DICOMWeb/DICOMJSONDecoder.swift) `decodeValue` | `InlineBinary` and `BulkDataURI` are placed inside the `Value` array (`"Value": [{"InlineBinary": …}]`) instead of as sibling keys of `vr`. DICOMKit round-trips with itself but not with other DICOMweb servers. Affects OB, OD, OF, OL, OV, OW and UN. Fixing it also means updating `DICOMJSONEncoderTests.testEncodeInlineBinary` and `DICOMJSON64BitVRTests.testEncodeOVInlineBinary`, which assert the current layout. | PS3.18 §F.2.2 ("At most one of: Value / BulkDataURI / InlineBinary") | **Medium:** interoperability | ⏳ Open |
+| D3 | DICOMWeb | [DICOMJSONEncoder.swift](Sources/DICOMWeb/DICOMJSONEncoder.swift) `encodeNumericValues`, case `.AT` | AT is read with `uint32Values`, which returns nil for VR AT, so it falls through to the string fallback and emits garbage. Fix: use `attributeTagValues` and format each value as `%04X%04X`. | PS3.18 Table F.2.3-1 (AT is a String) | **Medium** | ⏳ Open |
+| D4 | DICOMWeb | [DICOMXMLEncoder.swift:233](Sources/DICOMWeb/DICOMXMLEncoder.swift#L233) `isBinaryVR` | Omits OV. SV and UV numeric handling in the XML encoder has not been checked either. | PS3.19 Native DICOM Model; PS3.5 Table 6.2-1 | Low | ⏳ Open |
+| D5 | DICOMStudio, DICOMKit | [DICOMInspectorView.swift:41](Sources/DICOMStudio/Views/DICOMInspectorView.swift#L41), [ComparisonReport.swift:169](Sources/DICOMKit/Comparison/ComparisonReport.swift#L169) | The "is binary" checks omit OV, so OV values are shown as text. | PS3.5 Table 6.2-1 | Low: display only | ⏳ Open |
+| D6 | DICOMDictionary | [DataElementDictionary.txt](Sources/DICOMDictionary/Resources/DataElementDictionary.txt) | The VR and VM columns have not been text-diffed. Only (0020,9170)–(9172) were checked, during B1. Run the full PS3.6 Table 6-1 diff. | PS3.6 Table 6-1 | Audit task | ⏳ Open |
+| D7 | DICOMDictionary tests | [DictionaryTests.swift:59](Tests/DICOMDictionaryTests/DictionaryTests.swift#L59) | The test is labelled "CP-1818 elements", which fits only the Extended Offset Table rows. The (0072,008x) and (0008,04xx) rows come from CP 1819. | Release notes 2019a | Low: label | ⏳ Open |
+| D8 | Repo docs | [CHANGELOG.md:191](CHANGELOG.md#L191) (2.2.16 entry) | Credits the 64-bit VRs to CP-1818; the correct CP is 1819. That entry is already released, so add an erratum note rather than rewriting it. | Release notes 2019a | Low: docs | ⏳ Open |
+| D9 | DICOMStudio, dicom-compress | [J2KTestBenchModels.swift:123,392](Sources/DICOMStudio/Models/J2KTestBenchModels.swift#L123), [dicom-compress/main.swift:62](Sources/dicom-compress/main.swift#L62) | Still call .4.110 "JPEG XL Lossless Only". The PS3.6 name is "JPEG XL Lossless". Leave the `jpeg-xl-lossless-only` flag alias alone. | PS3.6 Table A-1 | Low: text | ⏳ Open |
 
 ---
 
@@ -303,9 +323,7 @@ Each table was extracted by script, with U+200B stripped, and compared entry by 
 4. **No frozen 2026d text.** See Sources above. The 2026d half of the VR.swift check rests on `/current/`, whose subtitle was confirmed as 2026d on 2026-09-24.
 5. **Not covered.** §A.4.12 requires that "each Frame shall be encoded separately as a single Fragment". That is enforced in the encapsulation and writer code, not in these four files, so it was not checked here.
 
-Still open from the earlier pass, and out of scope for DICOMCore:
-- `CHANGELOG.md:191` (the released 2.2.16 entry) also says CP-1818 for the 64-bit VRs.
-- `Tests/DICOMDictionaryTests/DictionaryTests.swift:59` labels the test "CP-1818 elements". That label fits the Extended Offset Table rows, but not the (0072,008x) and (0008,04xx) rows.
+Out of scope for DICOMCore: the CP-1818 mislabels in `CHANGELOG.md` and `DictionaryTests.swift`, the unaudited VR and VM columns of the dictionary, and the leftover "Lossless Only" strings. These are deferred as D6–D9 in [Deferred findings](#deferred-findings--outside-dicomcore).
 
 ---
 
@@ -313,7 +331,7 @@ Still open from the earlier pass, and out of scope for DICOMCore:
 
 | File | Gap |
 |---|---|
-| [PhotometricInterpretation.swift:9-47](Sources/DICOMCore/PhotometricInterpretation.swift#L9) | Missing `XYB` — see P3 |
+| [PhotometricInterpretation.swift:9-47](Sources/DICOMCore/PhotometricInterpretation.swift#L9) | Missing `XYB` — see P3. **Confirmed 2026-09-24 against 2026a:** XYB is a Defined Term in PS3.3 C.7.6.3.1.2. PS3.5 Table 8.2.15-1 allows it only with JPEG XL: .110/.112 (with RGB and YBR_RCT) and .111 (with RGB and YBR_FULL_422), always with Samples per Pixel 3 and Planar Configuration 0. The other 9 current terms match. HSV, ARGB, CMYK and YBR_PARTIAL_422 are retired; only YBR_PARTIAL_422 is in the enum, and it is documented as retired. ⏸ **Awaiting approval:** adding a case to a public enum breaks consumers' exhaustive switches. |
 | [TransferSyntaxConverter.swift:1300](Sources/DICOMCore/TransferSyntaxConverter.swift#L1300) | ✅ **Fixed 2026-09-24:** OV/SV/UV are now byte-swapped per PS3.5 2026a §7.3. See P1 |
 | [DataElement.swift:295-298,389-392](Sources/DICOMCore/DataElement.swift#L295) | ✅ **Fixed 2026-09-24:** UInt64/Int64 accessors added per PS3.5 2026a Table 6.2-1. See P1 |
 | [CharacterSetHandler.swift:313-351](Sources/DICOMCore/CharacterSetHandler.swift#L313) | Missing GB18030, GBK, ISO_IR 203, ISO 2022 IR 58 — see P5 |
