@@ -57,7 +57,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 |---|---|---|---|
 | A — Implements 2026a | 6 | Explicit 2026a citation and/or verified-current data | ✅ **Complete** — text-diffed against 2026a, markers added |
 | B1 — Explicit other edition/CP/Supplement | 4 | Deliberate citation to a specific correction, not 2026a | ✅ **Complete** — text-diffed against 2026a (and 2026d for VR.swift), markers added |
-| B2 — Stale or incorrect, no citation | 10 | Data gap or bug relative to 2026a, undocumented | 🔄 In progress — 2 of 10 fixed (P1) |
+| B2 — Stale or incorrect, no citation | 10 | Data gap or bug relative to 2026a, undocumented | 🔄 In progress — 3 of 10 done (P1, P3) |
 | C1 — Pure plumbing | 25 | No DICOM-standard data at all | ⏳ Not started |
 | C2 — Standard-derived, edition-stable | 59 | Carries PS3.x data that hasn't materially changed across recent editions | ⏳ Not started |
 
@@ -75,6 +75,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 | 2026-09-24 | B2 / P1 | Fixed 64-bit VR support after checking PS3.5 2026a (Table 6.2-1, §7.3) and PS3.18 2026a (F.2.2, Table F.2.3-1). `DataElement.swift` and `TransferSyntaxConverter.swift` fixed, plus the DICOMWeb JSON encoder and decoder. 12 new tests; the full DICOMCore, DICOMWeb and round-trip test runs pass. Found 5 related gaps outside DICOMCore (see P1), not fixed yet. |
 | 2026-09-24 | — | Decision: bugs found outside DICOMCore are deferred until their module is audited. Added a [Deferred findings](#deferred-findings--outside-dicomcore) section (D1–D9). D1, the DICOMNetwork length bug, is rated High. Added P7 (JPEG XL one fragment per frame) for the C2 audit. |
 | 2026-09-24 | B2 | Loop started. `PhotometricInterpretation.swift`: text-diffed against PS3.3 2026a C.7.6.3.1.2 and PS3.5 2026a Table 8.2.15-1. XYB is confirmed missing. Paused for approval because the fix adds a public enum case. |
+| 2026-09-24 | B2 / P3 | Adding XYB approved. Added `PhotometricInterpretation.xyb`, plus the RGB relabel after JPEG XL XYB decode in `TransferSyntaxConverter` (PS3.3 2026a C.7.6.3.1.2). 4 new tests; 7,284 Swift Testing tests plus all XCTest suites pass. CHANGELOG updated, which also resolves D8. Deferred D10–D12 added (DICOMStudio thumbnails and label, CompressionManager). |
 
 ---
 
@@ -110,11 +111,13 @@ This file is legitimately in-scope for an edition citation — it is the DICOM-f
 boundary, not codec math. Once verified, either add the missing syntaxes or correct the file's
 "Supplement 232, DICOM 2024d" citation to reflect what it actually implements.
 
-### P3 — `PhotometricInterpretation.swift`: add `XYB`
+### P3 — `PhotometricInterpretation.swift`: add `XYB` — **DONE 2026-09-24**
 
 Missing the `XYB` defined term, which shipped with the same Supplement 232 / JPEG XL work that
 `TransferSyntax.swift` and `JXLCodec.swift` already claim to support. Internally inconsistent within
 the module: a JPEG XL frame using XYB color cannot be correctly labeled today.
+
+**Done:** `case xyb` was added, together with the RGB relabel on decode in `TransferSyntaxConverter`. Tests are in `PhotometricInterpretationTests` and `XYBTranscodeTests`. **Open question** (the standard is ambiguous): Table 8.2.15-1 allows XYB with .111 (JPEG Recompression). When .111 is unwrapped back to JPEG (`transcodeJXLRecompression`, reverse direction), which Photometric Interpretation the reconstructed JPEG should carry is not specified. That path is left unchanged.
 
 ### P4 — `VR.swift`: fix the edition citation — **DONE 2026-09-24**
 
@@ -181,8 +184,11 @@ territory, not DICOM's.
 | D5 | DICOMStudio, DICOMKit | [DICOMInspectorView.swift:41](Sources/DICOMStudio/Views/DICOMInspectorView.swift#L41), [ComparisonReport.swift:169](Sources/DICOMKit/Comparison/ComparisonReport.swift#L169) | The "is binary" checks omit OV, so OV values are shown as text. | PS3.5 Table 6.2-1 | Low: display only | ⏳ Open |
 | D6 | DICOMDictionary | [DataElementDictionary.txt](Sources/DICOMDictionary/Resources/DataElementDictionary.txt) | The VR and VM columns have not been text-diffed. Only (0020,9170)–(9172) were checked, during B1. Run the full PS3.6 Table 6-1 diff. | PS3.6 Table 6-1 | Audit task | ⏳ Open |
 | D7 | DICOMDictionary tests | [DictionaryTests.swift:59](Tests/DICOMDictionaryTests/DictionaryTests.swift#L59) | The test is labelled "CP-1818 elements", which fits only the Extended Offset Table rows. The (0072,008x) and (0008,04xx) rows come from CP 1819. | Release notes 2019a | Low: label | ⏳ Open |
-| D8 | Repo docs | [CHANGELOG.md:191](CHANGELOG.md#L191) (2.2.16 entry) | Credits the 64-bit VRs to CP-1818; the correct CP is 1819. That entry is already released, so add an erratum note rather than rewriting it. | Release notes 2019a | Low: docs | ⏳ Open |
+| D8 | Repo docs | [CHANGELOG.md:191](CHANGELOG.md#L191) (2.2.16 entry) | Credits the 64-bit VRs to CP-1818; the correct CP is 1819. That entry is already released, so add an erratum note rather than rewriting it. | Release notes 2019a | Low: docs | ✅ Done 2026-09-24: erratum added to `[Unreleased]` in CHANGELOG |
 | D9 | DICOMStudio, dicom-compress | [J2KTestBenchModels.swift:123,392](Sources/DICOMStudio/Models/J2KTestBenchModels.swift#L123), [dicom-compress/main.swift:62](Sources/dicom-compress/main.swift#L62) | Still call .4.110 "JPEG XL Lossless Only". The PS3.6 name is "JPEG XL Lossless". Leave the `jpeg-xl-lossless-only` flag alias alone. | PS3.6 Table A-1 | Low: text | ⏳ Open |
+| D10 | DICOMStudio | [ThumbnailHelpers.swift:107](Sources/DICOMStudio/Components/ThumbnailHelpers.swift#L107) `supportedPhotometricInterpretations` | Omits XYB, YBR_PARTIAL_420, YBR_ICT and YBR_RCT, so those files get no thumbnail. Consider building the list from `PhotometricInterpretation` instead of hard-coded strings. | PS3.3 C.7.6.3.1.2 | Medium: user-visible | ⏳ Open |
+| D11 | DICOMStudio | [ImageMetadataHelpers.swift:62](Sources/DICOMStudio/Components/ImageMetadataHelpers.swift#L62) `photometricLabel` | No label for XYB, so the raw "XYB" is shown. Add something like "XYB (JPEG XL)". | PS3.3 C.7.6.3.1.2 | Low: display | ⏳ Open |
+| D12 | DICOMKit | [CompressionManager.swift:669](Sources/DICOMKit/Compression/CompressionManager.swift#L669) | Relabels JPEG Baseline YBR to RGB after decode, but not JPEG XL XYB. It should match `TransferSyntaxConverter`, which now does. Also, [:734](Sources/DICOMKit/Compression/CompressionManager.swift#L734) treats unknown values as RGB when Samples per Pixel is 3; XYB is now known, so check that path too. | PS3.3 C.7.6.3.1.2 | Medium: a mislabelled output file | ⏳ Open |
 
 ---
 
@@ -331,7 +337,7 @@ Out of scope for DICOMCore: the CP-1818 mislabels in `CHANGELOG.md` and `Diction
 
 | File | Gap |
 |---|---|
-| [PhotometricInterpretation.swift:9-47](Sources/DICOMCore/PhotometricInterpretation.swift#L9) | Missing `XYB` — see P3. **Confirmed 2026-09-24 against 2026a:** XYB is a Defined Term in PS3.3 C.7.6.3.1.2. PS3.5 Table 8.2.15-1 allows it only with JPEG XL: .110/.112 (with RGB and YBR_RCT) and .111 (with RGB and YBR_FULL_422), always with Samples per Pixel 3 and Planar Configuration 0. The other 9 current terms match. HSV, ARGB, CMYK and YBR_PARTIAL_422 are retired; only YBR_PARTIAL_422 is in the enum, and it is documented as retired. ⏸ **Awaiting approval:** adding a case to a public enum breaks consumers' exhaustive switches. |
+| [PhotometricInterpretation.swift](Sources/DICOMCore/PhotometricInterpretation.swift#L1) | ✅ **Fixed 2026-09-24.** Text-diffed against PS3.3 2026a C.7.6.3.1.2 and PS3.5 2026a Table 8.2.15-1. Added `case xyb`, which has 3 samples per pixel and is not YBR. `TransferSyntaxConverter` now relabels a decoded JPEG XL XYB dataset to RGB, as PS3.3 requires; before, it also read XYB as MONOCHROME2. Adding the case was approved as a public API change and is noted in the CHANGELOG. The other 9 current terms match. See P3 |
 | [TransferSyntaxConverter.swift:1300](Sources/DICOMCore/TransferSyntaxConverter.swift#L1300) | ✅ **Fixed 2026-09-24:** OV/SV/UV are now byte-swapped per PS3.5 2026a §7.3. See P1 |
 | [DataElement.swift:295-298,389-392](Sources/DICOMCore/DataElement.swift#L295) | ✅ **Fixed 2026-09-24:** UInt64/Int64 accessors added per PS3.5 2026a Table 6.2-1. See P1 |
 | [CharacterSetHandler.swift:313-351](Sources/DICOMCore/CharacterSetHandler.swift#L313) | Missing GB18030, GBK, ISO_IR 203, ISO 2022 IR 58 — see P5 |

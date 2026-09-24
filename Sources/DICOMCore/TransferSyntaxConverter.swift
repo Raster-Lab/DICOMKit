@@ -660,12 +660,14 @@ public struct TransferSyntaxConverter: Sendable {
         
         // Find pixel data element and decompress if present
         var outputElements: [DataElement] = []
+        var decodedXYB = false
         
         for element in elements {
             if element.tag == .pixelData && element.isEncapsulated,
                let fragments = element.encapsulatedFragments {
                 // Get pixel data descriptor from surrounding elements
                 let descriptor = try extractPixelDataDescriptor(from: elements)
+                decodedXYB = source.isJPEGXL && descriptor.photometricInterpretation == .xyb
                 
                 // Decompress each frame
                 var decompressedData = Data()
@@ -684,6 +686,17 @@ public struct TransferSyntaxConverter: Sendable {
                 outputElements.append(newElement)
             } else {
                 outputElements.append(element)
+            }
+        }
+
+        // The JPEG XL decoder applies the inverse XYB transform and yields RGB samples, and
+        // "Images in XYB transcoded to other Transfer Syntaxes will use RGB" (PS3.3 2026a
+        // C.7.6.3.1.2). Relabel so the tag matches the decoded bytes.
+        if decodedXYB {
+            outputElements = outputElements.map { element in
+                guard element.tag == .photometricInterpretation else { return element }
+                let rgb = Data("RGB ".utf8)
+                return DataElement(tag: element.tag, vr: .CS, length: UInt32(rgb.count), valueData: rgb)
             }
         }
         

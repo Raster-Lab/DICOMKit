@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `PhotometricInterpretation.xyb` (JPEG XL XYB color) (2026-09-24)
+
+- **New public enum case `PhotometricInterpretation.xyb` (`"XYB"`).** XYB is a
+  Defined Term in PS3.3 2026a C.7.6.3.1.2 (Supplement 232). PS3.5 Table 8.2.15-1
+  allows it with the JPEG XL transfer syntaxes, with Samples per Pixel 3.
+  Previously `parse("XYB")` returned `nil`, so DICOMKit built no pixel descriptor
+  for such a file and it could not be displayed.
+  **Source-breaking for exhaustive switches:** code that switches over
+  `PhotometricInterpretation` without a `default` must add a `.xyb` case.
+- **Transcoding a JPEG XL XYB dataset now writes Photometric Interpretation `RGB`.**
+  The JPEG XL decoder outputs RGB samples, and PS3.3 says "Images in XYB transcoded
+  to other Transfer Syntaxes will use RGB". Before this change, an unrecognized
+  value was also read as `MONOCHROME2` in the transcoder, so XYB colour images
+  were described to re-encoders as monochrome.
+
+### Fixed — OV, SV and UV (64-bit VRs) are fully supported (2026-09-24)
+
+- `DataElement` gains `uint64Value`, `int64Value`, `uint64Values` and
+  `int64Values`.
+- Big/little-endian transcoding now byte-swaps OV, SV and UV (PS3.5 §7.3).
+  Previously their values were left unswapped.
+- DICOM JSON: OV is encoded as InlineBinary, and SV and UV as Number or String
+  (PS3.18 Table F.2.3-1).
+- Correction to 2.2.16: the 64-bit VRs came from **CP 1819**, not CP-1818 as
+  that entry says.
+
 ### Added — Full DICOM 2026a modality coverage and a canonical `Modality` type (2026-09-23)
 
 - **`DICOMCore.Modality`** — one type for Modality (0008,0060), carrying every
