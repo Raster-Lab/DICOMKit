@@ -1297,7 +1297,9 @@ public struct TransferSyntaxConverter: Sendable {
         }
         
         // Only transcode numeric VRs
-        let numericVRs: [VR] = [.US, .SS, .UL, .SL, .FL, .FD, .AT, .OW, .OF, .OL, .OD]
+        // PS3.5 §7.3 lists every multi-byte binary VR: 2-byte US SS OW (and each AT
+        // component), 4-byte OF OL UL SL FL, 8-byte OD OV FD SV UV.
+        let numericVRs: [VR] = [.US, .SS, .UL, .SL, .FL, .FD, .AT, .OW, .OF, .OL, .OD, .OV, .SV, .UV]
 
         guard numericVRs.contains(element.vr) else {
             return element
@@ -1347,7 +1349,7 @@ public struct TransferSyntaxConverter: Sendable {
                 }
             }
             
-        case .FD, .OD:
+        case .FD, .OD, .OV, .SV, .UV:
             // 64-bit values
             for i in stride(from: 0, to: valueData.count, by: 8) {
                 if i + 8 <= valueData.count {

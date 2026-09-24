@@ -149,12 +149,12 @@ public struct DICOMJSONEncoder: Sendable {
             return try encodeSequence(element)
         }
         
-        // Handle bulk data (OB, OD, OF, OL, OW, UN with large data)
+        // Handle bulk data (OB, OD, OF, OL, OV, OW, UN with large data)
         if shouldEncodeBulkData(element) {
             return try encodeBulkData(element)
         }
         
-        // Handle inline binary (OB, OD, OF, OL, OW, UN with small data)
+        // Handle inline binary (OB, OD, OF, OL, OV, OW, UN with small data)
         if isInlineBinaryVR(element.vr) && !element.valueData.isEmpty {
             return [["InlineBinary": element.valueData.base64EncodedString()]]
         }
@@ -213,7 +213,7 @@ public struct DICOMJSONEncoder: Sendable {
     
     private func isInlineBinaryVR(_ vr: VR) -> Bool {
         switch vr {
-        case .OB, .OD, .OF, .OL, .OW, .UN:
+        case .OB, .OD, .OF, .OL, .OV, .OW, .UN:
             return true
         default:
             return false
@@ -259,6 +259,10 @@ public struct DICOMJSONEncoder: Sendable {
             return element.uint32Values.map { $0.map { $0 as Any } }
         case .US:
             return element.uint16Values.map { $0.map { $0 as Any } }
+        case .SV:
+            return element.int64Values.map { $0.map { Self.jsonValue(forInt64: $0) } }
+        case .UV:
+            return element.uint64Values.map { $0.map { Self.jsonValue(forUInt64: $0) } }
         case .AT:
             // Attribute Tag - encode as string "GGGGEEEE"
             if let values = element.uint32Values {
@@ -270,6 +274,21 @@ public struct DICOMJSONEncoder: Sendable {
         }
     }
     
+    /// Largest integer magnitude a JSON Number carries exactly in IEEE 754 binary64
+    /// (2^53 - 1), which is how most JSON consumers, including JavaScript, parse numbers.
+    private static let maxExactJSONInteger: UInt64 = (1 << 53) - 1
+
+    /// SV and UV are "Number or String" (PS3.18 Table F.2.3-1). Values that a binary64
+    /// JSON Number cannot represent exactly are written as a String, as the Note to
+    /// F.2.3 allows "to avoid losing precision".
+    private static func jsonValue(forInt64 value: Int64) -> Any {
+        value.magnitude <= maxExactJSONInteger ? value as Any : String(value)
+    }
+
+    private static func jsonValue(forUInt64 value: UInt64) -> Any {
+        value <= maxExactJSONInteger ? value as Any : String(value)
+    }
+
     private func encodePersonName(_ element: DataElement) throws -> [Any]? {
         guard let pnValues = element.personNameValues else {
             if let pn = element.personNameValue {

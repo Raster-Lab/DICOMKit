@@ -57,7 +57,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 |---|---|---|---|
 | A — Implements 2026a | 6 | Explicit 2026a citation and/or verified-current data | ✅ **Complete** — text-diffed against 2026a, markers added |
 | B1 — Explicit other edition/CP/Supplement | 4 | Deliberate citation to a specific correction, not 2026a | ✅ **Complete** — text-diffed against 2026a (and 2026d for VR.swift), markers added |
-| B2 — Stale or incorrect, no citation | 10 | Data gap or bug relative to 2026a, undocumented | ⏳ Next |
+| B2 — Stale or incorrect, no citation | 10 | Data gap or bug relative to 2026a, undocumented | 🔄 In progress — 2 of 10 fixed (P1) |
 | C1 — Pure plumbing | 25 | No DICOM-standard data at all | ⏳ Not started |
 | C2 — Standard-derived, edition-stable | 59 | Carries PS3.x data that hasn't materially changed across recent editions | ⏳ Not started |
 
@@ -72,6 +72,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 | 2026-09-24 | A | `NEMA-verified` markers added to all 6 files. Each marker is limited to what was actually checked. DICOMCore still builds. |
 | 2026-09-24 | A | Stage 3: every table compared row by row with the frozen NEMA **2026a** text (PS3.3, PS3.6 and PS3.16 downloaded from `/2026a/`). All six files match. Markers upgraded to "text-diffed". **Bucket A complete.** |
 | 2026-09-24 | B1 | Redone as a Stage 3 text diff: PS3.3, PS3.5 and PS3.6 from `/2026a/`, plus PS3.5 2026d from `/current/`, because NEMA has no frozen `/2026d/` copy (404). All 4 files match. CP 1819 confirmed from the 2019a release notes, and Sup 232 from the 2024d notes. Markers upgraded to "text-diffed". Two cosmetic findings (the .110 display name and a padding comment) were fixed later the same day with approval. DICOMCore still builds. **Bucket B1 complete.** |
+| 2026-09-24 | B2 / P1 | Fixed 64-bit VR support after checking PS3.5 2026a (Table 6.2-1, §7.3) and PS3.18 2026a (F.2.2, Table F.2.3-1). `DataElement.swift` and `TransferSyntaxConverter.swift` fixed, plus the DICOMWeb JSON encoder and decoder. 12 new tests; the full DICOMCore, DICOMWeb and round-trip test runs pass. Found 5 related gaps outside DICOMCore (see P1), not fixed yet. |
 
 ---
 
@@ -79,20 +80,25 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 
 Ordered by real-world impact, not file count.
 
-### P1 — 64-bit VR (OV/SV/UV) support is functionally incomplete
+### P1 — 64-bit VR (OV/SV/UV) support is functionally incomplete — **DONE 2026-09-24**
 
-VR.swift declares `.OV`, `.SV`, `.UV`, but the encoding machinery around them was never finished:
+VR.swift declared `.OV`, `.SV` and `.UV`, but the code that encodes and decodes them was never finished. Each fix was checked against the frozen 2026a text before editing:
 
-- **`DataElement.swift:295-298,389-392`** — no `UInt64`/`Int64` value accessors. A data element
-  with VR `.UV`/`.SV` cannot have its numeric value read out at all.
-- **`TransferSyntaxConverter.swift:1300`** — `numericVRs` array and the byte-swap switch both omit
-  `.OV/.SV/.UV`. Converting a file with these VRs to/from Big Endian silently leaves 64-bit values
-  unswapped — wrong byte order, corrupted data on the wire.
-- Same root cause outside DICOMCore: `DICOMWeb/DICOMJSONEncoder.swift` and `DICOMJSONDecoder.swift`
-  also omit OV/SV/UV from their inline-binary/numeric-VR switches.
+| Gap | Standard (2026a) | Fix |
+|---|---|---|
+| `DataElement.swift`: no 64-bit value accessors, so a UV or SV value could not be read | PS3.5 Table 6.2-1: SV is a signed 64-bit integer, UV an unsigned 64-bit integer (8 bytes each), OV a stream of 64-bit words | Added `uint64Value`, `int64Value`, `uint64Values` and `int64Values`. They follow the byte order of the element, like the existing 16- and 32-bit accessors. As with `uint32Value`, the unsigned accessors also accept SV, UN and OV. |
+| `TransferSyntaxConverter.swift`: OV/SV/UV missing from `numericVRs` and the byte-swap switch, so values were left unswapped on LE↔BE conversion | PS3.5 §7.3 lists the 8-byte VRs that are byte-swapped as "OD, OV, FD, SV and UV" | Added all three to `numericVRs` and to the 64-bit swap case |
+| `DICOMWeb/DICOMJSONEncoder.swift` and `DICOMJSONDecoder.swift` (outside DICOMCore): OV/SV/UV not handled | PS3.18 Table F.2.3-1: OV is a Base64 octet-stream; SV and UV are "Number or String". The note to F.2.3 allows a String "to avoid losing precision" | OV is now encoded as InlineBinary. SV and UV are written as JSON Numbers when the magnitude is at most 2^53 − 1, and as decimal Strings above that, because larger values lose precision in IEEE-754 double parsers such as JavaScript's. The decoder accepts either form. |
 
-This is a correctness bug, not a labeling question. Needs fixing independent of any edition
-decision.
+Tests: `Tests/DICOMCoreTests/SixtyFourBitVRTests.swift` (6) and `Tests/DICOMWebTests/DICOMJSON64BitVRTests.swift` (6). They cover the accessors, a big-endian element, an LE→BE→LE round trip with a byte-exact check, and a JSON round trip. The full DICOMCore, DICOMWeb and round-trip test runs pass.
+
+**Found while fixing P1, and not fixed yet** (needs a decision):
+
+- **`DICOMNetwork/QueryService.swift:1000` (`VR.uses4ByteLength`) omits OV, SV and UV.** It duplicates `VR.uses32BitLength` and is used by the Explicit VR parsing and encoding code in Query, Retrieve, Storage, MPPS, Modality Worklist and Storage Commitment. An SV or UV element in a DIMSE dataset would get a 2-byte length header, which corrupts it on the wire. The fix is to have it return `uses32BitLength`. **Highest priority of these.**
+- **`DICOMWeb/DICOMJSONEncoder.swift` puts `InlineBinary` and `BulkDataURI` inside the `Value` array.** PS3.18 F.2.2 says an attribute object has "at most one of" `Value`, `BulkDataURI` or `InlineBinary`, as sibling keys. The decoder and the existing tests follow the same non-standard layout, so DICOMKit round-trips with itself but not with other DICOMweb servers. This affects every binary VR (OB, OD, OF, OL, OV, OW, UN), not only OV.
+- **`DICOMWeb/DICOMJSONEncoder.swift`: AT encoding.** The AT case calls `uint32Values`, which returns nil for VR AT, so AT falls through to the string fallback. Even if it returned values, it would give the wrong "GGGGEEEE" value for little-endian data. `attributeTagValues` should be used instead.
+- **`DICOMWeb/DICOMXMLEncoder.swift:233` `isBinaryVR` omits OV.** Same fix as the JSON encoder.
+- **Display only:** `DICOMStudio/Views/DICOMInspectorView.swift:41` and `DICOMKit/Comparison/ComparisonReport.swift:169` omit OV from their "binary" checks.
 
 ### P2 — `TransferSyntax.swift`: verify and close the UID registry gap
 
@@ -308,8 +314,8 @@ Still open from the earlier pass, and out of scope for DICOMCore:
 | File | Gap |
 |---|---|
 | [PhotometricInterpretation.swift:9-47](Sources/DICOMCore/PhotometricInterpretation.swift#L9) | Missing `XYB` — see P3 |
-| [TransferSyntaxConverter.swift:1300](Sources/DICOMCore/TransferSyntaxConverter.swift#L1300) | No OV/SV/UV in `numericVRs` or byte-swap — see P1 |
-| [DataElement.swift:295-298,389-392](Sources/DICOMCore/DataElement.swift#L295) | No UInt64/Int64 accessors — see P1 |
+| [TransferSyntaxConverter.swift:1300](Sources/DICOMCore/TransferSyntaxConverter.swift#L1300) | ✅ **Fixed 2026-09-24:** OV/SV/UV are now byte-swapped per PS3.5 2026a §7.3. See P1 |
+| [DataElement.swift:295-298,389-392](Sources/DICOMCore/DataElement.swift#L295) | ✅ **Fixed 2026-09-24:** UInt64/Int64 accessors added per PS3.5 2026a Table 6.2-1. See P1 |
 | [CharacterSetHandler.swift:313-351](Sources/DICOMCore/CharacterSetHandler.swift#L313) | Missing GB18030, GBK, ISO_IR 203, ISO 2022 IR 58 — see P5 |
 | [DirectoryRecord.swift:9-126](Sources/DICOMCore/DirectoryRecord.swift#L9) | Missing PLAN, TRACT, ASSESSMENT, RADIOTHERAPY, ANNOTATION, INVENTORY — see P5 |
 | [DICOMDirectory.swift:9-33](Sources/DICOMCore/DICOMDirectory.swift#L9) | Wrong/incomplete media application profile names — see P5 |

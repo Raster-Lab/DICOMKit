@@ -314,6 +314,12 @@ public struct DICOMJSONDecoder: Sendable {
         var valueData = Data()
         
         for value in values {
+            // SV and UV may be a JSON Number or a String (PS3.18 Table F.2.3-1).
+            if vr == .SV || vr == .UV {
+                valueData.append(try encode64BitValue(value, vr: vr))
+                continue
+            }
+
             guard let number = value as? NSNumber else {
                 throw DICOMwebError.invalidVREncoding(vr: vr.rawValue, reason: "Expected numeric value")
             }
@@ -345,6 +351,27 @@ public struct DICOMJSONDecoder: Sendable {
         return DataElement(tag: tag, vr: vr, length: UInt32(valueData.count), valueData: valueData)
     }
     
+    /// Encodes one SV or UV JSON value (Number or decimal String) as 8 little-endian bytes.
+    private func encode64BitValue(_ value: Any, vr: VR) throws -> Data {
+        let bits: UInt64
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespaces)
+            if vr == .SV, let v = Int64(trimmed) {
+                bits = UInt64(bitPattern: v)
+            } else if vr == .UV, let v = UInt64(trimmed) {
+                bits = v
+            } else {
+                throw DICOMwebError.invalidVREncoding(vr: vr.rawValue, reason: "Expected a 64-bit integer string")
+            }
+        } else if let number = value as? NSNumber {
+            bits = vr == .SV ? UInt64(bitPattern: number.int64Value) : number.uint64Value
+        } else {
+            throw DICOMwebError.invalidVREncoding(vr: vr.rawValue, reason: "Expected numeric value")
+        }
+        var littleEndian = bits.littleEndian
+        return Data(bytes: &littleEndian, count: MemoryLayout<UInt64>.size)
+    }
+
     private func decodeAttributeTag(tag: Tag, values: [Any]) throws -> DataElement {
         var valueData = Data()
         
@@ -378,7 +405,7 @@ public struct DICOMJSONDecoder: Sendable {
     
     private func isNumericVR(_ vr: VR) -> Bool {
         switch vr {
-        case .FL, .FD, .SL, .SS, .UL, .US:
+        case .FL, .FD, .SL, .SS, .SV, .UL, .US, .UV:
             return true
         default:
             return false

@@ -225,6 +225,12 @@ public struct DataElement: Sendable {
     private func readFloat64(at offset: Int) -> Float64? {
         byteOrder == .bigEndian ? valueData.readFloat64BE(at: offset) : valueData.readFloat64LE(at: offset)
     }
+    private func readUInt64(at offset: Int) -> UInt64? {
+        byteOrder == .bigEndian ? valueData.readUInt64BE(at: offset) : valueData.readUInt64LE(at: offset)
+    }
+    private func readInt64(at offset: Int) -> Int64? {
+        readUInt64(at: offset).map { Int64(bitPattern: $0) }
+    }
 
     /// Extracts the value as a single Attribute Tag (AT VR).
     ///
@@ -335,6 +341,38 @@ public struct DataElement: Sendable {
             return nil
         }
         return readFloat64(at: 0)
+    }
+
+    /// Extracts the value as a 64-bit unsigned integer
+    ///
+    /// Supports VR types that can contain 64-bit values:
+    /// - UV (Unsigned 64-bit Very Long): Primary VR for unsigned 64-bit values
+    /// - SV (Signed 64-bit Very Long): Binary compatible, reads raw 8-byte value
+    /// - UN (Unknown): Unknown VR with 8-byte data
+    /// - OV (Other 64-bit Very Long): 64-bit words
+    ///
+    /// **Note**: For SV VR, the raw bytes are read directly. If the signed value
+    /// is negative, it will appear as a large unsigned value.
+    ///
+    /// Reference: PS3.5 Section 6.2 (CP 1819)
+    public var uint64Value: UInt64? {
+        switch vr {
+        case .UV, .SV, .UN, .OV:
+            guard valueData.count >= 8 else {
+                return nil
+            }
+            return readUInt64(at: 0)
+        default:
+            return nil
+        }
+    }
+
+    /// Extracts the value as a 64-bit signed integer (for SV VR)
+    public var int64Value: Int64? {
+        guard vr == .SV && valueData.count >= 8 else {
+            return nil
+        }
+        return readInt64(at: 0)
     }
     
     /// Extracts multiple 16-bit unsigned integer values
@@ -494,6 +532,59 @@ public struct DataElement: Sendable {
         return values.isEmpty ? nil : values
     }
     
+    /// Extracts multiple 64-bit unsigned integer values
+    ///
+    /// Supports VR types that can contain 64-bit values:
+    /// - UV (Unsigned 64-bit Very Long): Primary VR for unsigned 64-bit values
+    /// - SV (Signed 64-bit Very Long): Signed 64-bit, interpreted as unsigned
+    /// - UN (Unknown): Unknown VR with 8-byte data
+    /// - OV (Other 64-bit Very Long): 64-bit words, e.g. Extended Offset Table (7FE0,0001)
+    ///
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity (CP 1819)
+    public var uint64Values: [UInt64]? {
+        switch vr {
+        case .UV, .SV, .UN, .OV:
+            break
+        default:
+            return nil
+        }
+
+        let count = valueData.count / 8
+        guard count > 0 else {
+            return []
+        }
+
+        var values: [UInt64] = []
+        for i in 0..<count {
+            if let value = readUInt64(at: i * 8) {
+                values.append(value)
+            }
+        }
+
+        return values.isEmpty ? nil : values
+    }
+
+    /// Extracts multiple 64-bit signed integer values (for SV VR with multiplicity)
+    public var int64Values: [Int64]? {
+        guard vr == .SV else {
+            return nil
+        }
+
+        let count = valueData.count / 8
+        guard count > 0 else {
+            return []
+        }
+
+        var values: [Int64] = []
+        for i in 0..<count {
+            if let value = readInt64(at: i * 8) {
+                values.append(value)
+            }
+        }
+
+        return values.isEmpty ? nil : values
+    }
+
     // MARK: - Date/Time Value Extraction
     
     /// Extracts the value as a DICOM Date (for DA VR)
