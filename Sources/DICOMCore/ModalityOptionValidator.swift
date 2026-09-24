@@ -176,6 +176,9 @@ public enum ModalityOptionValidator: Sendable {
     /// The full modality listing printed by `--list-modalities`.
     ///
     /// Grouped by category, because a flat run of 79 codes is unreadable.
+    ///
+    /// NEMA-verified: 2026a, 2026-09-24 — holds no term list of its own; every lookup goes
+    /// through `Modality`, which is text-diffed against PS3.3 2026a.
     public static func listing() -> String {
         var lines: [String] = [
             "DICOM Modality codes (0008,0060) — PS3.3 C.7.3.1.1.1, 2026a",

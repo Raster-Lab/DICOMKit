@@ -115,6 +115,10 @@ extension Tag {
     public static let contentQualification = Tag(group: 0x0018, element: 0x9004)
 
     // MARK: - Legacy Converted Enhanced (Sup 157)
+    //
+    // NEMA-verified: 2026a, checked 2026-09-24 — text-diffed against PS3.6 2026a Table 6-1.
+    // Tag, name and keyword match, and none is retired. VR (SQ) and VM (1) are held in
+    // DICOMDictionary's DataElementDictionary.txt, and they match too. Provenance: Sup 157.
 
     /// Unassigned Shared Converted Attributes Sequence (0020,9170)
     public static let unassignedSharedConvertedAttributesSequence = Tag(group: 0x0020, element: 0x9170)

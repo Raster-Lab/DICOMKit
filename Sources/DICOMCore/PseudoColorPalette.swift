@@ -182,6 +182,9 @@ extension PseudoColorPalette {
     }
 
     /// This palette's provenance.
+    ///
+    /// NEMA-verified: 2026a, text-diffed 2026-09-24 — the 8 labels and UIDs match PS3.6 2026a
+    /// Table B.1-1 exactly.
     public var provenance: Provenance {
         switch self {
         case .hotIron:

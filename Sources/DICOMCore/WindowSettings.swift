@@ -106,6 +106,9 @@ public struct WindowSettings: Sendable, Equatable, Codable {
 /// VOI LUT Function types
 ///
 /// Reference: DICOM PS3.3 C.11.2.1.3 - VOI LUT Function
+///
+/// NEMA-verified: 2026a, text-diffed 2026-09-24 — LINEAR, LINEAR_EXACT, SIGMOID match the
+/// (0028,1056) Defined Terms in PS3.3 2026a Tables C.11-2b and C.7.6.16-11 exactly.
 public enum VOILUTFunction: String, Sendable, Equatable, Codable {
     /// Linear transformation (default)
     /// Reference: PS3.3 C.11.2.1.2.1

@@ -299,6 +299,12 @@ extension TransferSyntax {
     )
     
     // MARK: - JPEG XL Transfer Syntaxes
+    //
+    // NEMA-verified: 2026a, checked 2026-09-24 — text-diffed against the frozen 2026a text.
+    // UIDs .4.110/.111/.112 match PS3.6 Table A-1 (name, keyword, type "Transfer Syntax").
+    // PS3.5 §10.19 and §A.4.12 are present. Explicit VR, Little Endian and encapsulated
+    // agree with PS3.5 §A.4. `.112` may be lossy or lossless (§A.4.12), and (0028,2114)
+    // `ISO_18181_1` matches PS3.3 C.7.6.1.1.5. Provenance: Sup 232 (2024d).
 
     /// JPEG XL Lossless Image Compression (1.2.840.10008.1.2.4.110)
     ///
@@ -1015,7 +1021,7 @@ extension TransferSyntax {
         case TransferSyntax.htj2kLossy.uid:                    return "HTJ2K"
         case TransferSyntax.jpegLSLossless.uid:                return "JPEG-LS Lossless"
         case TransferSyntax.jpegLSNearLossless.uid:            return "JPEG-LS Near-Lossless"
-        case TransferSyntax.jpegXLLossless.uid:                return "JPEG XL Lossless Only"
+        case TransferSyntax.jpegXLLossless.uid:                return "JPEG XL Lossless"
         case TransferSyntax.jpegXLRecompression.uid:           return "JPEG XL JPEG Recompression"
         case TransferSyntax.jpegXL.uid:                        return "JPEG XL"
         case TransferSyntax.rleLossless.uid:                   return "RLE Lossless"
