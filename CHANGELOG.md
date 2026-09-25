@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — SR content-item enumerations aligned with PS3.3 2026a C.18 (2026-09-25)
+
+- **`TemporalRangeType.multisegment`** (`MULTISEGMENT`) added; PS3.3 C.18.7.1.1 defines six
+  Temporal Range Types and the enum had five.
+- **`GraphicType.polygon` is deprecated.** PS3.3 C.18.6.1.2 defines POINT, MULTIPOINT,
+  POLYLINE, CIRCLE and ELLIPSE for 2D SCOORD; a closed shape is a POLYLINE whose first
+  and last vertices coincide. POLYGON exists only for SCOORD3D (`GraphicType3D.polygon`
+  is unchanged). `GraphicType.allCases` now lists the five standard values, so its count
+  changes from 6 to 5.
+- **`NumericValueQualifier`** gains the seven CID 42 qualifiers it lacked (Divide by
+  zero, Measurement failure, Measurement not attempted, Calculation failure, Value out
+  of range, Value unknown, Value indeterminate), a `code` property giving the DCM code
+  (114000–114011) for Numeric Value Qualifier Code Sequence (0040,A301), and
+  `init?(code:)`. It is now `CaseIterable`.
+
 ### Changed — `DICOMCode`: constants corrected against PS3.16 2026a Annex D (2026-09-25)
 
 - **64 of the 93 `DICOMCode` constants disagreed with PS3.16 Annex D.** 21 are corrected

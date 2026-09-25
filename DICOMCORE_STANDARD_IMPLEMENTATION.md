@@ -57,7 +57,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 |---|---|---|---|
 | A — Implements 2026a | 6 | Explicit 2026a citation and/or verified-current data | ✅ **Complete** — text-diffed against 2026a, markers added |
 | B1 — Explicit other edition/CP/Supplement | 4 | Deliberate citation to a specific correction, not 2026a | ✅ **Complete** — text-diffed against 2026a (and 2026d for VR.swift), markers added |
-| B2 — Stale or incorrect, no citation | 10 | Data gap or bug relative to 2026a, undocumented | 🔄 In progress — 9 of 10 done (P1, P3, P5, P6 except ContentItem) |
+| B2 — Stale or incorrect, no citation | 10 | Data gap or bug relative to 2026a, undocumented | ✅ **Complete** — all 10 files text-diffed against 2026a and fixed (P1, P3, P5, P6) |
 | C1 — Pure plumbing | 25 | No DICOM-standard data at all | ⏳ Not started |
 | C2 — Standard-derived, edition-stable | 59 | Carries PS3.x data that hasn't materially changed across recent editions | ⏳ Not started |
 
@@ -89,6 +89,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 | 2026-09-25 | B2 / P6 | `DICOMCode.swift` text-diffed against PS3.16 2026a Annex D: 29 of 93 codes correct, 18 renumberable, 13 are SCT/NCIt concepts a DCM-only type cannot hold, 7 are relationship types not codes, ~24 have no standard code. Paused: fixing it removes or renames public constants. |
 | 2026-09-25 | B2 / P6 | Option 1 approved: 21 `DICOMCode` constants corrected, 43 removed as `unavailable` with the correct reference, `imagingMeasurementReport` added, tests assert every constant against Annex D. P9 logged. **`DICOMCode.swift` done.** |
 | 2026-09-25 | B2 / P6 | `ContentItem.swift` text-diffed: POLYGON is not a 2D SCOORD type, MULTISEGMENT is missing from TCOORD, and `NumericValueQualifier` has 5 of 12 CID 42 values. Deferred D18 (builders write 2D POLYGON). Paused: the fix changes public enums. |
+| 2026-09-25 | B2 / P6 | Approved: `multisegment` added, 2D `polygon` deprecated, `NumericValueQualifier` completed to CID 42 with codes. **`ContentItem.swift` done. Bucket B2 complete: 10 of 10.** |
 
 ---
 
@@ -149,7 +150,7 @@ Extended Offset Table CP. NEMA's 2019a release notes show the 64-bit VRs came fr
 - **`DICOMDirectory.swift:9-33`** — ✅ **Fixed 2026-09-25** (see B2). Media application profile names appear wrong (e.g. "STD-GEN-DVD"
   vs. the real "STD-GEN-DVD-JPEG"); BD (Blu-ray) profiles absent entirely.
 
-### P6 — Structured Reporting data-integrity bugs
+### P6 — Structured Reporting data-integrity bugs — **DONE 2026-09-25**
 
 Not edition drift — internally contradictory data that will produce wrong output regardless of
 which edition is targeted. Recommend fixing before P5, since these actively corrupt SR documents
@@ -166,7 +167,7 @@ that exercise the affected codes:
 - **`StructuredReporting/SRDocumentType.swift`** — ✅ **Fixed 2026-09-25** (see B2). vs. **`DICOMCode.swift`** — inconsistent with each
   other: `DICOMCode.swift:342` defines the Procedure Log Storage code, but `SRDocumentType.swift`
   (18 SR SOP classes, :13-143) lacks the corresponding SOP class.
-- **`StructuredReporting/ContentItem.swift`** — :69 allows `POLYGON` as a 2D SCOORD graphic type
+- **`StructuredReporting/ContentItem.swift`** — ✅ **Fixed 2026-09-25** (see B2). :69 allows `POLYGON` as a 2D SCOORD graphic type
   (should be SCOORD3D-only, per reviewer recollection); :135-147 is missing the `MULTISEGMENT` TCOORD
   range type.
 
@@ -374,7 +375,7 @@ Out of scope for DICOMCore: the CP-1818 mislabels in `CHANGELOG.md` and `Diction
 | [StructuredReporting/SRDocumentType.swift](Sources/DICOMCore/StructuredReporting/SRDocumentType.swift#L1) | ✅ **Fixed 2026-09-25.** Text-diffed against PS3.6 2026a Table A-1 (the 24 `…88.*` SOP Classes) and PS3.3 2026a A.35.1–A.35.23. All 18 existing UIDs and names match. **P6 confirmed:** Procedure Log (.88.40) was missing; Waveform Annotation SR (.88.77) was missing too. Both added (approved). The 4 retired "Trial" classes are recognised by `isSRDocument` only, by decision. **Larger finding:** `allowedValueTypes` was wrong for 16 of 18 types; all 20 sets are now generated from each IOD's Enumerated Values list and asserted equal to it in tests. **Scope note:** TABLE (permitted by Extensible SR and Enhanced X-Ray Dose SR) is omitted because `ContentItemValueType` has no case for it; adding one breaks 6 exhaustive switches in DICOMCore and 2 in DICOMKit and needs a TABLE content-item implementation. Logged as P8. Two DICOMKit tests (`EnhancedSRBuilderTests`) asserted that Enhanced SR rejects SCOORD and TCOORD; A.35.2 permits both, so the expectations were corrected. |
 | [StructuredReporting/ContextGroup.swift](Sources/DICOMCore/StructuredReporting/ContextGroup.swift#L1) | ✅ **Fixed 2026-09-25 (option 1 approved).** Text-diffed against PS3.16 2026a, all CID tables by `xml:id`. Only CID 244 was right; CID 7021 had 2 wrong meanings; the other 7 carried the wrong CID number and mostly invented members (see the Progress log entry for the detail). All 10 groups are now generated from the PS3.16 tables with "Include CID" rows expanded, carrying the standard's name, Type, Version and members: 244, 7021, 3600 Relative Time, 4031 Common Anatomic Region (119), 6144 RECIST Defined Lesion Response, 7460/7461/7462 measurement units, 6054 Breast Imaging Finding (47), 3627 Measurement Type. Old names are deprecated aliases; `imagingObservations` is removed because PS3.16 has no such group. Tests assert each group equals the extracted standard rows. |
 | [StructuredReporting/DICOMCode.swift](Sources/DICOMCore/StructuredReporting/DICOMCode.swift#L1) | ✅ **Fixed 2026-09-25 (option 1 approved).** Text-diffed against PS3.16 2026a Annex D Table D-1 (5,116 codes) and, for non-DCM meanings, every CID table. 29 of 93 were right. 21 corrected in place (18 renumbered, 2 capitalisation, `clinicalHistory` meaning "History"). 43 removed as `unavailable`, each message naming the correct SCT/NCIt code (13), `RelationshipType` (7), or stating that Annex D has no such DCM code (23). `imagingMeasurementReport` (126000) added. Only `DICOMCodeTests` used the constants; it now asserts every remaining constant's value and meaning against Annex D. The P6 duplicates (121060, 121401, 126000) are resolved by the removals. Follow-up P9: a code type for the SCT measurement concepts. |
-| [StructuredReporting/ContentItem.swift](Sources/DICOMCore/StructuredReporting/ContentItem.swift#L47) | **Text-diffed 2026-09-25** against PS3.3 2026a C.18.6.1.2 (SCOORD Graphic Type), C.18.9.1.2 (SCOORD3D Graphic Type), C.18.7.1.1 (TCOORD Temporal Range Type), Table C.18.8-1 (Continuity of Content) and PS3.16 CID 42 (Numeric Value Qualifier). **Both P6 claims confirmed:** `GraphicType` (2D) has POLYGON, which C.18.6.1.2 does not define (a closed POLYLINE is the 2D polygon); `TemporalRangeType` lacks MULTISEGMENT. `GraphicType3D` (6 values) and `ContinuityOfContent` (2) match. **New:** `NumericValueQualifier` has 5 of the 12 CID 42 values (missing Divide by zero, Measurement failure, Calculation failure, Value out of range, Measurement not attempted, Value unknown, Value indeterminate), and it models the code meanings as strings rather than the DCM codes 114000-114011. **Impact:** `ComprehensiveSRBuilder` writes 2D SCOORD with POLYGON at 2 sites (non-conformant output, deferred D18); 20 tests use it. **Awaiting a decision** on the public enums. |
+| [StructuredReporting/ContentItem.swift](Sources/DICOMCore/StructuredReporting/ContentItem.swift#L1) | ✅ **Fixed 2026-09-25 (recommendation approved).** Text-diffed against PS3.3 2026a C.18.6.1.2, C.18.9.1.2, C.18.7.1.1, Table C.18.8-1 and PS3.16 CID 42 (with CIDs 43/44 expanded). **Both P6 claims confirmed.** `TemporalRangeType.multisegment` added. `GraphicType.polygon` deprecated (not a 2D SCOORD type; `allCases` now lists the 5 standard values). `NumericValueQualifier` completed to the 12 CID 42 values with `code` (DCM 114000-114011) and `init?(code:)`. `GraphicType3D` and `ContinuityOfContent` already matched. DICOMKit's mirror enum in `MeasurementExtractor` was extended with the 7 new cases so the package compiles (mapping only). D18 covers the builders that still write 2D POLYGON. |
 
 ---
 

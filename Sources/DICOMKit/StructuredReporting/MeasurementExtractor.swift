@@ -170,16 +170,31 @@ public enum MeasurementQualifier: String, Sendable, Equatable, Hashable, CaseIte
     
     /// Value overflows the representable range
     case overflow = "OVERFLOW"
+
+    /// Division by zero
+    case divideByZero = "DIVIDE BY ZERO"
+
+    /// The measurement failed
+    case measurementFailure = "MEASUREMENT FAILURE"
+
+    /// The measurement was not attempted
+    case measurementNotAttempted = "MEASUREMENT NOT ATTEMPTED"
+
+    /// The calculation failed
+    case calculationFailure = "CALCULATION FAILURE"
+
+    /// The value is out of range
+    case valueOutOfRange = "VALUE OUT OF RANGE"
+
+    /// The value is unknown
+    case valueUnknown = "VALUE UNKNOWN"
+
+    /// The value is indeterminate
+    case valueIndeterminate = "VALUE INDETERMINATE"
     
-    /// Creates from a NumericValueQualifier
+    /// Creates from a NumericValueQualifier (same raw values, PS3.16 CID 42)
     init(from nvq: NumericValueQualifier) {
-        switch nvq {
-        case .notANumber: self = .notANumber
-        case .negativeInfinity: self = .negativeInfinity
-        case .positiveInfinity: self = .positiveInfinity
-        case .underflow: self = .underflow
-        case .overflow: self = .overflow
-        }
+        self = MeasurementQualifier(rawValue: nvq.rawValue) ?? .valueIndeterminate
     }
 }
 
