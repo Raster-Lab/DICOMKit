@@ -511,7 +511,7 @@ public struct GrayscalePresentationStateParser: Sendable {
                 }
                 
             case "POLYGONAL":
-                if let vertexData = dataSet.integerStrings(for: .verticesOfPolygonalShutter)?.map({ $0.value }),
+                if let vertexData = dataSet.integerStrings(for: .verticesOfThePolygonalShutter)?.map({ $0.value }),
                    vertexData.count >= 6, vertexData.count % 2 == 0 {
                     var vertices: [(column: Int, row: Int)] = []
                     for i in stride(from: 0, to: vertexData.count, by: 2) {

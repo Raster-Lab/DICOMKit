@@ -40,7 +40,10 @@ extension Tag {
     
     /// Maximum Fractional Value (0062,000E) — PS3.6 keyword MaximumFractionalValue
     /// Required if Segmentation Type is FRACTIONAL
-    public static let maxFractionalValue = Tag(group: 0x0062, element: 0x000E)
+    public static let maximumFractionalValue = Tag(group: 0x0062, element: 0x000E)
+
+    @available(*, deprecated, renamed: "maximumFractionalValue", message: "PS3.6 keyword is MaximumFractionalValue")
+    public static var maxFractionalValue: Tag { .maximumFractionalValue }
     
     /// Segmentation Fractional Type (0062,0010)
     /// Required if Segmentation Type is FRACTIONAL. Values: PROBABILITY or OCCUPANCY

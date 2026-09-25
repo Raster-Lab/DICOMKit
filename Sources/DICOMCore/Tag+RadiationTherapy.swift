@@ -325,7 +325,10 @@ extension Tag {
     public static let numberOfBrachyApplicationSetups = Tag(group: 0x300A, element: 0x00A0)
     
     /// Application Setup Sequence (300A,0230) — PS3.6 keyword ApplicationSetupSequence
-    public static let brachyApplicationSetupSequence = Tag(group: 0x300A, element: 0x0230)
+    public static let applicationSetupSequence = Tag(group: 0x300A, element: 0x0230)
+
+    @available(*, deprecated, renamed: "applicationSetupSequence", message: "PS3.6 keyword is ApplicationSetupSequence")
+    public static var brachyApplicationSetupSequence: Tag { .applicationSetupSequence }
     
     /// Application Setup Type (300A,0232)
     public static let applicationSetupType = Tag(group: 0x300A, element: 0x0232)

@@ -61,7 +61,7 @@ public struct SegmentationParser {
             if let fractionalTypeString = dataSet.string(for: .segmentationFractionalType) {
                 segmentationFractionalType = SegmentationFractionalType(rawValue: fractionalTypeString)
             }
-            if let maxFracValue = dataSet.uint16(for: .maxFractionalValue) {
+            if let maxFracValue = dataSet.uint16(for: .maximumFractionalValue) {
                 maxFractionalValue = Int(maxFracValue)
             }
         }

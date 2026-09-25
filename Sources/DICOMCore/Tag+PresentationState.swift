@@ -159,7 +159,10 @@ extension Tag {
     public static let radiusOfCircularShutter = Tag(group: 0x0018, element: 0x1612)
     
     /// Vertices of the Polygonal Shutter (0018,1620) — PS3.6 keyword VerticesOfThePolygonalShutter
-    public static let verticesOfPolygonalShutter = Tag(group: 0x0018, element: 0x1620)
+    public static let verticesOfThePolygonalShutter = Tag(group: 0x0018, element: 0x1620)
+
+    @available(*, deprecated, renamed: "verticesOfThePolygonalShutter", message: "PS3.6 keyword is VerticesOfThePolygonalShutter")
+    public static var verticesOfPolygonalShutter: Tag { .verticesOfThePolygonalShutter }
     
     /// Shutter Presentation Value (0018,1622)
     public static let shutterPresentationValue = Tag(group: 0x0018, element: 0x1622)
