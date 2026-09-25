@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — coding scheme designators, LOINC names and SR template concept codes (2026-09-25)
+
+- **ICD-10 designators.** `CodingScheme.icd10CM` and `CodingSchemeDesignator.ICD10CM` used
+  "I10", which PS3.16 Table 8-1 assigns to WHO ICD-10; ICD-10-CM is **"I10C"**. Both now use
+  I10C, and `CodingScheme.icd10` / `CodingSchemeDesignator.ICD10` were added for I10
+  (2.16.840.1.113883.6.3). `CodingScheme.acr` gained its UID 2.16.840.1.113883.6.76.
+- **LOINC names.** Four `LOINCCode` constants named the wrong concept: `radiologyReport`
+  (18748-4) is "Diagnostic imaging study", `technique` (55111-9) is "Current imaging procedure
+  descriptions", `mriReport` (24590-2) is "MR Brain" and `ultrasoundReport` (18750-0) is
+  "Cardiac electrophysiology study". The constant names are kept; check that they still mean
+  what your code intends.
+- **SR template concept codes.** In `SRCoreTemplates` and `SRMeasurementTemplates`: Subject UID
+  is DCM 121028 (was 121030, "Subject ID"); "Referenced Segment" is DCM 121191 (was 121233,
+  "Source image for segmentation", in two rows); "Source of Measurement" is DCM 121112 (was
+  121405, "Population description"); "Maximum 3D Diameter" is IBSI L0JK (was DCM 121217, a
+  volume-estimation method); mm2/mm3 meanings are "square millimeter"/"cubic millimeter";
+  SCT 373098007 is "Mean". The template row structures still differ from PS3.16 2026a (see
+  P10 in DICOMCORE_STANDARD_IMPLEMENTATION.md).
+- Doc citations corrected in `ContentItemTypes`, `ContentItemValueType`, `PrivateCreator`,
+  `PrivateDataElement`, `PixelDataDescriptor`, `PaletteColorLUT` and the codec files.
+
 ### Fixed — Extended Offset Table frame indexing and RLE row boundaries (2026-09-25)
 
 - **`EncapsulatedPixelData.makeFrameIndex(extendedOffsets:)`** now reads Extended Offset
