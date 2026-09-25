@@ -301,6 +301,9 @@ extension TransferSyntax {
     // MARK: - JPEG XL Transfer Syntaxes
     //
     // NEMA-verified: 2026a, checked 2026-09-24 — text-diffed against the frozen 2026a text.
+    // NEMA-verified: 2026a, checked 2026-09-25 — the whole registry was diffed against the 63
+    // Transfer Syntax rows of PS3.6 2026a Table A-1 and the 22 missing ones added (Q2); the
+    // JP3D pair is private and the two HEVC "Fragmentable" UIDs are unregistered but kept by decision.
     // UIDs .4.110/.111/.112 match PS3.6 Table A-1 (name, keyword, type "Transfer Syntax").
     // PS3.5 §10.19 and §A.4.12 are present. Explicit VR, Little Endian and encapsulated
     // agree with PS3.5 §A.4. `.112` may be lossy or lossless (§A.4.12), and (0028,2114)
@@ -563,6 +566,226 @@ extension TransferSyntax {
         isEncapsulated: true
     )
     
+
+    // MARK: - Transfer Syntaxes added 2026-09-25 to complete PS3.6 2026a Table A-1 (Q2)
+
+    /// Encapsulated Uncompressed Explicit VR Little Endian (PS3.5 A.4.11): native pixel cells, one Fragment per Frame.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.1.98
+    public static let encapsulatedUncompressedExplicitVRLittleEndian = TransferSyntax(
+        uid: "1.2.840.10008.1.2.1.98",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPIP HTJ2K Referenced: the Pixel Data is a URI reference to a JPIP server, as with ``jpipReferenced``.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.204
+    public static let jpipHTJ2KReferenced = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.204",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false
+    )
+
+    /// JPIP HTJ2K Referenced Deflate: like ``jpipHTJ2KReferenced`` with a deflate-compressed data set.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.205
+    public static let jpipHTJ2KReferencedDeflate = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.205",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false,
+        isDeflated: true
+    )
+
+    /// SMPTE ST 2110-20 Uncompressed Progressive Active Video (DICOM Real-Time Video, PS3.22). Not a file-storage syntax.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.7.1
+    public static let smpteST2110_20UncompressedProgressiveVideo = TransferSyntax(
+        uid: "1.2.840.10008.1.2.7.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false
+    )
+
+    /// SMPTE ST 2110-20 Uncompressed Interlaced Active Video (DICOM Real-Time Video, PS3.22). Not a file-storage syntax.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.7.2
+    public static let smpteST2110_20UncompressedInterlacedVideo = TransferSyntax(
+        uid: "1.2.840.10008.1.2.7.2",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false
+    )
+
+    /// SMPTE ST 2110-30 PCM Digital Audio (DICOM Real-Time Video, PS3.22). Not a file-storage syntax.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.7.3
+    public static let smpteST2110_30PCMDigitalAudio = TransferSyntax(
+        uid: "1.2.840.10008.1.2.7.3",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false
+    )
+
+    /// Deflated Image Frame Compression (PS3.5 A.4.13): each Frame deflate-compressed into one Fragment.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.8.1
+    public static let deflatedImageFrameCompression = TransferSyntax(
+        uid: "1.2.840.10008.1.2.8.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Extended (Process 3 & 5). Retired 2001; kept so legacy files can be identified.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.52 — RET (2001)
+    public static let jpegExtendedProcess3And5Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.52",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Spectral Selection, Non-Hierarchical (Process 6 & 8). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.53 — RET (2001)
+    public static let jpegSpectralSelectionProcess6And8Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.53",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Spectral Selection, Non-Hierarchical (Process 7 & 9). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.54 — RET (2001)
+    public static let jpegSpectralSelectionProcess7And9Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.54",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Full Progression, Non-Hierarchical (Process 10 & 12). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.55 — RET (2001)
+    public static let jpegFullProgressionProcess10And12Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.55",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Full Progression, Non-Hierarchical (Process 11 & 13). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.56 — RET (2001)
+    public static let jpegFullProgressionProcess11And13Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.56",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Lossless, Non-Hierarchical (Process 15). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.58 — RET (2001)
+    public static let jpegLosslessProcess15Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.58",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Extended, Hierarchical (Process 16 & 18). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.59 — RET (2001)
+    public static let jpegExtendedHierarchicalProcess16And18Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.59",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Extended, Hierarchical (Process 17 & 19). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.60 — RET (2001)
+    public static let jpegExtendedHierarchicalProcess17And19Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.60",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Spectral Selection, Hierarchical (Process 20 & 22). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.61 — RET (2001)
+    public static let jpegSpectralSelectionHierarchicalProcess20And22Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.61",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Spectral Selection, Hierarchical (Process 21 & 23). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.62 — RET (2001)
+    public static let jpegSpectralSelectionHierarchicalProcess21And23Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.62",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Full Progression, Hierarchical (Process 24 & 26). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.63 — RET (2001)
+    public static let jpegFullProgressionHierarchicalProcess24And26Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.63",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Full Progression, Hierarchical (Process 25 & 27). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.64 — RET (2001)
+    public static let jpegFullProgressionHierarchicalProcess25And27Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.64",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Lossless, Hierarchical (Process 28). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.65 — RET (2001)
+    public static let jpegLosslessHierarchicalProcess28Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.65",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG Lossless, Hierarchical (Process 29). Retired 2001.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.66 — RET (2001)
+    public static let jpegLosslessHierarchicalProcess29Retired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.66",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// RFC 2557 MIME encapsulation. Retired 2018b; the data set is not a DICOM binary encoding, so this library only identifies the UID.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.6.1 — RET (2018b)
+    public static let rfc2557MIMEEncapsulationRetired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.6.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false
+    )
+
+    /// XML Encoding. Retired 2018b; identified only, not parsed.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.6.2 — RET (2018b)
+    public static let xmlEncodingRetired = TransferSyntax(
+        uid: "1.2.840.10008.1.2.6.2",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false
+    )
+
+    /// Papyrus 3 Implicit VR Little Endian. Retired 2015c; reads as Implicit VR Little Endian.
+    /// PS3.6 2026a Table A-1: 1.2.840.10008.1.20 — RET (2015c)
+    public static let papyrus3ImplicitVRLittleEndianRetired = TransferSyntax(
+        uid: "1.2.840.10008.1.20",
+        isExplicitVR: false,
+        byteOrder: .littleEndian,
+        isEncapsulated: false
+    )
+
     /// Creates a TransferSyntax from a UID string
     ///
     /// Returns nil if the UID is not a recognized transfer syntax.
@@ -666,6 +889,55 @@ extension TransferSyntax {
             return .hevcH265MainProfileFragmentable
         case hevcH265Main10ProfileFragmentable.uid:
             return .hevcH265Main10ProfileFragmentable
+        // Added 2026-09-25 (PS3.6 2026a Table A-1 completion)
+        case encapsulatedUncompressedExplicitVRLittleEndian.uid:
+            return .encapsulatedUncompressedExplicitVRLittleEndian
+        case jpipHTJ2KReferenced.uid:
+            return .jpipHTJ2KReferenced
+        case jpipHTJ2KReferencedDeflate.uid:
+            return .jpipHTJ2KReferencedDeflate
+        case smpteST2110_20UncompressedProgressiveVideo.uid:
+            return .smpteST2110_20UncompressedProgressiveVideo
+        case smpteST2110_20UncompressedInterlacedVideo.uid:
+            return .smpteST2110_20UncompressedInterlacedVideo
+        case smpteST2110_30PCMDigitalAudio.uid:
+            return .smpteST2110_30PCMDigitalAudio
+        case deflatedImageFrameCompression.uid:
+            return .deflatedImageFrameCompression
+        case jpegExtendedProcess3And5Retired.uid:
+            return .jpegExtendedProcess3And5Retired
+        case jpegSpectralSelectionProcess6And8Retired.uid:
+            return .jpegSpectralSelectionProcess6And8Retired
+        case jpegSpectralSelectionProcess7And9Retired.uid:
+            return .jpegSpectralSelectionProcess7And9Retired
+        case jpegFullProgressionProcess10And12Retired.uid:
+            return .jpegFullProgressionProcess10And12Retired
+        case jpegFullProgressionProcess11And13Retired.uid:
+            return .jpegFullProgressionProcess11And13Retired
+        case jpegLosslessProcess15Retired.uid:
+            return .jpegLosslessProcess15Retired
+        case jpegExtendedHierarchicalProcess16And18Retired.uid:
+            return .jpegExtendedHierarchicalProcess16And18Retired
+        case jpegExtendedHierarchicalProcess17And19Retired.uid:
+            return .jpegExtendedHierarchicalProcess17And19Retired
+        case jpegSpectralSelectionHierarchicalProcess20And22Retired.uid:
+            return .jpegSpectralSelectionHierarchicalProcess20And22Retired
+        case jpegSpectralSelectionHierarchicalProcess21And23Retired.uid:
+            return .jpegSpectralSelectionHierarchicalProcess21And23Retired
+        case jpegFullProgressionHierarchicalProcess24And26Retired.uid:
+            return .jpegFullProgressionHierarchicalProcess24And26Retired
+        case jpegFullProgressionHierarchicalProcess25And27Retired.uid:
+            return .jpegFullProgressionHierarchicalProcess25And27Retired
+        case jpegLosslessHierarchicalProcess28Retired.uid:
+            return .jpegLosslessHierarchicalProcess28Retired
+        case jpegLosslessHierarchicalProcess29Retired.uid:
+            return .jpegLosslessHierarchicalProcess29Retired
+        case rfc2557MIMEEncapsulationRetired.uid:
+            return .rfc2557MIMEEncapsulationRetired
+        case xmlEncodingRetired.uid:
+            return .xmlEncodingRetired
+        case papyrus3ImplicitVRLittleEndianRetired.uid:
+            return .papyrus3ImplicitVRLittleEndianRetired
         default:
             return nil
         }
@@ -926,6 +1198,36 @@ extension TransferSyntax {
         }
     }
     
+    /// Whether PS3.6 2026a Table A-1 marks this transfer syntax as retired.
+    ///
+    /// Retired syntaxes are kept so files that use them can be identified; nothing
+    /// should write them.
+    public var isRetired: Bool {
+        switch uid {
+        case TransferSyntax.explicitVRBigEndian.uid,
+             TransferSyntax.jpegExtendedProcess3And5Retired.uid,
+             TransferSyntax.jpegSpectralSelectionProcess6And8Retired.uid,
+             TransferSyntax.jpegSpectralSelectionProcess7And9Retired.uid,
+             TransferSyntax.jpegFullProgressionProcess10And12Retired.uid,
+             TransferSyntax.jpegFullProgressionProcess11And13Retired.uid,
+             TransferSyntax.jpegLosslessProcess15Retired.uid,
+             TransferSyntax.jpegExtendedHierarchicalProcess16And18Retired.uid,
+             TransferSyntax.jpegExtendedHierarchicalProcess17And19Retired.uid,
+             TransferSyntax.jpegSpectralSelectionHierarchicalProcess20And22Retired.uid,
+             TransferSyntax.jpegSpectralSelectionHierarchicalProcess21And23Retired.uid,
+             TransferSyntax.jpegFullProgressionHierarchicalProcess24And26Retired.uid,
+             TransferSyntax.jpegFullProgressionHierarchicalProcess25And27Retired.uid,
+             TransferSyntax.jpegLosslessHierarchicalProcess28Retired.uid,
+             TransferSyntax.jpegLosslessHierarchicalProcess29Retired.uid,
+             TransferSyntax.rfc2557MIMEEncapsulationRetired.uid,
+             TransferSyntax.xmlEncodingRetired.uid,
+             TransferSyntax.papyrus3ImplicitVRLittleEndianRetired.uid:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// Whether this is a lossless transfer syntax
     public var isLossless: Bool {
         switch uid {
@@ -943,7 +1245,18 @@ extension TransferSyntax {
              TransferSyntax.jpegXLLossless.uid,
              TransferSyntax.jpegXLRecompression.uid,
              TransferSyntax.rleLossless.uid,
-             TransferSyntax.jp3dLossless.uid:
+             TransferSyntax.jp3dLossless.uid,
+             TransferSyntax.encapsulatedUncompressedExplicitVRLittleEndian.uid,
+             TransferSyntax.smpteST2110_20UncompressedProgressiveVideo.uid,
+             TransferSyntax.smpteST2110_20UncompressedInterlacedVideo.uid,
+             TransferSyntax.smpteST2110_30PCMDigitalAudio.uid,
+             TransferSyntax.deflatedImageFrameCompression.uid,
+             TransferSyntax.jpegLosslessProcess15Retired.uid,
+             TransferSyntax.jpegLosslessHierarchicalProcess28Retired.uid,
+             TransferSyntax.jpegLosslessHierarchicalProcess29Retired.uid,
+             TransferSyntax.rfc2557MIMEEncapsulationRetired.uid,
+             TransferSyntax.xmlEncodingRetired.uid,
+             TransferSyntax.papyrus3ImplicitVRLittleEndianRetired.uid:
             return true
         default:
             return false
@@ -998,6 +1311,20 @@ extension TransferSyntax {
         .jpipReferenced, .jpipReferencedDeflate,
         // JP3D (experimental / private)
         .jp3dLossless, .jp3dLossy,
+        // Added 2026-09-25 to complete PS3.6 2026a Table A-1
+        .encapsulatedUncompressedExplicitVRLittleEndian, .deflatedImageFrameCompression,
+        .jpipHTJ2KReferenced, .jpipHTJ2KReferencedDeflate,
+        .smpteST2110_20UncompressedProgressiveVideo, .smpteST2110_20UncompressedInterlacedVideo,
+        .smpteST2110_30PCMDigitalAudio,
+        // Retired (identification only)
+        .jpegExtendedProcess3And5Retired, .jpegSpectralSelectionProcess6And8Retired,
+        .jpegSpectralSelectionProcess7And9Retired, .jpegFullProgressionProcess10And12Retired,
+        .jpegFullProgressionProcess11And13Retired, .jpegLosslessProcess15Retired,
+        .jpegExtendedHierarchicalProcess16And18Retired, .jpegExtendedHierarchicalProcess17And19Retired,
+        .jpegSpectralSelectionHierarchicalProcess20And22Retired, .jpegSpectralSelectionHierarchicalProcess21And23Retired,
+        .jpegFullProgressionHierarchicalProcess24And26Retired, .jpegFullProgressionHierarchicalProcess25And27Retired,
+        .jpegLosslessHierarchicalProcess28Retired, .jpegLosslessHierarchicalProcess29Retired,
+        .rfc2557MIMEEncapsulationRetired, .xmlEncodingRetired, .papyrus3ImplicitVRLittleEndianRetired,
     ]
 
     /// A short, human-readable name for pickers and summaries (distinct from the more
@@ -1054,6 +1381,30 @@ extension TransferSyntax {
         case TransferSyntax.jpipReferencedDeflate.uid:         return "JPIP Referenced Deflate"
         case TransferSyntax.jp3dLossless.uid:                  return "JP3D Lossless (experimental)"
         case TransferSyntax.jp3dLossy.uid:                     return "JP3D Lossy (experimental)"
+        case TransferSyntax.encapsulatedUncompressedExplicitVRLittleEndian.uid: return "Encapsulated Uncompressed Explicit VR Little Endian"
+        case TransferSyntax.jpipHTJ2KReferenced.uid: return "JPIP HTJ2K Referenced"
+        case TransferSyntax.jpipHTJ2KReferencedDeflate.uid: return "JPIP HTJ2K Referenced Deflate"
+        case TransferSyntax.smpteST2110_20UncompressedProgressiveVideo.uid: return "SMPTE ST 2110-20 Uncompressed Progressive Active Video"
+        case TransferSyntax.smpteST2110_20UncompressedInterlacedVideo.uid: return "SMPTE ST 2110-20 Uncompressed Interlaced Active Video"
+        case TransferSyntax.smpteST2110_30PCMDigitalAudio.uid: return "SMPTE ST 2110-30 PCM Digital Audio"
+        case TransferSyntax.deflatedImageFrameCompression.uid: return "Deflated Image Frame Compression"
+        case TransferSyntax.jpegExtendedProcess3And5Retired.uid: return "JPEG Extended (Process 3 & 5) (retired)"
+        case TransferSyntax.jpegSpectralSelectionProcess6And8Retired.uid: return "JPEG Spectral Selection, Non-Hierarchical (Process 6 & 8) (retired)"
+        case TransferSyntax.jpegSpectralSelectionProcess7And9Retired.uid: return "JPEG Spectral Selection, Non-Hierarchical (Process 7 & 9) (retired)"
+        case TransferSyntax.jpegFullProgressionProcess10And12Retired.uid: return "JPEG Full Progression, Non-Hierarchical (Process 10 & 12) (retired)"
+        case TransferSyntax.jpegFullProgressionProcess11And13Retired.uid: return "JPEG Full Progression, Non-Hierarchical (Process 11 & 13) (retired)"
+        case TransferSyntax.jpegLosslessProcess15Retired.uid: return "JPEG Lossless, Non-Hierarchical (Process 15) (retired)"
+        case TransferSyntax.jpegExtendedHierarchicalProcess16And18Retired.uid: return "JPEG Extended, Hierarchical (Process 16 & 18) (retired)"
+        case TransferSyntax.jpegExtendedHierarchicalProcess17And19Retired.uid: return "JPEG Extended, Hierarchical (Process 17 & 19) (retired)"
+        case TransferSyntax.jpegSpectralSelectionHierarchicalProcess20And22Retired.uid: return "JPEG Spectral Selection, Hierarchical (Process 20 & 22) (retired)"
+        case TransferSyntax.jpegSpectralSelectionHierarchicalProcess21And23Retired.uid: return "JPEG Spectral Selection, Hierarchical (Process 21 & 23) (retired)"
+        case TransferSyntax.jpegFullProgressionHierarchicalProcess24And26Retired.uid: return "JPEG Full Progression, Hierarchical (Process 24 & 26) (retired)"
+        case TransferSyntax.jpegFullProgressionHierarchicalProcess25And27Retired.uid: return "JPEG Full Progression, Hierarchical (Process 25 & 27) (retired)"
+        case TransferSyntax.jpegLosslessHierarchicalProcess28Retired.uid: return "JPEG Lossless, Hierarchical (Process 28) (retired)"
+        case TransferSyntax.jpegLosslessHierarchicalProcess29Retired.uid: return "JPEG Lossless, Hierarchical (Process 29) (retired)"
+        case TransferSyntax.rfc2557MIMEEncapsulationRetired.uid: return "RFC 2557 MIME encapsulation (retired)"
+        case TransferSyntax.xmlEncodingRetired.uid: return "XML Encoding (retired)"
+        case TransferSyntax.papyrus3ImplicitVRLittleEndianRetired.uid: return "Papyrus 3 Implicit VR Little Endian (retired)"
         default:                                               return description
         }
     }
@@ -1113,7 +1464,18 @@ extension TransferSyntax {
     public var lossyImageCompressionMethod: String? {
         switch uid {
         case TransferSyntax.jpegBaseline.uid,      // .50
-             TransferSyntax.jpegExtended.uid:      // .51
+             TransferSyntax.jpegExtended.uid,      // .51
+             TransferSyntax.jpegExtendedProcess3And5Retired.uid,
+             TransferSyntax.jpegSpectralSelectionProcess6And8Retired.uid,
+             TransferSyntax.jpegSpectralSelectionProcess7And9Retired.uid,
+             TransferSyntax.jpegFullProgressionProcess10And12Retired.uid,
+             TransferSyntax.jpegFullProgressionProcess11And13Retired.uid,
+             TransferSyntax.jpegExtendedHierarchicalProcess16And18Retired.uid,
+             TransferSyntax.jpegExtendedHierarchicalProcess17And19Retired.uid,
+             TransferSyntax.jpegSpectralSelectionHierarchicalProcess20And22Retired.uid,
+             TransferSyntax.jpegSpectralSelectionHierarchicalProcess21And23Retired.uid,
+             TransferSyntax.jpegFullProgressionHierarchicalProcess24And26Retired.uid,
+             TransferSyntax.jpegFullProgressionHierarchicalProcess25And27Retired.uid:   // retired lossy JPEG processes
             return "ISO_10918_1"
         case TransferSyntax.jpegLSNearLossless.uid: // .81 (near-lossless is lossy)
             return "ISO_14495_1"

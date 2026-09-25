@@ -63,6 +63,34 @@ extension SNOMEDCode {
     // MARK: - Body Regions
     
     /// Head (69536005)
+    // MARK: - Measurement concepts (PS3.16 2026a, e.g. CID 7470 Linear Measurement, 7471 Area, 7472 Volume)
+    //
+    // Added 2026-09-25 (P9): the SNOMED CT concepts SR measurement templates name,
+    // which used to be mis-registered as DCM codes in `DICOMCode`.
+
+    /// Diameter (81827009)
+    public static let diameter = SNOMEDCode(conceptId: "81827009", displayName: "Diameter")
+    /// Long Axis (103339001)
+    public static let longAxis = SNOMEDCode(conceptId: "103339001", displayName: "Long Axis")
+    /// Short Axis (103340004)
+    public static let shortAxis = SNOMEDCode(conceptId: "103340004", displayName: "Short Axis")
+    /// Perpendicular Axis (131189007)
+    public static let perpendicularAxis = SNOMEDCode(conceptId: "131189007", displayName: "Perpendicular Axis")
+    /// Length (410668003)
+    public static let length = SNOMEDCode(conceptId: "410668003", displayName: "Length")
+    /// Width (103355008)
+    public static let width = SNOMEDCode(conceptId: "103355008", displayName: "Width")
+    /// Area (42798000)
+    public static let area = SNOMEDCode(conceptId: "42798000", displayName: "Area")
+    /// Volume (118565006)
+    public static let volume = SNOMEDCode(conceptId: "118565006", displayName: "Volume")
+    /// Circumference (74551000)
+    public static let circumference = SNOMEDCode(conceptId: "74551000", displayName: "Circumference")
+    /// Perimeter (131191004)
+    public static let perimeter = SNOMEDCode(conceptId: "131191004", displayName: "Perimeter")
+    /// Mode (373100007)
+    public static let mode = SNOMEDCode(conceptId: "373100007", displayName: "Mode")
+
     public static let head = SNOMEDCode(conceptId: "69536005", displayName: "Head")
     
     /// Neck (45048000)

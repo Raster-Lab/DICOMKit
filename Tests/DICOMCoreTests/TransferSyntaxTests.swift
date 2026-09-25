@@ -474,3 +474,54 @@ struct TransferSyntaxCapabilityTests {
         #expect(TransferSyntax.parseEncoding("htj2k-lossless")?.isLossless == true)
     }
 }
+
+// MARK: - PS3.6 2026a Table A-1 registry completeness (Q2, 2026-09-25)
+
+@Suite("TransferSyntax registry vs PS3.6 2026a Table A-1")
+struct TransferSyntaxRegistryCompletenessTests {
+
+    @Test("allKnown covers every Transfer Syntax of Table A-1, plus exactly the 4 known non-registry UIDs")
+    func testCoversTableA1() {
+        let known = Set(TransferSyntax.allKnown.map(\.uid))
+        let registry = DICOMUniqueIdentifier.transferSyntaxUIDs
+        #expect(registry.subtracting(known).isEmpty, "missing: \(registry.subtracting(known).sorted())")
+        let extras = known.subtracting(registry)
+        #expect(extras == [TransferSyntax.jp3dLossless.uid, TransferSyntax.jp3dLossy.uid,
+                           TransferSyntax.hevcH265MainProfileFragmentable.uid,
+                           TransferSyntax.hevcH265Main10ProfileFragmentable.uid])
+    }
+
+    @Test("Every allKnown entry round-trips through from(uid:) and has a display name")
+    func testRoundTrip() {
+        for syntax in TransferSyntax.allKnown {
+            #expect(TransferSyntax.from(uid: syntax.uid)?.uid == syntax.uid)
+            #expect(syntax.displayName != syntax.description, Comment(rawValue: syntax.uid))
+        }
+        #expect(Set(TransferSyntax.allKnown.map(\.uid)).count == TransferSyntax.allKnown.count)
+    }
+
+    @Test("Retired syntaxes are flagged: Big Endian, 14 JPEG processes, MIME, XML, Papyrus")
+    func testRetired() {
+        let retired = TransferSyntax.allKnown.filter(\.isRetired)
+        #expect(retired.count == 18)
+        #expect(TransferSyntax.explicitVRBigEndian.isRetired)
+        #expect(TransferSyntax.papyrus3ImplicitVRLittleEndianRetired.isRetired)
+        #expect(!TransferSyntax.papyrus3ImplicitVRLittleEndianRetired.isExplicitVR)
+        #expect(!TransferSyntax.jpegBaseline.isRetired)
+        #expect(!TransferSyntax.encapsulatedUncompressedExplicitVRLittleEndian.isRetired)
+    }
+
+    @Test("New syntaxes carry the right encoding properties")
+    func testNewProperties() {
+        #expect(TransferSyntax.encapsulatedUncompressedExplicitVRLittleEndian.isEncapsulated)
+        #expect(TransferSyntax.encapsulatedUncompressedExplicitVRLittleEndian.isLossless)
+        #expect(TransferSyntax.deflatedImageFrameCompression.isEncapsulated)
+        #expect(TransferSyntax.deflatedImageFrameCompression.isLossless)
+        #expect(TransferSyntax.jpipHTJ2KReferencedDeflate.isDeflated)
+        #expect(!TransferSyntax.jpipHTJ2KReferenced.isEncapsulated)
+        #expect(TransferSyntax.jpegLosslessProcess15Retired.isLossless)
+        #expect(TransferSyntax.jpegExtendedProcess3And5Retired.lossyImageCompressionMethod == "ISO_10918_1")
+        #expect(TransferSyntax.jpegLosslessProcess15Retired.lossyImageCompressionMethod == nil)
+        #expect(TransferSyntax.from(uid: "1.2.840.10008.1.2.7.3")?.displayName == "SMPTE ST 2110-30 PCM Digital Audio")
+    }
+}
