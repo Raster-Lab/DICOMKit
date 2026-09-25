@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — SR template metadata aligned with PS3.16 2026a (2026-09-25)
+
+- **`RequirementLevel`** now has the four Requirement Type symbols of PS3.16 §6.1.7:
+  `mandatory` (M), `mandatoryConditional` (MC), `userOption` (U) and the new
+  `userOptionConditional` (UC). `userConditional` is a deprecated alias of `userOption`
+  (U means "User Option", not "User Conditional"). `conditional` (C) is deprecated: PS3.16
+  has no such type; it is no longer in `allCases`, which stays at four entries (C out, UC in).
+- **`TemplateIdentifier`**: `imageLibraryEntry` is now TID **1601**, which is what PS3.16
+  calls Image Library Entry; TID 320 ("Image or Spatial Coordinates") is available as
+  `imageOrSpatialCoordinates`. `cadAnalysis` and `cadFinding` are unavailable: TID 4000 is
+  `mammographyCADDocumentRoot` and TID 4019 is `algorithmIdentification`. Doc titles for
+  TIDs 1400, 1410, 1411, 1420 and 1501 now match the standard.
+- **`TID320ImageLibraryEntry` is renamed `TID1601ImageLibraryEntry`** (deprecated alias
+  kept). Its rows always modelled TID 1601; it now registers under 1601, so
+  `TemplateRegistry.shared.template(tid: 320)` returns nil.
+
+### Fixed — `PrivateTagDictionary` vendor entries (2026-09-25)
+
+- 8 of the 15 built-in vendor definitions disagreed with the DCMTK and GDCM private
+  dictionaries and were corrected: Siemens CSA header versions (0029,xx09/xx19) are LO;
+  Siemens MR (0019,xx0D) is CS "Diffusion Directionality", (0019,xx0E) is FD "Diffusion
+  Gradient Direction" and (0019,xx0F) SH "Gradient Mode" is added; GE (0009,xx01) "Full
+  Fidelity" is LO; GE (0019,xx0F) is DS "Horizontal Frame Of Reference" (not the Protocol
+  Data Block); Philips "Chemical Shift" is (2001,xx01), (2001,xx03) is FL "Diffusion
+  B-Factor" and (2001,xx08) is IS "Phase Number".
+
 ### Changed — plumbing files checked for Bucket C1 of the DICOMCore audit (2026-09-25)
 
 - **`PixelDataError.unsupportedTransferSyntax`'s `explanation`** now names the offending
