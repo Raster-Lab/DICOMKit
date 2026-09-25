@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tooling — standard verification (2026-09-25)
+
+- `Scripts/nema_docbook.py`: fetches a frozen NEMA DocBook part (refusing a copy whose subtitle
+  does not name the requested edition), lists its tables and dumps any table as TSV for scripted
+  diffs.
+- `Scripts/check_nema_markers.py`: checks that every Swift file of a module carries a well-formed
+  `NEMA-verified` marker; exits 1 otherwise. DICOMCore: 104 of 104 files. Seven early markers were
+  normalised to the standard format.
+
 ### Changed — SR templates generated from PS3.16 2026a (P10, 2026-09-25)
 
 - **SR templates**: `SRCoreTemplates.swift` and `SRMeasurementTemplates.swift` are now
@@ -70,8 +79,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Source image for segmentation", in two rows); "Source of Measurement" is DCM 121112 (was
   121405, "Population description"); "Maximum 3D Diameter" is IBSI L0JK (was DCM 121217, a
   volume-estimation method); mm2/mm3 meanings are "square millimeter"/"cubic millimeter";
-  SCT 373098007 is "Mean". The template row structures still differ from PS3.16 2026a (see
-  P10 in DICOMCORE_STANDARD_IMPLEMENTATION.md).
+  SCT 373098007 is "Mean". (The row structures were then regenerated from PS3.16 2026a; see
+  "SR templates generated from PS3.16 2026a" above.)
 - Doc citations corrected in `ContentItemTypes`, `ContentItemValueType`, `PrivateCreator`,
   `PrivateDataElement`, `PixelDataDescriptor`, `PaletteColorLUT` and the codec files.
 

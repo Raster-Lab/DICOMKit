@@ -1,6 +1,15 @@
 # DICOMCore — DICOM Standard Implementation Report
 
-Generated 2026-09-24. Covers all 104 Swift files in `Sources/DICOMCore/`. Read file-by-file; no
+Generated 2026-09-24, last updated 2026-09-25. Covers all 104 Swift files in `Sources/DICOMCore/`.
+
+**Status: complete.** All five buckets and all priority items (P1–P10, Q1, Q2) are done, verified
+against the frozen PS3.x 2026a text, and all 104 files carry a well-formed `NEMA-verified` marker
+(`Scripts/check_nema_markers.py Sources/DICOMCore` exits 0). One point the standard leaves
+ambiguous is recorded, not changed (P3, `.111` reverse transcode). Bugs found in other modules are in
+[Deferred findings](#deferred-findings--outside-dicomcore) (D1–D20). The work is committed on
+`feature/dicom-tag-modality-audit`, locally, for review.
+
+Original reading notes: Read file-by-file; no
 README/CHANGELOG/CONTRIBUTING claims were used as evidence, only source doc comments and the
 actual data each file carries.
 
@@ -230,6 +239,7 @@ The Deferred findings table below holds D1–D20.
 | 2026-09-25 | C2 | External terminologies (4) checked against all 15,696 codes PS3.16 2026a uses: 4 wrong LOINC concepts corrected; SNOMED/UCUM mostly match; RadLex unverifiable. SR templates (2 files, 13 TIDs): 10 wrong concept codes corrected; row structures compared with the 2026a tables and found to diverge (30 of 142 standard rows present) — deferred as P10. DICOMCore and DICOMKit test targets pass. **Bucket C2 complete: 59 of 59. All 104 DICOMCore files verified against 2026a.** |
 | 2026-09-25 | P2/P8/P9/Q1/Q2 | Approved and done: Q1 three tag constants renamed to their PS3.6 keywords with deprecated aliases; Q2/P2 the 22 missing PS3.6 2026a transfer syntaxes added with `isRetired`; P9 eleven SNOMED CT measurement concepts added to `SNOMEDCode`; P8 the TABLE value type, `TableContentItem` (PS3.3 C.18.10), its tags, and serializer/parser support in DICOMKit. DICOMCore and DICOMKit test targets pass. Only P10 remains open. |
 | 2026-09-25 | P10 | Approved and done: the SR templates are generated from the PS3.16 2026a TID tables by `Scripts/generate_sr_templates.py` — the 13 modelled templates plus the 27 they INCLUDE (40 templates, 337 rows, 58 INCLUDE rows). `TemplateRow` gained the columns it lacked (optional relationship and value type, by-reference, VM, INCLUDE parameter bindings, verbatim Concept Name and Value Set Constraint text); constraints gained Defined Term, Baseline Context Group, parameter and UNITS cases; templates carry Type, Order, Root and their parameters. `TemplateValidator` now walks the row tree (nesting, INCLUDE expansion with bindings, Extensible/Non-extensible, VM). Full `swift test` passes. **All priority items done.** |
+| 2026-09-25 | Method | The verification method was written up for reuse by every module (section above). Two tools added: `Scripts/nema_docbook.py` (fetch a frozen part, check its subtitle, dump any table) and `Scripts/check_nema_markers.py` (marker coverage and format). The checker found 7 early Bucket A/B1 markers in a variant format ("text-diffed <date>", no "checked"); they were normalised, and `VR.swift` now has one marker per edition (2026a, 2026d). DICOMCore: 104 of 104 files marked, all well-formed. |
 
 ---
 
@@ -629,9 +639,9 @@ U+200B, compare row by row, fix what is wrong, mark the file.
 | Private tags | PrivateCreator, PrivateDataElement, PrivateTagAllocator | PS3.5 2026a §7.8.1, §7.8.2 | ✅ Block rules match (odd groups, creator elements 0010–00FF, data elements bb00–bbFF). Doc fixes: PrivateCreator cited a "§6.1.4 Private Creator Data Element" section that does not exist (now §7.8.1); `geProtocol`'s doc called GEMS_ACQU_01 the "Protocol Data Block" (that is GEMS_SERS_01); PrivateDataElement's offset range said 0x10–0xFF (0x00–0xFF). Markers on all 3. |
 | SR support | CodingScheme, CodedConcept, ContentItemValueType, ContentItemTypes, CodeMapper | PS3.16 2026a Table 8-1 (Coding Schemes); PS3.3 2026a Table 8.8-1a, Table C.17.3-7, C.18.1–C.18.10 | ⚠️ **`CodingScheme.icd10CM` and `CodingSchemeDesignator.ICD10CM` used designator "I10"**, which Table 8-1 defines as WHO ICD-10 (2.16.840.1.113883.6.3); ICD-10-CM is **I10C** (…6.90). Both now say I10C, and `icd10` / `ICD10` were added for I10. `acr` gained its Table 8-1 UID (…6.76). "HL7" is not a registered designator and is documented as such. CodedConcept's length limits (16/16/64, Long/URN Code Value) match Table 8.8-1a. ContentItemValueType has 15 of 16 value types (TABLE, P8) and cited "Table C.17.3-1" (it is C.17.3-7); ContentItemTypes cited fifteen sections C.17.3.2.1–.15, of which only .1–.5 exist and none describes the type — all 15 now point at the C.18.x macro or the Table C.17-5 attribute. CodeMapper's DCM/SCT concepts all match PS3.16; its three SRT laterality codes are retired-designator legacy. 2 tests added. Markers on all 5. |
 | External terminologies | LOINCCode, RadLexCode, SNOMEDCode, UCUMUnit | Outside NEMA's scope. Checked against every code of that scheme used in PS3.16 2026a CID tables and Annex D (15,696 distinct codes) | ⚠️ Partially verifiable. **LOINC** (53): 5 match PS3.16's meaning, 12 differ in wording, 36 unused by PS3.16; **four were wrong LOINC concepts and were corrected** — 18748-4 is "Diagnostic imaging study" (was "Radiology Report"), 55111-9 "Current imaging procedure descriptions" (was "Technique"), 24590-2 "MR Brain" (was "MRI report"), 18750-0 "Cardiac electrophysiology study" (was "Ultrasound report"). **SNOMED** (89): 56 match, 9 are PS3.16 synonyms, 24 unused; `tumor`/`neoplasm` share 108369006. **UCUM** (50): 24 match, 7 where PS3.16's meaning is the symbol, 19 unused; `beatsPerMinute` and `breathsPerMinute` share the bare code "/min". **RadLex** (70): none of the 70 RIDs appears in PS3.16, so nothing could be verified. 1 test added. Markers state exactly what was and was not checked. |
-| SR templates | SRCoreTemplates, SRMeasurementTemplates (13 TID types) | PS3.16 2026a TID tables 300, 1001, 1002, 1204, 1400, 1410, 1411, 1419, 1420, 1500, 1501, 1600, 1601 (rows: NL, relationship, VT, concept, VM, requirement) | ✅ **Rebuilt from 2026a (P10, 2026-09-25):** now generated from the TID tables — 40 templates, 337 rows, INCLUDEs and parameters kept. Earlier note: all 107 coded concept literals were checked against PS3.16: 10 were wrong and are corrected — DCM 121191 is "Referenced Segment" (a row called it "Referenced Image"); Subject UID is 121028, not 121030 ("Subject ID"); "Referenced Segment" was coded 121233 ("Source image for segmentation") twice; "Source of Measurement" was 121405 ("Population description"), it is 121112; "Maximum 3D Diameter" was 121217 (a volume-estimation method), now IBSI L0JK; mm2/mm3 meanings; SCT 373098007 is "Mean". The **row structures diverge from 2026a**: of 142 standard rows across the 13 tables, 30 have a Swift counterpart; 77 Swift rows have none. Every template omits the INCLUDE rows for sub-templates (TID 300D, 301, 310, 315, 1000, 1003–1006, 1015, 1502, 1602, 4019, 4108) and several add rows the standard does not have. Only TID 1204 matches exactly. Rebuilding them is a public-API redesign; logged as P10. Markers state this. |
+| SR templates | SRCoreTemplates, SRMeasurementTemplates (40 TID types since P10; 13 when audited) | PS3.16 2026a TID tables (all columns: NL, relationship, VT, concept, VM, requirement, condition, value set); 300, 1001, 1002, 1204, 1400, 1410, 1411, 1419, 1420, 1500, 1501, 1600, 1601 and the 27 templates they include | ✅ **Rebuilt from 2026a (P10, 2026-09-25):** now generated from the TID tables — 40 templates, 337 rows, INCLUDEs and parameters kept. Earlier note: all 107 coded concept literals were checked against PS3.16: 10 were wrong and are corrected — DCM 121191 is "Referenced Segment" (a row called it "Referenced Image"); Subject UID is 121028, not 121030 ("Subject ID"); "Referenced Segment" was coded 121233 ("Source image for segmentation") twice; "Source of Measurement" was 121405 ("Population description"), it is 121112; "Maximum 3D Diameter" was 121217 (a volume-estimation method), now IBSI L0JK; mm2/mm3 meanings; SCT 373098007 is "Mean". The **row structures diverge from 2026a**: of 142 standard rows across the 13 tables, 30 have a Swift counterpart; 77 Swift rows have none. Every template omits the INCLUDE rows for sub-templates (TID 300D, 301, 310, 315, 1000, 1003–1006, 1015, 1502, 1602, 4019, 4108) and several add rows the standard does not have. Only TID 1204 matches exactly. Rebuilding them is a public-API redesign; logged as P10. Markers state this. |
 
-**Open questions for C2 (public API, need approval).**
+**Questions raised in C2 (public API) — all resolved.**
 
 - **Q1.** ✅ Done 2026-09-25: `applicationSetupSequence`, `maximumFractionalValue` and `verticesOfThePolygonalShutter` are the constants; the old names are deprecated aliases. The two DICOMKit call sites were updated.
 
@@ -647,8 +657,8 @@ U+200B, compare row by row, fix what is wrong, mark the file.
 - **Private tags** (PS3.5 §7.8): PrivateTag/PrivateCreator, PrivateTag/PrivateDataElement,
   PrivateTag/PrivateTagAllocator.
 - **SR support types**: CodeMapper, CodingScheme, CodedConcept, ContentItemTypes,
-  ContentItemValueType (15 value types — unverified whether 2026a adds more), LOINCCode, RadLexCode,
-  SNOMEDCode (has one duplicate concept ID, `108369006` — worth a follow-up check), UCUMUnit,
+  ContentItemValueType (verified: 2026a has 16 value types; TABLE added under P8), LOINCCode, RadLexCode,
+  SNOMEDCode (its shared concept ID `108369006` for `tumor`/`neoplasm` was checked in C2: synonyms of one concept), UCUMUnit,
   SRCoreTemplates, SRMeasurementTemplates.
 - **Tags** — all 20 `Tag+*.swift` files plus `Tag.swift`, individually grepped, zero edition/CP/
   Supplement citations in any of them: Tag.swift, Tag+DICOMDIR, Tag+EncapsulatedDocument,
@@ -662,11 +672,10 @@ U+200B, compare row by row, fix what is wrong, mark the file.
 
 ## Verification notes
 
-Several findings in P2 and P6 are marked "from memory" by the reviewing pass — i.e. based on general
-knowledge of the DICOM standard rather than a line the repo itself contains. Before acting on those
-specific items (missing transfer syntax UIDs in P2; SCOORD/TCOORD rules in P6's ContentItem.swift
-item), cross-check against the actual PS3.3/PS3.5 2026a text. Everything else in this report is
-grounded directly in repo source (file:line cited throughout).
+The first reading pass (2026-09-24) marked some findings in P2 and P6 "from memory", i.e. based on
+general knowledge of the standard rather than on the text (missing transfer syntax UIDs in P2;
+SCOORD/TCOORD rules in P6's ContentItem.swift item). They were not acted on until checked against the
+PS3.3/PS3.5 2026a text.
 
 All five buckets have now been verified against the frozen NEMA 2026a text (see their sections and
 the Progress log, 2026-09-24 to 2026-09-25). The "from memory" claims were all checked: the P6
