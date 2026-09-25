@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `DICOMDIRProfile` is now a struct covering all PS3.11 2026a profiles (2026-09-25)
+
+- **`DICOMDIRProfile` is a `RawRepresentable` struct, not an enum.** PS3.11 2026a
+  defines 64 Media Storage Application Profile identifiers, and the enum had 3 of
+  them. Of its other 5 values, `STD-GEN-DVD`, `STD-GEN-USB` and `STD-GEN-SEC` are
+  not identifiers (the real ones name the compression or media, e.g.
+  `STD-GEN-DVD-JPEG`), `STD-CTMR-xxxx` and `STD-US-xxxx` were placeholders, and
+  `STD-MAM-xxxx` does not exist in PS3.11. All 58 fixed identifiers are now static
+  constants, the 24 Ultrasound identifiers are built with
+  `ultrasound(_:frames:media:)`, and `isStandard` reports whether PS3.11 defines
+  a value. `init(rawValue:)` stays failable and still accepts the five old
+  strings, mapping them to the profile they most likely meant, so saved settings
+  and scripts keep working.
+  **Source-breaking:** exhaustive `switch` statements over `DICOMDIRProfile` no
+  longer compile. The old constant names are deprecated aliases.
+
 ### Fixed — DICOMDIR record types and hierarchy validation per PS3.3 2026a (2026-09-24)
 
 - **New public enum cases on `DirectoryRecordType`:** `plan`, `tract`,
