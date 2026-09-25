@@ -168,6 +168,7 @@ extension TranscodingError: CustomStringConvertible {
 /// decompression (compressed to uncompressed), and compression (uncompressed to compressed).
 ///
 /// Reference: DICOM PS3.5 Section 10 - Transfer Syntax Specification
+/// NEMA-verified: 2026a, checked 2026-09-25 — the byte-swap VR set (16-, 32- and 64-bit binary VRs incl. OV/SV/UV) follows PS3.5 2026a §7.3 and Table 6.2-1; the XYB to RGB relabel after JPEG XL decode follows PS3.3 2026a C.7.6.3.1.2 and PS3.5 Table 8.2.15-1 (fixed under P1/P3 on 2026-09-24). Re-checked for this marker on 2026-09-25.
 public struct TransferSyntaxConverter: Sendable {
     
     /// Configuration for the converter

@@ -6,6 +6,7 @@ import Foundation
 /// It consists of a tag, VR, length, and value field.
 ///
 /// Reference: DICOM PS3.5 Section 7.1 - Data Element Structure
+/// NEMA-verified: 2026a, checked 2026-09-25 — the 64-bit accessors (uint64/int64, OV/SV/UV) added under P1 on 2026-09-24 follow PS3.5 2026a Table 6.2-1 (CP 1819, 2019a) and the byte-order rule of §7.3; string/numeric accessors follow the VR definitions of Table 6.2-1. Re-checked for this marker on 2026-09-25.
 public struct DataElement: Sendable {
     /// Data element tag (group, element pair)
     public let tag: Tag
