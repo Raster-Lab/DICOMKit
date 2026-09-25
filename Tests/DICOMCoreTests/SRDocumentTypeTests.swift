@@ -131,7 +131,7 @@ struct SRDocumentTypeTests {
         #expect(allowed.contains(.scoord3D))
         
         // Has all value types
-        #expect(allowed == Set(ContentItemValueType.allCases))
+        #expect(allowed == Set(ContentItemValueType.allCases).subtracting([.table]))
     }
     
     @Test("Key Object Selection limited types")
@@ -239,7 +239,7 @@ struct SRDocumentTypeTests {
         (SRDocumentType.chestCADSR, [.text, .code, .num, .date, .time, .uidref, .pname, .composite, .image, .waveform, .scoord, .tcoord, .container]),  // A.35.6
         (SRDocumentType.colonCADSR, [.text, .code, .num, .date, .time, .uidref, .pname, .composite, .image, .scoord, .scoord3D, .tcoord, .container]),  // A.35.10
         (SRDocumentType.xRayRadiationDoseSR, [.text, .code, .num, .datetime, .uidref, .pname, .composite, .image, .container]),  // A.35.8
-        (SRDocumentType.enhancedXRayRadiationDoseSR, [.text, .code, .num, .datetime, .uidref, .pname, .composite, .image, .scoord3D, .container]),  // A.35.22
+        (SRDocumentType.enhancedXRayRadiationDoseSR, [.text, .code, .num, .datetime, .uidref, .pname, .composite, .image, .scoord3D, .container, .table]),  // A.35.22
         (SRDocumentType.radiopharmaceuticalRadiationDoseSR, [.text, .code, .num, .datetime, .uidref, .pname, .container]),  // A.35.14
         (SRDocumentType.patientRadiationDoseSR, [.text, .code, .num, .datetime, .uidref, .pname, .composite, .image, .container]),  // A.35.18
         (SRDocumentType.acquisitionContextSR, [.text, .code, .num, .datetime, .date, .time, .uidref, .pname, .scoord3D, .container]),  // A.35.16

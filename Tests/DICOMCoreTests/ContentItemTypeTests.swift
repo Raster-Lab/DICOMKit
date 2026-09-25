@@ -6,9 +6,11 @@ import Testing
 @Suite("ContentItemValueType Tests")
 struct ContentItemValueTypeTests {
     
-    @Test("All 15 value types are defined")
+    @Test("All 16 value types of PS3.3 2026a Table C.17.3-7 are defined")
     func testAllValueTypesDefined() {
-        #expect(ContentItemValueType.allCases.count == 15)
+        #expect(ContentItemValueType.allCases.count == 16)
+        #expect(ContentItemValueType.allCases.contains(.table))
+        #expect(ContentItemValueType.table.rawValue == "TABLE")
     }
     
     @Test("Raw values match DICOM standard")

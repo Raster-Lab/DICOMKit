@@ -504,7 +504,70 @@ public struct SRDocumentSerializer: Sendable {
             if let containerItem = item.asContainer {
                 try addContainerElements(to: &elements, item: containerItem)
             }
+
+        case .table:
+            if let tableItem = item.asTable {
+                try addTableElements(to: &elements, item: tableItem)
+            }
         }
+    }
+
+    // MARK: - Table Content Item Elements (PS3.3 C.18.10)
+
+    /// Writes the Tabulated Values Sequence (0040,A801) of a TABLE content item.
+    private func addTableElements(to elements: inout [DataElement], item: TableContentItem) throws {
+        var table: [DataElement] = [
+            DataElement.uint32(tag: .numberOfTableRows, value: UInt32(item.rows)),
+            DataElement.uint32(tag: .numberOfTableColumns, value: UInt32(item.columns)),
+        ]
+        if !item.rowDefinitions.isEmpty {
+            table.append(createSequenceElement(tag: .tableRowDefinitionSequence,
+                items: try item.rowDefinitions.map { try axisItem($0, numberTag: .tableRowNumber) }))
+        }
+        if !item.columnDefinitions.isEmpty {
+            table.append(createSequenceElement(tag: .tableColumnDefinitionSequence,
+                items: try item.columnDefinitions.map { try axisItem($0, numberTag: .tableColumnNumber) }))
+        }
+        table.append(createSequenceElement(tag: .cellValuesSequence, items: try item.cells.map(cellItem)))
+        elements.append(createSequenceElement(tag: .tabulatedValuesSequence, items: [SequenceItem(elements: table)]))
+    }
+
+    private func axisItem(_ def: TableContentItem.TableAxisDefinition, numberTag: Tag) throws -> SequenceItem {
+        var els: [DataElement] = []
+        if let index = def.index { els.append(DataElement.uint32(tag: numberTag, value: UInt32(index))) }
+        els.append(try createCodeSequenceElement(tag: .conceptNameCodeSequence, code: def.concept))
+        if let units = def.units { els.append(try createCodeSequenceElement(tag: .measurementUnitsCodeSequence, code: units)) }
+        return SequenceItem(elements: els)
+    }
+
+    private func cellItem(_ cell: TableContentItem.TableCell) throws -> SequenceItem {
+        var els: [DataElement] = []
+        if let row = cell.row { els.append(DataElement.uint32(tag: .tableRowNumber, value: UInt32(row))) }
+        if let column = cell.column { els.append(DataElement.uint32(tag: .tableColumnNumber, value: UInt32(column))) }
+        if let vr = cell.value.selectorVR {
+            els.append(DataElement.string(tag: .selectorAttributeVR, vr: .CS, value: vr.rawValue))
+        }
+        switch cell.value {
+        case .text(let values):
+            els.append(DataElement.strings(tag: .selectorUCValue, vr: .UC, values: values))
+        case .decimal(let values):
+            els.append(DataElement.strings(tag: .selectorDSValue, vr: .DS, values: values.map { formatDecimalString($0) }))
+        case .floatingPoint(let values):
+            els.append(DataElement.float64s(tag: .selectorFDValue, values: values))
+        case .integer(let values):
+            els.append(DataElement.strings(tag: .selectorISValue, vr: .IS, values: values.map { String($0) }))
+        case .dateTime(let values):
+            els.append(DataElement.strings(tag: .selectorDTValue, vr: .DT, values: values))
+        case .code(let codes):
+            els.append(createSequenceElement(tag: .conceptCodeSequence, items: codes.map { createCodeSequenceItem(code: $0) }))
+        case .contentItemReference(let ids):
+            els.append(DataElement.uint32s(tag: .referencedContentItemIdentifier, values: ids.map { UInt32($0) }))
+        case .absent:
+            break
+        }
+        if let units = cell.units { els.append(try createCodeSequenceElement(tag: .measurementUnitsCodeSequence, code: units)) }
+        if let qualifier = cell.qualifier { els.append(try createCodeSequenceElement(tag: .numericValueQualifierCodeSequence, code: qualifier)) }
+        return SequenceItem(elements: els)
     }
     
     // MARK: - Numeric Content Item Elements

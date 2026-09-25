@@ -278,7 +278,77 @@ public struct SRDocumentParser: Sendable {
             
         case .container:
             return try parseContainerContentItem(from: item, conceptName: conceptName, relationshipType: relationshipType, observationDateTime: observationDateTime, observationUID: observationUID, depth: depth)
+
+        case .table:
+            return try parseTableContentItem(from: item, conceptName: conceptName, relationshipType: relationshipType, observationDateTime: observationDateTime, observationUID: observationUID)
         }
+    }
+
+    // MARK: - Table Content Item (PS3.3 C.18.10)
+
+    private func parseTableContentItem(
+        from item: SequenceItem,
+        conceptName: CodedConcept?,
+        relationshipType: RelationshipType?,
+        observationDateTime: String?,
+        observationUID: String?
+    ) throws -> AnyContentItem {
+        guard let table = item[.tabulatedValuesSequence]?.sequenceItems?.first else {
+            throw ParseError.missingRequiredAttribute(tag: "(0040,A801)", description: "Tabulated Values Sequence")
+        }
+        let rows = Int(table[.numberOfTableRows]?.uint32Value ?? 0)
+        let columns = Int(table[.numberOfTableColumns]?.uint32Value ?? 0)
+        let rowDefs = try (table[.tableRowDefinitionSequence]?.sequenceItems ?? []).map { try parseAxisDefinition($0, numberTag: .tableRowNumber) }
+        let colDefs = try (table[.tableColumnDefinitionSequence]?.sequenceItems ?? []).map { try parseAxisDefinition($0, numberTag: .tableColumnNumber) }
+        let cells = try (table[.cellValuesSequence]?.sequenceItems ?? []).map(parseCell)
+        return AnyContentItem(TableContentItem(
+            conceptName: conceptName, rows: rows, columns: columns,
+            rowDefinitions: rowDefs, columnDefinitions: colDefs, cells: cells,
+            relationshipType: relationshipType, observationDateTime: observationDateTime, observationUID: observationUID))
+    }
+
+    private func parseAxisDefinition(_ item: SequenceItem, numberTag: Tag) throws -> TableContentItem.TableAxisDefinition {
+        guard let concept = try parseCodedConceptFromItem(item, tag: .conceptNameCodeSequence) else {
+            throw ParseError.missingRequiredAttribute(tag: "(0040,A043)", description: "Concept Name Code Sequence in table axis definition")
+        }
+        return TableContentItem.TableAxisDefinition(
+            index: item[numberTag]?.uint32Value.map(Int.init),
+            concept: concept,
+            units: try parseCodedConceptFromItem(item, tag: .measurementUnitsCodeSequence))
+    }
+
+    private func parseCell(_ item: SequenceItem) throws -> TableContentItem.TableCell {
+        let value: TableContentItem.TableCellValue
+        if let ids = item[.referencedContentItemIdentifier]?.uint32Values {
+            value = .contentItemReference(ids.map(Int.init))
+        } else if let codeItems = item[.conceptCodeSequence]?.sequenceItems, !codeItems.isEmpty {
+            value = .code(codeItems.compactMap { parseCodedConceptFromSequenceItem($0) })
+        } else if let vr = item.string(for: .selectorAttributeVR)?.trimmingCharacters(in: .whitespaces) {
+            switch vr {
+            case "UC": value = .text(item[.selectorUCValue]?.stringValues ?? [])
+            case "DS": value = .decimal(item[.selectorDSValue]?.decimalStringValues?.map(\.value) ?? [])
+            case "DT": value = .dateTime(item[.selectorDTValue]?.stringValues ?? [])
+            case "FD": value = .floatingPoint(item[.selectorFDValue]?.float64Values ?? [])
+            case "FL": value = .floatingPoint(item[.selectorFLValue]?.float32Values?.map(Double.init) ?? [])
+            case "IS": value = .integer(item[.selectorISValue]?.integerStringValues?.map { Int64($0.value) } ?? [])
+            case "SL": value = .integer(item[.selectorSLValue]?.int32Values?.map(Int64.init) ?? [])
+            case "SS": value = .integer(item[.selectorSSValue]?.int16Values?.map(Int64.init) ?? [])
+            case "UL": value = .integer(item[.selectorULValue]?.uint32Values?.map(Int64.init) ?? [])
+            case "US": value = .integer(item[.selectorUSValue]?.uint16Values?.map(Int64.init) ?? [])
+            case "SV": value = .integer(item[.selectorSVValue]?.int64Values ?? [])
+            case "UV": value = .integer(item[.selectorUVValue]?.uint64Values?.map { Int64(clamping: $0) } ?? [])
+            default:
+                throw ParseError.unknownValueType("TABLE cell Selector Attribute VR \(vr)")
+            }
+        } else {
+            value = .absent
+        }
+        return TableContentItem.TableCell(
+            row: item[.tableRowNumber]?.uint32Value.map(Int.init),
+            column: item[.tableColumnNumber]?.uint32Value.map(Int.init),
+            value: value,
+            units: try parseCodedConceptFromItem(item, tag: .measurementUnitsCodeSequence),
+            qualifier: try parseCodedConceptFromItem(item, tag: .numericValueQualifierCodeSequence))
     }
     
     // MARK: - Value Type Specific Parsers

@@ -785,3 +785,154 @@ public struct ContainerContentItem: ContentItem, Sendable, Equatable, Hashable {
         contentItems.count
     }
 }
+
+// MARK: - Table Content Item
+
+/// A TABLE content item: a two-dimensional tabulation of text, numeric, coded or
+/// date-time values (Table Content Item Macro, PS3.3 2026a C.18.10, Table C.18.10-1).
+///
+/// The table has `rows` × `columns` cells, numbered from 1. Cells may be given one at a
+/// time (row and column set), as a whole row (column nil) or as a whole column (row nil),
+/// and may be sparse. Row and column definitions carry the concept (and, for numeric
+/// data, the units) that describe an axis; a definition with `index == nil` applies to
+/// every row or column.
+///
+/// Added 2026-09-25 (P8). Permitted in Extensible SR (A.35.15) and Enhanced X-Ray
+/// Radiation Dose SR (A.35.22).
+public struct TableContentItem: ContentItem, Sendable, Equatable, Hashable {
+    public let valueType: ContentItemValueType = .table
+    public let conceptName: CodedConcept?
+    public let relationshipType: RelationshipType?
+    public let observationDateTime: String?
+    public let observationUID: String?
+
+    /// Number of Table Rows (0040,A802)
+    public let rows: Int
+
+    /// Number of Table Columns (0040,A803)
+    public let columns: Int
+
+    /// Table Row Definition Sequence (0040,A806), sorted by row number
+    public let rowDefinitions: [TableAxisDefinition]
+
+    /// Table Column Definition Sequence (0040,A807), sorted by column number
+    public let columnDefinitions: [TableAxisDefinition]
+
+    /// Cell Values Sequence (0040,A808)
+    public let cells: [TableCell]
+
+    /// Describes the meaning of one row or column, or of all of them when `index` is nil.
+    public struct TableAxisDefinition: Sendable, Equatable, Hashable {
+        /// Table Row Number (0040,A804) or Table Column Number (0040,A805), from 1; nil = applies to all
+        public let index: Int?
+        /// Concept Name Code Sequence (0040,A043)
+        public let concept: CodedConcept
+        /// Measurement Units Code Sequence (0040,08EA), when every value on this axis shares units
+        public let units: CodedConcept?
+
+        public init(index: Int? = nil, concept: CodedConcept, units: CodedConcept? = nil) {
+            self.index = index
+            self.concept = concept
+            self.units = units
+        }
+    }
+
+    /// The value(s) of one Item of the Cell Values Sequence.
+    public enum TableCellValue: Sendable, Equatable, Hashable {
+        /// Selector UC Value (0072,006F)
+        case text([String])
+        /// Selector DS Value (0072,0072)
+        case decimal([Double])
+        /// Selector FD Value (0072,0074) (also used when reading FL)
+        case floatingPoint([Double])
+        /// Selector IS Value (0072,0064) (also used when reading SL, SS, UL, US, SV, UV)
+        case integer([Int64])
+        /// Selector DT Value (0072,0063)
+        case dateTime([String])
+        /// Concept Code Sequence (0040,A168)
+        case code([CodedConcept])
+        /// Referenced Content Item Identifier (0040,DB73): the value is another content item
+        case contentItemReference([Int])
+        /// No value; `TableCell.qualifier` says why (Numeric Value Qualifier Code Sequence)
+        case absent
+
+        /// The Selector Attribute VR (0072,0050) written for this value, if any.
+        public var selectorVR: VR? {
+            switch self {
+            case .text: return .UC
+            case .decimal: return .DS
+            case .floatingPoint: return .FD
+            case .integer: return .IS
+            case .dateTime: return .DT
+            case .code, .contentItemReference, .absent: return nil
+            }
+        }
+    }
+
+    /// One Item of the Cell Values Sequence: a single cell, a whole row or a whole column.
+    public struct TableCell: Sendable, Equatable, Hashable {
+        /// Table Row Number (0040,A804), from 1; nil when the item spans a whole column
+        public let row: Int?
+        /// Table Column Number (0040,A805), from 1; nil when the item spans a whole row
+        public let column: Int?
+        public let value: TableCellValue
+        /// Measurement Units Code Sequence (0040,08EA) for numeric cells with units
+        public let units: CodedConcept?
+        /// Numeric Value Qualifier Code Sequence (0040,A301): why a numeric value is absent
+        public let qualifier: CodedConcept?
+
+        public init(row: Int? = nil, column: Int? = nil, value: TableCellValue,
+                    units: CodedConcept? = nil, qualifier: CodedConcept? = nil) {
+            self.row = row
+            self.column = column
+            self.value = value
+            self.units = units
+            self.qualifier = qualifier
+        }
+    }
+
+    /// Creates a table content item
+    public init(
+        conceptName: CodedConcept? = nil,
+        rows: Int,
+        columns: Int,
+        rowDefinitions: [TableAxisDefinition] = [],
+        columnDefinitions: [TableAxisDefinition] = [],
+        cells: [TableCell],
+        relationshipType: RelationshipType? = nil,
+        observationDateTime: String? = nil,
+        observationUID: String? = nil
+    ) {
+        self.conceptName = conceptName
+        self.rows = rows
+        self.columns = columns
+        self.rowDefinitions = rowDefinitions.sorted { ($0.index ?? 0) < ($1.index ?? 0) }
+        self.columnDefinitions = columnDefinitions.sorted { ($0.index ?? 0) < ($1.index ?? 0) }
+        self.cells = cells
+        self.relationshipType = relationshipType
+        self.observationDateTime = observationDateTime
+        self.observationUID = observationUID
+    }
+
+    /// The value at (row, column), from 1, resolved through whole-row and whole-column items.
+    public func value(row: Int, column: Int) -> TableCellValue? {
+        if let exact = cells.first(where: { $0.row == row && $0.column == column }) { return exact.value }
+        if let wholeRow = cells.first(where: { $0.row == row && $0.column == nil }) { return element(wholeRow.value, at: column - 1) }
+        if let wholeColumn = cells.first(where: { $0.column == column && $0.row == nil }) { return element(wholeColumn.value, at: row - 1) }
+        return nil
+    }
+
+    private func element(_ value: TableCellValue, at i: Int) -> TableCellValue? {
+        func pick<T>(_ a: [T]) -> [T]? { a.indices.contains(i) ? [a[i]] : nil }
+        switch value {
+        case .text(let a): return pick(a).map(TableCellValue.text)
+        case .decimal(let a): return pick(a).map(TableCellValue.decimal)
+        case .floatingPoint(let a): return pick(a).map(TableCellValue.floatingPoint)
+        case .integer(let a): return pick(a).map(TableCellValue.integer)
+        case .dateTime(let a): return pick(a).map(TableCellValue.dateTime)
+        case .code(let a): return pick(a).map(TableCellValue.code)
+        case .contentItemReference: return value
+        case .absent: return .absent
+        }
+    }
+}

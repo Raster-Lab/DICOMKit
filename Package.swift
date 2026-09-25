@@ -512,6 +512,8 @@ let package = Package(
                 "StructuredReporting/MeasurementReportExtractorTests.swift",
                 "StructuredReporting/SRDocumentBuilderTests.swift",
                 "StructuredReporting/SRDocumentParserTests.swift",
+                // PS3.3 C.18.10 TABLE content item round trip (P8, 2026-09-25).
+                "StructuredReporting/TableContentItemRoundTripTests.swift",
                 "Waveform/WaveformTests.swift",
                 "PerformanceTests/SIMDImageProcessorTests.swift"
             ]

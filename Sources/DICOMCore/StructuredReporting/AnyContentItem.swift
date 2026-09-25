@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-25 — the 15 wrapped value types match PS3.3 2026a Table C.17.3-7 except TABLE, which the module does not model yet (P8). Cites C.17.3 correctly. C1 classification confirmed.
+// NEMA-verified: 2026a, checked 2026-09-25 — all 16 value types of PS3.3 2026a Table C.17.3-7 are wrapped (TABLE added 2026-09-25, P8). Cites C.17.3 correctly. C1 classification confirmed.
 
 /// Type-erased Content Item Wrapper
 ///
@@ -31,6 +31,7 @@ public struct AnyContentItem: Sendable, Equatable, Hashable {
         case scoord3D(SpatialCoordinates3DContentItem)
         case tcoord(TemporalCoordinatesContentItem)
         case container(ContainerContentItem)
+        case table(TableContentItem)
     }
     
     // MARK: - Initialization
@@ -109,6 +110,11 @@ public struct AnyContentItem: Sendable, Equatable, Hashable {
     public init(_ item: ContainerContentItem) {
         self.storage = .container(item)
     }
+
+    /// Creates an AnyContentItem from a TableContentItem
+    public init(_ item: TableContentItem) {
+        self.storage = .table(item)
+    }
     
     // MARK: - Common Properties
     
@@ -130,6 +136,7 @@ public struct AnyContentItem: Sendable, Equatable, Hashable {
         case .scoord3D: return .scoord3D
         case .tcoord: return .tcoord
         case .container: return .container
+        case .table: return .table
         }
     }
     
@@ -151,6 +158,7 @@ public struct AnyContentItem: Sendable, Equatable, Hashable {
         case .scoord3D(let item): return item.conceptName
         case .tcoord(let item): return item.conceptName
         case .container(let item): return item.conceptName
+        case .table(let item): return item.conceptName
         }
     }
     
@@ -172,6 +180,7 @@ public struct AnyContentItem: Sendable, Equatable, Hashable {
         case .scoord3D(let item): return item.relationshipType
         case .tcoord(let item): return item.relationshipType
         case .container(let item): return item.relationshipType
+        case .table(let item): return item.relationshipType
         }
     }
     
@@ -193,6 +202,7 @@ public struct AnyContentItem: Sendable, Equatable, Hashable {
         case .scoord3D(let item): return item.observationDateTime
         case .tcoord(let item): return item.observationDateTime
         case .container(let item): return item.observationDateTime
+        case .table(let item): return item.observationDateTime
         }
     }
     
@@ -285,6 +295,12 @@ public struct AnyContentItem: Sendable, Equatable, Hashable {
     /// Returns the wrapped item as ContainerContentItem if applicable
     public var asContainer: ContainerContentItem? {
         if case .container(let item) = storage { return item }
+        return nil
+    }
+
+    /// Returns the wrapped item as TableContentItem if applicable
+    public var asTable: TableContentItem? {
+        if case .table(let item) = storage { return item }
         return nil
     }
     

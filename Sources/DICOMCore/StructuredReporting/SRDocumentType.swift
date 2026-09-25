@@ -234,7 +234,7 @@ public enum SRDocumentType: Sendable, Equatable, Hashable {
             return [.text, .code, .num, .datetime, .date, .time, .uidref, .pname, .composite, .image, .waveform, .scoord, .scoord3D, .tcoord, .container]
 
         case .extensibleSR:
-            // PS3.3 A.35.15: any Value Type of Table C.17.3-7. TABLE is omitted until P8 adds it.
+            // PS3.3 A.35.15: any Value Type of Table C.17.3-7, including TABLE.
             return Set(ContentItemValueType.allCases)
 
         case .keyObjectSelectionDocument:
@@ -258,8 +258,8 @@ public enum SRDocumentType: Sendable, Equatable, Hashable {
             return [.text, .code, .num, .datetime, .uidref, .pname, .composite, .image, .container]
 
         case .enhancedXRayRadiationDoseSR:
-            // PS3.3 A.35.22. TABLE is also permitted; omitted until P8 adds it.
-            return [.text, .code, .num, .datetime, .uidref, .pname, .composite, .image, .scoord3D, .container]
+            // PS3.3 A.35.22
+            return [.text, .code, .num, .datetime, .uidref, .pname, .composite, .image, .scoord3D, .container, .table]
 
         case .radiopharmaceuticalRadiationDoseSR:
             // PS3.3 A.35.14
