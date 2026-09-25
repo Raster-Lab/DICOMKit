@@ -177,7 +177,7 @@ public enum ModalityOptionValidator: Sendable {
     ///
     /// Grouped by category, because a flat run of 79 codes is unreadable.
     ///
-    /// NEMA-verified: 2026a, 2026-09-24 — holds no term list of its own; every lookup goes
+    /// NEMA-verified: 2026a, checked 2026-09-24 — holds no term list of its own; every lookup goes
     /// through `Modality`, which is text-diffed against PS3.3 2026a.
     public static func listing() -> String {
         var lines: [String] = [

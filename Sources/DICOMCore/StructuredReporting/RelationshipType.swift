@@ -5,7 +5,7 @@
 ///
 /// Reference: PS3.3 Table C.17.3-8 - Relationship Type Definitions
 ///
-/// NEMA-verified: 2026a, text-diffed 2026-09-24 — all 7 values match PS3.3 2026a Table
+/// NEMA-verified: 2026a, checked 2026-09-24 — text-diffed: all 7 values match PS3.3 2026a Table
 /// C.17.3-8 exactly.
 
 /// Relationship types between content items in DICOM Structured Reporting

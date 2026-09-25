@@ -182,7 +182,7 @@ public struct Modality: RawRepresentable, Hashable, Sendable, Codable,
     ///
     /// Source: PS3.3 C.7.3.1.1.1, 2026a.
     ///
-    /// NEMA-verified: 2026a, text-diffed 2026-09-24 — codes match PS3.3 2026a C.7.3.1.1.1
+    /// NEMA-verified: 2026a, checked 2026-09-24 — text-diffed: codes match PS3.3 2026a C.7.3.1.1.1
     /// exactly (79 Defined Terms, 18 Retired); every code in PS3.16 CID 29 and CID 32 is
     /// present. SC and VL appear in neither. Display names are ours, not the standard's.
     private static let currentEntries: [(String, String, Category)] = [
