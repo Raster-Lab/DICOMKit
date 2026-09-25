@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — SR templates generated from PS3.16 2026a (P10, 2026-09-25)
+
+- **SR templates**: `SRCoreTemplates.swift` and `SRMeasurementTemplates.swift` are now
+  generated from the PS3.16 2026a TID tables by `Scripts/generate_sr_templates.py`. The rows
+  written by hand were a subset that diverged from the standard (30 of 142 rows matched, no
+  INCLUDE rows). The set grows from 13 to 40 templates (the 13 plus every template they
+  include), 337 rows. New types include `TID301MeasurementContent`,
+  `TID320ImageOrSpatialCoordinates`, `TID1502TimePointContext`, `TID4019AlgorithmIdentification`
+  and `TID4108TrackingIdentifier`; `displayName` is the PS3.16 title.
+- **`TemplateRow`** (source-breaking): `relationshipType` and `valueType` are optional; new
+  `isByReference`, `valueMultiplicity`, `includeParameters`, `conceptNameText`,
+  `valueSetText`, `isInclude`. New `TemplateParameter`, `TemplateParameterBinding`,
+  `TemplateParameterValue`. `ConceptNameConstraint` adds `.definedTerm`,
+  `.fromBaselineContextGroup`, `.parameter`; `ValueConstraint` adds `.definedTermCode`,
+  `.fromBaselineContextGroup`, `.parameter`, `.units`. `SRTemplate` adds `isOrderSignificant`,
+  `isRoot`, `parameters` (defaulted). `TemplateRegistry.builtInTemplates`.
+- **`TemplateValidator`**: validates the content tree against the nested rows, expands INCLUDE
+  rows with their parameter bindings, requires M rows, counts VM, reports extra content only
+  in Non-extensible templates, and ignores Code Meaning when comparing codes. Pass the root
+  content item (e.g. the TID 1500 CONTAINER).
+
 ### Added — PS3.6 2026a transfer syntaxes, TABLE content items, SNOMED measurement concepts (2026-09-25)
 
 - **`TransferSyntax`**: the 22 Table A-1 syntaxes that were missing are registered:
