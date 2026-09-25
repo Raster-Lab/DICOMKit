@@ -789,7 +789,7 @@ struct TIDTemplateDefinitionTests {
     @Test("TID 1501 identifier")
     func testTID1501Identifier() {
         #expect(TID1501MeasurementGroup.identifier.templateID == "1501")
-        #expect(TID1501MeasurementGroup.displayName == "Measurement Group")
+        #expect(TID1501MeasurementGroup.displayName == "Measurement and Qualitative Evaluation Group")
     }
     
     @Test("TID 1600 identifier")

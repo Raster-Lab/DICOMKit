@@ -9,7 +9,11 @@
 /// NEMA-verified: 2026a, checked 2026-09-25 — `RequirementLevel` is text-diffed against
 /// PS3.16 2026a §6.1.7 (M, MC, U, UC), and every `TemplateIdentifier` constant against the
 /// TID section titles of PS3.16 2026a Annex A. The template rows themselves live in
-/// SRCoreTemplates and SRMeasurementTemplates (Bucket C2).
+/// SRCoreTemplates and SRMeasurementTemplates, generated from the 2026a TID tables by
+/// Scripts/generate_sr_templates.py (P10). `TemplateRow` models every column of a
+/// PS3.16 §6.1 template table: NL, Rel with Parent (including by-reference "R-"
+/// relationships), VT or INCLUDE with its parameter bindings (§6.1.3, §6.2), Concept
+/// Name, VM, Req Type, Condition and Value Set Constraint.
 
 import Foundation
 
@@ -86,6 +90,57 @@ extension TemplateIdentifier {
     
     /// TID 1204 - Language of Content Item and Descendants
     public static let languageOfContent = TemplateIdentifier(tid: 1204)
+
+    /// TID 301 - Measurement Content
+    public static let measurementContent = TemplateIdentifier(tid: 301)
+
+    /// TID 310 - Measurement Properties
+    public static let measurementProperties = TemplateIdentifier(tid: 310)
+
+    /// TID 311 - Measurement Statistical Properties
+    public static let measurementStatisticalProperties = TemplateIdentifier(tid: 311)
+
+    /// TID 312 - Normal Range Properties
+    public static let normalRangeProperties = TemplateIdentifier(tid: 312)
+
+    /// TID 315 - Equation or Table
+    public static let equationOrTable = TemplateIdentifier(tid: 315)
+
+    /// TID 321 - Waveform or Temporal Coordinates
+    public static let waveformOrTemporalCoordinates = TemplateIdentifier(tid: 321)
+
+    /// TID 1000 - Quotation
+    public static let quotation = TemplateIdentifier(tid: 1000)
+
+    /// TID 1003 - Person Observer Identifying Attributes
+    public static let personObserverIdentifyingAttributes = TemplateIdentifier(tid: 1003)
+
+    /// TID 1004 - Device Observer Identifying Attributes
+    public static let deviceObserverIdentifyingAttributes = TemplateIdentifier(tid: 1004)
+
+    /// TID 1005 - Procedure Study Context
+    public static let procedureStudyContext = TemplateIdentifier(tid: 1005)
+
+    /// TID 1006 - Subject Context
+    public static let subjectContext = TemplateIdentifier(tid: 1006)
+
+    /// TID 1007 - Subject Context, Patient
+    public static let subjectContextPatient = TemplateIdentifier(tid: 1007)
+
+    /// TID 1008 - Subject Context, Fetus
+    public static let subjectContextFetus = TemplateIdentifier(tid: 1008)
+
+    /// TID 1009 - Subject Context, Specimen
+    public static let subjectContextSpecimen = TemplateIdentifier(tid: 1009)
+
+    /// TID 1010 - Subject Context, Device
+    public static let subjectContextDevice = TemplateIdentifier(tid: 1010)
+
+    /// TID 1015 - Person Observer Description
+    public static let personObserverDescription = TemplateIdentifier(tid: 1015)
+
+    /// TID 4108 - Tracking Identifier
+    public static let trackingIdentifier = TemplateIdentifier(tid: 4108)
     
     // MARK: Measurement Templates
     
@@ -114,6 +169,30 @@ extension TemplateIdentifier {
 
     /// TID 1600 - Image Library
     public static let imageLibrary = TemplateIdentifier(tid: 1600)
+
+    /// TID 1502 - Time Point Context
+    public static let timePointContext = TemplateIdentifier(tid: 1502)
+
+    /// TID 1602 - Image Library Entry Descriptors
+    public static let imageLibraryEntryDescriptors = TemplateIdentifier(tid: 1602)
+
+    /// TID 1603 - Image Library Entry Descriptors for Projection Radiography
+    public static let imageLibraryEntryDescriptorsForProjectionRadiography = TemplateIdentifier(tid: 1603)
+
+    /// TID 1604 - Image Library Entry Descriptors for Cross-Sectional Modalities
+    public static let imageLibraryEntryDescriptorsForCrossSectionalModalities = TemplateIdentifier(tid: 1604)
+
+    /// TID 1605 - Image Library Entry Descriptors for CT
+    public static let imageLibraryEntryDescriptorsForCT = TemplateIdentifier(tid: 1605)
+
+    /// TID 1606 - Image Library Entry Descriptors for MR
+    public static let imageLibraryEntryDescriptorsForMR = TemplateIdentifier(tid: 1606)
+
+    /// TID 1607 - Image Library Entry Descriptors for PET
+    public static let imageLibraryEntryDescriptorsForPET = TemplateIdentifier(tid: 1607)
+
+    /// TID 1608 - Image Library Entry Descriptors for Prostate Multiparametric MR
+    public static let imageLibraryEntryDescriptorsForProstateMultiparametricMR = TemplateIdentifier(tid: 1608)
 
     // MARK: CAD Templates
 
@@ -298,22 +377,31 @@ public enum TemplateRowCondition: Sendable, Equatable {
 
 /// Definition of a single row in an SR template
 ///
-/// Each row specifies constraints on a content item including its value type,
-/// relationship, requirement level, and cardinality.
+/// Each row is one line of a PS3.16 template table (§6.1): either a content item
+/// (VT set) or an INCLUDE of another template (`includedTemplate` set, `valueType`
+/// nil). Rows nest by `nestingLevel`: a row is a child of the nearest earlier row
+/// with a lower level.
 ///
 /// Reference: PS3.16 Section 6.1 - Template Table Field Definition
 public struct TemplateRow: Sendable, Equatable {
     /// Unique identifier for this row within the template
     public let rowID: String?
     
-    /// Nesting level within the template (0 = top level)
+    /// Nesting level within the template (0 = top level; one per ">" in the NL column)
     public let nestingLevel: Int
     
-    /// Relationship type for this row
-    public let relationshipType: RelationshipType
+    /// Relationship with the parent (PS3.16 §6.1.2).
+    ///
+    /// nil when the column is empty: the root row of a template, or an INCLUDE whose
+    /// included rows carry their own relationships.
+    public let relationshipType: RelationshipType?
+
+    /// Whether the relationship is by reference ("R-" prefix, PS3.16 §6.1.2): the
+    /// target is a content item elsewhere in the tree, referenced by its position.
+    public let isByReference: Bool
     
-    /// Value type constraint
-    public let valueType: ContentItemValueType
+    /// Value type (PS3.16 §6.1.3); nil for an INCLUDE row.
+    public let valueType: ContentItemValueType?
     
     /// Concept name constraint (if specified)
     public let conceptName: ConceptNameConstraint
@@ -323,40 +411,128 @@ public struct TemplateRow: Sendable, Equatable {
     
     /// Requirement level
     public let requirementLevel: RequirementLevel
+
+    /// Value Multiplicity (PS3.16 §6.1.6): how many times the row occurs when it is
+    /// present ("1" → 1, "1-n" → 1..n, "2-n" → 2..n).
+    public let valueMultiplicity: Cardinality
     
-    /// Cardinality constraint
+    /// How many times the row may occur, combining VM with the requirement type: the
+    /// VM for an M row, and 0 up to the VM's maximum for MC, U and UC rows.
     public let cardinality: Cardinality
     
-    /// Condition for when this row applies
+    /// Condition for when this row applies (the Condition column, as
+    /// `.custom(description:)` with the standard's text)
     public let condition: TemplateRowCondition
     
     /// Included template (for rows that reference another template)
     public let includedTemplate: TemplateIdentifier?
+
+    /// Parameter bindings of an INCLUDE row (PS3.16 §6.2), in table order
+    public let includeParameters: [TemplateParameterBinding]
+
+    /// The Concept Name cell verbatim, as it appears in PS3.16
+    public let conceptNameText: String?
+
+    /// The Value Set Constraint cell verbatim, as it appears in PS3.16
+    public let valueSetText: String?
+
+    /// Whether this row includes another template
+    public var isInclude: Bool {
+        includedTemplate != nil
+    }
     
     /// Creates a template row definition
+    ///
+    /// `valueMultiplicity` defaults to `cardinality` with a minimum of at least 1.
     public init(
         rowID: String? = nil,
         nestingLevel: Int = 0,
-        relationshipType: RelationshipType,
-        valueType: ContentItemValueType,
+        relationshipType: RelationshipType?,
+        isByReference: Bool = false,
+        valueType: ContentItemValueType?,
         conceptName: ConceptNameConstraint = .any,
         valueConstraint: ValueConstraint = .any,
         requirementLevel: RequirementLevel = .mandatory,
+        valueMultiplicity: Cardinality? = nil,
         cardinality: Cardinality = .one,
         condition: TemplateRowCondition = .none,
-        includedTemplate: TemplateIdentifier? = nil
+        includedTemplate: TemplateIdentifier? = nil,
+        includeParameters: [TemplateParameterBinding] = [],
+        conceptNameText: String? = nil,
+        valueSetText: String? = nil
     ) {
         self.rowID = rowID
         self.nestingLevel = nestingLevel
         self.relationshipType = relationshipType
+        self.isByReference = isByReference
         self.valueType = valueType
         self.conceptName = conceptName
         self.valueConstraint = valueConstraint
         self.requirementLevel = requirementLevel
+        self.valueMultiplicity = valueMultiplicity
+            ?? Cardinality(minimum: max(cardinality.minimum, 1), maximum: cardinality.maximum)
         self.cardinality = cardinality
         self.condition = condition
         self.includedTemplate = includedTemplate
+        self.includeParameters = includeParameters
+        self.conceptNameText = conceptNameText
+        self.valueSetText = valueSetText
     }
+}
+
+// MARK: - Template Parameters
+
+/// A parameter a template declares (PS3.16 §6.2), such as `$Measurement` in TID 300
+public struct TemplateParameter: Sendable, Equatable, Hashable {
+    /// Name without the leading "$"
+    public let name: String
+
+    /// The Parameter Usage text of the template's Parameters table
+    public let usage: String
+
+    public init(name: String, usage: String) {
+        self.name = name
+        self.usage = usage
+    }
+}
+
+/// The value an INCLUDE row passes for one parameter of the included template
+public struct TemplateParameterBinding: Sendable, Equatable, Hashable {
+    /// Parameter name without the leading "$"
+    public let name: String
+
+    /// The parsed value
+    public let value: TemplateParameterValue
+
+    /// The value text verbatim, as it appears in PS3.16
+    public let text: String
+
+    public init(name: String, value: TemplateParameterValue, text: String) {
+        self.name = name
+        self.value = value
+        self.text = text
+    }
+}
+
+/// A parameter value (PS3.16 §6.2)
+public enum TemplateParameterValue: Sendable, Equatable, Hashable {
+    /// Another parameter of the including template ("$Name"), passed through
+    case parameter(String)
+
+    /// An Enumerated Value code ("EV (…)")
+    case code(CodedConcept)
+
+    /// A Defined Term code ("DT (…)")
+    case definedTerm(CodedConcept)
+
+    /// A Defined Context Group ("DCID n")
+    case contextGroup(Int)
+
+    /// A Baseline Context Group ("BCID n")
+    case baselineContextGroup(Int)
+
+    /// Any other value, as text
+    case text(String)
 }
 
 // MARK: - Concept Name Constraint
@@ -377,6 +553,15 @@ public enum ConceptNameConstraint: Sendable, Equatable {
     
     /// Must match the baseline concept from CID
     case baselineCID(contextGroupID: Int, baseline: CodedConcept)
+
+    /// Defined Term ("DT (…)", PS3.16 §6.1.4): this code, or another with the same meaning
+    case definedTerm(CodedConcept)
+
+    /// From a Baseline Context Group ("BCID n", PS3.16 §6.1.5): other codes may be used
+    case fromBaselineContextGroup(contextGroupID: Int)
+
+    /// Supplied by a template parameter ("$Name", PS3.16 §6.2)
+    case parameter(String)
 }
 
 // MARK: - Value Constraint
@@ -403,6 +588,18 @@ public enum ValueConstraint: Sendable, Equatable {
     
     /// Custom value constraint with description
     case custom(description: String)
+
+    /// Defined Term code ("DT (…)")
+    case definedTermCode(CodedConcept)
+
+    /// From a Baseline Context Group ("BCID n"): other codes may be used
+    case fromBaselineContextGroup(contextGroupID: Int)
+
+    /// Supplied by a template parameter ("$Name", PS3.16 §6.2)
+    case parameter(String)
+
+    /// Constraint on the Measurement Units of a NUM item ("UNITS = …")
+    indirect case units(ValueConstraint)
 }
 
 // MARK: - SR Template Protocol
@@ -429,6 +626,15 @@ public protocol SRTemplate: Sendable {
     
     /// Whether this template is extensible (allows additional content)
     static var isExtensible: Bool { get }
+
+    /// Whether the order of content items is significant (PS3.16 "Order")
+    static var isOrderSignificant: Bool { get }
+
+    /// Whether this is a root template (PS3.16 "Root")
+    static var isRoot: Bool { get }
+
+    /// The parameters this template declares (PS3.16 §6.2)
+    static var parameters: [TemplateParameter] { get }
 }
 
 // MARK: - Template Protocol Default Implementations
@@ -442,6 +648,21 @@ extension SRTemplate {
     /// Default to non-extensible
     public static var isExtensible: Bool {
         false
+    }
+
+    /// Default to significant order
+    public static var isOrderSignificant: Bool {
+        true
+    }
+
+    /// Default to a non-root template
+    public static var isRoot: Bool {
+        false
+    }
+
+    /// Default to no parameters
+    public static var parameters: [TemplateParameter] {
+        []
     }
 }
 
@@ -487,21 +708,40 @@ public struct TemplateRegistry: Sendable {
     
     /// Registers built-in templates
     private func registerBuiltInTemplates() {
-        // Core templates will be registered here as they are implemented
-        register(TID300Measurement.self)
-        register(TID1601ImageLibraryEntry.self)
-        register(TID1001ObservationContext.self)
-        register(TID1002ObserverContext.self)
-        register(TID1204LanguageOfContent.self)
-        register(TID1400LinearMeasurements.self)
-        register(TID1410PlanarROIMeasurements.self)
-        register(TID1411VolumetricROIMeasurements.self)
-        register(TID1419ROIMeasurements.self)
-        register(TID1420MultipleROIMeasurements.self)
-        register(TID1500MeasurementReport.self)
-        register(TID1501MeasurementGroup.self)
-        register(TID1600ImageLibrary.self)
+        for template in Self.builtInTemplates {
+            storage.register(template)
+        }
     }
+
+    /// The 40 templates DICOMCore generates from PS3.16 (see SRCoreTemplates and
+    /// SRMeasurementTemplates)
+    public static let builtInTemplates: [any SRTemplate.Type] = [
+        TID300Measurement.self, TID301MeasurementContent.self,
+        TID310MeasurementProperties.self, TID311MeasurementStatisticalProperties.self,
+        TID312NormalRangeProperties.self, TID315EquationOrTable.self,
+        TID320ImageOrSpatialCoordinates.self, TID321WaveformOrTemporalCoordinates.self,
+        TID1000Quotation.self, TID1001ObservationContext.self, TID1002ObserverContext.self,
+        TID1003PersonObserverIdentifyingAttributes.self,
+        TID1004DeviceObserverIdentifyingAttributes.self, TID1005ProcedureStudyContext.self,
+        TID1006SubjectContext.self, TID1007SubjectContextPatient.self,
+        TID1008SubjectContextFetus.self, TID1009SubjectContextSpecimen.self,
+        TID1010SubjectContextDevice.self, TID1015PersonObserverDescription.self,
+        TID1204LanguageOfContent.self,
+        TID1400LinearMeasurements.self, TID1410PlanarROIMeasurements.self,
+        TID1411VolumetricROIMeasurements.self, TID1419ROIMeasurements.self,
+        TID1420MultipleROIMeasurements.self,
+        TID1500MeasurementReport.self, TID1501MeasurementGroup.self,
+        TID1502TimePointContext.self,
+        TID1600ImageLibrary.self, TID1601ImageLibraryEntry.self,
+        TID1602ImageLibraryEntryDescriptors.self,
+        TID1603ImageLibraryEntryDescriptorsForProjectionRadiography.self,
+        TID1604ImageLibraryEntryDescriptorsForCrossSectionalModalities.self,
+        TID1605ImageLibraryEntryDescriptorsForCT.self,
+        TID1606ImageLibraryEntryDescriptorsForMR.self,
+        TID1607ImageLibraryEntryDescriptorsForPET.self,
+        TID1608ImageLibraryEntryDescriptorsForProstateMultiparametricMR.self,
+        TID4019AlgorithmIdentification.self, TID4108TrackingIdentifier.self,
+    ]
     
     /// Registers a template type
     /// - Parameter templateType: The template type to register
