@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `SRDocumentType`: two missing SOP Classes and corrected Value Type constraints (2026-09-25)
+
+- **New public enum cases `SRDocumentType.procedureLog` (1.2.840.10008.5.1.4.1.1.88.40)
+  and `.waveformAnnotationSR` (.88.77).** All 20 current SR Storage SOP Classes of
+  PS3.6 2026a Table A-1 are now covered. `isSRDocument(sopClassUID:)` also recognizes
+  the four retired "Trial" SR SOP Classes (.88.1–.88.4), which have no IOD in PS3.3
+  and therefore no `SRDocumentType`.
+  **Source-breaking for exhaustive switches** over `SRDocumentType`.
+- **`allowedValueTypes` was wrong for 16 of the 18 document types.** Each set is now
+  the Enumerated Values list of its IOD's Content Constraints in PS3.3 2026a A.35,
+  generated from the DocBook text. Basic Text SR gains WAVEFORM and Enhanced SR gains
+  SCOORD and TCOORD, so valid documents are no longer rejected. Key Object Selection,
+  the CAD SRs and the Radiation Dose SRs lose DATETIME or DATE/TIME, which their IODs
+  do not permit, so `validateOnBuild` now flags those. TABLE, permitted by Extensible
+  SR and Enhanced X-Ray Radiation Dose SR, is not yet a `ContentItemValueType`.
+
 ### Changed — `DICOMDIRProfile` is now a struct covering all PS3.11 2026a profiles (2026-09-25)
 
 - **`DICOMDIRProfile` is a `RawRepresentable` struct, not an enum.** PS3.11 2026a

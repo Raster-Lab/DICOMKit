@@ -685,19 +685,18 @@ struct EnhancedSRBuilderTests {
         #expect(document.rootContent.contentItems.count == 9)
     }
     
-    @Test("Validation fails for SCOORD content")
-    func testValidationFailsForSCOORD() throws {
-        // Enhanced SR does NOT support SCOORD
+    @Test("Validation accepts SCOORD content")
+    func testValidationAcceptsSCOORD() throws {
+        // Enhanced SR permits SCOORD (PS3.3 2026a A.35.2 Value Type constraints)
         let spatialItem = AnyContentItem(SpatialCoordinatesContentItem(
             graphicType: .point,
             graphicData: [10.0, 20.0]
         ))
         
-        #expect(throws: EnhancedSRBuilder.BuildError.self) {
-            _ = try EnhancedSRBuilder()
-                .addItem(spatialItem)
-                .build()
-        }
+        let document = try EnhancedSRBuilder()
+            .addItem(spatialItem)
+            .build()
+        #expect(document.rootContent.contentItems.count == 1)
     }
     
     @Test("Validation fails for SCOORD3D content")
@@ -716,19 +715,18 @@ struct EnhancedSRBuilderTests {
         }
     }
     
-    @Test("Validation fails for TCOORD content")
-    func testValidationFailsForTCOORD() throws {
-        // Enhanced SR does NOT support TCOORD
+    @Test("Validation accepts TCOORD content")
+    func testValidationAcceptsTCOORD() throws {
+        // Enhanced SR permits TCOORD (PS3.3 2026a A.35.2 Value Type constraints)
         let temporalItem = AnyContentItem(TemporalCoordinatesContentItem(
             temporalRangeType: .point,
             samplePositions: [1]
         ))
         
-        #expect(throws: EnhancedSRBuilder.BuildError.self) {
-            _ = try EnhancedSRBuilder()
-                .addItem(temporalItem)
-                .build()
-        }
+        let document = try EnhancedSRBuilder()
+            .addItem(temporalItem)
+            .build()
+        #expect(document.rootContent.contentItems.count == 1)
     }
     
     @Test("Validation disabled allows unsupported content")
