@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `ContextGroup`: the built-in CIDs are now generated from PS3.16 2026a (2026-09-25)
+
+- **Seven of the nine built-in context groups carried CID numbers that PS3.16 assigns
+  to other groups, and members PS3.16 does not define** (e.g. `findingSite` was
+  numbered CID 4021, which is "PET Radiopharmaceutical"; `derivation` was CID 6024,
+  "Depth"; the SRT codes in `quantitativeTemporalRelation` and `breastImagingFinding`
+  exist in no CID). Only `laterality` was correct, and `measurementReportDocumentTitles`
+  had two wrong meanings.
+- **New groups, generated from the PS3.16 2026a CID tables** with "Include CID" rows
+  expanded: `relativeTime` (CID 3600), `commonAnatomicRegion` (CID 4031, 119 codes),
+  `recistDefinedLesionResponse` (CID 6144), `linearMeasurementUnit` (7460),
+  `areaMeasurementUnit` (7461), `volumeMeasurementUnit` (7462), `breastImagingFinding`
+  (now CID 6054, 47 codes) and `measurementType` (CID 3627). Each carries the
+  standard's Type and Version.
+- **Source-breaking:** `imagingObservations` is removed (PS3.16 has no such group).
+  `quantitativeTemporalRelation`, `findingSite`, `responseEvaluation`,
+  `roiMeasurementUnits` and `derivation` are deprecated aliases of the new groups;
+  their members differ, so code that matched the old invented codes must change.
+  `ContextGroupRegistry` no longer registers CIDs 218, 4021, 6147, 7464, 12301 or 6024.
+
 ### Fixed — `SRDocumentType`: two missing SOP Classes and corrected Value Type constraints (2026-09-25)
 
 - **New public enum cases `SRDocumentType.procedureLog` (1.2.840.10008.5.1.4.1.1.88.40)
