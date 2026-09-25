@@ -103,7 +103,24 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 
 ## Priority action list
 
-Ordered by real-world impact, not file count.
+Ordered by real-world impact, not file count. Status as of 2026-09-25, after all five buckets were verified:
+
+| Item | What | Status | Where the evidence is |
+|---|---|---|---|
+| P1 | 64-bit VRs (OV/SV/UV) read, swapped and JSON-encoded | ✅ Done 2026-09-24 | `SixtyFourBitVRTests`, `DICOMJSON64BitVRTests`; B2 |
+| P2 | `TransferSyntax` registry vs PS3.6 Table A-1 | ⚠️ **Verified 2026-09-25, fix waits for approval (Q2)** — 22 of 63 registered syntaxes missing, 2 non-existent UIDs present | P2 below |
+| P3 | `PhotometricInterpretation.xyb` | ✅ Done 2026-09-24 | `XYBTranscodeTests`; B2 |
+| P4 | `VR.swift` CP citation | ✅ Done 2026-09-24 | B1 |
+| P5 | Stale defined-term lists (character sets, DICOMDIR record types, media profiles) | ✅ Done 2026-09-25 | `CharacterSetISO2022Tests`, `DirectoryRecordTypeTests`, `DICOMDIRProfileTests`; B2 |
+| P6 | SR data integrity (`DICOMCode`, `ContextGroup`, `SRDocumentType`, `ContentItem`) | ✅ Done 2026-09-25 | `DICOMCodeTests`, `ContextGroupTests`, `SRDocumentTypeTests`, `ContentItemTypeTests`; B2 |
+| P7 | JPEG XL: one fragment per frame | ✅ Done 2026-09-25 | `JPEGXLFragmentPerFrameTests`; P7 below |
+| P8 | TABLE value type | ⏳ Open — feature, breaks 8 exhaustive switches | P8 below |
+| P9 | Home for non-DCM measurement codes | ⏳ Open — needs a design choice | P9 below |
+| P10 | Rebuild SR templates from the TID tables | ⏳ Open — public-API redesign | P10 below |
+| Q1 | Rename 3 tag constants to their PS3.6 keywords | ❓ Awaiting approval | Bucket C2 |
+| Q2 | Add the 22 missing transfer syntaxes, remove 2 invented ones | ❓ Awaiting approval | P2 below |
+
+Everything marked Done was fixed against the frozen 2026a text, has tests, and is committed on `feature/dicom-tag-modality-audit`. The open items all change public API, which this audit does not do without approval.
 
 ### P1 — 64-bit VR (OV/SV/UV) support is functionally incomplete — **DONE 2026-09-24**
 
@@ -119,19 +136,27 @@ Tests: `Tests/DICOMCoreTests/SixtyFourBitVRTests.swift` (6) and `Tests/DICOMWebT
 
 **Related bugs outside DICOMCore:** five were found while fixing P1. By decision (2026-09-24) they are deferred until their module is audited. See [Deferred findings](#deferred-findings--outside-dicomcore) (D1–D5).
 
-### P2 — `TransferSyntax.swift`: verify and close the UID registry gap
+### P2 — `TransferSyntax.swift`: close the UID registry gap — **VERIFIED 2026-09-25, fix awaiting approval (Q2)**
 
-Reviewer flagged (from memory — **must be checked against the actual PS3.5 2026a table before
-acting**) that the following may be missing from `from(uid:)` / `allKnown`:
+The reviewer's "from memory" list was checked on 2026-09-25 by diffing every UID literal in the file against the 63 rows of type "Transfer Syntax" in PS3.6 2026a Table A-1. The file has 41 UIDs. Result:
 
-- Encapsulated Uncompressed Explicit VR LE — `1.2.840.10008.1.2.1.98`
-- JPIP HTJ2K Referenced / Deflated — `1.2.840.10008.1.2.4.204`, `.205`
-- SMPTE ST 2110 — `1.2.840.10008.1.2.7.x`
-- Deflated Image Frame Compression — `1.2.840.10008.1.2.8.1`
+**Missing, current (6):**
 
-This file is legitimately in-scope for an edition citation — it is the DICOM-facing UID registry
-boundary, not codec math. Once verified, either add the missing syntaxes or correct the file's
-"Supplement 232, DICOM 2024d" citation to reflect what it actually implements.
+| UID | PS3.6 2026a name |
+|---|---|
+| 1.2.840.10008.1.2.1.98 | Encapsulated Uncompressed Explicit VR Little Endian (PS3.5 A.4.11) |
+| 1.2.840.10008.1.2.4.204 | JPIP HTJ2K Referenced |
+| 1.2.840.10008.1.2.4.205 | JPIP HTJ2K Referenced Deflate |
+| 1.2.840.10008.1.2.7.1 | SMPTE ST 2110-20 Uncompressed Progressive Active Video |
+| 1.2.840.10008.1.2.7.2 | SMPTE ST 2110-20 Uncompressed Interlaced Active Video |
+| 1.2.840.10008.1.2.7.3 | SMPTE ST 2110-30 PCM Digital Audio |
+| 1.2.840.10008.1.2.8.1 | Deflated Image Frame Compression (PS3.5 A.4.13) |
+
+**Missing, retired (16):** the JPEG processes .4.52–.4.56, .4.58–.4.66 (13, retired 2001), RFC 2557 MIME encapsulation .6.1 and XML Encoding .6.2 (retired 2018b), Papyrus 3 Implicit VR LE 1.2.840.10008.1.20 (retired 2015c). A reader may still meet these UIDs in old files, so `from(uid:)` returning nil for them is a real gap even though nothing should write them.
+
+**Present but not in the standard (2):** `hevcH265MainProfileFragmentable` (1.2.840.10008.1.2.4.107.1) and `hevcH265Main10ProfileFragmentable` (…4.108.1). Table A-1 defines Fragmentable variants only for .4.100–.4.106 (MPEG2 and MPEG-4); the HEVC syntaxes .4.107 and .4.108 have none. These two UIDs are invented and any file written with them is non-conformant.
+
+The earlier B1 marker on this file covered only the three JPEG XL rows; this check covers the whole registry. **Q2 (needs approval):** add the 22 missing syntaxes as new `TransferSyntax` constants (retired ones flagged), mark the two HEVC "Fragmentable" constants `unavailable`, and make `DICOMUniqueIdentifier.transferSyntaxUIDs` the source of truth for `allKnown`. Also check `DICOMDictionary/UIDDictionary.swift` (outside DICOMCore) for the same two invented UIDs.
 
 ### P3 — `PhotometricInterpretation.swift`: add `XYB` — **DONE 2026-09-24**
 
@@ -179,11 +204,9 @@ that exercise the affected codes:
   (should be SCOORD3D-only, per reviewer recollection); :135-147 is missing the `MULTISEGMENT` TCOORD
   range type.
 
-### P7 — JPEG XL: one fragment per frame (Bucket C2)
+### P7 — JPEG XL: one fragment per frame — **DONE 2026-09-25**
 
-PS3.5 2026a §A.4.12 says "each Frame shall be encoded separately as a single Fragment". The Bucket B1 files do not enforce this; the encapsulation code does. That code is `EncapsulatedPixelData.swift`, `DICOMWriter.swift` and the fragment-level JPEG XL recompression path in `TransferSyntaxConverter.swift`, all in Bucket C2. When auditing C2:
-1. Confirm that each JPEG XL frame (.110, .111, .112) is written as exactly one fragment and never split.
-2. Add a multi-frame test that checks the fragment count equals the frame count.
+PS3.5 2026a §A.4.12 says "each Frame shall be encoded separately as a single Fragment". Checked in Bucket C2: `TransferSyntaxConverter.transcode` takes the codec's per-frame output (`ImageEncoder.encode` returns one `Data` per frame) and `buildEncapsulatedPixelData` writes each element of that array as one Item, so a frame is never split. The .111 recompression path wraps and unwraps fragment by fragment, preserving the count. `JPEGXLFragmentPerFrameTests` compresses a 3-frame image to .110 and asserts 3 even-length fragments and a 3-entry Basic Offset Table.
 
 ### P8 — TABLE Value Type (Bucket B2 follow-up)
 
@@ -500,6 +523,8 @@ specific items (missing transfer syntax UIDs in P2; SCOORD/TCOORD rules in P6's 
 item), cross-check against the actual PS3.3/PS3.5 2026a text. Everything else in this report is
 grounded directly in repo source (file:line cited throughout).
 
-Buckets A and B1 have now been verified against NEMA sources (see their sections and the Progress
-log). The "from memory" caveat still applies to the B2 items listed above, which have not been
-verified yet.
+All five buckets have now been verified against the frozen NEMA 2026a text (see their sections and
+the Progress log, 2026-09-24 to 2026-09-25). The "from memory" claims were all checked: the P6
+ContentItem claims were confirmed and fixed in B2; the P2 transfer-syntax list was confirmed and
+extended on 2026-09-25 (22 missing, 2 invented; see P2 and Q2). No unverified claim remains in
+this report.
