@@ -98,6 +98,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 | 2026-09-25 | C2 | Codecs (7 files): UIDs via `TransferSyntax`; `canEncode` limits checked against PS3.5 §8.2 tables (all subsets). Five wrong A.4 subsection citations fixed (HTJ2K in A.4.4, not A.4.6; JPEG in A.4.1; JPEG-LS in A.4.3). Markers on all 7. |
 | 2026-09-25 | C2 | Private tags (3) and SR support (5): PS3.5 §7.8.1 rules match; `icd10CM`/`ICD10CM` designator corrected from "I10" (WHO ICD-10) to "I10C" per PS3.16 Table 8-1, `icd10` added, `acr` UID added; ContentItemTypes' 15 non-existent section citations replaced. |
 | 2026-09-25 | C2 | External terminologies (4) checked against all 15,696 codes PS3.16 2026a uses: 4 wrong LOINC concepts corrected; SNOMED/UCUM mostly match; RadLex unverifiable. SR templates (2 files, 13 TIDs): 10 wrong concept codes corrected; row structures compared with the 2026a tables and found to diverge (30 of 142 standard rows present) — deferred as P10. DICOMCore and DICOMKit test targets pass. **Bucket C2 complete: 59 of 59. All 104 DICOMCore files verified against 2026a.** |
+| 2026-09-25 | P2/P8/P9/Q1/Q2 | Approved and done: Q1 three tag constants renamed to their PS3.6 keywords with deprecated aliases; Q2/P2 the 22 missing PS3.6 2026a transfer syntaxes added with `isRetired`; P9 eleven SNOMED CT measurement concepts added to `SNOMEDCode`; P8 the TABLE value type, `TableContentItem` (PS3.3 C.18.10), its tags, and serializer/parser support in DICOMKit. DICOMCore and DICOMKit test targets pass. Only P10 remains open. |
 
 ---
 
@@ -108,19 +109,19 @@ Ordered by real-world impact, not file count. Status as of 2026-09-25, after all
 | Item | What | Status | Where the evidence is |
 |---|---|---|---|
 | P1 | 64-bit VRs (OV/SV/UV): values could not be read, were corrupted on byte-order conversion, and had no JSON form | ✅ Done 2026-09-24 | `SixtyFourBitVRTests`, `DICOMJSON64BitVRTests`; B2 |
-| P2 | `TransferSyntax` registry vs PS3.6 Table A-1 | ⚠️ **Verified 2026-09-25, fix waits for approval (Q2)** — 22 of 63 registered syntaxes missing; 2 HEVC "Fragmentable" UIDs not in 2026a/2026d, kept by decision | P2 below |
+| P2 | `TransferSyntax` registry vs PS3.6 Table A-1 | ✅ Done 2026-09-25 (Q2 approved) — the 22 missing syntaxes added, `isRetired` added; the 2 HEVC "Fragmentable" UIDs kept by decision | `TransferSyntaxRegistryCompletenessTests`; P2 below |
 | P3 | `PhotometricInterpretation.xyb` | ✅ Done 2026-09-24 | `XYBTranscodeTests`; B2 |
 | P4 | `VR.swift` CP citation | ✅ Done 2026-09-24 | B1 |
 | P5 | Stale defined-term lists (character sets, DICOMDIR record types, media profiles) | ✅ Done 2026-09-25 | `CharacterSetISO2022Tests`, `DirectoryRecordTypeTests`, `DICOMDIRProfileTests`; B2 |
 | P6 | SR data integrity (`DICOMCode`, `ContextGroup`, `SRDocumentType`, `ContentItem`) | ✅ Done 2026-09-25 | `DICOMCodeTests`, `ContextGroupTests`, `SRDocumentTypeTests`, `ContentItemTypeTests`; B2 |
 | P7 | JPEG XL: one fragment per frame | ✅ Done 2026-09-25 | `JPEGXLFragmentPerFrameTests`; P7 below |
-| P8 | TABLE value type | ⏳ Open — feature, breaks 8 exhaustive switches | P8 below |
-| P9 | Home for non-DCM measurement codes | ⏳ Open — needs a design choice | P9 below |
+| P8 | TABLE value type | ✅ Done 2026-09-25 | `TableContentItemRoundTripTests` (DICOMKit), `ContentItemTypeTests`; P8 below |
+| P9 | Home for non-DCM measurement codes | ✅ Done 2026-09-25 — 11 SNOMED CT measurement concepts added to `SNOMEDCode` | `SNOMEDMeasurementConceptTests`; P9 below |
 | P10 | Rebuild SR templates from the TID tables | ⏳ Open — public-API redesign | P10 below |
-| Q1 | Rename 3 tag constants to their PS3.6 keywords | ❓ Awaiting approval | Bucket C2 |
-| Q2 | Add the 22 missing transfer syntaxes | ❓ Awaiting approval | P2 below |
+| Q1 | Rename 3 tag constants to their PS3.6 keywords | ✅ Done 2026-09-25 — `applicationSetupSequence`, `maximumFractionalValue`, `verticesOfThePolygonalShutter`; old names deprecated | Bucket C2 |
+| Q2 | Add the 22 missing transfer syntaxes | ✅ Done 2026-09-25 | P2 below |
 
-Everything marked Done was fixed against the frozen 2026a text, has tests, and is committed on `feature/dicom-tag-modality-audit`. The open items all change public API, which this audit does not do without approval.
+Everything marked Done was fixed against the frozen 2026a text, has tests, and is committed on `feature/dicom-tag-modality-audit`. The one open item, P10, is a public-API redesign of the SR templates.
 
 ### P1 — 64-bit VR (OV/SV/UV): values could not be read and were corrupted on byte-order conversion — **DONE 2026-09-24**
 
@@ -136,7 +137,7 @@ Tests: `Tests/DICOMCoreTests/SixtyFourBitVRTests.swift` (6) and `Tests/DICOMWebT
 
 **Related bugs outside DICOMCore:** five were found while fixing P1. By decision (2026-09-24) they are deferred until their module is audited. See [Deferred findings](#deferred-findings--outside-dicomcore) (D1–D5).
 
-### P2 — `TransferSyntax.swift`: close the UID registry gap — **VERIFIED 2026-09-25, fix awaiting approval (Q2)**
+### P2 — `TransferSyntax.swift`: close the UID registry gap — **DONE 2026-09-25**
 
 The reviewer's "from memory" list was checked on 2026-09-25 by diffing every UID literal in the file against the 63 rows of type "Transfer Syntax" in PS3.6 2026a Table A-1. The file has 41 UIDs. Result:
 
@@ -156,7 +157,7 @@ The reviewer's "from memory" list was checked on 2026-09-25 by diffing every UID
 
 **Present but not in the standard (2), kept by decision:** `hevcH265MainProfileFragmentable` (1.2.840.10008.1.2.4.107.1) and `hevcH265Main10ProfileFragmentable` (…4.108.1). This is not about H.264 or HEVC support as such: the MPEG-4 AVC/H.264 syntaxes (.4.102–.4.106, in the standard since 2009–2011) and the HEVC syntaxes (.4.107, .4.108, since 2018) are all present in the file. The *Fragmentable* variants (.4.100.1–.4.106.1) are a recent addition (absent from 2023b) that PS3.6 defines only for the MPEG2 and MPEG-4 syntaxes; the HEVC syntaxes have no Fragmentable variant in any edition checked (2020a, 2023b, 2026a, 2026d on 2026-09-25). **Decision 2026-09-25: keep both constants** (they may be met in files from other implementations that made the same assumption); their doc comments should say they are not registered in PS3.6. Writing new files with them is not conformant.
 
-The earlier B1 marker on this file covered only the three JPEG XL rows; this check covers the whole registry. **Q2 (needs approval):** add the 22 missing syntaxes as new `TransferSyntax` constants (retired ones flagged as such), and make `DICOMUniqueIdentifier.transferSyntaxUIDs` the source of truth for `allKnown`. The two HEVC "Fragmentable" constants stay.
+The earlier B1 marker on this file covered only the three JPEG XL rows; this check covers the whole registry. **Q2 approved and done 2026-09-25:** all 22 were added as `TransferSyntax` constants (the retired ones with a `Retired` suffix and a RET note), `from(uid:)`, `allKnown`, `displayName`, `isLossless` and `lossyImageCompressionMethod` were extended, and a new `isRetired` property flags the 18 retired syntaxes (Big Endian, 14 JPEG processes, MIME, XML, Papyrus). `TransferSyntaxRegistryCompletenessTests` asserts that `allKnown` covers every UID in `DICOMUniqueIdentifier.transferSyntaxUIDs` (the Table A-1 set) and that the only extras are the private JP3D pair and the two HEVC "Fragmentable" constants kept by decision. The new syntaxes are identified and classified only; no codec was added for them.
 
 ### P3 — `PhotometricInterpretation.swift`: add `XYB` — **DONE 2026-09-24**
 
@@ -208,11 +209,13 @@ that exercise the affected codes:
 
 PS3.5 2026a §A.4.12 says "each Frame shall be encoded separately as a single Fragment". Checked in Bucket C2: `TransferSyntaxConverter.transcode` takes the codec's per-frame output (`ImageEncoder.encode` returns one `Data` per frame) and `buildEncapsulatedPixelData` writes each element of that array as one Item, so a frame is never split. The .111 recompression path wraps and unwraps fragment by fragment, preserving the count. `JPEGXLFragmentPerFrameTests` compresses a 3-frame image to .110 and asserts 3 even-length fragments and a 3-entry Basic Offset Table.
 
-### P8 — TABLE Value Type (Bucket B2 follow-up)
+### P8 — TABLE Value Type — **DONE 2026-09-25**
 
-PS3.3 2026a Table C.17.3-7 defines the TABLE Value Type, and two SR IODs permit it: Extensible SR (A.35.15) and Enhanced X-Ray Radiation Dose SR (A.35.22). `ContentItemValueType` has no `.table` case, so `SRDocumentType.allowedValueTypes` omits it for those two IODs, and a TABLE content item cannot be parsed or written. Adding the case breaks 6 exhaustive switches in DICOMCore (`ContentItemValueType.swift`, `AnyContentItem.swift`) and 2 in DICOMKit (`SRDocumentSerializer.swift:402`, `SRDocumentParser.swift:236`), and needs a TABLE content-item type behind it. Do this as one feature, then remove the "omitted until P8" notes in `SRDocumentType.allowedValueTypes`.
+PS3.3 2026a Table C.17.3-7 defines the TABLE Value Type, and two SR IODs permit it: Extensible SR (A.35.15) and Enhanced X-Ray Radiation Dose SR (A.35.22). Done: `ContentItemValueType.table`; `TableContentItem` in `ContentItemTypes.swift` modelled on the Table Content Item Macro (Table C.18.10-1: Number of Table Rows/Columns, row and column definition sequences with concept and units, Cell Values Sequence items addressed by row and/or column, values as UC/DS/FD/IS/DT selector values, Concept Code Sequence, Referenced Content Item Identifier, or absent with a Numeric Value Qualifier); the eight (0040,A80x) tags and (0040,A301) added to `Tag+StructuredReporting`; `AnyContentItem.table`; `allowedValueTypes` now includes TABLE for the two IODs (and no other). DICOMKit's `SRDocumentSerializer` and `SRDocumentParser` write and read the macro (the parser accepts every numeric selector VR of the macro). `TableContentItemRoundTripTests` round-trips a sparse 2×3 table through serializer and parser and checks the element layout.
 
-### P9 — A code type for non-DCM measurement concepts (Bucket B2 follow-up)
+### P9 — A code type for non-DCM measurement concepts — **DONE 2026-09-25**
+
+Done: the existing `SNOMEDCode` type gained the 11 measurement concepts (Diameter, Long Axis, Short Axis, Perpendicular Axis, Length, Width, Area, Volume, Circumference, Perimeter, Mode; "No change" was already there as `unchanged`), with concept IDs and names taken from the PS3.16 2026a context groups. No DICOMKit builder referenced the removed `DICOMCode` constants, so nothing else needed rewiring; DICOMStudio still carries a few raw SCT literals (its own audit). Original note follows.
 
 `DICOMCode` is DCM-only, so the SNOMED measurement concepts the SR builders need (Diameter 81827009, Long Axis 103339001, Short Axis 103340004, Area 42798000, Volume 118565006, Length 410668003, Width 103355008, Circumference 74551000, Perimeter 131191004, Perpendicular Axis 131189007, Mode 373100007, No change 260388006) have no home now that their invented DCM constants are removed. Add either an `SCTCode` type or a scheme-agnostic `WellKnownCodes` namespace of `CodedConcept` constants, generated from the PS3.16 CID tables, and have the DICOMKit builders use it.
 
@@ -489,7 +492,7 @@ U+200B, compare row by row, fix what is wrong, mark the file.
 
 **Open questions for C2 (public API, need approval).**
 
-- **Q1.** Rename `brachyApplicationSetupSequence` → `applicationSetupSequence`, `maxFractionalValue` → `maximumFractionalValue`, `verticesOfPolygonalShutter` → `verticesOfThePolygonalShutter` to match the PS3.6 keywords, keeping the old names as deprecated aliases? Doc comments already carry the keyword, so this is cosmetic.
+- **Q1.** ✅ Done 2026-09-25: `applicationSetupSequence`, `maximumFractionalValue` and `verticesOfThePolygonalShutter` are the constants; the old names are deprecated aliases. The two DICOMKit call sites were updated.
 
 - **VR value types** (PS3.5 §6.2, unchanged for years): DICOMAgeString, DICOMApplicationEntity,
   DICOMCodeString, DICOMDate, DICOMDateTime, DICOMDecimalString, DICOMIntegerString,

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — PS3.6 2026a transfer syntaxes, TABLE content items, SNOMED measurement concepts (2026-09-25)
+
+- **`TransferSyntax`**: the 22 Table A-1 syntaxes that were missing are registered:
+  Encapsulated Uncompressed Explicit VR LE (.1.98), JPIP HTJ2K Referenced (.4.204) and
+  Deflate (.4.205), SMPTE ST 2110-20/30 (.7.1–.7.3), Deflated Image Frame Compression
+  (.8.1), the 14 retired JPEG processes (.4.52–.4.56, .4.58–.4.66), RFC 2557 MIME (.6.1),
+  XML Encoding (.6.2) and Papyrus 3 (1.2.840.10008.1.20). `from(uid:)`, `allKnown`,
+  `displayName`, `isLossless` and `lossyImageCompressionMethod` cover them, and a new
+  `isRetired` flags the 18 retired syntaxes. They are identified only; no codec was added.
+- **TABLE content items** (PS3.3 C.18.10): `ContentItemValueType.table`,
+  `TableContentItem` (rows, columns, row/column definitions, sparse cells with text,
+  decimal, floating-point, integer, date-time, coded or content-item-reference values),
+  `AnyContentItem.table`, the (0040,A801–A808) and (0040,A301) tags, and TABLE in
+  `allowedValueTypes` for Extensible SR and Enhanced X-Ray Radiation Dose SR. The DICOMKit
+  SR serializer and parser write and read the macro. `ContentItemValueType.allCases` grows
+  from 15 to 16, so exhaustive switches on it need a `.table` case.
+- **`SNOMEDCode`** gains the measurement concepts Diameter, Long Axis, Short Axis,
+  Perpendicular Axis, Length, Width, Area, Volume, Circumference, Perimeter and Mode.
+
+### Changed — three Tag constants renamed to their PS3.6 keywords (2026-09-25)
+
+- `Tag.applicationSetupSequence` (was `brachyApplicationSetupSequence`),
+  `Tag.maximumFractionalValue` (was `maxFractionalValue`) and
+  `Tag.verticesOfThePolygonalShutter` (was `verticesOfPolygonalShutter`). The old names
+  remain as deprecated aliases.
+
 ### Fixed — coding scheme designators, LOINC names and SR template concept codes (2026-09-25)
 
 - **ICD-10 designators.** `CodingScheme.icd10CM` and `CodingSchemeDesignator.ICD10CM` used
