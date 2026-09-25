@@ -1,3 +1,5 @@
+// NEMA-verified: 2026a, checked 2026-09-25 — carries no DICOM-standard data of its own; the VOI LUT function it tabulates lives in WindowSettings. C1 classification confirmed.
+
 import Foundation
 
 /// A precomputed grayscale display table: raw stored sample → final 8-bit display byte.

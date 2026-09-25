@@ -1,3 +1,5 @@
+// NEMA-verified: 2026a, checked 2026-09-25 — carries no DICOM-standard data (generic validation engine over TemplateRow). C1 classification confirmed.
+
 /// DICOM SR Template Validation
 ///
 /// Provides validation of SR content against template definitions.

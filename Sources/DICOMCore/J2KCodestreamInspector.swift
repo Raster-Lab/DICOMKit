@@ -1,3 +1,5 @@
+// NEMA-verified: 2026a, checked 2026-09-25 — implements ISO/IEC 15444, not DICOM. The one PS3.5 citation was corrected to A.4.4, which in 2026a defines all five JPEG 2000 and HTJ2K syntaxes. C1 classification confirmed.
+
 import Foundation
 
 /// Read-only inspection of a JPEG 2000 codestream's headers.
@@ -77,8 +79,8 @@ public enum J2KCodestreamInspector {
     /// header selects the irreversible 9/7 wavelet (ISO/IEC 15444-1 Table A.20:
     /// SPcod/SPcoc transformation byte 0; 1 is the reversible 5/3 filter).
     ///
-    /// A lossless-only DICOM transfer syntax (PS3.5 A.4.4 `…4.90`, A.4.6 `…4.201`
-    /// / `…4.202`) promises exact reconstruction, which a 9/7 codestream cannot
+    /// A lossless-only DICOM transfer syntax (PS3.5 2026a A.4.4: `…4.90`, `…4.201`
+    /// and `…4.202`) promises exact reconstruction, which a 9/7 codestream cannot
     /// deliver, so the codec refuses such a frame instead of returning
     /// approximated samples. Rate truncation of a reversible codestream is not
     /// detectable from headers and is not claimed here.

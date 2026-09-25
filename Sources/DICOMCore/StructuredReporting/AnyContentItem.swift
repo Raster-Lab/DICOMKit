@@ -1,3 +1,5 @@
+// NEMA-verified: 2026a, checked 2026-09-25 — the 15 wrapped value types match PS3.3 2026a Table C.17.3-7 except TABLE, which the module does not model yet (P8). Cites C.17.3 correctly. C1 classification confirmed.
+
 /// Type-erased Content Item Wrapper
 ///
 /// Provides a type-erased wrapper for content items to enable heterogeneous collections.
