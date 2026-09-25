@@ -9,17 +9,25 @@ import Foundation
 /// The maximum total length is 64 characters.
 ///
 /// Reference: DICOM PS3.5 Section 9 - Unique Identifiers (UIDs)
+///
+/// NEMA-verified: 2026a, checked 2026-09-25 — the generated form satisfies every rule of
+/// PS3.5 2026a §9.1 (components are digit strings; no component other than "0" starts
+/// with 0; "." separators; at most 64 characters), and `DICOMUniqueIdentifier.parse`
+/// enforces the same rules on the result. §9.2.2 requires a privately defined UID to be
+/// built on an organisation's own registered root; the default root below is a
+/// convention, not something the standard assigns. No other standard data.
 public struct UIDGenerator: Sendable {
-    
+
     /// Default UID root for generated UIDs
     ///
     /// This is a private enterprise number root. In production, organizations
-    /// should use their own registered UID root obtained from IANA.
+    /// should use their own registered UID root obtained from IANA; PS3.5 §9.2.2
+    /// requires privately defined UIDs to be built on a root the organisation owns.
     ///
-    /// The default root "1.2.276.0.7230010.3" is used by various open-source
-    /// DICOM implementations as a convention.
+    /// The default root "1.2.276.0.7230010.3" is the OFFIS DCMTK root, used by
+    /// several open-source DICOM implementations as a convention.
     ///
-    /// Reference: PS3.5 Section 9.1 - UID Encoding Rules
+    /// Reference: PS3.5 Section 9.1 - UID Encoding Rules; Section 9.2.2 - Privately Defined Unique Identifiers
     public static let defaultRoot = "1.2.276.0.7230010.3"
     
     /// The UID root prefix for generated UIDs

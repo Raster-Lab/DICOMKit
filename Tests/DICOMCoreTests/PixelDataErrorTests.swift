@@ -123,6 +123,24 @@ struct PixelDataErrorTests {
         #expect(error.explanation.contains("not currently supported"))
         #expect(error.transferSyntaxName == "JPEG-LS Lossless")
     }
+
+    @Test("unsupportedTransferSyntax explanation names the syntax and lists what this build decodes")
+    func testUnsupportedTransferSyntaxExplanationIsRegistryDriven() {
+        let error = PixelDataError.unsupportedTransferSyntax("1.2.840.10008.1.2.4.80")
+        #expect(error.explanation.contains("(JPEG-LS Lossless)"))
+        #expect(error.explanation.contains("This build can decode: "))
+        // The list is derived from the registry, not typed in: every registered
+        // decoder's display name must appear.
+        for uid in CodecRegistry.shared.supportedTransferSyntaxes {
+            if let name = TransferSyntax.from(uid: uid)?.displayName {
+                #expect(error.explanation.contains(name), "missing \(name)")
+            }
+        }
+        // An unknown UID has no name to show after it.
+        let unknown = PixelDataError.unsupportedTransferSyntax("1.2.3.4")
+        #expect(unknown.explanation.contains("'1.2.3.4' which is not currently supported"))
+        #expect(unknown.transferSyntaxName == nil)
+    }
     
     @Test("frameExtractionFailed error includes frame index")
     func testFrameExtractionFailedDescription() {
