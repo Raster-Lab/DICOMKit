@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `DICOMCode`: constants corrected against PS3.16 2026a Annex D (2026-09-25)
+
+- **64 of the 93 `DICOMCode` constants disagreed with PS3.16 Annex D.** 21 are corrected
+  in place (e.g. `summary` is 121111, not 121070; `impression` 121073; `conclusion`
+  121077; `mammographyCADReport` 111036; `study` 113014; `series` 113015;
+  `clinicalHistory` keeps 121060 but its meaning is "History").
+- **Source-breaking:** 43 constants are removed, marked `unavailable` with a message
+  giving the correct reference. 13 were SNOMED or NCIt concepts that a DCM-only type
+  cannot hold (`diameter`, `volume`, `length`, `longAxis`, `shortAxis`, ...; the message
+  names the SCT code). 7 were relationship types, not codes (`contains`,
+  `hasProperties`, `inferredFrom`, ...; use `RelationshipType`). 23 had no DCM code with
+  that meaning at all (e.g. 121401–121408 are Derivation, Normality, Level of
+  Significance, ..., not Mean/Min/Max/Std Dev). `measurement` and `measurementReport`
+  point to `measurementGroup` and the new `imagingMeasurementReport` (126000).
+
 ### Changed — `ContextGroup`: the built-in CIDs are now generated from PS3.16 2026a (2026-09-25)
 
 - **Seven of the nine built-in context groups carried CID numbers that PS3.16 assigns
