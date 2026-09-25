@@ -18,36 +18,16 @@ Package target: **DICOM 2026a** (`dicomStandardEdition = "2026a"`, `Sources/DICO
 
 ## Verification method (reuse for every module)
 
-### Policy
+The method is kept in one place, [DICOM_VERIFICATION_METHOD.md](DICOM_VERIFICATION_METHOD.md), so every
+module is verified the same way. In short: classify each file into a bucket (A, B1, B2, C1, C2); diff
+its data row by row, by script, against the frozen NEMA DocBook of the target edition (2026a; confirm the
+subtitle, strip U+200B); fix in-module findings with tests; log other modules' bugs under Deferred
+findings; ask before public-API changes; add a `NEMA-verified: <edition>, checked <date> — <what was
+compared>` marker; build, test, log and commit per file.
 
-| The file cites… | Verify against | Then |
-|---|---|---|
-| An edition **later** than 2026a (e.g. 2026d) | That edition's NEMA source | Keep the citation once it is confirmed; it becomes a candidate target for the next DICOMKit version |
-| An edition **earlier** than 2026a (e.g. 2024d), or a Sup/CP | The originating edition, plus every edition's release notes up to 2026a | Keep it as provenance, and mark the file verified against 2026a |
-| 2026a, or no edition | 2026a | Mark it verified against 2026a |
-
-When DICOMKit moves to a newer target edition, run the same procedure against that edition.
-
-### Marker
-
-A marker goes on each verified file or section:
-
-```
-NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provenance CP/Sup (edition)>
-```
-
-### Sources
-
-- **Release notes for each edition.** These list, per PS3.x part, every CP and Supplement applied relative to the previous edition.
-  - Editions 2014a–2026c: the GitHub mirror `celeron533/DICOM-Release-Notes`, at `downloaded/releasenotes_<edition>.xml`. It copies NEMA's DocBook release notes.
-    `gh api repos/celeron533/DICOM-Release-Notes/contents/downloaded/releasenotes_<ed>.xml --jq .content | base64 -d`
-  - The newest edition, not yet mirrored: `https://dicom.nema.org/medical/dicom/current/source/docbook/releasenotes/releasenotes_<ed>.xml`
-- **Standard text for a specific edition.** Use `https://dicom.nema.org/medical/dicom/<edition>/source/docbook/partNN/partNN.xml`, for example `/2026a/`. PDFs are under `/<edition>/output/pdf/`.
-  - Confirmed on 2026-09-24: the 2026a copies of PS3.3, PS3.5, PS3.6 and PS3.16 each carry the subtitle "DICOM PS3.x **2026a**". **Always verify against this frozen edition.**
-  - `/current/` is a rolling alias; on 2026-09-24 it pointed at **2026d**. Use it only for claims that cite a later edition.
-  - As of 2026-09-24, NEMA has not published a frozen `/2026d/` DocBook copy (`/2026d/` only links to `/current/`). For 2026d, use `/current/` and confirm its subtitle says 2026d.
-  - Zero-width spaces (U+200B) must be stripped before comparing keywords or UIDs.
-- **Finding the edition that introduced something.** Grep all the release notes for `xml:id="cp_NNNN"` or `sup_NNN`. The release notes start at 2014a, so anything older is dated only as "before 2014a".
+Tools: `Scripts/nema_docbook.py` (fetch, list and dump tables), `Scripts/check_nema_markers.py` (marker
+coverage). DICOMCore check on 2026-09-25: 104 of 104 files marked, all well-formed; one 2026d marker
+(`VR.swift`, a later-edition citation, allowed by the policy).
 
 ---
 
