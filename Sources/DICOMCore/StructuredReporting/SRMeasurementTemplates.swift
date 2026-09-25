@@ -49,7 +49,7 @@ public struct TID1400LinearMeasurements: SRTemplate {
                 codeMeaning: "Tracking Identifier"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -65,7 +65,7 @@ public struct TID1400LinearMeasurements: SRTemplate {
                 codeMeaning: "Tracking Unique Identifier"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -81,7 +81,7 @@ public struct TID1400LinearMeasurements: SRTemplate {
                 codeMeaning: "Finding"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -97,7 +97,7 @@ public struct TID1400LinearMeasurements: SRTemplate {
                 codeMeaning: "Finding Site"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 4021),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -133,7 +133,7 @@ public struct TID1400LinearMeasurements: SRTemplate {
             valueType: .image,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -145,7 +145,7 @@ public struct TID1400LinearMeasurements: SRTemplate {
             valueType: .scoord,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         )
     ]
@@ -194,7 +194,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
                 codeMeaning: "Tracking Identifier"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -210,7 +210,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
                 codeMeaning: "Tracking Unique Identifier"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -226,7 +226,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
                 codeMeaning: "Finding"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -242,7 +242,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
                 codeMeaning: "Finding Site"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 4021),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -262,7 +262,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
                 codingSchemeDesignator: "UCUM",
                 codeMeaning: "mm2"
             )),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             includedTemplate: .measurement
         ),
@@ -283,7 +283,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
                 codingSchemeDesignator: "UCUM",
                 codeMeaning: "mm"
             )),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             includedTemplate: .measurement
         ),
@@ -304,7 +304,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
                 codingSchemeDesignator: "UCUM",
                 codeMeaning: "mm"
             )),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             includedTemplate: .measurement
         ),
@@ -325,7 +325,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
                 codingSchemeDesignator: "UCUM",
                 codeMeaning: "Hounsfield unit"
             )),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             includedTemplate: .measurement
         ),
@@ -338,7 +338,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
             valueType: .image,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -350,7 +350,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
             valueType: .scoord,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         )
     ]
@@ -399,7 +399,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
                 codeMeaning: "Tracking Identifier"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -415,7 +415,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
                 codeMeaning: "Tracking Unique Identifier"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -431,7 +431,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
                 codeMeaning: "Finding"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -447,7 +447,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
                 codeMeaning: "Finding Site"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 4021),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -467,7 +467,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
                 codingSchemeDesignator: "UCUM",
                 codeMeaning: "mm3"
             )),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             includedTemplate: .measurement
         ),
@@ -488,7 +488,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
                 codingSchemeDesignator: "UCUM",
                 codeMeaning: "mm"
             )),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             includedTemplate: .measurement
         ),
@@ -509,7 +509,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
                 codingSchemeDesignator: "UCUM",
                 codeMeaning: "Hounsfield unit"
             )),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             includedTemplate: .measurement
         ),
@@ -526,7 +526,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
                 codeMeaning: "Referenced Segment"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -538,7 +538,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
             valueType: .scoord3D,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         )
     ]
@@ -588,7 +588,7 @@ public struct TID1419ROIMeasurements: SRTemplate {
                 codeMeaning: "Tracking Identifier"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -604,7 +604,7 @@ public struct TID1419ROIMeasurements: SRTemplate {
                 codeMeaning: "Tracking Unique Identifier"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -620,7 +620,7 @@ public struct TID1419ROIMeasurements: SRTemplate {
                 codeMeaning: "Activity Session"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -636,7 +636,7 @@ public struct TID1419ROIMeasurements: SRTemplate {
                 codeMeaning: "Finding"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -652,7 +652,7 @@ public struct TID1419ROIMeasurements: SRTemplate {
                 codeMeaning: "Finding Site"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 4021),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -664,7 +664,7 @@ public struct TID1419ROIMeasurements: SRTemplate {
             valueType: .num,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .measurement
         ),
@@ -677,7 +677,7 @@ public struct TID1419ROIMeasurements: SRTemplate {
             valueType: .code,
             conceptName: .fromContextGroup(contextGroupID: 6164),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -689,7 +689,7 @@ public struct TID1419ROIMeasurements: SRTemplate {
             valueType: .image,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -701,7 +701,7 @@ public struct TID1419ROIMeasurements: SRTemplate {
             valueType: .scoord,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -713,7 +713,7 @@ public struct TID1419ROIMeasurements: SRTemplate {
             valueType: .scoord3D,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         )
     ]
@@ -763,7 +763,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
                 codeMeaning: "Measurement Method"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 6147),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -779,7 +779,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
                 codeMeaning: "Source of Measurement"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 7462),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -795,7 +795,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
                 codeMeaning: "Sum"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .measurement
         ),
@@ -812,7 +812,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
                 codeMeaning: "Mean Value"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .measurement
         ),
@@ -829,7 +829,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
                 codeMeaning: "Standard Deviation"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .measurement
         ),
@@ -846,7 +846,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
                 codeMeaning: "Minimum"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .measurement
         ),
@@ -863,7 +863,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
                 codeMeaning: "Maximum"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .measurement
         ),
@@ -884,7 +884,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
                 codingSchemeDesignator: "UCUM",
                 codeMeaning: "no units"
             )),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -896,7 +896,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
             valueType: .container,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .roiMeasurements
         )
@@ -944,7 +944,7 @@ public struct TID1500MeasurementReport: SRTemplate {
                 codeMeaning: "Language of Content Item and Descendants"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 5000),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             includedTemplate: .languageOfContent
         ),
@@ -957,7 +957,7 @@ public struct TID1500MeasurementReport: SRTemplate {
             valueType: .container,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .observationContext
         ),
@@ -974,7 +974,7 @@ public struct TID1500MeasurementReport: SRTemplate {
                 codeMeaning: "Procedure Reported"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 100),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -990,7 +990,7 @@ public struct TID1500MeasurementReport: SRTemplate {
                 codeMeaning: "Image Library"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             includedTemplate: .imageLibrary
         ),
@@ -1007,7 +1007,7 @@ public struct TID1500MeasurementReport: SRTemplate {
                 codeMeaning: "Imaging Measurements"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -1023,7 +1023,7 @@ public struct TID1500MeasurementReport: SRTemplate {
                 codeMeaning: "Measurement Group"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .measurementGroup
         ),
@@ -1036,7 +1036,7 @@ public struct TID1500MeasurementReport: SRTemplate {
             valueType: .container,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .multipleROIMeasurements
         ),
@@ -1053,7 +1053,7 @@ public struct TID1500MeasurementReport: SRTemplate {
                 codeMeaning: "Qualitative Evaluations"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -1065,7 +1065,7 @@ public struct TID1500MeasurementReport: SRTemplate {
             valueType: .code,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         )
     ]
@@ -1148,7 +1148,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
                 codeMeaning: "Activity Session"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -1164,7 +1164,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
                 codeMeaning: "Time Point"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -1180,7 +1180,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
                 codeMeaning: "Finding category"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -1196,7 +1196,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
                 codeMeaning: "Finding"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -1212,7 +1212,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
                 codeMeaning: "Finding Site"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 4021),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -1228,7 +1228,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
                 codeMeaning: "Laterality"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 244),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -1240,7 +1240,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
             valueType: .num,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .measurement
         ),
@@ -1253,7 +1253,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
             valueType: .code,
             conceptName: .fromContextGroup(contextGroupID: 6147),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -1265,7 +1265,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
             valueType: .image,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -1277,7 +1277,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
             valueType: .scoord,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -1289,7 +1289,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
             valueType: .scoord3D,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -1305,7 +1305,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
                 codeMeaning: "Referenced Segment"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -1321,7 +1321,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
                 codeMeaning: "Real World Value Map used for measurement"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         )
     ]
@@ -1371,7 +1371,7 @@ public struct TID1600ImageLibrary: SRTemplate {
                 codeMeaning: "Image Library Group"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -1383,7 +1383,7 @@ public struct TID1600ImageLibrary: SRTemplate {
             valueType: .image,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .imageLibraryEntry
         ),
@@ -1396,7 +1396,7 @@ public struct TID1600ImageLibrary: SRTemplate {
             valueType: .image,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore,
             includedTemplate: .imageLibraryEntry
         ),
@@ -1413,7 +1413,7 @@ public struct TID1600ImageLibrary: SRTemplate {
                 codeMeaning: "Modality"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 29),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -1429,7 +1429,7 @@ public struct TID1600ImageLibrary: SRTemplate {
                 codeMeaning: "Frame of Reference UID"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         )
     ]

@@ -47,7 +47,7 @@ public struct TID300Measurement: SRTemplate {
                 codeMeaning: "Measurement Method"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 6147),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -63,7 +63,7 @@ public struct TID300Measurement: SRTemplate {
                 codeMeaning: "Derivation"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 7464),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -79,7 +79,7 @@ public struct TID300Measurement: SRTemplate {
                 codeMeaning: "Finding Site"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 4021),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -95,7 +95,7 @@ public struct TID300Measurement: SRTemplate {
                 codeMeaning: "Laterality"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 244),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             condition: .ifPresent(concept: CodedConcept(
                 codeValue: "363698007",
@@ -112,7 +112,7 @@ public struct TID300Measurement: SRTemplate {
             valueType: .image,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrMore
         ),
         
@@ -124,7 +124,7 @@ public struct TID300Measurement: SRTemplate {
             valueType: .scoord,
             conceptName: .any,
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             condition: .ifPresent(concept: CodedConcept(
                 codeValue: "121191",
@@ -137,12 +137,13 @@ public struct TID300Measurement: SRTemplate {
 
 // MARK: - TID 320: Image Library Entry
 
-/// TID 320 - Image Library Entry Template
+/// TID 1601 - Image Library Entry Template
 ///
 /// Describes an image included in an image library for reference.
 ///
-/// Reference: PS3.16 TID 320
-public struct TID320ImageLibraryEntry: SRTemplate {
+/// Reference: PS3.16 TID 1601. (Until 2026-09-25 this type was numbered TID 320,
+/// which is "Image or Spatial Coordinates" in PS3.16; its rows always modelled 1601.)
+public struct TID1601ImageLibraryEntry: SRTemplate {
     public static let identifier = TemplateIdentifier.imageLibraryEntry
     public static let displayName = "Image Library Entry"
     public static let templateDescription = "Entry in an image library referencing a DICOM image"
@@ -174,7 +175,7 @@ public struct TID320ImageLibraryEntry: SRTemplate {
                 codeMeaning: "Modality"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 29),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -190,7 +191,7 @@ public struct TID320ImageLibraryEntry: SRTemplate {
                 codeMeaning: "Target Region"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 4031),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -206,7 +207,7 @@ public struct TID320ImageLibraryEntry: SRTemplate {
                 codeMeaning: "Image Laterality"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 244),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         )
     ]
@@ -252,7 +253,7 @@ public struct TID1001ObservationContext: SRTemplate {
                 codeMeaning: "Study Date"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -268,7 +269,7 @@ public struct TID1001ObservationContext: SRTemplate {
                 codeMeaning: "Subject Class"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 271),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         ),
         
@@ -284,7 +285,7 @@ public struct TID1001ObservationContext: SRTemplate {
                 codeMeaning: "Subject UID"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         )
     ]
@@ -356,7 +357,7 @@ public struct TID1002ObserverContext: SRTemplate {
                 codeMeaning: "Person Observer's Organization Name"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             condition: .ifEquals(
                 concept: CodedConcept(codeValue: "121005", codingSchemeDesignator: "DCM", codeMeaning: "Observer Type"),
@@ -376,7 +377,7 @@ public struct TID1002ObserverContext: SRTemplate {
                 codeMeaning: "Person Observer's Role in this Organization"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 7452),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             condition: .ifEquals(
                 concept: CodedConcept(codeValue: "121005", codingSchemeDesignator: "DCM", codeMeaning: "Observer Type"),
@@ -416,7 +417,7 @@ public struct TID1002ObserverContext: SRTemplate {
                 codeMeaning: "Device Observer Name"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             condition: .ifEquals(
                 concept: CodedConcept(codeValue: "121005", codingSchemeDesignator: "DCM", codeMeaning: "Observer Type"),
@@ -436,7 +437,7 @@ public struct TID1002ObserverContext: SRTemplate {
                 codeMeaning: "Device Observer Manufacturer"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             condition: .ifEquals(
                 concept: CodedConcept(codeValue: "121005", codingSchemeDesignator: "DCM", codeMeaning: "Observer Type"),
@@ -456,7 +457,7 @@ public struct TID1002ObserverContext: SRTemplate {
                 codeMeaning: "Device Observer Model Name"
             )),
             valueConstraint: .any,
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne,
             condition: .ifEquals(
                 concept: CodedConcept(codeValue: "121005", codingSchemeDesignator: "DCM", codeMeaning: "Observer Type"),
@@ -509,8 +510,12 @@ public struct TID1204LanguageOfContent: SRTemplate {
                 codeMeaning: "Country of Language"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 5001),
-            requirementLevel: .userConditional,
+            requirementLevel: .userOption,
             cardinality: .zeroOrOne
         )
     ]
 }
+
+@available(*, deprecated, renamed: "TID1601ImageLibraryEntry",
+           message: "Image Library Entry is TID 1601 in PS3.16; TID 320 is Image or Spatial Coordinates.")
+public typealias TID320ImageLibraryEntry = TID1601ImageLibraryEntry

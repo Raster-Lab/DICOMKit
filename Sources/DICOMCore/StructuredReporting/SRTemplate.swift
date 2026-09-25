@@ -4,7 +4,12 @@
 /// Templates define the structure and constraints for SR content.
 ///
 /// Reference: PS3.16 Annex A - SR Templates
-/// Reference: PS3.16 Section 5 - Template Specifications
+/// Reference: PS3.16 Chapter 6 - Form of Template Specifications
+///
+/// NEMA-verified: 2026a, checked 2026-09-25 — `RequirementLevel` is text-diffed against
+/// PS3.16 2026a §6.1.7 (M, MC, U, UC), and every `TemplateIdentifier` constant against the
+/// TID section titles of PS3.16 2026a Annex A. The template rows themselves live in
+/// SRCoreTemplates and SRMeasurementTemplates (Bucket C2).
 
 import Foundation
 
@@ -64,8 +69,14 @@ extension TemplateIdentifier {
     /// TID 300 - Measurement
     public static let measurement = TemplateIdentifier(tid: 300)
     
-    /// TID 320 - Image Library Entry
-    public static let imageLibraryEntry = TemplateIdentifier(tid: 320)
+    /// TID 320 - Image or Spatial Coordinates
+    public static let imageOrSpatialCoordinates = TemplateIdentifier(tid: 320)
+
+    /// TID 1601 - Image Library Entry
+    ///
+    /// Before 2026-09-25 this constant was TID 320, which is "Image or Spatial
+    /// Coordinates" in PS3.16; Image Library Entry is TID 1601.
+    public static let imageLibraryEntry = TemplateIdentifier(tid: 1601)
     
     /// TID 1001 - Observation Context
     public static let observationContext = TemplateIdentifier(tid: 1001)
@@ -78,77 +89,103 @@ extension TemplateIdentifier {
     
     // MARK: Measurement Templates
     
-    /// TID 1400 - Linear Measurements
+    /// TID 1400 - Linear Measurement
     public static let linearMeasurements = TemplateIdentifier(tid: 1400)
-    
-    /// TID 1410 - Planar ROI Measurements
+
+    /// TID 1410 - Planar ROI Measurements and Qualitative Evaluations
     public static let planarROIMeasurements = TemplateIdentifier(tid: 1410)
-    
-    /// TID 1411 - Volumetric ROI Measurements
+
+    /// TID 1411 - Volumetric ROI Measurements and Qualitative Evaluations
     public static let volumetricROIMeasurements = TemplateIdentifier(tid: 1411)
-    
+
     /// TID 1419 - ROI Measurements
     public static let roiMeasurements = TemplateIdentifier(tid: 1419)
-    
-    /// TID 1420 - Measurements Derived from Multiple ROI Measurements
+
+    /// TID 1420 - Measurements Derived From Multiple ROI Measurements
     public static let multipleROIMeasurements = TemplateIdentifier(tid: 1420)
-    
+
     // MARK: Document Templates
-    
+
     /// TID 1500 - Measurement Report
     public static let measurementReport = TemplateIdentifier(tid: 1500)
-    
-    /// TID 1501 - Measurement Group
+
+    /// TID 1501 - Measurement and Qualitative Evaluation Group
     public static let measurementGroup = TemplateIdentifier(tid: 1501)
-    
+
     /// TID 1600 - Image Library
     public static let imageLibrary = TemplateIdentifier(tid: 1600)
-    
+
     // MARK: CAD Templates
-    
-    /// TID 4000 - CAD Analysis
-    public static let cadAnalysis = TemplateIdentifier(tid: 4000)
-    
-    /// TID 4019 - CAD Finding
-    public static let cadFinding = TemplateIdentifier(tid: 4019)
+
+    /// TID 4000 - Mammography CAD Document Root
+    public static let mammographyCADDocumentRoot = TemplateIdentifier(tid: 4000)
+
+    /// TID 4019 - Algorithm Identification
+    public static let algorithmIdentification = TemplateIdentifier(tid: 4019)
+
+    @available(*, unavailable, renamed: "mammographyCADDocumentRoot",
+               message: "TID 4000 is 'Mammography CAD Document Root' in PS3.16; there is no 'CAD Analysis' template.")
+    public static var cadAnalysis: TemplateIdentifier { fatalError() }
+
+    @available(*, unavailable, renamed: "algorithmIdentification",
+               message: "TID 4019 is 'Algorithm Identification' in PS3.16; there is no 'CAD Finding' template.")
+    public static var cadFinding: TemplateIdentifier { fatalError() }
 }
 
 // MARK: - Requirement Level
 
-/// Requirement level for template content items
+/// Requirement Type of a template row (PS3.16 §6.1.7)
 ///
-/// Defines whether a content item is mandatory, optional, etc.
-/// Reference: PS3.16 Section 5.3
+/// The four symbols of PS3.16 2026a §6.1.7: M, MC, U and UC. The requirement type
+/// interacts with VM: an M/MC row occurs 1 (VM 1) or 1–n (VM 1-n) times, a U/UC row
+/// 0–1 or 0–n times.
+///
+/// Reference: PS3.16 Section 6.1.7 - Requirement Type
 public enum RequirementLevel: String, Sendable, Equatable, Hashable, CaseIterable {
-    /// Mandatory - must be present
+    /// M — Mandatory. Shall be present.
     case mandatory = "M"
-    
-    /// Mandatory if condition is true
+
+    /// MC — Mandatory Conditional. Shall be present if the specified condition is satisfied.
     case mandatoryConditional = "MC"
-    
-    /// Required if value is known (user conditional)
-    case userConditional = "U"
-    
-    /// Conditional - presence depends on other factors
+
+    /// U — User Option. May or may not be present.
+    case userOption = "U"
+
+    /// UC — User Option Conditional. May not be present; may be present according to
+    /// the specified condition.
+    case userOptionConditional = "UC"
+
+    /// Not a PS3.16 requirement type. Rows that "depend on other factors" are MC or UC.
+    @available(*, deprecated, message: "PS3.16 §6.1.7 has no 'C' requirement type; use .mandatoryConditional or .userOptionConditional.")
     case conditional = "C"
-    
+
+    /// The old name for `U`, which is "User Option" in PS3.16, not "User Conditional".
+    @available(*, deprecated, renamed: "userOption")
+    public static var userConditional: RequirementLevel { .userOption }
+
+    /// The four standard requirement types, in PS3.16 order.
+    public static var allCases: [RequirementLevel] {
+        [.mandatory, .mandatoryConditional, .userOption, .userOptionConditional]
+    }
+
     /// Display name for the requirement level
     public var displayName: String {
         switch self {
         case .mandatory: return "Mandatory"
         case .mandatoryConditional: return "Mandatory Conditional"
-        case .userConditional: return "User Conditional"
-        case .conditional: return "Conditional"
+        case .userOption: return "User Option"
+        case .userOptionConditional: return "User Option Conditional"
+        case .conditional: return "Conditional (non-standard)"
         }
     }
-    
-    /// Returns whether this requirement level requires the item to be present
-    /// (Note: MC and C depend on conditions being met)
+
+    /// Whether the row shall be present unconditionally (M only; MC depends on its
+    /// condition, U and UC are optional).
     public var isMandatory: Bool {
         switch self {
         case .mandatory:
             return true
-        case .mandatoryConditional, .userConditional, .conditional:
+        case .mandatoryConditional, .userOption, .userOptionConditional, .conditional:
             return false
         }
     }
@@ -264,7 +301,7 @@ public enum TemplateRowCondition: Sendable, Equatable {
 /// Each row specifies constraints on a content item including its value type,
 /// relationship, requirement level, and cardinality.
 ///
-/// Reference: PS3.16 Section 5.1 - Template Table Format
+/// Reference: PS3.16 Section 6.1 - Template Table Field Definition
 public struct TemplateRow: Sendable, Equatable {
     /// Unique identifier for this row within the template
     public let rowID: String?
@@ -452,7 +489,7 @@ public struct TemplateRegistry: Sendable {
     private func registerBuiltInTemplates() {
         // Core templates will be registered here as they are implemented
         register(TID300Measurement.self)
-        register(TID320ImageLibraryEntry.self)
+        register(TID1601ImageLibraryEntry.self)
         register(TID1001ObservationContext.self)
         register(TID1002ObserverContext.self)
         register(TID1204LanguageOfContent.self)

@@ -51,7 +51,8 @@ struct TemplateIdentifierTests {
     @Test("Well-known template identifiers")
     func testWellKnownIdentifiers() {
         #expect(TemplateIdentifier.measurement.templateID == "300")
-        #expect(TemplateIdentifier.imageLibraryEntry.templateID == "320")
+        #expect(TemplateIdentifier.imageOrSpatialCoordinates.templateID == "320")
+        #expect(TemplateIdentifier.imageLibraryEntry.templateID == "1601")
         #expect(TemplateIdentifier.observationContext.templateID == "1001")
         #expect(TemplateIdentifier.observerContext.templateID == "1002")
         #expect(TemplateIdentifier.languageOfContent.templateID == "1204")
@@ -87,38 +88,62 @@ struct TemplateIdentifierTests {
 @Suite("Requirement Level Tests")
 struct RequirementLevelTests {
     
-    @Test("Requirement level raw values")
+    @Test("Requirement types are the four symbols of PS3.16 2026a §6.1.7")
     func testRawValues() {
         #expect(RequirementLevel.mandatory.rawValue == "M")
         #expect(RequirementLevel.mandatoryConditional.rawValue == "MC")
-        #expect(RequirementLevel.userConditional.rawValue == "U")
-        #expect(RequirementLevel.conditional.rawValue == "C")
+        #expect(RequirementLevel.userOption.rawValue == "U")
+        #expect(RequirementLevel.userOptionConditional.rawValue == "UC")
+        // "C" is not a PS3.16 requirement type and must not be among allCases.
+        #expect(RequirementLevel.allCases.count == 4)
     }
-    
+
     @Test("Requirement level display names")
     func testDisplayNames() {
         #expect(RequirementLevel.mandatory.displayName == "Mandatory")
         #expect(RequirementLevel.mandatoryConditional.displayName == "Mandatory Conditional")
-        #expect(RequirementLevel.userConditional.displayName == "User Conditional")
-        #expect(RequirementLevel.conditional.displayName == "Conditional")
+        #expect(RequirementLevel.userOption.displayName == "User Option")
+        #expect(RequirementLevel.userOptionConditional.displayName == "User Option Conditional")
     }
-    
+
     @Test("Mandatory property")
     func testIsMandatory() {
         #expect(RequirementLevel.mandatory.isMandatory == true)
         #expect(RequirementLevel.mandatoryConditional.isMandatory == false)
-        #expect(RequirementLevel.userConditional.isMandatory == false)
-        #expect(RequirementLevel.conditional.isMandatory == false)
+        #expect(RequirementLevel.userOption.isMandatory == false)
+        #expect(RequirementLevel.userOptionConditional.isMandatory == false)
     }
-    
+
     @Test("All cases")
     func testAllCases() {
-        let allCases = RequirementLevel.allCases
-        #expect(allCases.count == 4)
-        #expect(allCases.contains(.mandatory))
-        #expect(allCases.contains(.mandatoryConditional))
-        #expect(allCases.contains(.userConditional))
-        #expect(allCases.contains(.conditional))
+        #expect(RequirementLevel.allCases == [.mandatory, .mandatoryConditional, .userOption, .userOptionConditional])
+    }
+
+    @Test("Well-known template identifiers carry the TID numbers of PS3.16 2026a Annex A")
+    func testWellKnownTIDsMatchAnnexA() {
+        // (constant, TID, PS3.16 2026a section title)
+        let expected: [(TemplateIdentifier, Int, String)] = [
+            (.measurement, 300, "Measurement"),
+            (.imageOrSpatialCoordinates, 320, "Image or Spatial Coordinates"),
+            (.observationContext, 1001, "Observation Context"),
+            (.observerContext, 1002, "Observer Context"),
+            (.languageOfContent, 1204, "Language of Content Item and Descendants"),
+            (.linearMeasurements, 1400, "Linear Measurement"),
+            (.planarROIMeasurements, 1410, "Planar ROI Measurements and Qualitative Evaluations"),
+            (.volumetricROIMeasurements, 1411, "Volumetric ROI Measurements and Qualitative Evaluations"),
+            (.roiMeasurements, 1419, "ROI Measurements"),
+            (.multipleROIMeasurements, 1420, "Measurements Derived From Multiple ROI Measurements"),
+            (.measurementReport, 1500, "Measurement Report"),
+            (.measurementGroup, 1501, "Measurement and Qualitative Evaluation Group"),
+            (.imageLibrary, 1600, "Image Library"),
+            (.imageLibraryEntry, 1601, "Image Library Entry"),
+            (.mammographyCADDocumentRoot, 4000, "Mammography CAD Document Root"),
+            (.algorithmIdentification, 4019, "Algorithm Identification"),
+        ]
+        for (identifier, tid, title) in expected {
+            #expect(identifier.templateID == String(tid), Comment(rawValue: title))
+            #expect(identifier.mappingResource == "DCMR", Comment(rawValue: title))
+        }
     }
 }
 
@@ -375,11 +400,14 @@ struct CoreTemplateTests {
         #expect(firstRow.relationshipType == .contains)
     }
     
-    @Test("TID 320 Image Library Entry template")
-    func testTID320() {
-        let template = TID320ImageLibraryEntry.self
-        
+    @Test("TID 1601 Image Library Entry template")
+    func testTID1601() {
+        let template = TID1601ImageLibraryEntry.self
+
         #expect(template.identifier == .imageLibraryEntry)
+        #expect(template.identifier.templateID == "1601")
+        #expect(TemplateRegistry.shared.template(tid: 1601) != nil)
+        #expect(TemplateRegistry.shared.template(tid: 320) == nil)
         #expect(template.displayName == "Image Library Entry")
         #expect(template.rootValueType == .image)
         #expect(!template.rows.isEmpty)
