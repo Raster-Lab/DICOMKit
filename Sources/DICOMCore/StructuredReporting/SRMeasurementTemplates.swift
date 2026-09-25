@@ -13,6 +13,7 @@ import Foundation
 /// Container for one or more linear measurements (distances, lengths).
 ///
 /// Reference: PS3.16 TID 1400
+/// NEMA-verified: 2026a, checked 2026-09-25 — every coded concept literal in this file was checked against PS3.16 2026a: 69 checked, 7 corrected on 2026-09-25 (mm2/mm3 meanings; "Maximum 3D Diameter" was DCM 121217, which is a volume-estimation method, now IBSI L0JK; "Referenced Segment" was 121233 (Source image for segmentation), now 121191, twice; "Source of Measurement" was 121405 (Population description), now 121112; SCT 373098007 is "Mean"), 6 appear only in TID tables or not at all (C67447, C0034375, C2348792, 276214006, 276825003). The template structures diverge from the 2026a TID tables (P10).
 public struct TID1400LinearMeasurements: SRTemplate {
     public static let identifier = TemplateIdentifier.linearMeasurements
     public static let displayName = "Linear Measurements"
@@ -260,7 +261,7 @@ public struct TID1410PlanarROIMeasurements: SRTemplate {
             valueConstraint: .numericUnits(unitCode: CodedConcept(
                 codeValue: "mm2",
                 codingSchemeDesignator: "UCUM",
-                codeMeaning: "mm2"
+                codeMeaning: "square millimeter"
             )),
             requirementLevel: .userOption,
             cardinality: .zeroOrOne,
@@ -465,7 +466,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
             valueConstraint: .numericUnits(unitCode: CodedConcept(
                 codeValue: "mm3",
                 codingSchemeDesignator: "UCUM",
-                codeMeaning: "mm3"
+                codeMeaning: "cubic millimeter"
             )),
             requirementLevel: .userOption,
             cardinality: .zeroOrOne,
@@ -479,9 +480,9 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
             relationshipType: .contains,
             valueType: .num,
             conceptName: .exact(CodedConcept(
-                codeValue: "121217",
-                codingSchemeDesignator: "DCM",
-                codeMeaning: "Maximum 3D Diameter"
+                codeValue: "L0JK",
+                codingSchemeDesignator: "IBSI",
+                codeMeaning: "Maximum 3D Diameter of a Mesh"
             )),
             valueConstraint: .numericUnits(unitCode: CodedConcept(
                 codeValue: "mm",
@@ -521,7 +522,7 @@ public struct TID1411VolumetricROIMeasurements: SRTemplate {
             relationshipType: .inferredFrom,
             valueType: .image,
             conceptName: .exact(CodedConcept(
-                codeValue: "121233",
+                codeValue: "121191",
                 codingSchemeDesignator: "DCM",
                 codeMeaning: "Referenced Segment"
             )),
@@ -774,7 +775,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
             relationshipType: .hasConceptMod,
             valueType: .code,
             conceptName: .exact(CodedConcept(
-                codeValue: "121405",
+                codeValue: "121112",
                 codingSchemeDesignator: "DCM",
                 codeMeaning: "Source of Measurement"
             )),
@@ -809,7 +810,7 @@ public struct TID1420MultipleROIMeasurements: SRTemplate {
             conceptName: .exact(CodedConcept(
                 codeValue: "373098007",
                 codingSchemeDesignator: "SCT",
-                codeMeaning: "Mean Value"
+                codeMeaning: "Mean"
             )),
             valueConstraint: .any,
             requirementLevel: .userOption,
@@ -1300,7 +1301,7 @@ public struct TID1501MeasurementGroup: SRTemplate {
             relationshipType: .inferredFrom,
             valueType: .image,
             conceptName: .exact(CodedConcept(
-                codeValue: "121233",
+                codeValue: "121191",
                 codingSchemeDesignator: "DCM",
                 codeMeaning: "Referenced Segment"
             )),

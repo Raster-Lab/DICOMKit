@@ -5,6 +5,8 @@
 ///
 /// Reference: PS3.16 - Content Mapping Resource
 /// Reference: SNOMED International - https://www.snomed.org/
+///
+/// NEMA-verified: 2026a, checked 2026-09-25 — SNOMED CT is outside NEMA's scope; the check was against every SCT code used in PS3.16 2026a. Of 89 constants, 65 appear in PS3.16: 56 with the same meaning and 9 with a PS3.16 synonym (Upper limb, Lower limb, Thyroid, Bone, occlusion, dilatation, Diagnostic ultrasonography, No change, Thoracic cavity); 24 do not appear and were not verified. `tumor` and `neoplasm` share concept 108369006 (a documented duplicate).
 
 /// A SNOMED CT code with associated metadata
 ///

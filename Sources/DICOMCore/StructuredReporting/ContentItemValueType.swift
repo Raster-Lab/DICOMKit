@@ -2,7 +2,9 @@
 ///
 /// Defines the value types for content items in DICOM Structured Reporting.
 ///
-/// Reference: PS3.3 Table C.17.3-1 - Value Type Definitions
+/// Reference: PS3.3 Table C.17.3-7 - Value Type Definitions
+///
+/// NEMA-verified: 2026a, checked 2026-09-25 — 15 of the 16 Value Types of PS3.3 2026a Table C.17.3-7 are present; TABLE is not modelled yet (P8). The citation said Table C.17.3-1; corrected.
 
 /// Value types for DICOM Structured Reporting content items
 ///

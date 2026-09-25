@@ -15,6 +15,7 @@ import Foundation
 /// concept, derivation method, and reference to source data.
 ///
 /// Reference: PS3.16 TID 300
+/// NEMA-verified: 2026a, checked 2026-09-25 — every coded concept literal in this file was checked against PS3.16 2026a (CID tables, Annex D, TID tables): 38 of 38 now match (3 corrected on 2026-09-25: 121191 is "Referenced Segment", Subject UID is 121028 not 121030, and 121010's wording). The template *structures* were compared row by row with the 2026a TID tables and diverge: they model simplified subsets and omit the sub-template INCLUDE rows (see P10 in DICOMCORE_STANDARD_IMPLEMENTATION.md).
 public struct TID300Measurement: SRTemplate {
     public static let identifier = TemplateIdentifier.measurement
     public static let displayName = "Measurement"
@@ -129,7 +130,7 @@ public struct TID300Measurement: SRTemplate {
             condition: .ifPresent(concept: CodedConcept(
                 codeValue: "121191",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "Referenced Image"
+                codeMeaning: "Referenced Segment"
             ))
         )
     ]
@@ -280,7 +281,7 @@ public struct TID1001ObservationContext: SRTemplate {
             relationshipType: .hasObsContext,
             valueType: .uidref,
             conceptName: .exact(CodedConcept(
-                codeValue: "121030",
+                codeValue: "121028",
                 codingSchemeDesignator: "DCM",
                 codeMeaning: "Subject UID"
             )),
@@ -374,7 +375,7 @@ public struct TID1002ObserverContext: SRTemplate {
             conceptName: .exact(CodedConcept(
                 codeValue: "121010",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "Person Observer's Role in this Organization"
+                codeMeaning: "Person Observer's Role in the Organization"
             )),
             valueConstraint: .fromContextGroup(contextGroupID: 7452),
             requirementLevel: .userOption,

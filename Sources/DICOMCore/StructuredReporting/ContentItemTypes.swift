@@ -2,13 +2,15 @@
 ///
 /// Concrete implementations of all DICOM SR content item value types.
 ///
-/// Reference: PS3.3 Table C.17.3-1 - Value Type Definitions
+/// Reference: PS3.3 Table C.17.3-7 - Value Type Definitions
+///
+/// NEMA-verified: 2026a, checked 2026-09-25 — each content item type maps to a PS3.3 2026a value macro (C.18.1-C.18.9) or a Table C.17-5 value attribute, and the value types are those of Table C.17.3-7 (TABLE, C.18.10, not modelled: P8). The 15 per-type citations pointed at C.17.3.2.1-C.17.3.2.15, of which only .1-.5 exist and none describes the type; all corrected.
 
 // MARK: - Text Content Item
 
 /// TEXT content item - contains unstructured free text
 ///
-/// Reference: PS3.3 Section C.17.3.2.1
+/// Reference: PS3.3 C.17.3 (Table C.17-5, Text Value (0040,A160))
 public struct TextContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .text
     public let conceptName: CodedConcept?
@@ -45,7 +47,7 @@ public struct TextContentItem: ContentItem, Sendable, Equatable, Hashable {
 
 /// CODE content item - contains a coded concept value
 ///
-/// Reference: PS3.3 Section C.17.3.2.2
+/// Reference: PS3.3 C.18.2 - Code Macro
 public struct CodeContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .code
     public let conceptName: CodedConcept?
@@ -82,7 +84,7 @@ public struct CodeContentItem: ContentItem, Sendable, Equatable, Hashable {
 
 /// NUM content item - contains a numeric measurement with units
 ///
-/// Reference: PS3.3 Section C.17.3.2.3
+/// Reference: PS3.3 C.18.1 - Numeric Measurement Macro
 public struct NumericContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .num
     public let conceptName: CodedConcept?
@@ -168,7 +170,7 @@ public struct NumericContentItem: ContentItem, Sendable, Equatable, Hashable {
 
 /// DATE content item - contains a date value
 ///
-/// Reference: PS3.3 Section C.17.3.2.4
+/// Reference: PS3.3 C.17.3 (Table C.17-5, Date (0040,A121))
 public struct DateContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .date
     public let conceptName: CodedConcept?
@@ -205,7 +207,7 @@ public struct DateContentItem: ContentItem, Sendable, Equatable, Hashable {
 
 /// TIME content item - contains a time value
 ///
-/// Reference: PS3.3 Section C.17.3.2.5
+/// Reference: PS3.3 C.17.3 (Table C.17-5, Time (0040,A122))
 public struct TimeContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .time
     public let conceptName: CodedConcept?
@@ -242,7 +244,7 @@ public struct TimeContentItem: ContentItem, Sendable, Equatable, Hashable {
 
 /// DATETIME content item - contains a combined date/time value
 ///
-/// Reference: PS3.3 Section C.17.3.2.6
+/// Reference: PS3.3 C.17.3 (Table C.17-5, DateTime (0040,A120))
 public struct DateTimeContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .datetime
     public let conceptName: CodedConcept?
@@ -279,7 +281,7 @@ public struct DateTimeContentItem: ContentItem, Sendable, Equatable, Hashable {
 
 /// PNAME content item - contains a person name value
 ///
-/// Reference: PS3.3 Section C.17.3.2.7
+/// Reference: PS3.3 C.17.3 (Table C.17-5, Person Name (0040,A123))
 public struct PersonNameContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .pname
     public let conceptName: CodedConcept?
@@ -316,7 +318,7 @@ public struct PersonNameContentItem: ContentItem, Sendable, Equatable, Hashable 
 
 /// UIDREF content item - contains a DICOM UID reference
 ///
-/// Reference: PS3.3 Section C.17.3.2.8
+/// Reference: PS3.3 C.17.3 (Table C.17-5, UID (0040,A124))
 public struct UIDRefContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .uidref
     public let conceptName: CodedConcept?
@@ -353,7 +355,7 @@ public struct UIDRefContentItem: ContentItem, Sendable, Equatable, Hashable {
 
 /// COMPOSITE content item - references a DICOM composite SOP instance
 ///
-/// Reference: PS3.3 Section C.17.3.2.9
+/// Reference: PS3.3 C.18.3 - Composite Object Reference Macro
 public struct CompositeContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .composite
     public let conceptName: CodedConcept?
@@ -407,7 +409,7 @@ public struct CompositeContentItem: ContentItem, Sendable, Equatable, Hashable {
 
 /// IMAGE content item - references a DICOM image, optionally with frames
 ///
-/// Reference: PS3.3 Section C.17.3.2.10
+/// Reference: PS3.3 C.18.4 - Image Reference Macro
 public struct ImageContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .image
     public let conceptName: CodedConcept?
@@ -463,7 +465,7 @@ public struct ImageContentItem: ContentItem, Sendable, Equatable, Hashable {
 
 /// WAVEFORM content item - references waveform data
 ///
-/// Reference: PS3.3 Section C.17.3.2.11
+/// Reference: PS3.3 C.18.5 - Waveform Reference Macro
 public struct WaveformContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .waveform
     public let conceptName: CodedConcept?
@@ -500,7 +502,7 @@ public struct WaveformContentItem: ContentItem, Sendable, Equatable, Hashable {
 
 /// SCOORD content item - contains 2D spatial coordinates
 ///
-/// Reference: PS3.3 Section C.17.3.2.12
+/// Reference: PS3.3 C.18.6 - Spatial Coordinates Macro
 public struct SpatialCoordinatesContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .scoord
     public let conceptName: CodedConcept?
@@ -556,7 +558,7 @@ public struct SpatialCoordinatesContentItem: ContentItem, Sendable, Equatable, H
 
 /// SCOORD3D content item - contains 3D spatial coordinates
 ///
-/// Reference: PS3.3 Section C.17.3.2.13
+/// Reference: PS3.3 C.18.9 - 3D Spatial Coordinates Macro
 public struct SpatialCoordinates3DContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .scoord3D
     public let conceptName: CodedConcept?
@@ -618,7 +620,7 @@ public struct SpatialCoordinates3DContentItem: ContentItem, Sendable, Equatable,
 
 /// TCOORD content item - contains temporal coordinates
 ///
-/// Reference: PS3.3 Section C.17.3.2.14
+/// Reference: PS3.3 C.18.7 - Temporal Coordinates Macro
 public struct TemporalCoordinatesContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .tcoord
     public let conceptName: CodedConcept?
@@ -709,7 +711,7 @@ public struct TemporalCoordinatesContentItem: ContentItem, Sendable, Equatable, 
 
 /// CONTAINER content item - groups other content items
 ///
-/// Reference: PS3.3 Section C.17.3.2.15
+/// Reference: PS3.3 C.18.8 - Container Macro
 public struct ContainerContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let valueType: ContentItemValueType = .container
     public let conceptName: CodedConcept?
