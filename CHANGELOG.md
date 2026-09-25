@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `DICOMUniqueIdentifier.isSOPClass` / `isTransferSyntax` (2026-09-25)
+
+- Both now test membership in the PS3.6 2026a Table A-1 registry, exposed as
+  `DICOMUniqueIdentifier.sopClassUIDs` (311) and `transferSyntaxUIDs` (63). The previous
+  prefix heuristic returned false for Verification, Storage Commitment, every Print
+  Management SOP Class and 24 others, and true for Meta SOP Classes, Service Classes and
+  Well-known SOP Instances; `isTransferSyntax` missed the retired Papyrus 3 syntax.
+- VR value-type docs: `DICOMTime` says 14 bytes maximum, as the standard does, not 16.
+
 ### Changed — Tag constants text-diffed against PS3.6 2026a (2026-09-25)
 
 - All 971 `Tag` constants in `Tag+*.swift` were checked against PS3.6 2026a; every tag and
