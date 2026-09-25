@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Extended Offset Table frame indexing and RLE row boundaries (2026-09-25)
+
+- **`EncapsulatedPixelData.makeFrameIndex(extendedOffsets:)`** now reads Extended Offset
+  Table (7FE0,0001) values as PS3.3 C.7.6.3.1.8 defines them: the offset of each frame's
+  Item Tag from the first Item Tag after the Basic Offset Table, headers included (the same
+  reference point as the Basic Offset Table). They were treated as header-less, so every
+  conformant table failed the consistency check and frame access fell back to nil.
+- **`RLECodec.encodeFrame`** encodes each image row separately; PS3.5 G.3.1 forbids a run
+  from crossing a row boundary. Output stays lossless and decodes with any conformant
+  decoder; encoded size may grow by a few bytes per row on uniform images.
+
 ### Fixed — `DICOMUniqueIdentifier.isSOPClass` / `isTransferSyntax` (2026-09-25)
 
 - Both now test membership in the PS3.6 2026a Table A-1 registry, exposed as

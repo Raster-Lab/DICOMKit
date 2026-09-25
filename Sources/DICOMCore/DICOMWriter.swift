@@ -6,6 +6,8 @@ import Foundation
 /// Supports Explicit VR Little Endian transfer syntax (the most common format).
 ///
 /// Reference: DICOM PS3.5 Section 7.1 - Data Element Encoding Rules
+///
+/// NEMA-verified: 2026a, checked 2026-09-25 — element headers (Tables 7.1-1/7.1-2 with the 13 32-bit-length VRs), padding (SPACE for strings, NULL for UI and OB, PS3.5 Table 6.2-1), backslash value separators, explicit-length Items (§7.5.1) and encapsulated Pixel Data layout (§A.4: undefined length, Basic Offset Table Item, even-length fragment Items, Sequence Delimitation Item) all match PS3.5 2026a.
 public struct DICOMWriter: Sendable {
     
     /// The byte order for writing multi-byte values

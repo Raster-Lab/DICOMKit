@@ -4,15 +4,17 @@ import Foundation
 ///
 /// Contains all necessary metadata to interpret pixel data bytes.
 /// Reference: DICOM PS3.3 C.7.6.3 - Image Pixel Module
+///
+/// NEMA-verified: 2026a, checked 2026-09-25 — attribute semantics checked against PS3.3 2026a Table C.7-11c (Image Pixel Description Macro), C.7.6.3.1.1-C.7.6.3.1.3 and PS3.5 2026a §8.1.1. The per-property citations that pointed at C.7.6.3.1.1 (which is "Samples per Pixel") for Rows, Columns, Bits Allocated, Bits Stored, High Bit and Pixel Representation were corrected.
 public struct PixelDataDescriptor: Sendable, Equatable {
     // MARK: - Image Dimensions
     
     /// Number of rows (height) in the image
-    /// Reference: PS3.3 C.7.6.3.1.1 - Rows
+    /// Reference: PS3.3 Table C.7-11c - Rows (0028,0010)
     public let rows: Int
     
     /// Number of columns (width) in the image
-    /// Reference: PS3.3 C.7.6.3.1.1 - Columns
+    /// Reference: PS3.3 Table C.7-11c - Columns (0028,0011)
     public let columns: Int
     
     /// Number of frames in the image (1 for single-frame images)
@@ -22,22 +24,22 @@ public struct PixelDataDescriptor: Sendable, Equatable {
     // MARK: - Pixel Encoding
     
     /// Number of bits allocated for each pixel sample
-    /// Usually 8 or 16.
-    /// Reference: PS3.3 C.7.6.3.1.1 - Bits Allocated
+    /// Shall be 1 or a multiple of 8 (PS3.5 §8.1.1); usually 8 or 16.
+    /// Reference: PS3.3 Table C.7-11c - Bits Allocated (0028,0100); PS3.5 §8.1.1
     public let bitsAllocated: Int
     
     /// Number of bits stored for each pixel sample
     /// Must be less than or equal to Bits Allocated.
-    /// Reference: PS3.3 C.7.6.3.1.1 - Bits Stored
+    /// Reference: PS3.3 Table C.7-11c - Bits Stored (0028,0101); PS3.5 §8.1.1
     public let bitsStored: Int
     
     /// Most significant bit of the pixel sample data
-    /// Usually Bits Stored - 1.
-    /// Reference: PS3.3 C.7.6.3.1.1 - High Bit
+    /// Shall be Bits Stored - 1 (PS3.5 §8.1.1; older objects may differ, see PS3.5 2014c).
+    /// Reference: PS3.3 Table C.7-11c - High Bit (0028,0102); PS3.5 §8.1.1
     public let highBit: Int
     
     /// Whether pixel samples are signed (1) or unsigned (0)
-    /// Reference: PS3.3 C.7.6.3.1.1 - Pixel Representation
+    /// Reference: PS3.3 Table C.7-11c - Pixel Representation (0028,0103): 0 unsigned, 1 two's complement
     public let isSigned: Bool
     
     // MARK: - Color Encoding
