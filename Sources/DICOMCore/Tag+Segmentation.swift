@@ -13,6 +13,7 @@ import Foundation
 /// Reference: PS3.6 Section 6 - Registry of DICOM Data Elements
 /// Segmentation tags are in group 0x0062
 /// Multi-frame Functional Groups tags are in group 0x5200
+/// NEMA-verified: 2026a, checked 2026-09-25 — every Tag constant in this file was text-diffed by script against PS3.6 2026a Tables 6-1, 7-1 and 8-1 (tag present, name, VR, VM, keyword, retired status). See DICOMCORE_STANDARD_IMPLEMENTATION.md, Bucket C2.
 extension Tag {
     
     // MARK: - Segmentation Image Module (PS3.3 C.8.20.2)
@@ -37,7 +38,7 @@ extension Tag {
     /// Required. Sequence defining all segments in this segmentation
     public static let segmentSequence = Tag(group: 0x0062, element: 0x0002)
     
-    /// Max Fractional Value (0062,000E)
+    /// Maximum Fractional Value (0062,000E) — PS3.6 keyword MaximumFractionalValue
     /// Required if Segmentation Type is FRACTIONAL
     public static let maxFractionalValue = Tag(group: 0x0062, element: 0x000E)
     

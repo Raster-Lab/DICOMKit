@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Tag constants text-diffed against PS3.6 2026a (2026-09-25)
+
+- All 971 `Tag` constants in `Tag+*.swift` were checked against PS3.6 2026a; every tag and
+  (group, element) pair is correct. Doc comments now mark five retired elements (Ethnic
+  Group (0010,2160) was retired in 2025a in favour of (0010,2161)/(0010,2162)), and four
+  VR/VM notes and three element names were corrected. No constant changed value.
+
 ### Changed — SR template metadata aligned with PS3.16 2026a (2026-09-25)
 
 - **`RequirementLevel`** now has the four Requirement Type symbols of PS3.16 §6.1.7:

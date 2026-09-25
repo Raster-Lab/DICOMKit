@@ -2,6 +2,7 @@
 ///
 /// Tags specific to different imaging modalities (CT, MR, US, etc.)
 /// Reference: DICOM PS3.3 - Information Object Definitions
+/// NEMA-verified: 2026a, checked 2026-09-25 — every Tag constant in this file was text-diffed by script against PS3.6 2026a Tables 6-1, 7-1 and 8-1 (tag present, name, VR, VM, keyword, retired status). See DICOMCORE_STANDARD_IMPLEMENTATION.md, Bucket C2.
 extension Tag {
     // MARK: - CT Image Module
     
@@ -42,7 +43,7 @@ extension Tag {
     public static let exposure = Tag(group: 0x0018, element: 0x1152)
     
     /// Exposure in µAs (0018,1153)
-    /// VR: IS, VM: 1
+    /// VR: IS, VM: 1 (PS3.6 keyword ExposureInuAs)
     public static let exposureInMicroAs = Tag(group: 0x0018, element: 0x1153)
     
     /// Filter Type (0018,1160)
@@ -82,7 +83,7 @@ extension Tag {
     public static let spiralPitchFactor = Tag(group: 0x0018, element: 0x9311)
     
     /// Data Collection Center (Patient) (0018,9313)
-    /// VR: FD, VM: 2
+    /// VR: FD, VM: 3
     public static let dataCollectionCenterPatient = Tag(group: 0x0018, element: 0x9313)
     
     // MARK: - MR Image Module
@@ -226,7 +227,7 @@ extension Tag {
     public static let transducerType = Tag(group: 0x0018, element: 0x6031)
     
     /// Transducer Frequency (0018,6030)
-    /// VR: UL, VM: 1-n
+    /// VR: UL, VM: 1
     public static let transducerFrequency = Tag(group: 0x0018, element: 0x6030)
     
     /// Ultrasound Color Data Present (0028,0014)

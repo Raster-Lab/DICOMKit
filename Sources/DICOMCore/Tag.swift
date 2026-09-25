@@ -3,7 +3,9 @@
 /// A tag uniquely identifies a data element and consists of an ordered pair
 /// of 16-bit unsigned integers: group number and element number.
 ///
-/// Reference: DICOM PS3.5 Section 7.1 - Data Element Structure
+/// Reference: DICOM PS3.5 Section 7.1 - Data Elements
+///
+/// NEMA-verified: 2026a, checked 2026-09-25 — a Tag is the (group, element) pair of PS3.5 2026a §7.1.1, and private groups are the odd ones (§7.8.1). No other standard data.
 public struct Tag: Sendable, Hashable, Comparable {
     /// Group number (16-bit unsigned integer)
     public let group: UInt16

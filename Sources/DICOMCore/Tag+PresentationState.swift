@@ -11,6 +11,7 @@ import Foundation
 /// DICOM tags for Grayscale Softcopy Presentation State
 ///
 /// Reference: PS3.3 Part 3 Section A.33 - Grayscale Softcopy Presentation State IOD
+/// NEMA-verified: 2026a, checked 2026-09-25 — every Tag constant in this file was text-diffed by script against PS3.6 2026a Tables 6-1, 7-1 and 8-1 (tag present, name, VR, VM, keyword, retired status). See DICOMCORE_STANDARD_IMPLEMENTATION.md, Bucket C2.
 extension Tag {
     // MARK: - Presentation State Identification Module (C.11.10)
     
@@ -120,6 +121,7 @@ extension Tag {
     public static let graphicLayerRecommendedDisplayGrayscaleValue = Tag(group: 0x0070, element: 0x0066)
     
     /// Graphic Layer Recommended Display RGB Value (0070,0067)
+    /// Retired in PS3.6 2026a Table 6-1 (RET (2004)). Kept for reading legacy objects.
     public static let graphicLayerRecommendedDisplayRGBValue = Tag(group: 0x0070, element: 0x0067)
     
     /// Graphic Layer Description (0070,0068)
@@ -156,7 +158,7 @@ extension Tag {
     /// Radius of Circular Shutter (0018,1612)
     public static let radiusOfCircularShutter = Tag(group: 0x0018, element: 0x1612)
     
-    /// Vertices of the Polygonal Shutter (0018,1620)
+    /// Vertices of the Polygonal Shutter (0018,1620) — PS3.6 keyword VerticesOfThePolygonalShutter
     public static let verticesOfPolygonalShutter = Tag(group: 0x0018, element: 0x1620)
     
     /// Shutter Presentation Value (0018,1622)

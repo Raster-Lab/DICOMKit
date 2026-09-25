@@ -59,7 +59,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 | B1 — Explicit other edition/CP/Supplement | 4 | Deliberate citation to a specific correction, not 2026a | ✅ **Complete** — text-diffed against 2026a (and 2026d for VR.swift), markers added |
 | B2 — Stale or incorrect, no citation | 10 | Data gap or bug relative to 2026a, undocumented | ✅ **Complete** — all 10 files text-diffed against 2026a and fixed (P1, P3, P5, P6) |
 | C1 — Pure plumbing | 25 | No DICOM-standard data at all | ✅ **Complete** — 23 confirmed as plumbing and marked; 2 (`SRTemplate`, `PrivateTagDictionary`) turned out to carry data, were verified and fixed |
-| C2 — Standard-derived, edition-stable | 59 | Carries PS3.x data that hasn't materially changed across recent editions | ⏳ Not started |
+| C2 — Standard-derived, edition-stable | 59 | Carries PS3.x data that hasn't materially changed across recent editions | 🔄 **In progress** — 21 of 59 (all Tag files) text-diffed |
 
 **104 files total.**
 
@@ -92,6 +92,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 | 2026-09-25 | B2 / P6 | Approved: `multisegment` added, 2D `polygon` deprecated, `NumericValueQualifier` completed to CID 42 with codes. **`ContentItem.swift` done. Bucket B2 complete: 10 of 10.** |
 | 2026-09-25 | C1 | Loop started. All 25 files read in full and grepped for UIDs, tag literals, VR names, defined terms and PS3 citations. 19 hold no standard data and got a "classification confirmed" marker. 4 more hold only citations or names, all checked against PS3.5/PS3.6/PS3.10 2026a and fixed where wrong: `ByteOrder.swift` cited §7.1.1/§7.1.2 for byte ordering (it is §7.3; Big Endian left PS3.5 in 2016b), `J2KCodestreamInspector.swift` cited A.4.6 for HTJ2K (A.4.4), `DICOMError.swift` had a "v0.1 supports…" comment, `PixelDataError.swift` listed JPEG-LS/HTJ2K as unsupported and hard-coded a stale "supported formats" sentence, now read from `CodecRegistry`. `UIDGenerator.swift` matches §9.1; 5 tests added. 2 files are **not** plumbing after all: `SRTemplate.swift` (requirement types and TID names disagree with PS3.16 2026a) and `PrivateTagDictionary.swift` (8 of 15 vendor entries disagree with the DCMTK and GDCM private dictionaries). Both fixes change public API, so the loop paused for approval. |
 | 2026-09-25 | C1 | Approved: `SRTemplate.swift` requirement types aligned with PS3.16 §6.1.7 (U = User Option, UC added, C deprecated), TID constants corrected (320 → Image or Spatial Coordinates, Image Library Entry → 1601, 4000/4019 renamed), `TID320ImageLibraryEntry` renamed `TID1601ImageLibraryEntry`. `PrivateTagDictionary.swift`: 8 vendor entries corrected to DCMTK/GDCM values, 2 reference tests added. DICOMCore and DICOMKit test targets pass. **Bucket C1 complete: 25 of 25.** |
+| 2026-09-25 | C2 | Loop started with the 21 Tag files. A script extracted all 971 `Tag` constants with their doc comments and compared each with PS3.6 2026a Tables 6-1, 7-1 and 8-1. Every tag exists and every (group, element) is right. 16 doc-level issues fixed: 5 retired elements now say so (incl. Ethnic Group, retired in 2025a), 4 wrong VR/VM notes, 3 wrong names, and 3 constants whose Swift name differs from the PS3.6 keyword now note the keyword. Markers on all 21 files. 3 possible renames recorded as an open question (Q1). |
 
 ---
 
@@ -435,6 +436,19 @@ Vendor private-tag data is outside NEMA's scope and was checked against the DCMT
 
 Carries PS3.x data, but the data has not materially changed across recent DICOM editions, so no
 edition label applies.
+
+### Verification — 🔄 in progress (21 of 59)
+
+Same method as B2: extract the standard's table by script from the frozen 2026a DocBook, strip
+U+200B, compare row by row, fix what is wrong, mark the file.
+
+| Group | Files | Compared against | Result |
+|---|---|---|---|
+| Tags | Tag.swift + 20 `Tag+*.swift` (971 constants) | PS3.6 2026a Table 6-1 (5,305 rows incl. masked `xx` tags), Table 7-1 (file meta), Table 8-1 (directory) | ✅ **All 971 tags exist with the right (group, element).** 26 apparent duplicates across files are commented-out lines. 16 doc-comment issues fixed: **retired but unmarked** — Number of References (0004,1600) RET 2004, Ethnic Group (0010,2160) **RET 2025a** (replaced by Ethnic Group Code Sequence (0010,2161) and Ethnic Groups (0010,2162)), Graphic Layer Recommended Display RGB Value (0070,0067) RET 2004, Contour Slab Thickness (3006,0044) and Contour Offset Vector (3006,0045) RET 2020e; **wrong VR/VM notes** — Data Collection Center (Patient) VM 3 not 2, Transducer Frequency VM 1 not 1-n, the three Large Palette Color LUT Data elements are OW not "OW or OB"; **wrong names** — (300A,0230) is "Application Setup Sequence", (0062,000E) "Maximum Fractional Value", (0008,1072) "Operator Identification Sequence"; **Swift name ≠ keyword** — `exposureInMicroAs` (ExposureInuAs, acceptable), `brachyApplicationSetupSequence`, `maxFractionalValue`, `verticesOfPolygonalShutter` (noted in the doc; see Q1). Tag.swift's §7.1 citation retitled "Data Elements". Markers on all 21. |
+
+**Open questions for C2 (public API, need approval).**
+
+- **Q1.** Rename `brachyApplicationSetupSequence` → `applicationSetupSequence`, `maxFractionalValue` → `maximumFractionalValue`, `verticesOfPolygonalShutter` → `verticesOfThePolygonalShutter` to match the PS3.6 keywords, keeping the old names as deprecated aliases? Doc comments already carry the keyword, so this is cosmetic.
 
 - **VR value types** (PS3.5 §6.2, unchanged for years): DICOMAgeString, DICOMApplicationEntity,
   DICOMCodeString, DICOMDate, DICOMDateTime, DICOMDecimalString, DICOMIntegerString,

@@ -2,6 +2,7 @@
 ///
 /// Tags from Groups 0008, 0018, 0020 (Series Module)
 /// Reference: DICOM PS3.3 - Information Object Definitions
+/// NEMA-verified: 2026a, checked 2026-09-25 — every Tag constant in this file was text-diffed by script against PS3.6 2026a Tables 6-1, 7-1 and 8-1 (tag present, name, VR, VM, keyword, retired status). See DICOMCORE_STANDARD_IMPLEMENTATION.md, Bucket C2.
 extension Tag {
     // MARK: - Series Identification
     
@@ -48,7 +49,7 @@ extension Tag {
     @available(*, deprecated, renamed: "operatorsName")
     public static let operatorName = Tag.operatorsName
     
-    /// Operators' Identification Sequence (0008,1072)
+    /// Operator Identification Sequence (0008,1072)
     /// VR: SQ, VM: 1
     public static let operatorIdentificationSequence = Tag(group: 0x0008, element: 0x1072)
     

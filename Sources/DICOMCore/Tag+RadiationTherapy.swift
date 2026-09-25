@@ -12,6 +12,7 @@ import Foundation
 ///
 /// Reference: PS3.6 Section 6 - Registry of DICOM Data Elements
 /// RT tags are in group 0x3006
+/// NEMA-verified: 2026a, checked 2026-09-25 — every Tag constant in this file was text-diffed by script against PS3.6 2026a Tables 6-1, 7-1 and 8-1 (tag present, name, VR, VM, keyword, retired status). See DICOMCORE_STANDARD_IMPLEMENTATION.md, Bucket C2.
 extension Tag {
     
     // MARK: - Structure Set Module (PS3.3 C.8.8.5)
@@ -69,9 +70,11 @@ extension Tag {
     public static let contourGeometricType = Tag(group: 0x3006, element: 0x0042)
     
     /// Contour Slab Thickness (3006,0044)
+    /// Retired in PS3.6 2026a Table 6-1 (RET (2020e)). Kept for reading legacy objects.
     public static let contourSlabThickness = Tag(group: 0x3006, element: 0x0044)
     
     /// Contour Offset Vector (3006,0045)
+    /// Retired in PS3.6 2026a Table 6-1 (RET (2020e)). Kept for reading legacy objects.
     public static let contourOffsetVector = Tag(group: 0x3006, element: 0x0045)
     
     /// Number of Contour Points (3006,0046)
@@ -321,7 +324,7 @@ extension Tag {
     /// Number of Brachy Application Setups (300A,00A0)
     public static let numberOfBrachyApplicationSetups = Tag(group: 0x300A, element: 0x00A0)
     
-    /// Brachy Application Setup Sequence (300A,0230)
+    /// Application Setup Sequence (300A,0230) — PS3.6 keyword ApplicationSetupSequence
     public static let brachyApplicationSetupSequence = Tag(group: 0x300A, element: 0x0230)
     
     /// Application Setup Type (300A,0232)
