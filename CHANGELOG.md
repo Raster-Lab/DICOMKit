@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — plumbing files checked for Bucket C1 of the DICOMCore audit (2026-09-25)
+
+- **`PixelDataError.unsupportedTransferSyntax`'s `explanation`** now names the offending
+  syntax (from `TransferSyntax.displayName`) and lists the decoders registered in
+  `CodecRegistry`, instead of a fixed sentence that omitted JPEG-LS, HTJ2K, JPEG XL and JP3D.
+  The doc comment no longer lists JPEG-LS, JPEG 2000 Part 2 and HTJ2K as unsupported.
+- **Citations corrected** (comments only): `ByteOrder.swift` now cites PS3.5 §7.3 for byte
+  ordering (Big Endian retired, see PS3.5 2016b) instead of §7.1.1/§7.1.2;
+  `J2KCodestreamInspector.swift` cites A.4.4 for the HTJ2K syntaxes instead of A.4.6;
+  `DICOMError.unsupportedTransferSyntax` lost a stale "v0.1 supports…" note.
+- `UIDGenerator` gained tests asserting PS3.5 §9.1 on generated UIDs, and its doc comment
+  says that the default root is OFFIS DCMTK's.
+
 ### Fixed — SR content-item enumerations aligned with PS3.3 2026a C.18 (2026-09-25)
 
 - **`TemporalRangeType.multisegment`** (`MULTISEGMENT`) added; PS3.3 C.18.7.1.1 defines six

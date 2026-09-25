@@ -58,7 +58,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 | A — Implements 2026a | 6 | Explicit 2026a citation and/or verified-current data | ✅ **Complete** — text-diffed against 2026a, markers added |
 | B1 — Explicit other edition/CP/Supplement | 4 | Deliberate citation to a specific correction, not 2026a | ✅ **Complete** — text-diffed against 2026a (and 2026d for VR.swift), markers added |
 | B2 — Stale or incorrect, no citation | 10 | Data gap or bug relative to 2026a, undocumented | ✅ **Complete** — all 10 files text-diffed against 2026a and fixed (P1, P3, P5, P6) |
-| C1 — Pure plumbing | 25 | No DICOM-standard data at all | ⏳ Not started |
+| C1 — Pure plumbing | 25 | No DICOM-standard data at all | 🔄 **In progress** — 23 of 25 confirmed and marked; `SRTemplate.swift` and `PrivateTagDictionary.swift` carry wrong data and wait for approval |
 | C2 — Standard-derived, edition-stable | 59 | Carries PS3.x data that hasn't materially changed across recent editions | ⏳ Not started |
 
 **104 files total.**
@@ -90,6 +90,7 @@ NEMA-verified: <edition>, checked <yyyy-mm-dd> — <what was compared>; <provena
 | 2026-09-25 | B2 / P6 | Option 1 approved: 21 `DICOMCode` constants corrected, 43 removed as `unavailable` with the correct reference, `imagingMeasurementReport` added, tests assert every constant against Annex D. P9 logged. **`DICOMCode.swift` done.** |
 | 2026-09-25 | B2 / P6 | `ContentItem.swift` text-diffed: POLYGON is not a 2D SCOORD type, MULTISEGMENT is missing from TCOORD, and `NumericValueQualifier` has 5 of 12 CID 42 values. Deferred D18 (builders write 2D POLYGON). Paused: the fix changes public enums. |
 | 2026-09-25 | B2 / P6 | Approved: `multisegment` added, 2D `polygon` deprecated, `NumericValueQualifier` completed to CID 42 with codes. **`ContentItem.swift` done. Bucket B2 complete: 10 of 10.** |
+| 2026-09-25 | C1 | Loop started. All 25 files read in full and grepped for UIDs, tag literals, VR names, defined terms and PS3 citations. 19 hold no standard data and got a "classification confirmed" marker. 4 more hold only citations or names, all checked against PS3.5/PS3.6/PS3.10 2026a and fixed where wrong: `ByteOrder.swift` cited §7.1.1/§7.1.2 for byte ordering (it is §7.3; Big Endian left PS3.5 in 2016b), `J2KCodestreamInspector.swift` cited A.4.6 for HTJ2K (A.4.4), `DICOMError.swift` had a "v0.1 supports…" comment, `PixelDataError.swift` listed JPEG-LS/HTJ2K as unsupported and hard-coded a stale "supported formats" sentence, now read from `CodecRegistry`. `UIDGenerator.swift` matches §9.1; 5 tests added. 2 files are **not** plumbing after all: `SRTemplate.swift` (requirement types and TID names disagree with PS3.16 2026a) and `PrivateTagDictionary.swift` (8 of 15 vendor entries disagree with the DCMTK and GDCM private dictionaries). Both fixes change public API, so the loop paused for approval. |
 
 ---
 
@@ -392,6 +393,40 @@ ISO/IEC 15444, not DICOM), JP3DCodec.swift (private non-DICOM UIDs), PerceptualC
 WindowLUT.swift, DICOMError.swift, PixelDataError.swift, PrivateTag/PrivateTagDictionary.swift,
 PrivateTag/SiemensCSAHeaderParser.swift, UIDGenerator.swift, StructuredReporting/SRTemplate.swift,
 StructuredReporting/SRTemplateValidator.swift, StructuredReporting/AnyContentItem.swift.
+
+### Verification — 🔄 in progress (23 of 25)
+
+**Method.** The claim for this bucket is "no standard data", so the check is different from B2:
+every file was read in full and grepped for UIDs (`1.2.840.10008`), tag literals, VR names,
+defined terms and PS3.x citations. Where nothing turned up, the file gets a marker that says so
+("C1 classification confirmed"). Where a citation or a name did turn up, it was checked against
+the frozen 2026a DocBook text (PS3.3, PS3.5, PS3.6, PS3.10, PS3.16, all with the 2026a subtitle).
+Vendor private-tag data is outside NEMA's scope and was checked against the DCMTK
+(`dcmdata/data/private.dic`) and GDCM (`privatedicts.xml`) private dictionaries instead.
+
+| File | Standard content found | Result |
+|---|---|---|
+| AlignedPixelBuffer, CodecBackend, ColorSampleLUT, WindowLUT, PerceptualColormaps, DataElement+NumericTolerant | None | ✅ Classification confirmed; marker added. |
+| CLICodecSupport, DjpegCLICodec, DjxlCLICodec, GrokCLICodec, KakaduCLICodec | None beyond Planar Configuration 0/1 sample order | ✅ Matches PS3.3 2026a C.7.6.3.1.3 (0 = colour-by-pixel, 1 = colour-by-plane). Markers added. |
+| PixelInterleaveSupport | Planar Configuration 0/1 | ✅ Same check; marker added. |
+| JPEGCodecEngine | Names of the four JPEG syntaxes (.50, .51, .57, .70) | ✅ Match PS3.6 2026a Table A-1. Marker added. |
+| J2KRoutePlanner | UID family grouping (.90/.91, .92/.93, .201/.202/.203) and the .202 RPCL note | ✅ Match PS3.6 2026a Table A-1 and PS3.5 2026a A.4.4. Marker added. |
+| J2KCodestreamInspector | ISO/IEC 15444 marker codes (out of DICOM scope); one PS3.5 citation | ⚠️ Fixed: it cited "A.4.6" for the HTJ2K syntaxes. In 2026a A.4.6 is MPEG-4 AVC/H.264 HP/L4.1; all five JPEG 2000 and HTJ2K syntaxes are defined in **A.4.4**. Marker added. |
+| JP3DCodec | Two private UIDs (1.2.826.0.1.3680043.10.511.x) | ✅ Not in PS3.6 Table A-1, as the file says. Marker added. |
+| SiemensCSAHeaderParser, SRTemplateValidator | None | ✅ Classification confirmed; markers added. |
+| AnyContentItem | The 15 wrapped value types | ✅ Match PS3.3 2026a Table C.17.3-7 except TABLE, already tracked as P8. Marker added. |
+| ByteOrder | Section citations for byte ordering; the retired Big Endian syntax | ⚠️ Fixed: cited "§7.1.1 Little Endian Byte Ordering" and "§7.1.2 Big Endian Byte Ordering". In PS3.5 2026a those sections are "Data Element Fields" and "Data Element Structure with Explicit VR"; byte ordering is **§7.3**, and it says Big Endian "has been retired. See PS3.5 2016b." All 9 citations corrected. The readers themselves are right. Marker added. |
+| DICOMError | PS3.10 §7.1 (preamble, DICM prefix) | ✅ §7.1 is "DICOM File Meta Information" in PS3.10 2026a. A stale "v0.1 supports Explicit/Implicit VR LE" comment was replaced. Marker added. |
+| PixelDataError | Names of transfer syntaxes in comments and user-facing text | ⚠️ Fixed: the doc comment listed JPEG-LS, JPEG 2000 Part 2 and HTJ2K as "common unsupported" syntaxes (the module has codecs for all of them, and "HTJPEG 2000" is not the PS3.6 name), and `explanation` hard-coded a five-item "supported formats" sentence that omitted JPEG-LS, HTJ2K, JPEG XL and JP3D. The explanation now names the offending syntax from `TransferSyntax.displayName` and lists the decoders actually in `CodecRegistry`. 1 test added. Marker added. |
+| UIDGenerator | PS3.5 §9 UID encoding rules | ✅ Generated UIDs satisfy every §9.1 rule (digit components, no leading zero except "0", "." separators, ≤ 64 characters) and pass `DICOMUniqueIdentifier.parse`. Noted: §9.2.2 requires a privately defined UID to use the organisation's own root, and the default root `1.2.276.0.7230010.3` is OFFIS DCMTK's; the doc comment now says so. 5 tests added. Marker added. |
+| **SRTemplate** | `RequirementLevel` symbols; 15 named TIDs; three section citations | ❌ **Not plumbing. Paused for approval.** PS3.16 2026a §6.1.7 defines four Requirement Type symbols: **M**, **MC**, **U** (User Option) and **UC** (User Option Conditional). The enum has `M`, `MC`, `U` (labelled "User Conditional") and **`C`**, which does not exist; `UC` is missing. Of the 15 `TemplateIdentifier` constants, 3 name the wrong template: TID 320 is "Image or Spatial Coordinates" (not "Image Library Entry", which is TID 1601), TID 4000 is "Mammography CAD Document Root" (not "CAD Analysis"), TID 4019 is "Algorithm Identification" (not "CAD Finding"). 4 more have shortened titles (1400 "Linear Measurement", 1410/1411 "… and Qualitative Evaluations", 1501 "Measurement and Qualitative Evaluation Group"). The citations "Section 5", "5.1" and "5.3" are Chapter 6, §6.1 and §6.1.7 in 2026a. `TID320ImageLibraryEntry` in SRCoreTemplates (C2) inherits the TID 320 error. |
+| **PrivateTagDictionary** | PS3.5 §7.8 citation (correct); 15 vendor tag definitions | ❌ **Not plumbing. Paused for approval.** The vendor data is outside NEMA's scope, so it was checked against DCMTK's and GDCM's private dictionaries. **8 of 15 entries disagree:** Siemens CSA (0029,xx09) and (0029,xx19) are **LO** not CS; Siemens MR (0019,xx0D) is **CS "Diffusion Directionality"** and (0019,xx0E) is **FD "Diffusion Gradient Direction"** (the file shifts both by one; Gradient Mode is xx0F, SH); GE (0009,xx01) "Full Fidelity" is **LO** not CS; GE (0019,xx0F) is **DS "Horizontal Frame of Reference"**, not "Protocol Data Block" (that is (0025,xx1B) under GEMS_SERS_01); Philips (2001,xx03) is **FL "Diffusion B-Factor"** (Chemical Shift is xx01) and (2001,xx08) is **IS "Phase Number"**, not "Stack Radial Angle". The 7 others match. |
+
+**Findings from the check.**
+
+1. **Four citation or comment errors were fixed in place** (ByteOrder, J2KCodestreamInspector, DICOMError, PixelDataError). None changed behaviour except the PixelDataError explanation text, which is now derived from the registry.
+2. **Two files were misclassified as plumbing.** `SRTemplate.swift` carries PS3.16 data (requirement types, TID names) and `PrivateTagDictionary.swift` carries vendor dictionary data. Both have wrong values. Fixing them renames or removes public cases and constants, so the loop is paused for approval — see the questions in the closing message of 2026-09-25.
+3. **Default UID root.** `UIDGenerator.defaultRoot` is DCMTK's OID. That is a convention, not a standard violation, but PS3.5 §9.2.2 expects a registered root of one's own. Documented; not changed.
 
 ---
 
