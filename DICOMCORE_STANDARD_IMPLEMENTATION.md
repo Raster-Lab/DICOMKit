@@ -107,8 +107,8 @@ Ordered by real-world impact, not file count. Status as of 2026-09-25, after all
 
 | Item | What | Status | Where the evidence is |
 |---|---|---|---|
-| P1 | 64-bit VRs (OV/SV/UV) read, swapped and JSON-encoded | ✅ Done 2026-09-24 | `SixtyFourBitVRTests`, `DICOMJSON64BitVRTests`; B2 |
-| P2 | `TransferSyntax` registry vs PS3.6 Table A-1 | ⚠️ **Verified 2026-09-25, fix waits for approval (Q2)** — 22 of 63 registered syntaxes missing, 2 non-existent UIDs present | P2 below |
+| P1 | 64-bit VRs (OV/SV/UV): values could not be read, were corrupted on byte-order conversion, and had no JSON form | ✅ Done 2026-09-24 | `SixtyFourBitVRTests`, `DICOMJSON64BitVRTests`; B2 |
+| P2 | `TransferSyntax` registry vs PS3.6 Table A-1 | ⚠️ **Verified 2026-09-25, fix waits for approval (Q2)** — 22 of 63 registered syntaxes missing; 2 HEVC "Fragmentable" UIDs not in 2026a/2026d, kept by decision | P2 below |
 | P3 | `PhotometricInterpretation.xyb` | ✅ Done 2026-09-24 | `XYBTranscodeTests`; B2 |
 | P4 | `VR.swift` CP citation | ✅ Done 2026-09-24 | B1 |
 | P5 | Stale defined-term lists (character sets, DICOMDIR record types, media profiles) | ✅ Done 2026-09-25 | `CharacterSetISO2022Tests`, `DirectoryRecordTypeTests`, `DICOMDIRProfileTests`; B2 |
@@ -118,13 +118,13 @@ Ordered by real-world impact, not file count. Status as of 2026-09-25, after all
 | P9 | Home for non-DCM measurement codes | ⏳ Open — needs a design choice | P9 below |
 | P10 | Rebuild SR templates from the TID tables | ⏳ Open — public-API redesign | P10 below |
 | Q1 | Rename 3 tag constants to their PS3.6 keywords | ❓ Awaiting approval | Bucket C2 |
-| Q2 | Add the 22 missing transfer syntaxes, remove 2 invented ones | ❓ Awaiting approval | P2 below |
+| Q2 | Add the 22 missing transfer syntaxes | ❓ Awaiting approval | P2 below |
 
 Everything marked Done was fixed against the frozen 2026a text, has tests, and is committed on `feature/dicom-tag-modality-audit`. The open items all change public API, which this audit does not do without approval.
 
-### P1 — 64-bit VR (OV/SV/UV) support is functionally incomplete — **DONE 2026-09-24**
+### P1 — 64-bit VR (OV/SV/UV): values could not be read and were corrupted on byte-order conversion — **DONE 2026-09-24**
 
-VR.swift declared `.OV`, `.SV` and `.UV`, but the code that encodes and decodes them was never finished. Each fix was checked against the frozen 2026a text before editing:
+"Functionally incomplete" describes the state before the fix: `VR.swift` declared `.OV`, `.SV` and `.UV` (CP 1819, 2019a), so files using them parsed without error, but nothing downstream could use the values. There was no 64-bit accessor, so an SV or UV value could not be read as a number; the byte-order converter did not swap 8-byte values for these VRs, so an LE↔BE conversion silently corrupted them; and DICOMWeb JSON had no encoding for them. Each fix was checked against the frozen 2026a text before editing:
 
 | Gap | Standard (2026a) | Fix |
 |---|---|---|
@@ -154,9 +154,9 @@ The reviewer's "from memory" list was checked on 2026-09-25 by diffing every UID
 
 **Missing, retired (16):** the JPEG processes .4.52–.4.56, .4.58–.4.66 (13, retired 2001), RFC 2557 MIME encapsulation .6.1 and XML Encoding .6.2 (retired 2018b), Papyrus 3 Implicit VR LE 1.2.840.10008.1.20 (retired 2015c). A reader may still meet these UIDs in old files, so `from(uid:)` returning nil for them is a real gap even though nothing should write them.
 
-**Present but not in the standard (2):** `hevcH265MainProfileFragmentable` (1.2.840.10008.1.2.4.107.1) and `hevcH265Main10ProfileFragmentable` (…4.108.1). Table A-1 defines Fragmentable variants only for .4.100–.4.106 (MPEG2 and MPEG-4); the HEVC syntaxes .4.107 and .4.108 have none. These two UIDs are invented and any file written with them is non-conformant.
+**Present but not in the standard (2), kept by decision:** `hevcH265MainProfileFragmentable` (1.2.840.10008.1.2.4.107.1) and `hevcH265Main10ProfileFragmentable` (…4.108.1). PS3.6 Table A-1 defines Fragmentable variants only for .4.100–.4.106 (MPEG2 and MPEG-4, added by Sup 219); the HEVC syntaxes .4.107 and .4.108 have none in 2026a, in 2026d (`/current/`, checked 2026-09-25) or in 2023b. **Decision 2026-09-25: keep both constants** (they may be met in files from other implementations that made the same assumption); their doc comments should say they are not registered in PS3.6. Writing new files with them is not conformant.
 
-The earlier B1 marker on this file covered only the three JPEG XL rows; this check covers the whole registry. **Q2 (needs approval):** add the 22 missing syntaxes as new `TransferSyntax` constants (retired ones flagged), mark the two HEVC "Fragmentable" constants `unavailable`, and make `DICOMUniqueIdentifier.transferSyntaxUIDs` the source of truth for `allKnown`. Also check `DICOMDictionary/UIDDictionary.swift` (outside DICOMCore) for the same two invented UIDs.
+The earlier B1 marker on this file covered only the three JPEG XL rows; this check covers the whole registry. **Q2 (needs approval):** add the 22 missing syntaxes as new `TransferSyntax` constants (retired ones flagged as such), and make `DICOMUniqueIdentifier.transferSyntaxUIDs` the source of truth for `allKnown`. The two HEVC "Fragmentable" constants stay.
 
 ### P3 — `PhotometricInterpretation.swift`: add `XYB` — **DONE 2026-09-24**
 
@@ -254,6 +254,7 @@ territory, not DICOM's.
 | D17 | DICOMKit | [MammographyCADSRBuilder.swift](Sources/DICOMKit/StructuredReporting/MammographyCADSRBuilder.swift), [KeyObjectSelectionBuilder.swift](Sources/DICOMKit/StructuredReporting/KeyObjectSelectionBuilder.swift) | Both emit DATETIME content items. PS3.3 A.35.5 (Mammography CAD SR) and A.35.4 (Key Object Selection) do not list DATETIME among the permitted Value Types. Check whether the items are really DATETIME (Mammography CAD SR allows DATE and TIME separately) and correct the builders. Once DICOMCore's sets are corrected, `validateOnBuild` will flag these. | PS3.3 A.35.4, A.35.5 | Medium: non-conformant output | ⏳ Open |
 | D18 | DICOMKit | [ComprehensiveSRBuilder.swift:540,1268](Sources/DICOMKit/StructuredReporting/ComprehensiveSRBuilder.swift#L540) | Emit 2D SCOORD content items with Graphic Type POLYGON, which PS3.3 C.18.6.1.2 does not define for SCOORD (only SCOORD3D has POLYGON). Write a closed POLYLINE (first vertex repeated last) instead. `MeasurementExtractorTests`, `ComprehensiveSRBuilderTests` and `SRHelpersTests` build the same non-conformant items. | PS3.3 C.18.6.1.2 | Medium: non-conformant output | ⏳ Open |
 | D19 | DICOMKit | `DICOMFile+FrameAccess.swift:187` says "the OV VR is not yet in the `VR` enum, so explicit-VR files carry this element as UN". OV has been in `VR` since P1 (2026-09-24); the comment is stale, and the reader should now expect `.OV`. Low. | Open |
+| D20 | DICOMDictionary | `UIDDictionary.swift:239-252` registers the two "Fragmentable HEVC" UIDs 1.2.840.10008.1.2.4.107.1 and .108.1, which no PS3.6 edition defines (checked 2026a, 2026d, 2023b). Kept in DICOMCore by decision (P2); the dictionary entries should at least say they are not registered. Low. | Open |
 
 ---
 
