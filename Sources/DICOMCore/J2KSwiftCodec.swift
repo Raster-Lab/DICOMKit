@@ -54,6 +54,7 @@ public enum J2KSwiftEncodeMode: String, Sendable, CaseIterable, Identifiable {
 ///
 /// This provides the Phase 1 pure-Swift JPEG 2000 path for DICOMKit and establishes
 /// the foundation for HTJ2K and Part 2 expansion without masking upstream codec issues.
+/// NEMA-verified: 2026a, checked 2026-09-25 — JPEG 2000 / HTJ2K UIDs come from `TransferSyntax` (PS3.6 2026a Table A-1); the lossless-only set (.90, .92, .201, .202) and the RPCL requirement for .202 match PS3.5 2026a A.4.4. One citation said A.4.6 (MPEG-4); corrected. The codec itself implements ISO/IEC 15444, outside DICOM.
 public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
     public static let supportedTransferSyntaxes: [String] = [
         TransferSyntax.jpeg2000Lossless.uid,
@@ -509,7 +510,7 @@ private extension J2KSwiftCodec {
         // crippled compression — single-resolution wavelet means no multi-band
         // refinement, and HTJ2K in particular collapsed to ~1.24× ratios on
         // 16-bit MG mammograms vs ~6× from the same library via its CLI. RPCL
-        // is required for `htj2kRPCLLossless` (PS3.5 §A.4.6) and is what
+        // is required for `htj2kRPCLLossless` (PS3.5 §A.4.4) and is what
         // J2KSwift's CLI uses everywhere else.
         let plan = J2KRoutePlanner.planEncode(
             transferSyntaxUID: transferSyntaxUID,

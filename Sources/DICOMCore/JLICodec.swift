@@ -3,7 +3,7 @@ import JLISwift
 
 /// JPEG codec backed by the JLISwift native-Swift JPEG package.
 ///
-/// Bridges DICOM pixel data (PS3.5 §A.4.1–A.4.3) to JLISwift's pure-Swift
+/// Bridges DICOM pixel data (PS3.5 §A.4.1, JPEG Image Compression) to JLISwift's pure-Swift
 /// implementation of ITU-T T.81 for all four DICOM JPEG transfer syntaxes —
 /// **both lossy and lossless**:
 ///
@@ -25,6 +25,7 @@ import JLISwift
 /// Pixel bridging: `JLIImage.data` is channel-interleaved `[UInt8]`, row-major,
 /// 16-bit samples little-endian — matching DICOM little-endian storage, so only
 /// planar→interleaved reshuffling (handled by `interleavedFrameBytes`) is needed.
+/// NEMA-verified: 2026a, checked 2026-09-25 — the four JPEG UIDs come from `TransferSyntax` (PS3.6 2026a Table A-1). `canEncode` admits a subset of PS3.5 2026a Tables 8.2.1-1/8.2.1-2: Baseline 8/8, Extended 8/8 or 16/12, Lossless 8-or-16 allocated with 2–16 stored (the tables allow 1–16; 1 is a JLISwift limit), YBR_FULL_422 only with Baseline. The "§A.4.1–A.4.3" citation was narrowed to §A.4.1 (A.4.2 is RLE, A.4.3 JPEG-LS). The codec implements ITU-T T.81, outside DICOM.
 public struct JLICodec: ImageCodec, ImageEncoder, Sendable {
     /// All four DICOM JPEG transfer syntaxes can be decoded.
     public static let supportedTransferSyntaxes: [String] = [

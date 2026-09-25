@@ -9,7 +9,8 @@ import UniformTypeIdentifiers
 ///
 /// Supports JPEG Baseline, Extended, and Lossless transfer syntaxes.
 /// Provides both decoding and encoding capabilities.
-/// Reference: DICOM PS3.5 Section A.4.1-A.4.3
+/// Reference: DICOM PS3.5 Section A.4.1 - JPEG Image Compression
+/// NEMA-verified: 2026a, checked 2026-09-25 — the four JPEG UIDs come from `TransferSyntax` (PS3.6 2026a Table A-1); encoding only Baseline at 8 bits matches Table 8.2.1-1. The "A.4.1-A.4.3" citation was narrowed to §A.4.1. ImageIO implements ITU-T T.81, outside DICOM.
 public struct NativeJPEGCodec: ImageCodec, ImageEncoder, Sendable {
     /// Supported JPEG transfer syntaxes for decoding
     public static let supportedTransferSyntaxes: [String] = [
