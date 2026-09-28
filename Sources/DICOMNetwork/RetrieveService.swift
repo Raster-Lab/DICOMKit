@@ -332,22 +332,34 @@ public struct RetrieveKeys: Sendable, Hashable {
     // MARK: - Fluent API for common keys
     
     /// Sets the Study Instance UID
+    ///
+    /// Replaces an earlier value: a data element occurs at most once in a
+    /// data set (PS3.5 7.1).
     public func studyInstanceUID(_ uid: String) -> RetrieveKeys {
         var copy = self
+        copy.keys.removeAll { $0.tag == .studyInstanceUID }
         copy.keys.append(RetrieveKey(tag: .studyInstanceUID, vr: .UI, value: uid))
         return copy
     }
     
     /// Sets the Series Instance UID
+    ///
+    /// Replaces an earlier value: a data element occurs at most once in a
+    /// data set (PS3.5 7.1).
     public func seriesInstanceUID(_ uid: String) -> RetrieveKeys {
         var copy = self
+        copy.keys.removeAll { $0.tag == .seriesInstanceUID }
         copy.keys.append(RetrieveKey(tag: .seriesInstanceUID, vr: .UI, value: uid))
         return copy
     }
     
     /// Sets the SOP Instance UID
+    ///
+    /// Replaces an earlier value: a data element occurs at most once in a
+    /// data set (PS3.5 7.1).
     public func sopInstanceUID(_ uid: String) -> RetrieveKeys {
         var copy = self
+        copy.keys.removeAll { $0.tag == .sopInstanceUID }
         copy.keys.append(RetrieveKey(tag: .sopInstanceUID, vr: .UI, value: uid))
         return copy
     }
@@ -1427,83 +1439,49 @@ public enum DICOMRetrieveService {
     }
     
     /// Builds the retrieve identifier data set
+    ///
+    /// Every element, including Query/Retrieve Level (0008,0052), is written in
+    /// ascending tag order (PS3.5 7.1), so at IMAGE level SOP Instance UID
+    /// (0008,0018) precedes (0008,0052).
+    ///
+    /// The Specific Character Set is chosen exactly as
+    /// `DICOMQueryService.buildQueryIdentifier` does: a caller-supplied
+    /// (0008,0005) key wins, else the narrowest set representing every text-VR
+    /// value (none for ISO 646, "ISO_IR 100" for Latin-1, "ISO_IR 192"
+    /// otherwise). When one is needed it is inserted into the Identifier
+    /// (PS3.4 C.4.2.1.4.1, C.2.2.2; PS3.5 6.1.2) and text values are encoded in
+    /// it, so a non-ASCII key never degrades to a zero-length (universal) key.
     static func buildRetrieveIdentifier(keys: RetrieveKeys, transferSyntax: String) -> Data {
         var data = Data()
         let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
-        
-        // Add Query/Retrieve Level
-        data.append(encodeElement(
-            tag: .queryRetrieveLevel,
-            vr: .CS,
-            value: keys.level.queryRetrieveLevel,
-            explicit: isExplicitVR
-        ))
-        
-        // Add all retrieve keys, sorted by tag
-        let sortedKeys = keys.keys.sorted { $0.tag < $1.tag }
-        for key in sortedKeys {
-            data.append(encodeElement(
+
+        var allKeys = keys.keys
+        let callerCharacterSetKey = allKeys.first { $0.tag == .specificCharacterSet }
+        let callerValue = callerCharacterSetKey?.value.trimmingCharacters(in: .whitespaces)
+        let override = (callerValue?.isEmpty == false) ? callerValue : nil
+
+        let textValues = allKeys.filter { DICOMQueryService.textVRs.contains($0.vr) }.map { $0.value }
+        let characterSet = DIMSECharacterSet.choose(for: textValues, override: override)
+
+        allKeys.removeAll { $0.tag == .specificCharacterSet }
+        if let chosen = characterSet.specificCharacterSet {
+            allKeys.append(RetrieveKeys.RetrieveKey(tag: .specificCharacterSet, vr: .CS, value: chosen))
+        }
+
+        // Merge Query/Retrieve Level into the key set and sort everything by
+        // ascending tag order (PS3.5 7.1)
+        allKeys.append(RetrieveKeys.RetrieveKey(
+            tag: .queryRetrieveLevel, vr: .CS, value: keys.level.queryRetrieveLevel))
+        for key in allKeys.sorted(by: { $0.tag < $1.tag }) {
+            data.append(DICOMQueryService.encodeElement(
                 tag: key.tag,
                 vr: key.vr,
                 value: key.value,
-                explicit: isExplicitVR
+                explicit: isExplicitVR,
+                characterSet: characterSet
             ))
         }
-        
-        return data
-    }
-    
-    /// Encodes a single data element
-    private static func encodeElement(tag: Tag, vr: VR, value: String, explicit: Bool) -> Data {
-        var data = Data()
-        
-        // Tag (4 bytes, little endian)
-        var group = tag.group.littleEndian
-        var element = tag.element.littleEndian
-        data.append(Data(bytes: &group, count: 2))
-        data.append(Data(bytes: &element, count: 2))
-        
-        // Prepare value data with padding
-        var valueData = value.data(using: .ascii) ?? Data()
-        
-        // Pad to even length per DICOM rules
-        if valueData.count % 2 != 0 {
-            // Use space padding for text VRs, null for UI
-            let paddingChar: UInt8 = (vr == .UI) ? 0x00 : (vr.isStringVR ? 0x20 : 0x00)
-            valueData.append(paddingChar)
-        }
-        
-        if explicit {
-            // Explicit VR encoding
-            // VR (2 bytes)
-            if let vrBytes = vr.rawValue.data(using: .ascii) {
-                data.append(vrBytes)
-            } else {
-                data.append(Data([0x55, 0x4E])) // "UN" fallback
-            }
-            
-            // Check if VR uses 4-byte length
-            if vr.uses32BitLength {
-                // Reserved (2 bytes)
-                data.append(Data([0x00, 0x00]))
-                // Value Length (4 bytes)
-                var length = UInt32(valueData.count).littleEndian
-                data.append(Data(bytes: &length, count: 4))
-            } else {
-                // Value Length (2 bytes)
-                var length = UInt16(valueData.count).littleEndian
-                data.append(Data(bytes: &length, count: 2))
-            }
-        } else {
-            // Implicit VR encoding
-            // Value Length (4 bytes)
-            var length = UInt32(valueData.count).littleEndian
-            data.append(Data(bytes: &length, count: 4))
-        }
-        
-        // Value
-        data.append(valueData)
-        
+
         return data
     }
 }
