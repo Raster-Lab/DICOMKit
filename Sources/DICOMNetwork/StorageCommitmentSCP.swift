@@ -1198,11 +1198,11 @@ actor CommitmentSCPAssociation {
             throw DICOMNetworkError.connectionClosed
         }
         
-        // Parse header to get PDU length
-        let pduLength = Int(UInt32(headerData[2]) |
-                          (UInt32(headerData[3]) << 8) |
-                          (UInt32(headerData[4]) << 16) |
-                          (UInt32(headerData[5]) << 24))
+        // PDU-length is a big-endian unsigned 32-bit number (PS3.8 §9.3.1, Table 9-11
+        // bytes 3-6). This used to be read little-endian, so a 259-byte A-ASSOCIATE-RQ
+        // was taken for a 50 MB PDU and the read only returned when the peer gave up
+        // (the two "ARTIM" failures of D13 in the DICOMCore report).
+        let pduLength = Int(try PDUDecoder.readHeader(from: headerData).length)
         
         // Read the PDU body
         var fullData = headerData

@@ -825,7 +825,8 @@ final class RetrieveConformanceTests: XCTestCase {
         XCTAssertEqual(keys.value(for: .patientID), "P1")
         let identifier = DICOMRetrieveService.buildRetrieveIdentifier(keys: keys, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
         let attrs = DICOMQueryService.parseQueryResponse(data: identifier, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
-        XCTAssertEqual(attrs[.patientID], "P1".data(using: .ascii)! + Data([0x20]))
+        // "P1" is 2 bytes, already even: no pad (PS3.5 §6.2)
+        XCTAssertEqual(attrs[.patientID], "P1".data(using: .ascii)!)
         XCTAssertEqual(attrs[.queryRetrieveLevel].flatMap { String(data: $0, encoding: .ascii) }, "SERIES")
         // patientID(_:) replaces an earlier value rather than duplicating the element
         XCTAssertEqual(keys.patientID("P2").keys.filter { $0.tag == .patientID }.count, 1)

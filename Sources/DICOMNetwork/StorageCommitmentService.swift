@@ -1256,7 +1256,7 @@ enum StorageCommitmentDataSetCodec {
         
         let vrString = String(bytes: [data[offset + 4], data[offset + 5]], encoding: .ascii) ?? ""
         let vr = VR(rawValue: vrString)
-        if vr?.uses4ByteLength ?? false {
+        if vr?.uses32BitLength ?? false {
             // 2 byte VR + 2 reserved + 4 byte length
             guard offset + 12 <= data.count else { return nil }
             return ElementHeader(group: group, element: element,
@@ -1699,19 +1699,23 @@ actor CommitmentListenerAssociation {
     func start() async {
         connection.start(queue: .global(qos: .userInitiated))
         
-        // Wait for connection to be ready
+        // Wait for connection to be ready. Guard the resume so a terminal
+        // transition right after `.ready` cannot resume the continuation twice
+        // (a trap that surfaced once the loopback tests got past association
+        // establishment, see D13).
+        let resumed = ListenerResumeFlag()
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             connection.stateUpdateHandler = { state in
                 switch state {
-                case .ready:
-                    continuation.resume()
-                case .failed, .cancelled:
+                case .ready, .failed, .cancelled:
+                    guard resumed.trySet() else { return }
                     continuation.resume()
                 default:
                     break
                 }
             }
         }
+        connection.stateUpdateHandler = nil
         
         guard connection.state == .ready else {
             await completionHandler(self)
@@ -1968,10 +1972,11 @@ actor CommitmentListenerAssociation {
             throw DICOMNetworkError.connectionClosed
         }
 
-        let pduLength = Int(UInt32(headerData[2]) |
-                            (UInt32(headerData[3]) << 8) |
-                            (UInt32(headerData[4]) << 16) |
-                            (UInt32(headerData[5]) << 24))
+        // PDU-length is a big-endian unsigned 32-bit number (PS3.8 §9.3.1, Table 9-11
+        // bytes 3-6). This used to be read little-endian, so a 259-byte A-ASSOCIATE-RQ
+        // was taken for a 50 MB PDU and the read only returned when the peer gave up
+        // (the two "ARTIM" failures of D13 in the DICOMCore report).
+        let pduLength = Int(try PDUDecoder.readHeader(from: headerData).length)
 
         var fullData = headerData
         if pduLength > 0 {
@@ -2017,3 +2022,16 @@ actor CommitmentListenerAssociation {
 }
 
 #endif
+
+/// A set-once flag so an `NWConnection` state handler resumes its continuation
+/// exactly once (a terminal transition right after `.ready` must not resume twice).
+private final class ListenerResumeFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isSet = false
+    func trySet() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if isSet { return false }
+        isSet = true
+        return true
+    }
+}

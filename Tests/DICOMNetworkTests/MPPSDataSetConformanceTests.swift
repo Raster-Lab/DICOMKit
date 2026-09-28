@@ -222,7 +222,8 @@ final class MPPSDataSetConformanceTests: XCTestCase {
             sopInstanceUID: "1", status: .inProgress, patientName: "山田^太郎", modality: "CT")
         let data = DICOMMPPSService.buildMPPSAttributes(procedureStep: step, transferSyntax: explicitLE)
         XCTAssertEqual(asciiValue(data, 0x0008, 0x0005)?.trimmingCharacters(in: .whitespaces), "ISO_IR 192")
-        XCTAssertEqual(rawValue(data, 0x0010, 0x0010), Data("山田^太郎".utf8))
+        // 13 UTF-8 bytes, space-padded to 14 (PS3.5 §6.2)
+        XCTAssertEqual(rawValue(data, 0x0010, 0x0010), Data("山田^太郎".utf8) + Data([0x20]))
     }
 
     func test_nCreate_nestedTextValuesDriveTheCharacterSet() {
@@ -233,7 +234,8 @@ final class MPPSDataSetConformanceTests: XCTestCase {
         let data = DICOMMPPSService.buildMPPSAttributes(procedureStep: step, transferSyntax: explicitLE)
         XCTAssertEqual(asciiValue(data, 0x0008, 0x0005)?.trimmingCharacters(in: .whitespaces), "ISO_IR 192",
                        "an en dash is outside Latin-1, so nested values must widen the choice to UTF-8")
-        XCTAssertEqual(rawValue(data, 0x0032, 0x1060), Data("Thorax – Übersicht".utf8))
+        // 21 UTF-8 bytes, space-padded to 22 (PS3.5 §6.2)
+        XCTAssertEqual(rawValue(data, 0x0032, 0x1060), Data("Thorax – Übersicht".utf8) + Data([0x20]))
     }
 
     func test_nCreate_overrideForcesTheDeclaredCharacterSet() {

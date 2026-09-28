@@ -180,7 +180,8 @@ final class MWLKeySetConformanceTests: XCTestCase {
     func test_identifier_nonLatin1KeyChoosesUTF8() {
         let attrs = identifier(WorklistQueryKeys.default().patientName("山田^太郎"))
         XCTAssertEqual(attrs[charsetTag].flatMap { String(data: $0, encoding: .ascii) }, "ISO_IR 192")
-        XCTAssertEqual(attrs[.patientName], Data("山田^太郎".utf8))
+        // 13 UTF-8 bytes, space-padded to 14 (PS3.5 §6.2)
+        XCTAssertEqual(attrs[.patientName], Data("山田^太郎".utf8) + Data([0x20]))
     }
 
     func test_identifier_overrideWins() {
