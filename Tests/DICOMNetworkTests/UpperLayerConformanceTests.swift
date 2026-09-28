@@ -270,6 +270,45 @@ struct MaximumLengthTests {
     }
 }
 
+// MARK: - 7. AE Title characters (PS3.8 Table 9-11; PS3.5 Table 6.2-1)
+
+@Suite("AE Title character set")
+struct AETitleCharacterSetTests {
+
+    @Test("Only SPACE (20H) padding is trimmed")
+    func onlySpaceIsTrimmed() throws {
+        #expect(try AETitle("  PACS  ").value == "PACS")
+        #expect(try AETitle("MY PACS").value == "MY PACS")
+        let tabPadded = "\tPACS"
+        #expect(throws: DICOMNetworkError.self) { _ = try AETitle(tabPadded) }
+    }
+
+    @Test("Control characters, DEL and backslash are rejected; 20H-7EH otherwise allowed")
+    func g0SetWithoutBackslash() throws {
+        for bad in ["PA\u{00}CS", "PA\u{1B}CS", "PA\u{7F}CS", "PA\\CS", "PA\rCS", "PAÇS"] {
+            #expect(throws: DICOMNetworkError.self, "\(bad.unicodeScalars.map { $0.value })") { _ = try AETitle(bad) }
+        }
+        #expect(try AETitle("!#$%&'()*+,-./:").value == "!#$%&'()*+,-./:")
+        #expect(try AETitle(";<=>?@[]^_`{|}~").value == ";<=>?@[]^_`{|}~")
+    }
+
+    @Test("NUL padding is accepted on decode")
+    func nulPaddingOnDecode() throws {
+        var bytes = Array("STORESCP".utf8)
+        bytes.append(contentsOf: [UInt8](repeating: 0x00, count: 16 - bytes.count))
+        let title = try #require(AETitle.from(data: Data(bytes)))
+        #expect(title.value == "STORESCP")
+        #expect(title.data == Data("STORESCP        ".utf8))
+    }
+
+    @Test("Length is counted in bytes: 16 allowed, 17 rejected")
+    func sixteenBytes() throws {
+        #expect(try AETitle("ABCDEFGHIJKLMNOP").value.count == 16)
+        let seventeen = "ABCDEFGHIJKLMNOPQ"
+        #expect(throws: DICOMNetworkError.self) { _ = try AETitle(seventeen) }
+    }
+}
+
 // MARK: - 9. Protocol-version (PS3.8 Table 9-11)
 
 @Suite("Protocol-version decoding")
