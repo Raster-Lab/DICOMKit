@@ -196,7 +196,10 @@ final class PrintSCPConsoleTests: XCTestCase {
             for: .requestFailed(command: .nCreateRequest, status: .printQueueFull, detail: nil))
         XCTAssertEqual(failed?.level, .warning)
         XCTAssertEqual(failed?.message.contains("0xC601"), true)
-        XCTAssertEqual(failed?.message.contains("Print queue full"), true)
+        // PS3.4 Table H.4-4 wording for C601.
+        XCTAssertEqual(
+            failed?.message.contains("Unable to create Print Job SOP Instance; print queue is full"),
+            true)
 
         // `.started` carries no line of its own: the bound port belongs to the
         // surface's own "listening on…" line, which knows the AE title.

@@ -29,26 +29,28 @@ public struct CGSize: Sendable {
 public let basicFilmSessionSOPClassUID = "1.2.840.10008.5.1.1.1"
 /// Basic Film Box SOP Class UID (PS3.4 H.4.2)
 public let basicFilmBoxSOPClassUID = "1.2.840.10008.5.1.1.2"
-/// Basic Grayscale Image Box SOP Class UID (PS3.4 H.4.3)
+/// Basic Grayscale Image Box SOP Class UID (PS3.4 H.4.3.1)
 public let basicGrayscaleImageBoxSOPClassUID = "1.2.840.10008.5.1.1.4"
-/// Basic Color Image Box SOP Class UID (PS3.4 H.4.4)
+/// Basic Color Image Box SOP Class UID (PS3.4 H.4.3.2)
 public let basicColorImageBoxSOPClassUID = "1.2.840.10008.5.1.1.4.1"
 /// Basic Grayscale Print Management Meta SOP Class UID
 public let basicGrayscalePrintManagementMetaSOPClassUID = "1.2.840.10008.5.1.1.9"
 /// Basic Color Print Management Meta SOP Class UID
 public let basicColorPrintManagementMetaSOPClassUID = "1.2.840.10008.5.1.1.18"
-/// Printer SOP Class UID (PS3.4 H.4.7)
+/// Printer SOP Class UID (PS3.4 H.4.6)
 public let printerSOPClassUID = "1.2.840.10008.5.1.1.16"
 /// Printer SOP Instance UID (Well-Known)
 public let printerSOPInstanceUID = "1.2.840.10008.5.1.1.17"
-/// Print Job SOP Class UID (PS3.4 H.4.8)
+/// Print Job SOP Class UID (PS3.4 H.4.5)
 public let printJobSOPClassUID = "1.2.840.10008.5.1.1.14"
-/// Presentation LUT SOP Class UID (PS3.4 H.4.10). Part of the Grayscale/Color
-/// Print Management Meta SOP Classes, so it needs no separate presentation context.
+/// Presentation LUT SOP Class UID (PS3.4 H.4.9). An optional SOP Class of the
+/// Print Management Service Class (Table H.3.3.2-1), *not* a member of the
+/// Grayscale/Color Print Management Meta SOP Classes: it must be negotiated
+/// on a presentation context of its own.
 public let presentationLUTSOPClassUID = "1.2.840.10008.5.1.1.23"
-/// Basic Annotation Box SOP Class UID (PS3.4 H.4.6)
+/// Basic Annotation Box SOP Class UID (PS3.4 H.4.4)
 public let basicAnnotationBoxSOPClassUID = "1.2.840.10008.5.1.1.15"
-/// Basic Print Image Overlay Box SOP Class UID (PS3.4 H.4.11, retired)
+/// Basic Print Image Overlay Box SOP Class UID (PS3.4 H.4.12, retired)
 public let basicPrintImageOverlayBoxSOPClassUID = "1.2.840.10008.5.1.1.24.1"
 
 // MARK: - Print-specific DICOM Tags
@@ -102,13 +104,13 @@ extension Tag {
     /// Referenced Basic Annotation Box Sequence (2010,0520)
     public static let referencedBasicAnnotationBoxSequence = Tag(group: 0x2010, element: 0x0520)
 
-    // Annotation Box tags (PS3.3 C.13.6)
+    // Annotation Box tags (PS3.3 C.13.7)
     /// Annotation Position (2030,0010)
     public static let annotationPosition = Tag(group: 0x2030, element: 0x0010)
     /// Text String (2030,0020)
     public static let textString = Tag(group: 0x2030, element: 0x0020)
 
-    // Presentation LUT tags (PS3.3 C.11.6)
+    // Presentation LUT tags (PS3.3 C.11.4, the hardcopy Presentation LUT Module)
     /// Presentation LUT Shape (2050,0020)
     public static let presentationLUTShape = Tag(group: 0x2050, element: 0x0020)
     /// Referenced Presentation LUT Sequence (2050,0500)
@@ -147,7 +149,13 @@ extension Tag {
     public static let creationDate = Tag(group: 0x2100, element: 0x0040)
     /// Creation Time (2100,0050)
     public static let creationTime = Tag(group: 0x2100, element: 0x0050)
-    /// Originating Print Management (2100,0070)
+    /// Originator (2100,0070), VR AE — the Application Entity Title that
+    /// issued the print operation (PS3.3 Table C.13-8; PS3.6 keyword
+    /// `Originator`).
+    ///
+    /// FIXME(NEMA 2026a): the member name predates verification; the tag's
+    /// name is Originator. Renaming is a public API change pending owner
+    /// approval.
     public static let originatingPrintManagement = Tag(group: 0x2100, element: 0x0070)
 
     // MARK: - Presentation LUT viewing conditions (Film Box, PS3.4 Table H.4-6)
@@ -223,6 +231,7 @@ public enum MediumType: String, Sendable, Hashable, CaseIterable, Codable {
     case paper = "PAPER"
     case clearFilm = "CLEAR FILM"
     case blueFilm = "BLUE FILM"
+    // FIXME(NEMA 2026a): PS3.3 C.13.1 defines MAMMO CLEAR FILM / MAMMO BLUE FILM; raw values kept pending owner approval
     case mammoFilmClearBase = "MAMMO CLEAR"
     case mammoFilmBlueBase = "MAMMO BLUE"
 }
@@ -279,7 +288,7 @@ public enum FilmOrientation: String, Sendable, Hashable, CaseIterable, Codable {
     case landscape = "LANDSCAPE"
 }
 
-/// Film size identifiers (PS3.3 C.13.6)
+/// Film size identifiers (Film Size ID, PS3.3 C.13.3 Table C.13-3)
 public enum FilmSize: String, Sendable, Hashable, CaseIterable, Codable {
     case size8InX10In = "8INX10IN"
     case size8_5InX11In = "8_5INX11IN"
@@ -522,7 +531,7 @@ public struct FilmBoxResult: Sendable {
 
 // MARK: - Print Job Status
 
-/// Status of a print job (PS3.4 H.4.8)
+/// Status of a print job (PS3.4 H.4.5)
 public struct PrintJobStatus: Sendable {
     /// Print Job SOP Instance UID
     public let printJobUID: String
@@ -571,7 +580,7 @@ public struct PrintJobStatus: Sendable {
 
 /// Printer status event type reported by the Printer SOP Class.
 ///
-/// Reference: PS3.4 H.4.5 (Printer SOP Class N-EVENT-REPORT, Event Type IDs).
+/// Reference: PS3.4 H.4.6.2.1 (Printer SOP Class N-EVENT-REPORT, Event Type IDs).
 public enum PrinterEventType: UInt16, Sendable, Equatable {
     /// Printer returned to a normal operating state (Event Type ID 1).
     case normal = 1
@@ -583,7 +592,7 @@ public enum PrinterEventType: UInt16, Sendable, Equatable {
 
 /// Print job execution event type reported by the Print Job SOP Class.
 ///
-/// Reference: PS3.4 H.4.9.2 (Print Job SOP Class N-EVENT-REPORT, Event Type IDs).
+/// Reference: PS3.4 H.4.5.2.1 (Print Job SOP Class N-EVENT-REPORT, Event Type IDs).
 public enum PrintJobEventType: UInt16, Sendable, Equatable {
     /// The print job is queued and pending (Event Type ID 1).
     case pending = 1
@@ -688,7 +697,7 @@ public typealias PrintEventHandler = @Sendable (PrintEvent) -> Void
 
 /// Bundles pixel data with its image descriptor for printing
 ///
-/// The Preformatted Grayscale/Color Image Sequence (PS3.3 C.13.5.1) requires
+/// The Basic Grayscale/Color Image Sequence (PS3.3 C.13.5, Table C.13-5) requires
 /// image attributes (rows, columns, bits allocated, etc.) alongside pixel data.
 /// This struct carries both through the print pipeline.
 public struct PrintImageData: Sendable, Equatable {
@@ -839,7 +848,7 @@ public struct PresentationLUTTable: Sendable, Equatable, Codable {
 
 /// A text annotation to place on the film via the Basic Annotation Box SOP Class.
 ///
-/// Reference: PS3.3 C.13.6. The printer must be configured with an Annotation
+/// Reference: PS3.3 C.13.7. The printer must be configured with an Annotation
 /// Display Format that provides annotation box positions; ``position`` selects
 /// which configured box receives ``text``.
 public struct PrintAnnotation: Sendable, Equatable, Codable {
@@ -2421,7 +2430,10 @@ public enum DICOMPrintService {
                     }
                     
                     try await association.release()
-                    return PrinterStatus(status: "NORMAL")
+                    // No data set: the SCP told us nothing, and nothing is not
+                    // NORMAL. The same placeholder `parsePrinterStatus` uses
+                    // when Printer Status (2110,0010) is missing.
+                    return PrinterStatus(status: "UNKNOWN")
                 }
             }
         } catch {
@@ -2429,15 +2441,16 @@ public enum DICOMPrintService {
             throw error
         }
     }
-    
+
     /// Whether this printer can carry Basic Annotation Boxes.
     ///
     /// Asked by association negotiation and nothing else: the SCU proposes the
     /// Basic Annotation Box SOP Class along with everything else, and a printer
-    /// that accepts that context — directly or through the Print Management
-    /// Meta class that subsumes it — implements the service. There is no N-GET
-    /// that answers this, and a conformance statement is not something a print
-    /// job can read.
+    /// that accepts that context implements the service. The class is one of
+    /// the optional Print Management SOP Classes (PS3.4 Table H.3.3.2-1), not a
+    /// member of the Print Management Meta SOP Class, so only its own context
+    /// counts. There is no N-GET that answers this, and a conformance
+    /// statement is not something a print job can read.
     ///
     /// The question is worth an association of its own because the answer
     /// decides how the *pixels* are prepared: film-level text goes in an
@@ -2478,6 +2491,61 @@ public enum DICOMPrintService {
             try? await association.abort()
             return false
         }
+    }
+
+    /// Re-lays out color-by-pixel samples (RGBRGB…, the layout
+    /// ``PrintImageData/pixelData`` carries) as color-by-plane (RRR…GGG…BBB…)
+    /// for the Basic Color Image Sequence, whose Planar Configuration
+    /// (0028,0006) PS3.3 Table C.13-5 enumerates as 1.
+    ///
+    /// Data that is not three-sample, or too short for its declared geometry,
+    /// is returned unchanged. `internal` (not private) for unit-test access.
+    static func colorByPlane(_ pixelData: Data, descriptor: PrintImageData) -> Data {
+        guard descriptor.samplesPerPixel == 3 else { return pixelData }
+        let bytesPerSample = max(1, Int(descriptor.bitsAllocated) / 8)
+        let pixelCount = Int(descriptor.rows) * Int(descriptor.columns)
+        let planeBytes = pixelCount * bytesPerSample
+        guard pixelCount > 0, pixelData.count >= planeBytes * 3 else { return pixelData }
+
+        var output = Data(count: planeBytes * 3)
+        output.withUnsafeMutableBytes { destination in
+            pixelData.withUnsafeBytes { source in
+                guard let dst = destination.bindMemory(to: UInt8.self).baseAddress,
+                      let src = source.bindMemory(to: UInt8.self).baseAddress else { return }
+                for pixel in 0..<pixelCount {
+                    for plane in 0..<3 {
+                        for byte in 0..<bytesPerSample {
+                            dst[plane * planeBytes + pixel * bytesPerSample + byte]
+                                = src[(pixel * 3 + plane) * bytesPerSample + byte]
+                        }
+                    }
+                }
+            }
+        }
+        return output
+    }
+
+    /// The Print Job SOP Instance UID named by an N-ACTION (Print) response.
+    ///
+    /// PS3.4 Tables H.4-3 (Film Session) and H.4-8 (Film Box): the response
+    /// data set carries Referenced Print Job Sequence (2100,0500) with one
+    /// item of Referenced SOP Class UID (0008,1150) = Print Job SOP Class and
+    /// Referenced SOP Instance UID (0008,1155) = the job. The sequence is
+    /// "required if Print Job SOP is supported", so `nil` means the SCP
+    /// created no job. The command set's Affected SOP Instance UID is *not*
+    /// consulted: it identifies the Film Session or Film Box the action was
+    /// invoked on (PS3.7 §10.1.4).
+    ///
+    /// `internal` (not private) for unit-test access.
+    static func printJobUID(inActionResponse dataSet: Data?, explicitVR: Bool) -> String? {
+        guard let dataSet, !dataSet.isEmpty,
+              let attributes = try? PrintDatasetReader(explicitVR: explicitVR).parse(dataSet),
+              let item = attributes.firstItem(of: .referencedPrintJobSequence),
+              let uid = item.string(for: .referencedSOPInstanceUID)?
+                  .trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")),
+              !uid.isEmpty
+        else { return nil }
+        return uid
     }
 
     /// Builds a human-readable detail string from a failure response's
@@ -2765,12 +2833,18 @@ public enum DICOMPrintService {
                 value: filmBox.emptyImageDensity
             ))
             
-            // Trim (2010,0140) - CS, Type 2C.
+            // Trim (2010,0140) - CS. PS3.4 Table H.4-6 (Film Box N-CREATE)
+            // gives it SCU/SCP usage U/U — optional on both sides.
             //
             // Sent only when trim is actually wanted: NO is the printer default
             // and conveys nothing, while printers without trim support reject a
             // film box that carries the attribute at all ("trim requested but
             // not supported" — observed against DCMTK's dcmprscp).
+            //
+            // Illumination (2010,015E) and Reflected Ambient Light (2010,0160)
+            // are U/MC in the same table: optional for the SCU, and required
+            // of an SCP that supports the Presentation LUT. The SCU is never
+            // obliged to send them, so they are not sent.
             if filmBox.trimOption == .yes {
                 elements.append(DataElement.string(
                     tag: .trim,
@@ -3037,7 +3111,7 @@ public enum DICOMPrintService {
     ///   - pixelData: The pixel data to send (uncompressed)
     /// - Throws: `DICOMNetworkError` if the operation fails
     ///
-    /// Reference: PS3.4 H.4.3 - Basic Grayscale/Color Image Box SOP Class
+    /// Reference: PS3.4 H.4.3.1 / H.4.3.2 - Basic Grayscale / Color Image Box SOP Class
     public static func setImageBox(
         configuration: PrintConfiguration,
         imageBoxUID: String,
@@ -3045,7 +3119,7 @@ public enum DICOMPrintService {
         pixelData: Data,
         imageDescriptor: PrintImageData? = nil
     ) async throws {
-        // PS3.3 C.13.5.1: the Preformatted Image Sequence item must carry the
+        // PS3.3 Table C.13-5: the Basic Image Sequence item must carry the
         // pixel-module attributes — an image box without them is rejected by
         // strict SCPs, so the descriptor is required (kept optional in the
         // signature only for source compatibility).
@@ -3129,7 +3203,7 @@ public enum DICOMPrintService {
             // Add pixel data based on color mode
             if configuration.colorMode == .grayscale {
                 // Preformatted Grayscale Image Sequence (2020,0110) - SQ
-                // PS3.3 C.13.5.1 requires image attributes within the sequence item
+                // PS3.3 Table C.13-5 requires image attributes within the sequence item
                 var seqElements: [DataElement] = []
 
                 // Pixel-module attributes — always sent (descriptor guarded above).
@@ -3160,8 +3234,12 @@ public enum DICOMPrintService {
                 var seqElements: [DataElement] = []
 
                 // Pixel-module attributes — always sent (descriptor guarded above).
+                // PS3.3 Table C.13-5 (Basic Color Image Sequence): Planar
+                // Configuration (0028,0006) is enumerated as 1, color-by-plane,
+                // so the samples are re-laid out RRR…GGG…BBB… on the wire.
                 seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: descriptor.samplesPerPixel))
                 seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: descriptor.photometricInterpretation))
+                seqElements.append(DataElement.uint16(tag: .planarConfiguration, value: 1))
                 seqElements.append(DataElement.uint16(tag: .rows, value: descriptor.rows))
                 seqElements.append(DataElement.uint16(tag: .columns, value: descriptor.columns))
                 seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: descriptor.bitsAllocated))
@@ -3169,7 +3247,9 @@ public enum DICOMPrintService {
                 seqElements.append(DataElement.uint16(tag: .highBit, value: descriptor.highBit))
                 seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: descriptor.pixelRepresentation))
 
-                seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: pixelData))
+                seqElements.append(DataElement.data(
+                    tag: .pixelData, vr: .OW,
+                    data: colorByPlane(pixelData, descriptor: descriptor)))
 
                 let sequenceItem = SequenceItem(elements: seqElements)
                 let writer = DICOMWriter(explicitVR: explicitVR)
@@ -3315,15 +3395,18 @@ public enum DICOMPrintService {
                         throw DICOMNetworkError.printOperationFailed(response.status, detail: errorDetail(from: response.commandSet))
                     }
                     
-                    // Extract Print Job SOP Instance UID from the response
-                    let printJobUID = response.affectedSOPInstanceUID
-                    
-                    // Validate that a Print Job UID was returned
-                    guard !printJobUID.isEmpty else {
+                    // The Print Job SOP Instance UID travels in the response
+                    // data set as Referenced Print Job Sequence (2100,0500),
+                    // PS3.4 Table H.4-8. Affected SOP Instance UID names the
+                    // Film Box the action was invoked on (PS3.7 N-ACTION-RSP)
+                    // and is never a job UID.
+                    guard let printJobUID = printJobUID(
+                        inActionResponse: message.dataSet,
+                        explicitVR: contexts.usesExplicitVR(contextID)) else {
                         try await association.abort()
                         throw DICOMNetworkError.unexpectedResponse
                     }
-                    
+
                     try await association.release()
                     return printJobUID
                 }
@@ -3432,7 +3515,7 @@ public enum DICOMPrintService {
     /// - Returns: The print job status
     /// - Throws: `DICOMNetworkError` if the operation fails
     ///
-    /// Reference: PS3.4 H.4.8 - Print Job SOP Class
+    /// Reference: PS3.4 H.4.5 - Print Job SOP Class
     public static func getPrintJobStatus(
         configuration: PrintConfiguration,
         printJobUID: String
@@ -3840,7 +3923,7 @@ public enum DICOMPrintService {
         eventHandler: PrintEventHandler? = nil,
         progressHandler: (@Sendable (PrintProgress) -> Void)? = nil
     ) async throws -> PrintResult {
-        // PS3.3 C.13.5.1: a Preformatted Image Sequence item without
+        // PS3.3 Table C.13-5: a Basic Image Sequence item without
         // Rows/Columns/BitsAllocated/PhotometricInterpretation is non-conformant
         // and rejected by strict SCPs — require one descriptor per image up front.
         guard imageDescriptors.count >= images.count else {
@@ -3970,9 +4053,13 @@ public enum DICOMPrintService {
                 filmBoxElements.append(DataElement.string(tag: .magnificationType, vr: .CS, value: options.magnificationType.rawValue))
                 filmBoxElements.append(DataElement.string(tag: .borderDensity, vr: .CS, value: options.borderDensity))
                 filmBoxElements.append(DataElement.string(tag: .emptyImageDensity, vr: .CS, value: options.emptyImageDensity))
-                // Trim (2010,0140) is Type 2C: send it only when trim is wanted.
-                // A printer without trim support rejects a film box that carries
-                // the attribute even with the value NO.
+                // Trim (2010,0140) is U/U in PS3.4 Table H.4-6 (Film Box
+                // N-CREATE): send it only when trim is wanted. A printer without
+                // trim support rejects a film box that carries the attribute
+                // even with the value NO. Illumination (2010,015E) and Reflected
+                // Ambient Light (2010,0160) are U/MC there — optional for the
+                // SCU even when a Presentation LUT is referenced — and are not
+                // sent.
                 if options.trimOption == .yes {
                     filmBoxElements.append(DataElement.string(
                         tag: .trim, vr: .CS, value: options.trimOption.rawValue))
@@ -4138,15 +4225,25 @@ public enum DICOMPrintService {
                     // of the workflow — the pixel-module attributes are always sent.
                     var seqElements: [DataElement] = []
                     let desc = imageDescriptors[globalIndex]
+                    let isColorBox = configuration.colorMode == .color
                     seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: desc.samplesPerPixel))
                     seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: desc.photometricInterpretation))
+                    if isColorBox {
+                        // PS3.3 Table C.13-5 (Basic Color Image Sequence):
+                        // Planar Configuration (0028,0006) = 1, color-by-plane.
+                        seqElements.append(DataElement.uint16(tag: .planarConfiguration, value: 1))
+                    }
                     seqElements.append(DataElement.uint16(tag: .rows, value: desc.rows))
                     seqElements.append(DataElement.uint16(tag: .columns, value: desc.columns))
                     seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: desc.bitsAllocated))
                     seqElements.append(DataElement.uint16(tag: .bitsStored, value: desc.bitsStored))
                     seqElements.append(DataElement.uint16(tag: .highBit, value: desc.highBit))
                     seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: desc.pixelRepresentation))
-                    seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: images[globalIndex]))
+                    seqElements.append(DataElement.data(
+                        tag: .pixelData, vr: .OW,
+                        data: isColorBox
+                            ? colorByPlane(images[globalIndex], descriptor: desc)
+                            : images[globalIndex]))
                     
                     let imgSeqItem = SequenceItem(elements: seqElements)
                     let imgWriter = DICOMWriter(explicitVR: explicitVR)
@@ -4266,22 +4363,16 @@ public enum DICOMPrintService {
                     throw DICOMNetworkError.printOperationFailed(actionRsp.status, detail: errorDetail(from: actionRsp.commandSet))
                 }
                 
-                // Extract Print Job UID from response data if available
-                var printJobUID = ""
-                if let actionDataSet = actionResponse.dataSet {
-                    if let uid = extractStringValue(from: actionDataSet, group: 0x0008, element: 0x1155) {
-                        printJobUID = uid
-                    }
-                }
-                if printJobUID.isEmpty {
-                    printJobUID = actionRsp.affectedSOPInstanceUID
-                }
-                // The Print Job SOP Instance UID is optional in the N-ACTION
-                // response — some SCPs omit it. Don't record an empty UID
-                // (job-status polling with it would fail); consistent with the
-                // discrete printFilmBox, which rejects an empty UID outright
-                // (enhancement plan P2-4).
-                if !printJobUID.isEmpty {
+                // The Print Job SOP Instance UID travels only in the response
+                // data set, as Referenced Print Job Sequence (2100,0500) —
+                // PS3.4 Table H.4-8, "-/MC, required if Print Job SOP is
+                // supported". Affected SOP Instance UID is the Film Box the
+                // action was invoked on (PS3.7 N-ACTION-RSP), never the job.
+                // An SCP without Print Job support sends no sequence, and
+                // then there is no UID to record (polling with a made-up one
+                // would fail).
+                if let printJobUID = printJobUID(
+                    inActionResponse: actionResponse.dataSet, explicitVR: explicitVR) {
                     allPrintJobUIDs.append(printJobUID)
                 }
             }

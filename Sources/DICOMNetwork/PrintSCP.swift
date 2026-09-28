@@ -57,23 +57,36 @@ actor PrintSCPJobStore {
     static let retentionLimit = 100
 
     private var jobs: [String: PrintSCPJobRecord] = [:]
+    /// Originator (2100,0070) per job: the calling AE title of the
+    /// association that issued the print (PS3.3 Table C.13-8).
+    private var originators: [String: String] = [:]
     /// Insertion order, oldest first, for eviction.
     private var order: [String] = []
 
     /// Inserts or updates a job record, evicting the oldest past the limit.
-    func set(_ job: PrintSCPJobRecord) {
+    ///
+    /// `originator` is recorded on first insertion and kept on updates.
+    func set(_ job: PrintSCPJobRecord, originator: String? = nil) {
         if jobs[job.printJobUID] == nil {
             order.append(job.printJobUID)
             while order.count > Self.retentionLimit {
-                jobs.removeValue(forKey: order.removeFirst())
+                let evicted = order.removeFirst()
+                jobs.removeValue(forKey: evicted)
+                originators.removeValue(forKey: evicted)
             }
         }
         jobs[job.printJobUID] = job
+        if let originator { originators[job.printJobUID] = originator }
     }
 
     /// The job for a Print Job SOP Instance UID, if still retained.
     func job(for uid: String) -> PrintSCPJobRecord? {
         jobs[uid]
+    }
+
+    /// The AE title that issued the print for a job, if recorded.
+    func originator(for uid: String) -> String? {
+        originators[uid]
     }
 }
 
@@ -356,7 +369,7 @@ actor PrintSCPAssociation {
     private var annotationBoxes: [String: PrintAnnotation] = [:]
 
     /// Server-wide: a Print Job SOP Instance outlives this association
-    /// (PS3.4 H.4.8), so status queries on later associations can find it.
+    /// (PS3.4 H.4.5), so status queries on later associations can find it.
     private let jobStore: PrintSCPJobStore
 
     /// UID allocator; a dedicated root keeps emulator UIDs recognizable.
@@ -628,6 +641,16 @@ actor PrintSCPAssociation {
             try await respond(
                 to: command, messageID: messageID, sopClass: sopClass, sopInstance: sopInstance,
                 failure: failure, contextID: contextID)
+        } catch let failure as PrintSCPRawFailure {
+            // A code with no public `PrintSCPStatus` case: the event carries
+            // the nearest case, the detail carries the exact code.
+            let detail = String(format: "0x%04X: ", failure.code) + failure.comment
+            await eventHandler(.requestFailed(
+                command: command, status: failure.reportedAs, detail: detail))
+            try await respond(
+                to: command, messageID: messageID, sopClass: sopClass, sopInstance: sopInstance,
+                status: failure.code, comment: failure.comment,
+                actionTypeID: nil, dataSet: nil, contextID: contextID)
         }
     }
 
@@ -635,7 +658,9 @@ actor PrintSCPAssociation {
 
     /// What a handled N-service produced.
     private struct Outcome {
-        var status: PrintSCPStatus = .success
+        /// The wire status: a ``PrintSCPStatus`` raw value or one of
+        /// ``PrintSCPWireStatus``.
+        var status: UInt16 = PrintSCPStatus.success.rawValue
         var sopClass: String?
         var sopInstance: String?
         var actionTypeID: UInt16?
@@ -676,8 +701,12 @@ actor PrintSCPAssociation {
         case .nGetRequest:
             return try await nGet(sopClass: sopClass, sopInstance: sopInstance, contextID: contextID)
         default:
-            throw PrintSCPFailure(
-                .sopClassNotSupported, comment: "Unsupported DIMSE command: \(command)")
+            // PS3.7 Annex C: "Unrecognized operation" (0211H) — the SCU sent
+            // a DIMSE operation this Service Class does not define.
+            throw PrintSCPRawFailure(
+                PrintSCPWireStatus.unrecognizedOperation,
+                comment: "Unrecognized DIMSE operation: \(command)",
+                reportedAs: .sopClassNotSupported)
         }
     }
 
@@ -754,7 +783,7 @@ actor PrintSCPAssociation {
             // A film box that names an Annotation Display Format gets a set of
             // Basic Annotation Boxes to fill: the SCU reads their UIDs out of
             // the Referenced Basic Annotation Box Sequence in this response and
-            // N-SETs the ones it needs (PS3.4 H.4.6).
+            // N-SETs the ones it needs (PS3.4 H.4.4).
             var annotationBoxUIDs: [String] = []
             if configuration.acceptAnnotationBox,
                box.annotationDisplayFormatID != nil,
@@ -904,6 +933,13 @@ actor PrintSCPAssociation {
 
     // MARK: N-ACTION (print)
 
+    /// Film Session (PS3.4 H.4.1.2.4) and Film Box (H.4.2.2.4) N-ACTION,
+    /// Action Type ID 1 "Print".
+    ///
+    /// The response identifies the instance the action was invoked on (PS3.7
+    /// N-ACTION-RSP: Affected SOP Class / Instance UID), and the Print Job it
+    /// created travels in the data set as Referenced Print Job Sequence
+    /// (2100,0500) — Tables H.4-3 and H.4-8.
     private func nAction(
         sopClass: String,
         sopInstance: String,
@@ -911,27 +947,35 @@ actor PrintSCPAssociation {
         contextID: UInt8
     ) async throws -> Outcome {
         guard actionTypeID == 1 else {
-            throw PrintSCPFailure(
-                .invalidAttributeValue, comment: "Unsupported Action Type ID \(actionTypeID)")
+            // PS3.7 §10.1.4.1.10: "No such Action" — the Action Type ID
+            // specified was not supported.
+            throw PrintSCPRawFailure(
+                PrintSCPWireStatus.noSuchAction,
+                comment: "Unsupported Action Type ID \(actionTypeID)",
+                reportedAs: .invalidAttributeValue)
         }
 
         let filmBoxUIDs: [String]
+        let emptyPageWarning: UInt16
         switch sopClass {
         case basicFilmBoxSOPClassUID:
             guard filmBoxes[sopInstance] != nil else {
                 throw PrintSCPFailure(.noSuchSOPInstance, comment: "Unknown Film Box \(sopInstance)")
             }
             filmBoxUIDs = [sopInstance]
+            emptyPageWarning = PrintSCPWireStatus.filmBoxEmptyPage
 
         case basicFilmSessionSOPClassUID:
             guard let sessionUID = filmSessionUID, sessionUID == sopInstance else {
                 throw PrintSCPFailure(.noSuchSOPInstance, comment: "Unknown Film Session \(sopInstance)")
             }
+            // PS3.4 Table H.4-4, C600: "Film Session SOP Instance hierarchy
+            // does not contain Film Box SOP Instances".
             guard !filmBoxOrder.isEmpty else {
-                throw PrintSCPFailure(
-                    .unableToProcess, comment: "Film Session has no Film Boxes to print")
+                throw PrintSCPFailure(.filmSessionPrinting)
             }
             filmBoxUIDs = filmBoxOrder
+            emptyPageWarning = PrintSCPWireStatus.filmSessionEmptyPage
 
         default:
             throw PrintSCPFailure(
@@ -940,26 +984,49 @@ actor PrintSCPAssociation {
 
         var outcome = Outcome()
         var lastJobUID: String?
+        var printedEmptyPage = false
 
         for filmBoxUID in filmBoxUIDs {
-            let job = try await print(filmBoxUID: filmBoxUID, contextID: contextID, into: &outcome)
-            lastJobUID = job
+            let printed = try await print(filmBoxUID: filmBoxUID, contextID: contextID, into: &outcome)
+            lastJobUID = printed.jobUID
+            printedEmptyPage = printedEmptyPage || printed.isEmptyPage
         }
 
-        outcome.sopClass = printJobSOPClassUID
-        outcome.sopInstance = lastJobUID
+        // Tables H.4-4 (B602) / H.4-9 (B603): a hierarchy without Image Box
+        // content is printed as an empty page and answered with a warning,
+        // not refused.
+        if printedEmptyPage {
+            outcome.status = emptyPageWarning
+        }
+        outcome.sopClass = sopClass
+        outcome.sopInstance = sopInstance
         outcome.actionTypeID = actionTypeID
+        if let lastJobUID {
+            outcome.dataSet = PrintSCPEncoder.printJobReference(
+                printJobUID: lastJobUID, explicitVR: usesExplicitVR(contextID))
+        }
         return outcome
+    }
+
+    /// What ``print(filmBoxUID:contextID:into:)`` produced.
+    private struct PrintedFilm {
+        /// The Print Job SOP Instance UID allocated for the film.
+        let jobUID: String
+        /// Whether no image box carried pixels, so the film is an empty page.
+        let isEmptyPage: Bool
     }
 
     /// Composes one film's ``ReceivedFilm`` and hands it to the delegate.
     ///
-    /// - Returns: the Print Job SOP Instance UID allocated for the film.
+    /// A film box whose image boxes were never filled is still printed — as
+    /// an empty page showing Empty Image Density — because PS3.4 Table H.4-9
+    /// makes that a warning (B603), not a failure. The caller turns
+    /// `isEmptyPage` into that status.
     private func print(
         filmBoxUID: String,
         contextID: UInt8,
         into outcome: inout Outcome
-    ) async throws -> String {
+    ) async throws -> PrintedFilm {
         guard let box = filmBoxes[filmBoxUID] else {
             throw PrintSCPFailure(.noSuchSOPInstance, comment: "Unknown Film Box \(filmBoxUID)")
         }
@@ -967,12 +1034,7 @@ actor PrintSCPAssociation {
         let boxUIDs = filmBoxImageBoxUIDs[filmBoxUID] ?? []
         let boxes = boxUIDs.compactMap { imageBoxes[$0] }
             .sorted { $0.content.imagePosition < $1.content.imagePosition }
-
-        guard boxes.contains(where: { $0.image != nil }) else {
-            throw PrintSCPFailure(
-                .unableToProcess,
-                comment: "Film Box \(filmBoxUID) has no image box content to print")
-        }
+        let isEmptyPage = !boxes.contains(where: { $0.image != nil })
 
         let jobUID = uidGenerator.generate().value
         var job = PrintSCPJobRecord(
@@ -982,7 +1044,7 @@ actor PrintSCPAssociation {
             executionStatus: "PRINTING",
             printPriority: session.printPriority,
             numberOfCopies: session.numberOfCopies)
-        await jobStore.set(job)
+        await jobStore.set(job, originator: callingAETitle)
 
         // Annotation boxes the SCU never filled stay empty; drop them rather
         // than handing the composer blank text boxes.
@@ -1009,7 +1071,10 @@ actor PrintSCPAssociation {
             try await delegate.didReceiveFilm(film)
         } catch {
             job.executionStatus = "FAILURE"
-            job.executionStatusInfo = "\(error)"
+            // Execution Status Info (2100,0030) is CS: a Defined Term from
+            // PS3.3 C.13.8, not the error's free text. The full error goes to
+            // the delegate and to the Error Comment / event below.
+            job.executionStatusInfo = Self.executionStatusInfo(for: error)
             await jobStore.set(job)
             await delegate.didFail(error: error, forPrintJob: jobUID)
             throw PrintSCPFailure(
@@ -1032,7 +1097,22 @@ actor PrintSCPAssociation {
                     printerName: configuration.printerName,
                     explicitVR: usesExplicitVR(contextID))))
         }
-        return jobUID
+        return PrintedFilm(jobUID: jobUID, isEmptyPage: isEmptyPage)
+    }
+
+    /// The Execution Status Info (2100,0030) term for a failed print.
+    ///
+    /// PS3.3 Table C.13-8 defines INVALID PAGE DES and INSUFFIC MEMORY for a
+    /// FAILURE status and allows implementation-specific terms; the value is
+    /// CS, so it must be uppercase letters, digits, space or underscore and at
+    /// most 16 characters. A memory error is reported with the standard term;
+    /// anything else gets the implementation term PRINT FAILURE.
+    static func executionStatusInfo(for error: Error) -> String {
+        let description = "\(error)".lowercased()
+        if description.contains("memory") || description.contains("out of resources") {
+            return "INSUFFIC MEMORY"
+        }
+        return "PRINT FAILURE"
     }
 
     // MARK: N-DELETE
@@ -1077,7 +1157,8 @@ actor PrintSCPAssociation {
         }
     }
 
-    /// Removes a film box and cascades to its image boxes (PS3.4 H.4.2.2.5).
+    /// Removes a film box and cascades to its image boxes (PS3.4 H.4.2.2.3,
+    /// Film Box N-DELETE).
     private func deleteFilmBox(_ filmBoxUID: String) {
         for imageBoxUID in filmBoxImageBoxUIDs[filmBoxUID] ?? [] {
             imageBoxes.removeValue(forKey: imageBoxUID)
@@ -1110,11 +1191,13 @@ actor PrintSCPAssociation {
             guard let job = await jobStore.job(for: sopInstance) else {
                 throw PrintSCPFailure(.noSuchSOPInstance, comment: "Unknown Print Job \(sopInstance)")
             }
+            let originator = await jobStore.originator(for: sopInstance)
             return Outcome(
                 sopClass: printJobSOPClassUID,
                 sopInstance: sopInstance,
                 dataSet: PrintSCPEncoder.printJobAttributes(
-                    job, printerName: configuration.printerName, explicitVR: explicitVR))
+                    job, printerName: configuration.printerName,
+                    originator: originator, explicitVR: explicitVR))
 
         case basicFilmSessionSOPClassUID:
             guard let session = filmSession, session.sopInstanceUID == sopInstance else {
@@ -1144,7 +1227,7 @@ actor PrintSCPAssociation {
     ) async throws {
         try await respond(
             to: command, messageID: messageID, sopClass: sopClass, sopInstance: sopInstance,
-            status: failure.status, comment: failure.effectiveComment,
+            status: failure.status.rawValue, comment: failure.effectiveComment,
             actionTypeID: nil, dataSet: nil, contextID: contextID)
     }
 
@@ -1153,7 +1236,7 @@ actor PrintSCPAssociation {
         messageID: UInt16,
         sopClass: String,
         sopInstance: String,
-        status: PrintSCPStatus,
+        status: UInt16,
         comment: String?,
         actionTypeID: UInt16?,
         dataSet: Data?,
@@ -1161,15 +1244,16 @@ actor PrintSCPAssociation {
     ) async throws {
         guard let responseCommand = Self.responseCommand(for: command) else { return }
 
+        let dimseStatus = DIMSEStatus.from(status)
         var commandSet = CommandSet()
         commandSet.setCommand(responseCommand)
         commandSet.setMessageIDBeingRespondedTo(messageID)
         if !sopClass.isEmpty { commandSet.setAffectedSOPClassUID(sopClass) }
         if !sopInstance.isEmpty { commandSet.setAffectedSOPInstanceUID(sopInstance) }
         if let actionTypeID { commandSet.setActionTypeID(actionTypeID) }
-        commandSet.setStatus(status.dimseStatus)
+        commandSet.setStatus(dimseStatus)
         commandSet.setHasDataSet(dataSet != nil)
-        if !status.isSuccessOrWarning, let comment, !comment.isEmpty {
+        if !dimseStatus.isSuccessOrWarning, let comment, !comment.isEmpty {
             commandSet.setErrorComment(Self.errorComment(from: comment))
         }
 

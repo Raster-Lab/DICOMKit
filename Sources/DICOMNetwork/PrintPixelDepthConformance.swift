@@ -5,12 +5,15 @@
 // what to do about a sender that asks for something else.
 //
 // Print Management does not inherit the flexible depth of ordinary image
-// storage. The Basic Grayscale Image Box (PS3.3 C.13.4) fixes Bits Stored at
-// *8 or 12* — not 16 — with High Bit at 7 or 11 to match. Bits Allocated may be
-// 8 or 16, which is the detail that misleads: 16 bits *allocated* is legal and
-// ordinary (12-in-16 is how deep grayscale film is sent), while 16 bits
-// *stored* is not a value the table enumerates. The Basic Color Image Box
-// (PS3.3 C.13.5) is stricter still and permits only 8/8/7.
+// storage. PS3.3 Table C.13-5 (Image Box Pixel Presentation Module, C.13.5)
+// enumerates both sequences. The Basic Grayscale Image Sequence fixes Bits
+// Stored at *8 or 12* — not 16 — with High Bit at 7 or 11 to match. Bits
+// Allocated may be 8 or 16, which is the detail that misleads: 16 bits
+// *allocated* is legal and ordinary (12-in-16 is how deep grayscale film is
+// sent), while 16 bits *stored* is not a value the table enumerates. The Basic
+// Color Image Sequence in the same table is stricter still and permits only
+// 8/8/7. (Table C.13-3 is the Basic Film Box Presentation Module and says
+// nothing about pixel depth.)
 //
 // These are Enumerated Values, so PS3.5 3.6.1 makes a value outside the list
 // non-conformant rather than merely unusual, and an SCP would be within its
@@ -34,11 +37,13 @@ import Foundation
 /// carry.
 public enum PrintPixelDepthConformance: Sendable {
 
-    /// Bits Stored values the Basic Grayscale Image Box enumerates (C.13.4).
+    /// Bits Stored values the Basic Grayscale Image Sequence enumerates
+    /// (PS3.3 Table C.13-5).
     public static let grayscaleBitsStored: [UInt16] = [8, 12]
 
-    /// The single Bits Stored value the Basic Color Image Box enumerates
-    /// (C.13.5), which also fixes Bits Allocated at 8 and High Bit at 7.
+    /// The single Bits Stored value the Basic Color Image Sequence enumerates
+    /// (PS3.3 Table C.13-5), which also fixes Bits Allocated at 8 and High
+    /// Bit at 7.
     public static let colorBitsStored: UInt16 = 8
 
     /// The outcome of checking one image box's pixel depth.
@@ -102,7 +107,8 @@ public enum PrintPixelDepthConformance: Sendable {
 
         let clamped = clampedBitsStored(effective, isColor: isColor)
         let boxName = isColor ? "Basic Color Image Box" : "Basic Grayscale Image Box"
-        let table = isColor ? "PS3.3 Table C.13-5" : "PS3.3 Table C.13-3"
+        // Both sequences are enumerated in the one table (C.13.5).
+        let table = "PS3.3 Table C.13-5"
         let legalText = allowed.map(String.init).joined(separator: " or ")
 
         notes.append(
