@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Audited — Presentation State (GSPS/CSPS/PCSPS) against DICOM 2026a (2026-09-25)
+
+Read-only audit report: `PRESENTATION_STATE_COMPLIANCE_AUDIT.md`. Covers
+`Sources/DICOMKit/PresentationState/`, `Sources/DICOMPrintKit/PresentationState/` and the
+DICOMStudio viewer paths that consume them, against PS3.3 A.33.1-A.33.3, C.7.6.11, C.7.9,
+C.10.4-C.10.7, C.11.1, C.11.6, C.11.8-C.11.15, Table 10-12; PS3.4 N.2; PS3.5 §7.4.4; PS3.6
+(0070,0067)/(0070,0401). No source code was changed. 19 non-conformances found (NC-1 to NC-19),
+the highest-impact being: the Modality LUT is never written although the window is in rescaled
+units (NC-1); GSPS is used for colour images with no CSPS writer (NC-3); the Displayed Area
+Selection Sequence is omitted for "fit" views, which fails `dcmpschk` (NC-4); the ICC profile
+class is Display (`mntr`) instead of Input (`scnr`) (NC-5); display-shutter semantics are
+inverted and shutter geometry is read in the wrong order in `PresentationStateApplicator`
+(NC-6, NC-7). Estimated compliance: GSPS ≈ 55%, CSPS ≈ 32% (read-side only), PCSPS ≈ 62%. Fixes
+are not yet scheduled; findings are recorded for when this module's audit turn comes up.
+
 ### Fixed — DICOMCore `DataElement.stringValues` keeps empty values (D25, 2026-09-28)
 
 - `stringValues` split on backslash with `split(separator:)`, which drops empty subsequences, so
