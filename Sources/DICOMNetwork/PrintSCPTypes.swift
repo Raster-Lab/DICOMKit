@@ -60,9 +60,16 @@ public enum PrintSCPStatus: UInt16, Sendable, Hashable, CaseIterable {
     case sopClassNotSupported = 0x0122
     /// Unable to process (0xC000).
     case unableToProcess = 0xC000
-    /// Film session is already printing; the SCU should retry (0xC600).
+    /// Film Session N-ACTION failure: "Film Session SOP Instance hierarchy
+    /// does not contain Film Box SOP Instances" (0xC600, PS3.4 Table H.4-4).
+    ///
+    /// The case name predates the verified wording and is kept for source
+    /// compatibility; the code has never meant "film session is printing".
     case filmSessionPrinting = 0xC600
-    /// Unable to create Print Job SOP Instance; print queue full (0xC601).
+    /// Film Session N-ACTION failure: "Unable to create Print Job SOP
+    /// Instance; print queue is full" (0xC601, PS3.4 Table H.4-4). The Film
+    /// Box N-ACTION equivalent is 0xC602 (Table H.4-9), see
+    /// ``PrintSCPWireStatus/filmBoxPrintQueueFull``.
     case printQueueFull = 0xC601
     /// Image size is larger than the image box size (0xC603).
     case imageLargerThanImageBox = 0xC603
@@ -98,8 +105,9 @@ public enum PrintSCPStatus: UInt16, Sendable, Hashable, CaseIterable {
         case .missingAttributeValue: return "Missing attribute value"
         case .sopClassNotSupported: return "SOP Class not supported"
         case .unableToProcess: return "Unable to process"
-        case .filmSessionPrinting: return "Film session is printing"
-        case .printQueueFull: return "Print queue full"
+        case .filmSessionPrinting:
+            return "Film Session SOP Instance hierarchy does not contain Film Box SOP Instances"
+        case .printQueueFull: return "Unable to create Print Job SOP Instance; print queue is full"
         case .imageLargerThanImageBox: return "Image larger than image box"
         case .insufficientMemory: return "Insufficient printer memory"
         case .combinedImageLargerThanImageBox: return "Combined image larger than image box"
@@ -120,6 +128,55 @@ public struct PrintSCPFailure: Error, Sendable, Equatable {
 
     /// The Error Comment (0000,0902) to return, falling back to the code's own text.
     public var effectiveComment: String { comment ?? status.explanation }
+}
+
+/// Print status codes the SCP puts on the wire that have no ``PrintSCPStatus``
+/// case.
+///
+/// ``PrintSCPStatus`` is public API and adding cases would be a breaking
+/// change for exhaustive switches, so the codes DICOM 2026a verification
+/// added are expressed as raw values and travel through the same
+/// `DIMSEStatus.from(_:)` path. References: PS3.4 Table H.4-4 (Film Session
+/// N-ACTION), Table H.4-9 (Film Box N-ACTION), Table H.4.2.2.1.2-1 (Film Box
+/// N-CREATE); PS3.7 §10.1.4.1.10 and Annex C for the DIMSE-N codes.
+enum PrintSCPWireStatus {
+    /// Warning: Film Session SOP Instance hierarchy does not contain Image
+    /// Box SOP Instances (empty page) — Table H.4-4.
+    static let filmSessionEmptyPage: UInt16 = 0xB602
+    /// Warning: Film Box SOP Instance hierarchy does not contain Image Box
+    /// SOP Instances (empty page) — Table H.4-9.
+    static let filmBoxEmptyPage: UInt16 = 0xB603
+    /// Warning: image or combined print image decimated to fit — Tables
+    /// H.4-4 and H.4-9.
+    static let imageDecimated: UInt16 = 0xB60A
+    /// Failure: Film Box N-ACTION could not create the Print Job SOP
+    /// Instance; print queue is full — Table H.4-9.
+    static let filmBoxPrintQueueFull: UInt16 = 0xC602
+    /// Failure: an existing Film Box has not been printed and N-ACTION at
+    /// the Film Session level is not supported — Table H.4.2.2.1.2-1.
+    static let unprintedFilmBoxExists: UInt16 = 0xC616
+    /// Failure: "No such Action" — the Action Type ID is not supported
+    /// (PS3.7 §10.1.4.1.10).
+    static let noSuchAction: UInt16 = 0x0123
+    /// Failure: "Unrecognized operation" (PS3.7 Annex C).
+    static let unrecognizedOperation: UInt16 = 0x0211
+}
+
+/// A failure whose status code is one of ``PrintSCPWireStatus``.
+///
+/// Reported to ``PrintServerEvent/requestFailed(command:status:detail:)``
+/// through `reportedAs`, the nearest public case, with the exact hex code
+/// prepended to the detail so nothing is lost.
+struct PrintSCPRawFailure: Error {
+    let code: UInt16
+    let comment: String
+    let reportedAs: PrintSCPStatus
+
+    init(_ code: UInt16, comment: String, reportedAs: PrintSCPStatus = .processingFailure) {
+        self.code = code
+        self.comment = comment
+        self.reportedAs = reportedAs
+    }
 }
 
 // MARK: - Configuration

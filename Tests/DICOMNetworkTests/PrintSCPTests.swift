@@ -834,7 +834,7 @@ private struct FailingPrintHandler: PrintSCPDelegate {
 /// A minimal raw-DIMSE Print SCU used to drive the SCP into states the shipped
 /// ``DICOMPrintService`` never produces (unknown UIDs, duplicate sessions,
 /// printing an empty film box). One association, one presentation context.
-private actor RawPrintSCU {
+actor RawPrintSCU {
     private let association: Association
     private var negotiated: NegotiatedAssociation!
     private var messageID: UInt16 = 1
@@ -1044,20 +1044,28 @@ final class PrintSCPStatusMatrixTests: XCTestCase {
         XCTAssertEqual(status(response), PrintSCPStatus.noSuchSOPInstance.rawValue)
     }
 
-    func testPrintingAFilmBoxWithNoImagesIsRejected() async throws {
+    /// PS3.4 Table H.4-9: a Film Box whose hierarchy holds no Image Box
+    /// content is printed as an empty page and answered with warning B603,
+    /// not refused.
+    func testPrintingAFilmBoxWithNoImagesPrintsAnEmptyPage() async throws {
         _ = try await createSession()
         let (filmBoxUID, _) = try await createFilmBox()
         let response = try await scu.nAction(
             sopClass: basicFilmBoxSOPClassUID, sopInstance: filmBoxUID)
-        XCTAssertEqual(status(response), PrintSCPStatus.unableToProcess.rawValue)
+        XCTAssertEqual(status(response), 0xB603)
+        let films = await handler.films
+        XCTAssertEqual(films.count, 1)
+        XCTAssertEqual(films.first?.filledImageBoxes.count, 0)
     }
 
+    /// PS3.7 §10.1.4.1.10: an Action Type ID the SOP Class does not define
+    /// is "No such Action" (0123H).
     func testUnsupportedActionTypeIsRejected() async throws {
         _ = try await createSession()
         let (filmBoxUID, _) = try await createFilmBox()
         let response = try await scu.nAction(
             sopClass: basicFilmBoxSOPClassUID, sopInstance: filmBoxUID, actionTypeID: 7)
-        XCTAssertEqual(status(response), PrintSCPStatus.invalidAttributeValue.rawValue)
+        XCTAssertEqual(status(response), 0x0123)
     }
 
     func testDeletingAFilmBoxTwiceReportsNoSuchSOPInstance() async throws {
@@ -1108,14 +1116,26 @@ final class PrintSCPStatusMatrixTests: XCTestCase {
         let printResponse = try await scu.nAction(
             sopClass: basicFilmBoxSOPClassUID, sopInstance: filmBoxUID)
         XCTAssertEqual(status(printResponse), PrintSCPStatus.success.rawValue)
-        XCTAssertEqual(printResponse.commandSet.affectedSOPClassUID, printJobSOPClassUID)
-        let jobUID = try XCTUnwrap(printResponse.commandSet.affectedSOPInstanceUID)
+        // PS3.7 N-ACTION-RSP: Affected SOP Class / Instance identify the Film
+        // Box the action was invoked on; the job is in the data set (PS3.4
+        // Table H.4-8, Referenced Print Job Sequence).
+        XCTAssertEqual(printResponse.commandSet.affectedSOPClassUID, basicFilmBoxSOPClassUID)
+        XCTAssertEqual(printResponse.commandSet.affectedSOPInstanceUID, filmBoxUID)
+        let reference = try PrintDatasetReader(explicitVR: true)
+            .parse(try XCTUnwrap(printResponse.dataSet))
+            .firstItem(of: .referencedPrintJobSequence)
+        XCTAssertEqual(reference?.string(for: .referencedSOPClassUID), printJobSOPClassUID)
+        let jobUID = try XCTUnwrap(reference?.string(for: .referencedSOPInstanceUID))
 
         let jobResponse = try await scu.nGet(sopClass: printJobSOPClassUID, sopInstance: jobUID)
         XCTAssertEqual(status(jobResponse), PrintSCPStatus.success.rawValue)
         let attributes = try PrintDatasetReader(explicitVR: true)
             .parse(try XCTUnwrap(jobResponse.dataSet))
         XCTAssertEqual(attributes.string(for: .executionStatus), "DONE")
+        // PS3.3 Table C.13-8: Originator is the AE title that issued the
+        // print; Number of Copies is not a Print Job attribute.
+        XCTAssertEqual(attributes.string(for: .originatingPrintManagement), "RAW_SCU")
+        XCTAssertFalse(attributes.contains(.numberOfCopies))
 
         let unknownJob = try await scu.nGet(
             sopClass: printJobSOPClassUID, sopInstance: "1.2.826.0.1.99.no.such.job")

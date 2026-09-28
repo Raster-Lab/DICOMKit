@@ -2460,6 +2460,29 @@ public enum DICOMPrintService {
         }
     }
 
+    /// The Print Job SOP Instance UID named by an N-ACTION (Print) response.
+    ///
+    /// PS3.4 Tables H.4-3 (Film Session) and H.4-8 (Film Box): the response
+    /// data set carries Referenced Print Job Sequence (2100,0500) with one
+    /// item of Referenced SOP Class UID (0008,1150) = Print Job SOP Class and
+    /// Referenced SOP Instance UID (0008,1155) = the job. The sequence is
+    /// "required if Print Job SOP is supported", so `nil` means the SCP
+    /// created no job. The command set's Affected SOP Instance UID is *not*
+    /// consulted: it identifies the Film Session or Film Box the action was
+    /// invoked on (PS3.7 §10.1.4).
+    ///
+    /// `internal` (not private) for unit-test access.
+    static func printJobUID(inActionResponse dataSet: Data?, explicitVR: Bool) -> String? {
+        guard let dataSet, !dataSet.isEmpty,
+              let attributes = try? PrintDatasetReader(explicitVR: explicitVR).parse(dataSet),
+              let item = attributes.firstItem(of: .referencedPrintJobSequence),
+              let uid = item.string(for: .referencedSOPInstanceUID)?
+                  .trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")),
+              !uid.isEmpty
+        else { return nil }
+        return uid
+    }
+
     /// Builds a human-readable detail string from a failure response's
     /// Error Comment (0000,0902) and Error ID (0000,0903), when the SCP
     /// supplied them. Returns nil when neither is present.
@@ -3295,15 +3318,18 @@ public enum DICOMPrintService {
                         throw DICOMNetworkError.printOperationFailed(response.status, detail: errorDetail(from: response.commandSet))
                     }
                     
-                    // Extract Print Job SOP Instance UID from the response
-                    let printJobUID = response.affectedSOPInstanceUID
-                    
-                    // Validate that a Print Job UID was returned
-                    guard !printJobUID.isEmpty else {
+                    // The Print Job SOP Instance UID travels in the response
+                    // data set as Referenced Print Job Sequence (2100,0500),
+                    // PS3.4 Table H.4-8. Affected SOP Instance UID names the
+                    // Film Box the action was invoked on (PS3.7 N-ACTION-RSP)
+                    // and is never a job UID.
+                    guard let printJobUID = printJobUID(
+                        inActionResponse: message.dataSet,
+                        explicitVR: contexts.usesExplicitVR(contextID)) else {
                         try await association.abort()
                         throw DICOMNetworkError.unexpectedResponse
                     }
-                    
+
                     try await association.release()
                     return printJobUID
                 }
@@ -4237,22 +4263,16 @@ public enum DICOMPrintService {
                     throw DICOMNetworkError.printOperationFailed(actionRsp.status, detail: errorDetail(from: actionRsp.commandSet))
                 }
                 
-                // Extract Print Job UID from response data if available
-                var printJobUID = ""
-                if let actionDataSet = actionResponse.dataSet {
-                    if let uid = extractStringValue(from: actionDataSet, group: 0x0008, element: 0x1155) {
-                        printJobUID = uid
-                    }
-                }
-                if printJobUID.isEmpty {
-                    printJobUID = actionRsp.affectedSOPInstanceUID
-                }
-                // The Print Job SOP Instance UID is optional in the N-ACTION
-                // response — some SCPs omit it. Don't record an empty UID
-                // (job-status polling with it would fail); consistent with the
-                // discrete printFilmBox, which rejects an empty UID outright
-                // (enhancement plan P2-4).
-                if !printJobUID.isEmpty {
+                // The Print Job SOP Instance UID travels only in the response
+                // data set, as Referenced Print Job Sequence (2100,0500) —
+                // PS3.4 Table H.4-8, "-/MC, required if Print Job SOP is
+                // supported". Affected SOP Instance UID is the Film Box the
+                // action was invoked on (PS3.7 N-ACTION-RSP), never the job.
+                // An SCP without Print Job support sends no sequence, and
+                // then there is no UID to record (polling with a made-up one
+                // would fail).
+                if let printJobUID = printJobUID(
+                    inActionResponse: actionResponse.dataSet, explicitVR: explicitVR) {
                     allPrintJobUIDs.append(printJobUID)
                 }
             }

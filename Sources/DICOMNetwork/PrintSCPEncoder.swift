@@ -68,6 +68,11 @@ public struct PrintSCPJobRecord: Sendable, Equatable {
     }
 }
 
+extension Tag {
+    /// Referenced Print Job Sequence (2100,0500) — PS3.4 Tables H.4-3 / H.4-8.
+    static let referencedPrintJobSequence = Tag(group: 0x2100, element: 0x0500)
+}
+
 /// Serializes the data sets a Print SCP returns.
 public enum PrintSCPEncoder {
 
@@ -220,6 +225,21 @@ public enum PrintSCPEncoder {
                 tag: .originatingPrintManagement, vr: .AE, value: originator))
         }
         return serialize(elements, explicitVR: explicitVR)
+    }
+
+    /// The data set of a successful Film Session / Film Box N-ACTION (Print)
+    /// response: Referenced Print Job Sequence (2100,0500) with one item
+    /// naming the Print Job SOP Instance the SCP created.
+    ///
+    /// Reference: PS3.4 Tables H.4-3 and H.4-8 — "-/MC, required if Print
+    /// Job SOP is supported".
+    static func printJobReference(printJobUID: String, explicitVR: Bool) -> Data {
+        serialize([
+            referenceSequence(
+                tag: .referencedPrintJobSequence,
+                sopClassUID: printJobSOPClassUID,
+                sopInstanceUIDs: [printJobUID])
+        ], explicitVR: explicitVR)
     }
 
     /// The data set accompanying a Printer SOP Class N-EVENT-REPORT.
