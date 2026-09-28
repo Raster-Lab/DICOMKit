@@ -308,6 +308,39 @@ final class QueryServiceTests: XCTestCase {
         let description = error.description
         XCTAssertTrue(description.contains("Query failed"))
     }
+
+    // MARK: - D1: 64-bit VRs on the wire (PS3.5 §7.1.2, Table 7.1-1)
+
+    /// OV, SV and UV use the 4-byte length form in Explicit VR. A private copy of the
+    /// length rule in DICOMNetwork omitted them, so a UV element was written with the
+    /// 2-byte form and corrupted on the wire (DICOMCore report, D1).
+    func test64BitVRsUseFourByteLengthInExplicitVR() {
+        for vr in [VR.UV, VR.SV, VR.OV] {
+            XCTAssertTrue(vr.uses32BitLength, "\(vr) uses the 32-bit length field (PS3.5 Table 7.1-1)")
+            let keys = QueryKeys(level: .study).matching(Tag(group: 0x0072, element: 0x0082), value: "12", vr: vr)
+            let data = DICOMQueryService.buildQueryIdentifier(
+                level: .study, queryKeys: keys, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+            // Locate the element: tag (0072,0082) little endian, then the two VR bytes.
+            let tagBytes: [UInt8] = [0x72, 0x00, 0x82, 0x00]
+            let vrBytes = Array(vr.rawValue.utf8)
+            guard let start = data.withUnsafeBytes({ raw -> Int? in
+                let bytes = Array(raw)
+                return (0..<(bytes.count - 12)).first { i in
+                    Array(bytes[i..<i+4]) == tagBytes && Array(bytes[i+4..<i+6]) == vrBytes
+                }
+            }) else { return XCTFail("\(vr) element not found in the identifier") }
+            let bytes = Array(data)
+            XCTAssertEqual(Array(bytes[start+6..<start+8]), [0x00, 0x00], "\(vr): two reserved bytes follow the VR")
+            let length = UInt32(bytes[start+8]) | UInt32(bytes[start+9]) << 8 | UInt32(bytes[start+10]) << 16 | UInt32(bytes[start+11]) << 24
+            XCTAssertEqual(length, 2, "\(vr): 4-byte length field holds the (even) value length")
+        }
+        // The parser reads the 4-byte form back (round trip through the same rule).
+        let keys = QueryKeys(level: .study).matching(Tag(group: 0x0072, element: 0x0082), value: "12", vr: .UV)
+        let data = DICOMQueryService.buildQueryIdentifier(
+            level: .study, queryKeys: keys, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        let attrs = DICOMQueryService.parseQueryResponse(data: data, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        XCTAssertEqual(attrs[Tag(group: 0x0072, element: 0x0082)], Data("12".utf8))
+    }
 }
 
 // MARK: - C-FIND Identifier Character Set Tests (PS3.4 C.4.1.1.3.1, PS3.5 6.1.2)
@@ -347,7 +380,8 @@ final class QueryIdentifierCharacterSetTests: XCTestCase {
             level: .study, queryKeys: keys, transferSyntax: implicitVRLittleEndianTransferSyntaxUID)
         let attrs = DICOMQueryService.parseQueryResponse(data: data, transferSyntax: implicitVRLittleEndianTransferSyntaxUID)
         XCTAssertEqual(attrs[.specificCharacterSet].flatMap { String(data: $0, encoding: .ascii) }, "ISO_IR 192")
-        XCTAssertEqual(attrs[.patientName], Data("山田^太郎".utf8))
+        // 13 UTF-8 bytes, space-padded to 14 (PS3.5 §6.2)
+        XCTAssertEqual(attrs[.patientName], Data("山田^太郎".utf8) + Data([0x20]))
     }
 
     func testConfigurationOverrideForcesCharacterSet() {
@@ -357,7 +391,8 @@ final class QueryIdentifierCharacterSetTests: XCTestCase {
             specificCharacterSet: "ISO_IR 192")
         let attrs = parse(data)
         XCTAssertEqual(attrs[.specificCharacterSet].flatMap { String(data: $0, encoding: .ascii) }, "ISO_IR 192")
-        XCTAssertEqual(attrs[.patientName], Data("MÜLLER^HANS".utf8) + Data([0x20]))
+        // "MÜLLER^HANS" is 12 UTF-8 bytes (Ü is 2), already even: no pad (PS3.5 §6.2)
+        XCTAssertEqual(attrs[.patientName], Data("MÜLLER^HANS".utf8))
     }
 
     func testCallerSuppliedSpecificCharacterSetKeyWinsOverOverride() {

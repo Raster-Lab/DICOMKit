@@ -1157,7 +1157,7 @@ public enum DICOMModalityWorklistService {
             }
             
             // Check if VR uses 4-byte length
-            if vr.uses4ByteLength {
+            if vr.uses32BitLength {
                 // Reserved (2 bytes)
                 data.append(Data([0x00, 0x00]))
                 // Value Length (4 bytes)
@@ -1251,7 +1251,7 @@ public enum DICOMModalityWorklistService {
                                              encoding: .ascii) ?? "UN") ?? .UN
                 isSequence = (vr == .SQ)
                 offset += 2
-                if vr.uses4ByteLength {
+                if vr.uses32BitLength {
                     guard offset + 6 <= data.count else { return }
                     offset += 2  // skip reserved 2 bytes
                     valueLength = UInt32(data[offset])     | (UInt32(data[offset + 1]) << 8)

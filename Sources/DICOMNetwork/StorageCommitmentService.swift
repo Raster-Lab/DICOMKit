@@ -1155,7 +1155,7 @@ enum StorageCommitmentDataSetCodec {
         var data = encodeTag(tag)
         if explicit {
             data.append(vr.rawValue.data(using: .ascii) ?? Data([0x55, 0x4E]))
-            if vr.uses4ByteLength {
+            if vr.uses32BitLength {
                 data.append(contentsOf: [0x00, 0x00]) // reserved
                 data.append(le32(UInt32(value.count)))
             } else {

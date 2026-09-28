@@ -1453,7 +1453,7 @@ struct DICOMFileParser {
             let valueLength: UInt32
             let vr = VR(rawValue: vrString) ?? .UN
             
-            if vr.uses4ByteLength {
+            if vr.uses32BitLength {
                 // Skip reserved 2 bytes, read 4-byte length
                 guard offset + 6 <= data.count else { break }
                 offset += 2

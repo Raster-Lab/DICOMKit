@@ -879,7 +879,7 @@ public enum DICOMQueryService {
             }
             
             // Check if VR uses 4-byte length
-            if vr.uses4ByteLength {
+            if vr.uses32BitLength {
                 // Reserved (2 bytes)
                 data.append(Data([0x00, 0x00]))
                 // Value Length (4 bytes)
@@ -938,7 +938,7 @@ public enum DICOMQueryService {
                 offset += 2
                 
                 // Read length based on VR
-                if vr.uses4ByteLength {
+                if vr.uses32BitLength {
                     // Skip reserved 2 bytes, read 4-byte length
                     guard offset + 6 <= data.count else { break }
                     offset += 2

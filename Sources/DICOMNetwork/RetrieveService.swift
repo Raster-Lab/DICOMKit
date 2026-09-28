@@ -1374,7 +1374,7 @@ public enum DICOMRetrieveService {
             }
             
             // Check if VR uses 4-byte length
-            if vr.uses4ByteLength {
+            if vr.uses32BitLength {
                 // Reserved (2 bytes)
                 data.append(Data([0x00, 0x00]))
                 // Value Length (4 bytes)

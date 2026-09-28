@@ -1403,7 +1403,7 @@ public enum DICOMMPPSService {
         data.append(Data(bytes: &element, count: 2))
         if explicit {
             data.append(vr.rawValue.data(using: .ascii) ?? Data([0x55, 0x4E]))
-            if vr.uses4ByteLength {
+            if vr.uses32BitLength {
                 data.append(Data([0x00, 0x00]))
                 data.append(le32(UInt32(valueData.count)))
             } else {
@@ -1540,7 +1540,7 @@ public enum DICOMMPPSService {
             }
             
             // Check if VR uses 4-byte length
-            if vr.uses4ByteLength {
+            if vr.uses32BitLength {
                 // Reserved (2 bytes)
                 data.append(Data([0x00, 0x00]))
                 // Value Length (4 bytes)
