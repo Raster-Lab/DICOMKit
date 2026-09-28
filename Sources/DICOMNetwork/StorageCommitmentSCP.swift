@@ -62,7 +62,7 @@ public struct StorageCommitmentSCPConfiguration: Sendable, Hashable {
     /// - Parameters:
     ///   - aeTitle: The local AE title
     ///   - port: The port to listen on (default: 11112)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - maxConcurrentAssociations: Maximum concurrent associations (default: 10)
@@ -623,6 +623,18 @@ actor CommitmentSCPAssociation {
         callingAETitle = associateRequest.callingAETitle.value
         calledAETitle = associateRequest.calledAETitle.value
         
+        // PS3.8 Table 9-11: only bit 0 of Protocol-version is tested; reject
+        // with source 2 (ACSE), reason 2 (protocol-version-not-supported)
+        guard associateRequest.isProtocolVersionSupported else {
+            await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Protocol version not supported"))
+            try await sendAssociateReject(
+                result: .rejectedPermanent,
+                source: .serviceProviderACSE,
+                reason: 2 // Protocol version not supported
+            )
+            throw DICOMNetworkError.associationRejected(result: .rejectedPermanent, source: .serviceProviderACSE, reason: 2)
+        }
+        
         // Check calling AE is allowed
         guard configuration.isCallingAEAllowed(callingAETitle) else {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Calling AE not allowed"))
@@ -676,9 +688,12 @@ actor CommitmentSCPAssociation {
         // Check if at least one context was accepted
         guard !acceptedContextList.isEmpty else {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "No presentation contexts accepted"))
+            // PS3.8 Table 9-21: "no presentation context acceptable" is not a
+            // UL-provider condition, so reject as service-user, reason 1
+            // (no-reason-given).
             try await sendAssociateReject(
-                result: .rejectedTransient,
-                source: .serviceProviderACSE,
+                result: .rejectedPermanent,
+                source: .serviceUser,
                 reason: 1 // No reason given
             )
             throw DICOMNetworkError.noPresentationContextAccepted
@@ -689,8 +704,8 @@ actor CommitmentSCPAssociation {
             acceptedContexts[context.id] = context.transferSyntax
         }
         
-        // Set max PDU size from request
-        maxPDUSize = min(associateRequest.maxPDUSize, configuration.maxPDUSize)
+        // Set max PDU size from request (PS3.8 Annex D.1: 0 = unlimited)
+        maxPDUSize = negotiatedMaxPDUSize(local: configuration.maxPDUSize, remote: associateRequest.maxPDUSize)
         
         // Answer the proposed SCP/SCU Role Selections (PS3.7 D.3.3.4.2): for the
         // commitment class we can act as SCP (N-ACTION) and as SCU (sending the
@@ -822,8 +837,9 @@ actor CommitmentSCPAssociation {
         }
         
         // Validate it's a Storage Commitment request
+        // PS3.7 §10.1.4.1.10: No such SOP Class (0118H)
         guard request.requestedSOPClassUID == storageCommitmentPushModelSOPClassUID else {
-            try await fail(.refusedSOPClassNotSupported)
+            try await fail(.failedNoSuchSOPClass)
             return
         }
         
@@ -833,8 +849,10 @@ actor CommitmentSCPAssociation {
             return
         }
         
+        // PS3.7 §10.1.4.1.10: No such Action (0123H) - "the Action Type
+        // specified was not supported"
         guard request.actionTypeID == storageCommitmentRequestActionTypeID else {
-            try await fail(.failedUnableToProcess)
+            try await fail(DIMSEStatus.from(0x0123))
             return
         }
         
@@ -1202,7 +1220,10 @@ actor CommitmentSCPAssociation {
         // bytes 3-6). This used to be read little-endian, so a 259-byte A-ASSOCIATE-RQ
         // was taken for a 50 MB PDU and the read only returned when the peer gave up
         // (the two "ARTIM" failures of D13 in the DICOMCore report).
-        let pduLength = Int(try PDUDecoder.readHeader(from: headerData).length)
+        let (pduType, declaredLength) = try PDUDecoder.readHeader(from: headerData)
+        // PS3.8 Annex D.1: the negotiated limit applies to P-DATA-TF only
+        try checkPDULength(type: pduType, length: declaredLength, maxPDUSize: configuration.maxPDUSize)
+        let pduLength = Int(declaredLength)
         
         // Read the PDU body
         var fullData = headerData

@@ -349,7 +349,7 @@ public struct StorageCommitmentConfiguration: Sendable, Hashable {
     ///   - callingAETitle: The local AE title
     ///   - calledAETitle: The remote AE title
     ///   - timeout: Connection timeout in seconds (default: 60)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - userIdentity: User identity for authentication (optional)
@@ -424,7 +424,7 @@ public struct CommitmentNotificationListenerConfiguration: Sendable, Hashable {
     /// - Parameters:
     ///   - aeTitle: The local AE title
     ///   - port: The port to listen on (default: 11113)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - maxConcurrentAssociations: Maximum concurrent associations (default: 5)
@@ -1751,15 +1751,29 @@ actor CommitmentListenerAssociation {
         
         callingAETitle = associateRequest.callingAETitle.value
         calledAETitle = associateRequest.calledAETitle.value
-        maxPDUSize = min(associateRequest.maxPDUSize, configuration.maxPDUSize)
+        // PS3.8 Annex D.1: 0 from the peer means "no maximum length is specified"
+        maxPDUSize = negotiatedMaxPDUSize(local: configuration.maxPDUSize, remote: associateRequest.maxPDUSize)
+        
+        // PS3.8 Table 9-11: only bit 0 of Protocol-version is tested; reject
+        // with source 2 (ACSE), reason 2 (protocol-version-not-supported)
+        guard associateRequest.isProtocolVersionSupported else {
+            await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Protocol version not supported"))
+            let rejectPDU = AssociateRejectPDU(
+                result: .rejectedPermanent,
+                source: .serviceProviderACSE,
+                reason: 2 // Protocol version not supported
+            )
+            try await sendPDU(rejectPDU)
+            return
+        }
         
         // Check if calling AE is allowed
         if !configuration.isCallingAEAllowed(callingAETitle) {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "AE not allowed"))
             let rejectPDU = AssociateRejectPDU(
                 result: .rejectedPermanent,
-                source: .serviceProviderACSE,
-                reason: 3 // Calling AE Title not recognized
+                source: .serviceUser,
+                reason: 3 // PS3.8 Table 9-21: calling-AE-title-not-recognized
             )
             try await sendPDU(rejectPDU)
             return
@@ -1770,9 +1784,12 @@ actor CommitmentListenerAssociation {
         
         if acceptedContexts.isEmpty {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "No supported presentation contexts"))
+            // PS3.8 Table 9-21: "no presentation context acceptable" is not a
+            // UL-provider condition, so reject as service-user, reason 1
+            // (no-reason-given).
             let rejectPDU = AssociateRejectPDU(
                 result: .rejectedPermanent,
-                source: .serviceProviderPresentation,
+                source: .serviceUser,
                 reason: 1 // No reason given
             )
             try await sendPDU(rejectPDU)
@@ -1897,18 +1914,21 @@ actor CommitmentListenerAssociation {
     private func processNEventReportRequest(_ message: AssembledMessage) async throws {
         let commandSet = message.commandSet
         
-        guard let eventTypeID = commandSet.eventTypeID else {
-            throw DICOMNetworkError.decodingFailed("Missing Event Type ID in N-EVENT-REPORT")
-        }
-        
+        let eventTypeID = commandSet.eventTypeID
         let messageID = commandSet.messageID ?? 0
         let affectedSOPClassUID = commandSet.affectedSOPClassUID ?? storageCommitmentPushModelSOPClassUID
         let affectedSOPInstanceUID = commandSet.affectedSOPInstanceUID ?? storageCommitmentPushModelSOPInstanceUID
         
+        // PS3.4 J.3.3.1.3: the SCU shall always return the N-EVENT-REPORT
+        // response status. Success when the result parsed; otherwise
+        // Processing Failure (0110H, PS3.7 §10.1.1.1.8), including a missing
+        // Event Type ID or a missing/undecodable data set.
+        var status: DIMSEStatus = .failedUnableToProcess
+        
         // Parse the commitment result from the data set, in the transfer
         // syntax negotiated for the presentation context it arrived on
         let transferSyntaxUID = acceptedContexts[message.presentationContextID]
-        if let dataSet = message.dataSet {
+        if let eventTypeID, let dataSet = message.dataSet {
             do {
                 let result = try StorageCommitmentService.parseCommitmentResult(
                     eventTypeID: eventTypeID,
@@ -1919,34 +1939,23 @@ actor CommitmentListenerAssociation {
                 
                 // Deliver the result
                 await resultHandler(result)
-                
-                // Send success response
-                let response = NEventReportResponse(
-                    messageIDBeingRespondedTo: messageID,
-                    affectedSOPClassUID: affectedSOPClassUID,
-                    affectedSOPInstanceUID: affectedSOPInstanceUID,
-                    eventTypeID: eventTypeID,
-                    status: .success,
-                    hasDataSet: false,
-                    presentationContextID: message.presentationContextID
-                )
-                
-                try await sendNEventReportResponse(response)
+                status = .success
             } catch {
-                // Send error response
-                let response = NEventReportResponse(
-                    messageIDBeingRespondedTo: messageID,
-                    affectedSOPClassUID: affectedSOPClassUID,
-                    affectedSOPInstanceUID: affectedSOPInstanceUID,
-                    eventTypeID: eventTypeID,
-                    status: .failedUnableToProcess,
-                    hasDataSet: false,
-                    presentationContextID: message.presentationContextID
-                )
-                
-                try await sendNEventReportResponse(response)
+                status = .failedUnableToProcess
             }
         }
+                
+        let response = NEventReportResponse(
+            messageIDBeingRespondedTo: messageID,
+            affectedSOPClassUID: affectedSOPClassUID,
+            affectedSOPInstanceUID: affectedSOPInstanceUID,
+            eventTypeID: eventTypeID,
+            status: status,
+            hasDataSet: false,
+            presentationContextID: message.presentationContextID
+        )
+                
+        try await sendNEventReportResponse(response)
     }
     
     private func sendNEventReportResponse(_ response: NEventReportResponse) async throws {
@@ -1976,7 +1985,10 @@ actor CommitmentListenerAssociation {
         // bytes 3-6). This used to be read little-endian, so a 259-byte A-ASSOCIATE-RQ
         // was taken for a 50 MB PDU and the read only returned when the peer gave up
         // (the two "ARTIM" failures of D13 in the DICOMCore report).
-        let pduLength = Int(try PDUDecoder.readHeader(from: headerData).length)
+        let (pduType, declaredLength) = try PDUDecoder.readHeader(from: headerData)
+        // PS3.8 Annex D.1: the negotiated limit applies to P-DATA-TF only
+        try checkPDULength(type: pduType, length: declaredLength, maxPDUSize: configuration.maxPDUSize)
+        let pduLength = Int(declaredLength)
 
         var fullData = headerData
         if pduLength > 0 {

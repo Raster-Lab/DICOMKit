@@ -160,7 +160,7 @@ extension RecoverySuggestion: CustomStringConvertible {
 /// )
 /// ```
 ///
-/// Reference: PS3.8 Section 9.1.1 - ARTIM Timer
+/// Reference: PS3.8 Section 9.1.5 - ARTIM Timer
 public struct TimeoutConfiguration: Sendable, Hashable {
     /// Time allowed to establish TCP connection (in seconds)
     public let connect: TimeInterval
@@ -179,7 +179,7 @@ public struct TimeoutConfiguration: Sendable, Hashable {
     
     /// Time allowed for ARTIM timer - association establishment/release (in seconds)
     ///
-    /// Reference: PS3.8 Section 9.1.1 - ARTIM Timer
+    /// Reference: PS3.8 Section 9.1.5 - ARTIM Timer
     public let association: TimeInterval
     
     /// Creates a timeout configuration with specified values
@@ -366,7 +366,7 @@ public enum DICOMNetworkError: Error, Sendable {
     /// The ARTIM (Association Request/Release Timer) fires when waiting
     /// for an A-ASSOCIATE-AC/RJ or A-RELEASE-RP response takes too long.
     ///
-    /// Reference: PS3.8 Section 9.1.1 - ARTIM Timer
+    /// Reference: PS3.8 Section 9.1.5 - ARTIM Timer
     case artimTimerExpired
     
     /// Circuit breaker is open for this server

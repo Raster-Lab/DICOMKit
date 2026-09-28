@@ -110,7 +110,8 @@ public enum PDUDecoder {
             throw DICOMNetworkError.decodingFailed("A-ASSOCIATE-RQ too short")
         }
         
-        // Protocol Version (2 bytes)
+        // Protocol Version (2 bytes) - kept so the SCP can test bit 0 (PS3.8 Table 9-11)
+        let protocolVersion = readUInt16BigEndian(from: data, at: offset)
         offset += 2
         
         // Reserved (2 bytes)
@@ -179,6 +180,7 @@ public enum PDUDecoder {
         }
         
         return AssociateRequestPDU(
+            protocolVersion: protocolVersion,
             calledAETitle: calledAETitle,
             callingAETitle: callingAETitle,
             presentationContexts: presentationContexts,
@@ -481,6 +483,12 @@ public enum PDUDecoder {
             if subItemType == 0x40 { // Transfer Syntax
                 transferSyntax = String(data: subItemData, encoding: .ascii)
             }
+        }
+        
+        // PS3.8 Table 9-18: the Transfer Syntax sub-item is not significant
+        // (and "shall not be tested") when the Result/Reason is not acceptance.
+        if result != .acceptance || transferSyntax?.isEmpty == true {
+            transferSyntax = nil
         }
         
         return AcceptedPresentationContext(id: contextID, result: result, transferSyntax: transferSyntax)

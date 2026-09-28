@@ -8,8 +8,12 @@ import Foundation
 public struct AssociateRequestPDU: PDU, Sendable, Hashable {
     public let pduType: PDUType = .associateRequest
     
-    /// Protocol version (always 1)
-    public let protocolVersion: UInt16 = 1
+    /// Protocol version
+    ///
+    /// Always 1 when built locally. A decoded PDU carries the peer's value;
+    /// PS3.8 Table 9-11 bytes 7-8: "A receiver of this PDU implementing only
+    /// this version of the DICOM UL protocol shall only test that bit 0 is set."
+    public let protocolVersion: UInt16
     
     /// Called AE Title (the receiving application entity)
     public let calledAETitle: AETitle
@@ -75,6 +79,37 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         applicationContextName: String = dicomApplicationContextName,
         roleSelections: [SCPSCURoleSelection] = []
     ) {
+        self.init(
+            protocolVersion: 1,
+            calledAETitle: calledAETitle,
+            callingAETitle: callingAETitle,
+            presentationContexts: presentationContexts,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            userIdentity: userIdentity,
+            applicationContextName: applicationContextName,
+            roleSelections: roleSelections
+        )
+    }
+    
+    /// Creates an A-ASSOCIATE-RQ PDU carrying an explicit Protocol-version
+    ///
+    /// Used by the decoder to preserve the peer's value (and by tests to
+    /// build a request with bit 0 clear).
+    init(
+        protocolVersion: UInt16,
+        calledAETitle: AETitle,
+        callingAETitle: AETitle,
+        presentationContexts: [PresentationContext],
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String,
+        implementationVersionName: String? = nil,
+        userIdentity: UserIdentity? = nil,
+        applicationContextName: String = dicomApplicationContextName,
+        roleSelections: [SCPSCURoleSelection] = []
+    ) {
+        self.protocolVersion = protocolVersion
         self.calledAETitle = calledAETitle
         self.callingAETitle = callingAETitle
         self.presentationContexts = presentationContexts
@@ -86,10 +121,24 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         self.roleSelections = roleSelections
     }
     
+    /// Whether the Protocol-version is acceptable to this implementation
+    ///
+    /// PS3.8 Table 9-11: only bit 0 (version 1) is tested.
+    var isProtocolVersionSupported: Bool {
+        (protocolVersion & 0x0001) != 0
+    }
+    
     /// Encodes the PDU for network transmission
+    ///
+    /// - Throws: `DICOMNetworkError.encodingFailed` if the Implementation
+    ///   Class UID exceeds 64 bytes (PS3.5 UI) or the Implementation Version
+    ///   Name is not 1-16 characters (PS3.7 Table D.3-4)
     ///
     /// Reference: PS3.8 Section 9.3.2
     public func encode() throws -> Data {
+        try validateImplementationSubItems(
+            classUID: implementationClassUID, versionName: implementationVersionName)
+        
         var data = Data()
         
         // Build the PDU variable field first to calculate length
