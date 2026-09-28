@@ -213,6 +213,63 @@ struct UpperLayerStateNumberingTests {
     }
 }
 
+// MARK: - 6. Maximum Length (PS3.8 Annex D.1)
+
+@Suite("Maximum Length semantics")
+struct MaximumLengthTests {
+
+    @Test("A peer Maximum Length of 0 means unlimited: the local value is used")
+    func zeroFromPeerMeansUnlimited() throws {
+        #expect(negotiatedMaxPDUSize(local: 65536, remote: 0) == 65536)
+        #expect(negotiatedMaxPDUSize(local: 0, remote: 32768) == 32768)
+        #expect(negotiatedMaxPDUSize(local: 65536, remote: 16384) == 16384)
+        #expect(negotiatedMaxPDUSize(local: 0, remote: 0) == 0)
+
+        let accept = AssociateAcceptPDU(
+            calledAETitle: scpTitle, callingAETitle: scuTitle,
+            presentationContexts: [AcceptedPresentationContext(id: 1, result: .acceptance, transferSyntax: explicitVRLE)],
+            maxPDUSize: 0, implementationClassUID: "1.2.3")
+        let negotiated = NegotiatedAssociation(acceptPDU: accept, localMaxPDUSize: 65536)
+        #expect(negotiated.maxPDUSize == 65536)
+    }
+
+    @Test("The limit governs P-DATA-TF only, and a local limit of 0 disables it")
+    func lengthCheckAppliesToDataTransferOnly() {
+        #expect(throws: DICOMNetworkError.self) {
+            try checkPDULength(type: .dataTransfer, length: 16385, maxPDUSize: 16384)
+        }
+        #expect(throws: Never.self) { try checkPDULength(type: .dataTransfer, length: 16384, maxPDUSize: 16384) }
+        #expect(throws: Never.self) { try checkPDULength(type: .associateRequest, length: 1_000_000, maxPDUSize: 16384) }
+        #expect(throws: Never.self) { try checkPDULength(type: .associateAccept, length: 1_000_000, maxPDUSize: 16384) }
+        #expect(throws: Never.self) { try checkPDULength(type: .dataTransfer, length: 10_000_000, maxPDUSize: 0) }
+    }
+
+    @Test("A PDV carries maxPDUSize - 6 bytes of data (PS3.8 Table 9-22/9-23)")
+    func fragmentSizeIsMaxPDUSizeMinusSix() throws {
+        let fragmenter = MessageFragmenter(maxPDUSize: 100)
+        #expect(fragmenter.maxPDVDataSize == 94)
+
+        let dataSet = Data(repeating: 0xAB, count: 94 * 2 + 1)
+        let pdvs = fragmenter.fragmentDataSet(dataSet, presentationContextID: 1)
+        #expect(pdvs.count == 3)
+        #expect(pdvs[0].data.count == 94)
+        #expect(pdvs[1].data.count == 94)
+        #expect(pdvs[2].data.count == 1)
+
+        // The encoded P-DATA-TF declares exactly maxPDUSize in its length field
+        let pdu = try DataTransferPDU(pdv: pdvs[0]).encode()
+        let (_, declaredLength) = try PDUDecoder.readHeader(from: pdu)
+        #expect(declaredLength == 100)
+        #expect(pdu.count == 106)
+    }
+
+    @Test("Maximum Length 0 fragments to the implementation default")
+    func zeroMaxPDUSizeUsesDefault() {
+        #expect(MessageFragmenter(maxPDUSize: 0).maxPDVDataSize == defaultMaxPDUSize - 6)
+        #expect(MessageFragmenter(maxPDUSize: 6).maxPDVDataSize == defaultMaxPDUSize - 6)
+    }
+}
+
 // MARK: - 9. Protocol-version (PS3.8 Table 9-11)
 
 @Suite("Protocol-version decoding")

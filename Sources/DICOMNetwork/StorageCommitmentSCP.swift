@@ -62,7 +62,7 @@ public struct StorageCommitmentSCPConfiguration: Sendable, Hashable {
     /// - Parameters:
     ///   - aeTitle: The local AE title
     ///   - port: The port to listen on (default: 11112)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - maxConcurrentAssociations: Maximum concurrent associations (default: 10)
@@ -704,8 +704,8 @@ actor CommitmentSCPAssociation {
             acceptedContexts[context.id] = context.transferSyntax
         }
         
-        // Set max PDU size from request
-        maxPDUSize = min(associateRequest.maxPDUSize, configuration.maxPDUSize)
+        // Set max PDU size from request (PS3.8 Annex D.1: 0 = unlimited)
+        maxPDUSize = negotiatedMaxPDUSize(local: configuration.maxPDUSize, remote: associateRequest.maxPDUSize)
         
         // Answer the proposed SCP/SCU Role Selections (PS3.7 D.3.3.4.2): for the
         // commitment class we can act as SCP (N-ACTION) and as SCU (sending the
@@ -1217,7 +1217,10 @@ actor CommitmentSCPAssociation {
         // bytes 3-6). This used to be read little-endian, so a 259-byte A-ASSOCIATE-RQ
         // was taken for a 50 MB PDU and the read only returned when the peer gave up
         // (the two "ARTIM" failures of D13 in the DICOMCore report).
-        let pduLength = Int(try PDUDecoder.readHeader(from: headerData).length)
+        let (pduType, declaredLength) = try PDUDecoder.readHeader(from: headerData)
+        // PS3.8 Annex D.1: the negotiated limit applies to P-DATA-TF only
+        try checkPDULength(type: pduType, length: declaredLength, maxPDUSize: configuration.maxPDUSize)
+        let pduLength = Int(declaredLength)
         
         // Read the PDU body
         var fullData = headerData

@@ -101,7 +101,7 @@ public struct StorageSCPConfiguration: Sendable, Hashable {
     /// - Parameters:
     ///   - aeTitle: The local AE title
     ///   - port: The port to listen on (default: 11112)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - maxConcurrentAssociations: Maximum concurrent associations (default: 10)
@@ -842,8 +842,8 @@ actor SCPAssociation {
         // Negotiate presentation contexts
         let acceptedPresentationContexts = negotiatePresentationContexts(associateRequest.presentationContexts)
         
-        // Store negotiated maximum PDU size
-        maxPDUSize = min(configuration.maxPDUSize, associateRequest.maxPDUSize)
+        // Store negotiated maximum PDU size (PS3.8 Annex D.1: 0 = unlimited)
+        maxPDUSize = negotiatedMaxPDUSize(local: configuration.maxPDUSize, remote: associateRequest.maxPDUSize)
         
         // Send A-ASSOCIATE-AC
         let acceptPDU = AssociateAcceptPDU(
@@ -1080,12 +1080,10 @@ actor SCPAssociation {
     private func receivePDU() async throws -> any PDU {
         // Read PDU header (6 bytes)
         let headerData = try await receive(length: 6)
-        let (_, pduLength) = try PDUDecoder.readHeader(from: headerData)
+        let (pduType, pduLength) = try PDUDecoder.readHeader(from: headerData)
         
-        // Validate PDU length
-        guard pduLength <= configuration.maxPDUSize else {
-            throw DICOMNetworkError.pduTooLarge(received: pduLength, maximum: configuration.maxPDUSize)
-        }
+        // Validate PDU length (PS3.8 Annex D.1: the limit applies to P-DATA-TF only)
+        try checkPDULength(type: pduType, length: pduLength, maxPDUSize: configuration.maxPDUSize)
         
         // Read PDU body
         let bodyData = try await receive(length: Int(pduLength))

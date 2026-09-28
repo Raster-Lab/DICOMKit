@@ -1315,10 +1315,9 @@ actor PrintSCPAssociation {
 
     private func receivePDU() async throws -> any PDU {
         let headerData = try await receive(length: 6)
-        let (_, pduLength) = try PDUDecoder.readHeader(from: headerData)
-        guard pduLength <= configuration.maxPDUSize else {
-            throw DICOMNetworkError.pduTooLarge(received: pduLength, maximum: configuration.maxPDUSize)
-        }
+        let (pduType, pduLength) = try PDUDecoder.readHeader(from: headerData)
+        // PS3.8 Annex D.1: the negotiated limit applies to P-DATA-TF only
+        try checkPDULength(type: pduType, length: pduLength, maxPDUSize: configuration.maxPDUSize)
         let bodyData = try await receive(length: Int(pduLength))
         return try PDUDecoder.decode(from: headerData + bodyData)
     }

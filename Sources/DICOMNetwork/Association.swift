@@ -76,7 +76,7 @@ public struct AssociationConfiguration: Sendable, Hashable {
     ///   - calledAETitle: Remote AE title
     ///   - host: Remote host address
     ///   - port: Remote port (default: 104)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - timeout: Connection timeout (default: 30 seconds)
@@ -120,7 +120,7 @@ public struct AssociationConfiguration: Sendable, Hashable {
     ///   - calledAETitle: Remote AE title
     ///   - host: Remote host address
     ///   - port: Remote port (default: 104)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - timeout: Connection timeout (default: 30 seconds)
@@ -161,7 +161,8 @@ public struct NegotiatedAssociation: Sendable {
     /// The accepted presentation contexts
     public let acceptedPresentationContexts: [AcceptedPresentationContext]
     
-    /// The negotiated maximum PDU size (minimum of local and remote)
+    /// The negotiated maximum PDU size (minimum of local and remote; a peer
+    /// value of 0 means unlimited, PS3.8 Annex D.1, and the local value is used)
     public let maxPDUSize: UInt32
     
     /// Remote implementation class UID
@@ -187,7 +188,8 @@ public struct NegotiatedAssociation: Sendable {
         self.acceptPDU = acceptPDU
         self.proposedRoleSelections = proposedRoleSelections
         self.acceptedPresentationContexts = acceptPDU.presentationContexts
-        self.maxPDUSize = min(localMaxPDUSize, acceptPDU.maxPDUSize)
+        // PS3.8 Annex D.1: 0 from the peer means "no maximum length is specified"
+        self.maxPDUSize = negotiatedMaxPDUSize(local: localMaxPDUSize, remote: acceptPDU.maxPDUSize)
         self.remoteImplementationClassUID = acceptPDU.implementationClassUID
         self.remoteImplementationVersionName = acceptPDU.implementationVersionName
         self.userIdentityServerResponse = acceptPDU.userIdentityServerResponse
