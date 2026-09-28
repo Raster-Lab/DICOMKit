@@ -16,7 +16,7 @@ import DICOMCore
 /// - **low**: Low priority for batch/background transfers
 /// - **background**: Lowest priority for non-urgent transfers
 ///
-/// Reference: DICOM PS3.4 - DIMSE Priority
+/// Reference: DICOM PS3.7 - Priority (0000,0700), Table E.1-1 and Section 9.1
 public enum TransferPriority: Int, Sendable, Comparable, CaseIterable, Codable {
     /// Highest priority - emergency/STAT cases
     case stat = 0
