@@ -180,13 +180,13 @@ report:
 | Module | Swift files | Marked | Report |
 |---|---|---|---|
 | DICOMCore | 104 | 104 | this report — complete |
-| DICOMDictionary | 4 | 0 | Not started. Deferred D6, D7, D20 |
+| DICOMDictionary | 5 | 5 | [DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md](DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md) — complete 2026-09-28; D6, D7, D20 closed; D21 (DICOMNetwork) opened there |
 | DICOMKit | 156 | 0 | Not started. Deferred D5, D12, D14–D19 |
 | DICOMNetwork | 63 | 0 | Not started. Deferred D1, D13 |
 | DICOMWeb | 53 | 0 | Not started. Deferred D2–D4 |
 | Other modules and CLI tools | — | 0 | Not started. Deferred D5, D9–D11, D15 (DICOMStudio, dicom-compress, dicom-dcmdir) |
 
-The Deferred findings table below holds D1–D20.
+The Deferred findings table below holds D1–D20. D21 onwards are in the later module reports (D21: DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md).
 
 ---
 
@@ -394,8 +394,8 @@ territory, not DICOM's.
 | D3 | DICOMWeb | [DICOMJSONEncoder.swift](Sources/DICOMWeb/DICOMJSONEncoder.swift) `encodeNumericValues`, case `.AT` | AT is read with `uint32Values`, which returns nil for VR AT, so it falls through to the string fallback and emits garbage. Fix: use `attributeTagValues` and format each value as `%04X%04X`. | PS3.18 Table F.2.3-1 (AT is a String) | **Medium** | ⏳ Open |
 | D4 | DICOMWeb | [DICOMXMLEncoder.swift:233](Sources/DICOMWeb/DICOMXMLEncoder.swift#L233) `isBinaryVR` | Omits OV. SV and UV numeric handling in the XML encoder has not been checked either. | PS3.19 Native DICOM Model; PS3.5 Table 6.2-1 | Low | ⏳ Open |
 | D5 | DICOMStudio, DICOMKit | [DICOMInspectorView.swift:41](Sources/DICOMStudio/Views/DICOMInspectorView.swift#L41), [ComparisonReport.swift:169](Sources/DICOMKit/Comparison/ComparisonReport.swift#L169) | The "is binary" checks omit OV, so OV values are shown as text. | PS3.5 Table 6.2-1 | Low: display only | ⏳ Open |
-| D6 | DICOMDictionary | [DataElementDictionary.txt](Sources/DICOMDictionary/Resources/DataElementDictionary.txt) | The VR and VM columns have not been text-diffed. Only (0020,9170)–(9172) were checked, during B1. Run the full PS3.6 Table 6-1 diff. | PS3.6 Table 6-1 | Audit task | ⏳ Open |
-| D7 | DICOMDictionary tests | [DictionaryTests.swift:59](Tests/DICOMDictionaryTests/DictionaryTests.swift#L59) | The test is labelled "CP-1818 elements", which fits only the Extended Offset Table rows. The (0072,008x) and (0008,04xx) rows come from CP 1819. | Release notes 2019a | Low: label | ⏳ Open |
+| D6 | DICOMDictionary | [DataElementDictionary.txt](Sources/DICOMDictionary/Resources/DataElementDictionary.txt) | The VR and VM columns have not been text-diffed. Only (0020,9170)–(9172) were checked, during B1. Run the full PS3.6 Table 6-1 diff. | PS3.6 Table 6-1 | Audit task | ✅ Done 2026-09-28: full diff of every column, resource regenerated from the DocBook (dictionary report P1) |
+| D7 | DICOMDictionary tests | [DictionaryTests.swift:59](Tests/DICOMDictionaryTests/DictionaryTests.swift#L59) | The test is labelled "CP-1818 elements", which fits only the Extended Offset Table rows. The (0072,008x) and (0008,04xx) rows come from CP 1819. | Release notes 2019a | Low: label | ✅ Done 2026-09-28 (dictionary report P5) |
 | D8 | Repo docs | [CHANGELOG.md:191](CHANGELOG.md#L191) (2.2.16 entry) | Credits the 64-bit VRs to CP-1818; the correct CP is 1819. That entry is already released, so add an erratum note rather than rewriting it. | Release notes 2019a | Low: docs | ✅ Done 2026-09-24: erratum added to `[Unreleased]` in CHANGELOG |
 | D9 | DICOMStudio, dicom-compress | [J2KTestBenchModels.swift:123,392](Sources/DICOMStudio/Models/J2KTestBenchModels.swift#L123), [dicom-compress/main.swift:62](Sources/dicom-compress/main.swift#L62) | Still call .4.110 "JPEG XL Lossless Only". The PS3.6 name is "JPEG XL Lossless". Leave the `jpeg-xl-lossless-only` flag alias alone. | PS3.6 Table A-1 | Low: text | ⏳ Open |
 | D10 | DICOMStudio | [ThumbnailHelpers.swift:107](Sources/DICOMStudio/Components/ThumbnailHelpers.swift#L107) `supportedPhotometricInterpretations` | Omits XYB, YBR_PARTIAL_420, YBR_ICT and YBR_RCT, so those files get no thumbnail. Consider building the list from `PhotometricInterpretation` instead of hard-coded strings. | PS3.3 C.7.6.3.1.2 | Medium: user-visible | ⏳ Open |
@@ -408,7 +408,7 @@ territory, not DICOM's.
 | D17 | DICOMKit | [MammographyCADSRBuilder.swift](Sources/DICOMKit/StructuredReporting/MammographyCADSRBuilder.swift), [KeyObjectSelectionBuilder.swift](Sources/DICOMKit/StructuredReporting/KeyObjectSelectionBuilder.swift) | Both emit DATETIME content items. PS3.3 A.35.5 (Mammography CAD SR) and A.35.4 (Key Object Selection) do not list DATETIME among the permitted Value Types. Check whether the items are really DATETIME (Mammography CAD SR allows DATE and TIME separately) and correct the builders. Once DICOMCore's sets are corrected, `validateOnBuild` will flag these. | PS3.3 A.35.4, A.35.5 | Medium: non-conformant output | ⏳ Open |
 | D18 | DICOMKit | [ComprehensiveSRBuilder.swift:540,1268](Sources/DICOMKit/StructuredReporting/ComprehensiveSRBuilder.swift#L540) | Emit 2D SCOORD content items with Graphic Type POLYGON, which PS3.3 C.18.6.1.2 does not define for SCOORD (only SCOORD3D has POLYGON). Write a closed POLYLINE (first vertex repeated last) instead. `MeasurementExtractorTests`, `ComprehensiveSRBuilderTests` and `SRHelpersTests` build the same non-conformant items. | PS3.3 C.18.6.1.2 | Medium: non-conformant output | ⏳ Open |
 | D19 | DICOMKit | `DICOMFile+FrameAccess.swift:187` says "the OV VR is not yet in the `VR` enum, so explicit-VR files carry this element as UN". OV has been in `VR` since P1 (2026-09-24); the comment is stale, and the reader should now expect `.OV`. Low. | Open |
-| D20 | DICOMDictionary | `UIDDictionary.swift:239-252` registers the two "Fragmentable HEVC" UIDs 1.2.840.10008.1.2.4.107.1 and .108.1, which no PS3.6 edition defines (checked 2026a, 2026d, 2023b). Kept in DICOMCore by decision (P2); the dictionary entries should at least say they are not registered. Low. | Open |
+| D20 | DICOMDictionary | `UIDDictionary.swift:239-252` registers the two "Fragmentable HEVC" UIDs 1.2.840.10008.1.2.4.107.1 and .108.1, which no PS3.6 edition defines (checked 2026a, 2026d, 2023b). Kept in DICOMCore by decision (P2); the dictionary entries should at least say they are not registered. Low. | ✅ Done 2026-09-28: kept as `UIDDictionary.unregisteredEntries` with `registered == false` (dictionary report P2) |
 
 ---
 
