@@ -40,7 +40,7 @@ public struct AssociationConfiguration: Sendable, Hashable {
     /// and should be stopped when the response is received. If the timer expires,
     /// the association is aborted.
     ///
-    /// Reference: PS3.8 Section 9.1.1 - ARTIM Timer
+    /// Reference: PS3.8 Section 9.1.5 - ARTIM Timer
     ///
     /// Set to `nil` to disable the ARTIM timer (not recommended for production).
     /// Default is 30 seconds.

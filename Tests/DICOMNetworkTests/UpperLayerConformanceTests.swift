@@ -114,6 +114,57 @@ struct AbortReasonEncodingTests {
     }
 }
 
+// MARK: - 5. State numbering and Sta13 transitions (PS3.8 Tables 9-1..9-5, 9-10)
+
+@Suite("Upper Layer state numbering")
+struct UpperLayerStateNumberingTests {
+
+    @Test("State descriptions carry the PS3.8 Sta numbers")
+    func stateDescriptions() {
+        #expect(AssociationState.idle.description.hasSuffix("(Sta1)"))
+        #expect(AssociationState.awaitingLocalAssociateResponse.description.hasSuffix("(Sta2/Sta3)"))
+        #expect(AssociationState.awaitingTransportOpen.description.hasSuffix("(Sta4)"))
+        #expect(AssociationState.awaitingRemoteAssociateResponse.description.hasSuffix("(Sta5)"))
+        #expect(AssociationState.established.description.hasSuffix("(Sta6)"))
+        #expect(AssociationState.awaitingRemoteReleaseResponse.description.hasSuffix("(Sta7)"))
+        #expect(AssociationState.awaitingLocalReleaseResponse.description.hasSuffix("(Sta8)"))
+        #expect(AssociationState.releaseCollision.description.hasSuffix("(Sta9-12)"))
+        #expect(AssociationState.awaitingTransportClose.description.hasSuffix("(Sta13)"))
+    }
+
+    @Test("Sta13 + A-ABORT PDU → AA-2 → Sta1 with the transport closed")
+    func sta13AbortReceived() {
+        let machine = AssociationStateMachine(initialState: .awaitingTransportClose)
+        let result = machine.handleEvent(.abortReceived(AbortPDU(source: .serviceUser, reason: 0)))
+        #expect(result.newState == .idle)
+        #expect(machine.state == .idle)
+        #expect(result.actions.contains { if case .closeTransport = $0 { return true } else { return false } })
+    }
+
+    @Test("Sta13 + ARTIM expiry → AA-2 → Sta1 with the transport closed")
+    func sta13ARTIMExpired() {
+        let machine = AssociationStateMachine(initialState: .awaitingTransportClose)
+        let result = machine.handleEvent(.artimTimerExpired)
+        #expect(result.newState == .idle)
+        #expect(result.actions.contains { if case .closeTransport = $0 { return true } else { return false } })
+    }
+
+    @Test("A local timeout in Sta5/Sta7 emits an AA-1 abort: service-user source, reason 0")
+    func localTimeoutAbortIsServiceUser() {
+        for state in [AssociationState.awaitingRemoteAssociateResponse, .awaitingRemoteReleaseResponse] {
+            let machine = AssociationStateMachine(initialState: state)
+            let result = machine.handleEvent(.artimTimerExpired)
+            #expect(result.newState == .awaitingTransportClose)
+            var sent: AbortPDU?
+            for action in result.actions {
+                if case .sendAbort(let pdu) = action { sent = pdu }
+            }
+            #expect(sent?.source == .serviceUser)
+            #expect(sent?.reason == 0)
+        }
+    }
+}
+
 #if canImport(Network)
 
 // MARK: - 2/4. Association behaviour on a scripted transport
