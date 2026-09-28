@@ -98,4 +98,35 @@ final class DIMSEConformanceTests: XCTestCase {
         let order = StoreAndForwardQueue.prioritySorted(queued).map(\.sopInstanceUID)
         XCTAssertEqual(order, ["H", "M", "L"], "rawValue order (LOW=2 first) is not urgency order")
     }
+
+    // MARK: - Command element padding follows the VR (PS3.5 Table 6.2-1, PS3.7 Table E.1-1)
+
+    func test_cmoveRequest_oddLengthMoveDestinationIsSpacePadded() {
+        let request = CMoveRequest(
+            messageID: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.2",
+            moveDestination: "DEST1",          // 5 characters, AE
+            presentationContextID: 1)
+        let bytes = request.commandSet.getData(.moveDestination)!
+        XCTAssertEqual(bytes, Data("DEST1 ".utf8), "AE is padded with SPACE (20H)")
+        XCTAssertEqual(request.commandSet.moveDestination, "DEST1")
+    }
+
+    func test_commandSet_moveOriginatorAETAndErrorCommentAreSpacePadded() {
+        var cmd = CommandSet()
+        cmd.setString("ORIGIN1", for: .moveOriginatorApplicationEntityTitle)
+        cmd.setString("bad", for: .errorComment)
+        XCTAssertEqual(cmd.getData(.moveOriginatorApplicationEntityTitle)!.last, 0x20)
+        XCTAssertEqual(cmd.getData(.errorComment)!.last, 0x20, "LO is padded with SPACE (20H)")
+        XCTAssertEqual(cmd.getString(.errorComment), "bad")
+    }
+
+    func test_commandSet_oddLengthUIDsKeepNullPadding() {
+        var cmd = CommandSet()
+        cmd.setAffectedSOPClassUID("1.2.840.10008.3.1.2.3.3")   // 23 characters
+        let bytes = cmd.getData(.affectedSOPClassUID)!
+        XCTAssertEqual(bytes.count, 24)
+        XCTAssertEqual(bytes.last, 0x00, "UI is padded with NULL (00H)")
+        XCTAssertEqual(cmd.getString(.affectedSOPClassUID), "1.2.840.10008.3.1.2.3.3")
+    }
 }
