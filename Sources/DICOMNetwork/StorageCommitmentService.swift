@@ -1914,18 +1914,21 @@ actor CommitmentListenerAssociation {
     private func processNEventReportRequest(_ message: AssembledMessage) async throws {
         let commandSet = message.commandSet
         
-        guard let eventTypeID = commandSet.eventTypeID else {
-            throw DICOMNetworkError.decodingFailed("Missing Event Type ID in N-EVENT-REPORT")
-        }
-        
+        let eventTypeID = commandSet.eventTypeID
         let messageID = commandSet.messageID ?? 0
         let affectedSOPClassUID = commandSet.affectedSOPClassUID ?? storageCommitmentPushModelSOPClassUID
         let affectedSOPInstanceUID = commandSet.affectedSOPInstanceUID ?? storageCommitmentPushModelSOPInstanceUID
         
+        // PS3.4 J.3.3.1.3: the SCU shall always return the N-EVENT-REPORT
+        // response status. Success when the result parsed; otherwise
+        // Processing Failure (0110H, PS3.7 §10.1.1.1.8), including a missing
+        // Event Type ID or a missing/undecodable data set.
+        var status: DIMSEStatus = .failedUnableToProcess
+        
         // Parse the commitment result from the data set, in the transfer
         // syntax negotiated for the presentation context it arrived on
         let transferSyntaxUID = acceptedContexts[message.presentationContextID]
-        if let dataSet = message.dataSet {
+        if let eventTypeID, let dataSet = message.dataSet {
             do {
                 let result = try StorageCommitmentService.parseCommitmentResult(
                     eventTypeID: eventTypeID,
@@ -1936,34 +1939,23 @@ actor CommitmentListenerAssociation {
                 
                 // Deliver the result
                 await resultHandler(result)
-                
-                // Send success response
-                let response = NEventReportResponse(
-                    messageIDBeingRespondedTo: messageID,
-                    affectedSOPClassUID: affectedSOPClassUID,
-                    affectedSOPInstanceUID: affectedSOPInstanceUID,
-                    eventTypeID: eventTypeID,
-                    status: .success,
-                    hasDataSet: false,
-                    presentationContextID: message.presentationContextID
-                )
-                
-                try await sendNEventReportResponse(response)
+                status = .success
             } catch {
-                // Send error response
-                let response = NEventReportResponse(
-                    messageIDBeingRespondedTo: messageID,
-                    affectedSOPClassUID: affectedSOPClassUID,
-                    affectedSOPInstanceUID: affectedSOPInstanceUID,
-                    eventTypeID: eventTypeID,
-                    status: .failedUnableToProcess,
-                    hasDataSet: false,
-                    presentationContextID: message.presentationContextID
-                )
-                
-                try await sendNEventReportResponse(response)
+                status = .failedUnableToProcess
             }
         }
+                
+        let response = NEventReportResponse(
+            messageIDBeingRespondedTo: messageID,
+            affectedSOPClassUID: affectedSOPClassUID,
+            affectedSOPInstanceUID: affectedSOPInstanceUID,
+            eventTypeID: eventTypeID,
+            status: status,
+            hasDataSet: false,
+            presentationContextID: message.presentationContextID
+        )
+                
+        try await sendNEventReportResponse(response)
     }
     
     private func sendNEventReportResponse(_ response: NEventReportResponse) async throws {

@@ -739,6 +739,48 @@ final class SCPConformanceLoopbackTests: XCTestCase {
         await server.stop()
     }
 
+    // 11. Commitment listener answers every N-EVENT-REPORT-RQ
+
+    func testCommitmentListenerAnswersEventReportWithoutDataSet() async throws {
+        let port: UInt16 = 19176
+        let listener = CommitmentNotificationListener(
+            configuration: CommitmentNotificationListenerConfiguration(aeTitle: try AETitle(Self.scpAE), port: port))
+        try await listener.start()
+        defer { Task { await listener.stop() } }
+        try await Task.sleep(for: .milliseconds(200))
+
+        let (connection, response) = try await associate(port: port, sopClass: storageCommitmentPushModelSOPClassUID)
+        XCTAssertTrue(response is AssociateAcceptPDU, "Expected A-ASSOCIATE-AC, got \(response.pduType)")
+
+        // No data set: Processing Failure (0110H), PS3.4 J.3.3.1.3 / PS3.7 §10.1.1.1.8
+        var noDataSet = CommandSet()
+        noDataSet.setCommand(.nEventReportRequest)
+        noDataSet.setMessageID(3)
+        noDataSet.setAffectedSOPClassUID(storageCommitmentPushModelSOPClassUID)
+        noDataSet.setAffectedSOPInstanceUID(storageCommitmentPushModelSOPInstanceUID)
+        noDataSet.setEventTypeID(storageCommitmentSuccessEventTypeID)
+        noDataSet.setHasDataSet(false)
+        let reply1 = try await exchange(connection, command: noDataSet)
+        XCTAssertEqual(reply1.command, .nEventReportResponse)
+        XCTAssertEqual(reply1.messageIDBeingRespondedTo, 3)
+        XCTAssertEqual(reply1.status?.rawValue, 0x0110)
+
+        // Missing Event Type ID: also answered with 0110H instead of dropping the association
+        var noEventType = CommandSet()
+        noEventType.setCommand(.nEventReportRequest)
+        noEventType.setMessageID(4)
+        noEventType.setAffectedSOPClassUID(storageCommitmentPushModelSOPClassUID)
+        noEventType.setAffectedSOPInstanceUID(storageCommitmentPushModelSOPInstanceUID)
+        noEventType.setHasDataSet(false)
+        let reply2 = try await exchange(connection, command: noEventType)
+        XCTAssertEqual(reply2.command, .nEventReportResponse)
+        XCTAssertEqual(reply2.messageIDBeingRespondedTo, 4)
+        XCTAssertEqual(reply2.status?.rawValue, 0x0110)
+
+        await release(connection)
+        await listener.stop()
+    }
+
     // 9. The commitment listener also tests Protocol-version bit 0
 
     func testCommitmentListenerRejectsProtocolVersionWithoutBit0() async throws {
