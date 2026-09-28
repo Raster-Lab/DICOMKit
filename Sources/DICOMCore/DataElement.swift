@@ -6,7 +6,7 @@ import Foundation
 /// It consists of a tag, VR, length, and value field.
 ///
 /// Reference: DICOM PS3.5 Section 7.1 - Data Element Structure
-/// NEMA-verified: 2026a, checked 2026-09-25 — the 64-bit accessors (uint64/int64, OV/SV/UV) added under P1 on 2026-09-24 follow PS3.5 2026a Table 6.2-1 (CP 1819, 2019a) and the byte-order rule of §7.3; string/numeric accessors follow the VR definitions of Table 6.2-1. Re-checked for this marker on 2026-09-25.
+/// NEMA-verified: 2026a, checked 2026-09-25 — the 64-bit accessors (uint64/int64, OV/SV/UV) added under P1 on 2026-09-24 follow PS3.5 2026a Table 6.2-1 (CP 1819, 2019a) and the byte-order rule of §7.3; string/numeric accessors follow the VR definitions of Table 6.2-1. Re-checked for this marker on 2026-09-25; `stringValues` keeps empty values of a multi-valued attribute per §6.4 (D25, 2026-09-28).
 public struct DataElement: Sendable {
     /// Data element tag (group, element pair)
     public let tag: Tag
@@ -173,14 +173,19 @@ public struct DataElement: Sendable {
     
     /// Extracts multiple string values (for multi-valued string VRs)
     ///
-    /// DICOM uses backslash (\) as a delimiter for multiple values.
-    /// Reference: PS3.5 Section 6.2
+    /// DICOM uses backslash (\) as a delimiter for multiple values. An empty value between
+    /// two delimiters is a value (PS3.5 Section 6.4: "MPG\\XR3" has a Value Multiplicity of
+    /// three, the second value zero length), so empty values are kept in their position; a
+    /// zero-length or padding-only Value Field has no values.
+    /// Reference: PS3.5 Section 6.2, Section 6.4
     public var stringValues: [String]? {
         guard let value = stringValue else {
             return nil
         }
-        
-        return value.split(separator: "\\").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard !value.isEmpty else {
+            return []
+        }
+        return value.components(separatedBy: "\\").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
     
     /// Extracts the value as a 16-bit unsigned integer

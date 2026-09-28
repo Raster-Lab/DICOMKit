@@ -12,7 +12,7 @@ fixed with a test, and all 54 files carry a `NEMA-verified` marker
 (`Scripts/check_nema_markers.py Sources/DICOMWeb` exits 0). The four public-API decisions
 (P-STOW, P-EVENT, P-PRIORITY, P-URI) were approved by the owner on 2026-09-28 and applied
 (commit df9d92b), as was the open P-CREATE item. The three deferred rows for this module (D2,
-D3, D4) are closed. One new finding for DICOMCore (D25) is recorded below. The work is
+D3, D4) are closed. One new finding for DICOMCore (D25) was recorded below and fixed the same day. The work is
 committed on `feature/dicom-tag-modality-audit`, locally, for review.
 
 Method: [DICOMCORE_STANDARD_IMPLEMENTATION.md → Verification method](DICOMCORE_STANDARD_IMPLEMENTATION.md#verification-method-reuse-for-every-module),
@@ -199,7 +199,7 @@ Full `swift test` after the approvals (2026-09-28, run after commit df9d92b): al
 
 | ID | Module | Location | Problem | Standard (2026a) | Severity | Status |
 |---|---|---|---|---|---|---|
-| D25 | DICOMCore | [DataElement.swift:178](Sources/DICOMCore/DataElement.swift#L178) `stringValues` | Splits on backslash with `split(separator:)`, which omits empty subsequences, so `"MPG\\XR3"` (three values, the second empty) comes back as two values and `"A\B\"` as two: value positions shift for every caller that indexes into a multi-valued attribute. DICOMWeb splits with `components(separatedBy:)` locally (JSON F.2.5, XML Table A.1.5-2) instead. | PS3.5 6.4 (Value Multiplicity; an empty value is a value), Table A.1.5-2 example | Medium: wrong value indices | ⏳ Open |
+| D25 | DICOMCore | [DataElement.swift:178](Sources/DICOMCore/DataElement.swift#L178) `stringValues` | Splits on backslash with `split(separator:)`, which omits empty subsequences, so `"MPG\\XR3"` (three values, the second empty) comes back as two values and `"A\B\"` as two: value positions shift for every caller that indexes into a multi-valued attribute. DICOMWeb splits with `components(separatedBy:)` locally (JSON F.2.5, XML Table A.1.5-2) instead. | PS3.5 6.4 (Value Multiplicity; an empty value is a value), Table A.1.5-2 example | Medium: wrong value indices | ✅ Done 2026-09-28: `components(separatedBy:)` keeps empty values in position, an empty or padding-only Value Field returns `[]`; test `DataElementTests.testEmptyValuesPreserved` |
 
 ---
 

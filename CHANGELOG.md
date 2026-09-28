@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — DICOMCore `DataElement.stringValues` keeps empty values (D25, 2026-09-28)
+
+- `stringValues` split on backslash with `split(separator:)`, which drops empty subsequences, so
+  `"MPG\\XR3"` came back as two values and every later value moved down one position. It now
+  keeps empty values in place (PS3.5 §6.4); a zero-length or padding-only Value Field returns
+  `[]` as before. Callers that index into a multi-valued attribute get the right value.
+
 ### Fixed — DICOMWeb verified against DICOM 2026a (2026-09-28)
 
 Audit report: `DICOMWEB_STANDARD_IMPLEMENTATION.md`. Every constant the module carries is diffed
