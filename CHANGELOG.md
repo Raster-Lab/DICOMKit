@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — DICOMWeb verified against DICOM 2026a (2026-09-28)
+
+Audit report: `DICOMWEB_STANDARD_IMPLEMENTATION.md`. Every constant the module carries is diffed
+against the frozen NEMA text by `Scripts/diff_web.py` (35 checks against PS3.3, PS3.4, PS3.6, PS3.18
+and PS3.19 2026a; 4 report a pending public-API decision), and all 54 Swift files carry a
+`NEMA-verified` marker. Behaviour fixes were each verified against the clause named.
+
+- **DICOM JSON Model (D2, D3; PS3.18 Annex F).** `InlineBinary` and `BulkDataURI` are siblings of
+  `vr`, never inside `Value` (F.2.2); the old DICOMKit layout is still accepted on input. AT values
+  are the 8-character uppercase hexadecimal tag (F.2.3); Group Length attributes are not written;
+  empty values of a multi-valued attribute are `null` (F.2.5) both ways; attribute objects are
+  written in ascending lexicographic tag order by a new internal writer, because
+  `JSONSerialization.sortedKeys` orders `7FE00010` before `0020000D` on current macOS.
+  **Behaviour change:** `DICOMJSONEncoder.Configuration.includeEmptyValues` and
+  `DICOMXMLEncoder.Configuration.includeEmptyValues` now default to `true`; an empty attribute is
+  written as `{"vr": "XX"}` with no `Value` (F.2.5 "shall be preserved"), and `false` drops it.
+- **Native DICOM Model XML (D4; PS3.19 A.1).** OV is InlineBinary/BulkData. Numeric VRs (FL, FD,
+  SL, SS, UL, US, SV, UV) and AT were never written and, on input, were stored as text; they are
+  now `<Value>` elements and decode to the binary Value Field. Empty values are preserved, the root
+  carries `xml:space="preserve"`, private elements are written as `gggg00ee` with `privateCreator`
+  and placed back in their creator's block on input, `BulkData uuid` is accepted.
+- **Media types.** Parameter values containing RFC 2045 tspecials are quoted
+  (`type="application/dicom"`, PS3.18 8.7.1); `image/jpx`, `image/jxl`, `image/dicom-rle`,
+  `application/x-deflate` added; `DICOMMediaType.bulkDataMediaType(forTransferSyntax:)` carries
+  Tables 8.7.3-4 / 8.7.3-5. `retrieveFrames` asks for `application/octet-stream` or the compressed
+  bulk data media type, not `application/dicom` (Table 10.4.4-1).
+- **Rendered resources.** `window=center,width,function` and `viewport=vw,vh` (8.3.5.1.3,
+  8.3.5.1.4) replace `windowcenter`/`windowwidth`/`columns`/`rows`, whose `QueryParameter`
+  constants are deprecated; `quality` is 1-100; thumbnails send no `quality` (Table 8.3.5-2).
+  `QIDOQuery.studiesByModality` matches Modalities in Study (0008,0061) (Table 10.6.1-5).
+- **UPS-RS clients (`DICOMwebClient`, `UPSClient`).** Request Cancellation is POST (Table 11.3-1);
+  the Deletion Lock is the `deletionlock=true` query parameter (11.10.1.2); a change to IN PROGRESS
+  without a Transaction UID generates a valid one (PS3.4 CC.2.1.2); filtered-worklist and global
+  suspend URLs added; section citations renumbered to the 2026a text.
+- **UPS-RS server (`DICOMwebServer`, `DICOMwebRouter`).** Create with a client UID is
+  `POST /workitems?workitem=`; `POST /workitems/{uid}` is Update (PUT still accepted); cancel
+  request is POST (PUT still accepted); the well-known subscription UIDs reach the global handlers.
+  Status codes and Warning texts follow Tables 11.4.3-1 to 11.12.3-1 and 8.5-1: create 201 only
+  in SCHEDULED and without a payload, update 200 with 400 for a final-state Workitem or a
+  missing/incorrect Transaction UID, change state 200 without a payload, 400 for a missing or
+  incorrect Transaction UID, 409 for a transition PS3.4 Table CC.1.1-2 refuses, a warning when
+  already in the requested final state; cancel request 202 (409 when COMPLETED; a SCHEDULED UPS
+  is cancelled through IN PROGRESS, CC.2.2.3); subscribe 201 (403 for the unsupported filtered
+  worklist); not-implemented retrievals 501. Retrieved and searched Workitems no longer carry
+  the Transaction UID (11.5.2). Searches emit the remaining-results warning (8.3.4.4.1).
+- **Studies server.** STOW-RS Failure Reason values from Table I.2-2, 409 when nothing was
+  stored, `Location` of the created study; `Content-Location` on every multipart part (Table
+  8.6.1-1); single-part `application/dicom` instance retrieval; 406 when the Accept header names
+  nothing supported (8.7.5); DICOM JSON responses in F.2.2 order.
+- **UPS model.** `UPSState.scheduled.validTransitions` is `[.inProgress]` (PS3.4 Table CC.1.1-2);
+  Transaction UIDs are valid UIDs (were `2.25.<hex>`); Human Performer's Name is PN, Procedure
+  Step Progress Description ST, Procedure Step Progress DS (PS3.6 Table 6-1);
+  `UPSTag.commentsOnTheScheduledProcedureStep` carries the PS3.6 keyword (old name deprecated).
+- **Documentation.** 28 PS3.18 section citations corrected; `ConformanceStatement.dicomVersion`
+  defaults to 2026a; `AuthenticationMiddleware` recognises the `thumbnail` and `pixeldata`
+  segments; transfer syntax comments carry the PS3.6 Table A-1 names.
+- Pending owner approval (public API, unchanged): `STOWResponse.FailureReasonCode` raw values,
+  the `UPSEventType` / event JSON model, `UPSPriority.stat`, `WADOURIClient.ContentType.htj2kContainer`.
+
 ### Fixed — DICOMNetwork verified against DICOM 2026a (2026-09-28)
 
 Audit report: `DICOMNETWORK_STANDARD_IMPLEMENTATION.md`. Every protocol constant the module carries
