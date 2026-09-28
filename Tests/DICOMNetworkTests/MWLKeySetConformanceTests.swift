@@ -163,11 +163,14 @@ final class MWLKeySetConformanceTests: XCTestCase {
                        "the key must reach the wire in full — an ASCII failure would send a Universal Match")
     }
 
-    func test_identifier_pureASCIIKeepsCharacterSetAsEmptyReturnKey() {
+    func test_identifier_pureASCIIOmitsSpecificCharacterSet() {
         let attrs = identifier(WorklistQueryKeys.default().patientName("DOE^JOHN"))
-        XCTAssertNotNil(attrs[charsetTag], "(0008,0005) stays present as a Return Key (Table K.6-1)")
-        XCTAssertEqual(attrs[charsetTag]?.count, 0, "no repertoire is forced for ISO 646 keys")
+        XCTAssertNil(attrs[charsetTag],
+                     "PS3.4 C.2.2.2: (0008,0005) shall not have a zero length value; K.4.1.1.3.1: not included unless an expanded/replacement set is used")
         XCTAssertEqual(attrs[.patientName], Data("DOE^JOHN".utf8))
+        // Even an explicit empty return key is dropped for ISO 646 keys.
+        let withKey = identifier(WorklistQueryKeys.default().patientName("DOE^JOHN").specificCharacterSet(""))
+        XCTAssertNil(withKey[charsetTag])
     }
 
     func test_identifier_spsTextKeyDrivesTheCharacterSet() {
@@ -197,6 +200,6 @@ final class MWLKeySetConformanceTests: XCTestCase {
         let attrs = identifier(WorklistQueryKeys.default().modality("CT").accessionNumber("ACC-1"))
         XCTAssertEqual(attrs[Tag(group: 0x0008, element: 0x0060)], Data("CT".utf8))
         XCTAssertEqual(attrs[.accessionNumber], Data("ACC-1 ".utf8))
-        XCTAssertEqual(attrs[charsetTag]?.count, 0)
+        XCTAssertNil(attrs[charsetTag], "default repertoire: no (0008,0005) (PS3.4 C.2.2.2, K.4.1.1.3.1)")
     }
 }

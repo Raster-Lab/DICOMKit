@@ -155,4 +155,49 @@ final class DIMSEConformanceTests: XCTestCase {
         XCTAssertTrue(description.contains("Failed: unable to process / cannot understand (Cxxx)"), description)
         XCTAssertTrue(description.contains("0xC001"), description)
     }
+
+    // MARK: - Modality Worklist Specific Character Set (PS3.4 C.2.2.2, K.4.1.1.3.1; PS3.5 6.1.2)
+
+    private func parseMWL(_ data: Data) -> [Tag: Data] {
+        var offset = 0
+        var parsed = DICOMModalityWorklistService.MWLParsedDataSet()
+        DICOMModalityWorklistService.parseMWLDataSet(
+            data: data, offset: &offset, end: data.count, isExplicitVR: false, into: &parsed)
+        return parsed.attributes
+    }
+
+    func test_mwlIdentifier_defaultRepertoireOmitsSpecificCharacterSetEvenAsReturnKey() {
+        let keys = WorklistQueryKeys.default().patientName("DOE^JOHN").specificCharacterSet("")
+        let data = DICOMModalityWorklistService.buildQueryIdentifier(
+            queryKeys: keys, transferSyntax: implicitVRLittleEndianTransferSyntaxUID)
+        let attrs = parseMWL(data)
+        XCTAssertNil(attrs[.specificCharacterSet],
+                     "PS3.4 K.4.1.1.3.1: not included unless an expanded/replacement set is used; C.2.2.2: never zero length")
+    }
+
+    func test_mwlIdentifier_latin1KeyDeclaresISOIR100() {
+        let keys = WorklistQueryKeys.default().patientName("MÜLLER^HANS")
+        let data = DICOMModalityWorklistService.buildQueryIdentifier(
+            queryKeys: keys, transferSyntax: implicitVRLittleEndianTransferSyntaxUID)
+        let attrs = parseMWL(data)
+        XCTAssertEqual(attrs[.specificCharacterSet].flatMap { String(data: $0, encoding: .ascii) }, "ISO_IR 100")
+    }
+
+    func test_worklistItem_noCharacterSetDecodesAsDefaultRepertoire() {
+        let item = WorklistItem(attributes: [.patientName: Data("DOE^JOHN ".utf8)])
+        XCTAssertNil(item.attributes[.specificCharacterSet])
+        XCTAssertEqual(item.patientName, "DOE^JOHN", "absent (0008,0005) means ISO-IR 6 (PS3.5 6.1.2)")
+    }
+
+    func test_worklistItem_undeclaredHighBytesFallBackToLatin1Leniently() {
+        let latin1 = "MÜLLER^HANS".data(using: .isoLatin1)!
+        let item = WorklistItem(attributes: [.patientName: latin1])
+        XCTAssertEqual(item.patientName, "MÜLLER^HANS", "deliberate leniency for SCPs that omit (0008,0005)")
+        // Declared UTF-8 wins over the leniency.
+        let utf8Item = WorklistItem(attributes: [
+            .specificCharacterSet: Data("ISO_IR 192".utf8),
+            .patientName: Data("山田^太郎".utf8) + Data([0x20])
+        ])
+        XCTAssertEqual(utf8Item.patientName, "山田^太郎")
+    }
 }
