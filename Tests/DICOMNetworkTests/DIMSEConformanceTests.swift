@@ -241,4 +241,29 @@ final class DIMSEConformanceTests: XCTestCase {
         let decoded = try? CommandSet.decode(from: create.encode())
         XCTAssertEqual(decoded?.getData(.affectedSOPClassUID)?.count, 24)
     }
+
+    // MARK: - Batch C-STORE presentation contexts (PS3.8 9.3.2.2)
+
+    func test_storage_presentationContextGroups_130ClassesNeedTwoAssociations() {
+        let uids = (0..<130).map { "1.2.3.4.\($0)" }
+        let groups = DICOMStorageService.presentationContextGroups(uids)
+        XCTAssertEqual(DICOMStorageService.maxPresentationContextsPerAssociation, 128,
+                       "odd IDs 1...255 are 128 contexts")
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups.map(\.count), [128, 2])
+        XCTAssertEqual(groups.flatMap { $0 }, uids, "every class is proposed exactly once, in order")
+        // Every group's contexts stay within the ID range.
+        for group in groups {
+            let lastID = 1 + 2 * (group.count - 1)
+            XCTAssertLessThanOrEqual(lastID, 255)
+            XCTAssertNoThrow(try PresentationContext(
+                id: UInt8(lastID), abstractSyntax: group.last!,
+                transferSyntaxes: [explicitVRLittleEndianTransferSyntaxUID]))
+        }
+    }
+
+    func test_storage_presentationContextGroups_duplicatesCollapseAndEmptyIsEmpty() {
+        XCTAssertEqual(DICOMStorageService.presentationContextGroups(["a", "a", "b"]), [["a", "b"]])
+        XCTAssertEqual(DICOMStorageService.presentationContextGroups([]), [])
+    }
 }
