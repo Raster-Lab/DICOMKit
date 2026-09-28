@@ -837,8 +837,9 @@ actor CommitmentSCPAssociation {
         }
         
         // Validate it's a Storage Commitment request
+        // PS3.7 §10.1.4.1.10: No such SOP Class (0118H)
         guard request.requestedSOPClassUID == storageCommitmentPushModelSOPClassUID else {
-            try await fail(.refusedSOPClassNotSupported)
+            try await fail(.failedNoSuchSOPClass)
             return
         }
         
@@ -848,8 +849,10 @@ actor CommitmentSCPAssociation {
             return
         }
         
+        // PS3.7 §10.1.4.1.10: No such Action (0123H) - "the Action Type
+        // specified was not supported"
         guard request.actionTypeID == storageCommitmentRequestActionTypeID else {
-            try await fail(.failedUnableToProcess)
+            try await fail(DIMSEStatus.from(0x0123))
             return
         }
         

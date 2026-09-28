@@ -739,6 +739,42 @@ final class SCPConformanceLoopbackTests: XCTestCase {
         await server.stop()
     }
 
+    // 12. N-ACTION statuses (PS3.7 §10.1.4.1.10)
+
+    func testCommitmentSCPAnswersNoSuchActionAndNoSuchSOPClass() async throws {
+        let port: UInt16 = 19175
+        let server = StorageCommitmentServer(
+            configuration: StorageCommitmentSCPConfiguration(aeTitle: try AETitle(Self.scpAE), port: port),
+            delegate: DefaultCommitmentHandler())
+        try await server.start()
+        defer { Task { await server.stop() } }
+        try await Task.sleep(for: .milliseconds(200))
+
+        let (connection, response) = try await associate(port: port, sopClass: storageCommitmentPushModelSOPClassUID)
+        XCTAssertTrue(response is AssociateAcceptPDU, "Expected A-ASSOCIATE-AC, got \(response.pduType)")
+
+        // PS3.7 §10.1.4.1.10: No such Action (0123H)
+        let wrongAction = NActionRequest(
+            messageID: 1, requestedSOPClassUID: storageCommitmentPushModelSOPClassUID,
+            requestedSOPInstanceUID: storageCommitmentPushModelSOPInstanceUID,
+            actionTypeID: 99, hasDataSet: false, presentationContextID: 1)
+        let actionReply = try await exchange(connection, command: wrongAction.commandSet)
+        XCTAssertEqual(actionReply.command, .nActionResponse)
+        XCTAssertEqual(actionReply.status?.rawValue, 0x0123)
+
+        // PS3.7 §10.1.4.1.10: No such SOP Class (0118H)
+        let wrongClass = NActionRequest(
+            messageID: 2, requestedSOPClassUID: verificationSOPClass,
+            requestedSOPInstanceUID: storageCommitmentPushModelSOPInstanceUID,
+            actionTypeID: storageCommitmentRequestActionTypeID, hasDataSet: false, presentationContextID: 1)
+        let classReply = try await exchange(connection, command: wrongClass.commandSet)
+        XCTAssertEqual(classReply.command, .nActionResponse)
+        XCTAssertEqual(classReply.status?.rawValue, 0x0118)
+
+        await release(connection)
+        await server.stop()
+    }
+
     // 11. Commitment listener answers every N-EVENT-REPORT-RQ
 
     func testCommitmentListenerAnswersEventReportWithoutDataSet() async throws {
