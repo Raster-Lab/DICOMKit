@@ -200,4 +200,45 @@ final class DIMSEConformanceTests: XCTestCase {
         ])
         XCTAssertEqual(utf8Item.patientName, "山田^太郎")
     }
+
+    // MARK: - MPPS (PS3.4 Table F.7.2-1; PS3.5 Table 6.2-1)
+
+    private func nestedValue(_ data: Data, _ g: UInt16, _ e: UInt16) -> Data? {
+        // Explicit VR LE: tag, VR(2), length(2), value — enough for SH.
+        let tag = Data([UInt8(g & 0xFF), UInt8(g >> 8), UInt8(e & 0xFF), UInt8(e >> 8)])
+        guard let r = data.range(of: tag) else { return nil }
+        let lengthStart = r.upperBound + 2
+        let length = Int(data[lengthStart]) | Int(data[lengthStart + 1]) << 8
+        return data.subdata(in: (lengthStart + 2)..<(lengthStart + 2 + length))
+    }
+
+    func test_mpps_scheduledProcedureStepIDIsSentEmptyWhenUnknown() {
+        let step = MPPSProcedureStep(
+            sopInstanceUID: "1.2.3", status: .inProgress, studyInstanceUID: "1.2.3.4",
+            startDateTime: Date(), modality: "CT", procedureStepID: "PPS1")
+        let data = DICOMMPPSService.buildMPPSAttributes(procedureStep: step, transferSyntax: "1.2.840.10008.1.2.1")
+        XCTAssertEqual(nestedValue(data, 0x0040, 0x0009), Data(),
+                       "Table F.7.2-1: (0040,0009) is 2/2 in Scheduled Step Attributes Sequence — empty, not fabricated")
+    }
+
+    func test_mpps_nCreateAndNSetCommandSetsHaveEvenLengthUIDs() {
+        // "1.2.840.10008.3.1.2.3.3" is 23 characters: it must be NULL-padded to 24.
+        let create = DICOMMPPSService.nCreateCommandSet(sopInstanceUID: "1.2.3", presentationContextID: 1)
+        let classUID = create.getData(.affectedSOPClassUID)!
+        XCTAssertEqual(classUID.count % 2, 0)
+        XCTAssertEqual(classUID.count, 24)
+        XCTAssertEqual(classUID.last, 0x00)
+        XCTAssertEqual(create.getString(.affectedSOPClassUID), modalityPerformedProcedureStepSOPClassUID)
+        XCTAssertEqual(create.getData(.affectedSOPInstanceUID), Data("1.2.3\u{0}".utf8))
+        XCTAssertEqual(create.command, .nCreateRequest)
+        XCTAssertEqual(create.getUInt16(.commandDataSetType), 0x0000, "data set present (PS3.7 9.3.1)")
+
+        let set = DICOMMPPSService.nSetCommandSet(sopInstanceUID: "1.2.3", presentationContextID: 1)
+        XCTAssertEqual(set.getData(.requestedSOPClassUID)!.count, 24)
+        XCTAssertEqual(set.getData(.requestedSOPClassUID)!.last, 0x00)
+        XCTAssertEqual(set.command, .nSetRequest)
+        // Round trip through the wire encoding keeps every value length even.
+        let decoded = try? CommandSet.decode(from: create.encode())
+        XCTAssertEqual(decoded?.getData(.affectedSOPClassUID)?.count, 24)
+    }
 }
