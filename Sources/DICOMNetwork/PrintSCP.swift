@@ -369,7 +369,7 @@ actor PrintSCPAssociation {
     private var annotationBoxes: [String: PrintAnnotation] = [:]
 
     /// Server-wide: a Print Job SOP Instance outlives this association
-    /// (PS3.4 H.4.8), so status queries on later associations can find it.
+    /// (PS3.4 H.4.5), so status queries on later associations can find it.
     private let jobStore: PrintSCPJobStore
 
     /// UID allocator; a dedicated root keeps emulator UIDs recognizable.
@@ -783,7 +783,7 @@ actor PrintSCPAssociation {
             // A film box that names an Annotation Display Format gets a set of
             // Basic Annotation Boxes to fill: the SCU reads their UIDs out of
             // the Referenced Basic Annotation Box Sequence in this response and
-            // N-SETs the ones it needs (PS3.4 H.4.6).
+            // N-SETs the ones it needs (PS3.4 H.4.4).
             var annotationBoxUIDs: [String] = []
             if configuration.acceptAnnotationBox,
                box.annotationDisplayFormatID != nil,
@@ -1157,7 +1157,8 @@ actor PrintSCPAssociation {
         }
     }
 
-    /// Removes a film box and cascades to its image boxes (PS3.4 H.4.2.2.5).
+    /// Removes a film box and cascades to its image boxes (PS3.4 H.4.2.2.3,
+    /// Film Box N-DELETE).
     private func deleteFilmBox(_ filmBoxUID: String) {
         for imageBoxUID in filmBoxImageBoxUIDs[filmBoxUID] ?? [] {
             imageBoxes.removeValue(forKey: imageBoxUID)
