@@ -76,4 +76,26 @@ final class DIMSEConformanceTests: XCTestCase {
         XCTAssertEqual(result.columns, 640)
         XCTAssertNil(InstanceResult(attributes: [:]).rows)
     }
+
+    // MARK: - Store-and-forward dequeues HIGH before MEDIUM before LOW (PS3.7 Table E.1-1)
+
+    func test_dimsePriority_rawValuesAreThoseOfTableE1_1() {
+        XCTAssertEqual(DIMSEPriority.low.rawValue, 0x0002)
+        XCTAssertEqual(DIMSEPriority.medium.rawValue, 0x0000)
+        XCTAssertEqual(DIMSEPriority.high.rawValue, 0x0001)
+        XCTAssertLessThan(DIMSEPriority.high.schedulingRank, DIMSEPriority.medium.schedulingRank)
+        XCTAssertLessThan(DIMSEPriority.medium.schedulingRank, DIMSEPriority.low.schedulingRank)
+    }
+
+    func test_storeAndForward_prioritySortedProcessesHighMediumLow() {
+        func item(_ priority: DIMSEPriority, _ uid: String) -> QueuedStoreItem {
+            QueuedStoreItem(
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2", sopInstanceUID: uid,
+                transferSyntaxUID: "1.2.840.10008.1.2.1", host: "localhost", port: 104,
+                callingAETitle: "SCU", calledAETitle: "SCP", priority: priority, fileSize: 1)
+        }
+        let queued = [item(.low, "L"), item(.medium, "M"), item(.high, "H")]
+        let order = StoreAndForwardQueue.prioritySorted(queued).map(\.sopInstanceUID)
+        XCTAssertEqual(order, ["H", "M", "L"], "rawValue order (LOW=2 first) is not urgency order")
+    }
 }
