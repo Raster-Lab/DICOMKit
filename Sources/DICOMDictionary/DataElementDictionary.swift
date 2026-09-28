@@ -20,13 +20,19 @@ enum DICOMDictionaryResourceBundle {
 
 /// Comprehensive DICOM Data Element Dictionary
 ///
-/// Contains all standard DICOM data elements from PS3.6 2026a, including the
-/// repeating groups (50xx Curve, 60xx Overlay) stored once at their base group.
+/// Contains every data element of PS3.6 2026a Tables 6-1, 7-1, 8-1 and 9-1 and the
+/// command elements of PS3.7 2026a Tables E.1-1 and E.2-1, including the repeating
+/// groups (50xx Curve, 60xx Overlay) stored once at their base group.
 ///
-/// Dictionary data is stored as a bundled resource file for zero compilation overhead
-/// (`Scripts/generate_full_dictionary.py` writes it). Each row is
-/// `GGGG|EEEE|Name|Keyword|VR[/VR...]|VM|Retired`. Parsed once at first access
-/// and cached in a static dictionary.
+/// Dictionary data is stored as a bundled resource file for zero compilation overhead.
+/// `Scripts/generate_full_dictionary.py` writes it from the NEMA DocBook text; each row
+/// is `GGGG|EEEE|Name|Keyword|VR[/VR...]|VM|Retired`, lines starting with `#` are
+/// comments. Parsed once at first access and cached in a static dictionary.
+///
+/// NEMA-verified: 2026a, checked 2026-09-28 — the resource is generated row for row from
+/// PS3.6 2026a Tables 6-1, 7-1, 8-1, 9-1 and PS3.7 2026a Tables E.1-1, E.2-1 (5,326 rows;
+/// `Scripts/diff_dictionary.py` re-checks it); the loader keeps blank cells blank (a blank
+/// VR loads as UN) and the 50xx/60xx canonicalisation follows PS3.5 §7.6 (even groups only).
 public struct DataElementDictionary: Sendable {
 
     // MARK: - Parsed Dictionary
@@ -37,10 +43,11 @@ public struct DataElementDictionary: Sendable {
               let content = try? String(contentsOf: url, encoding: .utf8) else {
             return [:]
         }
-        var dict = [Tag: DataElementEntry](minimumCapacity: 5200)
+        var dict = [Tag: DataElementEntry](minimumCapacity: 5400)
         for line in content.split(separator: "\n") {
             // Keep empty subsequences so a blank field (e.g. an empty Name)
             // doesn't collapse the column count and drop/misalign the row.
+            if line.hasPrefix("#") { continue }
             let fields = line.split(separator: "|", maxSplits: 6, omittingEmptySubsequences: false)
             guard fields.count >= 6,
                   let group = UInt16(fields[0], radix: 16),
@@ -84,10 +91,17 @@ public struct DataElementDictionary: Sendable {
         return entries[canonicalTag(tag)]
     }
 
+    /// Every entry, sorted by tag. Repeating-group entries appear once, at their base group.
+    public static var allEntries: [DataElementEntry] {
+        return entries.values.sorted { ($0.tag.group, $0.tag.element) < ($1.tag.group, $1.tag.element) }
+    }
+
     /// Looks up a data element entry by keyword
     /// - Parameter keyword: The keyword to look up
     /// - Returns: The dictionary entry, or nil if not found
     public static func lookup(keyword: String) -> DataElementEntry? {
+        // A few PS3.6 rows have no keyword; an empty string must not match them.
+        guard !keyword.isEmpty else { return nil }
         return entries.values.first { $0.keyword == keyword }
     }
 }
