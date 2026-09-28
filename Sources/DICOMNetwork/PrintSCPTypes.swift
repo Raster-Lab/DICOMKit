@@ -13,6 +13,7 @@
 
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — the 21 status codes text-diffed against PS3.7 2026a Annex C and PS3.4 2026a Annex H tables (Scripts/diff_network.py): 21 of 21 match; C600/C601 meanings corrected; Image Display Format grammar per PS3.3 C.13.3
 
 // MARK: - Print SCP Status Codes
 

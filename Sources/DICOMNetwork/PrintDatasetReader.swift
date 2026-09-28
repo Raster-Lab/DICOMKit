@@ -17,6 +17,7 @@
 import Foundation
 import DICOMCore
 import DICOMDictionary
+// NEMA-verified: 2026a, checked 2026-09-28 — delimiters (FFFE,E000/E00D/E0DD), undefined length and Explicit VR header rules checked against PS3.5 2026a §7.1 and §7.5; no other standard data
 
 // MARK: - Errors
 

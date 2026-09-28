@@ -12,6 +12,7 @@
 
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — Print Job N-GET attributes text-diffed against PS3.3 2026a Table C.13-8 and Printer attributes against Table C.13-9; Referenced Print Job Sequence per PS3.4 Tables H.4-3/H.4-8
 
 /// A print job the SCP created in response to N-ACTION.
 ///

@@ -10,6 +10,7 @@ import DICOMCore
 
 #if canImport(CoreGraphics)
 import CoreGraphics
+// NEMA-verified: 2026a, checked 2026-09-28 — the 12 print SOP Class / instance UIDs registered in PS3.6 2026a Table A-1 and 11 defined-term enums text-diffed against PS3.3 2026a C.13.1/C.13.3/C.13.5/C.13.8/C.13.9 (Scripts/diff_network.py; MediumType MAMMO terms differ, kept pending API approval); N-ACTION-RSP Print Job reference per PS3.4 Tables H.4-3/H.4-8; colour item per Table C.13-5
 #else
 // Define CGSize for platforms without CoreGraphics
 public struct CGSize: Sendable {

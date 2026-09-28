@@ -12,6 +12,7 @@
 
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — grayscale and colour image-box pixel enumerations checked against PS3.3 2026a Table C.13-5 (Bits Allocated 8/16 vs 8, Planar Configuration 1); film session/box terms per Tables C.13-1/C.13-3
 
 /// Decodes Print Management attributes from a walked data set.
 ///

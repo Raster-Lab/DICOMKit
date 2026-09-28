@@ -32,6 +32,7 @@
 // dropping eight is a worse one.
 
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — Bits Stored 8/12 (grayscale) and 8 (colour) checked against PS3.3 2026a Table C.13-5
 
 /// Reconciles received pixel depth with what a Basic Image Box may legally
 /// carry.

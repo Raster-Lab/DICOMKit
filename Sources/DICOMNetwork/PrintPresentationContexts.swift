@@ -18,6 +18,7 @@
 
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — Meta SOP Class membership text-diffed against PS3.4 2026a Tables H.3.2.2.1-1, H.3.2.2.2-1 and H.3.3.2-1; context IDs odd per PS3.8 §9.3.2.2
 
 // MARK: - Proposal
 

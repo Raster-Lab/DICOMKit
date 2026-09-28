@@ -19,6 +19,7 @@ import DICOMCore
 
 #if canImport(Network)
 import Network
+// NEMA-verified: 2026a, checked 2026-09-28 — N-ACTION/N-CREATE/N-SET/N-GET/N-DELETE handling and statuses checked against PS3.4 2026a Tables H.4-3, H.4-4, H.4-8, H.4-9, H.4.2.2.1.2-1 and PS3.7 §10.1.4.1.10 / Annex C (0123H, 0211H); A-ASSOCIATE-RJ reasons per PS3.8 Table 9-21
 
 /// Thrown when an established association sits idle past its deadline.
 private struct AssociationIdleTimeout: Error {}
