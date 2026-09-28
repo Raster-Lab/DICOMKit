@@ -1,11 +1,12 @@
 import Foundation
 
+// NEMA-verified: 2026a, checked 2026-09-28 — the 7 tags read against PS3.18 2026a Table I.1-1 (all present). FailureReasonCode: 6 of 14 raw values are in Tables I.2-1 / I.2-2; 0111, 0112, 0113, 0114, 0115, 0120, 0124 (should be C122) and 0131 (should be A900/B007) are not, and B007 and C122 are missing; raw values are public API, change pending owner approval (audit report P-STOW)
 /// Response from a STOW-RS store operation
 ///
 /// Contains the results of storing one or more DICOM instances,
 /// including successfully stored instances and any failures.
 ///
-/// Reference: PS3.18 Section 10.5 - STOW-RS
+/// Reference: PS3.18 Section 10.5 - Store Transaction (STOW-RS); Annex I - Store Instances Response Module
 ///
 /// ## Example Usage
 ///
@@ -55,7 +56,7 @@ public struct STOWResponse: Sendable, Equatable {
         /// The SOP Instance UID of the failed instance
         public let sopInstanceUID: String?
         
-        /// The failure reason code (DICOM PS3.4 Annex B)
+        /// The failure reason code (PS3.18 Table I.2-2)
         public let failureReason: UInt16?
         
         /// Human-readable failure description
@@ -81,7 +82,9 @@ public struct STOWResponse: Sendable, Equatable {
         
         // MARK: - Standard Failure Reasons
         
-        /// Well-known STOW-RS failure reason codes from DICOM PS3.4 Annex B
+        /// Failure reason codes. PS3.18 Table I.2-2 defines 0110, 0122, A7xx, A9xx, Cxxx and C122
+        /// and Table I.2-1 the warnings B000, B006 and B007; the other cases here are PS3.7
+        /// Annex C statuses that the tables do not list (see the audit report, P-STOW)
         public enum FailureReasonCode: UInt16, Sendable {
             /// Processing failure
             case processingFailure = 0x0110

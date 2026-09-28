@@ -3,6 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
+// NEMA-verified: 2026a, checked 2026-09-28 — carries no DICOM-standard data (URLSession wrapper; generic HTTP headers and status classes)
 /// HTTP client for DICOMweb operations
 ///
 /// Provides a configurable HTTP client layer with retry support,

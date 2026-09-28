@@ -1,5 +1,6 @@
 import Foundation
 
+// NEMA-verified: 2026a, checked 2026-09-28 — the 19 tags diffed against PS3.6 2026a Table 6-1; the Transaction UID a server returns is read but PS3.18 11.5.2 says it is not returned
 // MARK: - UPSQueryResult
 
 /// Result from a UPS-RS workitem search query

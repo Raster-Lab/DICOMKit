@@ -3,6 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
+// NEMA-verified: 2026a, checked 2026-09-28 — the Affected SOP Instance UID (0000,1000) and Transaction UID (0008,1195) tags read against PS3.6 2026a Table 6-1; no Event Type ID (0000,1002) is sent and the Transaction UID should not be (PS3.4 Table CC.2.4-1), see P-EVENT
 // MARK: - WebSocketEventDeliveryService
 
 /// Event delivery service that delivers UPS events via WebSocket connections
@@ -13,7 +14,7 @@ import FoundationNetworking
 ///
 /// For client-side event reception, use `UPSWebSocketClient` instead.
 ///
-/// Reference: PS3.18 §11.11 - Open Event Channel Transaction
+/// Reference: PS3.18 §8.10.4 - Open Notification Connection Transaction
 #if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public actor WebSocketEventDeliveryService: EventDeliveryService {
     
@@ -160,7 +161,7 @@ public actor WebSocketEventDeliveryService: EventDeliveryService {
 /// }
 /// ```
 ///
-/// Reference: PS3.18 §11.8-11.11
+/// Reference: PS3.18 §11.10 (Subscribe) and §8.10 (Notifications)
 #if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public final class UPSEventChannelManager: @unchecked Sendable {
     
@@ -221,8 +222,8 @@ public final class UPSEventChannelManager: @unchecked Sendable {
     /// Subscribes to events for a specific workitem and opens the event channel
     ///
     /// This performs a two-step process:
-    /// 1. Sends a REST subscribe request (PS3.18 §11.8)
-    /// 2. Opens the WebSocket event channel if not already open (PS3.18 §11.11)
+    /// 1. Sends a REST subscribe request (PS3.18 §11.10)
+    /// 2. Opens the WebSocket event channel if not already open (PS3.18 §8.10.4)
     ///
     /// - Parameters:
     ///   - uid: The workitem's SOP Instance UID

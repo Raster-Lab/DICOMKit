@@ -1,5 +1,6 @@
 import Foundation
 
+// NEMA-verified: 2026a, checked 2026-09-28 — carries no DICOM-standard data (console text for store results; the Failure Reason value is printed as received)
 /// Console renderings shared by the `dicom-wado store` CLI (STOW-RS) and
 /// DICOMStudio's in-app STOW upload, so both produce identical text for the same
 /// upload outcome. This is the store-side peer of `QIDOResultFormatter` (query) and

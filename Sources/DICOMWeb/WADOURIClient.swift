@@ -3,9 +3,10 @@ import Foundation
 import FoundationNetworking
 #endif
 
+// NEMA-verified: 2026a, checked 2026-09-28 — query parameter names diffed against PS3.18 2026a Tables 9.1.2-1, 9.1.2-2, 9.4.1-1 and 9.5.1-1 (10 / 10 match); contentType values against 9.1.2.2.1 (image/jphc is not a Rendered Media Type, pending, see P-URI)
 /// Client for WADO-URI (Web Access to DICOM Objects — URI-based) retrieval
 ///
-/// Implements the WADO-URI protocol defined in DICOM PS3.18 §8 for retrieving
+/// Implements the WADO-URI protocol defined in DICOM PS3.18 Chapter 9 (URI Service) for retrieving
 /// individual DICOM objects using HTTP GET with query parameters.
 /// This is the older WADO standard, commonly supported by legacy PACS such as dcm4chee2.
 ///
@@ -37,7 +38,7 @@ import FoundationNetworking
 /// )
 /// ```
 ///
-/// Reference: DICOM PS3.18 §8 — WADO-URI Service
+/// Reference: DICOM PS3.18 §9 — URI Service
 #if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
 public final class WADOURIClient: @unchecked Sendable {
 
@@ -135,7 +136,7 @@ public final class WADOURIClient: @unchecked Sendable {
     /// - Returns: The retrieved data
     /// - Throws: DICOMwebError on failure
     ///
-    /// Reference: DICOM PS3.18 §8.1.1 — WADO Retrieve
+    /// Reference: DICOM PS3.18 §9.4 — Retrieve DICOM Instance Transaction; §9.5 Retrieve Rendered Instance
     public func retrieve(
         studyUID: String,
         seriesUID: String,
@@ -204,7 +205,7 @@ public final class WADOURIClient: @unchecked Sendable {
 
     /// Resolves the effective WADO-URI endpoint for a configured base URL.
     ///
-    /// dcm4chee-arc (5.x) serves WADO-URI (PS3.18 §8) from its `/wado` servlet, while the
+    /// dcm4chee-arc (5.x) serves WADO-URI (PS3.18 §9) from its `/wado` servlet, while the
     /// sibling RESTful endpoint `/rs` (WADO-RS / QIDO-RS / STOW-RS) returns HTTP 404 for a
     /// `?requestType=WADO` query. A base URL whose final path segment is `rs` is therefore
     /// aimed at the wrong servlet for WADO-URI — almost always because the WADO-RS base URL
@@ -233,7 +234,7 @@ public final class WADOURIClient: @unchecked Sendable {
 
     /// Builds a WADO-URI request URL with query parameters
     ///
-    /// Reference: PS3.18 §8.1.1 — URL format:
+    /// Reference: PS3.18 §9.4.1 / §9.5.1 — request syntax:
     ///   `{baseURL}?requestType=WADO&studyUID={studyUID}&seriesUID={seriesUID}&objectUID={objectUID}`
     private func buildURL(
         studyUID: String,

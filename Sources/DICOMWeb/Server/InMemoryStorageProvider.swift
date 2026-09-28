@@ -2,6 +2,7 @@ import Foundation
 import DICOMCore
 import DICOMKit
 
+// NEMA-verified: 2026a, checked 2026-09-28 — DA/TM range matching read against PS3.4 2026a C.2.2.2.5; wildcard matching against C.2.2.2.4 (case-insensitive, a leniency); tags via DICOMCore.Tag
 /// In-memory storage provider for testing and development
 ///
 /// This implementation stores DICOM instances in memory, making it

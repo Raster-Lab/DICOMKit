@@ -1,13 +1,13 @@
 import Foundation
 
+// NEMA-verified: 2026a, checked 2026-09-28 — event content read against PS3.4 2026a Table CC.2.4-1: the event type strings, the bare-name JSON keys, the top-level progress attributes and the Transaction UID in every payload are not the standard's Event Report; the type is public API, change pending owner approval (audit report P-EVENT)
 // MARK: - UPSEventType
 
 /// UPS Event Type
 ///
 /// Defines the types of events that can be generated for UPS workitems.
 ///
-/// Reference: PS3.18 Section 11.6 - UPS Event Service
-/// Reference: PS3.4 Annex CC.2.6 - Event Reports
+/// Reference: PS3.18 Section 8.10 - Notifications; PS3.4 Annex CC.2.4 - Report a Change in UPS Status (Table CC.2.4-1)
 public enum UPSEventType: String, Sendable, Codable, CaseIterable {
     /// State Report - workitem state has changed
     case stateReport = "StateReport"
@@ -55,7 +55,7 @@ public protocol UPSEvent: Sendable {
 
 /// Event generated when a workitem's state changes
 ///
-/// Reference: PS3.4 Annex CC.2.6.1 - State Report
+/// Reference: PS3.4 Table CC.2.4-1 - UPS State Report (Event Type ID 1)
 public struct UPSStateReportEvent: UPSEvent, Sendable, Equatable {
     public let eventType: UPSEventType = .stateReport
     public let workitemUID: String
@@ -107,7 +107,7 @@ public struct UPSStateReportEvent: UPSEvent, Sendable, Equatable {
 
 /// Event generated when a workitem's progress is updated
 ///
-/// Reference: PS3.4 Annex CC.2.6.2 - Progress Report
+/// Reference: PS3.4 Table CC.2.4-1 - UPS Progress Report (Event Type ID 3)
 public struct UPSProgressReportEvent: UPSEvent, Sendable, Equatable {
     public let eventType: UPSEventType = .progressReport
     public let workitemUID: String
@@ -161,7 +161,7 @@ public struct UPSProgressReportEvent: UPSEvent, Sendable, Equatable {
 
 /// Event generated when cancellation is requested for a workitem
 ///
-/// Reference: PS3.4 Annex CC.2.6.3 - Cancel Requested
+/// Reference: PS3.4 Table CC.2.4-1 - UPS Cancel Requested (Event Type ID 2)
 public struct UPSCancelRequestedEvent: UPSEvent, Sendable, Equatable {
     public let eventType: UPSEventType = .cancelRequested
     public let workitemUID: String
@@ -225,7 +225,7 @@ public struct UPSCancelRequestedEvent: UPSEvent, Sendable, Equatable {
 
 /// Event generated when a workitem is assigned to a performer
 ///
-/// Reference: PS3.4 Annex CC.2.6.4 - Assigned
+/// Reference: PS3.4 Table CC.2.4-1 - UPS Assigned (Event Type ID 5)
 public struct UPSAssignedEvent: UPSEvent, Sendable, Equatable {
     public let eventType: UPSEventType = .assigned
     public let workitemUID: String
@@ -282,7 +282,7 @@ public struct UPSAssignedEvent: UPSEvent, Sendable, Equatable {
 
 /// Event generated when a workitem is completed
 ///
-/// Reference: PS3.4 Annex CC.2.6.5 - Completed
+/// Not a PS3.4 event: a completion is a UPS State Report (Event Type ID 1) with state COMPLETED
 public struct UPSCompletedEvent: UPSEvent, Sendable, Equatable {
     public let eventType: UPSEventType = .completed
     public let workitemUID: String
@@ -324,7 +324,7 @@ public struct UPSCompletedEvent: UPSEvent, Sendable, Equatable {
 
 /// Event generated when a workitem is canceled
 ///
-/// Reference: PS3.4 Annex CC.2.6.6 - Canceled
+/// Not a PS3.4 event: a cancellation is a UPS State Report (Event Type ID 1) with state CANCELED
 public struct UPSCanceledEvent: UPSEvent, Sendable, Equatable {
     public let eventType: UPSEventType = .canceled
     public let workitemUID: String

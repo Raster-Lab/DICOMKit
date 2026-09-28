@@ -1,6 +1,7 @@
 import Foundation
 import DICOMCore
 
+// NEMA-verified: 2026a, checked 2026-09-28 — state changes per PS3.4 2026a Table CC.1.1-2 and CC.2.1.3; Request Cancel of a SCHEDULED UPS per CC.2.2.3; Transaction UIDs per PS3.5 9.1 / B.2
 // MARK: - UPSStorageProvider Protocol
 
 /// Protocol for UPS workitem storage backend

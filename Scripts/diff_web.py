@@ -358,6 +358,10 @@ def check_media_types(rep, p18, files):
 def check_bulk_data_media_types(rep, p18, files):
     """Table 8.7.3-5: compressed bulk-data media type per transfer syntax."""
     std = {}
+    for row in table_rows(p18, '8.7.3-4'):
+        for cell in row:
+            if re.fullmatch(r'1\.2\.840\.10008[\d.]+', cell):
+                std.setdefault(cell, set()).add('application/octet-stream')
     current = None
     for row in table_rows(p18, '8.7.3-5'):
         cells = [c for c in row]
@@ -399,7 +403,7 @@ def check_bulk_data_media_types(rep, p18, files):
 def check_frames_accept(rep, files):
     body = func_body(files['DICOMwebClient.swift'], r'func\s+retrieveFrames\(')
     wrong = []
-    if 'buildAcceptHeader(transferSyntax' in body or 'octet-stream' not in body:
+    if 'buildAcceptHeader(transferSyntax' in body or ('octet-stream' not in body and 'buildFramesAcceptHeader' not in body):
         wrong.append('retrieveFrames sends Accept: multipart/related; type="application/dicom"; Table 10.4.4-1 '
                      'allows only application/octet-stream or a compressed bulk data media type for pixel data')
     rep.check('PS3.18 Table 10.4.4-1 Accept for frame (pixel data) resources (DICOMwebClient.retrieveFrames)',
@@ -508,6 +512,7 @@ def check_query_parameters(rep, p18, files):
                 std.add(row[0])
     src = files['DICOMwebURLBuilder.swift']
     body = enum_body(src, 'QueryParameter')
+    body = re.sub(r'@available\(\*, deprecated[^\n]*\n\s*public static let \w+ = "[^"]+"', '', body)  # deprecated aliases
     ours = dict(re.findall(r'static let (\w+) = "([^"]+)"', body))
     tags = {k: v for k, v in ours.items() if re.fullmatch(r'[0-9A-F]{8}', v)}
     wrong, matched = [], 0
@@ -525,11 +530,12 @@ def check_query_parameters(rep, p18, files):
               '(DICOMwebURLBuilder.QueryParameter)', matched, wrong, missing, fail_on_missing=False)
     # the rendered-URL builders must emit window=c,w,function and viewport=vw,vh
     wrong = []
-    for name, s in (('DICOMwebURLBuilder.renderedURL', func_body(src, r'static func renderedURL\(')),
+    for name, s in (('DICOMwebURLBuilder.renderedParameters', func_body(src, r'static func renderedParameters\(')),
                     ('DICOMwebClient.applyRenderOptions', func_body(files['DICOMwebClient.swift'], r'func applyRenderOptions\('))):
-        if 'QueryParameter.window]' not in s.replace(' ', '') and '.window]' not in s.replace(' ', ''):
+        if 'QueryParameter.window]' not in s.replace(' ', '') and '.window]' not in s.replace(' ', '') \
+                and 'renderedParameters(' not in s:
             wrong.append(f'{name} does not emit "window=center,width,function" (8.3.5.1.4)')
-        if '.viewport' not in s:
+        if '.viewport' not in s and 'renderedParameters(' not in s:
             wrong.append(f'{name} does not emit "viewport=vw,vh" (8.3.5.1.3)')
     rep.check('PS3.18 8.3.5.1.3 / 8.3.5.1.4 rendered query parameter syntax (renderedURL, applyRenderOptions)',
               4 - len(wrong), wrong)
@@ -677,7 +683,10 @@ def check_server_status_codes(rep, p18, files):
     wrong, matched = [], 0
     for fn, label, expected_success, forbidden in checks:
         body = func_body(src, r'func ' + fn + r'\(')
+        for helper in re.findall(r'return (\w+)\(request\)', body):
+            body += func_body(src, r'func ' + helper + r'\(')
         used = set(re.findall(r'statusCode\s*[:=]\s*(\d{3})', body))
+        used |= set(re.findall(r'response\((\d{3})', body))
         for k, v in factory.items():
             if k in body:
                 used.add(v)
@@ -749,16 +758,19 @@ def check_stow_response(rep, p18, files):
                                              ('DICOMwebServer.STOWFailureReason', 'STOWFailureReason', server, None)):
         ours = hex_cases(src, enum_name)
         wrong, pending, matched = [], [], 0
+        extra = []
         for name, code in ours.items():
             hit = classify(code)
             if hit:
                 matched += 1
+            elif code == 0x0111 and pend_key is None:
+                extra.append(f'.{name} = 0x0111: PS3.7 C.5.9 Duplicate SOP Instance, an additional code as I.2.2 allows')
             else:
                 msg = f'.{name} = 0x{code:04X}: not in Tables I.2-1 / I.2-2'
                 (pending if pend_key and (pend_key, code) in PENDING_API_APPROVAL else wrong).append(msg)
         missing = [f'{pat} {m}' for pat, (m, l) in codes.items() if 'x' not in pat and int(pat, 16) not in ours.values()]
-        rep.check(f'PS3.18 Tables I.2-1 / I.2-2 Warning/Failure Reason codes ({label})', matched, wrong, missing, pending=pending,
-                  fail_on_missing=False)
+        rep.check(f'PS3.18 Tables I.2-1 / I.2-2 Warning/Failure Reason codes ({label})', matched, wrong, missing, extra,
+                  pending=pending, fail_on_missing=False)
 
 
 # --- checks: UPS (PS3.4 Annex CC, PS3.3 C.30, PS3.6) --------------------------------------------
@@ -808,6 +820,7 @@ def check_ups_tags(rep, p6, files):
     dic = dictionary(p6)
     wsrc = files['UPS/Workitem.swift']
     body = enum_body(wsrc, 'UPSTag')
+    body = re.sub(r'@available\(\*, deprecated[^\n]*\n\s*public static let \w+ = "[^"]+"', '', body)
     ours = dict(re.findall(r'static let (\w+) = "([0-9A-F]{8})"', body))
     wrong, matched = [], 0
     for name, tag in ours.items():

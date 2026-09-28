@@ -1,5 +1,6 @@
 import Foundation
 
+// NEMA-verified: 2026a, checked 2026-09-28 — the 23 tags of UPSQueryAttribute diffed against PS3.6 2026a Table 6-1; search parameters against PS3.18 Table 8.3.4-1; matching keys against PS3.4 Table CC.2.5-3
 // MARK: - UPS Query Builder
 
 /// Builder for constructing UPS-RS search queries

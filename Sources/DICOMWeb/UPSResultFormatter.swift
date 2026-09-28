@@ -1,5 +1,6 @@
 import Foundation
 
+// NEMA-verified: 2026a, checked 2026-09-28 — carries no DICOM-standard data (console text for worklist results); the Final State note follows PS3.4 2026a CC.2.1.3
 /// Output renderings shared by the `dicom-wado ups --search` CLI (UPS-RS) and
 /// DICOMStudio's in-app UPS worklist search, so both produce identical text for the
 /// same workitem results. This mirrors `QIDOResultFormatter` (QIDO-RS) and

@@ -2,12 +2,13 @@ import Foundation
 import DICOMCore
 import DICOMKit
 
+// NEMA-verified: 2026a, checked 2026-09-28 — the 3 tags (0020,0010), (0008,0016), (0018,0015) and the DA/TM range syntax read against PS3.6 2026a Table 6-1 and PS3.4 C.2.2.2.5; the delete operations are a DICOMKit extension, PS3.18 defines no Delete Transaction for studies
 /// Deletion mode for DICOM instances
 ///
 /// Defines whether instances should be permanently deleted or soft-deleted
 /// (marked as deleted but retained in storage).
 ///
-/// Reference: PS3.18 Section 6.7 - Delete Transaction
+/// Not a PS3.18 transaction: the standard defines no deletion of studies, series or instances
 public enum DeletionMode: String, Sendable, Codable {
     /// Permanent deletion - instance is physically removed from storage
     case permanent

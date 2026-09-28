@@ -3,6 +3,7 @@ import DICOMCore
 import DICOMKit
 import DICOMDictionary
 
+// NEMA-verified: 2026a, checked 2026-09-28 — the default transfer syntax 1.2.840.10008.1.2.1 is registered in PS3.6 2026a Table A-1 and is the PS3.18 8.7.3.4 default; tag parsing only, no table data
 /// Shared orchestration for `dicom-json` / `dicom-xml` — the single pipeline
 /// (read → filter → metadata-only → encode → console lines, and the reverse
 /// decode path) used by BOTH the CLIs and DICOMStudio's Workshop executors.

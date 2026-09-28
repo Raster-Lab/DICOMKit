@@ -4,6 +4,7 @@ import DICOMCore
 import FoundationNetworking
 #endif
 
+// NEMA-verified: 2026a, checked 2026-09-28 — methods and resources diffed against PS3.18 2026a Table 11.3-1; Deletion Lock per 11.10.1-2; Transaction UID rule per PS3.4 CC.2.1.2; status handling per Tables 11.4.3-1, 11.7.3-1, 11.8.3-1
 /// UPS-RS client for managing UPS workitems over HTTP
 ///
 /// Implements the UPS-RS (Unified Procedure Step - RESTful Services)

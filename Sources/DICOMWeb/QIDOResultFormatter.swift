@@ -1,5 +1,6 @@
 import Foundation
 
+// NEMA-verified: 2026a, checked 2026-09-28 — carries no DICOM-standard data (console column layout for search results)
 /// Output renderings shared by the `dicom-wado query` CLI (QIDO-RS) and
 /// DICOMStudio's in-app QIDO query, so both produce identical text for the same
 /// search results. This mirrors `DICOMQueryResultFormatter` (DICOMNetwork) for the

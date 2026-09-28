@@ -1,5 +1,6 @@
 import Foundation
 
+// NEMA-verified: 2026a, checked 2026-09-28 — the accessor tags read against PS3.18 2026a Tables 10.6.3-3, 10.6.3-4 and 10.6.3-5 (all present in the return-attribute tables); X-Total-Count is not a PS3.18 header
 // MARK: - QIDO-RS Result Types
 
 /// Protocol for QIDO-RS query results

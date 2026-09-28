@@ -1,5 +1,6 @@
 import Foundation
 
+// NEMA-verified: 2026a, checked 2026-09-28 — default Accept application/dicom+json is the Default Media Type of PS3.18 2026a Tables 10.4.4-1 (metadata), 10.6.4-1 and 11.1.3-1; no other standard data
 /// Configuration for DICOMweb client
 ///
 /// Contains settings for connecting to a DICOMweb server including
