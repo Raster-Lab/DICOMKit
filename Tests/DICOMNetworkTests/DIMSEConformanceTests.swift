@@ -129,4 +129,30 @@ final class DIMSEConformanceTests: XCTestCase {
         XCTAssertEqual(bytes.last, 0x00, "UI is padded with NULL (00H)")
         XCTAssertEqual(cmd.getString(.affectedSOPClassUID), "1.2.840.10008.3.1.2.3.3")
     }
+
+    // MARK: - DIMSEStatus classification (PS3.7 Annex C, PS3.4 Tables B.2-1 / F.8.2-2)
+
+    func test_dimseStatus_failureWarningPendingCancelRanges() {
+        for code: UInt16 in [0xA7FF, 0xA9FF, 0xC001, 0x0123, 0x0211] {
+            XCTAssertTrue(DIMSEStatus.from(code).isFailure, String(format: "0x%04X is a failure", code))
+            XCTAssertFalse(DIMSEStatus.from(code).isWarning, String(format: "0x%04X is not a warning", code))
+        }
+        for code: UInt16 in [0x0107, 0x0116, 0xB000] {
+            XCTAssertTrue(DIMSEStatus.from(code).isWarning, String(format: "0x%04X is a warning", code))
+            XCTAssertFalse(DIMSEStatus.from(code).isFailure, String(format: "0x%04X is not a failure", code))
+        }
+        XCTAssertTrue(DIMSEStatus.from(0x0001).isWarning, "PS3.4 Table F.8.2-2: optional Attributes not supported")
+        XCTAssertTrue(DIMSEStatus.from(0xFF00).isPending)
+        XCTAssertTrue(DIMSEStatus.from(0xFF01).isPending)
+        XCTAssertTrue(DIMSEStatus.from(0xFE00).isCancel)
+        // A7xx / A9xx codes other than the named ones keep their code.
+        XCTAssertEqual(DIMSEStatus.from(0xA7FF).rawValue, 0xA7FF)
+        XCTAssertEqual(DIMSEStatus.from(0xA9FF).rawValue, 0xA9FF)
+    }
+
+    func test_dimseStatus_cxxxDescriptionNamesBothTableWordings() {
+        let description = DIMSEStatus.errorCannotUnderstand(0xC001).description
+        XCTAssertTrue(description.contains("Failed: unable to process / cannot understand (Cxxx)"), description)
+        XCTAssertTrue(description.contains("0xC001"), description)
+    }
 }

@@ -29,7 +29,11 @@ public enum DIMSEStatus: Sendable, Hashable {
     /// Used for both "identifier does not match" and "data set does not match" conditions
     case errorIdentifierDoesNotMatchSOPClass
     
-    /// Error - Cannot understand (0xC000-0xCFFF)
+    /// Failed - Unable to process / Error - Cannot understand (0xC000-0xCFFF)
+    ///
+    /// PS3.4 Table B.2-1 (C-STORE) names the Cxxx range "Error: Cannot
+    /// understand"; Tables C.4-1/C.4-2/C.4-3 (C-FIND/C-MOVE/C-GET) and K.4-1
+    /// (Modality Worklist) name it "Failed: Unable to process".
     case errorCannotUnderstand(UInt16)
     
     /// Failed - Unable to process (0x0110)
@@ -155,6 +159,12 @@ public enum DIMSEStatus: Sendable, Hashable {
         case 0xC000...0xCFFF:
             return .errorCannotUnderstand(rawValue)
         default:
+            // The C-STORE ranges of PS3.4 Table B.2-1 — 0xA7xx "Refused: Out of
+            // resources" other than 0xA700/0xA701/0xA702, and 0xA9xx "Error:
+            // Data Set does not match SOP Class" other than 0xA900 — have no
+            // case of their own (mapping them to the named cases would lose
+            // the code) and fall to `.unknown`; `isFailure` classifies them as
+            // failures by the 0xA000-0xAFFF range rule.
             return .unknown(rawValue)
         }
     }
@@ -188,9 +198,12 @@ public enum DIMSEStatus: Sendable, Hashable {
              .failedMoveDestinationUnknown:
             return true
         case .unknown(let code):
-            // 0x0001-0x00FF and 0xA000-0xAFFF are failures, except 0x0001,
-            // which PS3.7 C.4.3 defines as a warning ("Requested optional
-            // Attributes are not supported").
+            // 0xA000-0xAFFF are failures (PS3.7 Annex C, "Refused"/"Error").
+            // 0x0001 is the warning "Requested optional Attributes are not
+            // supported" (PS3.4 Table F.8.2-2, MPPS Retrieve N-GET).
+            // PS3.7 Annex C defines no status codes in 0x0002-0x00FF; an
+            // unknown code there is treated as a failure as a safe policy,
+            // not because the standard classifies it.
             //
             // 0x0100-0x0FFF is the DIMSE-N failure block (PS3.7 Annex C:
             // 0x0105 no such attribute, 0x0106 invalid attribute value,
@@ -263,7 +276,7 @@ extension DIMSEStatus: CustomStringConvertible {
         case .errorIdentifierDoesNotMatchSOPClass:
             return "Error: Identifier/Data does not match SOP Class (0xA900)"
         case .errorCannotUnderstand(let code):
-            return "Error: Cannot understand (0x\(String(format: "%04X", code)))"
+            return "Failed: unable to process / cannot understand (Cxxx) (0x\(String(format: "%04X", code)))"
         case .failedUnableToProcess:
             return "Failed: Unable to process (0x0110)"
         case .failedDuplicateSOPInstance:
