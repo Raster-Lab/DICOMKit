@@ -110,7 +110,8 @@ public enum PDUDecoder {
             throw DICOMNetworkError.decodingFailed("A-ASSOCIATE-RQ too short")
         }
         
-        // Protocol Version (2 bytes)
+        // Protocol Version (2 bytes) - kept so the SCP can test bit 0 (PS3.8 Table 9-11)
+        let protocolVersion = readUInt16BigEndian(from: data, at: offset)
         offset += 2
         
         // Reserved (2 bytes)
@@ -179,6 +180,7 @@ public enum PDUDecoder {
         }
         
         return AssociateRequestPDU(
+            protocolVersion: protocolVersion,
             calledAETitle: calledAETitle,
             callingAETitle: callingAETitle,
             presentationContexts: presentationContexts,

@@ -696,22 +696,24 @@ public enum NetworkConsole {
             out += "  Code  : \(reason) — \(associateRejectReasonDescription(source: source, reason: reason))\n"
             out += "\n"
             // Actionable hints for the most common dcm4chee2 / legacy-PACS rejections.
+            // PS3.8 Table 9-21: source 1 reason 3 = calling-AE-title-not-recognized,
+            // reason 7 = called-AE-title-not-recognized.
             switch (source, reason) {
             case (.serviceUser, 3):
+                out += "  💡 Hint: The remote SCP does not recognise the Calling AE Title\n"
+                out += "           (\"\(callingAE)\"). Add it to the remote server's list of\n"
+                out += "           permitted calling AE titles, or change the Calling AE Title.\n"
+            case (.serviceUser, 7):
                 out += "  💡 Hint: The remote SCP does not recognise the Called AE Title\n"
                 out += "           (\"\(calledAE)\"). Register it in the remote AE Manager\n"
                 out += "           (e.g. dcm4chee AE Management → Add AE Title) or change the\n"
                 out += "           Called AE Title to match the server's configured AE.\n"
-            case (.serviceUser, 7):
-                out += "  💡 Hint: The remote SCP does not recognise the Calling AE Title\n"
-                out += "           (\"\(callingAE)\"). Add it to the remote server's list of\n"
-                out += "           permitted calling AE titles, or change the Calling AE Title.\n"
             case (.serviceUser, 2):
                 out += "  💡 Hint: The remote SCP reports the application context is not supported.\n"
                 out += "           Make sure the server has DICOM networking enabled.\n"
             case (.serviceProviderACSE, 2):
-                out += "  💡 Hint: Protocol version mismatch. Try switching to Implicit VR transfer\n"
-                out += "           syntax for legacy server compatibility.\n"
+                out += "  💡 Hint: The remote SCP does not support the DICOM UL Protocol-version\n"
+                out += "           sent in the A-ASSOCIATE-RQ (this client sends version 1).\n"
             case (.serviceProviderPresentation, 1):
                 out += "  💡 Hint: Server temporarily busy. Wait a moment and retry.\n"
             default:
@@ -817,31 +819,13 @@ public enum NetworkConsole {
 
     /// Translates an A-ASSOCIATE-RJ reason byte into a human-readable string.
     ///
-    /// Reference: PS3.8 Tables 9-20, 9-21, 9-22.
+    /// Delegates to ``AssociateRejectPDU/reasonDescription`` so the console and
+    /// the PDU share one copy of PS3.8 Table 9-21 (the result byte does not
+    /// affect the reason table).
+    ///
+    /// Reference: PS3.8 Table 9-21.
     public static func associateRejectReasonDescription(source: AssociateRejectSource, reason: UInt8) -> String {
-        switch source {
-        case .serviceUser:
-            switch reason {
-            case 1: return "No reason given"
-            case 2: return "Application context name not supported"
-            case 3: return "Called AE Title not recognised"
-            case 7: return "Calling AE Title not recognised"
-            default: return "Unknown reason"
-            }
-        case .serviceProviderACSE:
-            switch reason {
-            case 1: return "No reason given"
-            case 2: return "Protocol version not supported"
-            default: return "Unknown reason"
-            }
-        case .serviceProviderPresentation:
-            switch reason {
-            case 0: return "No reason given"
-            case 1: return "Temporary congestion"
-            case 2: return "Local limit exceeded"
-            default: return "Unknown reason"
-            }
-        }
+        AssociateRejectPDU(result: .rejectedPermanent, source: source, reason: reason).reasonDescription
     }
 
     // MARK: - Helpers

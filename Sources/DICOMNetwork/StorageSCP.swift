@@ -781,12 +781,24 @@ actor SCPAssociation {
         
         callingAETitle = associateRequest.callingAETitle.value
         
+        // PS3.8 Table 9-11: only bit 0 of Protocol-version is tested; reject
+        // with source 2 (ACSE), reason 2 (protocol-version-not-supported)
+        guard associateRequest.isProtocolVersionSupported else {
+            try await sendAssociateReject(
+                result: .rejectedPermanent,
+                source: .serviceProviderACSE,
+                reason: 2 // Protocol version not supported
+            )
+            await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Protocol version not supported"))
+            return
+        }
+        
         // Check if calling AE is allowed
         guard configuration.isCallingAEAllowed(callingAETitle) else {
             try await sendAssociateReject(
                 result: .rejectedPermanent,
                 source: .serviceUser,
-                reason: 2 // Calling AE Title not recognized
+                reason: 3 // PS3.8 Table 9-21: calling-AE-title-not-recognized
             )
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Calling AE not allowed"))
             return

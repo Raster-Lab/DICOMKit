@@ -1753,13 +1753,26 @@ actor CommitmentListenerAssociation {
         calledAETitle = associateRequest.calledAETitle.value
         maxPDUSize = min(associateRequest.maxPDUSize, configuration.maxPDUSize)
         
+        // PS3.8 Table 9-11: only bit 0 of Protocol-version is tested; reject
+        // with source 2 (ACSE), reason 2 (protocol-version-not-supported)
+        guard associateRequest.isProtocolVersionSupported else {
+            await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Protocol version not supported"))
+            let rejectPDU = AssociateRejectPDU(
+                result: .rejectedPermanent,
+                source: .serviceProviderACSE,
+                reason: 2 // Protocol version not supported
+            )
+            try await sendPDU(rejectPDU)
+            return
+        }
+        
         // Check if calling AE is allowed
         if !configuration.isCallingAEAllowed(callingAETitle) {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "AE not allowed"))
             let rejectPDU = AssociateRejectPDU(
                 result: .rejectedPermanent,
-                source: .serviceProviderACSE,
-                reason: 3 // Calling AE Title not recognized
+                source: .serviceUser,
+                reason: 3 // PS3.8 Table 9-21: calling-AE-title-not-recognized
             )
             try await sendPDU(rejectPDU)
             return
@@ -1770,9 +1783,12 @@ actor CommitmentListenerAssociation {
         
         if acceptedContexts.isEmpty {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "No supported presentation contexts"))
+            // PS3.8 Table 9-21: "no presentation context acceptable" is not a
+            // UL-provider condition, so reject as service-user, reason 1
+            // (no-reason-given).
             let rejectPDU = AssociateRejectPDU(
                 result: .rejectedPermanent,
-                source: .serviceProviderPresentation,
+                source: .serviceUser,
                 reason: 1 // No reason given
             )
             try await sendPDU(rejectPDU)

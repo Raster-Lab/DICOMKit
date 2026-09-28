@@ -448,8 +448,17 @@ actor PrintSCPAssociation {
             return
         }
 
+        guard request.isProtocolVersionSupported else {
+            // PS3.8 Table 9-11: only bit 0 of Protocol-version is tested;
+            // source 2 (ACSE), reason 2 = protocol-version-not-supported.
+            try await sendAssociateReject(result: .rejectedPermanent, source: .serviceProviderACSE, reason: 2)
+            await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Protocol version not supported"))
+            return
+        }
+
         guard configuration.isCallingAEAllowed(callingAETitle) else {
-            try await sendAssociateReject(result: .rejectedPermanent, source: .serviceUser, reason: 2)
+            // PS3.8 Table 9-21: source 1, reason 3 = calling-AE-title-not-recognized.
+            try await sendAssociateReject(result: .rejectedPermanent, source: .serviceUser, reason: 3)
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Calling AE not allowed"))
             return
         }

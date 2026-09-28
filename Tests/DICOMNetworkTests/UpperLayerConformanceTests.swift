@@ -114,6 +114,54 @@ struct AbortReasonEncodingTests {
     }
 }
 
+// MARK: - 3. A-ASSOCIATE-RJ reasons (PS3.8 Table 9-21)
+
+@Suite("A-ASSOCIATE-RJ reason table")
+struct AssociateRejectReasonTableTests {
+
+    @Test("Console formatter and PDU share one reason table: 3 = calling, 7 = called")
+    func consoleFormatterUsesPDUTable() {
+        for (source, reason) in [
+            (AssociateRejectSource.serviceUser, UInt8(1)), (.serviceUser, 2), (.serviceUser, 3), (.serviceUser, 7),
+            (.serviceProviderACSE, 1), (.serviceProviderACSE, 2),
+            (.serviceProviderPresentation, 0), (.serviceProviderPresentation, 1), (.serviceProviderPresentation, 2)
+        ] {
+            let expected = AssociateRejectPDU(result: .rejectedPermanent, source: source, reason: reason).reasonDescription
+            #expect(NetworkConsole.associateRejectReasonDescription(source: source, reason: reason) == expected)
+        }
+        #expect(NetworkConsole.associateRejectReasonDescription(source: .serviceUser, reason: 3)
+                    .lowercased().contains("calling ae"))
+        #expect(NetworkConsole.associateRejectReasonDescription(source: .serviceUser, reason: 7)
+                    .lowercased().contains("called ae"))
+        // Source 3 reason 0 is reserved, not "no reason given"
+        #expect(NetworkConsole.associateRejectReasonDescription(source: .serviceProviderPresentation, reason: 0)
+                    .lowercased().contains("unknown"))
+    }
+
+    @Test("C-ECHO hints name the Calling AE for reason 3 and the Called AE for reason 7")
+    func echoHintsMatchTable921() {
+        let calling = NetworkConsole.echoFailureDetail(
+            .associationRejected(result: .rejectedPermanent, source: .serviceUser, reason: 3),
+            host: "h", port: 104, callingAE: "MY_CALLING", calledAE: "MY_CALLED", timeout: 5)
+        #expect(calling.contains("Calling AE Title"))
+        #expect(calling.contains("MY_CALLING"))
+        #expect(!calling.contains("\"MY_CALLED\""))
+
+        let called = NetworkConsole.echoFailureDetail(
+            .associationRejected(result: .rejectedPermanent, source: .serviceUser, reason: 7),
+            host: "h", port: 104, callingAE: "MY_CALLING", calledAE: "MY_CALLED", timeout: 5)
+        #expect(called.contains("Called AE Title"))
+        #expect(called.contains("MY_CALLED"))
+        #expect(!called.contains("\"MY_CALLING\""))
+
+        let version = NetworkConsole.echoFailureDetail(
+            .associationRejected(result: .rejectedPermanent, source: .serviceProviderACSE, reason: 2),
+            host: "h", port: 104, callingAE: "A", calledAE: "B", timeout: 5)
+        #expect(version.contains("Protocol-version"))
+        #expect(!version.lowercased().contains("transfer syntax"))
+    }
+}
+
 // MARK: - 5. State numbering and Sta13 transitions (PS3.8 Tables 9-1..9-5, 9-10)
 
 @Suite("Upper Layer state numbering")
@@ -162,6 +210,33 @@ struct UpperLayerStateNumberingTests {
             #expect(sent?.source == .serviceUser)
             #expect(sent?.reason == 0)
         }
+    }
+}
+
+// MARK: - 9. Protocol-version (PS3.8 Table 9-11)
+
+@Suite("Protocol-version decoding")
+struct ProtocolVersionDecodingTests {
+
+    @Test("The decoder preserves the peer's Protocol-version and only bit 0 is tested")
+    func decoderKeepsProtocolVersion() throws {
+        let context = try PresentationContext(id: 1, abstractSyntax: verificationSOPClass, transferSyntaxes: [explicitVRLE])
+        for (version, supported) in [(UInt16(1), true), (0x0003, true), (0x0002, false), (0x0000, false)] {
+            let request = AssociateRequestPDU(
+                protocolVersion: version,
+                calledAETitle: scpTitle, callingAETitle: scuTitle,
+                presentationContexts: [context], implementationClassUID: "1.2.3")
+            let encoded = try request.encode()
+            #expect(readUInt16BE(encoded, 6) == Int(version))
+            let decoded = try #require(try PDUDecoder.decode(from: encoded) as? AssociateRequestPDU)
+            #expect(decoded.protocolVersion == version)
+            #expect(decoded.isProtocolVersionSupported == supported)
+        }
+        // The public initializer always sends version 1
+        let local = AssociateRequestPDU(
+            calledAETitle: scpTitle, callingAETitle: scuTitle,
+            presentationContexts: [context], implementationClassUID: "1.2.3")
+        #expect(local.protocolVersion == 1)
     }
 }
 
@@ -416,6 +491,136 @@ struct AssociationUpperLayerTests {
         let abort = try #require(try transport.sentPDUs().last as? AbortPDU)
         #expect(abort.source == .serviceProvider)
         #expect(abort.reason == AbortReason.unexpectedPDU.rawValue)
+    }
+}
+
+// MARK: - 3/9/11/12/13. SCP behaviour over loopback
+
+/// Drives the SCPs over a real loopback socket with raw PDUs.
+final class SCPConformanceLoopbackTests: XCTestCase {
+
+    private static let scpAE = "UL_SCP"
+    private static let scuAE = "UL_SCU"
+
+    private func connect(port: UInt16) async throws -> DICOMConnection {
+        let connection = try DICOMConnection(host: "127.0.0.1", port: port, maxPDUSize: 16384, timeout: 5, tlsConfiguration: nil)
+        try await connection.connect()
+        return connection
+    }
+
+    private func associateRequest(sopClass: String, protocolVersion: UInt16 = 1, contextID: UInt8 = 1) throws -> AssociateRequestPDU {
+        AssociateRequestPDU(
+            protocolVersion: protocolVersion,
+            calledAETitle: try AETitle(Self.scpAE), callingAETitle: try AETitle(Self.scuAE),
+            presentationContexts: [try PresentationContext(id: contextID, abstractSyntax: sopClass, transferSyntaxes: [explicitVRLE])],
+            maxPDUSize: 16384, implementationClassUID: "1.2.826.0.1.3680043.10.543.99")
+    }
+
+    /// Establishes an association and returns the connection, or the A-ASSOCIATE-RJ.
+    private func associate(port: UInt16, sopClass: String, protocolVersion: UInt16 = 1) async throws -> (DICOMConnection, any PDU) {
+        let connection = try await connect(port: port)
+        try await connection.send(pdu: try associateRequest(sopClass: sopClass, protocolVersion: protocolVersion))
+        let response = try await connection.receivePDU()
+        return (connection, response)
+    }
+
+    private func exchange(_ connection: DICOMConnection, command: CommandSet, contextID: UInt8 = 1) async throws -> CommandSet {
+        let pdv = PresentationDataValue(presentationContextID: contextID, isCommand: true, isLastFragment: true, data: command.encode())
+        try await connection.send(pdu: DataTransferPDU(pdv: pdv))
+        let assembler = MessageAssembler()
+        while true {
+            let pdu = try await connection.receivePDU()
+            let data = try XCTUnwrap(pdu as? DataTransferPDU, "Expected P-DATA-TF, got \(pdu.pduType)")
+            if let message = try assembler.addPDVs(from: data) {
+                return message.commandSet
+            }
+        }
+    }
+
+    private func release(_ connection: DICOMConnection) async {
+        try? await connection.send(pdu: ReleaseRequestPDU())
+        _ = try? await connection.receivePDU()
+        await connection.disconnect()
+    }
+
+    // 9. Protocol-version bit 0 clear → A-ASSOCIATE-RJ permanent, ACSE, reason 2
+
+    func testStorageSCPRejectsProtocolVersionWithoutBit0() async throws {
+        let port: UInt16 = 19171
+        let server = DICOMStorageServer(
+            configuration: StorageSCPConfiguration(aeTitle: try AETitle(Self.scpAE), port: port),
+            delegate: DefaultStorageHandler(storageDirectory: FileManager.default.temporaryDirectory))
+        try await server.start()
+        defer { Task { await server.stop() } }
+        try await Task.sleep(for: .milliseconds(200))
+
+        let (connection, response) = try await associate(port: port, sopClass: verificationSOPClass, protocolVersion: 0x0002)
+        let reject = try XCTUnwrap(response as? AssociateRejectPDU, "Expected A-ASSOCIATE-RJ, got \(response.pduType)")
+        XCTAssertEqual(reject.result, .rejectedPermanent)
+        XCTAssertEqual(reject.source, .serviceProviderACSE)
+        XCTAssertEqual(reject.reason, 2)
+        await connection.disconnect()
+        await server.stop()
+    }
+
+    // 3. Storage SCP rejects an unknown Calling AE with source 1, reason 3
+
+    func testStorageSCPRejectsUnknownCallingAEWithReason3() async throws {
+        let port: UInt16 = 19173
+        let server = DICOMStorageServer(
+            configuration: StorageSCPConfiguration(aeTitle: try AETitle(Self.scpAE), port: port, callingAEWhitelist: ["SOMEONE_ELSE"]),
+            delegate: DefaultStorageHandler(storageDirectory: FileManager.default.temporaryDirectory))
+        try await server.start()
+        defer { Task { await server.stop() } }
+        try await Task.sleep(for: .milliseconds(200))
+
+        let (connection, response) = try await associate(port: port, sopClass: verificationSOPClass)
+        let reject = try XCTUnwrap(response as? AssociateRejectPDU, "Expected A-ASSOCIATE-RJ, got \(response.pduType)")
+        XCTAssertEqual(reject.result, .rejectedPermanent)
+        XCTAssertEqual(reject.source, .serviceUser)
+        XCTAssertEqual(reject.reason, 3)
+        await connection.disconnect()
+        await server.stop()
+    }
+
+    // 3. Storage Commitment SCP: no acceptable context → (permanent, service-user, reason 1)
+
+    func testCommitmentSCPRejectsWithNoAcceptableContextAsServiceUserReason1() async throws {
+        let port: UInt16 = 19174
+        let server = StorageCommitmentServer(
+            configuration: StorageCommitmentSCPConfiguration(aeTitle: try AETitle(Self.scpAE), port: port),
+            delegate: DefaultCommitmentHandler())
+        try await server.start()
+        defer { Task { await server.stop() } }
+        try await Task.sleep(for: .milliseconds(200))
+
+        let (connection, response) = try await associate(port: port, sopClass: verificationSOPClass)
+        let reject = try XCTUnwrap(response as? AssociateRejectPDU, "Expected A-ASSOCIATE-RJ, got \(response.pduType)")
+        XCTAssertEqual(reject.result, .rejectedPermanent)
+        XCTAssertEqual(reject.source, .serviceUser)
+        XCTAssertEqual(reject.reason, 1)
+        await connection.disconnect()
+        await server.stop()
+    }
+
+    // 9. The commitment listener also tests Protocol-version bit 0
+
+    func testCommitmentListenerRejectsProtocolVersionWithoutBit0() async throws {
+        let port: UInt16 = 19177
+        let listener = CommitmentNotificationListener(
+            configuration: CommitmentNotificationListenerConfiguration(aeTitle: try AETitle(Self.scpAE), port: port))
+        try await listener.start()
+        defer { Task { await listener.stop() } }
+        try await Task.sleep(for: .milliseconds(200))
+
+        let (connection, response) = try await associate(
+            port: port, sopClass: storageCommitmentPushModelSOPClassUID, protocolVersion: 0x0000)
+        let reject = try XCTUnwrap(response as? AssociateRejectPDU, "Expected A-ASSOCIATE-RJ, got \(response.pduType)")
+        XCTAssertEqual(reject.result, .rejectedPermanent)
+        XCTAssertEqual(reject.source, .serviceProviderACSE)
+        XCTAssertEqual(reject.reason, 2)
+        await connection.disconnect()
+        await listener.stop()
     }
 }
 

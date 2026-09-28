@@ -623,6 +623,18 @@ actor CommitmentSCPAssociation {
         callingAETitle = associateRequest.callingAETitle.value
         calledAETitle = associateRequest.calledAETitle.value
         
+        // PS3.8 Table 9-11: only bit 0 of Protocol-version is tested; reject
+        // with source 2 (ACSE), reason 2 (protocol-version-not-supported)
+        guard associateRequest.isProtocolVersionSupported else {
+            await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Protocol version not supported"))
+            try await sendAssociateReject(
+                result: .rejectedPermanent,
+                source: .serviceProviderACSE,
+                reason: 2 // Protocol version not supported
+            )
+            throw DICOMNetworkError.associationRejected(result: .rejectedPermanent, source: .serviceProviderACSE, reason: 2)
+        }
+        
         // Check calling AE is allowed
         guard configuration.isCallingAEAllowed(callingAETitle) else {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Calling AE not allowed"))
@@ -676,9 +688,12 @@ actor CommitmentSCPAssociation {
         // Check if at least one context was accepted
         guard !acceptedContextList.isEmpty else {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "No presentation contexts accepted"))
+            // PS3.8 Table 9-21: "no presentation context acceptable" is not a
+            // UL-provider condition, so reject as service-user, reason 1
+            // (no-reason-given).
             try await sendAssociateReject(
-                result: .rejectedTransient,
-                source: .serviceProviderACSE,
+                result: .rejectedPermanent,
+                source: .serviceUser,
                 reason: 1 // No reason given
             )
             throw DICOMNetworkError.noPresentationContextAccepted
