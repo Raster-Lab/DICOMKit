@@ -35,16 +35,7 @@ D = nd.D
 
 # Values known to differ from the standard whose fix changes public API (raw values, enum
 # cases) and waits for the owner's approval; reported as PEND, not FAIL. Remove when fixed.
-PENDING_API_APPROVAL = {
-    ('STOWResponse.FailureReasonCode', 0x0111), ('STOWResponse.FailureReasonCode', 0x0112),
-    ('STOWResponse.FailureReasonCode', 0x0113), ('STOWResponse.FailureReasonCode', 0x0114),
-    ('STOWResponse.FailureReasonCode', 0x0115), ('STOWResponse.FailureReasonCode', 0x0120),
-    ('STOWResponse.FailureReasonCode', 0x0124), ('STOWResponse.FailureReasonCode', 0x0131),
-    ('UPSPriority', 'STAT'),
-    ('UPSEventType', 'StateReport'), ('UPSEventType', 'ProgressReport'), ('UPSEventType', 'CancelRequested'),
-    ('UPSEventType', 'Assigned'), ('UPSEventType', 'Completed'), ('UPSEventType', 'Canceled'),
-    ('WADOURIClient.ContentType', 'image/jphc'),
-}
+PENDING_API_APPROVAL = set()  # all four owner decisions of 2026-09-28 were approved and applied
 
 
 def read(path):
@@ -553,14 +544,11 @@ def check_query_parameters(rep, p18, files):
               len(ours) - len(wrong), wrong, missing, fail_on_missing=False)
     # contentType values allowed by 9.1.2.2.1: application/dicom or a Rendered Media Type (8.7.4-1)
     rendered = {row[1] if len(row) == 4 else row[0] for row in table_rows(p18, '8.7.4-1')}
-    ours = string_cases(files['WADOURIClient.swift'], 'ContentType')
-    wrong, pending = [], []
-    for v in ours:
-        if v != 'application/dicom' and v not in rendered:
-            (pending if ('WADOURIClient.ContentType', v) in PENDING_API_APPROVAL else wrong).append(
-                f'"{v}" is not application/dicom or a Rendered Media Type of Table 8.7.4-1 (9.1.2.2.1)')
-    rep.check('PS3.18 9.1.2.2.1 contentType values (WADOURIClient.ContentType)', len(ours) - len(wrong) - len(pending),
-              wrong, pending=pending)
+    body = re.sub(r'@available\(\*, deprecated[^\n]*\n\s*case \w+ = "[^"]*"', '', enum_body(files['WADOURIClient.swift'], 'ContentType'))
+    ours = re.findall(r'case\s+\w+\s*=\s*"([^"]*)"', body)
+    wrong = [f'"{v}" is not application/dicom or a Rendered Media Type of Table 8.7.4-1 (9.1.2.2.1)'
+             for v in ours if v != 'application/dicom' and v not in rendered]
+    rep.check('PS3.18 9.1.2.2.1 contentType values (WADOURIClient.ContentType)', len(ours) - len(wrong), wrong)
 
 
 # --- checks: QIDO-RS attributes (PS3.18 Tables 10.6.1-5, 10.6.3-3..5) -------------------------
@@ -753,6 +741,7 @@ def check_stow_response(rep, p18, files):
                 return meaning, label
         return None
 
+    client = re.sub(r'@available\(\*, deprecated[^\n]*\n\s*case \w+ = 0x[0-9A-Fa-f]+', '', client)  # deprecated cases
     for label, enum_name, src, pend_key in (('STOWResponse.FailureReasonCode', 'FailureReasonCode', client,
                                               'STOWResponse.FailureReasonCode'),
                                              ('DICOMwebServer.STOWFailureReason', 'STOWFailureReason', server, None)):
@@ -763,7 +752,7 @@ def check_stow_response(rep, p18, files):
             hit = classify(code)
             if hit:
                 matched += 1
-            elif code == 0x0111 and pend_key is None:
+            elif code == 0x0111:
                 extra.append(f'.{name} = 0x0111: PS3.7 C.5.9 Duplicate SOP Instance, an additional code as I.2.2 allows')
             else:
                 msg = f'.{name} = 0x{code:04X}: not in Tables I.2-1 / I.2-2'
@@ -782,12 +771,11 @@ def check_ups_states(rep, p3, p4, files):
     rep.check('PS3.3 C.30.1 Procedure Step State terms (UPSState)', len([s for s in ours if s in std_states]),
               [s for s in ours if s not in std_states], [s for s in std_states if s not in ours])
     std_pri = [t.split()[0] for t in variablelist_terms(p3, 'sect_C.30.2') if t.split()[0] in ('HIGH', 'MEDIUM', 'LOW')]
-    ours = string_cases(wsrc, 'UPSPriority')
-    wrong = [s for s in ours if s not in std_pri and ('UPSPriority', s) not in PENDING_API_APPROVAL]
-    pending = [f'{s}: not a defined term of Scheduled Procedure Step Priority (0074,1200); C.30.2 says HIGH is '
-               '"equivalent to a STAT request"' for s in ours if ('UPSPriority', s) in PENDING_API_APPROVAL]
-    rep.check('PS3.3 C.30.2 Scheduled Procedure Step Priority terms (UPSPriority)', len(ours) - len(wrong) - len(pending),
-              wrong, [s for s in std_pri if s not in ours], pending=pending)
+    body = re.sub(r'@available\(\*, deprecated[^\n]*\n\s*case \w+ = "[^"]*"', '', enum_body(wsrc, 'UPSPriority'))
+    ours = re.findall(r'case\s+\w+\s*=\s*"([^"]*)"', body)
+    wrong = [s for s in ours if s not in std_pri]
+    rep.check('PS3.3 C.30.2 Scheduled Procedure Step Priority terms (UPSPriority; the deprecated stat is written as HIGH)',
+              len(ours) - len(wrong), wrong, [s for s in std_pri if s not in ours])
     std_ready = [t.split()[0] for t in variablelist_terms(p3, 'sect_C.30.2') if t.split()[0] in ('INCOMPLETE', 'UNAVAILABLE', 'READY')]
     ours = string_cases(wsrc, 'InputReadinessState')
     rep.check('PS3.3 C.30.2 Input Readiness State terms (InputReadinessState)', len([s for s in ours if s in std_ready]),
@@ -890,9 +878,21 @@ def check_ups_events(rep, p4, files):
     missing = [f'{n} {name}' for n, name in std.items() if n not in ours]
     rep.check('PS3.4 Table CC.2.4-1 Event Type IDs decoded (UPSWebSocketClient.parseEventType)', matched,
               [f'{n}' for n in ours if n not in std], missing, fail_on_missing=False)
-    ours = string_cases(files['UPS/UPSEvent.swift'], 'UPSEventType')
-    pending = [f'"{v}": Event Type is (0000,1002) 1..5 of Table CC.2.4-1, not a string' for v in ours]
-    rep.check('PS3.4 Table CC.2.4-1 event identification (UPSEventType raw values)', 0, pending=pending)
+    esrc = files['UPS/UPSEvent.swift']
+    body = func_body(esrc, r'var eventTypeID: Int')
+    ours_ids = set(int(n) for n in re.findall(r'return (\d)', body))
+    wrong = [f'eventTypeID {n} not in Table CC.2.4-1' for n in ours_ids if n not in std]
+    missing = [f'{n} {name}' for n, name in std.items() if n not in ours_ids]
+    # every event payload carries (0000,1002) and never the Transaction UID
+    for name in ('UPSStateReportEvent', 'UPSProgressReportEvent', 'UPSCancelRequestedEvent', 'UPSAssignedEvent'):
+        struct_body = esrc[esrc.find('struct ' + name):]
+        struct_body = struct_body[:struct_body.find('\n}\n')]
+        if 'eventTypeIDAttribute' not in struct_body:
+            wrong.append(f'{name}.toDICOMJSON has no Event Type ID (0000,1002)')
+        if '"00081195"' in struct_body or 'UPSTag.transactionUID' in struct_body:
+            wrong.append(f'{name}.toDICOMJSON sends the Transaction UID (PS3.4 CC.2.7.3)')
+    rep.check('PS3.4 Table CC.2.4-1 event identification (UPSEventType.eventTypeID, Event Report payloads)',
+              len(ours_ids & set(std)), wrong, missing)
 
 
 # --- checks: character sets, error codes, citations --------------------------------------------

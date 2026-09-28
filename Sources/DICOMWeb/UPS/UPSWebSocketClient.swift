@@ -3,7 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-// NEMA-verified: 2026a, checked 2026-09-28 — Event Type IDs 1-3 read against PS3.4 2026a Table CC.2.4-1 (4 and 5 not decoded); the /ws/subscribers path and the /rs stripping are dcm4chee conventions, PS3.18 8.10.4 leaves the WebSocket URL to the origin server
+// NEMA-verified: 2026a, checked 2026-09-28 — Event Type IDs 1-5 decoded per PS3.4 2026a Table CC.2.4-1; the /ws/subscribers path and the /rs stripping are dcm4chee conventions, PS3.18 8.10.4 leaves the WebSocket URL to the origin server
 // MARK: - UPSWebSocketEvent
 
 /// A parsed UPS event received over a WebSocket channel.
@@ -607,11 +607,8 @@ public final class UPSWebSocketClient: @unchecked Sendable {
         if let element = json["00001002"] as? [String: Any],
            let values = element["Value"] as? [Int],
            let typeID = values.first {
-            switch typeID {
-            case 1: return .stateReport
-            case 2: return .cancelRequested
-            case 3: return .progressReport
-            default: break
+            if let type = UPSEventType(eventTypeID: typeID) {
+                return type
             }
         }
         
@@ -636,7 +633,7 @@ public final class UPSWebSocketClient: @unchecked Sendable {
             return .stateReport
         }
         
-        if let _ = json["00741004"] as? [String: Any] {
+        if json["00741002"] != nil || json["00741004"] != nil {
             // Has Procedure Step Progress Information Sequence → progress report
             return .progressReport
         }

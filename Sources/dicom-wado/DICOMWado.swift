@@ -1130,8 +1130,8 @@ struct UPSCommand: AsyncParsableCommand {
     
     private func parsePriority(_ value: String) throws -> UPSPriority {
         switch value.uppercased() {
-        case "STAT": return .stat
-        case "HIGH": return .high
+        case "STAT", "HIGH": return .high  // PS3.3 C.30.2: HIGH is equivalent to a STAT request
+
         case "MEDIUM": return .medium
         case "LOW": return .low
         default:

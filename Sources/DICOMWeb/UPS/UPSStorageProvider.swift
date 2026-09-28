@@ -386,29 +386,18 @@ public actor InMemoryUPSStorageProvider: UPSStorageProvider {
         
         // Generate state change event
         if let dispatcher = eventDispatcher {
+            // PS3.4 CC.2.4.3: one UPS State Report per state change, with the current
+            // Procedure Step State and Input Readiness State
             let event = UPSStateReportEvent(
                 workitemUID: workitemUID,
                 transactionUID: workitem.transactionUID,
                 previousState: currentState,
-                newState: newState
+                newState: newState,
+                reason: newState == .canceled ? workitem.cancellationReason : nil,
+                inputReadinessState: workitem.inputReadinessState ?? .ready
             )
             await dispatcher.dispatch(event)
             
-            // Generate additional events for final states
-            if newState == .completed {
-                let completedEvent = UPSCompletedEvent(
-                    workitemUID: workitemUID,
-                    transactionUID: workitem.transactionUID
-                )
-                await dispatcher.dispatch(completedEvent)
-            } else if newState == .canceled {
-                let canceledEvent = UPSCanceledEvent(
-                    workitemUID: workitemUID,
-                    transactionUID: workitem.transactionUID,
-                    reason: workitem.cancellationReason
-                )
-                await dispatcher.dispatch(canceledEvent)
-            }
         }
     }
     

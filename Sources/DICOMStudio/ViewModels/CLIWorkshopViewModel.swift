@@ -7230,8 +7230,8 @@ case "dicom-study":
                 let priorityStr = paramValue("create-priority")
                 if !priorityStr.isEmpty {
                     switch priorityStr.uppercased() {
-                    case "STAT": builder.setPriority(.stat)
-                    case "HIGH": builder.setPriority(.high)
+                    case "STAT", "HIGH": builder.setPriority(.high)  // PS3.3 C.30.2: HIGH is equivalent to STAT
+
                     case "MEDIUM": builder.setPriority(.medium)
                     case "LOW": builder.setPriority(.low)
                     default: break

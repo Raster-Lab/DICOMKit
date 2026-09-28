@@ -3,7 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-// NEMA-verified: 2026a, checked 2026-09-28 — query parameter names diffed against PS3.18 2026a Tables 9.1.2-1, 9.1.2-2, 9.4.1-1 and 9.5.1-1 (10 / 10 match); contentType values against 9.1.2.2.1 (image/jphc is not a Rendered Media Type, pending, see P-URI)
+// NEMA-verified: 2026a, checked 2026-09-28 — query parameter names diffed against PS3.18 2026a Tables 9.1.2-1, 9.1.2-2, 9.4.1-1 and 9.5.1-1 (10 / 10 match); contentType values against 9.1.2.2.1 and Table 8.7.4-1 (7 / 7; image/jphc deprecated and mapped to image/jph)
 /// Client for WADO-URI (Web Access to DICOM Objects — URI-based) retrieval
 ///
 /// Implements the WADO-URI protocol defined in DICOM PS3.18 Chapter 9 (URI Service) for retrieving
@@ -58,7 +58,10 @@ public final class WADOURIClient: @unchecked Sendable {
         case jpeg2000 = "image/jp2"
         /// HTJ2K codestream image (image/jph)
         case htj2k = "image/jph"
-        /// HTJ2K codestream with container (image/jphc)
+        /// image/jphc is a compressed bulk data media type (PS3.18 Table 8.7.3-5), not a Rendered
+        /// Media Type of Table 8.7.4-1, so 9.1.2.2.1 does not allow it as a contentType value.
+        /// Requests map to `.htj2k` (image/jph).
+        @available(*, deprecated, renamed: "htj2k", message: "PS3.18 9.1.2.2.1: image/jphc is not a Rendered Media Type; use image/jph")
         case htj2kContainer = "image/jphc"
         /// MPEG video (video/mpeg)
         case mpeg = "video/mpeg"
@@ -75,7 +78,7 @@ public final class WADOURIClient: @unchecked Sendable {
             case "image/gif", "gif":                      return .gif
             case "image/jp2", "jp2":                      return .jpeg2000
             case "image/jph", "jph", "htj2k":             return .htj2k
-            case "image/jphc", "jphc", "htj2k-container": return .htj2kContainer
+            case "image/jphc", "jphc", "htj2k-container": return .htj2k  // not a Rendered Media Type (9.1.2.2.1)
             case "video/mpeg", "mpeg":                    return .mpeg
             default:                                       return .dicom
             }

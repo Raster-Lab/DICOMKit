@@ -864,7 +864,7 @@ public final class DICOMwebViewModel {
     nonisolated private static func mapWebSocketEvent(_ wsEvent: UPSWebSocketEvent) -> UPSReceivedEvent {
         let eventType: UPSEventType
         switch wsEvent.eventType {
-        case .stateReport, .assigned, .completed, .canceled:
+        case .stateReport, .assigned, .completed, .canceled, .scpStatusChange:
             eventType = .stateChange
         case .progressReport:
             eventType = .progressChange
@@ -919,6 +919,8 @@ public final class DICOMwebViewModel {
             } else {
                 summary = "Workitem canceled"
             }
+        case .scpStatusChange:
+            summary = "Origin server status changed (restarted or going down)"
         }
 
         return UPSReceivedEvent(

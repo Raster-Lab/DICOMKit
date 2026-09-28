@@ -1406,7 +1406,7 @@ public actor DICOMwebServer {
         // Priority
         json[UPSTag.scheduledProcedureStepPriority] = [
             "vr": "CS",
-            "Value": [workitem.priority.rawValue]
+            "Value": [workitem.priority.dicomValue]
         ]
         
         // Patient info

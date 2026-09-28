@@ -118,7 +118,7 @@ public struct UPSQuery: Sendable, Equatable {
     /// - Parameter value: Priority level
     /// - Returns: Updated query
     public func priority(_ value: UPSPriority) -> UPSQuery {
-        return with(parameter: UPSQueryAttribute.scheduledProcedureStepPriority, value: value.rawValue)
+        return with(parameter: UPSQueryAttribute.scheduledProcedureStepPriority, value: value.dicomValue)
     }
     
     /// Filter by multiple priorities
@@ -126,7 +126,7 @@ public struct UPSQuery: Sendable, Equatable {
     /// - Parameter values: Priority levels to include
     /// - Returns: Updated query
     public func priorities(_ values: [UPSPriority]) -> UPSQuery {
-        let priorityValues = values.map { $0.rawValue }.joined(separator: ",")
+        let priorityValues = values.map { $0.dicomValue }.joined(separator: ",")
         return with(parameter: UPSQueryAttribute.scheduledProcedureStepPriority, value: priorityValues)
     }
     
@@ -558,7 +558,7 @@ extension UPSQuery {
     public static func highPriority(limit: Int? = nil) -> UPSQuery {
         var query = UPSQuery()
             .state(.scheduled)
-            .priorities([.stat, .high])
+            .priorities([.high])
         if let limit = limit {
             query = query.limit(limit)
         }

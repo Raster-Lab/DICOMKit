@@ -349,7 +349,8 @@ final class UPSQueryTests: XCTestCase {
         
         let params = query.toParameters()
         XCTAssertEqual(params[UPSQueryAttribute.procedureStepState], "SCHEDULED")
-        XCTAssertTrue(params[UPSQueryAttribute.scheduledProcedureStepPriority]?.contains("STAT") == true)
+        // PS3.3 C.30.2: STAT is not a defined term; HIGH is "equivalent to a STAT request"
+        XCTAssertFalse(params[UPSQueryAttribute.scheduledProcedureStepPriority]?.contains("STAT") == true)
         XCTAssertTrue(params[UPSQueryAttribute.scheduledProcedureStepPriority]?.contains("HIGH") == true)
     }
 }

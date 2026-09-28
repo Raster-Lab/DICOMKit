@@ -3,7 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-// NEMA-verified: 2026a, checked 2026-09-28 — the Affected SOP Instance UID (0000,1000) and Transaction UID (0008,1195) tags read against PS3.6 2026a Table 6-1; no Event Type ID (0000,1002) is sent and the Transaction UID should not be (PS3.4 Table CC.2.4-1), see P-EVENT
+// NEMA-verified: 2026a, checked 2026-09-28 — the payload is the PS3.4 2026a Table CC.2.4-1 Event Report (Event Type ID (0000,1002) from UPSEvent) plus Affected SOP Instance UID (0000,1000); the Transaction UID is not sent (CC.2.7.3); tags checked against PS3.6 Table 6-1
 // MARK: - WebSocketEventDeliveryService
 
 /// Event delivery service that delivers UPS events via WebSocket connections
@@ -54,17 +54,14 @@ public actor WebSocketEventDeliveryService: EventDeliveryService {
             throw EventDeliveryError.subscriberUnreachable(aeTitle: subscription.aeTitle)
         }
         
-        let json = event.toDICOMJSON()
+        // PS3.18 8.10.5 Send Event Report: the Event Report Information of PS3.4 Table CC.2.4-1
+        // (which carries the Event Type ID (0000,1002)) plus the Affected SOP Instance UID
+        // (0000,1000) that names the UPS instance (CC.2.4.3). The Transaction UID is the
+        // access lock and is not sent.
+        var payload = event.toDICOMJSON()
+        payload["00001000"] = ["vr": "UI", "Value": [event.workitemUID]]
         
-        // Add workitem UID and event metadata to the payload
-        var payload = json
-        payload["00001000"] = ["vr": "UI", "Value": [event.workitemUID]] // Affected SOP Instance UID
-        if let transactionUID = event.transactionUID {
-            payload["00081195"] = ["vr": "UI", "Value": [transactionUID]]
-        }
-        payload["eventType"] = event.eventType.rawValue
-        
-        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else {
+        guard let data = try? DICOMJSONWriter().data(with: payload) else {
             throw EventDeliveryError.deliveryFailed(reason: "Failed to serialize event to JSON")
         }
         

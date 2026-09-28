@@ -247,11 +247,13 @@ public enum UPSState: String, Sendable, Codable, CaseIterable {
 ///
 /// PS3.3 C.30.2 defines HIGH, MEDIUM and LOW for Scheduled Procedure Step Priority
 /// (0074,1200); `STAT` is not a defined term (C.30.2: HIGH is "equivalent to a STAT
-/// request") and is kept only until its removal is approved (see the audit report).
+/// request"), so `.stat` is deprecated and written as HIGH.
 ///
 /// Reference: PS3.3 C.30.2 - Unified Procedure Step Scheduled Procedure Information Module
 public enum UPSPriority: String, Sendable, Codable, CaseIterable {
-    /// Highest priority - time critical
+    /// Not a defined term of PS3.3 C.30.2 ("HIGH is equivalent to a STAT request"); written as
+    /// HIGH on the wire by `dicomValue`. Use `.high`.
+    @available(*, deprecated, renamed: "high", message: "PS3.3 C.30.2 defines HIGH, MEDIUM and LOW; HIGH is equivalent to a STAT request")
     case stat = "STAT"
     
     /// Higher than routine priority
@@ -262,6 +264,15 @@ public enum UPSPriority: String, Sendable, Codable, CaseIterable {
     
     /// Lower than routine priority
     case low = "LOW"
+    
+    /// The defined terms of PS3.3 C.30.2 (the deprecated `stat` is not listed)
+    public static var allCases: [UPSPriority] { [.high, .medium, .low] }
+    
+    /// The Scheduled Procedure Step Priority (0074,1200) defined term of PS3.3 C.30.2 for this
+    /// case: HIGH, MEDIUM or LOW (the deprecated `stat` is written as HIGH).
+    public var dicomValue: String {
+        rawValue == "STAT" ? "HIGH" : rawValue
+    }
     
     /// Numeric priority value (lower number = higher priority)
     public var numericValue: Int {
@@ -604,7 +615,7 @@ extension Workitem {
         // Scheduled Procedure Step Priority (0074,1200) - VR: CS
         json[UPSTag.scheduledProcedureStepPriority] = [
             "vr": "CS",
-            "Value": [priority.rawValue]
+            "Value": [priority.dicomValue]
         ]
         
         // Input Readiness State (0040,4041) - VR: CS — required for Create (PS3.4 CC.2.5-3)
@@ -869,7 +880,7 @@ extension Workitem {
         // Scheduled Procedure Step Priority (0074,1200) - VR: CS - Required
         json[UPSTag.scheduledProcedureStepPriority] = [
             "vr": "CS",
-            "Value": [priority.rawValue]
+            "Value": [priority.dicomValue]
         ]
         
         // Procedure Step Label (0074,1204) - VR: LO - Required
@@ -1011,29 +1022,27 @@ extension Workitem {
             "Value": [["Alphabetic": pnValue]]
         ]
         
-        // Patient ID (0010,0020) - VR: LO - Type 1 (required, must have value)
-        if let pid = patientID, !pid.isEmpty {
-            json[UPSTag.patientID] = [
-                "vr": "LO",
-                "Value": [pid]
-            ]
-        }
+        // Patient ID (0010,0020) - VR: LO - Type 2 (PS3.4 Table CC.2.5-3: present, may be empty)
+        json[UPSTag.patientID] = Workitem.optionalValue("LO", patientID)
         
         // Patient's Birth Date (0010,0030) - VR: DA - Type 2
-        if let dob = patientBirthDate, !dob.isEmpty {
-            json[UPSTag.patientBirthDate] = [
-                "vr": "DA",
-                "Value": [dob]
-            ]
+        json[UPSTag.patientBirthDate] = Workitem.optionalValue("DA", patientBirthDate)
+        
+        // The remaining Type 2 attributes of the N-CREATE column of PS3.4 Table CC.2.5-3 that
+        // the model does not carry are sent empty, as the SCU shall provide them
+        for (tag, vr) in [(UPSTag.issuerOfPatientID, "LO"), (UPSTag.issuerOfPatientIDQualifiersSequence, "SQ"),
+                          (UPSTag.otherPatientIDsSequence, "SQ"), (UPSTag.admissionID, "LO"),
+                          (UPSTag.issuerOfAdmissionIDSequence, "SQ"), (UPSTag.admittingDiagnosesDescription, "LO"),
+                          (UPSTag.admittingDiagnosesCodeSequence, "SQ"), (UPSTag.scheduledProcessingParametersSequence, "SQ"),
+                          (UPSTag.procedureStepProgressInformationSequence, "SQ"),
+                          (UPSTag.unifiedProcedureStepPerformedProcedureSequence, "SQ")] where json[tag] == nil {
+            json[tag] = ["vr": vr]
         }
+        // Transaction UID (0008,1195) - Type 2, "shall be empty" at N-CREATE
+        json[UPSTag.transactionUID] = ["vr": "UI"]
         
         // Patient's Sex (0010,0040) - VR: CS - Type 2
-        if let sex = patientSex, !sex.isEmpty {
-            json[UPSTag.patientSex] = [
-                "vr": "CS",
-                "Value": [sex]
-            ]
-        }
+        json[UPSTag.patientSex] = Workitem.optionalValue("CS", patientSex)
         
         // Referenced Request Sequence (0040,A370) - VR: SQ - Type 1C
         // Contains Study Instance UID, Accession Number, etc.
@@ -1074,6 +1083,14 @@ extension Workitem {
     /// Formats a Date to a DICOM DT string (YYYYMMDDHHMMSS per PS3.5 Table 6.2-1)
     private static func formatDateTime(_ date: Date) -> String {
         return dicomDTFormatter.string(from: date)
+    }
+    
+    /// A Type 2 attribute: the value when present, an empty attribute (`{"vr": …}`) otherwise
+    private static func optionalValue(_ vr: String, _ value: String?) -> [String: Any] {
+        if let value = value, !value.isEmpty {
+            return ["vr": vr, "Value": [value]]
+        }
+        return ["vr": vr]
     }
     
     /// Converts a ReferencedInstance to DICOM JSON
@@ -1369,13 +1386,17 @@ public enum UPSTag {
     public static let sopClassUID = "00080016"
     public static let sopInstanceUID = "00080018"
     
-    // UPS Progress Information
+    // UPS Progress Information (PS3.3 C.30.1)
+    public static let procedureStepProgressInformationSequence = "00741002"
     public static let procedureStepProgress = "00741004"
     public static let procedureStepProgressDescription = "00741006"
+    public static let procedureStepCommunicationsURISequence = "00741008"
+    public static let contactURI = "0074100A"
+    public static let contactDisplayName = "0074100C"
+    public static let scheduledProcessingParametersSequence = "00741210"
     
     // UPS Relationship
     public static let scheduledWorkitemCodeSequence = "00404018"
-    public static let scheduledProcessingParametersSequence = "00741210"
     public static let scheduledStationNameCodeSequence = "00404025"
     public static let scheduledStationClassCodeSequence = "00404026"
     public static let scheduledStationGeographicLocationCodeSequence = "00404027"
@@ -1443,11 +1464,18 @@ public enum UPSTag {
     @available(*, deprecated, renamed: "commentsOnTheScheduledProcedureStep")
     public static let commentsOnScheduledProcedureStep = "00400400"
     
-    // Patient
+    // Patient (UPS Relationship Module, PS3.3 C.30.4)
     public static let patientName = "00100010"
     public static let patientID = "00100020"
+    public static let issuerOfPatientID = "00100021"
+    public static let issuerOfPatientIDQualifiersSequence = "00100024"
+    public static let otherPatientIDsSequence = "00101002"
     public static let patientBirthDate = "00100030"
     public static let patientSex = "00100040"
+    public static let admissionID = "00380010"
+    public static let issuerOfAdmissionIDSequence = "00380014"
+    public static let admittingDiagnosesDescription = "00081080"
+    public static let admittingDiagnosesCodeSequence = "00081084"
     
     // Study
     public static let studyInstanceUID = "0020000D"

@@ -1,6 +1,6 @@
 import Foundation
 
-// NEMA-verified: 2026a, checked 2026-09-28 — the 7 tags read against PS3.18 2026a Table I.1-1 (all present). FailureReasonCode: 6 of 14 raw values are in Tables I.2-1 / I.2-2; 0111, 0112, 0113, 0114, 0115, 0120, 0124 (should be C122) and 0131 (should be A900/B007) are not, and B007 and C122 are missing; raw values are public API, change pending owner approval (audit report P-STOW)
+// NEMA-verified: 2026a, checked 2026-09-28 — the 7 tags read against PS3.18 2026a Table I.1-1 (all present); FailureReasonCode diffed against Tables I.2-1 / I.2-2: 0110, 0122, C122, A900, C000, A700, B000, B006, B007 match, 0111 is an additional code (I.2.2), the 7 PS3.7-only cases are deprecated; the range classification (A7xx, A9xx, Cxxx) is in knownFailureReason
 /// Response from a STOW-RS store operation
 ///
 /// Contains the results of storing one or more DICOM instances,
@@ -86,53 +86,71 @@ public struct STOWResponse: Sendable, Equatable {
         /// and Table I.2-1 the warnings B000, B006 and B007; the other cases here are PS3.7
         /// Annex C statuses that the tables do not list (see the audit report, P-STOW)
         public enum FailureReasonCode: UInt16, Sendable {
-            /// Processing failure
+            /// Processing failure (Table I.2-2, 0110)
             case processingFailure = 0x0110
             
-            /// Duplicate SOP Instance
+            /// Duplicate SOP Instance (PS3.7 C.5.9; an additional code as I.2.2 allows, used by
+            /// the DICOMKit server for a rejected duplicate)
             case duplicateSOPInstance = 0x0111
             
-            /// No such object instance (referenced object doesn't exist)
-            case noSuchObjectInstance = 0x0112
-            
-            /// No such event type
-            case noSuchEventType = 0x0113
-            
-            /// No such argument
-            case noSuchArgument = 0x0114
-            
-            /// Invalid argument value
-            case invalidArgumentValue = 0x0115
-            
-            /// Mandatory attribute missing
-            case mandatoryAttributeMissing = 0x0120
-            
-            /// SOP Class not supported
+            /// Referenced SOP Class not supported (Table I.2-2, 0122)
             case sopClassNotSupported = 0x0122
             
-            /// Transfer syntax not supported
-            case transferSyntaxNotSupported = 0x0124
+            /// Referenced Transfer Syntax not supported (Table I.2-2, C122)
+            case referencedTransferSyntaxNotSupported = 0xC122
             
-            /// Data set does not match SOP Class
-            case dataSetDoesNotMatchSOPClass = 0x0131
+            /// Error: Data Set does not match SOP Class (Table I.2-2, A9xx; the exact value A900
+            /// and every other A9xx value classify here)
+            case dataSetDoesNotMatchSOPClassError = 0xA900
             
-            /// Cannot understand
+            /// Error: Cannot understand (Table I.2-2, Cxxx; every Cxxx value other than C122
+            /// classifies here)
             case cannotUnderstand = 0xC000
             
-            /// Out of resources
+            /// Refused out of Resources (Table I.2-2, A7xx)
             case outOfResources = 0xA700
             
-            /// Data element coerced
+            /// Coercion of Data Elements (Table I.2-1, B000, a warning)
             case dataSetCoercion = 0xB000
             
-            /// Elements discarded
+            /// Elements Discarded (Table I.2-1, B006, a warning)
             case elementsDiscarded = 0xB006
+            
+            /// Data Set does not match SOP Class (Table I.2-1, B007, a warning)
+            case dataSetDoesNotMatchSOPClassWarning = 0xB007
+            
+            // PS3.7 Annex C statuses that PS3.18 Tables I.2-1 / I.2-2 do not define for the
+            // Store Transaction
+            @available(*, deprecated, message: "not a PS3.18 Table I.2-2 Failure Reason")
+            case noSuchObjectInstance = 0x0112
+            @available(*, deprecated, message: "not a PS3.18 Table I.2-2 Failure Reason")
+            case noSuchEventType = 0x0113
+            @available(*, deprecated, message: "not a PS3.18 Table I.2-2 Failure Reason")
+            case noSuchArgument = 0x0114
+            @available(*, deprecated, message: "not a PS3.18 Table I.2-2 Failure Reason")
+            case invalidArgumentValue = 0x0115
+            @available(*, deprecated, message: "not a PS3.18 Table I.2-2 Failure Reason")
+            case mandatoryAttributeMissing = 0x0120
+            @available(*, deprecated, renamed: "referencedTransferSyntaxNotSupported", message: "PS3.18 Table I.2-2: C122")
+            case transferSyntaxNotSupported = 0x0124
+            @available(*, deprecated, renamed: "dataSetDoesNotMatchSOPClassError", message: "PS3.18 Table I.2-2: A9xx (error) or I.2-1 B007 (warning)")
+            case dataSetDoesNotMatchSOPClass = 0x0131
         }
         
-        /// Returns the failure reason as a known code, if applicable
+        /// Returns the failure reason as a known code, if applicable. Exact values map to their
+        /// case; the ranges of PS3.18 Table I.2-2 (A7xx Refused out of Resources, A9xx Data Set
+        /// does not match SOP Class, Cxxx Cannot understand) map to their range case.
         public var knownFailureReason: FailureReasonCode? {
             guard let reason = failureReason else { return nil }
-            return FailureReasonCode(rawValue: reason)
+            if let exact = FailureReasonCode(rawValue: reason) {
+                return exact
+            }
+            switch reason & 0xFF00 {
+            case 0xA700: return .outOfResources
+            case 0xA900: return .dataSetDoesNotMatchSOPClassError
+            case 0xC000...0xCF00: return .cannotUnderstand
+            default: return nil
+            }
         }
     }
     
