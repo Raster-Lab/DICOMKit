@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — carries no DICOM-standard data (facade over the services; defaults only)
 
 #if canImport(Network)
 
@@ -252,7 +253,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - callingAE: The local AE title string
     ///   - calledAE: The remote AE title string
     ///   - timeout: Connection timeout in seconds (default: 30)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB, `defaultMaxPDUSize`)
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - tlsEnabled: Use TLS encryption with default configuration (default: false)
@@ -296,7 +297,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - callingAE: The local AE title string
     ///   - calledAE: The remote AE title string
     ///   - timeout: Connection timeout in seconds (default: 30)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB, `defaultMaxPDUSize`)
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - tlsConfiguration: TLS configuration for secure connections (nil for plain TCP)
@@ -340,7 +341,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - callingAETitle: The local AE title
     ///   - calledAETitle: The remote AE title
     ///   - timeout: Connection timeout in seconds (default: 30)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB, `defaultMaxPDUSize`)
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - tlsEnabled: Use TLS encryption with default configuration (default: false)
@@ -383,7 +384,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - callingAETitle: The local AE title
     ///   - calledAETitle: The remote AE title
     ///   - timeout: Connection timeout in seconds (default: 30)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB, `defaultMaxPDUSize`)
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - tlsConfiguration: TLS configuration for secure connections (nil for plain TCP)

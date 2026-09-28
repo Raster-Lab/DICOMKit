@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — carries no DICOM-standard data (server pool, retry and circuit-breaker plumbing over DICOMStorageService)
 
 #if canImport(Network)
 
@@ -55,7 +56,7 @@ public struct ServerEntry: Sendable, Hashable, Identifiable {
     ///   - isEnabled: Whether this server is enabled (default: true)
     ///   - tlsConfiguration: Optional TLS configuration
     ///   - userIdentity: Optional user identity for authentication
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB, `defaultMaxPDUSize`)
     ///   - timeout: Connection timeout (default: 60 seconds)
     public init(
         host: String,
@@ -93,7 +94,7 @@ public struct ServerEntry: Sendable, Hashable, Identifiable {
     ///   - isEnabled: Whether this server is enabled (default: true)
     ///   - tlsConfiguration: Optional TLS configuration
     ///   - userIdentity: Optional user identity for authentication
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB, `defaultMaxPDUSize`)
     ///   - timeout: Connection timeout (default: 60 seconds)
     /// - Throws: `DICOMNetworkError.invalidAETitle` if the AE title is invalid
     public init(

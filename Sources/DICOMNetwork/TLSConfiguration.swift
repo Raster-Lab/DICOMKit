@@ -3,6 +3,7 @@ import Foundation
 import Network
 #if canImport(Security)
 import Security
+// NEMA-verified: 2026a, checked 2026-09-28 — compared with PS3.15 2026a Annex B.12 / B.13 (TLS 1.2 required, 1.3 optional; B.13 cipher-suite list not enforced here, said so in the header); citation to a non-existent PS3.8 Annex A removed
 #endif
 
 // MARK: - TLSConfiguration
@@ -12,8 +13,17 @@ import Security
 /// Provides comprehensive TLS settings including protocol version, certificate
 /// validation, and custom certificate configuration.
 ///
-/// Reference: PS3.15 - Security and System Management Profiles
-/// Reference: PS3.8 Annex A - DICOM Secure Transport Connection Profile
+/// Reference: PS3.15 Annex B.12 "BCP 195 RFC 8996, 9325 TLS Secure Transport Connection
+/// Profile" and B.13 "Modified BCP 195 RFC 8996, 9325 TLS Secure Transport Connection
+/// Profile" (PS3.15 2026a; the older B.1/B.3/B.9-B.11 profiles are retired). PS3.8 has no
+/// TLS annex: it defers the secure transport to the PS3.15 profiles (PS3.8 §9.1.1).
+///
+/// Conformance note: B.12 requires TLS 1.2 (TLS 1.3 optional, preferred when offered) and
+/// forbids NULL key exchange, cipher and hash; B.13 additionally restricts the cipher suites
+/// and key lengths. `TLSConfiguration.default` and `.strict` meet the version rule of B.12;
+/// cipher-suite selection is left to Network.framework, so the B.13 suite list is not
+/// enforced here, and the `tlsProtocol10` / `tlsProtocol11` options exist for legacy peers
+/// only — a connection using them conforms to no PS3.15 profile (RFC 8996 prohibits them).
 ///
 /// ## Usage
 ///

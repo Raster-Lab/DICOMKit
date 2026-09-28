@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — sub-item layout and role bytes compared with PS3.7 2026a Tables D.3-9 / D.3-10 and the default-role rule of D.3.3.4: match
 
 /// SCP/SCU Role Selection Sub-Item (0x54)
 ///
