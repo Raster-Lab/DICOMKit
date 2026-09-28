@@ -322,6 +322,10 @@ public struct UIDManager {
         case .ldap: return "LDAP OID"
         case .codingScheme: return "Coding Scheme"
         case .applicationContext: return "Application Context"
+        case .serviceClass: return "Service Class"
+        case .applicationHostingModel: return "Application Hosting Model"
+        case .mappingResource: return "Mapping Resource"
+        case .synchronizationFrameOfReference: return "Synchronization Frame of Reference"
         }
     }
 }
