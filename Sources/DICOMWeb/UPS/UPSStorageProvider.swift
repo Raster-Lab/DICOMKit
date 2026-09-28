@@ -1,4 +1,5 @@
 import Foundation
+import DICOMCore
 
 // MARK: - UPSStorageProvider Protocol
 
@@ -344,7 +345,15 @@ public actor InMemoryUPSStorageProvider: UPSStorageProvider {
         
         let currentState = workitem.state
         
-        // Validate state transition
+        // Validate state transition (PS3.4 Table CC.1.1-2). A SCHEDULED UPS is cancelled by
+        // this provider itself on a cancellation request: through IN PROGRESS (CC.2.2.3).
+        if currentState == .scheduled && newState == .canceled {
+            try await changeWorkitemState(workitemUID: workitemUID, newState: .inProgress,
+                                          transactionUID: transactionUID ?? generateTransactionUID())
+            let lock = workitems[workitemUID]?.transactionUID
+            try await changeWorkitemState(workitemUID: workitemUID, newState: .canceled, transactionUID: lock)
+            return
+        }
         guard currentState.canTransition(to: newState) else {
             throw UPSError.invalidStateTransition(from: currentState, to: newState)
         }
@@ -359,8 +368,9 @@ public actor InMemoryUPSStorageProvider: UPSStorageProvider {
             }
         }
         
-        // Generate transaction UID for IN PROGRESS transition
-        if newState == .inProgress && workitem.transactionUID == nil {
+        // PS3.4 CC.2.1.3: on the change to IN PROGRESS the SCP records the Transaction UID the
+        // SCU provided (one is generated for callers that supplied none)
+        if newState == .inProgress {
             workitem.transactionUID = transactionUID ?? generateTransactionUID()
         }
         
@@ -476,10 +486,9 @@ public actor InMemoryUPSStorageProvider: UPSStorageProvider {
         }
     }
     
-    /// Generates a unique transaction UID
+    /// Generates a unique transaction UID (PS3.5 9.1: digits and dots only, so the UUID is
+    /// carried as its decimal value under the 2.25 root, PS3.5 B.2)
     private func generateTransactionUID() -> String {
-        // Use a simple UUID-based UID generation
-        let uuid = UUID().uuidString.replacingOccurrences(of: "-", with: "")
-        return "2.25.\(uuid.prefix(32))"
+        return UIDGenerator.generateUID().value
     }
 }

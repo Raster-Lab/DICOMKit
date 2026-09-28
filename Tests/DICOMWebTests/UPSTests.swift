@@ -23,7 +23,9 @@ final class UPSTests: XCTestCase {
     func testUPSStateValidTransitions() {
         // From SCHEDULED
         XCTAssertTrue(UPSState.scheduled.canTransition(to: .inProgress))
-        XCTAssertTrue(UPSState.scheduled.canTransition(to: .canceled))
+        // PS3.4 Table CC.1.1-2: Change State to CANCELED from SCHEDULED fails (C310H); the SCP
+        // cancels a SCHEDULED UPS itself on Request Cancel (CC.2.2.3)
+        XCTAssertFalse(UPSState.scheduled.canTransition(to: .canceled))
         XCTAssertFalse(UPSState.scheduled.canTransition(to: .completed))
         XCTAssertFalse(UPSState.scheduled.canTransition(to: .scheduled))
         

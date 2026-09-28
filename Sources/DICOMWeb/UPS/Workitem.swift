@@ -190,7 +190,12 @@ public struct Workitem: Sendable, Equatable, Codable {
 
 /// UPS Procedure Step State
 ///
-/// Reference: PS3.4 Annex CC.2 - State Machine
+/// NEMA-verified: 2026a, checked 2026-09-28 — the 4 terms diffed against PS3.3 2026a C.30.1;
+/// transitions against PS3.4 Table CC.1.1-2 (an SCU may change SCHEDULED to IN PROGRESS and
+/// IN PROGRESS to COMPLETED or CANCELED; a SCHEDULED UPS is cancelled by the SCP on Request
+/// Cancel, CC.2.2.3, never by a Change State request, which Table CC.1.1-2 refuses with C310H).
+///
+/// Reference: PS3.4 Annex CC.1.1 - Unified Procedure Step States
 public enum UPSState: String, Sendable, Codable, CaseIterable {
     /// Workitem has been scheduled but not yet started
     case scheduled = "SCHEDULED"
@@ -214,11 +219,13 @@ public enum UPSState: String, Sendable, Codable, CaseIterable {
         }
     }
     
-    /// Returns the valid target states from this state
+    /// Returns the target states a Change State request may ask for from this state
+    /// (PS3.4 Table CC.1.1-2). SCHEDULED to CANCELED is not one of them: the origin server
+    /// performs that itself, through IN PROGRESS, when cancellation is requested (CC.2.2.3).
     public var validTransitions: [UPSState] {
         switch self {
         case .scheduled:
-            return [.inProgress, .canceled]
+            return [.inProgress]
         case .inProgress:
             return [.completed, .canceled]
         case .completed, .canceled:
@@ -238,7 +245,11 @@ public enum UPSState: String, Sendable, Codable, CaseIterable {
 
 /// UPS Scheduled Procedure Step Priority
 ///
-/// Reference: PS3.4 Annex CC.1.1
+/// PS3.3 C.30.2 defines HIGH, MEDIUM and LOW for Scheduled Procedure Step Priority
+/// (0074,1200); `STAT` is not a defined term (C.30.2: HIGH is "equivalent to a STAT
+/// request") and is kept only until its removal is approved (see the audit report).
+///
+/// Reference: PS3.3 C.30.2 - Unified Procedure Step Scheduled Procedure Information Module
 public enum UPSPriority: String, Sendable, Codable, CaseIterable {
     /// Highest priority - time critical
     case stat = "STAT"
@@ -708,7 +719,7 @@ extension Workitem {
         
         // Comments on Scheduled Procedure Step (0040,0400) - VR: LT
         if let comments = comments {
-            json[UPSTag.commentsOnScheduledProcedureStep] = [
+            json[UPSTag.commentsOnTheScheduledProcedureStep] = [
                 "vr": "LT",
                 "Value": [comments]
             ]
@@ -788,7 +799,7 @@ extension Workitem {
             }
             if let desc = progress.progressDescription {
                 json[UPSTag.procedureStepProgressDescription] = [
-                    "vr": "LO",
+                    "vr": "ST",
                     "Value": [desc]
                 ]
             }
@@ -947,7 +958,7 @@ extension Workitem {
         
         // Comments on Scheduled Procedure Step (0040,0400) - VR: LT
         if let comments = comments {
-            json[UPSTag.commentsOnScheduledProcedureStep] = [
+            json[UPSTag.commentsOnTheScheduledProcedureStep] = [
                 "vr": "LT",
                 "Value": [comments]
             ]
@@ -1099,9 +1110,10 @@ extension Workitem {
             ]
         }
         if let name = performer.performerName {
+            // Human Performer's Name (0040,4037) is PN (PS3.6 Table 6-1)
             item[UPSTag.humanPerformerName] = [
-                "vr": "LO",
-                "Value": [name]
+                "vr": "PN",
+                "Value": [["Alphabetic": name]]
             ]
         }
         if let org = performer.performerOrganization {
@@ -1183,7 +1195,7 @@ extension Workitem {
         workitem.procedureStepLabel = extractString(from: json, tag: UPSTag.procedureStepLabel)
         workitem.worklistLabel = extractString(from: json, tag: UPSTag.worklistLabel)
         workitem.scheduledProcedureStepID = extractString(from: json, tag: UPSTag.scheduledProcedureStepID)
-        workitem.comments = extractString(from: json, tag: UPSTag.commentsOnScheduledProcedureStep)
+        workitem.comments = extractString(from: json, tag: UPSTag.commentsOnTheScheduledProcedureStep)
         
         // Transaction
         workitem.transactionUID = extractString(from: json, tag: UPSTag.transactionUID)
@@ -1317,7 +1329,7 @@ extension Workitem {
         }
         let performers = items.map { item -> HumanPerformer in
             let code = extractCodedEntry(from: item, tag: UPSTag.humanPerformerCodeSequence)
-            let name = extractString(from: item, tag: UPSTag.humanPerformerName)
+            let name = extractPersonName(from: item, tag: UPSTag.humanPerformerName)
             let org = extractString(from: item, tag: UPSTag.humanPerformerOrganization)
             return HumanPerformer(performerCode: code, performerName: name, performerOrganization: org)
         }
@@ -1348,6 +1360,10 @@ extension Workitem {
 // MARK: - DICOM Tags for UPS
 
 /// DICOM tags used for UPS (Unified Procedure Step)
+///
+/// NEMA-verified: 2026a, checked 2026-09-28 — all 56 tags and their keywords diffed against
+/// PS3.6 2026a Table 6-1 (Scripts/diff_web.py); the VR of every JSON literal written with
+/// them checked against the same table.
 public enum UPSTag {
     // SOP Common
     public static let sopClassUID = "00080016"
@@ -1422,6 +1438,9 @@ public enum UPSTag {
     public static let codeMeaning = "00080104"
     
     // Comments
+    /// Comments on the Scheduled Procedure Step (0040,0400); PS3.6 keyword CommentsOnTheScheduledProcedureStep
+    public static let commentsOnTheScheduledProcedureStep = "00400400"
+    @available(*, deprecated, renamed: "commentsOnTheScheduledProcedureStep")
     public static let commentsOnScheduledProcedureStep = "00400400"
     
     // Patient
