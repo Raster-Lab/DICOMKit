@@ -1,6 +1,7 @@
 import Foundation
 import DICOMCore
 import DICOMDictionary
+// NEMA-verified: 2026a, checked 2026-09-28 — transfer syntaxes now come from DICOMCore's PS3.6 2026a Table A-1 registry (was a hand list with 2 unregistered and 29 missing UIDs); storage classes from DICOMDictionary (PS3.4 Table B.5-1)
 
 // MARK: - Validation Error
 

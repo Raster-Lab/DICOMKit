@@ -762,6 +762,7 @@ public struct WorklistItem: Sendable {
 
 #if canImport(Network)
 import Network
+// NEMA-verified: 2026a, checked 2026-09-28 — MWL FIND UID per PS3.4 2026a Table K.6.1.4-1; identifier keys and (0008,0005) rule per Tables K.6-1/K.6-1a, K.4.1.1.3.1 and C.2.2.2; response decoding per PS3.5 §6.1.2
 
 // MARK: - DICOM Modality Worklist Service
 

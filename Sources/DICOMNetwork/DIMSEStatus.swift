@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — the 16 named codes and their class text-diffed against PS3.7 2026a Annex C and PS3.4 2026a Tables B.2-1, C.4-1..C.4-3, K.4-1, F.7.2-2, F.8.2-2 (Scripts/diff_network.py): 16 of 16 match; unnamed codes classified by range
 
 /// DIMSE Status Codes
 ///

@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — field sets of every RQ/RSP compared with PS3.7 2026a Tables 9.3-1..9.3-13 and 10.3-1..10.3-12; no wrong tag; N-GET-RQ does not carry the optional (0000,1005)
 
 /// Protocol for DIMSE messages
 ///

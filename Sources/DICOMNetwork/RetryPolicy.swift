@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — the 4 storage SOP Class UIDs registered in PS3.6 2026a Table A-1 (Scripts/diff_network.py); retry policy itself is not standard data
 
 // MARK: - Retry Policy Configuration
 

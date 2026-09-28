@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — mapping to/from the three PS3.7 2026a Table E.1-1 Priority values checked; queue ranks are DICOMKit's own
 
 // MARK: - Transfer Priority
 

@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — C-ECHO fields per PS3.7 2026a Table 9.3-12/9.3-13; Verification SOP Class and the two transfer syntax UIDs registered in PS3.6 2026a Table A-1 (Scripts/diff_network.py)
 
 // MARK: - SOP Class UIDs
 

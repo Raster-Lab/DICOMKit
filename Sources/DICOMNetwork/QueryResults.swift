@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — accessor VRs checked against PS3.5 2026a Table 6.2-1 (Rows/Columns are US, read as 16-bit LE); (0008,0005) handling per PS3.5 §6.1.2
 
 // MARK: - Base Query Result Protocol
 

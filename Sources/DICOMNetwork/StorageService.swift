@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — C-STORE fields per PS3.7 2026a Table 9.3-1, statuses per PS3.4 Table B.2-1; presentation-context IDs bounded per PS3.8 §9.3.2.2; File Meta Information parse per PS3.10 §7.1
 
 // MARK: - Store Result
 

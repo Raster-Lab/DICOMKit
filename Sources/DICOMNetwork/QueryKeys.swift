@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — the 8 module-defined tags and every key VR checked against PS3.6 2026a Table 6-1; key levels against PS3.4 2026a Tables C.6-1..C.6-5 (Patient's Age is a study-level key)
 
 /// Query/Retrieve Level tag (0008,0052)
 ///

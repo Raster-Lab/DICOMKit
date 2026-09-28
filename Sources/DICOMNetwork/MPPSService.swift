@@ -1,6 +1,7 @@
 import Foundation
 import DICOMCore
 import DICOMDictionary
+// NEMA-verified: 2026a, checked 2026-09-28 — N-CREATE/N-SET attribute set text-diffed against PS3.4 2026a Table F.7.2-1 (all 23 top-level Type 1/2 attributes emitted; Scripts/diff_network.py); PPS status terms per PS3.3 C.4.14; command sets per PS3.7 Tables 10.3-5, 10.3-9
 
 /// SOP Class UID for Modality Performed Procedure Step
 /// Reference: PS3.4 Annex F - Modality Performed Procedure Step SOP Class

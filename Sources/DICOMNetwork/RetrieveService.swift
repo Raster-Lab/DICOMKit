@@ -1,6 +1,7 @@
 import Foundation
 import DICOMCore
 import DICOMDictionary
+// NEMA-verified: 2026a, checked 2026-09-28 — C-MOVE/C-GET fields per PS3.7 2026a Tables 9.3-6..9.3-11, status per PS3.4 Tables C.4-2/C.4-3; identifier order per PS3.5 §7.1 and charset per PS3.4 C.4.2.1.4.1; storage contexts batched per PS3.8 §9.3.2.2 (D21); UIDs registered in PS3.6 Table A-1
 
 // MARK: - Retrieve Tags
 

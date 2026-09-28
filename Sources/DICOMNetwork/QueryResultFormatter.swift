@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — carries no DICOM-standard data (display column lists only)
 
 /// Output renderings shared by the dicom-query CLI and DICOMStudio's in-app query,
 /// so both produce identical text for the same C-FIND results.

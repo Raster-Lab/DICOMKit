@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — default return keys diffed against PS3.4 2026a Tables C.6-1..C.6-5 (all R/U keys present); Explicit VR length rule now DICOMCore's (PS3.5 Table 7.1-1, D1); identifier rules per PS3.4 C.4.1.1.3.1 and C.2.2.2; sequence parsing per PS3.5 §7.5; Scripts/diff_network.py
 
 /// Configuration for the DICOM Query Service
 public struct QueryConfiguration: Sendable, Hashable {

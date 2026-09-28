@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — command set encoding checked against PS3.7 2026a §6.3.1 (Implicit VR LE, group length first, even lengths) and Table E.1-1 (0000,0800) = 0101H; pad byte per VR from PS3.5 Table 6.2-1 (UI NULL, AE/LO SPACE)
 
 /// Value indicating that no data set follows the command
 ///

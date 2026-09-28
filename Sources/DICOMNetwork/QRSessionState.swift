@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — carries no DICOM-standard data (CLI resume state)
 
 // Shared save-state model for `dicom-qr` — the JSON written by `--save-state`
 // and consumed by `dicom-qr resume`. Lives in DICOMNetwork so the CLI and

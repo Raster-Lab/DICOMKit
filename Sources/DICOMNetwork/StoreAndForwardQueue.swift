@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — Priority scheduling order checked against PS3.7 2026a Table E.1-1 (LOW 0002H, MEDIUM 0000H, HIGH 0001H are codes, not ranks)
 
 // MARK: - Queue Item Status
 

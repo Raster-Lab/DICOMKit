@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — defined terms ISO_IR 100 / ISO_IR 192 and the inclusion rule checked against PS3.5 2026a §6.1.2 and PS3.4 C.4.1.1.3.1 / C.2.2.2
 
 /// Chooses and applies the Specific Character Set (0008,0005) for the string
 /// values of a DIMSE identifier or data set built by an SCU.
