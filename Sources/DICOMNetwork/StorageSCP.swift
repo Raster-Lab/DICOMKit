@@ -384,6 +384,7 @@ public actor DefaultStorageHandler: StorageDelegate {
 
 #if canImport(Network)
 import Network
+// NEMA-verified: 2026a, checked 2026-09-28 — A-ASSOCIATE-RJ reasons per PS3.8 2026a Table 9-21, Protocol-version bit 0 per Table 9-11, maximum length per Annex D.1; C-STORE/C-ECHO responses per PS3.7 Tables 9.3-2/9.3-13 and PS3.4 Table B.2-1; unsupported operations answered 0211H (PS3.7 Annex C)
 
 // MARK: - DICOM Storage Server
 

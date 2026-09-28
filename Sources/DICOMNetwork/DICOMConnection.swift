@@ -2,6 +2,7 @@ import Foundation
 
 #if canImport(Network)
 import Network
+// NEMA-verified: 2026a, checked 2026-09-28 — PDU header read per PS3.8 2026a §9.3.1 (big-endian length); the negotiated maximum length applies to P-DATA-TF only (Annex D.1)
 
 /// Thread-safe wrapper for continuation to handle one-shot resumption
 private final class ContinuationResumeOnce<T: Sendable, E: Error>: @unchecked Sendable {

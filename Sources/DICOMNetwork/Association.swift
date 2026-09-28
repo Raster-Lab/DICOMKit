@@ -232,6 +232,7 @@ public struct NegotiatedAssociation: Sendable {
 
 #if canImport(Network)
 import Network
+// NEMA-verified: 2026a, checked 2026-09-28 — release, abort and ARTIM behaviour compared with PS3.8 2026a Table 9-10 (AR-2/AR-4 on A-RELEASE-RQ, AR-8/AR-9/AR-3 on collision, AA-1 on local timeout) and §7.2.2; maximum length per Annex D.1 (0 = unlimited)
 
 /// DICOM Association for Service Class User (SCU) operations
 ///

@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — compared with PS3.8 2026a Table 9-11 (16 characters, ISO 646:1990 basic G0 set 0x20-0x7E, leading/trailing SPACE non-significant) and PS3.5 Table 6.2-1 AE (no backslash), matching DICOMCore's DICOMApplicationEntity
 
 /// DICOM Application Entity (AE) Title for network communication
 ///

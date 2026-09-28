@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — the maximum-length semantics of PS3.8 2026a Annex D.1 (0 = no maximum); the default and minimum sizes are implementation choices and say so
 
 /// Protocol for all DICOM Protocol Data Units (PDUs)
 ///

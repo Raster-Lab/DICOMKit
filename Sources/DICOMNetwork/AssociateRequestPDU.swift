@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — A-ASSOCIATE-RQ layout compared with PS3.8 2026a Tables 9-11..9-16 and Annex D.1-1; Application Context Name per PS3.7 A.2.1; Implementation Class UID / Version Name limits per PS3.7 Tables D.3-1/D.3-3 and PS3.5 UI (enforced)
 
 /// A-ASSOCIATE-RQ PDU (Association Request)
 ///

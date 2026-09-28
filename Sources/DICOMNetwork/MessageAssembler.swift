@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — fragment size derived from the PDU-length definition of PS3.8 2026a §9.3.1 / Table 9-23 (maximum length − 6 bytes per PDV) and the Annex E.2 control header
 
 /// Assembles DIMSE messages from PDV fragments
 ///

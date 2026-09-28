@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+// NEMA-verified: 2026a, checked 2026-09-28 — A-ASSOCIATE-RJ reason texts now taken from AssociateRejectPDU (PS3.8 2026a Table 9-21); no other standard data beyond display labels
 
 /// Shared console rendering for the network CLIs (`dicom-query`, `dicom-send`,
 /// `dicom-retrieve`, `dicom-qr`) AND the DICOMStudio CLI Workshop in-process

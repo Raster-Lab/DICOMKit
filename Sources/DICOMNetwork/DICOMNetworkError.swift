@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — AssociateRejectResult/Source and AbortSource/AbortReason values text-diffed against PS3.8 2026a Tables 9-21 and 9-26 (Scripts/diff_network.py): 14 of 14 match; ARTIM citation §9.1.5
 
 // MARK: - Error Category
 

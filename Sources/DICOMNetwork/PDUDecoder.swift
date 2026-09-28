@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — decoder compared with PS3.8 2026a Tables 9-11..9-26 and PS3.7 Tables D.3-1..D.3-15 (item types 0x10-0x59; 0x53/0x56/0x57 skipped as §9.3.1 permits; Protocol-version preserved for the bit-0 test)
 
 /// PDU Decoder for parsing DICOM network PDUs from binary data
 ///

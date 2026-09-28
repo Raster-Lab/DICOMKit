@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — A-ABORT layout and source/reason semantics compared with PS3.8 2026a Table 9-26 (service-user source sends reason 00H)
 
 /// A-ABORT PDU
 ///

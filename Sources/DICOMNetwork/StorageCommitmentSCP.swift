@@ -263,6 +263,7 @@ public actor DefaultCommitmentHandler: StorageCommitmentDelegate {
 
 #if canImport(Network)
 import Network
+// NEMA-verified: 2026a, checked 2026-09-28 — N-ACTION handling per PS3.4 2026a J.3.2 and PS3.7 §10.1.4.1.10 (0118H, 0123H); N-EVENT-REPORT per J.3.3 and Table J.3-2; PDU length per PS3.8 §9.3.1 (D13); reject reasons per Table 9-21
 
 // MARK: - Storage Commitment Server
 

@@ -1398,6 +1398,7 @@ enum StorageCommitmentDataSetCodec {
 }
 
 import Network
+// NEMA-verified: 2026a, checked 2026-09-28 — Push Model UIDs per PS3.4 2026a J.3.4/J.3.5, action/event information per Tables J.3-1/J.3-2, failure reasons per PS3.3 C.14.1.1 (Scripts/diff_network.py: 6 of 6); listener answers every N-EVENT-REPORT-RQ (J.3.3.1.3); PDU length per PS3.8 §9.3.1 (D13)
 
 // MARK: - Commitment Notification Listener
 

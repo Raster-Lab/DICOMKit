@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — A-ASSOCIATE-AC layout compared with PS3.8 2026a Tables 9-17..9-20 (a Transfer Syntax sub-item is now present in every Presentation Context item, Table 9-18) and PS3.7 Tables D.3-2/D.3-4 (length limits enforced)
 
 /// A-ASSOCIATE-AC PDU (Association Accept)
 ///

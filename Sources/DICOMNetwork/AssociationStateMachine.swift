@@ -1,4 +1,5 @@
 import Foundation
+// NEMA-verified: 2026a, checked 2026-09-28 — states relabelled to PS3.8 2026a Tables 9-1..9-5 (Scripts/diff_network.py: 9 of 9), transitions checked against Table 9-10 (Sta13 AA-2 added; requestor timeouts are local AA-1, not the standard's ARTIM)
 
 /// DICOM Association State Machine
 ///

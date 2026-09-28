@@ -500,7 +500,8 @@ actor PrintSCPAssociation {
         }
 
         let accepted = negotiate(request.presentationContexts)
-        maxPDUSize = min(configuration.maxPDUSize, request.maxPDUSize)
+        // PS3.8 Annex D.1: a peer value of 0 means no maximum length was specified.
+        maxPDUSize = negotiatedMaxPDUSize(local: configuration.maxPDUSize, remote: request.maxPDUSize)
 
         let acceptPDU = AssociateAcceptPDU(
             calledAETitle: configuration.aeTitle,
