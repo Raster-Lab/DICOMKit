@@ -63,8 +63,20 @@ and PS3.19 2026a; 4 report a pending public-API decision), and all 54 Swift file
 - **Documentation.** 28 PS3.18 section citations corrected; `ConformanceStatement.dicomVersion`
   defaults to 2026a; `AuthenticationMiddleware` recognises the `thumbnail` and `pixeldata`
   segments; transfer syntax comments carry the PS3.6 Table A-1 names.
-- Pending owner approval (public API, unchanged): `STOWResponse.FailureReasonCode` raw values,
-  the `UPSEventType` / event JSON model, `UPSPriority.stat`, `WADOURIClient.ContentType.htj2kContainer`.
+- **Public API, approved by the owner (2026-09-28).** `STOWResponse.FailureReasonCode` gains
+  `referencedTransferSyntaxNotSupported` (C122), `dataSetDoesNotMatchSOPClassError` (A900) and
+  `dataSetDoesNotMatchSOPClassWarning` (B007) per PS3.18 Tables I.2-1 / I.2-2; the seven
+  PS3.7-only cases (0112-0115, 0120, 0124, 0131) are deprecated; `knownFailureReason` classifies
+  the A7xx, A9xx and Cxxx ranges. `UPSEventType.eventTypeID` / `init(eventTypeID:)` carry the
+  PS3.4 Table CC.2.4-1 Event Type ID (case `scpStatusChange` added); every UPS Event Report is
+  DICOM JSON with Event Type ID (0000,1002) and the Table CC.2.4-1 attributes only, never the
+  Transaction UID; `completed`/`canceled` events serialise as State Reports. `UPSPriority.stat`
+  is deprecated and written as HIGH (`dicomValue`; PS3.3 C.30.2); `UPSPriority.allCases` is HIGH,
+  MEDIUM, LOW. `WADOURIClient.ContentType.htj2kContainer` is deprecated (image/jphc is not a
+  Rendered Media Type, PS3.18 9.1.2.2.1) and requests for it use image/jph.
+- **UPS-RS Create payload.** `Workitem.toDICOMJSONForCreate` sends every Type 2 attribute of the
+  N-CREATE column of PS3.4 Table CC.2.5-3, empty when the model has no value, and an empty
+  Transaction UID as the table requires.
 
 ### Fixed — DICOMNetwork verified against DICOM 2026a (2026-09-28)
 

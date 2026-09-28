@@ -183,7 +183,7 @@ report:
 | DICOMDictionary | 5 | 5 | [DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md](DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md) — complete 2026-09-28; D6, D7, D20 closed; D21 (DICOMNetwork) opened there |
 | DICOMKit | 156 | 0 | Not started. Deferred D5, D12, D14–D19, D24 |
 | DICOMNetwork | 63 | 63 | [DICOMNETWORK_STANDARD_IMPLEMENTATION.md](DICOMNETWORK_STANDARD_IMPLEMENTATION.md) — complete 2026-09-28 (one API decision pending, P-MAMMO); D1, D13, D21 closed; D22–D24 (DICOMStudio, DICOMPrintKit, DICOMKit) opened there |
-| DICOMWeb | 54 | 54 | [DICOMWEB_STANDARD_IMPLEMENTATION.md](DICOMWEB_STANDARD_IMPLEMENTATION.md) — complete 2026-09-28 (four API decisions pending: P-STOW, P-EVENT, P-PRIORITY, P-URI); D2, D3, D4 closed; D25 (DICOMCore) opened there |
+| DICOMWeb | 54 | 54 | [DICOMWEB_STANDARD_IMPLEMENTATION.md](DICOMWEB_STANDARD_IMPLEMENTATION.md) — complete 2026-09-28 (the four API decisions approved and applied); D2, D3, D4 closed; D25 (DICOMCore) opened there |
 | Other modules and CLI tools | — | 0 | Not started. Deferred D5, D9–D11, D15 (DICOMStudio, dicom-compress, dicom-dcmdir) |
 
 The Deferred findings table below holds D1–D20. D21 onwards are in the later module reports (D21: DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md; D22–D24: DICOMNETWORK_STANDARD_IMPLEMENTATION.md; D25: DICOMWEB_STANDARD_IMPLEMENTATION.md, a DICOMCore finding).

@@ -6,13 +6,14 @@ A.1), the RESTful client for the Studies Service (WADO-RS, QIDO-RS, STOW-RS, PS3
 and the Worklist Service (UPS-RS, Chapter 11), the URI Service client (WADO-URI, Chapter 9), an
 embeddable server for the same services, and the HTTP, caching, OAuth2 and logging plumbing.
 
-**Status: complete, pending four owner decisions.** All five buckets are done: every constant
-the module carries is diffed by script (`Scripts/diff_web.py`: 35 of 35 checks pass, 4 report
-PEND because the fix changes public API), every behaviour finding is fixed with a test, and all
-54 files carry a `NEMA-verified` marker (`Scripts/check_nema_markers.py Sources/DICOMWeb` exits
-0). The three deferred rows for this module (D2, D3, D4) are closed. One new finding for
-DICOMCore (D25) is recorded below. The work is committed on `feature/dicom-tag-modality-audit`,
-locally, for review.
+**Status: complete.** All five buckets are done: every constant the module carries is diffed
+by script (`Scripts/diff_web.py`: 35 of 35 checks pass, 0 pending), every behaviour finding is
+fixed with a test, and all 54 files carry a `NEMA-verified` marker
+(`Scripts/check_nema_markers.py Sources/DICOMWeb` exits 0). The four public-API decisions
+(P-STOW, P-EVENT, P-PRIORITY, P-URI) were approved by the owner on 2026-09-28 and applied
+(commit df9d92b), as was the open P-CREATE item. The three deferred rows for this module (D2,
+D3, D4) are closed. One new finding for DICOMCore (D25) is recorded below. The work is
+committed on `feature/dicom-tag-modality-audit`, locally, for review.
 
 Method: [DICOMCORE_STANDARD_IMPLEMENTATION.md → Verification method](DICOMCORE_STANDARD_IMPLEMENTATION.md#verification-method-reuse-for-every-module),
 used unchanged. Package target: **DICOM 2026a** (`dicomStandardEdition = "2026a"`,
@@ -38,7 +39,7 @@ the WebSocket framing are not DICOM and are not scored; PS3.18 only names them.
 |---|---|---|---|
 | A — cites 2026a | 0 | No file in the module named the target edition | — |
 | B1 — cites another edition / CP / Sup | 1 (`ConformanceStatement.swift`, "2024c") | Default `dicomVersion` moved to the package target | ✅ |
-| B2 — no citation, data or behaviour differs from 2026a | 27 | See the bucket table; every finding verified against the frozen text | ✅ 23 fixed; 4 wait for approval (P-STOW, P-EVENT, P-PRIORITY, P-URI) |
+| B2 — no citation, data or behaviour differs from 2026a | 27 | See the bucket table; every finding verified against the frozen text | ✅ All 27 fixed (4 after owner approval, df9d92b) |
 | C1 — plumbing | 17 | Confirmed to carry no standard data | ✅ |
 | C2 — standard-derived, edition-stable | 9 | Diffed all the same; all constants match | ✅ |
 
@@ -100,9 +101,12 @@ Tests at the end (2026-09-28): `swift test --filter DICOMWebTests` — 630 swift
 | 2026-09-28 | P4-P8 | PS3.18 8.7.1, Tables 8.7.3-4/5, 8.7.4-1, 10.4.4-1, 8.3.5.1.2-4, Table 8.3.5-2, 10.6.1-5, 11.3-1, 11.10.1.2; PS3.4 CC.2.1.2 | `DICOMMediaType`, `DICOMwebURLBuilder`, `DICOMwebClient`, `UPSClient`, `QIDOQuery`; 3 new tests; 6 corrected (commit 82d6320) | 629 / 629 |
 | 2026-09-28 | P9-P20 | PS3.18 Tables 11.3-1, 11.4.1-1, 11.4.3-1, 11.6.3-1, 11.7.3-1, 11.8.3-1, 11.10.3-1, 10.5.3-1/2, 8.5-1, 8.6.1-1, I.2-2, 8.3.4.4.1, 11.x.3.2 texts, 8.7.5; PS3.4 CC.1.1-2, CC.2.1.3, CC.2.2.3, CC.2.5.3, CC.2.6.3, CC.2.7.3; PS3.6 Table 6-1 | `DICOMwebServer`, `DICOMwebRoutes`, `Workitem`, `UPSStorageProvider`; 1 new test; 8 corrected (commit 9e9c460) | 630 / 630 |
 | 2026-09-28 | Markers, citations, B1 | PS3.18/PS3.19 table of contents; PS3.6 Table A-1 names; PS3.18 Table D-1 | 42 files marked; 28 citations corrected; `ConformanceStatement` 2024c → 2026a; `AuthenticationMiddleware` recognises thumbnail/pixeldata (commit e352350) | build |
-| 2026-09-28 | Close | `Scripts/diff_web.py` re-run: 35 ok, 0 fail, 4 pending. `check_nema_markers.py`: 54 of 54. CHANGELOG `[Unreleased]`; DICOMCore status table updated. | — | Full `swift test`: see below |
+| 2026-09-28 | Close | `Scripts/diff_web.py` re-run: 35 ok, 0 fail, 4 pending. `check_nema_markers.py`: 54 of 54. CHANGELOG `[Unreleased]`; DICOMCore status table updated. | — | Full `swift test`: all bundles pass |
+| 2026-09-28 | Owner approval: P-STOW, P-EVENT, P-PRIORITY, P-URI, P-CREATE | PS3.18 Tables I.2-1/I.2-2; PS3.4 Table CC.2.4-1, CC.2.4.3, CC.2.7.3, Table CC.2.5-3; PS3.3 C.30.2; PS3.18 9.1.2.2.1, Table 8.7.4-1 | `STOWResponse`, `UPSEvent`, `Workitem`, `UPSStorageProvider`, `WebSocketEventDeliveryService`, `UPSWebSocketClient`, `UPSQuery`, `WADOURIClient`, `DICOMwebServer`; DICOMStudio and dicom-wado call sites; 7 tests corrected (commit df9d92b). Script: 35 ok, 0 pending. | 630 / 630; full `swift test` below |
 
-Full `swift test` at the end (2026-09-28, run after commit e352350): all 9 XCTest bundles pass (DICOMCore, DICOMKit 1,159, DICOMNetwork, DICOMPrintKit 323, DICOMRenderKit 92, DICOMRoundTrip 524, DICOMStudio, DICOMViewer, DICOMWeb) and every swift-testing run passes (DICOMWebTests 630 tests in 61 suites, 14 new), exit 0. No failures, no pre-existing failures to log.
+Full `swift test` before the approvals (2026-09-28, run after commit e352350): all 9 XCTest bundles pass (DICOMCore, DICOMKit 1,159, DICOMNetwork, DICOMPrintKit 323, DICOMRenderKit 92, DICOMRoundTrip 524, DICOMStudio, DICOMViewer, DICOMWeb) and every swift-testing run passes (DICOMWebTests 630 tests in 61 suites, 14 new), exit 0. No failures, no pre-existing failures to log.
+
+Full `swift test` after the approvals (2026-09-28, run after commit df9d92b): all 9 XCTest bundles pass (DICOMCore, DICOMKit, DICOMNetwork, DICOMPrintKit, DICOMRenderKit, DICOMRoundTrip, DICOMStudio, DICOMViewer, DICOMWeb) and every swift-testing run passes (5,165 + 1,504 + 674 + 630 + 474 + 226 + 84 + 53 + 30 + 20 tests), exit 0. No failures.
 
 ---
 
@@ -130,11 +134,11 @@ Full `swift test` at the end (2026-09-28, run after commit e352350): all 9 XCTes
 | P18 | Server STOW Failure Reason codes were PS3.7 statuses; all-failed answered 400; no Location; no Content-Location on multipart parts; no 406; no single-part `application/dicom` | PS3.18 Table I.2-2, 10.5.3-1/2, 8.6.1-1, 8.7.5, 10.4.4-1 | Medium | ✅ 9e9c460 |
 | P19 | Human Performer's Name written LO (PN); Progress Description LO (ST); Progress US (DS); `UPSTag.commentsOnScheduledProcedureStep` keyword | PS3.6 Table 6-1 | Low-Medium | ✅ 9e9c460 (old name deprecated) |
 | P20 | 28 wrong PS3.18 section citations; `ConformanceStatement` said 2024c; DX SOP Class name with an en dash; thumbnail/pixeldata unknown to the auth path parser | PS3.18/19 ToC; PS3.6 A-1; Table 10.1-1 | Low | ✅ e352350 |
-| P-STOW | `STOWResponse.FailureReasonCode`: 0111, 0112, 0113, 0114, 0115, 0120 are not in Tables I.2-1/I.2-2; `transferSyntaxNotSupported = 0x0124` should be C122; `dataSetDoesNotMatchSOPClass = 0x0131` should be A900 (error) / B007 (warning); B007 and C122 missing | PS3.18 Tables I.2-1, I.2-2 | Medium: `knownFailureReason` is nil for a conformant server's C122/A900 and matches nothing a server sends | ⏸ **Needs approval:** raw values and cases of a public enum. Recommendation: add `referencedTransferSyntaxNotSupported = 0xC122`, `dataSetDoesNotMatchSOPClassError = 0xA900`, `dataSetDoesNotMatchSOPClassWarning = 0xB007`; deprecate the six PS3.7-only cases and the two mis-valued ones; classify by range (A7xx, A9xx, Cxxx) in `knownFailureReason`. |
-| P-EVENT | `UPSEventType` raw values are invented strings; event JSON uses bare keys (`EventType`, `ReasonForStateChange`, `ContactDisplayName`, `ContactURI`, `CompletionNotes`), carries the Transaction UID, puts progress at the top level instead of inside (0074,1002), omits Input Readiness State from State Reports, has no Event Type ID (0000,1002); `Completed` / `Canceled` are State Reports, not events; Event Type IDs 4 and 5 not decoded | PS3.4 Table CC.2.4-1, CC.2.4.3; PS3.18 8.10.5 | Medium: DICOMKit-to-DICOMKit only | ⏸ **Needs approval:** `UPSEventType` and the event structs are public API. Recommendation: keep the Swift types, add `eventTypeID: Int` (1-5), serialise Event Reports as DICOM JSON with (0000,1002) and the Table CC.2.4-1 attributes only, drop the Transaction UID, and treat `completed`/`canceled` as `stateReport`. |
-| P-PRIORITY | `UPSPriority.stat = "STAT"` | PS3.3 C.30.2 (HIGH, MEDIUM, LOW; HIGH is "equivalent to a STAT request") | Low-Medium: a wrong value on the wire when selected | ⏸ **Needs approval:** raw value of a public enum. Recommendation: deprecate `.stat` in favour of `.high`; map "STAT" to `.high` on input. |
-| P-URI | `WADOURIClient.ContentType.htj2kContainer = "image/jphc"` | PS3.18 9.1.2.2.1 (application/dicom or a Rendered Media Type of Table 8.7.4-1; image/jph is one, image/jphc is bulk data) | Low | ⏸ **Needs approval:** public enum case. Recommendation: deprecate it. |
-| P-CREATE | `Workitem.toDICOMJSONForCreate` omits 12 Type 2 attributes of the N-CREATE column (Scheduled Processing Parameters Sequence, Issuer of Patient ID, Issuer of Patient ID Qualifiers Sequence, Other Patient IDs Sequence, Admission ID, Issuer of Admission ID Sequence, Admitting Diagnoses Description/Code Sequence, Procedure Step Progress Information Sequence, Unified Procedure Step Performed Procedure Sequence, Transaction UID "shall be empty") and the 1C Replaced Procedure Step Sequence; Patient ID, Birth Date and Sex are dropped when nil instead of sent empty | PS3.4 Table CC.2.5-3 | Medium: a strict origin server answers 400 | ⏳ Open, not API: add the empty Type 2 attributes. Left for the next pass so the Workitem model can grow the missing fields in one change. |
+| P-STOW | `STOWResponse.FailureReasonCode`: 0112, 0113, 0114, 0115, 0120 are not in Tables I.2-1/I.2-2; `transferSyntaxNotSupported = 0x0124` should be C122; `dataSetDoesNotMatchSOPClass = 0x0131` should be A900 (error) / B007 (warning); B007 and C122 missing | PS3.18 Tables I.2-1, I.2-2 | Medium: `knownFailureReason` was nil for a conformant server's C122/A900 | ✅ Approved and done, df9d92b: `referencedTransferSyntaxNotSupported = 0xC122`, `dataSetDoesNotMatchSOPClassError = 0xA900`, `dataSetDoesNotMatchSOPClassWarning = 0xB007` added; the seven PS3.7-only / mis-valued cases deprecated; `knownFailureReason` classifies A7xx, A9xx, Cxxx; 0111 kept as an additional code (I.2.2) |
+| P-EVENT | `UPSEventType` raw values were invented strings; event JSON used bare keys, carried the Transaction UID, put progress at the top level, omitted Input Readiness State and had no Event Type ID (0000,1002); `Completed` / `Canceled` are State Reports; Event Type IDs 4 and 5 were not decoded | PS3.4 Table CC.2.4-1, CC.2.4.3, CC.2.7.3; PS3.18 8.10.5 | Medium: DICOMKit-to-DICOMKit only | ✅ Approved and done, df9d92b: `UPSEventType.eventTypeID` / `init(eventTypeID:)` (1-5, `scpStatusChange` added); every `toDICOMJSON` is the Table CC.2.4-1 Event Report with (0000,1002); State Reports carry Input Readiness State; progress inside (0074,1002); contact fields as (0074,100A)/(0074,100C); no Transaction UID; `completed`/`canceled` serialise as State Reports; the provider dispatches one State Report per change; the WebSocket client decodes IDs 4 and 5 |
+| P-PRIORITY | `UPSPriority.stat = "STAT"` | PS3.3 C.30.2 (HIGH, MEDIUM, LOW; HIGH is "equivalent to a STAT request") | Low-Medium: a wrong value on the wire when selected | ✅ Approved and done, df9d92b: `.stat` deprecated, `dicomValue` writes HIGH everywhere the priority goes on the wire, `allCases` is the three defined terms; dicom-wado and DICOMStudio map "STAT" to `.high` |
+| P-URI | `WADOURIClient.ContentType.htj2kContainer = "image/jphc"` | PS3.18 9.1.2.2.1 (application/dicom or a Rendered Media Type of Table 8.7.4-1; image/jph is one, image/jphc is bulk data) | Low | ✅ Approved and done, df9d92b: deprecated; `fromRequestString` maps `jphc` to `.htj2k` |
+| P-CREATE | `Workitem.toDICOMJSONForCreate` omitted 12 Type 2 attributes of the N-CREATE column (Scheduled Processing Parameters Sequence, Issuer of Patient ID, Issuer of Patient ID Qualifiers Sequence, Other Patient IDs Sequence, Admission ID, Issuer of Admission ID Sequence, Admitting Diagnoses Description/Code Sequence, Procedure Step Progress Information Sequence, Unified Procedure Step Performed Procedure Sequence, Transaction UID "shall be empty"); Patient ID, Birth Date and Sex were dropped when nil | PS3.4 Table CC.2.5-3 | Medium: a strict origin server answers 400 | ✅ Done, df9d92b: every Type 2 attribute of the N-CREATE column is sent (empty when the model has no value), the Transaction UID empty as the table requires; the 1C Replaced Procedure Step Sequence is not modelled |
 
 ### Decisions taken without asking (all within the method's "fix behaviour that contradicts the standard")
 
@@ -155,6 +159,9 @@ Full `swift test` at the end (2026-09-28, run after commit e352350): all 9 XCTes
   406); with a header present it answers 406 when nothing supported matches. PUT is still
   accepted as an alias of POST for Update and Request Cancellation, and `X-Total-Count` is kept
   as a non-standard extension. `application/dicom+xml` metadata is answered 406 (not implemented).
+- **Deprecated, not removed:** the seven `FailureReasonCode` cases, `UPSPriority.stat` and
+  `WADOURIClient.ContentType.htj2kContainer` stay as deprecated members so existing callers
+  compile with a warning; `UPSPriority.allCases` lists only the three defined terms.
 - **Server-generated Transaction UID:** `InMemoryUPSStorageProvider.changeWorkitemState` still
   generates a Transaction UID when a direct caller passes none; the HTTP handler never lets that
   happen (400 "The Transaction UID is missing.").
@@ -217,13 +224,13 @@ Full `swift test` at the end (2026-09-28, run after commit e352350): all 9 XCTes
 | [QIDOQuery.swift](Sources/DICOMWeb/QIDOQuery.swift) | `studiesByModality` at the wrong level | ✅ P7; 20 / 20 tags. Marked. |
 | [Server/DICOMwebRoutes.swift](Sources/DICOMWeb/Server/DICOMwebRoutes.swift) | Create/Update/cancel methods; global UIDs; no 501 factory; no bulkdata route | ✅ P9, P16. Marked. |
 | [Server/DICOMwebServer.swift](Sources/DICOMWeb/Server/DICOMwebServer.swift) | P10-P12, P15-P18 | ✅ All; 12 handlers' status codes match their tables. Marked. |
-| [UPS/Workitem.swift](Sources/DICOMWeb/UPS/Workitem.swift) | P13, P19; priority citation | ✅ P13, P19; 56 / 56 tags; ⏸ P-PRIORITY; ⏳ P-CREATE. Marked. |
+| [UPS/Workitem.swift](Sources/DICOMWeb/UPS/Workitem.swift) | P13, P19; STAT; 13 Type 2 attributes missing at create | ✅ P13, P19, P-PRIORITY, P-CREATE; 66 / 66 tags. Marked. |
 | [UPS/UPSStorageProvider.swift](Sources/DICOMWeb/UPS/UPSStorageProvider.swift) | Invalid Transaction UIDs; SCHEDULED → CANCELED directly | ✅ P13, P14. Marked. |
-| [STOWResponse.swift](Sources/DICOMWeb/STOWResponse.swift) | Failure codes from "PS3.4 Annex B" | ⏸ P-STOW; Table I.1-1 tags 7 / 7. Marked (marker says so). |
-| [UPS/UPSEvent.swift](Sources/DICOMWeb/UPS/UPSEvent.swift) | Invented event model; CC.2.6.x citations (N-SET) | ⏸ P-EVENT; citations → Table CC.2.4-1. Marked (marker says so). |
-| [UPS/UPSWebSocketClient.swift](Sources/DICOMWeb/UPS/UPSWebSocketClient.swift) | "§11.11" for the WebSocket; IDs 4, 5 | ✅ Citations → 8.10.4 / Table CC.2.4-1; IDs 4, 5 noted (P-EVENT). Marked. |
-| [UPS/WebSocketEventDeliveryService.swift](Sources/DICOMWeb/UPS/WebSocketEventDeliveryService.swift) | "§11.8-11.11" citations; no (0000,1002) | ✅ Citations; ⏸ P-EVENT. Marked. |
-| [WADOURIClient.swift](Sources/DICOMWeb/WADOURIClient.swift) | "PS3.18 §8" for the URI Service (Chapter 9) | ✅ P20; parameters 10 / 10; ⏸ P-URI. Marked. |
+| [STOWResponse.swift](Sources/DICOMWeb/STOWResponse.swift) | Failure codes from "PS3.4 Annex B"; C122, A900, B007 missing | ✅ P-STOW; Table I.1-1 tags 7 / 7. Marked. |
+| [UPS/UPSEvent.swift](Sources/DICOMWeb/UPS/UPSEvent.swift) | Invented event model; CC.2.6.x citations (N-SET) | ✅ P-EVENT; citations → Table CC.2.4-1. Marked. |
+| [UPS/UPSWebSocketClient.swift](Sources/DICOMWeb/UPS/UPSWebSocketClient.swift) | "§11.11" for the WebSocket; IDs 4, 5 not decoded | ✅ Citations → 8.10.4 / Table CC.2.4-1; IDs 1-5 decoded. Marked. |
+| [UPS/WebSocketEventDeliveryService.swift](Sources/DICOMWeb/UPS/WebSocketEventDeliveryService.swift) | "§11.8-11.11" citations; no (0000,1002); Transaction UID sent | ✅ Citations; P-EVENT payload. Marked. |
+| [WADOURIClient.swift](Sources/DICOMWeb/WADOURIClient.swift) | "PS3.18 §8" for the URI Service (Chapter 9); image/jphc | ✅ P20, P-URI; parameters 10 / 10. Marked. |
 | [Server/AuthenticationMiddleware.swift](Sources/DICOMWeb/Server/AuthenticationMiddleware.swift) | thumbnail, pixeldata, suspend unknown segments | ✅ P20. Marked. |
 | [DICOMwebCapabilities.swift](Sources/DICOMWeb/DICOMwebCapabilities.swift) | "Section 10.8 Capabilities"; 4 non-A-1 names | ✅ P20; 11 UIDs registered. Marked. |
 | [DICOMwebError.swift](Sources/DICOMWeb/DICOMwebError.swift) | "Section 6 status codes" | ✅ P20 (8.5). Marked. |
@@ -276,7 +283,7 @@ Full `swift test` at the end (2026-09-28, run after commit e352350): all 9 XCTes
 
 - Reproduce: `python3 Scripts/nema_docbook.py fetch 2026a N --out DIR` for N = 3, 4, 6, 18, 19
   (subtitles must read "DICOM PS3.N 2026a - …"), then `python3 Scripts/diff_web.py --nema DIR`.
-  Expected: 35 ok, 0 FAIL, 4 PEND (P-STOW, P-EVENT, P-PRIORITY, P-URI). PS3.5 was read for
+  Expected: 35 ok, 0 FAIL, 0 PEND. PS3.5 was read for
   6.2 (VRs), 7.8.1 (private blocks) and 9.1 (UID characters) only.
 - Behaviour clauses were compared by reading the extracted text (PS3.18 8.3.4-8.3.5, 8.6.1,
   8.7.5-8.7.8, 10.4.4, 10.5.2-3, 11.4-11.12; PS3.19 A.1.1; PS3.4 CC.1.1, CC.2.1-CC.2.8); they
