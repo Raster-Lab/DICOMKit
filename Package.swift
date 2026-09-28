@@ -408,6 +408,7 @@ let package = Package(
                 "JP3DVolumeDocumentTests.swift",
                 "JPIPTests.swift",
                 "DICOMConverterTests.swift",
+                "ConversionDiagnosticsTests.swift",
                 "PixelEditorTests.swift",
                 // dicom-image: colour sources must convert (24-bit RGB context bug).
                 "ImageConverterColorTests.swift",

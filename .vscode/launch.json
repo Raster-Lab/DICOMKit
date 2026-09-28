@@ -919,6 +919,26 @@
             "target": "dicom-printscp",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release dicom-printscp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-video",
+            "target": "dicom-video",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-video"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-video",
+            "target": "dicom-video",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-video"
         }
     ]
 }

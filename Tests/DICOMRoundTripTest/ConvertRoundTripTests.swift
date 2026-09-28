@@ -20,6 +20,9 @@ import XCTest
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
+#if canImport(ImageIO)
+import ImageIO
+#endif
 
 final class ConvertRoundTripTests: XCTestCase {
 
@@ -175,6 +178,130 @@ final class ConvertRoundTripTests: XCTestCase {
         for (i, (a, b)) in zip(reconstructed, baselineFragments).enumerated() {
             XCTAssertEqual(Array(a), Array(b), "reconstructed JPEG fragment \(i) must be byte-identical")
         }
+    }
+
+    /// JPEG Extended (…4.51) is a recompression source too. JLICodec writes 8-bit data
+    /// under …4.51 as a sequential DCT stream, which JXLSwift bridges losslessly:
+    ///   grayscale8 → JPEG Extended (…4.51) → …4.111 → JPEG Extended.
+    /// Oracle: the reconstructed fragment is byte-identical and keeps the …4.51 UID.
+    func testJXLRecompression_roundTrip_jpegExtendedSource_byteIdentical() throws {
+        let original = makeGrayscale8(rows: 32, cols: 32, fillPattern: { UInt8(($0 * 5) % 256) })
+
+        let extended = try convert(original, to: .jpegExtended)
+        XCTAssertEqual(extended.reread.transferSyntaxUID, "1.2.840.10008.1.2.4.51")
+        let sourceFragments = fragments(extended.reread)
+        XCTAssertFalse(sourceFragments.isEmpty)
+
+        let recomp = try convert(extended.reread, to: .jpegXLRecompression)
+        XCTAssertEqual(recomp.reread.transferSyntaxUID, "1.2.840.10008.1.2.4.111")
+        XCTAssertTrue(recomp.outcome.isLossless)
+
+        let back = try convert(recomp.reread, to: .jpegExtended)
+        XCTAssertEqual(back.reread.transferSyntaxUID, "1.2.840.10008.1.2.4.51")
+        XCTAssertTrue(back.outcome.isLossless)
+        let reconstructed = fragments(back.reread)
+        XCTAssertEqual(reconstructed.count, sourceFragments.count)
+        for (i, (a, b)) in zip(reconstructed, sourceFragments).enumerated() {
+            XCTAssertEqual(Array(a), Array(b), "reconstructed Extended fragment \(i) must be byte-identical")
+        }
+    }
+
+    /// 12-bit JPEG Extended cannot be recompressed: PS3.5 Table 8.2.15-1 limits …4.111
+    /// to 8-bit unsigned data and JPEG XL's `jbrd` box cannot carry 12-bit JPEG.
+    /// Oracle: the transcode is rejected with an error naming the 8-bit requirement.
+    func testJXLRecompression_rejects12BitExtendedSource() throws {
+        let extended12 = try convert(makeGrayscale12(rows: 16, cols: 16), to: .jpegExtended)
+        XCTAssertEqual(extended12.reread.transferSyntaxUID, "1.2.840.10008.1.2.4.51")
+        let ds = extended12.reread.dataSet
+        XCTAssertEqual(ds[.bitsStored]?.uint16Value, 12, "fixture must be a genuine 12-bit JPEG")
+        XCTAssertEqual(TransferSyntaxConverter.jpegStartOfFrameMarker(
+            in: fragments(extended12.reread).first ?? Data()), 0xC1, "12-bit Extended is SOF1")
+
+        XCTAssertThrowsError(try DICOMConverter.convertToDICOM(
+            dicomFile: extended12.reread, to: .jpegXLRecompression, stripPrivate: false
+        )) { error in
+            XCTAssertTrue("\(error)".contains("8-bit"), "error should explain the 8-bit limit: \(error)")
+        }
+    }
+
+    /// 16-bit grayscale with Bits Stored 12 / High Bit 11 — a genuine 12-bit source
+    /// that JLICodec encodes as a 12-bit SOF1 JPEG Extended stream.
+    private func makeGrayscale12(rows: UInt16, cols: UInt16) -> DICOMFile {
+        let base = makeGrayscale16(rows: rows, cols: cols, fillPattern: { UInt16(($0 * 13) % 4096) })
+        var ds = base.dataSet
+        ds.setUInt16(12, for: .bitsStored)
+        ds.setUInt16(11, for: .highBit)
+        return DICOMFile(fileMetaInformation: base.fileMetaInformation, dataSet: ds)
+    }
+
+#if canImport(ImageIO) && canImport(CoreGraphics)
+    /// Builds an 8-bit grayscale progressive (SOF2) JPEG with Apple ImageIO.
+    private func makeProgressiveGrayJPEG(width: Int, height: Int) throws -> Data {
+        let pixels = (0..<(width * height)).map { UInt8(($0 * 11 + $0 / width * 3) % 256) }
+        let provider = try XCTUnwrap(CGDataProvider(data: Data(pixels) as CFData))
+        let image = try XCTUnwrap(CGImage(
+            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
+            bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        let out = NSMutableData()
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithData(
+            out as CFMutableData, "public.jpeg" as CFString, 1, nil))
+        let props: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: 0.8,
+            kCGImagePropertyJFIFDictionary: [kCGImagePropertyJFIFIsProgressive: true]
+        ]
+        CGImageDestinationAddImage(dest, image, props as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+        return out as Data
+    }
+
+    /// Replaces the encapsulated fragments of an existing JPEG DICOM file, keeping its
+    /// File Meta (and so its transfer syntax UID).
+    private func withFragments(_ file: DICOMFile, _ frags: [Data]) -> DICOMFile {
+        var ds = file.dataSet
+        ds[.pixelData] = DataElement(
+            tag: .pixelData, vr: .OB, length: 0xFFFFFFFF, valueData: Data(),
+            encapsulatedFragments: frags, encapsulatedOffsetTable: [0])
+        return DICOMFile(fileMetaInformation: file.fileMetaInformation, dataSet: ds)
+    }
+
+    /// Progressive JPEG (SOF2) has no active DICOM UID but is met inside …4.51 files.
+    /// JXLSwift bridges it, so it round-trips byte-identically through …4.111 back to
+    /// …4.51 — and is refused when the caller asks to label it Baseline (…4.50).
+    func testJXLRecompression_progressiveInExtended_roundTripAndBaselineGuard() throws {
+        let jpeg = try makeProgressiveGrayJPEG(width: 32, height: 32)
+        try XCTSkipUnless(TransferSyntaxConverter.jpegStartOfFrameMarker(in: jpeg) == 0xC2,
+                          "ImageIO did not emit a progressive JPEG on this OS")
+
+        let host = try convert(makeGrayscale8(rows: 32, cols: 32), to: .jpegExtended).reread
+        let source = withFragments(host, [jpeg])
+
+        let recomp = try convert(source, to: .jpegXLRecompression)
+        XCTAssertEqual(recomp.reread.transferSyntaxUID, "1.2.840.10008.1.2.4.111")
+
+        let back = try convert(recomp.reread, to: .jpegExtended)
+        let rebuilt = try XCTUnwrap(fragments(back.reread).first)
+        // DICOM pads odd fragments to even length; compare the JPEG bytes proper.
+        XCTAssertEqual(Array(rebuilt.prefix(jpeg.count)), Array(jpeg))
+
+        XCTAssertThrowsError(try DICOMConverter.convertToDICOM(
+            dicomFile: recomp.reread, to: .jpegBaseline, stripPrivate: false
+        ), "a progressive JPEG must not be labelled JPEG Baseline")
+    }
+#endif
+
+    /// The Start-Of-Frame scanner skips APPn / DQT / DHT segments and ignores the
+    /// non-SOF C4 / C8 / CC markers.
+    func testJPEGStartOfFrameMarkerScanner() {
+        let app0: [UInt8] = [0xFF, 0xE0, 0x00, 0x04, 0x4A, 0x46]
+        let dht: [UInt8] = [0xFF, 0xC4, 0x00, 0x03, 0x00]
+        let sof1: [UInt8] = [0xFF, 0xC1, 0x00, 0x02]
+        let jpeg = Data([0xFF, 0xD8] + app0 + dht + sof1 + [0xFF, 0xD9])
+        XCTAssertEqual(TransferSyntaxConverter.jpegStartOfFrameMarker(in: jpeg), 0xC1)
+        XCTAssertNil(TransferSyntaxConverter.jpegStartOfFrameMarker(in: Data([0x00, 0x01, 0x02, 0x03])))
+        XCTAssertNil(TransferSyntaxConverter.jpegStartOfFrameMarker(
+            in: Data([0xFF, 0xD8, 0xFF, 0xDA, 0x00, 0x02, 0xFF, 0xD9])))
     }
 
     /// RGB counterpart of `testJXLRecompression_decodeToPixels_matchesBaseline`: decoding

@@ -5033,10 +5033,11 @@ case "dicom-study":
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 0, output: "Success")
             } catch {
-                appendConsoleOutput("\n❌ Conversion failed: \(error.localizedDescription)\n")
+                // Same failure report as the dicom-convert CLI (shared ConvertConsole).
+                appendConsoleOutput("\n" + ConvertConsole.failureReport(for: error))
                 consoleStatus = .error
                 service.setConsoleStatus(.error)
-                addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: error.localizedDescription)
+                addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: ConvertConsole.failureSummary(for: error))
             }
         }
     }
@@ -5197,7 +5198,7 @@ case "dicom-study":
                 appendConsoleOutput(ConvertConsole.batchProgressLine(success: true, relativePath: relativePath, error: nil))
             } catch {
                 errorCount += 1
-                appendConsoleOutput(ConvertConsole.batchProgressLine(success: false, relativePath: relativePath, error: error.localizedDescription))
+                appendConsoleOutput(ConvertConsole.batchProgressLine(success: false, relativePath: relativePath, error: ConvertConsole.failureSummary(for: error)))
             }
         }
 
@@ -10433,12 +10434,12 @@ enum ConvertError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingTransferSyntax:
-            return "Transfer syntax is required for DICOM output format"
+            return DICOMConverter.missingTargetMessage
         case .unknownTransferSyntax(let name):
             // Shared list keeps the Workshop's error identical to the dicom-convert CLI.
             return DICOMConverter.unknownTargetMessage(name)
         case .invalidFrame(let requested, let total):
-            return "Invalid frame \(requested). File has \(total) frame(s) (0-\(total - 1))"
+            return DICOMConverter.invalidFrameMessage(requested: requested, total: total)
         case .renderFailed:
             return "Failed to render pixel data to image"
         case .exportFailed:
