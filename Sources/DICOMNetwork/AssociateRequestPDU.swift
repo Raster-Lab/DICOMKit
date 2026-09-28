@@ -130,8 +130,15 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
     
     /// Encodes the PDU for network transmission
     ///
+    /// - Throws: `DICOMNetworkError.encodingFailed` if the Implementation
+    ///   Class UID exceeds 64 bytes (PS3.5 UI) or the Implementation Version
+    ///   Name is not 1-16 characters (PS3.7 Table D.3-4)
+    ///
     /// Reference: PS3.8 Section 9.3.2
     public func encode() throws -> Data {
+        try validateImplementationSubItems(
+            classUID: implementationClassUID, versionName: implementationVersionName)
+        
         var data = Data()
         
         // Build the PDU variable field first to calculate length

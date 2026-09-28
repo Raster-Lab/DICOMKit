@@ -309,6 +309,46 @@ struct AETitleCharacterSetTests {
     }
 }
 
+// MARK: - 8. Implementation sub-item limits (PS3.7 Table D.3-3/D.3-4; PS3.5 UI)
+
+@Suite("Implementation sub-item limits")
+struct ImplementationSubItemLimitTests {
+
+    private func request(classUID: String, versionName: String?) throws -> AssociateRequestPDU {
+        AssociateRequestPDU(
+            calledAETitle: scpTitle, callingAETitle: scuTitle,
+            presentationContexts: [try PresentationContext(id: 1, abstractSyntax: verificationSOPClass, transferSyntaxes: [explicitVRLE])],
+            implementationClassUID: classUID, implementationVersionName: versionName)
+    }
+
+    private func accept(classUID: String, versionName: String?) throws -> AssociateAcceptPDU {
+        AssociateAcceptPDU(
+            calledAETitle: scpTitle, callingAETitle: scuTitle,
+            presentationContexts: [AcceptedPresentationContext(id: 1, result: .acceptance, transferSyntax: explicitVRLE)],
+            maxPDUSize: 16384, implementationClassUID: classUID, implementationVersionName: versionName)
+    }
+
+    @Test("An Implementation Class UID of 64 bytes encodes; 65 bytes fails")
+    func classUIDLimit() throws {
+        let sixtyFour = "1." + String(repeating: "2", count: 62)
+        #expect(sixtyFour.utf8.count == 64)
+        #expect(throws: Never.self) { _ = try request(classUID: sixtyFour, versionName: nil).encode() }
+        #expect(throws: DICOMNetworkError.self) { _ = try request(classUID: sixtyFour + "3", versionName: nil).encode() }
+        #expect(throws: DICOMNetworkError.self) { _ = try accept(classUID: sixtyFour + "3", versionName: nil).encode() }
+    }
+
+    @Test("An Implementation Version Name of 1-16 characters encodes; empty or 17 fails")
+    func versionNameLimit() throws {
+        #expect(throws: Never.self) { _ = try request(classUID: "1.2.3", versionName: "A").encode() }
+        #expect(throws: Never.self) { _ = try request(classUID: "1.2.3", versionName: String(repeating: "V", count: 16)).encode() }
+        #expect(throws: Never.self) { _ = try request(classUID: "1.2.3", versionName: nil).encode() }
+        #expect(throws: DICOMNetworkError.self) { _ = try request(classUID: "1.2.3", versionName: "").encode() }
+        #expect(throws: DICOMNetworkError.self) { _ = try request(classUID: "1.2.3", versionName: String(repeating: "V", count: 17)).encode() }
+        #expect(throws: DICOMNetworkError.self) { _ = try accept(classUID: "1.2.3", versionName: "").encode() }
+        #expect(throws: DICOMNetworkError.self) { _ = try accept(classUID: "1.2.3", versionName: String(repeating: "V", count: 17)).encode() }
+    }
+}
+
 // MARK: - 9. Protocol-version (PS3.8 Table 9-11)
 
 @Suite("Protocol-version decoding")

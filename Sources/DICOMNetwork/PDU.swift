@@ -61,3 +61,25 @@ func checkPDULength(type: PDUType, length: UInt32, maxPDUSize: UInt32) throws {
     guard type == .dataTransfer, maxPDUSize != 0, length > maxPDUSize else { return }
     throw DICOMNetworkError.pduTooLarge(received: length, maximum: maxPDUSize)
 }
+
+/// Validates the Implementation Class UID / Version Name user-information
+/// sub-items before an A-ASSOCIATE-RQ/AC is encoded.
+///
+/// PS3.7 Table D.3-3/D.3-4: the Implementation Version Name is "a string of
+/// 1 to 16 ISO 646:1990 (basic G0 set) characters"; PS3.5 Table 6.2-1: a UI
+/// value is at most 64 bytes.
+///
+/// - Throws: `DICOMNetworkError.encodingFailed` when a limit is exceeded
+func validateImplementationSubItems(classUID: String, versionName: String?) throws {
+    guard classUID.utf8.count <= 64 else {
+        throw DICOMNetworkError.encodingFailed(
+            "Implementation Class UID exceeds 64 bytes (\(classUID.utf8.count))")
+    }
+    if let versionName {
+        let length = versionName.utf8.count
+        guard (1...16).contains(length) else {
+            throw DICOMNetworkError.encodingFailed(
+                "Implementation Version Name must be 1-16 characters (got \(length))")
+        }
+    }
+}
