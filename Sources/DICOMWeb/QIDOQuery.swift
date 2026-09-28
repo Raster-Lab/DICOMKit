@@ -17,7 +17,11 @@ import Foundation
 ///     .limit(10)
 /// ```
 ///
-/// Reference: PS3.18 Section 10.6 - QIDO-RS
+/// NEMA-verified: 2026a, checked 2026-09-28 — the 20 tags of `QIDOQueryAttribute` diffed against
+/// PS3.18 2026a Table 10.6.1-5 (all present) and PS3.6 Table 6-1; search parameter names
+/// against Table 8.3.4-1; date/time range syntax per PS3.4 C.2.2.2.5.
+///
+/// Reference: PS3.18 Section 10.6 - Search Transaction (QIDO-RS)
 public struct QIDOQuery: Sendable, Equatable {
     
     // MARK: - Properties
@@ -568,12 +572,15 @@ extension QIDOQuery {
     
     /// Creates a query for finding studies by modality
     ///
+    /// Matches Modalities in Study (0008,0061), the study-level key of PS3.18 Table 10.6.1-5;
+    /// Modality (0008,0060) is a series-level key.
+    ///
     /// - Parameters:
     ///   - modality: Modality code (e.g., "CT", "MR")
     ///   - limit: Optional result limit
     /// - Returns: Configured query
     public static func studiesByModality(_ modality: String, limit: Int? = nil) -> QIDOQuery {
-        var query = QIDOQuery().modality(modality)
+        var query = QIDOQuery().modalitiesInStudy(modality)
         if let limit = limit {
             query = query.limit(limit)
         }
