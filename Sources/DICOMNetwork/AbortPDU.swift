@@ -60,7 +60,9 @@ public struct AbortPDU: PDU, Sendable, Hashable {
         data.append(source.rawValue)
         
         // Reason/Diag (1 byte)
-        data.append(reason)
+        // PS3.8 Table 9-26: for a service-user abort (source 0) this field is
+        // not significant and "shall be sent with a value 00H".
+        data.append(source == .serviceUser ? 0 : reason)
         
         return data
     }
