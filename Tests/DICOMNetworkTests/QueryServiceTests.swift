@@ -343,6 +343,105 @@ final class QueryServiceTests: XCTestCase {
     }
 }
 
+// MARK: - Response parsing keeps sequences as single elements (PS3.5 7.5)
+
+final class QueryResponseSequenceParsingTests: XCTestCase {
+
+    private func le16(_ v: UInt16) -> Data { Data([UInt8(v & 0xFF), UInt8(v >> 8)]) }
+    private func le32(_ v: UInt32) -> Data {
+        Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF), UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)])
+    }
+    /// Explicit VR LE element with a 2-byte-length VR.
+    private func elem(_ g: UInt16, _ e: UInt16, _ vr: String, _ value: String) -> Data {
+        var v = Data(value.utf8)
+        if v.count % 2 != 0 { v.append(vr == "UI" ? 0x00 : 0x20) }
+        return le16(g) + le16(e) + Data(vr.utf8) + le16(UInt16(v.count)) + v
+    }
+    private func item(undefinedLength: Bool, _ body: Data) -> Data {
+        var d = Data([0xFE, 0xFF, 0x00, 0xE0])
+        if undefinedLength {
+            d += le32(0xFFFFFFFF) + body + Data([0xFE, 0xFF, 0x0D, 0xE0]) + le32(0)
+        } else {
+            d += le32(UInt32(body.count)) + body
+        }
+        return d
+    }
+    private func sequence(_ g: UInt16, _ e: UInt16, undefinedLength: Bool, items: [Data]) -> Data {
+        let body = items.reduce(Data(), +)
+        var d = le16(g) + le16(e) + Data("SQ".utf8) + Data([0, 0])
+        if undefinedLength {
+            d += le32(0xFFFFFFFF) + body + Data([0xFE, 0xFF, 0xDD, 0xE0]) + le32(0)
+        } else {
+            d += le32(UInt32(body.count)) + body
+        }
+        return d
+    }
+
+    private let refStudySeq = Tag(group: 0x0008, element: 0x1110)
+    private let refSOPClass = Tag(group: 0x0008, element: 0x1150)
+    private let refSOPInstance = Tag(group: 0x0008, element: 0x1155)
+
+    func testUndefinedLengthSequenceItemsAreNotMergedIntoTopLevel() {
+        let nested = elem(0x0008, 0x1150, "UI", "1.2.840.10008.3.1.2.3.1") + elem(0x0008, 0x1155, "UI", "1.2.3")
+        let data = elem(0x0008, 0x0052, "CS", "STUDY")
+            + sequence(0x0008, 0x1110, undefinedLength: true, items: [item(undefinedLength: true, nested)])
+            + elem(0x0010, 0x0010, "PN", "DOE^JOHN")
+        let attrs = DICOMQueryService.parseQueryResponse(data: data, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        XCTAssertEqual(attrs[.patientName], Data("DOE^JOHN".utf8), "the element after the sequence is parsed")
+        XCTAssertNil(attrs[refSOPClass], "nested (0008,1150) must not appear at the top level (PS3.5 7.5)")
+        XCTAssertNil(attrs[refSOPInstance])
+        XCTAssertEqual(attrs[refStudySeq], item(undefinedLength: true, nested), "raw sequence value kept under the SQ tag")
+        XCTAssertEqual(attrs.count, 3)
+    }
+
+    func testDefinedLengthItemsInsideUndefinedLengthSequence() {
+        let nested = elem(0x0008, 0x1150, "UI", "1.2.3.4")
+        let data = sequence(0x0008, 0x1110, undefinedLength: true, items: [item(undefinedLength: false, nested), item(undefinedLength: false, nested)])
+            + elem(0x0010, 0x0010, "PN", "DOE^JOHN")
+        let attrs = DICOMQueryService.parseQueryResponse(data: data, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        XCTAssertEqual(attrs[.patientName], Data("DOE^JOHN".utf8))
+        XCTAssertNil(attrs[refSOPClass])
+    }
+
+    func testNestedUndefinedLengthSequenceInsideItem() {
+        let inner = sequence(0x0008, 0x1140, undefinedLength: true,
+                             items: [item(undefinedLength: true, elem(0x0008, 0x1150, "UI", "1.2.3.4"))])
+        let data = sequence(0x0008, 0x1110, undefinedLength: true, items: [item(undefinedLength: true, inner)])
+            + elem(0x0010, 0x0020, "LO", "P1")
+        let attrs = DICOMQueryService.parseQueryResponse(data: data, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        XCTAssertEqual(attrs[.patientID], Data("P1".utf8))
+        XCTAssertNil(attrs[refSOPClass])
+        XCTAssertNil(attrs[Tag(group: 0x0008, element: 0x1140)], "the inner sequence stays inside the outer item")
+    }
+
+    func testImplicitVRUndefinedLengthSequenceIsSkipped() {
+        func ielem(_ g: UInt16, _ e: UInt16, _ value: String) -> Data {
+            var v = Data(value.utf8); if v.count % 2 != 0 { v.append(0x20) }
+            return le16(g) + le16(e) + le32(UInt32(v.count)) + v
+        }
+        let nested = ielem(0x0008, 0x1150, "1.2.3.4 ")
+        var data = Data()
+        data.append(le16(0x0008)); data.append(le16(0x1110)); data.append(le32(0xFFFFFFFF))
+        data.append(Data([0xFE, 0xFF, 0x00, 0xE0])); data.append(le32(0xFFFFFFFF))
+        data.append(nested)
+        data.append(Data([0xFE, 0xFF, 0x0D, 0xE0])); data.append(le32(0))
+        data.append(Data([0xFE, 0xFF, 0xDD, 0xE0])); data.append(le32(0))
+        data.append(ielem(0x0010, 0x0010, "DOE^JOHN"))
+        let attrs = DICOMQueryService.parseQueryResponse(data: data, transferSyntax: implicitVRLittleEndianTransferSyntaxUID)
+        XCTAssertEqual(attrs[.patientName], Data("DOE^JOHN".utf8))
+        XCTAssertNil(attrs[refSOPClass])
+    }
+
+    func testTruncatedUndefinedLengthSequenceStopsParsingWithoutMerging() {
+        let nested = elem(0x0008, 0x1150, "UI", "1.2.3.4")
+        var data = sequence(0x0008, 0x1110, undefinedLength: true, items: [item(undefinedLength: true, nested)])
+        data.removeLast(8)   // drop the sequence delimiter
+        let attrs = DICOMQueryService.parseQueryResponse(data: data, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        XCTAssertNil(attrs[refSOPClass])
+        XCTAssertNil(attrs[refStudySeq])
+    }
+}
+
 // MARK: - C-FIND Identifier Character Set Tests (PS3.4 C.4.1.1.3.1, PS3.5 6.1.2)
 
 final class QueryIdentifierCharacterSetTests: XCTestCase {

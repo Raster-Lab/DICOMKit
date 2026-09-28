@@ -226,7 +226,7 @@ public struct RetrieveConfiguration: Sendable, Hashable {
     ///   - callingAETitle: The local AE title
     ///   - calledAETitle: The remote AE title
     ///   - timeout: Connection timeout in seconds (default: 60)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - informationModel: The Query/Retrieve Information Model (default: Study Root)
@@ -332,22 +332,34 @@ public struct RetrieveKeys: Sendable, Hashable {
     // MARK: - Fluent API for common keys
     
     /// Sets the Study Instance UID
+    ///
+    /// Replaces an earlier value: a data element occurs at most once in a
+    /// data set (PS3.5 7.1).
     public func studyInstanceUID(_ uid: String) -> RetrieveKeys {
         var copy = self
+        copy.keys.removeAll { $0.tag == .studyInstanceUID }
         copy.keys.append(RetrieveKey(tag: .studyInstanceUID, vr: .UI, value: uid))
         return copy
     }
     
     /// Sets the Series Instance UID
+    ///
+    /// Replaces an earlier value: a data element occurs at most once in a
+    /// data set (PS3.5 7.1).
     public func seriesInstanceUID(_ uid: String) -> RetrieveKeys {
         var copy = self
+        copy.keys.removeAll { $0.tag == .seriesInstanceUID }
         copy.keys.append(RetrieveKey(tag: .seriesInstanceUID, vr: .UI, value: uid))
         return copy
     }
     
     /// Sets the SOP Instance UID
+    ///
+    /// Replaces an earlier value: a data element occurs at most once in a
+    /// data set (PS3.5 7.1).
     public func sopInstanceUID(_ uid: String) -> RetrieveKeys {
         var copy = self
+        copy.keys.removeAll { $0.tag == .sopInstanceUID }
         copy.keys.append(RetrieveKey(tag: .sopInstanceUID, vr: .UI, value: uid))
         return copy
     }
@@ -660,7 +672,13 @@ public enum DICOMRetrieveService {
     ///   - callingAE: The local AE title
     ///   - calledAE: The remote AE title
     ///   - studyInstanceUID: The Study Instance UID to retrieve
-    ///   - storageSopClasses: Storage SOP Classes to accept (default: common SOP classes)
+    ///   - storageSopClasses: Storage SOP Classes to accept (default: common SOP classes).
+    ///     Presentation context IDs are odd 1...255 (PS3.8 9.3.2.2), so one
+    ///     association proposes the C-GET class plus at most 127 storage classes:
+    ///     one C-GET per batch of 127 storage classes; a second pass on a new
+    ///     association only when the first reported failures (instances of
+    ///     classes not yet proposed are refused by the SCP and counted as failed).
+    ///     See `storageContextBatches(_:)`.
     ///   - timeout: Connection timeout in seconds (default: 60)
     /// - Returns: An async stream of get events
     /// - Throws: `DICOMNetworkError` for connection or protocol errors
@@ -704,7 +722,13 @@ public enum DICOMRetrieveService {
     ///   - calledAE: The remote AE title
     ///   - studyInstanceUID: The Study Instance UID
     ///   - seriesInstanceUID: The Series Instance UID to retrieve
-    ///   - storageSopClasses: Storage SOP Classes to accept (default: common SOP classes)
+    ///   - storageSopClasses: Storage SOP Classes to accept (default: common SOP classes).
+    ///     Presentation context IDs are odd 1...255 (PS3.8 9.3.2.2), so one
+    ///     association proposes the C-GET class plus at most 127 storage classes:
+    ///     one C-GET per batch of 127 storage classes; a second pass on a new
+    ///     association only when the first reported failures (instances of
+    ///     classes not yet proposed are refused by the SCP and counted as failed).
+    ///     See `storageContextBatches(_:)`.
     ///   - timeout: Connection timeout in seconds (default: 60)
     /// - Returns: An async stream of get events
     /// - Throws: `DICOMNetworkError` for connection or protocol errors
@@ -750,7 +774,13 @@ public enum DICOMRetrieveService {
     ///   - studyInstanceUID: The Study Instance UID
     ///   - seriesInstanceUID: The Series Instance UID
     ///   - sopInstanceUID: The SOP Instance UID to retrieve
-    ///   - storageSopClasses: Storage SOP Classes to accept (default: common SOP classes)
+    ///   - storageSopClasses: Storage SOP Classes to accept (default: common SOP classes).
+    ///     Presentation context IDs are odd 1...255 (PS3.8 9.3.2.2), so one
+    ///     association proposes the C-GET class plus at most 127 storage classes:
+    ///     one C-GET per batch of 127 storage classes; a second pass on a new
+    ///     association only when the first reported failures (instances of
+    ///     classes not yet proposed are refused by the SCP and counted as failed).
+    ///     See `storageContextBatches(_:)`.
     ///   - timeout: Connection timeout in seconds (default: 60)
     /// - Returns: An async stream of get events
     /// - Throws: `DICOMNetworkError` for connection or protocol errors
@@ -813,6 +843,11 @@ public enum DICOMRetrieveService {
     }
 
     /// Performs C-GET with an explicit retrieve configuration.
+    ///
+    /// Storage presentation contexts: one C-GET per batch of 127 storage
+    /// classes (PS3.8 9.3.2.2 allows 128 odd context IDs, ID 1 is the C-GET
+    /// class); a second pass on a new association only when the first reported
+    /// failures. Results of the passes are merged (see `mergeGetPassResults`).
     public static func get(
         host: String,
         port: UInt16 = dicomDefaultPort,
@@ -975,7 +1010,58 @@ public enum DICOMRetrieveService {
     
     // MARK: - Private Implementation - C-GET
     
+    /// Maximum number of storage presentation contexts proposed on one C-GET
+    /// association: PS3.8 9.3.2.2 allows the odd IDs 1...255 (128 contexts) and
+    /// ID 1 is always the C-GET SOP Class.
+    static let maxStorageContextsPerAssociation = 127
+
+    /// Splits the storage SOP Classes a C-GET SCU is willing to receive into
+    /// batches that fit one association (at most
+    /// `maxStorageContextsPerAssociation` each). Order is preserved and
+    /// duplicate UIDs are proposed once. An empty input yields no batches.
+    static func storageContextBatches(_ uids: [String]) -> [[String]] {
+        var seen = Set<String>()
+        var unique: [String] = []
+        for uid in uids where seen.insert(uid).inserted {
+            unique.append(uid)
+        }
+        let size = maxStorageContextsPerAssociation
+        return stride(from: 0, to: unique.count, by: size).map { start in
+            Array(unique[start..<min(start + size, unique.count)])
+        }
+    }
+
+    /// Merges the result of a further C-GET pass into the accumulated result.
+    ///
+    /// Received instances are yielded as they arrive, so only the counters are
+    /// merged: completed and warning sub-operations add up; failed
+    /// sub-operations and the Failed SOP Instance UID List are those of the
+    /// last pass only (earlier failures were instances of classes not yet
+    /// proposed, which the next pass re-requested); remaining is 0; the status
+    /// is the last pass's.
+    static func mergeGetPassResults(previous: RetrieveResult?, next: RetrieveResult) -> RetrieveResult {
+        guard let previous else { return next }
+        let progress = RetrieveProgress(
+            remaining: 0,
+            completed: previous.progress.completed + next.progress.completed,
+            failed: next.progress.failed,
+            warning: previous.progress.warning + next.progress.warning
+        )
+        return RetrieveResult(
+            status: next.status,
+            progress: progress,
+            failedSOPInstanceUIDs: next.failedSOPInstanceUIDs
+        )
+    }
+
     /// Performs the C-GET operation
+    ///
+    /// One C-GET per batch of `maxStorageContextsPerAssociation` storage
+    /// classes (see `storageContextBatches(_:)`); a further pass on a new
+    /// association proposing the next batch is made only when the previous
+    /// pass reported failed sub-operations or a Failed SOP Instance UID List,
+    /// since an SCP refuses (and counts as failed) the instances whose SOP
+    /// Class had no presentation context.
     private static func performGet(
         host: String,
         port: UInt16,
@@ -989,121 +1075,31 @@ public enum DICOMRetrieveService {
                 do {
                     // Validate the identifier against the information model (PS3.4 C.4.2.1.4.1)
                     try validateRetrieveKeys(keys, informationModel: configuration.informationModel)
-                    
-                    // Create association configuration
-                    let associationConfig = configuration.associationConfiguration(host: host, port: port)
-                    
-                    // Create association
-                    let association = Association(configuration: associationConfig)
-                    
-                    // Build presentation contexts:
-                    // 1. C-GET SOP Class
-                    // 2. Storage SOP Classes for receiving C-STORE sub-operations
-                    var presentationContexts: [PresentationContext] = []
-                    var contextID: UInt8 = 1
-                    
-                    // C-GET presentation context
-                    let getContext = try PresentationContext(
-                        id: contextID,
-                        abstractSyntax: configuration.informationModel.getSOPClassUID,
-                        transferSyntaxes: [
-                            explicitVRLittleEndianTransferSyntaxUID,
-                            implicitVRLittleEndianTransferSyntaxUID
-                        ]
-                    )
-                    presentationContexts.append(getContext)
-                    contextID += 2
-                    
-                    // Storage SOP Class presentation contexts
-                    // Build the accepted TS list: preferred first (if provided), then
-                    // uncompressed, then the common compressed syntaxes. Offering the
-                    // compressed syntaxes lets the SCP send natively-compressed objects
-                    // (e.g. JPEG-Lossless XA cine) instead of being forced to transcode —
-                    // which many SCPs refuse to do, silently dropping the sub-operation.
-                    var storageTransferSyntaxes: [String] = []
-                    if let preferred = preferredTransferSyntaxUID, !preferred.isEmpty {
-                        storageTransferSyntaxes.append(preferred)
-                    }
-                    for ts in retrieveStorageTransferSyntaxUIDs
-                        where !storageTransferSyntaxes.contains(ts) {
-                        storageTransferSyntaxes.append(ts)
-                    }
-                    // Presentation context IDs are odd, 1...255 (PS3.8 9.3.2.2), so at
-                    // most 127 storage contexts fit after the C-GET context (ID 1,
-                    // always first). Extra classes are dropped from the proposal, never
-                    // the C-GET context. Duplicate UIDs are proposed once.
-                    var proposedStorageUIDs: [String] = []
-                    var storageContextIDToUID: [UInt8: String] = [:]
-                    var nextContextID = Int(contextID)
-                    for sopClassUID in storageSopClasses where !proposedStorageUIDs.contains(sopClassUID) {
-                        guard nextContextID <= 255 else { break }
-                        let id = UInt8(nextContextID)
-                        let storageContext = try PresentationContext(
-                            id: id,
-                            abstractSyntax: sopClassUID,
-                            transferSyntaxes: storageTransferSyntaxes
+
+                    var batches = storageContextBatches(storageSopClasses)
+                    if batches.isEmpty { batches = [[]] }
+
+                    var merged: RetrieveResult? = nil
+                    for (index, batch) in batches.enumerated() {
+                        if index > 0, let previous = merged, !previous.hasFailures {
+                            break
+                        }
+                        let passResult = try await performGetPass(
+                            host: host,
+                            port: port,
+                            configuration: configuration,
+                            keys: keys,
+                            storageSopClasses: batch,
+                            preferredTransferSyntaxUID: preferredTransferSyntaxUID,
+                            continuation: continuation
                         )
-                        presentationContexts.append(storageContext)
-                        proposedStorageUIDs.append(sopClassUID)
-                        storageContextIDToUID[id] = sopClassUID
-                        nextContextID += 2
+                        merged = mergeGetPassResults(previous: merged, next: passResult)
                     }
-                    
-                    // PS3.4 C.4.3.1.1 / C.5.3, PS3.7 D.3.3.4: the C-GET SCU must
-                    // negotiate the SCP role for every Storage SOP Class it is
-                    // willing to receive as a C-STORE sub-operation.
-                    let roleSelections = proposedStorageUIDs.map { SCPSCURoleSelection.both($0) }
-                    
-                    // Establish association
-                    let negotiated = try await association.request(
-                        presentationContexts: presentationContexts,
-                        roleSelections: roleSelections
-                    )
-                    
-                    // Verify that the C-GET SOP Class was accepted
-                    guard negotiated.isContextAccepted(1) else {
-                        try await association.abort()
-                        continuation.yield(.error(DICOMNetworkError.sopClassNotSupported(
-                            configuration.informationModel.getSOPClassUID
-                        )))
-                        continuation.finish()
-                        return
+
+                    if let merged {
+                        continuation.yield(.completed(merged))
                     }
-                    
-                    // Storage contexts usable for C-STORE sub-operations: when the SCP
-                    // answered the role selection (PS3.7 D.3.3.4.2) only contexts whose
-                    // SOP Class was granted the SCP role count. An SCP that sent no
-                    // role selection sub-item at all (older implementations) is taken
-                    // to apply the default roles for our proposal, so every accepted
-                    // storage context stays usable, as before.
-                    let scpAnsweredRoles = !negotiated.acceptPDU.roleSelections.isEmpty
-                    var usableStorageContextIDs: Set<UInt8>? = nil
-                    if scpAnsweredRoles {
-                        usableStorageContextIDs = Set(storageContextIDToUID.compactMap { id, uid in
-                            negotiated.isContextAccepted(id) && negotiated.isSCPRoleAccepted(for: uid) ? id : nil
-                        })
-                    }
-                    
-                    // Get the accepted transfer syntax
-                    let acceptedTransferSyntax = negotiated.acceptedTransferSyntax(forContextID: 1) 
-                        ?? implicitVRLittleEndianTransferSyntaxUID
-                    
-                    // Perform the C-GET
-                    try await performCGet(
-                        association: association,
-                        presentationContextID: 1,
-                        maxPDUSize: negotiated.maxPDUSize,
-                        keys: keys,
-                        transferSyntax: acceptedTransferSyntax,
-                        sopClassUID: configuration.informationModel.getSOPClassUID,
-                        negotiated: negotiated,
-                        usableStorageContextIDs: usableStorageContextIDs,
-                        continuation: continuation
-                    )
-                    
-                    // Release association gracefully
-                    try await association.release()
-                    
+                    continuation.finish()
                 } catch let error as DICOMNetworkError {
                     continuation.yield(.error(error))
                     continuation.finish()
@@ -1120,6 +1116,134 @@ public enum DICOMRetrieveService {
         }
     }
 
+    /// One C-GET pass: a new association proposing the C-GET SOP Class plus
+    /// `storageSopClasses` (at most `maxStorageContextsPerAssociation`), the
+    /// C-GET exchange, and a graceful release. Received instances and progress
+    /// are yielded on `continuation`; the final result is returned.
+    private static func performGetPass(
+        host: String,
+        port: UInt16,
+        configuration: RetrieveConfiguration,
+        keys: RetrieveKeys,
+        storageSopClasses: [String],
+        preferredTransferSyntaxUID: String?,
+        continuation: AsyncStream<GetEvent>.Continuation
+    ) async throws -> RetrieveResult {
+        // Create association configuration
+        let associationConfig = configuration.associationConfiguration(host: host, port: port)
+
+        // Create association
+        let association = Association(configuration: associationConfig)
+
+        // Build presentation contexts:
+        // 1. C-GET SOP Class
+        // 2. Storage SOP Classes for receiving C-STORE sub-operations
+        var presentationContexts: [PresentationContext] = []
+        var contextID: UInt8 = 1
+
+        // C-GET presentation context
+        let getContext = try PresentationContext(
+            id: contextID,
+            abstractSyntax: configuration.informationModel.getSOPClassUID,
+            transferSyntaxes: [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
+        )
+        presentationContexts.append(getContext)
+        contextID += 2
+
+        // Storage SOP Class presentation contexts
+        // Build the accepted TS list: preferred first (if provided), then
+        // uncompressed, then the common compressed syntaxes. Offering the
+        // compressed syntaxes lets the SCP send natively-compressed objects
+        // (e.g. JPEG-Lossless XA cine) instead of being forced to transcode —
+        // which many SCPs refuse to do, silently dropping the sub-operation.
+        var storageTransferSyntaxes: [String] = []
+        if let preferred = preferredTransferSyntaxUID, !preferred.isEmpty {
+            storageTransferSyntaxes.append(preferred)
+        }
+        for ts in retrieveStorageTransferSyntaxUIDs
+            where !storageTransferSyntaxes.contains(ts) {
+            storageTransferSyntaxes.append(ts)
+        }
+        // Presentation context IDs are odd, 1...255 (PS3.8 9.3.2.2), so at
+        // most 127 storage contexts fit after the C-GET context (ID 1,
+        // always first). The caller batches the classes accordingly; this
+        // bound only guards against an oversized batch. Duplicate UIDs are
+        // proposed once.
+        var proposedStorageUIDs: [String] = []
+        var storageContextIDToUID: [UInt8: String] = [:]
+        var nextContextID = Int(contextID)
+        for sopClassUID in storageSopClasses where !proposedStorageUIDs.contains(sopClassUID) {
+            guard nextContextID <= 255 else { break }
+            let id = UInt8(nextContextID)
+            let storageContext = try PresentationContext(
+                id: id,
+                abstractSyntax: sopClassUID,
+                transferSyntaxes: storageTransferSyntaxes
+            )
+            presentationContexts.append(storageContext)
+            proposedStorageUIDs.append(sopClassUID)
+            storageContextIDToUID[id] = sopClassUID
+            nextContextID += 2
+        }
+
+        // PS3.4 C.4.3.1.1 / C.5.3, PS3.7 D.3.3.4: the C-GET SCU must
+        // negotiate the SCP role for every Storage SOP Class it is
+        // willing to receive as a C-STORE sub-operation.
+        let roleSelections = proposedStorageUIDs.map { SCPSCURoleSelection.both($0) }
+
+        // Establish association
+        let negotiated = try await association.request(
+            presentationContexts: presentationContexts,
+            roleSelections: roleSelections
+        )
+
+        // Verify that the C-GET SOP Class was accepted
+        guard negotiated.isContextAccepted(1) else {
+            try await association.abort()
+            throw DICOMNetworkError.sopClassNotSupported(
+                configuration.informationModel.getSOPClassUID
+            )
+        }
+
+        // Storage contexts usable for C-STORE sub-operations: when the SCP
+        // answered the role selection (PS3.7 D.3.3.4.2) only contexts whose
+        // SOP Class was granted the SCP role count. An SCP that sent no
+        // role selection sub-item at all (older implementations) is taken
+        // to apply the default roles for our proposal, so every accepted
+        // storage context stays usable, as before.
+        let scpAnsweredRoles = !negotiated.acceptPDU.roleSelections.isEmpty
+        var usableStorageContextIDs: Set<UInt8>? = nil
+        if scpAnsweredRoles {
+            usableStorageContextIDs = Set(storageContextIDToUID.compactMap { id, uid in
+                negotiated.isContextAccepted(id) && negotiated.isSCPRoleAccepted(for: uid) ? id : nil
+            })
+        }
+
+        // Get the accepted transfer syntax
+        let acceptedTransferSyntax = negotiated.acceptedTransferSyntax(forContextID: 1)
+            ?? implicitVRLittleEndianTransferSyntaxUID
+
+        // Perform the C-GET
+        let result = try await performCGet(
+            association: association,
+            presentationContextID: 1,
+            maxPDUSize: negotiated.maxPDUSize,
+            keys: keys,
+            transferSyntax: acceptedTransferSyntax,
+            sopClassUID: configuration.informationModel.getSOPClassUID,
+            negotiated: negotiated,
+            usableStorageContextIDs: usableStorageContextIDs,
+            continuation: continuation
+        )
+
+        // Release association gracefully
+        try await association.release()
+        return result
+    }
+
     /// Performs the C-GET request/response exchange
     private static func performCGet(
         association: Association,
@@ -1131,7 +1255,7 @@ public enum DICOMRetrieveService {
         negotiated: NegotiatedAssociation,
         usableStorageContextIDs: Set<UInt8>? = nil,
         continuation: AsyncStream<GetEvent>.Continuation
-    ) async throws {
+    ) async throws -> RetrieveResult {
         // Build the retrieve identifier data set
         let identifierData = buildRetrieveIdentifier(keys: keys, transferSyntax: transferSyntax)
         
@@ -1187,10 +1311,7 @@ public enum DICOMRetrieveService {
                         // Identifier may carry the Failed SOP Instance UID List
                         // (PS3.4 C.4.3.1.4.2, Table C.4-2).
                         let failed = failedSOPInstanceUIDs(from: message.dataSet, transferSyntax: transferSyntax)
-                        let result = RetrieveResult(status: status, progress: progress, failedSOPInstanceUIDs: failed)
-                        continuation.yield(.completed(result))
-                        continuation.finish()
-                        return
+                        return RetrieveResult(status: status, progress: progress, failedSOPInstanceUIDs: failed)
                     }
                     
                 case .cStoreRequest:
@@ -1318,83 +1439,49 @@ public enum DICOMRetrieveService {
     }
     
     /// Builds the retrieve identifier data set
+    ///
+    /// Every element, including Query/Retrieve Level (0008,0052), is written in
+    /// ascending tag order (PS3.5 7.1), so at IMAGE level SOP Instance UID
+    /// (0008,0018) precedes (0008,0052).
+    ///
+    /// The Specific Character Set is chosen exactly as
+    /// `DICOMQueryService.buildQueryIdentifier` does: a caller-supplied
+    /// (0008,0005) key wins, else the narrowest set representing every text-VR
+    /// value (none for ISO 646, "ISO_IR 100" for Latin-1, "ISO_IR 192"
+    /// otherwise). When one is needed it is inserted into the Identifier
+    /// (PS3.4 C.4.2.1.4.1, C.2.2.2; PS3.5 6.1.2) and text values are encoded in
+    /// it, so a non-ASCII key never degrades to a zero-length (universal) key.
     static func buildRetrieveIdentifier(keys: RetrieveKeys, transferSyntax: String) -> Data {
         var data = Data()
         let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
-        
-        // Add Query/Retrieve Level
-        data.append(encodeElement(
-            tag: .queryRetrieveLevel,
-            vr: .CS,
-            value: keys.level.queryRetrieveLevel,
-            explicit: isExplicitVR
-        ))
-        
-        // Add all retrieve keys, sorted by tag
-        let sortedKeys = keys.keys.sorted { $0.tag < $1.tag }
-        for key in sortedKeys {
-            data.append(encodeElement(
+
+        var allKeys = keys.keys
+        let callerCharacterSetKey = allKeys.first { $0.tag == .specificCharacterSet }
+        let callerValue = callerCharacterSetKey?.value.trimmingCharacters(in: .whitespaces)
+        let override = (callerValue?.isEmpty == false) ? callerValue : nil
+
+        let textValues = allKeys.filter { DICOMQueryService.textVRs.contains($0.vr) }.map { $0.value }
+        let characterSet = DIMSECharacterSet.choose(for: textValues, override: override)
+
+        allKeys.removeAll { $0.tag == .specificCharacterSet }
+        if let chosen = characterSet.specificCharacterSet {
+            allKeys.append(RetrieveKeys.RetrieveKey(tag: .specificCharacterSet, vr: .CS, value: chosen))
+        }
+
+        // Merge Query/Retrieve Level into the key set and sort everything by
+        // ascending tag order (PS3.5 7.1)
+        allKeys.append(RetrieveKeys.RetrieveKey(
+            tag: .queryRetrieveLevel, vr: .CS, value: keys.level.queryRetrieveLevel))
+        for key in allKeys.sorted(by: { $0.tag < $1.tag }) {
+            data.append(DICOMQueryService.encodeElement(
                 tag: key.tag,
                 vr: key.vr,
                 value: key.value,
-                explicit: isExplicitVR
+                explicit: isExplicitVR,
+                characterSet: characterSet
             ))
         }
-        
-        return data
-    }
-    
-    /// Encodes a single data element
-    private static func encodeElement(tag: Tag, vr: VR, value: String, explicit: Bool) -> Data {
-        var data = Data()
-        
-        // Tag (4 bytes, little endian)
-        var group = tag.group.littleEndian
-        var element = tag.element.littleEndian
-        data.append(Data(bytes: &group, count: 2))
-        data.append(Data(bytes: &element, count: 2))
-        
-        // Prepare value data with padding
-        var valueData = value.data(using: .ascii) ?? Data()
-        
-        // Pad to even length per DICOM rules
-        if valueData.count % 2 != 0 {
-            // Use space padding for text VRs, null for UI
-            let paddingChar: UInt8 = (vr == .UI) ? 0x00 : (vr.isStringVR ? 0x20 : 0x00)
-            valueData.append(paddingChar)
-        }
-        
-        if explicit {
-            // Explicit VR encoding
-            // VR (2 bytes)
-            if let vrBytes = vr.rawValue.data(using: .ascii) {
-                data.append(vrBytes)
-            } else {
-                data.append(Data([0x55, 0x4E])) // "UN" fallback
-            }
-            
-            // Check if VR uses 4-byte length
-            if vr.uses32BitLength {
-                // Reserved (2 bytes)
-                data.append(Data([0x00, 0x00]))
-                // Value Length (4 bytes)
-                var length = UInt32(valueData.count).littleEndian
-                data.append(Data(bytes: &length, count: 4))
-            } else {
-                // Value Length (2 bytes)
-                var length = UInt16(valueData.count).littleEndian
-                data.append(Data(bytes: &length, count: 2))
-            }
-        } else {
-            // Implicit VR encoding
-            // Value Length (4 bytes)
-            var length = UInt32(valueData.count).littleEndian
-            data.append(Data(bytes: &length, count: 4))
-        }
-        
-        // Value
-        data.append(valueData)
-        
+
         return data
     }
 }

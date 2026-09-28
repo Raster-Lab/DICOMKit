@@ -63,7 +63,7 @@ public struct MPPSConfiguration: Sendable, Hashable {
     ///   - callingAETitle: The local AE title
     ///   - calledAETitle: The remote AE title
     ///   - timeout: Connection timeout in seconds (default: 60)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - userIdentity: User identity for authentication (optional)
@@ -259,10 +259,12 @@ public struct MPPSProcedureStep: Sendable {
 
     // MARK: - N-CREATE specific attributes (PS3.4 Table F.7.2-1)
 
-    /// Patient's Name (0010,0010) — Type 1
+    /// Patient's Name (0010,0010) — Type 2 (PS3.4 Table F.7.2-1, N-CREATE
+    /// column 2/2); sent empty when nil.
     public let patientName: String?
 
-    /// Patient ID (0010,0020) — Type 1
+    /// Patient ID (0010,0020) — Type 2 (PS3.4 Table F.7.2-1, N-CREATE column
+    /// 2/2); sent empty when nil.
     public let patientID: String?
 
     /// Modality (0008,0060) — Type 1
@@ -428,7 +430,8 @@ public struct MPPSProcedureStep: Sendable {
     public static let legacyReferencedSOPClassUID = "1.2.840.10008.5.1.4.1.1.7"
 
     /// Detached Study Management SOP Class — the class MWL SCPs put in Referenced
-    /// Study Sequence items.
+    /// Study Sequence items. Retired in PS3.6 Table A-1; still carried here
+    /// because the worklist supplies it (see `buildScheduledStepAttributesSequence`).
     public static let detachedStudyManagementSOPClassUID = "1.2.840.10008.3.1.2.3.1"
 
     /// The Performed Series items to emit: `performedSeries` when given, otherwise
@@ -994,17 +997,13 @@ public enum DICOMMPPSService {
             procedureStep: procedureStep, transferSyntax: transferSyntax, specificCharacterSet: specificCharacterSet)
         
         // Create N-CREATE request command set
-        var commandData = Data()
-        commandData.append(encodeSimpleElement(tag: Tag(group: 0x0000, element: 0x0100), vr: .US, value: Data([0x40, 0x01]))) // N-CREATE-RQ
-        commandData.append(encodeSimpleElement(tag: Tag(group: 0x0000, element: 0x0110), vr: .US, value: Data([0x01, 0x00]))) // Message ID
-        commandData.append(encodeSimpleElement(tag: Tag(group: 0x0000, element: 0x0002), vr: .UI, value: modalityPerformedProcedureStepSOPClassUID.data(using: .ascii)!)) // Affected SOP Class UID
-        commandData.append(encodeSimpleElement(tag: Tag(group: 0x0000, element: 0x1000), vr: .UI, value: procedureStep.sopInstanceUID.data(using: .ascii)!)) // Affected SOP Instance UID
-        commandData.append(encodeSimpleElement(tag: Tag(group: 0x0000, element: 0x0800), vr: .US, value: Data([0x00, 0x01]))) // Data Set Type: bytes 00 01 LE = 0x0100 — any value but 0x0101 means a data set is present (PS3.7 9.3.1)
-        
+        let commandSet = nCreateCommandSet(
+            sopInstanceUID: procedureStep.sopInstanceUID, presentationContextID: presentationContextID)
+
         // Fragment and send the command and data set
         let fragmenter = MessageFragmenter(maxPDUSize: maxPDUSize)
         let pdus = fragmenter.fragmentMessage(
-            commandSet: try CommandSet.decode(from: commandData),
+            commandSet: commandSet,
             dataSet: attributeData,
             presentationContextID: presentationContextID
         )
@@ -1063,17 +1062,13 @@ public enum DICOMMPPSService {
             specificCharacterSet: specificCharacterSet)
         
         // Create N-SET request command set
-        var commandData = Data()
-        commandData.append(encodeSimpleElement(tag: Tag(group: 0x0000, element: 0x0100), vr: .US, value: Data([0x20, 0x01]))) // N-SET-RQ
-        commandData.append(encodeSimpleElement(tag: Tag(group: 0x0000, element: 0x0110), vr: .US, value: Data([0x01, 0x00]))) // Message ID
-        commandData.append(encodeSimpleElement(tag: Tag(group: 0x0000, element: 0x0003), vr: .UI, value: modalityPerformedProcedureStepSOPClassUID.data(using: .ascii)!)) // Requested SOP Class UID
-        commandData.append(encodeSimpleElement(tag: Tag(group: 0x0000, element: 0x1001), vr: .UI, value: procedureStep.sopInstanceUID.data(using: .ascii)!)) // Requested SOP Instance UID
-        commandData.append(encodeSimpleElement(tag: Tag(group: 0x0000, element: 0x0800), vr: .US, value: Data([0x00, 0x01]))) // Data Set Type: bytes 00 01 LE = 0x0100 — any value but 0x0101 means a data set is present (PS3.7 9.3.1)
-        
+        let commandSet = nSetCommandSet(
+            sopInstanceUID: procedureStep.sopInstanceUID, presentationContextID: presentationContextID)
+
         // Fragment and send the command and data set
         let fragmenter = MessageFragmenter(maxPDUSize: maxPDUSize)
         let pdus = fragmenter.fragmentMessage(
-            commandSet: try CommandSet.decode(from: commandData),
+            commandSet: commandSet,
             dataSet: modificationData,
             presentationContextID: presentationContextID
         )
@@ -1288,6 +1283,11 @@ public enum DICOMMPPSService {
         // study reference when known, otherwise empty.
         let refStudyTag = Tag(group: 0x0008, element: 0x1110)
         if let studyRef = procedureStep.referencedStudySOPInstanceUID, !studyRef.isEmpty {
+            // Detached Study Management SOP Class 1.2.840.10008.3.1.2.3.1 is
+            // retired (PS3.6 Table A-1), but it is what the Modality Worklist
+            // item's Referenced Study Sequence supplies (PS3.3 C.4-13 keeps the
+            // sequence for that purpose), and the MPPS copies the reference
+            // through unchanged.
             item.append((refStudyTag, encodeReferencedSOPSequence(
                 tag: refStudyTag,
                 references: [MPPSReferencedInstance(
@@ -1303,7 +1303,10 @@ public enum DICOMMPPSService {
         item.append((Tag(group: 0x0040, element: 0x0008), encodeCodeSequence(      // Scheduled Protocol Code Sequence 2
             tag: Tag(group: 0x0040, element: 0x0008),
             codes: procedureStep.scheduledProtocolCodes, explicit: explicit, charset: charset)))
-        add(0x0040, 0x0009, .SH, procedureStep.scheduledProcedureStepID ?? procedureStep.procedureStepID ?? "1") // SPS ID 2
+        // Scheduled Procedure Step ID is Type 2 in this item (PS3.4 Table
+        // F.7.2-1, N-CREATE column 2/2): sent empty when the worklist did not
+        // supply one, never invented.
+        add(0x0040, 0x0009, .SH, procedureStep.scheduledProcedureStepID)         // SPS ID 2
         add(0x0040, 0x1001, .SH, procedureStep.requestedProcedureID)              // Requested Procedure ID 2
 
         let itemData = item.sorted { $0.0 < $1.0 }.reduce(into: Data()) { $0.append($1.1) }
@@ -1479,23 +1482,31 @@ public enum DICOMMPPSService {
     }
     
     /// Encodes a simple data element (helper for command set)
-    private static func encodeSimpleElement(tag: Tag, vr: VR, value: Data) -> Data {
-        var data = Data()
-        
-        // Tag (4 bytes, little endian)
-        var group = tag.group.littleEndian
-        var element = tag.element.littleEndian
-        data.append(Data(bytes: &group, count: 2))
-        data.append(Data(bytes: &element, count: 2))
-        
-        // Implicit VR encoding for command set
-        var length = UInt32(value.count).littleEndian
-        data.append(Data(bytes: &length, count: 4))
-        
-        // Value
-        data.append(value)
-        
-        return data
+    /// The N-CREATE-RQ command set (PS3.7 Table 10.3-1): Affected SOP Class UID
+    /// (0000,0002) = MPPS, Affected SOP Instance UID (0000,1000), Message ID 1,
+    /// data set present. Built through `CommandSet`, so odd-length UI values
+    /// are NULL-padded to even length (PS3.5 Table 6.2-1).
+    static func nCreateCommandSet(sopInstanceUID: String, presentationContextID: UInt8) -> CommandSet {
+        NCreateRequest(
+            messageID: 1,
+            affectedSOPClassUID: modalityPerformedProcedureStepSOPClassUID,
+            affectedSOPInstanceUID: sopInstanceUID,
+            hasDataSet: true,
+            presentationContextID: presentationContextID
+        ).commandSet
+    }
+
+    /// The N-SET-RQ command set (PS3.7 Table 10.3-5): Requested SOP Class UID
+    /// (0000,0003) = MPPS, Requested SOP Instance UID (0000,1001), Message ID 1,
+    /// data set present. UI values are NULL-padded by `CommandSet`.
+    static func nSetCommandSet(sopInstanceUID: String, presentationContextID: UInt8) -> CommandSet {
+        NSetRequest(
+            messageID: 1,
+            requestedSOPClassUID: modalityPerformedProcedureStepSOPClassUID,
+            requestedSOPInstanceUID: sopInstanceUID,
+            hasDataSet: true,
+            presentationContextID: presentationContextID
+        ).commandSet
     }
     
     /// Encodes a single data element for the attribute list.

@@ -56,7 +56,7 @@ public struct QueryConfiguration: Sendable, Hashable {
     ///   - callingAETitle: The local AE title
     ///   - calledAETitle: The remote AE title
     ///   - timeout: Connection timeout in seconds (default: 60)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - informationModel: The Query/Retrieve Information Model (default: Study Root)
@@ -906,6 +906,12 @@ public enum DICOMQueryService {
     /// Parses a response data set (C-FIND Identifier, or the final C-MOVE/C-GET
     /// response Identifier) into top-level attributes. Shared with
     /// `DICOMRetrieveService`.
+    ///
+    /// A sequence is one top-level element (PS3.5 7.5): its value — every
+    /// item up to the Sequence Delimitation Item (FFFE,E0DD) for undefined
+    /// length, `length` bytes otherwise — is stored under the SQ tag as raw
+    /// bytes and its nested elements are never merged into the top level, so a
+    /// nested (0008,1150) cannot collide with a top-level tag.
     static func parseQueryResponse(data: Data, transferSyntax: String) -> [Tag: Data] {
         var attributes: [Tag: Data] = [:]
         var offset = 0
@@ -963,9 +969,15 @@ public enum DICOMQueryService {
                 offset += 4
             }
             
-            // Handle undefined length
+            // Undefined length: a sequence (or encapsulated pixel data) of items
+            // ending with (FFFE,E0DD). Skip the whole value, honouring nested
+            // undefined-length items, and keep it as one raw element (PS3.5 7.5).
             if valueLength == 0xFFFFFFFF {
-                // Skip sequences with undefined length for now
+                guard let end = skipUndefinedLengthValue(data: data, offset: offset, isExplicitVR: isExplicitVR) else {
+                    break
+                }
+                attributes[tag] = data.subdata(in: offset..<(end - 8))
+                offset = end
                 continue
             }
             
@@ -978,6 +990,90 @@ public enum DICOMQueryService {
         }
         
         return attributes
+    }
+
+    /// Returns the offset just past the Sequence Delimitation Item (FFFE,E0DD)
+    /// that ends an undefined-length value whose first item starts at `offset`,
+    /// or nil when the data is truncated or malformed (PS3.5 7.5.2, Table 7.5-3).
+    ///
+    /// Items of undefined length are walked element by element up to their Item
+    /// Delimitation Item (FFFE,E00D), recursing into nested undefined-length
+    /// sequences.
+    static func skipUndefinedLengthValue(data: Data, offset: Int, isExplicitVR: Bool) -> Int? {
+        var offset = offset
+        while offset + 8 <= data.count {
+            let group = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+            let element = UInt16(data[offset + 2]) | (UInt16(data[offset + 3]) << 8)
+            let length = UInt32(data[offset + 4]) |
+                         (UInt32(data[offset + 5]) << 8) |
+                         (UInt32(data[offset + 6]) << 16) |
+                         (UInt32(data[offset + 7]) << 24)
+            offset += 8
+            guard group == 0xFFFE else { return nil }
+            if element == 0xE0DD { return offset }
+            guard element == 0xE000 else { return nil }
+            if length == 0xFFFFFFFF {
+                guard let itemEnd = skipUndefinedLengthItem(data: data, offset: offset, isExplicitVR: isExplicitVR) else {
+                    return nil
+                }
+                offset = itemEnd
+            } else {
+                guard offset + Int(length) <= data.count else { return nil }
+                offset += Int(length)
+            }
+        }
+        return nil
+    }
+
+    /// Returns the offset just past the Item Delimitation Item (FFFE,E00D) that
+    /// ends an undefined-length item whose first element starts at `offset`.
+    private static func skipUndefinedLengthItem(data: Data, offset: Int, isExplicitVR: Bool) -> Int? {
+        var offset = offset
+        while offset + 8 <= data.count {
+            let group = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+            let element = UInt16(data[offset + 2]) | (UInt16(data[offset + 3]) << 8)
+            if group == 0xFFFE && element == 0xE00D { return offset + 8 }
+            guard let next = elementEnd(data: data, offset: offset, isExplicitVR: isExplicitVR) else { return nil }
+            offset = next
+        }
+        return nil
+    }
+
+    /// Returns the offset just past the element starting at `offset`.
+    private static func elementEnd(data: Data, offset: Int, isExplicitVR: Bool) -> Int? {
+        var offset = offset + 4
+        var length: UInt32
+        if isExplicitVR {
+            guard offset + 2 <= data.count else { return nil }
+            let vrString = String(data: data[offset..<(offset + 2)], encoding: .ascii) ?? "UN"
+            let vr = VR(rawValue: vrString) ?? .UN
+            offset += 2
+            if vr.uses32BitLength {
+                guard offset + 6 <= data.count else { return nil }
+                offset += 2
+                length = UInt32(data[offset]) |
+                         (UInt32(data[offset + 1]) << 8) |
+                         (UInt32(data[offset + 2]) << 16) |
+                         (UInt32(data[offset + 3]) << 24)
+                offset += 4
+            } else {
+                guard offset + 2 <= data.count else { return nil }
+                length = UInt32(UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8))
+                offset += 2
+            }
+        } else {
+            guard offset + 4 <= data.count else { return nil }
+            length = UInt32(data[offset]) |
+                     (UInt32(data[offset + 1]) << 8) |
+                     (UInt32(data[offset + 2]) << 16) |
+                     (UInt32(data[offset + 3]) << 24)
+            offset += 4
+        }
+        if length == 0xFFFFFFFF {
+            return skipUndefinedLengthValue(data: data, offset: offset, isExplicitVR: isExplicitVR)
+        }
+        guard offset + Int(length) <= data.count else { return nil }
+        return offset + Int(length)
     }
 }
 

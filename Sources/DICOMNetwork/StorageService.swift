@@ -140,7 +140,7 @@ public struct StorageConfiguration: Sendable, Hashable {
     ///   - callingAETitle: The local AE title
     ///   - calledAETitle: The remote AE title
     ///   - timeout: Connection timeout in seconds (default: 60)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - priority: Operation priority (default: medium)
@@ -1088,7 +1088,6 @@ public enum DICOMStorageService {
         
         // Parse all files first to gather SOP Class UIDs for negotiation
         var fileInfos: [(index: Int, data: Data, info: DICOMFileParser.FileInfo)] = []
-        var sopClassUIDs = Set<String>()
         
         for (index, fileData) in files.enumerated() {
             try Task.checkCancellation()
@@ -1097,7 +1096,6 @@ public enum DICOMStorageService {
                 let parser = DICOMFileParser(data: fileData)
                 let info = try parser.parseForStorage()
                 fileInfos.append((index, fileData, info))
-                sopClassUIDs.insert(info.sopClassUID)
             } catch {
                 // Record parse failure
                 let fileResult = FileStoreResult(
@@ -1150,179 +1148,193 @@ public enum DICOMStorageService {
         // Create association configuration
         let associationConfig = configuration.associationConfiguration(host: host, port: port)
         
-        // Create presentation contexts for all SOP Classes
-        var presentationContexts: [PresentationContext] = []
-        var contextID: UInt8 = 1
-        var sopClassToContextID: [String: UInt8] = [:]
-        
-        for sopClassUID in sopClassUIDs {
-            let transferSyntaxes = [
-                explicitVRLittleEndianTransferSyntaxUID,
-                implicitVRLittleEndianTransferSyntaxUID
-            ]
-            
-            do {
-                let context = try PresentationContext(
-                    id: contextID,
-                    abstractSyntax: sopClassUID,
-                    transferSyntaxes: transferSyntaxes
-                )
-                presentationContexts.append(context)
-                sopClassToContextID[sopClassUID] = contextID
-                contextID += 2 // Presentation Context IDs must be odd numbers
-            } catch {
-                // Skip invalid SOP classes
-                continue
-            }
-        }
-        
-        // Establish association
-        let association = Association(configuration: associationConfig)
-        
-        do {
-            var negotiated = try await association.request(presentationContexts: presentationContexts)
-            
-            var filesStoredOnAssociation = 0
-            var messageID: UInt16 = 1
-            
-            // Store each file
-            for (index, fileData, fileInfo) in fileInfos {
-                try Task.checkCancellation()
+        // Presentation context IDs are odd 1...255 (PS3.8 9.3.2.2), so one
+        // association proposes at most `maxPresentationContextsPerAssociation`
+        // SOP Classes; the distinct classes are partitioned into groups and
+        // each group gets its own association (see `presentationContextGroups`).
+        let contextGroups = Self.presentationContextGroups(fileInfos.map { $0.info.sopClassUID })
+        var stopped = false
 
-                let fileStartTime = Date()
-                
-                // Check if we need to start a new association
-                if batchConfiguration.maxFilesPerAssociation > 0 &&
-                   filesStoredOnAssociation >= batchConfiguration.maxFilesPerAssociation {
-                    // Release current association and create new one
-                    try? await association.release()
-                    negotiated = try await association.request(presentationContexts: presentationContexts)
-                    filesStoredOnAssociation = 0
-                    messageID = 1
-                }
-                
-                // Add delay if configured
-                if batchConfiguration.delayBetweenFiles > 0 && index > 0 {
-                    try await Task.sleep(for: .seconds(batchConfiguration.delayBetweenFiles))
-                }
-                
-                // Get the presentation context ID for this SOP Class
-                guard let pcID = sopClassToContextID[fileInfo.sopClassUID],
-                      negotiated.isContextAccepted(pcID) else {
-                    // SOP Class not accepted
-                    let fileResult = FileStoreResult(
-                        index: index,
-                        sopInstanceUID: fileInfo.sopInstanceUID,
-                        sopClassUID: fileInfo.sopClassUID,
-                        success: false,
-                        status: .refusedSOPClassNotSupported,
-                        roundTripTime: Date().timeIntervalSince(fileStartTime),
-                        fileSize: fileData.count,
-                        errorMessage: "SOP Class not supported: \(fileInfo.sopClassUID)"
+        for group in contextGroups where !stopped {
+            let groupSet = Set(group)
+
+            // Create presentation contexts for the SOP Classes of this group
+            var presentationContexts: [PresentationContext] = []
+            var contextID: UInt8 = 1
+            var sopClassToContextID: [String: UInt8] = [:]
+
+            for sopClassUID in group {
+                let transferSyntaxes = [
+                    explicitVRLittleEndianTransferSyntaxUID,
+                    implicitVRLittleEndianTransferSyntaxUID
+                ]
+            
+                do {
+                    let context = try PresentationContext(
+                        id: contextID,
+                        abstractSyntax: sopClassUID,
+                        transferSyntaxes: transferSyntaxes
                     )
-                    fileResults.append(fileResult)
-                    failed += 1
-                    
-                    continuation.yield(.fileResult(fileResult))
-                    continuation.yield(.progress(BatchStoreProgress(
-                        total: total, succeeded: succeeded, failed: failed, warnings: warnings
-                    )))
-                    
-                    if !batchConfiguration.continueOnError {
-                        try? await association.release()
-                        break
-                    }
+                    presentationContexts.append(context)
+                    sopClassToContextID[sopClassUID] = contextID
+                    contextID += 2 // Presentation Context IDs must be odd numbers
+                } catch {
+                    // Skip invalid SOP classes
                     continue
                 }
+            }
+        
+            // Establish association
+            let association = Association(configuration: associationConfig)
+        
+            do {
+                var negotiated = try await association.request(presentationContexts: presentationContexts)
+            
+                var filesStoredOnAssociation = 0
+                var messageID: UInt16 = 1
+            
+                // Store each file of this group's SOP Classes
+                for (index, fileData, fileInfo) in fileInfos where groupSet.contains(fileInfo.sopClassUID) {
+                    try Task.checkCancellation()
+
+                    let fileStartTime = Date()
                 
-                do {
-                    // Perform C-STORE for this file
-                    let response = try await performCStoreWithMessageID(
-                        association: association,
-                        presentationContextID: pcID,
-                        maxPDUSize: negotiated.maxPDUSize,
-                        sopClassUID: fileInfo.sopClassUID,
-                        sopInstanceUID: fileInfo.sopInstanceUID,
-                        priority: configuration.priority,
-                        dataSetData: fileInfo.dataSetData,
-                        messageID: messageID
-                    )
-                    
-                    let roundTripTime = Date().timeIntervalSince(fileStartTime)
-                    messageID += 1
-                    filesStoredOnAssociation += 1
-                    totalBytesTransferred += fileData.count
-                    
-                    let isSuccess = response.status.isSuccess || response.status.isWarning
-                    let fileResult = FileStoreResult(
-                        index: index,
-                        sopInstanceUID: fileInfo.sopInstanceUID,
-                        sopClassUID: fileInfo.sopClassUID,
-                        success: isSuccess,
-                        status: response.status,
-                        roundTripTime: roundTripTime,
-                        fileSize: fileData.count,
-                        errorMessage: isSuccess ? nil : "Store failed with status: \(response.status)"
-                    )
-                    fileResults.append(fileResult)
-                    
-                    // Categorize by status: warnings are counted separately from pure successes
-                    // Both warnings and pure successes have FileStoreResult.success = true
-                    // but are tracked in different counters for reporting purposes
-                    if response.status.isWarning {
-                        warnings += 1
-                    } else if isSuccess {
-                        succeeded += 1
-                    } else {
+                    // Check if we need to start a new association
+                    if batchConfiguration.maxFilesPerAssociation > 0 &&
+                       filesStoredOnAssociation >= batchConfiguration.maxFilesPerAssociation {
+                        // Release current association and create new one
+                        try? await association.release()
+                        negotiated = try await association.request(presentationContexts: presentationContexts)
+                        filesStoredOnAssociation = 0
+                        messageID = 1
+                    }
+                
+                    // Add delay if configured
+                    if batchConfiguration.delayBetweenFiles > 0 && index > 0 {
+                        try await Task.sleep(for: .seconds(batchConfiguration.delayBetweenFiles))
+                    }
+                
+                    // Get the presentation context ID for this SOP Class
+                    guard let pcID = sopClassToContextID[fileInfo.sopClassUID],
+                          negotiated.isContextAccepted(pcID) else {
+                        // SOP Class not accepted
+                        let fileResult = FileStoreResult(
+                            index: index,
+                            sopInstanceUID: fileInfo.sopInstanceUID,
+                            sopClassUID: fileInfo.sopClassUID,
+                            success: false,
+                            status: .refusedSOPClassNotSupported,
+                            roundTripTime: Date().timeIntervalSince(fileStartTime),
+                            fileSize: fileData.count,
+                            errorMessage: "SOP Class not supported: \(fileInfo.sopClassUID)"
+                        )
+                        fileResults.append(fileResult)
                         failed += 1
+                    
+                        continuation.yield(.fileResult(fileResult))
+                        continuation.yield(.progress(BatchStoreProgress(
+                            total: total, succeeded: succeeded, failed: failed, warnings: warnings
+                        )))
+                    
+                        if !batchConfiguration.continueOnError {
+                            try? await association.release()
+                            stopped = true
+                            break
+                        }
+                        continue
                     }
+                
+                    do {
+                        // Perform C-STORE for this file
+                        let response = try await performCStoreWithMessageID(
+                            association: association,
+                            presentationContextID: pcID,
+                            maxPDUSize: negotiated.maxPDUSize,
+                            sopClassUID: fileInfo.sopClassUID,
+                            sopInstanceUID: fileInfo.sopInstanceUID,
+                            priority: configuration.priority,
+                            dataSetData: fileInfo.dataSetData,
+                            messageID: messageID
+                        )
                     
-                    continuation.yield(.fileResult(fileResult))
-                    continuation.yield(.progress(BatchStoreProgress(
-                        total: total, succeeded: succeeded, failed: failed, warnings: warnings
-                    )))
+                        let roundTripTime = Date().timeIntervalSince(fileStartTime)
+                        messageID += 1
+                        filesStoredOnAssociation += 1
+                        totalBytesTransferred += fileData.count
                     
-                    if !isSuccess && !batchConfiguration.continueOnError {
-                        try? await association.release()
-                        break
-                    }
+                        let isSuccess = response.status.isSuccess || response.status.isWarning
+                        let fileResult = FileStoreResult(
+                            index: index,
+                            sopInstanceUID: fileInfo.sopInstanceUID,
+                            sopClassUID: fileInfo.sopClassUID,
+                            success: isSuccess,
+                            status: response.status,
+                            roundTripTime: roundTripTime,
+                            fileSize: fileData.count,
+                            errorMessage: isSuccess ? nil : "Store failed with status: \(response.status)"
+                        )
+                        fileResults.append(fileResult)
                     
-                } catch {
-                    let roundTripTime = Date().timeIntervalSince(fileStartTime)
-                    let fileResult = FileStoreResult(
-                        index: index,
-                        sopInstanceUID: fileInfo.sopInstanceUID,
-                        sopClassUID: fileInfo.sopClassUID,
-                        success: false,
-                        status: .failedUnableToProcess,
-                        roundTripTime: roundTripTime,
-                        fileSize: fileData.count,
-                        errorMessage: error.localizedDescription
-                    )
-                    fileResults.append(fileResult)
-                    failed += 1
+                        // Categorize by status: warnings are counted separately from pure successes
+                        // Both warnings and pure successes have FileStoreResult.success = true
+                        // but are tracked in different counters for reporting purposes
+                        if response.status.isWarning {
+                            warnings += 1
+                        } else if isSuccess {
+                            succeeded += 1
+                        } else {
+                            failed += 1
+                        }
                     
-                    continuation.yield(.fileResult(fileResult))
-                    continuation.yield(.progress(BatchStoreProgress(
-                        total: total, succeeded: succeeded, failed: failed, warnings: warnings
-                    )))
+                        continuation.yield(.fileResult(fileResult))
+                        continuation.yield(.progress(BatchStoreProgress(
+                            total: total, succeeded: succeeded, failed: failed, warnings: warnings
+                        )))
                     
-                    if !batchConfiguration.continueOnError {
-                        try? await association.release()
-                        break
+                        if !isSuccess && !batchConfiguration.continueOnError {
+                            try? await association.release()
+                            stopped = true
+                            break
+                        }
+                    
+                    } catch {
+                        let roundTripTime = Date().timeIntervalSince(fileStartTime)
+                        let fileResult = FileStoreResult(
+                            index: index,
+                            sopInstanceUID: fileInfo.sopInstanceUID,
+                            sopClassUID: fileInfo.sopClassUID,
+                            success: false,
+                            status: .failedUnableToProcess,
+                            roundTripTime: roundTripTime,
+                            fileSize: fileData.count,
+                            errorMessage: error.localizedDescription
+                        )
+                        fileResults.append(fileResult)
+                        failed += 1
+                    
+                        continuation.yield(.fileResult(fileResult))
+                        continuation.yield(.progress(BatchStoreProgress(
+                            total: total, succeeded: succeeded, failed: failed, warnings: warnings
+                        )))
+                    
+                        if !batchConfiguration.continueOnError {
+                            try? await association.release()
+                            stopped = true
+                            break
+                        }
                     }
                 }
+            
+                // Release association
+                try? await association.release()
+            
+            } catch {
+                // Association establishment failed
+                try? await association.abort()
+                throw error
             }
-            
-            // Release association
-            try? await association.release()
-            
-        } catch {
-            // Association establishment failed
-            try? await association.abort()
-            throw error
-        }
-        
+        } // for group
+
         // Complete the stream
         let totalTime = Date().timeIntervalSince(startTime)
         let result = BatchStoreResult(
@@ -1335,6 +1347,26 @@ public enum DICOMStorageService {
         continuation.finish()
     }
     
+    /// Maximum number of presentation contexts one association can propose:
+    /// PS3.8 9.3.2.2 gives presentation context IDs the odd values 1...255.
+    static let maxPresentationContextsPerAssociation = 128
+
+    /// Partitions SOP Class UIDs into groups that fit one association each
+    /// (at most `maxPresentationContextsPerAssociation` distinct classes),
+    /// preserving first-appearance order and dropping duplicates. Every class
+    /// appears in exactly one group; an empty input yields no groups.
+    static func presentationContextGroups(_ sopClassUIDs: [String]) -> [[String]] {
+        var seen = Set<String>()
+        var unique: [String] = []
+        for uid in sopClassUIDs where seen.insert(uid).inserted {
+            unique.append(uid)
+        }
+        let size = maxPresentationContextsPerAssociation
+        return stride(from: 0, to: unique.count, by: size).map { start in
+            Array(unique[start..<min(start + size, unique.count)])
+        }
+    }
+
     /// Performs the C-STORE request/response exchange with a specific message ID
     private static func performCStoreWithMessageID(
         association: Association,

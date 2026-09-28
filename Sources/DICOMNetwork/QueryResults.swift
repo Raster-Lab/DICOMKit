@@ -48,6 +48,19 @@ extension QueryResult {
         guard let string = string(for: tag) else { return nil }
         return Int(string.trimmingCharacters(in: .whitespaces))
     }
+
+    /// Gets a VR US value: a 2-byte unsigned little-endian integer (PS3.5
+    /// Table 6.2-1). Leniently also accepts an ASCII digit string, which some
+    /// SCPs send for US attributes.
+    fileprivate func uint16(for tag: Tag) -> Int? {
+        guard let data = attributes[tag] else { return nil }
+        if data.count == 2 {
+            return Int(UInt16(data[data.startIndex]) | (UInt16(data[data.startIndex + 1]) << 8))
+        }
+        let string = String(data: data, encoding: .ascii)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: " \0")) ?? ""
+        return UInt16(string).map(Int.init)
+    }
 }
 
 // MARK: - Response String Decoding
@@ -387,14 +400,14 @@ public struct InstanceResult: QueryResult, Sendable, Hashable {
         string(for: .contentTime)
     }
     
-    /// Image Rows
+    /// Image Rows (0028,0010) — VR US (PS3.5 Table 6.2-1)
     public var rows: Int? {
-        integer(for: .rows)
+        uint16(for: .rows)
     }
     
-    /// Image Columns
+    /// Image Columns (0028,0011) — VR US (PS3.5 Table 6.2-1)
     public var columns: Int? {
-        integer(for: .columns)
+        uint16(for: .columns)
     }
     
     /// Number of Frames

@@ -831,4 +831,58 @@ final class RetrieveConformanceTests: XCTestCase {
         // patientID(_:) replaces an earlier value rather than duplicating the element
         XCTAssertEqual(keys.patientID("P2").keys.filter { $0.tag == .patientID }.count, 1)
     }
+
+    // MARK: - Retrieve identifier encoding (PS3.5 7.1, 6.1.2; PS3.4 C.4.2.1.4.1)
+
+    /// Tags of an Explicit VR LE data set in wire order.
+    private func tagOrder(_ data: Data) -> [Tag] {
+        var tags: [Tag] = []
+        var offset = 0
+        while offset + 8 <= data.count {
+            let group = UInt16(data[offset]) | UInt16(data[offset + 1]) << 8
+            let element = UInt16(data[offset + 2]) | UInt16(data[offset + 3]) << 8
+            tags.append(Tag(group: group, element: element))
+            let length = Int(data[offset + 6]) | Int(data[offset + 7]) << 8   // 2-byte VRs only
+            offset += 8 + length
+        }
+        return tags
+    }
+
+    func testImageLevelIdentifierWritesSOPInstanceUIDBeforeQueryRetrieveLevel() {
+        let keys = RetrieveKeys.forInstance(studyUID: "1.2.3", seriesUID: "1.2.3.4", instanceUID: "1.2.3.4.5")
+        let data = DICOMRetrieveService.buildRetrieveIdentifier(keys: keys, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        let tags = tagOrder(data)
+        XCTAssertEqual(tags, tags.sorted(), "ascending tag order (PS3.5 7.1)")
+        XCTAssertEqual(tags, [.sopInstanceUID, .queryRetrieveLevel, .studyInstanceUID, .seriesInstanceUID])
+    }
+
+    func testLatin1PatientIDInsertsISOIR100AndEncodesLatin1() {
+        let keys = RetrieveKeys.forStudy("1.2.3", patientID: "MÜLLER1")
+        let data = DICOMRetrieveService.buildRetrieveIdentifier(keys: keys, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        let attrs = DICOMQueryService.parseQueryResponse(data: data, transferSyntax: explicitVRLittleEndianTransferSyntaxUID)
+        XCTAssertEqual(attrs[.specificCharacterSet].flatMap { String(data: $0, encoding: .ascii) }, "ISO_IR 100",
+                       "PS3.4 C.4.2.1.4.1 / PS3.5 6.1.2: (0008,0005) declares the expanded repertoire")
+        // Ü is the single byte 0xDC in ISO 8859-1; 7 bytes are space-padded to 8. Never zero length.
+        XCTAssertEqual(attrs[.patientID], "MÜLLER1".data(using: .isoLatin1)! + Data([0x20]))
+        XCTAssertEqual(tagOrder(data).first, .specificCharacterSet)
+    }
+
+    func testASCIIIdentifierCarriesNoSpecificCharacterSet() {
+        let keys = RetrieveKeys.forStudy("1.2.3", patientID: "P1")
+        let data = DICOMRetrieveService.buildRetrieveIdentifier(keys: keys, transferSyntax: implicitVRLittleEndianTransferSyntaxUID)
+        let attrs = DICOMQueryService.parseQueryResponse(data: data, transferSyntax: implicitVRLittleEndianTransferSyntaxUID)
+        XCTAssertNil(attrs[.specificCharacterSet])
+    }
+
+    func testUIDBuildersReplaceRatherThanDuplicate() {
+        let keys = RetrieveKeys(level: .image)
+            .studyInstanceUID("1").studyInstanceUID("2")
+            .seriesInstanceUID("3").seriesInstanceUID("4")
+            .sopInstanceUID("5").sopInstanceUID("6")
+        XCTAssertEqual(keys.keys.count, 3, "a data element occurs at most once (PS3.5 7.1)")
+        XCTAssertEqual(keys.value(for: .studyInstanceUID), "2")
+        XCTAssertEqual(keys.value(for: .seriesInstanceUID), "4")
+        XCTAssertEqual(keys.value(for: .sopInstanceUID), "6")
+    }
+
 }

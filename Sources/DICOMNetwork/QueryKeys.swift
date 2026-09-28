@@ -177,12 +177,15 @@ public struct QueryKeys: Sendable, Hashable {
         returning(.patientSex, vr: .CS)
     }
     
-    /// Requests Patient Age be returned
+    // MARK: - Study Level Keys
+
+    /// Requests Patient's Age (0010,1010) be returned
+    ///
+    /// A study-level Optional Key (PS3.4 Tables C.6-2 / C.6-5); Table C.6-1
+    /// (patient level) lists no Patient's Age, so it is not a patient-level key.
     public func requestPatientAge() -> QueryKeys {
         returning(.patientAge, vr: .AS)
     }
-    
-    // MARK: - Study Level Keys
     
     /// Matches Study Instance UID
     ///

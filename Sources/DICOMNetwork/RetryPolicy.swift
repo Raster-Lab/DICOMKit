@@ -693,11 +693,11 @@ extension RetryError: CustomStringConvertible {
 /// var config = SOPClassRetryConfiguration()
 ///
 /// // Critical SOP Classes get aggressive retries
-/// config.setPolicy(.aggressive, for: SOPClass.ctImageStorage)
-/// config.setPolicy(.aggressive, for: SOPClass.mrImageStorage)
+/// config.setPolicy(.aggressive, for: "1.2.840.10008.5.1.4.1.1.2")   // CT Image Storage
+/// config.setPolicy(.aggressive, for: "1.2.840.10008.5.1.4.1.1.4")   // MR Image Storage
 ///
 /// // Less critical SOP Classes get conservative retries
-/// config.setPolicy(.conservative, for: SOPClass.secondaryCaptureImageStorage)
+/// config.setPolicy(.conservative, for: "1.2.840.10008.5.1.4.1.1.7") // Secondary Capture Image Storage
 ///
 /// // Get policy for a specific SOP Class
 /// let policy = config.policy(for: sopClassUID)

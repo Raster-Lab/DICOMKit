@@ -48,7 +48,7 @@ public struct ModalityWorklistConfiguration: Sendable, Hashable {
     ///   - callingAETitle: The local AE title
     ///   - calledAETitle: The remote AE title
     ///   - timeout: Connection timeout in seconds (default: 60)
-    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - maxPDUSize: Maximum PDU size (default: 64 KB (`defaultMaxPDUSize`))
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - userIdentity: User identity for authentication (optional)
@@ -573,8 +573,10 @@ public struct WorklistSOPReference: Sendable, Hashable {
 /// otherwise overwrite one another.
 ///
 /// String values are decoded with the response's Specific Character Set
-/// (0008,0005); ISO_IR 100 is assumed when absent, so Latin-1 and multi-byte
-/// patient names survive instead of decoding to nil as ASCII.
+/// (0008,0005). When it is absent the Default Character Repertoire (ISO-IR 6)
+/// applies (PS3.5 6.1.2); as a deliberate leniency a value that then holds a
+/// byte >= 0x80 — an SCP sending Latin-1 without declaring it — is decoded as
+/// ISO 8859-1 rather than lost.
 public struct WorklistItem: Sendable {
     public let attributes: [Tag: Data]
     /// Items of every non-SPS sequence, keyed by the sequence tag. Each item is a
@@ -593,12 +595,18 @@ public struct WorklistItem: Sendable {
             .flatMap { String(data: $0, encoding: .ascii) }?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "\0"))
+        // No (0008,0005) means the Default Character Repertoire, ISO-IR 6
+        // (PS3.5 6.1.2); `decode` adds the undeclared-Latin-1 leniency.
         self.characterSet = CharacterSetHandler.from(
-            specificCharacterSet: (declared?.isEmpty ?? true) ? "ISO_IR 100" : declared)
+            specificCharacterSet: (declared?.isEmpty ?? true) ? nil : declared)
     }
 
     // MARK: - Private helpers
 
+    /// Decodes with the declared set (or ISO-IR 6 when none was declared).
+    /// Leniency: bytes the declared/default set cannot decode — typically an
+    /// undeclared ISO 8859-1 value — fall back to Latin-1, which accepts any
+    /// byte, so the value is never lost.
     private func decode(_ data: Data) -> String? {
         let s = (characterSet.decode(data) ?? String(data: data, encoding: .isoLatin1))?
             .trimmingCharacters(in: CharacterSet(charactersIn: " \0"))
@@ -981,10 +989,13 @@ public enum DICOMModalityWorklistService {
     ///
     /// The Specific Character Set (0008,0005) is chosen with
     /// `DIMSECharacterSet.choose(for:override:)` over every text-VR key
-    /// (`specificCharacterSet` wins when given, then the keys' own override): it
-    /// is always emitted — as a Return Key with an empty value when the default
-    /// repertoire suffices, else with the chosen defined term — and every PN / LO /
-    /// SH / ST / LT / UT / UC value is encoded in that set (PS3.5 6.1.2,
+    /// (`specificCharacterSet` wins when given, then the keys' own override).
+    /// It is emitted only when an expanded or replacement repertoire is used
+    /// (PS3.4 K.4.1.1.3.1: "It shall not be included otherwise"; C.2.2.2:
+    /// "Specific Character Set (0008,0005) shall not have a zero length
+    /// value"), so with ISO 646 keys no (0008,0005) is written even if the key
+    /// set carries it as an empty return key. Every PN / LO / SH / ST / LT /
+    /// UT / UC value is encoded in the chosen set (PS3.5 6.1.2,
     /// PS3.4 C.2.2.2.1, K.6.1.2.2). Other VRs stay ISO 646.
     internal static func buildQueryIdentifier(
         queryKeys: WorklistQueryKeys,
@@ -999,7 +1010,13 @@ public enum DICOMModalityWorklistService {
         // The SPS sequence tag (0040,0100) must appear in tag-number order relative to
         // the surrounding top-level attributes.
         var topKeys = queryKeys.allKeys
-        topKeys[.specificCharacterSet] = charset.specificCharacterSet ?? ""
+        if let chosen = charset.specificCharacterSet {
+            topKeys[.specificCharacterSet] = chosen
+        } else {
+            // Default repertoire: (0008,0005) shall not be included, and never
+            // with a zero-length value (PS3.4 C.2.2.2, K.4.1.1.3.1).
+            topKeys.removeValue(forKey: .specificCharacterSet)
+        }
         let topSorted   = topKeys.sorted { $0.key < $1.key }
         let spsSorted   = queryKeys.allSPSKeys.sorted { $0.key < $1.key }
         let spsSeqTag   = Tag(group: 0x0040, element: 0x0100)
