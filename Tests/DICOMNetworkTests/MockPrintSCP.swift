@@ -60,6 +60,9 @@ struct MockPrintSCPBehavior: Sendable {
     /// support does (PS3.4 Table H.4-8, "-/MC").
     var omitPrintJobUID: Bool = false
 
+    /// Answer the Printer N-GET with no data set at all.
+    var omitPrinterStatusDataSet: Bool = false
+
     /// Push a Printer SOP Class N-EVENT-REPORT (WARNING) immediately before
     /// responding to the first film-session N-CREATE (interleave test).
     var pushEventBeforeFirstResponse: Bool = false
@@ -416,6 +419,18 @@ private final class MockPrintSCPConnection: @unchecked Sendable {
     }
 
     private func respondPrinterStatus(messageID: UInt16, contextID: UInt8) async throws {
+        if behavior.omitPrinterStatusDataSet {
+            let response = NGetResponse(
+                messageIDBeingRespondedTo: messageID,
+                affectedSOPClassUID: printerSOPClassUID,
+                affectedSOPInstanceUID: printerSOPInstanceUID,
+                status: .success,
+                hasDataSet: false,
+                presentationContextID: contextID
+            )
+            try await send(commandSet: response.commandSet, dataSet: nil, contextID: contextID)
+            return
+        }
         var elements: [DataElement] = [
             DataElement.string(tag: Tag(group: 0x2110, element: 0x0010), vr: .CS, value: behavior.printerStatus)
         ]

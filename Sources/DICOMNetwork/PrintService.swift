@@ -2401,7 +2401,10 @@ public enum DICOMPrintService {
                     }
                     
                     try await association.release()
-                    return PrinterStatus(status: "NORMAL")
+                    // No data set: the SCP told us nothing, and nothing is not
+                    // NORMAL. The same placeholder `parsePrinterStatus` uses
+                    // when Printer Status (2110,0010) is missing.
+                    return PrinterStatus(status: "UNKNOWN")
                 }
             }
         } catch {
