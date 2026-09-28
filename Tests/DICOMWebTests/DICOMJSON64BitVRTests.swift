@@ -21,7 +21,8 @@ struct DICOMJSON64BitVRTests {
         let ovDict = result["7FE00001"] as? [String: Any]
         let obDict = result["7FE00010"] as? [String: Any]
         #expect(ovDict?["vr"] as? String == "OV")
-        #expect((ovDict?["Value"] as? [[String: Any]])?.first?["InlineBinary"] as? String == data.base64EncodedString())
+        #expect(ovDict?["InlineBinary"] as? String == data.base64EncodedString())
+        #expect(ovDict?["Value"] == nil)
         #expect(NSDictionary(dictionary: ovDict?.filter { $0.key != "vr" } ?? [:])
                 == NSDictionary(dictionary: obDict?.filter { $0.key != "vr" } ?? [:]))
     }

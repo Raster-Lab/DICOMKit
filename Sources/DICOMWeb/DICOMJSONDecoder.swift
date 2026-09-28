@@ -4,7 +4,14 @@ import DICOMDictionary
 
 /// Decoder for converting JSON data to DICOM DataElements
 ///
-/// Implements the DICOM JSON Model as specified in PS3.18 Section F.
+/// Implements the DICOM JSON Model as specified in PS3.18 Annex F: each attribute object
+/// carries `vr` and at most one of `Value`, `BulkDataURI` or `InlineBinary` as siblings
+/// (F.2.2). The pre-2026 DICOMKit layout, which put `{"InlineBinary": …}` or
+/// `{"BulkDataURI": …}` inside the `Value` array, is still accepted on input.
+///
+/// NEMA-verified: 2026a, checked 2026-09-28 — VR-to-JSON types diffed against PS3.18 2026a
+/// Table F.2.3-1 (34 / 34); layout, null values, AT format and PN component groups read
+/// against F.2.2-F.2.7; tests `DICOMJSONDecoderTests`, `DICOMJSONModelConformanceTests`.
 ///
 /// Reference: PS3.18 Annex F - DICOM JSON Model
 public struct DICOMJSONDecoder: Sendable {
@@ -126,6 +133,14 @@ public struct DICOMJSONDecoder: Sendable {
             throw DICOMwebError.missingRequiredField(field: "vr")
         }
         
+        // PS3.18 F.2.2: at most one of Value, BulkDataURI, InlineBinary, as siblings of vr
+        if let uriString = elementDict["BulkDataURI"] as? String {
+            return try decodeBulkData(tag: tag, vr: vr, uriString: uriString)
+        }
+        if let base64String = elementDict["InlineBinary"] as? String {
+            return try decodeInlineBinary(tag: tag, vr: vr, base64String: base64String)
+        }
+        
         // Get value
         let valueArray = elementDict["Value"] as? [Any]
         
@@ -160,10 +175,10 @@ public struct DICOMJSONDecoder: Sendable {
             return try decodeSequence(tag: tag, values: values)
         }
         
-        // Check for bulk data or inline binary
-        if let firstValue = values.first as? [String: Any] {
-            if let _ = firstValue["BulkDataURI"] as? String {
-                return try decodeBulkData(tag: tag, vr: vr, bulkDataDict: firstValue)
+        // Legacy DICOMKit layout (before the PS3.18 F.2.2 fix): the binary carrier inside "Value"
+        if let firstValue = values.first as? [String: Any], vr != .PN, vr != .SQ {
+            if let uriString = firstValue["BulkDataURI"] as? String {
+                return try decodeBulkData(tag: tag, vr: vr, uriString: uriString)
             }
             if let inlineBinary = firstValue["InlineBinary"] as? String {
                 return try decodeInlineBinary(tag: tag, vr: vr, base64String: inlineBinary)
@@ -216,11 +231,7 @@ public struct DICOMJSONDecoder: Sendable {
         )
     }
     
-    private func decodeBulkData(tag: Tag, vr: VR, bulkDataDict: [String: Any]) throws -> DataElement {
-        guard let uriString = bulkDataDict["BulkDataURI"] as? String else {
-            throw DICOMwebError.invalidBulkDataReference(uri: nil)
-        }
-        
+    private func decodeBulkData(tag: Tag, vr: VR, uriString: String) throws -> DataElement {
         guard URL(string: uriString) != nil else {
             throw DICOMwebError.invalidBulkDataReference(uri: uriString)
         }
@@ -245,7 +256,10 @@ public struct DICOMJSONDecoder: Sendable {
         var pnStrings: [String] = []
         
         for value in values {
-            if let pnDict = value as? [String: Any] {
+            if value is NSNull {
+                // F.2.5: an empty value of a multi-valued attribute is null
+                pnStrings.append("")
+            } else if let pnDict = value as? [String: Any] {
                 var components: [String] = []
                 
                 if let alphabetic = pnDict["Alphabetic"] as? String {
@@ -290,6 +304,9 @@ public struct DICOMJSONDecoder: Sendable {
                 return str
             } else if let num = value as? NSNumber {
                 return num.stringValue
+            } else if value is NSNull {
+                // F.2.5: an empty value of a multi-valued attribute is null
+                return ""
             }
             return nil
         }
@@ -314,6 +331,10 @@ public struct DICOMJSONDecoder: Sendable {
         var valueData = Data()
         
         for value in values {
+            // A null (F.2.5) has no binary encoding for a numeric VR; it is skipped.
+            if value is NSNull {
+                continue
+            }
             // SV and UV may be a JSON Number or a String (PS3.18 Table F.2.3-1).
             if vr == .SV || vr == .UV {
                 valueData.append(try encode64BitValue(value, vr: vr))
@@ -376,6 +397,9 @@ public struct DICOMJSONDecoder: Sendable {
         var valueData = Data()
         
         for value in values {
+            if value is NSNull {
+                continue
+            }
             guard let tagString = value as? String, tagString.count == 8 else {
                 throw DICOMwebError.invalidVREncoding(vr: "AT", reason: "Expected 8-character hex string")
             }
