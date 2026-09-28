@@ -26,6 +26,10 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+# Values known to differ from the standard whose fix changes public API (raw values) and is
+# waiting for the owner's approval; reported as PEND, not FAIL. Remove the entry when fixed.
+PENDING_API_APPROVAL = {('MediumType', 'MAMMO CLEAR'), ('MediumType', 'MAMMO BLUE')}
 spec = importlib.util.spec_from_file_location('nema_docbook', os.path.join(HERE, 'nema_docbook.py'))
 nd = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nd)
@@ -279,7 +283,11 @@ def check_reject_codes(rep, p8, src_dir):
     for fname, func in (('AssociateRejectPDU.swift', 'reasonDescription'),
                         ('NetworkConsoleFormatter.swift', 'associateRejectReasonDescription')):
         src = read(os.path.join(src_dir, fname))
-        block = src[src.find(func):]
+        start = max(src.find('func ' + func), src.find('var ' + func))
+        block = src[start:]
+        if fname == 'NetworkConsoleFormatter.swift' and 'AssociateRejectPDU(' in block[:400]:
+            rep.check(f'PS3.8 Table 9-21 reject reasons ({fname}): delegates to AssociateRejectPDU.reasonDescription', 1)
+            continue
         ours = {}
         current = None
         for line in block.split('\n'):
@@ -482,8 +490,9 @@ def check_print_status_meanings(rep, p4, src_dir):
     ps34 = ps34_status_tables(p4)
     psrc = read(os.path.join(src_dir, 'PrintSCPTypes.swift'))
     codes = swift_hex_cases_dec(psrc, 'PrintSCPStatus')
-    docs = dict(re.findall(r'///\s*(.+?)\s*\n\s*case (\w+) = 0x', psrc))
-    docs = {v: k for k, v in docs.items()}
+    docs = {}
+    for m in re.finditer(r'((?:[ \t]*///[^\n]*\n)+)[ \t]*case (\w+) = 0x', psrc):
+        docs[m.group(2)] = ' '.join(l.strip().lstrip('/').strip() for l in m.group(1).split('\n'))
     wrong, matched = [], 0
     keywords = {0xC600: 'film box', 0xC601: 'queue', 0xC602: 'queue', 0xC603: 'larger', 0xC605: 'memory',
                 0xC613: 'combined', 0xC616: 'film box', 0xB600: 'memory allocation', 0xB601: 'collation',
@@ -631,6 +640,11 @@ def check_print_enums(rep, p3, src_dir):
         std = subset or terms
         wrong = [v for v in ours if v not in terms and v not in ('UNKNOWN',)
                  and not (enum == 'FilmDestination' and re.fullmatch(r'BIN_\d+', v) and 'BIN_i' in terms)]
+        pending = [v for v in wrong if (enum, v) in PENDING_API_APPROVAL]
+        if pending:
+            print(f'PEND PS3.3 {sect[5:]} {enum}: {", ".join(pending)} differ from the standard; raw values are public API, '
+                  'change pending owner approval (report P-MAMMO)')
+            wrong = [v for v in wrong if v not in pending]
         missing = [v for v in std if v not in ours and v != 'BIN_i' and (subset or enum_term_belongs(enum, v))]
         rep.check(f'PS3.3 {sect[5:]} defined terms of {enum} (PrintService.swift)', len(ours) - len(wrong), wrong, missing,
                   fail_on_missing=False)
@@ -753,7 +767,7 @@ def check_ae_title(rep, p8, src_dir):
     wrong = []
     if 'maxLength = 16' not in src and 'maxLength: Int = 16' not in src:
         wrong.append('maxLength is not 16')
-    if not re.search(r'0x20\s*\.\.\.\s*0x7E|0x20\.\.\.0x7E|isG0', src):
+    if not re.search(r'0x20\s*\.\.\.\s*0x7E|0x20\.\.\.0x7E|isG0|>=\s*0x20\s*&&\s*\w+\s*<=\s*0x7E', src):
         wrong.append('permitted characters are not restricted to the ISO 646 basic G0 set (0x20-0x7E)')
     rep.check('PS3.8 Table 9-11 AE title rules (AETitle.swift: 16 bytes, ISO 646 G0)', 2 - len(wrong), wrong)
 

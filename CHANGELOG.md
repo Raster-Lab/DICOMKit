@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — DICOMNetwork verified against DICOM 2026a (2026-09-28)
+
+Audit report: `DICOMNETWORK_STANDARD_IMPLEMENTATION.md`. Every protocol constant the module carries
+is now diffed against the frozen NEMA text by `Scripts/diff_network.py` (44 checks against PS3.3,
+PS3.4, PS3.6, PS3.7 and PS3.8 2026a), and all 63 Swift files carry a `NEMA-verified` marker. The
+behaviour fixes below were each verified against the clause named; none changes a public signature.
+
+- **64-bit VRs on the wire (D1).** The Explicit VR encoders and parsers of Query, Retrieve, Storage,
+  MPPS, Modality Worklist and Storage Commitment used a private length rule that omitted OV, SV and
+  UV, so those elements got a 2-byte length header. They now use DICOMCore's `VR.uses32BitLength`
+  (PS3.5 §7.1.2, Table 7.1-1).
+- **Storage Commitment SCP and notification listener read the PDU length little-endian (D13).**
+  A 259-byte A-ASSOCIATE-RQ was taken for a 50 MB PDU and the read never returned. Both use
+  `PDUDecoder.readHeader` (PS3.8 §9.3.1, big-endian). The listener also resumed a continuation
+  twice once the exchange got further. Six test expectations that contradicted PS3.5 §6.2
+  even-length padding were corrected. DICOMNetworkTests: 1,331 → all green.
+- **C-GET proposes every Storage SOP Class (D21).** With 170 classes in PS3.4 Table B.5-1 and 127
+  contexts per association (PS3.8 §9.3.2.2), the last 43 were never proposed. The SCU now runs the
+  C-GET in batches of 127 classes, a second pass on a new association only when the first reported
+  failures; results are merged.
+- **Upper layer (PS3.8).** A-ASSOCIATE-AC carries a Transfer Syntax sub-item in every Presentation
+  Context item, rejected ones included (Table 9-18). A-ABORT from the service user sends reason 00H;
+  protocol errors abort with the service-provider source (Table 9-26, AA-8); a local ARTIM timeout
+  aborts as AA-1 and the abort is now actually transmitted. An A-RELEASE-RQ received while
+  established is answered with A-RELEASE-RP (AR-2/AR-4); a release collision waits for the peer's
+  A-RELEASE-RP (AR-9/AR-3). Sta13 handles A-ABORT and ARTIM expiry (AA-2). A peer maximum length
+  of 0 means unlimited, the negotiated limit applies to P-DATA-TF only, and fragments use
+  maximum − 6 bytes (Annex D.1, Table 9-23). AE titles accept only the ISO 646 basic G0 set
+  0x20-0x7E without backslash, trim SPACE only and tolerate NUL padding on decode (Table 9-11,
+  PS3.5 Table 6.2-1). `AssociateRequestPDU`/`AssociateAcceptPDU.encode()` throw for an
+  Implementation Class UID over 64 bytes or a version name that is empty or over 16 (PS3.7
+  D.3-1/D.3-3). SCPs reject an A-ASSOCIATE-RQ whose Protocol-version has bit 0 clear (ACSE,
+  reason 2). State descriptions carry the Table 9-1..9-5 numbers.
+- **A-ASSOCIATE-RJ reasons (Table 9-21).** StorageSCP and PrintSCP sent reason 2
+  (application-context-name-not-supported) for an unknown calling AE title; now 3. The commitment
+  listener sent reason 3 with the ACSE source; now the service-user source. "No presentation context
+  accepted" rejections use permanent / service-user / 1. `NetworkConsoleFormatter` had reasons 3 and
+  7 swapped and invented reason 0; it now takes its text from `AssociateRejectPDU`.
+- **DIMSE.** Command-set AE and LO values (Move Destination, Move Originator AE Title, Error
+  Comment) are SPACE-padded, UI values NULL-padded (PS3.5 Table 6.2-1). `StoreAndForwardQueue`
+  ordered by the raw Priority code, so LOW went first; it now ranks HIGH, MEDIUM, LOW (PS3.7 Table
+  E.1-1). StorageSCP answers unsupported requests with status 0211H instead of silence. The
+  Storage Commitment SCP answers an unknown Action Type with 0123H and a wrong SOP Class with 0118H
+  (PS3.7 §10.1.4.1.10); the listener answers every N-EVENT-REPORT-RQ (0110H when unparsable).
+- **Query/Retrieve.** Retrieve identifiers are in ascending tag order (PS3.5 §7.1), carry
+  (0008,0005) and encode non-ASCII values instead of emptying them (PS3.4 C.4.2.1.4.1), and never
+  duplicate a key. `parseQueryResponse` no longer merges the elements of nested sequence items into
+  the top level (PS3.5 §7.5). `InstanceResult.rows`/`columns` read the US value (were always nil).
+  `DICOMValidator` takes its transfer syntaxes from DICOMCore's PS3.6 registry (was a hand list
+  with two unregistered and 29 missing UIDs).
+- **Modality Worklist / MPPS.** The MWL identifier omits (0008,0005) for the default repertoire
+  (PS3.4 C.2.2.2 forbids a zero-length value) and decodes undeclared responses as the default
+  repertoire first (PS3.5 §6.1.2). MPPS sends Scheduled Procedure Step ID empty when unknown
+  (Type 2) instead of "1", and builds its command sets through `NCreateRequest`/`NSetRequest`.
+- **Print Management (PS3.4 Annex H, PS3.3 C.13).** The N-ACTION-RSP names the Film Session /
+  Film Box as Affected SOP Instance and returns the Print Job in Referenced Print Job Sequence
+  (2100,0500) (Tables H.4-3/H.4-8); the SCU reads the job UID only from there. The Meta SOP
+  Classes cover only Film Session, Film Box, the Image Box and Printer (Tables H.3.2.2.1-1/-2-1);
+  Presentation LUT, Annotation Box and Print Job need their own context. Statuses: C600 for a film
+  session without film boxes, B602/B603 (empty page, printed) instead of a failure, 0123H for an
+  unknown Action Type, 0211H for an unrecognised operation; `PrintSCPStatus.filmSessionPrinting`'s
+  documentation corrected to the C600 meaning. Execution Status Info is a CS defined term. The
+  colour image box is sent and parsed colour-by-plane with Planar Configuration 1 and Bits
+  Allocated 8 (Table C.13-5). Print Job N-GET returns the Table C.13-8 attributes (Originator
+  added, Number of Copies removed). A Printer N-GET without a data set reports UNKNOWN, not NORMAL.
+- **Docs.** TLSConfiguration cited a PS3.8 "Annex A" that does not exist (the profiles are PS3.15
+  B.12/B.13; TLS 1.0/1.1 conform to none); AuditLogger claimed PS3.15/ATNA alignment for a custom
+  schema; UserIdentity cited Supplement 99 for JWT; "16KB" defaults corrected to 64 KB; PS3.4/3.7/3.3
+  section citations corrected throughout.
+- **Pending owner approval (not changed):** `MediumType.mammoFilmClearBase/BlueBase` raw values
+  are `MAMMO CLEAR` / `MAMMO BLUE`; PS3.3 C.13.1 defines `MAMMO CLEAR FILM` / `MAMMO BLUE FILM`.
+
 ### Changed — DICOMDictionary generated from the DICOM 2026a text (2026-09-28)
 
 Audit report: `DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md`. Every table the module carries is now

@@ -225,7 +225,7 @@ and CP 1819 for the (0072,008x) and (0008,04xx) rows.
 
 | ID | Module | Location | Problem | Standard (2026a) | Severity | Status |
 |---|---|---|---|---|---|---|
-| D21 | DICOMNetwork | [RetrieveService.swift:1031-1049](Sources/DICOMNetwork/RetrieveService.swift#L1031) C-GET SCU presentation-context proposal | Proposes one storage context per `StorageSOPClass.allUIDs` entry and stops at ID 255 (127 contexts). With 170 classes the last 43 in list order (2nd-generation RT, DICOS, procedure protocols, …) are never proposed, so a C-GET of such a study still transfers zero instances. Needs a selection strategy: propose the SOP Classes returned by the preceding C-FIND (SOP Class UID in the identifier), or negotiate in batches. | PS3.8 §9.3.2.2 (odd IDs 1–255); PS3.4 C.4.3 | Medium | ⏳ Open — fix in the DICOMNetwork audit |
+| D21 | DICOMNetwork | [RetrieveService.swift:1031-1049](Sources/DICOMNetwork/RetrieveService.swift#L1031) C-GET SCU presentation-context proposal | Proposes one storage context per `StorageSOPClass.allUIDs` entry and stops at ID 255 (127 contexts). With 170 classes the last 43 in list order (2nd-generation RT, DICOS, procedure protocols, …) are never proposed, so a C-GET of such a study still transfers zero instances. Needs a selection strategy: propose the SOP Classes returned by the preceding C-FIND (SOP Class UID in the identifier), or negotiate in batches. | PS3.8 §9.3.2.2 (odd IDs 1–255); PS3.4 C.4.3 | Medium | ✅ Done 2026-09-28, commit be777c1: C-GET proposes the storage classes in batches of 127, second pass only on failures (network report P3) |
 
 ---
 
