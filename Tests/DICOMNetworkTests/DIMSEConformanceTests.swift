@@ -57,4 +57,23 @@ final class DIMSEConformanceTests: XCTestCase {
         // A first pass is returned unchanged.
         XCTAssertEqual(DICOMRetrieveService.mergeGetPassResults(previous: nil, next: first), first)
     }
+
+    // MARK: - Rows / Columns are VR US (PS3.5 Table 6.2-1)
+
+    func test_instanceResult_rowsAndColumnsDecodeTwoByteUnsignedLittleEndian() {
+        let result = InstanceResult(attributes: [
+            .rows: Data([0x00, 0x02]),      // 512
+            .columns: Data([0x00, 0x01])    // 256
+        ])
+        XCTAssertEqual(result.rows, 512)
+        XCTAssertEqual(result.columns, 256)
+    }
+
+    func test_instanceResult_rowsAcceptsASCIIDigitsFromLenientSCPs() {
+        // Only strings that cannot be a 2-byte US value are read as digits.
+        let result = InstanceResult(attributes: [.rows: Data("512 ".utf8), .columns: Data("640".utf8)])
+        XCTAssertEqual(result.rows, 512)
+        XCTAssertEqual(result.columns, 640)
+        XCTAssertNil(InstanceResult(attributes: [:]).rows)
+    }
 }
