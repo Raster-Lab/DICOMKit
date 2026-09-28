@@ -952,12 +952,52 @@ actor SCPAssociation {
         case .cStoreRequest:
             try await handleCStore(message)
             
+        case .none:
+            // Undecodable command field: abort rather than guess a response
+            try await sendAbort(reason: .invalidPDUParameterValue)
+            
         default:
-            // Unsupported command - send error response
-            break
+            // PS3.7: every DIMSE request expects a response. Answer an
+            // operation this SCP does not implement with the matching
+            // response command carrying Unrecognized operation (0211H).
+            try await sendUnrecognizedOperationResponse(for: message)
         }
     }
     
+    /// Answers a DIMSE request this SCP does not implement.
+    ///
+    /// PS3.7 §10.1.x lists "Unrecognized operation (0211H)" for the N-services
+    /// and every C-service defines a response; the response command is the
+    /// request command with bit 15 set (PS3.7 Table E.1-1), and no data set is
+    /// sent. C-CANCEL-RQ has no response and is ignored.
+    private func sendUnrecognizedOperationResponse(for message: AssembledMessage) async throws {
+        guard let command = message.command,
+              command.isRequest,
+              let responseCommand = command.responseCommand else {
+            return
+        }
+            
+        var commandSet = CommandSet()
+        commandSet.setCommand(responseCommand)
+        commandSet.setMessageIDBeingRespondedTo(message.commandSet.messageID ?? 0)
+        if let sopClassUID = message.commandSet.affectedSOPClassUID
+            ?? message.commandSet.requestedSOPClassUID {
+            commandSet.setAffectedSOPClassUID(sopClassUID)
+        }
+        commandSet.setHasDataSet(false)
+        commandSet.setStatus(DIMSEStatus.from(0x0211))
+            
+        let fragmenter = MessageFragmenter(maxPDUSize: maxPDUSize)
+        let pdus = fragmenter.fragmentMessage(
+            commandSet: commandSet,
+            dataSet: nil,
+            presentationContextID: message.presentationContextID
+        )
+        for pdu in pdus {
+            try await send(pdu: pdu)
+        }
+    }
+            
     private func handleCEcho(_ message: AssembledMessage) async throws {
         guard let request = message.asCEchoRequest() else { return }
         

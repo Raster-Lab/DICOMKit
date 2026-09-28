@@ -699,6 +699,37 @@ final class SCPConformanceLoopbackTests: XCTestCase {
         await server.stop()
     }
 
+    // 13. Unsupported DIMSE request → matching response with status 0211H
+
+    func testStorageSCPAnswersUnsupportedOperationWith0211() async throws {
+        let port: UInt16 = 19172
+        let server = DICOMStorageServer(
+            configuration: StorageSCPConfiguration(aeTitle: try AETitle(Self.scpAE), port: port),
+            delegate: DefaultStorageHandler(storageDirectory: FileManager.default.temporaryDirectory))
+        try await server.start()
+        defer { Task { await server.stop() } }
+        try await Task.sleep(for: .milliseconds(200))
+
+        let (connection, response) = try await associate(port: port, sopClass: verificationSOPClass)
+        XCTAssertTrue(response is AssociateAcceptPDU, "Expected A-ASSOCIATE-AC, got \(response.pduType)")
+
+        var nGet = CommandSet()
+        nGet.setCommand(.nGetRequest)
+        nGet.setMessageID(7)
+        nGet.setRequestedSOPClassUID(verificationSOPClass)
+        nGet.setRequestedSOPInstanceUID("1.2.3.4")
+        nGet.setHasDataSet(false)
+
+        let reply = try await exchange(connection, command: nGet)
+        XCTAssertEqual(reply.command, .nGetResponse)
+        XCTAssertEqual(reply.messageIDBeingRespondedTo, 7)
+        XCTAssertEqual(reply.status?.rawValue, 0x0211)
+        XCTAssertFalse(reply.hasDataSet)
+
+        await release(connection)
+        await server.stop()
+    }
+
     // 3. Storage SCP rejects an unknown Calling AE with source 1, reason 3
 
     func testStorageSCPRejectsUnknownCallingAEWithReason3() async throws {
