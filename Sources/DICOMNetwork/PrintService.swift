@@ -2461,6 +2461,38 @@ public enum DICOMPrintService {
         }
     }
 
+    /// Re-lays out color-by-pixel samples (RGBRGB…, the layout
+    /// ``PrintImageData/pixelData`` carries) as color-by-plane (RRR…GGG…BBB…)
+    /// for the Basic Color Image Sequence, whose Planar Configuration
+    /// (0028,0006) PS3.3 Table C.13-5 enumerates as 1.
+    ///
+    /// Data that is not three-sample, or too short for its declared geometry,
+    /// is returned unchanged. `internal` (not private) for unit-test access.
+    static func colorByPlane(_ pixelData: Data, descriptor: PrintImageData) -> Data {
+        guard descriptor.samplesPerPixel == 3 else { return pixelData }
+        let bytesPerSample = max(1, Int(descriptor.bitsAllocated) / 8)
+        let pixelCount = Int(descriptor.rows) * Int(descriptor.columns)
+        let planeBytes = pixelCount * bytesPerSample
+        guard pixelCount > 0, pixelData.count >= planeBytes * 3 else { return pixelData }
+
+        var output = Data(count: planeBytes * 3)
+        output.withUnsafeMutableBytes { destination in
+            pixelData.withUnsafeBytes { source in
+                guard let dst = destination.bindMemory(to: UInt8.self).baseAddress,
+                      let src = source.bindMemory(to: UInt8.self).baseAddress else { return }
+                for pixel in 0..<pixelCount {
+                    for plane in 0..<3 {
+                        for byte in 0..<bytesPerSample {
+                            dst[plane * planeBytes + pixel * bytesPerSample + byte]
+                                = src[(pixel * 3 + plane) * bytesPerSample + byte]
+                        }
+                    }
+                }
+            }
+        }
+        return output
+    }
+
     /// The Print Job SOP Instance UID named by an N-ACTION (Print) response.
     ///
     /// PS3.4 Tables H.4-3 (Film Session) and H.4-8 (Film Box): the response
@@ -3164,8 +3196,12 @@ public enum DICOMPrintService {
                 var seqElements: [DataElement] = []
 
                 // Pixel-module attributes — always sent (descriptor guarded above).
+                // PS3.3 Table C.13-5 (Basic Color Image Sequence): Planar
+                // Configuration (0028,0006) is enumerated as 1, color-by-plane,
+                // so the samples are re-laid out RRR…GGG…BBB… on the wire.
                 seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: descriptor.samplesPerPixel))
                 seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: descriptor.photometricInterpretation))
+                seqElements.append(DataElement.uint16(tag: .planarConfiguration, value: 1))
                 seqElements.append(DataElement.uint16(tag: .rows, value: descriptor.rows))
                 seqElements.append(DataElement.uint16(tag: .columns, value: descriptor.columns))
                 seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: descriptor.bitsAllocated))
@@ -3173,7 +3209,9 @@ public enum DICOMPrintService {
                 seqElements.append(DataElement.uint16(tag: .highBit, value: descriptor.highBit))
                 seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: descriptor.pixelRepresentation))
 
-                seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: pixelData))
+                seqElements.append(DataElement.data(
+                    tag: .pixelData, vr: .OW,
+                    data: colorByPlane(pixelData, descriptor: descriptor)))
 
                 let sequenceItem = SequenceItem(elements: seqElements)
                 let writer = DICOMWriter(explicitVR: explicitVR)
@@ -4136,15 +4174,25 @@ public enum DICOMPrintService {
                     // of the workflow — the pixel-module attributes are always sent.
                     var seqElements: [DataElement] = []
                     let desc = imageDescriptors[globalIndex]
+                    let isColorBox = configuration.colorMode == .color
                     seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: desc.samplesPerPixel))
                     seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: desc.photometricInterpretation))
+                    if isColorBox {
+                        // PS3.3 Table C.13-5 (Basic Color Image Sequence):
+                        // Planar Configuration (0028,0006) = 1, color-by-plane.
+                        seqElements.append(DataElement.uint16(tag: .planarConfiguration, value: 1))
+                    }
                     seqElements.append(DataElement.uint16(tag: .rows, value: desc.rows))
                     seqElements.append(DataElement.uint16(tag: .columns, value: desc.columns))
                     seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: desc.bitsAllocated))
                     seqElements.append(DataElement.uint16(tag: .bitsStored, value: desc.bitsStored))
                     seqElements.append(DataElement.uint16(tag: .highBit, value: desc.highBit))
                     seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: desc.pixelRepresentation))
-                    seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: images[globalIndex]))
+                    seqElements.append(DataElement.data(
+                        tag: .pixelData, vr: .OW,
+                        data: isColorBox
+                            ? colorByPlane(images[globalIndex], descriptor: desc)
+                            : images[globalIndex]))
                     
                     let imgSeqItem = SequenceItem(elements: seqElements)
                     let imgWriter = DICOMWriter(explicitVR: explicitVR)
