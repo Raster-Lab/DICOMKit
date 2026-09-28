@@ -502,7 +502,9 @@ final class PrintSCPEncoderTests: XCTestCase {
         XCTAssertEqual(set.string(for: .executionStatus), "DONE")
         XCTAssertEqual(set.string(for: .executionStatusInfo), "NORMAL")
         XCTAssertEqual(set.string(for: .printPriority), "HIGH")
-        XCTAssertEqual(set.integer(for: .numberOfCopies), 2)
+        // PS3.3 Table C.13-8: Number of Copies is a Film Session attribute,
+        // not part of the Print Job module.
+        XCTAssertFalse(set.contains(.numberOfCopies))
         XCTAssertEqual(set.string(for: .printerName), "EMULATOR-1")
     }
 }

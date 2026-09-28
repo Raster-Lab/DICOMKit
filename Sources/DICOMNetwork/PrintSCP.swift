@@ -57,23 +57,36 @@ actor PrintSCPJobStore {
     static let retentionLimit = 100
 
     private var jobs: [String: PrintSCPJobRecord] = [:]
+    /// Originator (2100,0070) per job: the calling AE title of the
+    /// association that issued the print (PS3.3 Table C.13-8).
+    private var originators: [String: String] = [:]
     /// Insertion order, oldest first, for eviction.
     private var order: [String] = []
 
     /// Inserts or updates a job record, evicting the oldest past the limit.
-    func set(_ job: PrintSCPJobRecord) {
+    ///
+    /// `originator` is recorded on first insertion and kept on updates.
+    func set(_ job: PrintSCPJobRecord, originator: String? = nil) {
         if jobs[job.printJobUID] == nil {
             order.append(job.printJobUID)
             while order.count > Self.retentionLimit {
-                jobs.removeValue(forKey: order.removeFirst())
+                let evicted = order.removeFirst()
+                jobs.removeValue(forKey: evicted)
+                originators.removeValue(forKey: evicted)
             }
         }
         jobs[job.printJobUID] = job
+        if let originator { originators[job.printJobUID] = originator }
     }
 
     /// The job for a Print Job SOP Instance UID, if still retained.
     func job(for uid: String) -> PrintSCPJobRecord? {
         jobs[uid]
+    }
+
+    /// The AE title that issued the print for a job, if recorded.
+    func originator(for uid: String) -> String? {
+        originators[uid]
     }
 }
 
@@ -982,7 +995,7 @@ actor PrintSCPAssociation {
             executionStatus: "PRINTING",
             printPriority: session.printPriority,
             numberOfCopies: session.numberOfCopies)
-        await jobStore.set(job)
+        await jobStore.set(job, originator: callingAETitle)
 
         // Annotation boxes the SCU never filled stay empty; drop them rather
         // than handing the composer blank text boxes.
@@ -1110,11 +1123,13 @@ actor PrintSCPAssociation {
             guard let job = await jobStore.job(for: sopInstance) else {
                 throw PrintSCPFailure(.noSuchSOPInstance, comment: "Unknown Print Job \(sopInstance)")
             }
+            let originator = await jobStore.originator(for: sopInstance)
             return Outcome(
                 sopClass: printJobSOPClassUID,
                 sopInstance: sopInstance,
                 dataSet: PrintSCPEncoder.printJobAttributes(
-                    job, printerName: configuration.printerName, explicitVR: explicitVR))
+                    job, printerName: configuration.printerName,
+                    originator: originator, explicitVR: explicitVR))
 
         case basicFilmSessionSOPClassUID:
             guard let session = filmSession, session.sopInstanceUID == sopInstance else {
