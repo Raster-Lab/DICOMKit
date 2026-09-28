@@ -483,6 +483,12 @@ public enum PDUDecoder {
             }
         }
         
+        // PS3.8 Table 9-18: the Transfer Syntax sub-item is not significant
+        // (and "shall not be tested") when the Result/Reason is not acceptance.
+        if result != .acceptance || transferSyntax?.isEmpty == true {
+            transferSyntax = nil
+        }
+        
         return AcceptedPresentationContext(id: contextID, result: result, transferSyntax: transferSyntax)
     }
     

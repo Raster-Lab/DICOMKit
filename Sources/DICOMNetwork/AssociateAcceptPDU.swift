@@ -147,19 +147,20 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
         content.append(context.result.rawValue)  // Result/Reason
         content.append(0x00)  // Reserved
         
-        // Transfer Syntax Sub-Item (only if accepted)
-        if let transferSyntax = context.transferSyntax {
-            var subItem = Data()
-            subItem.append(0x40)  // Sub-Item Type
-            subItem.append(0x00)  // Reserved
-            
-            let tsData = Data(transferSyntax.utf8)
-            let tsLength = UInt16(tsData.count)
-            subItem.append(contentsOf: withUnsafeBytes(of: tsLength.bigEndian) { Array($0) })
-            subItem.append(tsData)
-            
-            content.append(subItem)
-        }
+        // Transfer Syntax Sub-Item: PS3.8 Table 9-18 requires exactly one in
+        // every Presentation Context item. When the Result/Reason is not
+        // acceptance the sub-item "shall not be significant", so a rejected
+        // context carries an empty-name sub-item (item-length 0).
+        var subItem = Data()
+        subItem.append(0x40)  // Sub-Item Type
+        subItem.append(0x00)  // Reserved
+        
+        let tsData = Data((context.transferSyntax ?? "").utf8)
+        let tsLength = UInt16(tsData.count)
+        subItem.append(contentsOf: withUnsafeBytes(of: tsLength.bigEndian) { Array($0) })
+        subItem.append(tsData)
+        
+        content.append(subItem)
         
         // Item Type (0x21 for Presentation Context AC)
         item.append(0x21)
