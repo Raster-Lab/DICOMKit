@@ -1071,7 +1071,10 @@ actor PrintSCPAssociation {
             try await delegate.didReceiveFilm(film)
         } catch {
             job.executionStatus = "FAILURE"
-            job.executionStatusInfo = "\(error)"
+            // Execution Status Info (2100,0030) is CS: a Defined Term from
+            // PS3.3 C.13.8, not the error's free text. The full error goes to
+            // the delegate and to the Error Comment / event below.
+            job.executionStatusInfo = Self.executionStatusInfo(for: error)
             await jobStore.set(job)
             await delegate.didFail(error: error, forPrintJob: jobUID)
             throw PrintSCPFailure(
@@ -1095,6 +1098,21 @@ actor PrintSCPAssociation {
                     explicitVR: usesExplicitVR(contextID))))
         }
         return PrintedFilm(jobUID: jobUID, isEmptyPage: isEmptyPage)
+    }
+
+    /// The Execution Status Info (2100,0030) term for a failed print.
+    ///
+    /// PS3.3 Table C.13-8 defines INVALID PAGE DES and INSUFFIC MEMORY for a
+    /// FAILURE status and allows implementation-specific terms; the value is
+    /// CS, so it must be uppercase letters, digits, space or underscore and at
+    /// most 16 characters. A memory error is reported with the standard term;
+    /// anything else gets the implementation term PRINT FAILURE.
+    static func executionStatusInfo(for error: Error) -> String {
+        let description = "\(error)".lowercased()
+        if description.contains("memory") || description.contains("out of resources") {
+            return "INSUFFIC MEMORY"
+        }
+        return "PRINT FAILURE"
     }
 
     // MARK: N-DELETE
