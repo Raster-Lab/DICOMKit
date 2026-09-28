@@ -2409,15 +2409,16 @@ public enum DICOMPrintService {
             throw error
         }
     }
-    
+
     /// Whether this printer can carry Basic Annotation Boxes.
     ///
     /// Asked by association negotiation and nothing else: the SCU proposes the
     /// Basic Annotation Box SOP Class along with everything else, and a printer
-    /// that accepts that context — directly or through the Print Management
-    /// Meta class that subsumes it — implements the service. There is no N-GET
-    /// that answers this, and a conformance statement is not something a print
-    /// job can read.
+    /// that accepts that context implements the service. The class is one of
+    /// the optional Print Management SOP Classes (PS3.4 Table H.3.3.2-1), not a
+    /// member of the Print Management Meta SOP Class, so only its own context
+    /// counts. There is no N-GET that answers this, and a conformance
+    /// statement is not something a print job can read.
     ///
     /// The question is worth an association of its own because the answer
     /// decides how the *pixels* are prepared: film-level text goes in an

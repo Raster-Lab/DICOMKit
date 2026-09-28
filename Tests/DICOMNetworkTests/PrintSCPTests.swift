@@ -1270,15 +1270,21 @@ final class PrintPresentationContextTests: XCTestCase {
         XCTAssertFalse(syntaxes.contains(basicGrayscalePrintManagementMetaSOPClassUID))
     }
 
-    /// A printer that takes only the meta class — the common case.
+    /// A printer that takes only the meta class — the common case. PS3.4
+    /// Table H.3.2.2.1-1: the meta class is Film Session, Film Box, Grayscale
+    /// Image Box and Printer; the optional classes (Table H.3.3.2-1) need a
+    /// context of their own and are unsupported here.
     func testMetaOnlyPrinterRoutesEverythingThroughTheMetaContext() throws {
         let contexts = try negotiate(accepting: [PrintPresentationContexts.ID.meta])
         let meta = PrintPresentationContexts.ID.meta
         for sopClass in [basicFilmSessionSOPClassUID, basicFilmBoxSOPClassUID,
-                         basicGrayscaleImageBoxSOPClassUID, printerSOPClassUID,
-                         printJobSOPClassUID, presentationLUTSOPClassUID,
-                         basicAnnotationBoxSOPClassUID] {
+                         basicGrayscaleImageBoxSOPClassUID, printerSOPClassUID] {
             XCTAssertEqual(try contexts.contextID(for: sopClass), meta, sopClass)
+        }
+        for optional in [printJobSOPClassUID, presentationLUTSOPClassUID,
+                         basicAnnotationBoxSOPClassUID] {
+            XCTAssertFalse(contexts.supports(optional), optional)
+            XCTAssertThrowsError(try contexts.contextID(for: optional))
         }
     }
 
