@@ -451,6 +451,16 @@ def check_enums(rep, parts, files):
         ('PresentationState/GraphicAnnotation.swift', 'PresentationGraphicType', p3, 'Graphic Type', 'C.10-5'),
         ('PresentationState/GraphicAnnotation.swift', 'AnnotationUnits', p3, 'Graphic Annotation Units', 'C.10-5'),
         ('PresentationState/SpatialTransformation.swift', 'PresentationSizeMode', p3, 'Presentation Size Mode', 'C.10-4'),
+        # D39 (2026-09-29): Compound Graphic Sequence and the style macros.
+        ('PresentationState/GraphicStyle.swift', 'CompoundGraphicType', p3, 'Compound Graphic Type', 'C.10-5'),
+        ('PresentationState/GraphicStyle.swift', 'CompoundGraphicUnits', p3, 'Compound Graphic Units', 'C.10-5'),
+        ('PresentationState/GraphicStyle.swift', 'TickAlignment', p3, 'Tick Alignment', 'C.10-5'),
+        ('PresentationState/GraphicStyle.swift', 'TickLabelAlignment', p3, 'Tick Label Alignment', 'C.10-5'),
+        ('PresentationState/GraphicStyle.swift', 'TextHorizontalAlignment', p3, 'Horizontal Alignment', 'C.10-5a'),
+        ('PresentationState/GraphicStyle.swift', 'TextVerticalAlignment', p3, 'Vertical Alignment', 'C.10-5a'),
+        ('PresentationState/GraphicStyle.swift', 'GraphicShadowStyle', p3, 'Shadow Style', 'C.10-5a'),
+        ('PresentationState/GraphicStyle.swift', 'LineDashingStyle', p3, 'Line Dashing Style', 'C.10-5b'),
+        ('PresentationState/GraphicStyle.swift', 'GraphicFillMode', p3, 'Fill Mode', 'C.10-5c'),
         ('PresentationState/ColorManagement.swift', 'func:extractColorSpace', p3, 'sect_C.11.15.1.2', None),
         ('Segmentation/Segmentation.swift', 'SegmentationType', p3, 'Segmentation Type', 'C.8.20-2'),   # C.8.20-5 HEIGHTMAP is the Height Map Segmentation IOD (A.91), not modelled
         ('Segmentation/Segmentation.swift', 'SegmentationFractionalType', p3, 'sect_C.8.20.2.3', None),

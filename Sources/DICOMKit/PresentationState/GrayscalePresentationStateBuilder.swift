@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table A.33.1-1 modules: Modality LUT (C.11.1), LUT sequences (C.11.6, C.11.8), Display Shutter and Presentation State Shutter (Tables C.7-17a, C.11.12-1), Displayed Area 1C attributes (Table C.10-4), conditional Graphic Filled (Table C.10-5), CIELab layer colour (C.10.7.1.1), Type 2 Content Creator Name (Table 10-12)
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table A.33.1-1 modules: Modality LUT (C.11.1), LUT sequences (C.11.6, C.11.8), Display Shutter and Presentation State Shutter (Tables C.7-17a, C.11.12-1), Displayed Area 1C attributes (Table C.10-4), conditional Graphic Filled (Table C.10-5), CIELab layer colour (C.10.7.1.1), Type 2 Content Creator Name (Table 10-12); Compound Graphic Sequence and Text/Line/Fill Style Sequence Macros written with their 1C conditions per Tables C.10-5, C.10-5a/5b/5c (D39, 2026-09-29); Unformatted Text Value control characters per Table C.10-5
 // GrayscalePresentationStateBuilder.swift
 // DICOMKit
 //
@@ -227,6 +227,9 @@ public struct GrayscalePresentationStateBuilder: Sendable {
         /// Sequence and each item's Referenced Image Sequence are Type 1 with
         /// one or more items.
         case missingReferencedImages
+        /// A Compound Graphic Sequence item that breaks Table C.10-5 /
+        /// C.10.5.1.3 (D39).
+        case compoundGraphic(String)
 
         public var description: String {
             switch self {
@@ -236,6 +239,8 @@ public struct GrayscalePresentationStateBuilder: Sendable {
                 return error.description
             case .missingReferencedImages:
                 return "Referenced Series Sequence (0008,1115) needs at least one series with at least one image (PS3.3 Table C.11.11-1b)"
+            case .compoundGraphic(let problem):
+                return problem
             }
         }
     }
@@ -259,6 +264,31 @@ public struct GrayscalePresentationStateBuilder: Sendable {
         guard state.referencedSeries.contains(where: { !$0.referencedImages.isEmpty }) else {
             throw ValidationError.missingReferencedImages
         }
+        if let problem = Self.compoundGraphicProblems(state.graphicAnnotations).first {
+            throw ValidationError.compoundGraphic(problem)
+        }
+    }
+
+    /// Compound graphics that break Table C.10-5 / C.10.5.1.3: point counts,
+    /// AXIS ticks, rotation range, duplicate Compound Graphic Instance IDs, and a
+    /// compound graphic without its alternate rendering (C.10.5.1.3.1).
+    static func compoundGraphicProblems(_ annotations: [GraphicAnnotation]) -> [String] {
+        var problems: [String] = []
+        var seen = Set<Int>()
+        for annotation in annotations {
+            let linked = Set(annotation.graphicObjects.compactMap(\.compoundGraphicInstanceID)
+                + annotation.textObjects.compactMap(\.compoundGraphicInstanceID))
+            for graphic in annotation.compoundGraphics {
+                problems += graphic.conformanceProblems
+                if !seen.insert(graphic.instanceID).inserted {
+                    problems.append("Compound Graphic Instance ID \(graphic.instanceID) is not unique (C.10.5.1.3.1)")
+                }
+                if !linked.contains(graphic.instanceID) {
+                    problems.append("Compound graphic \(graphic.instanceID) has no alternate rendering in the Graphic or Text Object Sequence (C.10.5.1.3.1)")
+                }
+            }
+        }
+        return problems
     }
 
     /// The area that goes out: the state's own, or the whole image when the
@@ -576,6 +606,10 @@ public struct GrayscalePresentationStateBuilder: Sendable {
                 let textItems = annotation.textObjects.map(textObjectItem)
                 elements.append(sequence(tag: .textObjectSequence, items: textItems))
             }
+            if !annotation.compoundGraphics.isEmpty {
+                let compoundItems = annotation.compoundGraphics.map(compoundGraphicItem)
+                elements.append(sequence(tag: .compoundGraphicSequence, items: compoundItems))
+            }
 
             return SequenceItem(elements: elements)
         }
@@ -603,7 +637,190 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             elements.append(DataElement.string(
                 tag: .graphicFilled, vr: .CS, value: object.filled ? "Y" : "N"))
         }
+        if let lineStyle = object.lineStyle {
+            elements.append(Self.lineStyleElement(lineStyle))
+        }
+        if let fillStyle = object.fillStyle {
+            elements.append(Self.fillStyleElement(fillStyle))
+        }
+        if let id = object.compoundGraphicInstanceID {
+            elements.append(Self.integers([id], for: .compoundGraphicInstanceID))
+        }
+        if let group = object.graphicGroupID {
+            elements.append(Self.integers([group], for: .graphicGroupID))
+        }
         return SequenceItem(elements: elements)
+    }
+
+    // MARK: Compound graphics and styles (Tables C.10-5, C.10-5a/5b/5c; D39)
+
+    private static func compoundGraphicItem(_ graphic: CompoundGraphic) -> SequenceItem {
+        var elements: [DataElement] = [
+            Self.integers([graphic.instanceID], for: .compoundGraphicInstanceID),
+            DataElement.string(tag: .compoundGraphicUnits, vr: .CS, value: graphic.units.rawValue),
+            Self.integers([2], for: .graphicDimensions),
+            Self.integers([graphic.data.count / 2], for: .numberOfGraphicPoints),
+            Self.reals(graphic.data, for: .graphicData),
+            DataElement.string(tag: .compoundGraphicType, vr: .CS, value: graphic.type.rawValue),
+        ]
+        if let textStyle = graphic.textStyle {
+            elements.append(Self.textStyleElement(textStyle, hasBoundingBox: false))
+        }
+        if let lineStyle = graphic.lineStyle {
+            elements.append(Self.lineStyleElement(lineStyle))
+        }
+        if let angle = graphic.rotationAngle {
+            elements.append(Self.reals([angle], for: .rotationAngle))
+        }
+        // Rotation Point: 1C with a Rotation Angle, or for CUTLINE / INFINITELINE.
+        let needsRotationPoint = graphic.rotationAngle != nil
+            || graphic.type == .cutline || graphic.type == .infiniteline
+        if needsRotationPoint {
+            let point = graphic.rotationPoint ?? graphic.points.first ?? GraphicPoint(column: 0, row: 0)
+            elements.append(Self.reals([point.column, point.row], for: .rotationPoint))
+        }
+        // Gap Length: 1C for CUTLINE, INFINITELINE and CROSSHAIR (DISPLAY units).
+        if [.cutline, .infiniteline, .crosshair].contains(graphic.type) {
+            elements.append(Self.reals([graphic.gapLength ?? 0], for: .gapLength))
+        }
+        // Diameter of Visibility: 1C for CROSSHAIR.
+        if graphic.type == .crosshair {
+            elements.append(Self.reals([graphic.diameterOfVisibility ?? 1], for: .diameterOfVisibility))
+        }
+        // Major Ticks Sequence: 1C for AXIS (validate() reports fewer than two).
+        if graphic.type == .axis {
+            let ticks = graphic.majorTicks.map { tick in
+                SequenceItem(elements: [
+                    Self.reals([tick.position], for: .tickPosition),
+                    DataElement.string(tag: .tickLabel, vr: .SH, value: tick.label)
+                ])
+            }
+            elements.append(sequence(tag: .majorTicksSequence, items: ticks))
+        }
+        // Tick Alignment, Tick Label Alignment, Show Tick Label: 1C for RULER,
+        // AXIS and CROSSHAIR.
+        if [.ruler, .axis, .crosshair].contains(graphic.type) {
+            elements.append(DataElement.string(
+                tag: .tickAlignment, vr: .CS, value: (graphic.tickAlignment ?? .center).rawValue))
+            elements.append(DataElement.string(
+                tag: .tickLabelAlignment, vr: .CS, value: (graphic.tickLabelAlignment ?? .bottom).rawValue))
+            elements.append(DataElement.string(
+                tag: .showTickLabel, vr: .CS, value: (graphic.showTickLabel ?? true) ? "Y" : "N"))
+        }
+        // Graphic Filled: 1C for RECTANGLE and ELLIPSE; Fill Style 1C when filled.
+        if graphic.type == .rectangle || graphic.type == .ellipse {
+            elements.append(DataElement.string(
+                tag: .graphicFilled, vr: .CS, value: graphic.filled ? "Y" : "N"))
+            if graphic.filled {
+                let fill = graphic.fillStyle
+                    ?? FillStyle(onColor: graphic.lineStyle?.onColor ?? GraphicShadow.black)
+                elements.append(Self.fillStyleElement(fill))
+            }
+        }
+        if let group = graphic.graphicGroupID {
+            elements.append(Self.integers([group], for: .graphicGroupID))
+        }
+        return SequenceItem(elements: elements)
+    }
+
+    private static func cieLab(_ color: CIELabColor, for tag: Tag) -> DataElement {
+        Self.integers([color.l, color.a, color.b], for: tag)
+    }
+
+    /// The shadow attributes. In the Text Style macro the four companions are
+    /// 1C "Required if Shadow Style is not OFF"; in the Line Style macro they
+    /// are Type 1 (`always`).
+    private static func shadowElements(_ shadow: GraphicShadow, always: Bool) -> [DataElement] {
+        var elements = [DataElement.string(tag: .shadowStyle, vr: .CS, value: shadow.style.rawValue)]
+        if always || shadow.style != .off {
+            elements.append(Self.reals([shadow.offsetX], for: .shadowOffsetX))
+            elements.append(Self.reals([shadow.offsetY], for: .shadowOffsetY))
+            elements.append(Self.cieLab(shadow.color, for: .shadowColorCIELabValue))
+            elements.append(Self.reals([shadow.opacity], for: .shadowOpacity))
+        }
+        return elements
+    }
+
+    private static func textStyleElement(_ style: TextStyle, hasBoundingBox: Bool) -> DataElement {
+        var elements: [DataElement] = []
+        if let font = style.fontName {
+            elements.append(DataElement.string(tag: .fontName, vr: .LO, value: font))
+            elements.append(DataElement.string(
+                tag: .fontNameType, vr: .CS, value: style.fontNameType ?? "ISO_32000"))
+        }
+        elements.append(DataElement.string(tag: .cssFontName, vr: .LO, value: style.cssFontName))
+        elements.append(Self.cieLab(style.color, for: .textColorCIELabValue))
+        // Horizontal/Vertical Alignment: 1C, required with a bounding box.
+        if hasBoundingBox || style.horizontalAlignment != nil {
+            elements.append(DataElement.string(
+                tag: .horizontalAlignment, vr: .CS,
+                value: (style.horizontalAlignment ?? .left).rawValue))
+        }
+        if hasBoundingBox || style.verticalAlignment != nil {
+            elements.append(DataElement.string(
+                tag: .verticalAlignment, vr: .CS,
+                value: (style.verticalAlignment ?? .top).rawValue))
+        }
+        elements += Self.shadowElements(style.shadow, always: false)
+        elements.append(DataElement.string(tag: .underlined, vr: .CS, value: style.underlined ? "Y" : "N"))
+        elements.append(DataElement.string(tag: .bold, vr: .CS, value: style.bold ? "Y" : "N"))
+        elements.append(DataElement.string(tag: .italic, vr: .CS, value: style.italic ? "Y" : "N"))
+        return sequence(tag: .textStyleSequence, items: [SequenceItem(elements: elements)])
+    }
+
+    private static func lineStyleElement(_ style: LineStyle) -> DataElement {
+        var elements: [DataElement] = [Self.cieLab(style.onColor, for: .patternOnColorCIELabValue)]
+        if let off = style.offColor {
+            elements.append(Self.cieLab(off, for: .patternOffColorCIELabValue))
+        }
+        elements.append(Self.reals([style.onOpacity], for: .patternOnOpacity))
+        if let offOpacity = style.offOpacity {
+            elements.append(Self.reals([offOpacity], for: .patternOffOpacity))
+        }
+        elements.append(Self.reals([style.thickness], for: .lineThickness))
+        elements.append(DataElement.string(tag: .lineDashingStyle, vr: .CS, value: style.dashing.rawValue))
+        // Line Pattern: 1C, required when DASHED.
+        if style.dashing == .dashed {
+            elements.append(Self.integers([Int(style.pattern ?? 0xFF00_FF00)], for: .linePattern))
+        }
+        elements += Self.shadowElements(style.shadow, always: true)
+        return sequence(tag: .lineStyleSequence, items: [SequenceItem(elements: elements)])
+    }
+
+    private static func fillStyleElement(_ style: FillStyle) -> DataElement {
+        var elements: [DataElement] = [Self.cieLab(style.onColor, for: .patternOnColorCIELabValue)]
+        if let off = style.offColor {
+            elements.append(Self.cieLab(off, for: .patternOffColorCIELabValue))
+        }
+        elements.append(Self.reals([style.onOpacity], for: .patternOnOpacity))
+        elements.append(Self.reals([style.offOpacity], for: .patternOffOpacity))
+        elements.append(DataElement.string(tag: .fillMode, vr: .CS, value: style.mode.rawValue))
+        // Fill Pattern: 1C, 128 bytes, required when STIPPELED.
+        if style.mode == .stippled {
+            var pattern = style.pattern ?? Data(repeating: 0xAA, count: 128)
+            if pattern.count != 128 {
+                pattern = Data(pattern.prefix(128)) + Data(repeating: 0, count: max(0, 128 - pattern.count))
+            }
+            elements.append(DataElement(
+                tag: .fillPattern, vr: .OB, length: UInt32(pattern.count), valueData: pattern))
+        }
+        return sequence(tag: .fillStyleSequence, items: [SequenceItem(elements: elements)])
+    }
+
+    /// Unformatted Text Value (0070,0006): "multiple lines separated by CR LF,
+    /// but otherwise no format control characters (such as horizontal or
+    /// vertical tab and form feed)" (Table C.10-5). Other control characters
+    /// become spaces; a bare LF or CR becomes CR LF.
+    static func unformattedText(_ text: String) -> String {
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+        return lines.map { line in
+            String(line.map { character -> Character in
+                character.unicodeScalars.contains { $0.properties.generalCategory == .control }
+                    ? " " : character
+            })
+        }.joined(separator: "\r\n")
     }
 
     private static func textObjectItem(_ text: TextObject) -> SequenceItem {
@@ -612,7 +829,7 @@ public struct GrayscalePresentationStateBuilder: Sendable {
                 tag: .boundingBoxAnnotationUnits, vr: .CS,
                 value: text.boundingBoxUnits.rawValue),
             DataElement.string(
-                tag: .unformattedTextValue, vr: .ST, value: text.text),
+                tag: .unformattedTextValue, vr: .ST, value: Self.unformattedText(text.text)),
             Self.reals([text.boundingBoxTopLeft.column, text.boundingBoxTopLeft.row],
                        for: .boundingBoxTopLeftHandCorner),
             Self.reals([text.boundingBoxBottomRight.column, text.boundingBoxBottomRight.row],
@@ -630,6 +847,22 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             elements.append(DataElement.string(
                 tag: .anchorPointAnnotationUnits, vr: .CS,
                 value: text.anchorPointUnits.rawValue))
+        }
+        if let style = text.textStyle {
+            // Horizontal Alignment overrides Bounding Box Text Horizontal
+            // Justification (Table C.10-5a), so the two are kept equal.
+            if let horizontal = style.horizontalAlignment,
+               let index = elements.firstIndex(where: { $0.tag == .boundingBoxTextHorizontalJustification }) {
+                elements[index] = DataElement.string(
+                    tag: .boundingBoxTextHorizontalJustification, vr: .CS, value: horizontal.rawValue)
+            }
+            elements.append(Self.textStyleElement(style, hasBoundingBox: true))
+        }
+        if let id = text.compoundGraphicInstanceID {
+            elements.append(Self.integers([id], for: .compoundGraphicInstanceID))
+        }
+        if let group = text.graphicGroupID {
+            elements.append(Self.integers([group], for: .graphicGroupID))
         }
         return SequenceItem(elements: elements)
     }

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — shutter row/column order and (0018,1624) (Tables C.7-17a, C.11.12-1), CIELab encoding (C.10.7.1.1), Displayed Area 1C attributes (Table C.10-4), PIXEL/DISPLAY/MATRIX units (Table C.10-5), LUT VRs (C.11.1.1) per PS3.3 2026a
+// NEMA-verified: 2026a, checked 2026-09-29 — shutter row/column order and (0018,1624) (Tables C.7-17a, C.11.12-1), CIELab encoding (C.10.7.1.1), Displayed Area 1C attributes (Table C.10-4), PIXEL/DISPLAY/MATRIX units (Table C.10-5), LUT VRs (C.11.1.1) per PS3.3 2026a; Compound Graphic Sequence, Text/Line/Fill Style Sequences and anchor-only text objects read per Table C.10-5 (D39, 2026-09-29)
 //
 // GrayscalePresentationStateParser.swift
 // DICOMKit
@@ -450,11 +450,17 @@ public struct GrayscalePresentationStateParser: Sendable {
                 }
             }
             
+            // Compound Graphic Sequence (Table C.10-5); an item this parser
+            // cannot read is skipped — its alternate rendering above still is.
+            let compoundGraphics = (item[.compoundGraphicSequence]?.sequenceItems ?? [])
+                .compactMap(Self.parseCompoundGraphic)
+
             result.append(GraphicAnnotation(
                 layer: layer,
                 referencedImages: referencedImages,
                 graphicObjects: graphicObjects,
-                textObjects: textObjects
+                textObjects: textObjects,
+                compoundGraphics: compoundGraphics
             ))
         }
         
@@ -482,7 +488,107 @@ public struct GrayscalePresentationStateParser: Sendable {
             return nil
         }
 
-        return GraphicObject(type: type, data: data, filled: filled, units: units)
+        return GraphicObject(
+            type: type, data: data, filled: filled, units: units,
+            lineStyle: item[.lineStyleSequence]?.sequenceItems?.first.flatMap(Self.parseLineStyle),
+            fillStyle: item[.fillStyleSequence]?.sequenceItems?.first.flatMap(Self.parseFillStyle),
+            compoundGraphicInstanceID: item[.compoundGraphicInstanceID]?.integerValueTolerant,
+            graphicGroupID: item[.graphicGroupID]?.integerValueTolerant)
+    }
+
+    // MARK: Compound graphics and styles (Tables C.10-5, C.10-5a/5b/5c; D39)
+
+    private static func trimmed(_ item: SequenceItem, _ tag: Tag) -> String? {
+        item.string(for: tag)?.trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func cieLab(_ item: SequenceItem, _ tag: Tag) -> CIELabColor? {
+        guard let values = item[tag]?.integerValuesTolerant, values.count == 3 else { return nil }
+        return CIELabColor(l: values[0], a: values[1], b: values[2])
+    }
+
+    private static func real(_ item: SequenceItem, _ tag: Tag) -> Double? {
+        item[tag]?.realValuesTolerant?.first
+    }
+
+    private static func parseShadow(_ item: SequenceItem) -> GraphicShadow {
+        guard let style = trimmed(item, .shadowStyle).flatMap(GraphicShadowStyle.init(rawValue:)) else {
+            return .off
+        }
+        return GraphicShadow(
+            style: style,
+            offsetX: real(item, .shadowOffsetX) ?? 0,
+            offsetY: real(item, .shadowOffsetY) ?? 0,
+            color: cieLab(item, .shadowColorCIELabValue) ?? GraphicShadow.black,
+            opacity: real(item, .shadowOpacity) ?? 1)
+    }
+
+    static func parseTextStyle(_ item: SequenceItem) -> TextStyle? {
+        guard let color = cieLab(item, .textColorCIELabValue) else { return nil }
+        return TextStyle(
+            fontName: item.string(for: .fontName),
+            fontNameType: trimmed(item, .fontNameType),
+            cssFontName: item.string(for: .cssFontName) ?? "sans-serif",
+            color: color,
+            horizontalAlignment: trimmed(item, .horizontalAlignment).flatMap(TextHorizontalAlignment.init(rawValue:)),
+            verticalAlignment: trimmed(item, .verticalAlignment).flatMap(TextVerticalAlignment.init(rawValue:)),
+            shadow: parseShadow(item),
+            underlined: trimmed(item, .underlined) == "Y",
+            bold: trimmed(item, .bold) == "Y",
+            italic: trimmed(item, .italic) == "Y")
+    }
+
+    static func parseLineStyle(_ item: SequenceItem) -> LineStyle? {
+        guard let color = cieLab(item, .patternOnColorCIELabValue) else { return nil }
+        return LineStyle(
+            onColor: color,
+            offColor: cieLab(item, .patternOffColorCIELabValue),
+            onOpacity: real(item, .patternOnOpacity) ?? 1,
+            offOpacity: real(item, .patternOffOpacity),
+            thickness: real(item, .lineThickness) ?? 1,
+            dashing: trimmed(item, .lineDashingStyle).flatMap(LineDashingStyle.init(rawValue:)) ?? .solid,
+            pattern: item[.linePattern]?.integerValueTolerant.map { UInt32(truncatingIfNeeded: $0) },
+            shadow: parseShadow(item))
+    }
+
+    static func parseFillStyle(_ item: SequenceItem) -> FillStyle? {
+        guard let color = cieLab(item, .patternOnColorCIELabValue) else { return nil }
+        return FillStyle(
+            onColor: color,
+            offColor: cieLab(item, .patternOffColorCIELabValue),
+            onOpacity: real(item, .patternOnOpacity) ?? 1,
+            offOpacity: real(item, .patternOffOpacity) ?? 0,
+            mode: trimmed(item, .fillMode).flatMap(GraphicFillMode.init(rawValue:)) ?? .solid,
+            pattern: item[.fillPattern]?.valueData)
+    }
+
+    static func parseCompoundGraphic(_ item: SequenceItem) -> CompoundGraphic? {
+        guard let id = item[.compoundGraphicInstanceID]?.integerValueTolerant,
+              let type = trimmed(item, .compoundGraphicType).flatMap(CompoundGraphicType.init(rawValue:)),
+              let units = trimmed(item, .compoundGraphicUnits).flatMap(CompoundGraphicUnits.init(rawValue:)),
+              let data = item[.graphicData]?.realValuesTolerant else { return nil }
+        let rotationPoint = item[.rotationPoint]?.realValuesTolerant.flatMap { values in
+            values.count == 2 ? GraphicPoint(column: values[0], row: values[1]) : nil
+        }
+        let ticks = (item[.majorTicksSequence]?.sequenceItems ?? []).compactMap { tick -> MajorTick? in
+            guard let position = real(tick, .tickPosition) else { return nil }
+            return MajorTick(position: position, label: tick.string(for: .tickLabel) ?? "")
+        }
+        return CompoundGraphic(
+            instanceID: id, type: type, units: units, data: data,
+            textStyle: item[.textStyleSequence]?.sequenceItems?.first.flatMap(parseTextStyle),
+            lineStyle: item[.lineStyleSequence]?.sequenceItems?.first.flatMap(parseLineStyle),
+            rotationAngle: real(item, .rotationAngle),
+            rotationPoint: rotationPoint,
+            gapLength: real(item, .gapLength),
+            diameterOfVisibility: real(item, .diameterOfVisibility),
+            majorTicks: ticks,
+            tickAlignment: trimmed(item, .tickAlignment).flatMap(TickAlignment.init(rawValue:)),
+            tickLabelAlignment: trimmed(item, .tickLabelAlignment).flatMap(TickLabelAlignment.init(rawValue:)),
+            showTickLabel: trimmed(item, .showTickLabel).map { $0 == "Y" },
+            filled: trimmed(item, .graphicFilled) == "Y",
+            fillStyle: item[.fillStyleSequence]?.sequenceItems?.first.flatMap(parseFillStyle),
+            graphicGroupID: item[.graphicGroupID]?.integerValueTolerant)
     }
     
     private func parseTextObject(from item: SequenceItem) -> TextObject? {
@@ -490,28 +596,40 @@ public struct GrayscalePresentationStateParser: Sendable {
         // is SR's Text Value, read as a fallback for files written when this
         // parser used the wrong tag.
         guard let text = item.string(for: .unformattedTextValue)
-                ?? item.string(for: .textValue),
-              let topLeftValues = item[.boundingBoxTopLeftHandCorner]?.realValuesTolerant,
-              topLeftValues.count == 2,
-              let bottomRightValues = item[.boundingBoxBottomRightHandCorner]?.realValuesTolerant,
-              bottomRightValues.count == 2 else {
+                ?? item.string(for: .textValue) else {
             return nil
         }
-        
-        let topLeft = (column: topLeftValues[0], row: topLeftValues[1])
-        let bottomRight = (column: bottomRightValues[0], row: bottomRightValues[1])
-        
+
         var anchorPoint: (column: Double, row: Double)? = nil
         if let anchorValues = item[.anchorPoint]?.realValuesTolerant,
            anchorValues.count == 2 {
             anchorPoint = (column: anchorValues[0], row: anchorValues[1])
+        }
+
+        // The bounding box is Type 1C: "Required if Anchor Point is not
+        // present" (Table C.10-5), so an anchor-only text object is legal. The
+        // model needs a box; it is the anchor itself, which renderers of this
+        // model read as "the words start here".
+        let topLeftValues = item[.boundingBoxTopLeftHandCorner]?.realValuesTolerant
+        let bottomRightValues = item[.boundingBoxBottomRightHandCorner]?.realValuesTolerant
+        let topLeft: (column: Double, row: Double)
+        let bottomRight: (column: Double, row: Double)
+        if let tl = topLeftValues, tl.count == 2, let br = bottomRightValues, br.count == 2 {
+            topLeft = (column: tl[0], row: tl[1])
+            bottomRight = (column: br[0], row: br[1])
+        } else if let anchor = anchorPoint {
+            topLeft = anchor
+            bottomRight = anchor
+        } else {
+            return nil
         }
         
         let anchorVisibleString = item.string(for: .anchorPointVisibility)
         let anchorVisible = anchorVisibleString == "Y"
         
         // A units value outside Table C.10-5's enumeration skips the object rather than misplace it
-        let boundingBoxUnitsString = item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
+        let boundingBoxUnitsString = item.string(for: .boundingBoxAnnotationUnits)
+            ?? item.string(for: .anchorPointAnnotationUnits) ?? "PIXEL"
         guard let boundingBoxUnits = AnnotationUnits(rawValue: boundingBoxUnitsString.trimmingCharacters(in: .whitespaces)) else {
             return nil
         }
@@ -528,7 +646,10 @@ public struct GrayscalePresentationStateParser: Sendable {
             anchorPoint: anchorPoint,
             anchorPointVisible: anchorVisible,
             boundingBoxUnits: boundingBoxUnits,
-            anchorPointUnits: anchorPointUnits
+            anchorPointUnits: anchorPointUnits,
+            textStyle: item[.textStyleSequence]?.sequenceItems?.first.flatMap(Self.parseTextStyle),
+            compoundGraphicInstanceID: item[.compoundGraphicInstanceID]?.integerValueTolerant,
+            graphicGroupID: item[.graphicGroupID]?.integerValueTolerant
         )
     }
     

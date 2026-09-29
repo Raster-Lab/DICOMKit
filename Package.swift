@@ -443,6 +443,8 @@ let package = Package(
                 // GSPS writer ⇄ parser round trip: a saved presentation state
                 // the parser cannot read back is not worth storing.
                 "GrayscalePresentationStateBuilderTests.swift",
+                // PS3.3 Tables C.10-5, C.10-5a/5b/5c: compound graphics and styles (D39).
+                "GraphicAnnotationStyleTests.swift",
                 // The Pseudo-Color (A.33.3) and Color (A.33.2) Softcopy builders:
                 // the same round-trip contract, each pinned to its Table A.33.x-1.
                 "PseudoColorPresentationStateBuilderTests.swift",

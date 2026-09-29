@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Graphic Type terms and the PIXEL/DISPLAY/MATRIX units match PS3.3 2026a Table C.10-5; ELLIPSE points per C.10.5.1.2; layer colours per Table C.10-7
+// NEMA-verified: 2026a, checked 2026-09-29 — Graphic Type terms and the PIXEL/DISPLAY/MATRIX units match PS3.3 2026a Table C.10-5; ELLIPSE points per C.10.5.1.2; layer colours per Table C.10-7; Compound Graphic Sequence, Text/Line/Fill Style and Compound Graphic Instance ID / Graphic Group ID carried per Table C.10-5 (D39, see GraphicStyle.swift)
 //
 // GraphicAnnotation.swift
 // DICOMKit
@@ -96,18 +96,26 @@ public struct GraphicAnnotation: Sendable, Hashable {
     
     /// Text objects in this annotation
     public let textObjects: [TextObject]
+
+    /// Compound Graphic Sequence (0070,0209), Type 3 (Table C.10-5): ARROW,
+    /// RULER, RECTANGLE … drawn as themselves by viewers that can, with their
+    /// alternate rendering in ``graphicObjects`` / ``textObjects`` under the
+    /// same Compound Graphic Instance ID (C.10.5.1.3.1).
+    public let compoundGraphics: [CompoundGraphic]
     
     /// Initialize a graphic annotation
     public init(
         layer: String,
         referencedImages: [ReferencedImage],
         graphicObjects: [GraphicObject] = [],
-        textObjects: [TextObject] = []
+        textObjects: [TextObject] = [],
+        compoundGraphics: [CompoundGraphic] = []
     ) {
         self.layer = layer
         self.referencedImages = referencedImages
         self.graphicObjects = graphicObjects
         self.textObjects = textObjects
+        self.compoundGraphics = compoundGraphics
     }
 }
 
@@ -128,18 +136,40 @@ public struct GraphicObject: Sendable, Hashable {
     
     /// Units for the graphic data
     public let units: AnnotationUnits
+
+    /// Line Style Sequence (0070,0232), Table C.10-5b: colour, thickness,
+    /// dashing and shadow of this object; its colour overrides the layer's.
+    public let lineStyle: LineStyle?
+
+    /// Fill Style Sequence (0070,0233), Table C.10-5c, for a filled object.
+    public let fillStyle: FillStyle?
+
+    /// Compound Graphic Instance ID (0070,0226): the compound graphic this
+    /// object is (part of) the alternate rendering of (C.10.5.1.3.1).
+    public let compoundGraphicInstanceID: Int?
+
+    /// Graphic Group ID (0070,0295), Type 3.
+    public let graphicGroupID: Int?
     
     /// Initialize a graphic object
     public init(
         type: PresentationGraphicType,
         data: [Double],
         filled: Bool = false,
-        units: AnnotationUnits = .pixel
+        units: AnnotationUnits = .pixel,
+        lineStyle: LineStyle? = nil,
+        fillStyle: FillStyle? = nil,
+        compoundGraphicInstanceID: Int? = nil,
+        graphicGroupID: Int? = nil
     ) {
         self.type = type
         self.data = data
         self.filled = filled
         self.units = units
+        self.lineStyle = lineStyle
+        self.fillStyle = fillStyle
+        self.compoundGraphicInstanceID = compoundGraphicInstanceID
+        self.graphicGroupID = graphicGroupID
     }
     
     /// Number of points in the graphic
@@ -207,6 +237,16 @@ public struct TextObject: Sendable, Hashable {
     
     /// Units for anchor point coordinates
     public let anchorPointUnits: AnnotationUnits
+
+    /// Text Style Sequence (0070,0231), Table C.10-5a: font, colour (which
+    /// overrides the layer's), alignment and shadow.
+    public let textStyle: TextStyle?
+
+    /// Compound Graphic Instance ID (0070,0226) — see ``GraphicObject``.
+    public let compoundGraphicInstanceID: Int?
+
+    /// Graphic Group ID (0070,0295), Type 3.
+    public let graphicGroupID: Int?
     
     /// Initialize a text object
     public init(
@@ -216,8 +256,14 @@ public struct TextObject: Sendable, Hashable {
         anchorPoint: (column: Double, row: Double)? = nil,
         anchorPointVisible: Bool = false,
         boundingBoxUnits: AnnotationUnits = .pixel,
-        anchorPointUnits: AnnotationUnits = .pixel
+        anchorPointUnits: AnnotationUnits = .pixel,
+        textStyle: TextStyle? = nil,
+        compoundGraphicInstanceID: Int? = nil,
+        graphicGroupID: Int? = nil
     ) {
+        self.textStyle = textStyle
+        self.compoundGraphicInstanceID = compoundGraphicInstanceID
+        self.graphicGroupID = graphicGroupID
         self.text = text
         self.boundingBoxTopLeft = boundingBoxTopLeft
         self.boundingBoxBottomRight = boundingBoxBottomRight
@@ -241,7 +287,10 @@ extension TextObject {
         lhs.anchorPoint?.row == rhs.anchorPoint?.row &&
         lhs.anchorPointVisible == rhs.anchorPointVisible &&
         lhs.boundingBoxUnits == rhs.boundingBoxUnits &&
-        lhs.anchorPointUnits == rhs.anchorPointUnits
+        lhs.anchorPointUnits == rhs.anchorPointUnits &&
+        lhs.textStyle == rhs.textStyle &&
+        lhs.compoundGraphicInstanceID == rhs.compoundGraphicInstanceID &&
+        lhs.graphicGroupID == rhs.graphicGroupID
     }
     
     public func hash(into hasher: inout Hasher) {
@@ -255,6 +304,9 @@ extension TextObject {
         hasher.combine(anchorPointVisible)
         hasher.combine(boundingBoxUnits)
         hasher.combine(anchorPointUnits)
+        hasher.combine(textStyle)
+        hasher.combine(compoundGraphicInstanceID)
+        hasher.combine(graphicGroupID)
     }
 }
 
