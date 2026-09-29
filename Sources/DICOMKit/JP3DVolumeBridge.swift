@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Instance Number read as IS per PS3.6 2026a Table 6-1; Pixel Data VR rule per PS3.5 8.1.1; the JP3D UIDs are private
 import Foundation
 import DICOMCore
 import J2KCore
@@ -292,7 +293,7 @@ public enum JP3DVolumeBridge: Sendable {
             if let sl = ds.string(for: .sliceLocation), let z = Double(sl) {
                 return (file, z)
             }
-            if let inst = ds.uint16(for: .instanceNumber) {
+            if let inst = ds.string(for: .instanceNumber).flatMap({ Int($0.trimmingCharacters(in: .whitespaces)) }) {
                 return (file, Double(inst))
             }
             return nil

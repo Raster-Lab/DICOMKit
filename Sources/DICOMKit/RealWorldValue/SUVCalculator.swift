@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — SUV formulas against PS3.16 2026a (findings recorded, P-SUV)
 //
 // SUVCalculator.swift
 // DICOMKit

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Parametric Map module reads per PS3.3 2026a C.8.32
 //
 // ParametricMapParser.swift
 // DICOMKit

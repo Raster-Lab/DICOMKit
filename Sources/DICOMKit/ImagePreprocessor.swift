@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a C.7.6.3.1.2 YBR conversions and C.13 image box citations checked; the PrintColorMode duplicate is pending P-PRINT (D24)
 /// Image Preprocessing for DICOM Print Management
 ///
 /// Phase 3.1 of the DICOM Print Management implementation.
@@ -473,7 +474,7 @@ public actor ImagePreprocessor {
         // Uncompressed YBR sources must be converted to RGB before printing —
         // Basic Color Image Boxes carry RGB (PS3.3 C.13.5). YBR_FULL is
         // full-resolution interleaved; YBR_FULL_422 / YBR_PARTIAL_422 are
-        // packed 2 bytes/pixel (Y1 Y2 Cb Cr per pixel pair, PS3.5 §8.7.4) —
+        // packed 2 bytes/pixel (Y1 Y2 Cb Cr per pixel pair, PS3.3 C.7.6.3.1.2) —
         // `PixelData.frameData(at:)` assumes 3 samples/pixel, so packed frames
         // are sliced manually here. 4:2:0 and the ICT/RCT codestream variants
         // never occur uncompressed and are rejected. (Compressed YBR sources

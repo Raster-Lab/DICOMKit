@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — applies the PS3.15 2026a Table E.1-1 actions; the De-identification Method Code Sequence gap is recorded (P-ANON)
 import Foundation
 import DICOMCore
 

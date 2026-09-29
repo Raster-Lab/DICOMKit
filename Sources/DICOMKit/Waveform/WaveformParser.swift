@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — waveform module reads per PS3.3 2026a C.10.9; the Referenced Sample Positions VR finding is recorded (P-WAVE)
 //
 // WaveformParser.swift
 // DICOMKit

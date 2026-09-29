@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — RT ROI Interpreted Type terms match PS3.3 2026a Table C.8-44 (IRRAD_VOLUME, FIXATION corrected; seven terms pending P-RT); Contour Geometric Type is pending P-RT
 //
 // RTStructureSet.swift
 // DICOMKit
@@ -374,7 +375,7 @@ public enum RTROIInterpretedType: String, Sendable, Hashable {
     case treatedVolume = "TREATED_VOLUME"
     
     /// Irradiated Volume
-    case irradiatedVolume = "IRRADIATED_VOLUME"
+    case irradiatedVolume = "IRRAD_VOLUME"
     
     /// Organ at Risk
     case organ = "ORGAN"
@@ -413,7 +414,7 @@ public enum RTROIInterpretedType: String, Sendable, Hashable {
     case support = "SUPPORT"
     
     /// Fixation device
-    case fixationDevice = "FIXATION_DEVICE"
+    case fixationDevice = "FIXATION"
 }
 
 // MARK: - ROIPhysicalProperty

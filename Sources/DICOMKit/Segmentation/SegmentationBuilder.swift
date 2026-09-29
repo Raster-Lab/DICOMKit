@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — 1-bit frames packed least-significant-bit first per PS3.5 2026a 8.1.1 and D.1; category and type codes per PS3.16 CID 7150/7151
 //
 // SegmentationBuilder.swift
 // DICOMKit
@@ -31,8 +32,8 @@ import DICOMCore
 ///         number: 1,
 ///         label: "Tumor",
 ///         mask: binaryMask,  // [UInt8] with 0 or 1 values
-///         category: CodedConcept(codeValue: "49755003", codingSchemeDesignator: "SCT", codeMeaning: "Morphologically Altered Structure"),
-///         type: CodedConcept(codeValue: "108369006", codingSchemeDesignator: "SCT", codeMeaning: "Neoplasm"),
+///         category: CodedConcept(codeValue: "49755003", codingSchemeDesignator: "SCT", codeMeaning: "Morphologically Abnormal Structure"),
+///         type: CodedConcept(codeValue: "108369006", codingSchemeDesignator: "SCT", codeMeaning: "Tumor"),
 ///         color: (r: 255, g: 0, b: 0),
 ///         algorithmType: .automatic,
 ///         algorithmName: "DeepTumor v1.0"
@@ -69,7 +70,7 @@ import DICOMCore
 ///
 /// Reference: PS3.3 A.51 - Segmentation IOD
 /// Reference: PS3.3 C.8.20 - Segmentation Modules
-/// Reference: PS3.5 Section 8.1.1 - Bit Packing
+/// Reference: PS3.5 Section 8.1.1 - Pixel Data Encoding of Related Data Elements (bit packing)
 public final class SegmentationBuilder {
     
     // MARK: - Configuration
@@ -544,9 +545,11 @@ public final class SegmentationBuilder {
     
     /// Packs binary mask into bit-packed format
     ///
-    /// Reference: PS3.5 Section 8.1.1 - Bit Packing
+    /// Reference: PS3.5 Section 8.1.1 - Pixel Data Encoding of Related Data Elements (bit packing)
     /// - 8 pixels per byte
-    /// - MSB (most significant bit) first
+    /// - The first pixel in the least significant bit of the first byte, the next pixel
+    ///   in the next more significant bit (PS3.5 8.1.1 and D.1: a concatenated stream of
+    ///   bits "from the least significant bit of the first Pixel Cell")
     /// - Padding bits set to 0
     ///
     /// - Parameter mask: Binary mask with 0 or 1 values
@@ -554,17 +557,17 @@ public final class SegmentationBuilder {
     private func packBinaryMask(_ mask: [UInt8]) -> Data {
         let totalPixels = mask.count
         let bytesNeeded = (totalPixels + 7) / 8  // Round up to nearest byte
-        
+
         var packedData = Data(count: bytesNeeded)
-        
+
         for pixelIndex in 0..<totalPixels {
             if mask[pixelIndex] == 1 {
                 let byteIndex = pixelIndex / 8
-                let bitPosition = 7 - (pixelIndex % 8)  // MSB first
+                let bitPosition = pixelIndex % 8   // least significant bit first
                 packedData[byteIndex] |= (1 << bitPosition)
             }
         }
-        
+
         return packedData
     }
     

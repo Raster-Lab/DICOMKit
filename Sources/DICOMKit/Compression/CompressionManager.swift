@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — XYB relabelled RGB after JPEG XL decode per PS3.3 2026a C.7.6.3.1.2 (D12); encapsulation per PS3.5 A.4; Lossy Image Compression attributes per C.7.6.1.1.5
 import Foundation
 import DICOMCore
 
@@ -667,6 +668,13 @@ public struct CompressionManager {
             || sourceSyntax.uid == TransferSyntax.jpegExtended.uid),
            descriptor.samplesPerPixel == 3,
            descriptor.photometricInterpretation.isYBR {
+            dataSet.setString("RGB", for: .photometricInterpretation, vr: .CS)
+        }
+
+        // The JPEG XL decoder applies the inverse XYB transform and yields RGB samples;
+        // "Images in XYB transcoded to other Transfer Syntaxes will use RGB"
+        // (PS3.3 C.7.6.3.1.2), as TransferSyntaxConverter already does.
+        if sourceSyntax.isJPEGXL, descriptor.photometricInterpretation == .xyb {
             dataSet.setString("RGB", for: .photometricInterpretation, vr: .CS)
         }
     }

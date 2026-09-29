@@ -88,10 +88,11 @@ final class WaveformTests: XCTestCase {
     }
 
     func test_sampleInterpretation_isSigned() {
-        XCTAssertFalse(WaveformSampleInterpretation.unsignedInteger.isSigned)
+        // PS3.3 Table C.10-10: SB signed 8 bit, UB unsigned 8 bit, SS signed 16 bit, US unsigned 16 bit
+        XCTAssertTrue(WaveformSampleInterpretation.unsignedInteger.isSigned, "raw value SB is signed 8 bit linear")
         XCTAssertTrue(WaveformSampleInterpretation.signedInteger.isSigned)
         XCTAssertFalse(WaveformSampleInterpretation.unsignedByte.isSigned)
-        XCTAssertTrue(WaveformSampleInterpretation.signedShort.isSigned)
+        XCTAssertFalse(WaveformSampleInterpretation.signedShort.isSigned, "raw value US is unsigned 16 bit linear")
         XCTAssertFalse(WaveformSampleInterpretation.muLaw.isSigned)
         XCTAssertFalse(WaveformSampleInterpretation.aLaw.isSigned)
     }

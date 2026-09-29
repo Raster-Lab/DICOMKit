@@ -59,17 +59,18 @@ final class AIInferenceResultTests: XCTestCase {
         let type = AIDetectionType.lungNodule
         let concept = type.concept
         
-        XCTAssertEqual(concept.codeValue, "M-03010")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
+        // PS3.16 CID 6104
+        XCTAssertEqual(concept.codeValue, "27925004")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
         XCTAssertEqual(concept.codeMeaning, "Nodule")
     }
-    
+
     func testMassType() {
         let type = AIDetectionType.mass
         let concept = type.concept
-        
-        XCTAssertEqual(concept.codeValue, "F-01796")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
+
+        XCTAssertEqual(concept.codeValue, "4147007")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
         XCTAssertEqual(concept.codeMeaning, "Mass")
     }
     
@@ -86,8 +87,8 @@ final class AIInferenceResultTests: XCTestCase {
         let type = AIDetectionType.lesion
         let concept = type.concept
         
-        XCTAssertEqual(concept.codeValue, "M-03000")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
+        XCTAssertEqual(concept.codeValue, "52988006")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
         XCTAssertEqual(concept.codeMeaning, "Lesion")
     }
     
@@ -104,8 +105,8 @@ final class AIInferenceResultTests: XCTestCase {
         let type = AIDetectionType.hemorrhage
         let concept = type.concept
         
-        XCTAssertEqual(concept.codeValue, "M-37000")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
+        XCTAssertEqual(concept.codeValue, "50960005")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
         XCTAssertEqual(concept.codeMeaning, "Hemorrhage")
     }
     
@@ -122,8 +123,8 @@ final class AIInferenceResultTests: XCTestCase {
         let type = AIDetectionType.pulmonaryEmbolism
         let concept = type.concept
         
-        XCTAssertEqual(concept.codeValue, "D3-81004")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
+        XCTAssertEqual(concept.codeValue, "59282003")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
         XCTAssertEqual(concept.codeMeaning, "Pulmonary embolism")
     }
     

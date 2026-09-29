@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — coded concepts diffed by Scripts/diff_kit.py against PS3.16 2026a CID 6104 (SCT concept ids); the calcification, fracture, pneumonia, confidence and anatomy codes are pending P-AI
 /// AI/ML Inference Result Integration
 ///
 /// Provides protocols and types for converting AI/ML model outputs into DICOM Structured Reporting
@@ -131,14 +132,14 @@ public enum AIDetectionType: Sendable, Equatable {
         switch self {
         case .lungNodule:
             return CodedConcept(
-                codeValue: "M-03010",
-                codingSchemeDesignator: "SRT",
+                codeValue: "27925004",
+                codingSchemeDesignator: "SCT",
                 codeMeaning: "Nodule"
             )
         case .mass:
             return CodedConcept(
-                codeValue: "F-01796",
-                codingSchemeDesignator: "SRT",
+                codeValue: "4147007",
+                codingSchemeDesignator: "SCT",
                 codeMeaning: "Mass"
             )
         case .calcification:
@@ -149,8 +150,8 @@ public enum AIDetectionType: Sendable, Equatable {
             )
         case .lesion:
             return CodedConcept(
-                codeValue: "M-03000",
-                codingSchemeDesignator: "SRT",
+                codeValue: "52988006",
+                codingSchemeDesignator: "SCT",
                 codeMeaning: "Lesion"
             )
         case .fracture:
@@ -161,8 +162,8 @@ public enum AIDetectionType: Sendable, Equatable {
             )
         case .hemorrhage:
             return CodedConcept(
-                codeValue: "M-37000",
-                codingSchemeDesignator: "SRT",
+                codeValue: "50960005",
+                codingSchemeDesignator: "SCT",
                 codeMeaning: "Hemorrhage"
             )
         case .pneumonia:
@@ -173,8 +174,8 @@ public enum AIDetectionType: Sendable, Equatable {
             )
         case .pulmonaryEmbolism:
             return CodedConcept(
-                codeValue: "D3-81004",
-                codingSchemeDesignator: "SRT",
+                codeValue: "59282003",
+                codingSchemeDesignator: "SCT",
                 codeMeaning: "Pulmonary embolism"
             )
         case .anatomicalStructure(let name):

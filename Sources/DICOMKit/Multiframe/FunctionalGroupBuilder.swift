@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Frame Acquisition Number written as US per PS3.6 2026a Table 6-1; macro membership per PS3.3 C.7.6.16 recorded; Sup 157 kept as provenance
 import Foundation
 import DICOMCore
 
@@ -121,8 +122,8 @@ public enum FunctionalGroupBuilder {
         .studyInstanceUID, .seriesInstanceUID, .frameOfReferenceUID, .seriesNumber, .studyID,
         .seriesDescription, .instanceCreationTime, .instanceCreatorUID,
         Tag(group: 0x0008, element: 0x0050),   // Accession Number
-        Tag(group: 0x0008, element: 0x0020), Tag(group: 0x0008, element: 0x0030),   // Study Date / Time
-        Tag(group: 0x0008, element: 0x0021), Tag(group: 0x0008, element: 0x0031),   // Series Date / Time
+        Tag(group: 0x0008, element: 0x0020), Tag(group: 0x0008, element: 0x0030),   // Study Date, Study Time
+        Tag(group: 0x0008, element: 0x0021), Tag(group: 0x0008, element: 0x0031),   // Series Date, Series Time
         Tag(group: 0x0008, element: 0x0013),   // Instance Creation Time
     ]
 
@@ -190,8 +191,8 @@ public enum FunctionalGroupBuilder {
         // Frame Content: always per-frame.
         for (i, frame) in frames.enumerated() {
             var fc: [DataElement] = []
-            if let n = frame.string(for: .acquisitionNumber).flatMap({ UInt32($0.trimmingCharacters(in: .whitespaces)) }) {
-                fc.append(DataElement.uint32(tag: .frameAcquisitionNumber, value: n))
+            if let n = frame.string(for: .acquisitionNumber).flatMap({ UInt16($0.trimmingCharacters(in: .whitespaces)) }) {
+                fc.append(DataElement.uint16(tag: .frameAcquisitionNumber, value: n))
             }
             if let dt = acquisitionDateTime(of: frame) {
                 fc.append(DataElement.string(tag: .frameAcquisitionDateTime, vr: .DT, value: dt))

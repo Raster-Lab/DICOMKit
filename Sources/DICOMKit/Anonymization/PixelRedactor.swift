@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Burned In Annotation and Code Sequence Macro citations checked against PS3.3 2026a
 import Foundation
 import DICOMCore
 

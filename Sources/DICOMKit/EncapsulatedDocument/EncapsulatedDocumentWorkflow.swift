@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — workflow over the builder and parser; MIME types via EncapsulatedDocument
 //
 // EncapsulatedDocumentWorkflow.swift
 // DICOMKit

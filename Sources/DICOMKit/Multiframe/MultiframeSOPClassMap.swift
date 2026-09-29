@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — 37 SOP Class UIDs and names match PS3.6 2026a Table A-1; Sup 157 kept as provenance
 import Foundation
 import DICOMCore
 

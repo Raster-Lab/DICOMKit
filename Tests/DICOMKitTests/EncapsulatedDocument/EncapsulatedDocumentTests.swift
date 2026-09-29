@@ -30,7 +30,7 @@ final class EncapsulatedDocumentTests: XCTestCase {
     func test_documentType_stl_fromSOPClassUID() {
         let type = EncapsulatedDocumentType(sopClassUID: "1.2.840.10008.5.1.4.1.1.104.3")
         XCTAssertEqual(type, .stl)
-        XCTAssertEqual(type.expectedMIMEType, "application/sla")
+        XCTAssertEqual(type.expectedMIMEType, "model/stl")   // PS3.3 A.85.1 Enumerated Value
     }
 
     func test_documentType_obj_fromSOPClassUID() {

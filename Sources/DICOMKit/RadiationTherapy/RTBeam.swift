@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — beam and radiation type terms are carried as strings (recorded, P-RT); tags per PS3.6 2026a Table 6-1
 //
 // RTBeam.swift
 // DICOMKit

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — functional-group flattening per PS3.3 2026a C.7.6.16; the Magnetization Transfer and Partial Fourier literals are recorded
 import Foundation
 import DICOMCore
 

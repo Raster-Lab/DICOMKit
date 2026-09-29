@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — RT Plan module reads per PS3.3 2026a C.8.8.x; the Fraction Pattern finding is recorded (P-RT)
 //
 // RTPlanParser.swift
 // DICOMKit

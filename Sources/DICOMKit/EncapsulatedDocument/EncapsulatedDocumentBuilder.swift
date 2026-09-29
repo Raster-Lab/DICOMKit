@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Encapsulated Document module per PS3.3 2026a C.24.2; the Type 1/2 gaps are recorded (P-ENCAP)
 //
 // EncapsulatedDocumentBuilder.swift
 // DICOMKit

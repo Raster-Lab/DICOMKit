@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — transfer syntax names via DICOMCore
 // CompressionConsole.swift
 // DICOMKit
 //

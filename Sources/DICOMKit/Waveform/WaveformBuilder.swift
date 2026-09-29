@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — (0070,0006) Unformatted Text Value written as ST per PS3.6 2026a Table 6-1; the Type 1 waveform module gaps are recorded (P-WAVE)
 //
 // WaveformBuilder.swift
 // DICOMKit
@@ -587,7 +588,7 @@ extension Waveform {
         var elements: [DataElement] = []
 
         if let text = annotation.textValue {
-            elements.append(DataElement.string(tag: .unformattedTextValue, vr: .UT, value: text))
+            elements.append(DataElement.string(tag: .unformattedTextValue, vr: .ST, value: text))
         }
 
         if let concept = annotation.conceptNameCode {

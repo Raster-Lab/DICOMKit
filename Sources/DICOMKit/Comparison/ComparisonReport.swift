@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — binary VRs are the Other VRs of PS3.5 2026a Table 6.2-1 plus UN (D5)
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -166,7 +167,8 @@ public struct ComparisonReport {
             return "<Sequence with \(element.sequenceItems?.count ?? 0) items>"
         }
 
-        if element.vr == .OB || element.vr == .OW || element.vr == .OF || element.vr == .OD {
+        // The "Other" byte-stream VRs of PS3.5 Table 6.2-1, plus UN
+        if [.OB, .OD, .OF, .OL, .OV, .OW, .UN].contains(element.vr) {
             let byteCount = element.valueData.count
             return "<Binary data, \(byteCount) bytes>"
         }

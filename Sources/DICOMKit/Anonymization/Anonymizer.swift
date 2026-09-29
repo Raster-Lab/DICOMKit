@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — legacy profiles; de-identification method attributes per PS3.3 2026a C.7.1.1
 import Foundation
 import DICOMCore
 import DICOMDictionary

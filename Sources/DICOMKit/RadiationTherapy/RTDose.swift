@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Dose Units, Dose Type and Summation Type terms recorded against PS3.3 2026a C.8.8.3 (P-RT)
 //
 // RTDose.swift
 // DICOMKit

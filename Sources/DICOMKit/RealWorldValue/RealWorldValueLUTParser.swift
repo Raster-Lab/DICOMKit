@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Real World Value Mapping reads per PS3.3 2026a C.7.6.16.2.11
 //
 // RealWorldValueLUTParser.swift
 // DICOMKit

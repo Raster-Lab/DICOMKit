@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — CIELab decoding per PS3.3 2026a C.10.7.1.1 (recorded)
 //
 // SegmentationRenderer.swift
 // DICOMKit

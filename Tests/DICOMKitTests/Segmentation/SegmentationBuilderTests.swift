@@ -71,11 +71,12 @@ final class SegmentationBuilderTests: XCTestCase {
         // Verify pixel data is bit-packed (16 pixels = 2 bytes)
         XCTAssertEqual(pixelData.count, 2)
         
-        // Verify bit packing (MSB first)
-        // First byte: 1,1,0,0,1,1,0,0 = 0xCC (11001100)
-        // Second byte: 0,0,1,1,0,0,1,1 = 0x33 (00110011)
-        XCTAssertEqual(pixelData[0], 0xCC)
-        XCTAssertEqual(pixelData[1], 0x33)
+        // Verify bit packing: the first pixel in the least significant bit of the
+        // first byte (PS3.5 8.1.1 and D.1)
+        // First byte: pixels 1,1,0,0,1,1,0,0 in bits 0...7 = 0x33
+        // Second byte: pixels 0,0,1,1,0,0,1,1 in bits 0...7 = 0xCC
+        XCTAssertEqual(pixelData[0], 0x33)
+        XCTAssertEqual(pixelData[1], 0xCC)
     }
     
     func test_buildBinarySegmentation_multipleSegments_succeeds() throws {

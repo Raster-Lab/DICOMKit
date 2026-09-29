@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Document Title (0042,0010) written as ST per PS3.6 2026a Table 6-1; the missing Type 1/2 Encapsulated Document attributes are recorded (P-ENCAP)
 import Foundation
 import DICOMCore
 import J2KCore
@@ -189,7 +190,7 @@ public enum JP3DVolumeDocument: Sendable {
 
         // Encapsulated Document Module
         ds.setString(mimeType, for: .mimeTypeOfEncapsulatedDocument, vr: .LO)
-        ds.setString(documentTitle, for: .documentTitle, vr: .LO)
+        ds.setString(documentTitle, for: .documentTitle, vr: .ST)
         ds[.encapsulatedDocument] = DataElement.data(
             tag: .encapsulatedDocument,
             vr: .OB,

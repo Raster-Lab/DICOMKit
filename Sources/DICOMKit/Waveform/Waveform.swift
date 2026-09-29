@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Waveform Sample Interpretation terms and signedness match PS3.3 2026a Table C.10-10 (SL, UL, SV, UV pending P-WAVE); waveform SOP Class UIDs per PS3.6 Table A-1
 //
 // Waveform.swift
 // DICOMKit
@@ -515,19 +516,21 @@ public struct WaveformAnnotation: Sendable {
 
 /// Sample interpretation for waveform data
 ///
-/// Reference: PS3.3 C.10.9.1.4 - Waveform Sample Interpretation
+/// Reference: PS3.3 C.10.9.1.5, Table C.10-10 - Waveform Bits Allocated and Waveform Sample
+/// Interpretation. The case names predate the check against the table: `SB` is *signed* 8-bit
+/// linear and `US` is *unsigned* 16-bit linear; `isSigned` follows the table.
 public enum WaveformSampleInterpretation: String, Sendable {
-    /// Unsigned 8-bit or 16-bit integer
+    /// SB: signed 8 bit linear
     case unsignedInteger = "SB"
-    /// Signed 8-bit or 16-bit integer
+    /// SS: signed 16 bit linear
     case signedInteger = "SS"
-    /// Unsigned byte (8-bit)
+    /// UB: unsigned 8 bit linear
     case unsignedByte = "UB"
-    /// Signed short (16-bit)
+    /// US: unsigned 16 bit linear
     case signedShort = "US"
-    /// Mu-law compressed audio
+    /// MB: 8 bit mu-law (ITU-T G.711)
     case muLaw = "MB"
-    /// A-law compressed audio
+    /// AB: 8 bit A-law (ITU-T G.711)
     case aLaw = "AB"
 
     /// Creates from a DICOM code string value
@@ -544,11 +547,11 @@ public enum WaveformSampleInterpretation: String, Sendable {
         }
     }
 
-    /// Whether this interpretation represents signed values
+    /// Whether this interpretation represents signed values (PS3.3 Table C.10-10)
     public var isSigned: Bool {
         switch self {
-        case .signedInteger, .signedShort: return true
-        case .unsignedInteger, .unsignedByte, .muLaw, .aLaw: return false
+        case .unsignedInteger, .signedInteger: return true      // SB, SS
+        case .signedShort, .unsignedByte, .muLaw, .aLaw: return false   // US, UB, MB, AB
         }
     }
 }
@@ -576,7 +579,7 @@ public enum WaveformOriginality: String, Sendable {
 
 /// Coded concept used in waveform channel source and annotations
 ///
-/// Reference: PS3.3 Section 8 - Code Sequence Macro
+/// Reference: PS3.3 Section 8.8 - Standard Attribute Sets for Code Sequence Attributes (Table 8.8-1)
 public struct WaveformCodedConcept: Sendable, Equatable {
     /// Code Value (0008,0100)
     public let codeValue: String

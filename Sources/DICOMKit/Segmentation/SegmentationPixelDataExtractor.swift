@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — 1-bit frames unpacked least-significant-bit first per PS3.5 2026a 8.1.1 and D.1
 //
 // SegmentationPixelDataExtractor.swift
 // DICOMKit
@@ -64,8 +65,8 @@ public struct SegmentationPixelDataExtractor: Sendable {
         
         for pixelIndex in 0..<totalPixels {
             let byteIndex = pixelIndex / 8
-            let bitIndex = 7 - (pixelIndex % 8)  // MSB first
-            
+            let bitIndex = pixelIndex % 8   // least significant bit first (PS3.5 8.1.1, D.1)
+
             if byteIndex < frameData.count {
                 let byte = frameData[byteIndex]
                 let bitValue = (byte >> bitIndex) & 0x01

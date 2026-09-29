@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — the Basic Profile action of every row diffed by Scripts/diff_kit.py against PS3.15 2026a Table E.1-1 (62 rows; Device UID U and the order numbers Z corrected)
 import Foundation
 import DICOMCore
 
@@ -130,12 +131,12 @@ public enum ConfidentialityProfile {
         // --- Physicians & operators (X/Z) ---
         t[.referringPhysicianName]   = Rule(.zero)                 // (0008,0090) Z
         t[Tag(group: 0x0008, element: 0x0092)] = Rule(.remove)     // Referring Physician's Address X
-        t[Tag(group: 0x0008, element: 0x0094)] = Rule(.remove)     // Referring Physician's Telephone X
-        t[Tag(group: 0x0008, element: 0x0096)] = Rule(.remove)     // Referring Physician ID Sequence X
+        t[Tag(group: 0x0008, element: 0x0094)] = Rule(.remove)     // Referring Physician's Telephone Numbers X
+        t[Tag(group: 0x0008, element: 0x0096)] = Rule(.remove)     // Referring Physician Identification Sequence X
         t[.performingPhysicianName]  = Rule(.remove)               // (0008,1050) X
-        t[Tag(group: 0x0008, element: 0x1052)] = Rule(.remove)     // Performing Physician ID Sequence X
+        t[Tag(group: 0x0008, element: 0x1052)] = Rule(.remove)     // Performing Physician Identification Sequence X
         t[Tag(group: 0x0008, element: 0x1060)] = Rule(.remove)     // Name of Physician(s) Reading Study X
-        t[Tag(group: 0x0008, element: 0x1062)] = Rule(.remove)     // Physician(s) Reading Study ID Sequence X
+        t[Tag(group: 0x0008, element: 0x1062)] = Rule(.remove)     // Physician(s) Reading Study Identification Sequence X
         t[.operatorsName]             = Rule(.remove)               // (0008,1070) X
         t[Tag(group: 0x0008, element: 0x1072)] = Rule(.remove)     // Operator Identification Sequence X
         t[Tag(group: 0x0032, element: 0x1032)] = Rule(.remove)     // Requesting Physician X
@@ -149,7 +150,7 @@ public enum ConfidentialityProfile {
         t[Tag(group: 0x0008, element: 0x1040)] = Rule(.remove, relaxedBy: .institutionIdentity) // Institutional Department Name X
         t[.stationName]              = Rule(.remove, relaxedBy: .deviceIdentity) // (0008,1010) X
         t[.deviceSerialNumber]       = Rule(.remove, relaxedBy: .deviceIdentity) // (0018,1000) X
-        t[Tag(group: 0x0018, element: 0x1002)] = Rule(.remove, relaxedBy: .deviceIdentity) // Device UID U/X
+        t[Tag(group: 0x0018, element: 0x1002)] = Rule(.replaceUID, relaxedBy: .deviceIdentity) // Device UID U (K with Retain Device Identity)
         t[Tag(group: 0x0018, element: 0x1004)] = Rule(.remove, relaxedBy: .deviceIdentity) // Plate ID X
         t[Tag(group: 0x0018, element: 0x1005)] = Rule(.remove, relaxedBy: .deviceIdentity) // Generator ID X
         t[Tag(group: 0x0018, element: 0x1030)] = Rule(.clean)      // Protocol Name C
@@ -172,8 +173,8 @@ public enum ConfidentialityProfile {
         t[Tag(group: 0x0038, element: 0x0010)] = Rule(.remove)     // Admission ID X
         t[Tag(group: 0x0038, element: 0x0011)] = Rule(.remove)     // Issuer of Admission ID X
         t[Tag(group: 0x0040, element: 0x1001)] = Rule(.remove)     // Requested Procedure ID X
-        t[Tag(group: 0x0040, element: 0x2016)] = Rule(.remove)     // Placer Order Number X
-        t[Tag(group: 0x0040, element: 0x2017)] = Rule(.remove)     // Filler Order Number X
+        t[Tag(group: 0x0040, element: 0x2016)] = Rule(.zero)       // Placer Order Number / Imaging Service Request Z
+        t[Tag(group: 0x0040, element: 0x2017)] = Rule(.zero)       // Filler Order Number / Imaging Service Request Z
 
         // --- Dates & times (relaxed by longitudinal-temporal) ---
         for dateTag in [
