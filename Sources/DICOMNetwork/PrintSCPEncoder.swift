@@ -143,7 +143,7 @@ public enum PrintSCPEncoder {
         var elements: [DataElement] = [
             DataElement.string(tag: .numberOfCopies, vr: .IS, value: String(session.numberOfCopies)),
             DataElement.string(tag: .printPriority, vr: .CS, value: session.printPriority.rawValue),
-            DataElement.string(tag: .mediumType, vr: .CS, value: session.mediumType.rawValue),
+            DataElement.string(tag: .mediumType, vr: .CS, value: session.mediumType.wireValue),
             DataElement.string(tag: .filmDestination, vr: .CS, value: session.filmDestination.rawValue)
         ]
         if let label = session.filmSessionLabel {

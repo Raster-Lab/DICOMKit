@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Film Size ID, Film Orientation, Print Priority, Medium Type, Film Destination, Magnification Type, Polarity, Trim, Presentation LUT Shape and Border/Empty Image Density values offered text-diffed against PS3.3 2026a Tables C.13-1, C.13-3, C.13-5, C.11-4 via the DICOMNetwork raw values (Scripts/diff_printkit.py: all match); bit depths 8/12 per Table C.13-5 (citation corrected from C.13-3, D23); MAMMO CLEAR FILM / MAMMO BLUE FILM not offered pending P-MAMMO
+// NEMA-verified: 2026a, checked 2026-09-29 — Film Size ID, Film Orientation, Print Priority, Medium Type, Film Destination, Magnification Type, Polarity, Trim, Presentation LUT Shape and Border/Empty Image Density values offered text-diffed against PS3.3 2026a Tables C.13-1, C.13-3, C.13-5, C.11-4 via the DICOMNetwork raw values (Scripts/diff_printkit.py: all match); bit depths 8/12 per Table C.13-5 (citation corrected from C.13-3, D23); all five Medium Type terms offered, MAMMO CLEAR FILM / MAMMO BLUE FILM since P-MAMMO
 // PrintOptionCatalog.swift
 // DICOMPrintKit
 //
@@ -202,17 +202,13 @@ public enum PrintOptionCatalog {
         (.high,   "high",   "High")
     ]
 
-    /// Medium types.
-    ///
-    /// PS3.3 Table C.13-1 also defines MAMMO CLEAR FILM and MAMMO BLUE FILM.
-    /// They are not offered while DICOMNetwork's `MediumType` sends them as
-    /// `MAMMO CLEAR` / `MAMMO BLUE`, which are not terms: offering them would
-    /// put a wrong Medium Type on the wire. That fix is a raw-value change
-    /// waiting for the owner's decision (P-MAMMO).
+    /// Medium types — every Defined Term of PS3.3 Table C.13-1.
     public static let mediumTypes: [(value: MediumType, cliToken: String, label: String)] = [
-        (.paper,     "paper",      "Paper"),
-        (.clearFilm, "clear-film", "Clear film"),
-        (.blueFilm,  "blue-film",  "Blue film")
+        (.paper,          "paper",            "Paper"),
+        (.clearFilm,      "clear-film",       "Clear film"),
+        (.blueFilm,       "blue-film",        "Blue film"),
+        (.mammoClearFilm, "mammo-clear-film", "Mammography clear film"),
+        (.mammoBlueFilm,  "mammo-blue-film",  "Mammography blue film")
     ]
 
     /// Film destinations.

@@ -29,7 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Values known to differ from the standard whose fix changes public API (raw values) and is
 # waiting for the owner's approval; reported as PEND, not FAIL. Remove the entry when fixed.
-PENDING_API_APPROVAL = {('MediumType', 'MAMMO CLEAR'), ('MediumType', 'MAMMO BLUE')}
+PENDING_API_APPROVAL = set()   # P-MAMMO approved and applied 2026-09-29 (DICOMPrintKit pass)
 spec = importlib.util.spec_from_file_location('nema_docbook', os.path.join(HERE, 'nema_docbook.py'))
 nd = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nd)
@@ -125,7 +125,9 @@ def swift_hex_cases(src):
 
 
 def swift_string_cases(src, enum_name):
-    """The raw strings of `enum <enum_name>` (String-backed)."""
+    """The raw strings of `enum <enum_name>` (String-backed), without cases marked
+    `@available(*, deprecated …)`: those are kept for source compatibility and are
+    never written (e.g. MediumType's MAMMO CLEAR / MAMMO BLUE, written as the terms)."""
     m = re.search(r'enum\s+' + re.escape(enum_name) + r'\b[^{]*\{', src)
     if not m:
         return []
@@ -138,7 +140,7 @@ def swift_string_cases(src, enum_name):
             if depth == 0:
                 break
         i += 1
-    body = src[start:i]
+    body = re.sub(r'@available\(\*,\s*deprecated[^)]*\)\s*case\s+\w+\s*=\s*"[^"]*"', '', src[start:i])
     return re.findall(r'case\s+\w+\s*=\s*"([^"]*)"', body)
 
 

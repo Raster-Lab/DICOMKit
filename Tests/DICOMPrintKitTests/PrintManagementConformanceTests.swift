@@ -98,6 +98,18 @@ final class PrintManagementConformanceTests: XCTestCase {
         XCTAssertEqual(FilmIdentificationFooter.textString("A\tB\nC"), "ABC")
     }
 
+    // MARK: - Medium Type (PS3.3 Table C.13-1, P-MAMMO)
+
+    func test_catalogOffersEveryMediumTypeTerm() {
+        let sent = PrintOptionCatalog.mediumTypes.map(\.value.wireValue)
+        XCTAssertEqual(sent, ["PAPER", "CLEAR FILM", "BLUE FILM", "MAMMO CLEAR FILM", "MAMMO BLUE FILM"])
+        XCTAssertEqual(PrintOptionCatalog.mediumType(forToken: "mammo-blue-film"), .mammoBlueFilm)
+    }
+
+    func test_mammographyPresetSendsTheTerm() {
+        XCTAssertEqual(PrintOptions.mammography.mediumType.wireValue, "MAMMO BLUE FILM")
+    }
+
     // MARK: - Printer Status Info (PS3.3 C.13.9.1)
 
     func test_defaultStatusInfo_isADefinedTerm() {

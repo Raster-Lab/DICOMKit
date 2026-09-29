@@ -10,7 +10,7 @@ import DICOMCore
 
 #if canImport(CoreGraphics)
 import CoreGraphics
-// NEMA-verified: 2026a, checked 2026-09-28 — the 12 print SOP Class / instance UIDs registered in PS3.6 2026a Table A-1 and 11 defined-term enums text-diffed against PS3.3 2026a C.13.1/C.13.3/C.13.5/C.13.8/C.13.9 (Scripts/diff_network.py; MediumType MAMMO terms differ, kept pending API approval); N-ACTION-RSP Print Job reference per PS3.4 Tables H.4-3/H.4-8; colour item per Table C.13-5
+// NEMA-verified: 2026a, checked 2026-09-28 — the 12 print SOP Class / instance UIDs registered in PS3.6 2026a Table A-1 and 11 defined-term enums text-diffed against PS3.3 2026a C.13.1/C.13.3/C.13.5/C.13.8/C.13.9 (Scripts/diff_network.py; MediumType MAMMO CLEAR FILM / MAMMO BLUE FILM added 2026-09-29, P-MAMMO, old spellings deprecated and written as the terms); N-ACTION-RSP Print Job reference per PS3.4 Tables H.4-3/H.4-8; colour item per Table C.13-5
 #else
 // Define CGSize for platforms without CoreGraphics
 public struct CGSize: Sendable {
@@ -226,14 +226,46 @@ public enum PrintPriority: String, Sendable, Hashable, CaseIterable, Codable {
     case low = "LOW"
 }
 
-/// Film medium types
+/// Medium Type (2000,0030) — the Defined Terms of PS3.3 Table C.13-1.
 public enum MediumType: String, Sendable, Hashable, CaseIterable, Codable {
     case paper = "PAPER"
     case clearFilm = "CLEAR FILM"
     case blueFilm = "BLUE FILM"
-    // FIXME(NEMA 2026a): PS3.3 C.13.1 defines MAMMO CLEAR FILM / MAMMO BLUE FILM; raw values kept pending owner approval
+    case mammoClearFilm = "MAMMO CLEAR FILM"
+    case mammoBlueFilm = "MAMMO BLUE FILM"
+
+    /// `MAMMO CLEAR` is not a Medium Type term. Kept so older code compiles and
+    /// an SCU that sends it can still be read; it is written as
+    /// `MAMMO CLEAR FILM` (see ``wireValue``).
+    @available(*, deprecated, renamed: "mammoClearFilm",
+               message: "PS3.3 Table C.13-1 defines MAMMO CLEAR FILM")
     case mammoFilmClearBase = "MAMMO CLEAR"
+
+    /// `MAMMO BLUE` is not a Medium Type term; written as `MAMMO BLUE FILM`.
+    @available(*, deprecated, renamed: "mammoBlueFilm",
+               message: "PS3.3 Table C.13-1 defines MAMMO BLUE FILM")
     case mammoFilmBlueBase = "MAMMO BLUE"
+
+    /// The case for this value with the two deprecated spellings mapped to the
+    /// terms they meant — what a received value is stored as.
+    public var normalized: MediumType {
+        switch rawValue {
+        case "MAMMO CLEAR": return .mammoClearFilm
+        case "MAMMO BLUE":  return .mammoBlueFilm
+        default:            return self
+        }
+    }
+
+    /// The value written to Medium Type (2000,0030): always a Table C.13-1
+    /// Defined Term, whichever case was chosen.
+    public var wireValue: String { normalized.rawValue }
+
+    /// The five Defined Terms of Table C.13-1. The deprecated spellings are not
+    /// listed: a received one is normalized to its term before any set of
+    /// supported media is consulted.
+    public static let allCases: [MediumType] = [
+        .paper, .clearFilm, .blueFilm, .mammoClearFilm, .mammoBlueFilm
+    ]
 }
 
 /// Film destination
@@ -1088,13 +1120,13 @@ public struct PrintOptions: Sendable {
     /// Mammography print options
     ///
     /// Uses settings suitable for mammography:
-    /// - Mammography blue film
+    /// - Mammography blue film (MAMMO BLUE FILM, PS3.3 Table C.13-1)
     /// - High priority
     /// - Large film size
     public static let mammography = PrintOptions(
         priority: .high,
         filmSize: .size14InX17In,
-        mediumType: .mammoFilmBlueBase,
+        mediumType: .mammoBlueFilm,
         magnificationType: .bilinear
     )
 }
@@ -2668,7 +2700,7 @@ public enum DICOMPrintService {
             elements.append(DataElement.string(
                 tag: .mediumType,
                 vr: .CS,
-                value: session.mediumType.rawValue
+                value: session.mediumType.wireValue
             ))
             
             // Film Destination (2000,0040) - CS
@@ -3981,7 +4013,7 @@ public enum DICOMPrintService {
             var sessionElements: [DataElement] = []
             sessionElements.append(DataElement.string(tag: .numberOfCopies, vr: .IS, value: String(options.numberOfCopies)))
             sessionElements.append(DataElement.string(tag: .printPriority, vr: .CS, value: options.priority.rawValue))
-            sessionElements.append(DataElement.string(tag: .mediumType, vr: .CS, value: options.mediumType.rawValue))
+            sessionElements.append(DataElement.string(tag: .mediumType, vr: .CS, value: options.mediumType.wireValue))
             sessionElements.append(DataElement.string(tag: .filmDestination, vr: .CS, value: options.filmDestination.rawValue))
             if let label = options.sessionLabel {
                 sessionElements.append(DataElement.string(tag: .filmSessionLabel, vr: .LO, value: label))

@@ -43,7 +43,9 @@ public enum PrintSCPParser {
             session.printPriority = try enumeration(PrintPriority.self, priority, tag: "Print Priority")
         }
         if let medium = attributes.string(for: .mediumType) {
-            let value = try enumeration(MediumType.self, medium, tag: "Medium Type")
+            // A deprecated spelling (MAMMO CLEAR / MAMMO BLUE) is read as the
+            // Table C.13-1 term it stands for.
+            let value = try enumeration(MediumType.self, medium, tag: "Medium Type").normalized
             guard configuration.supportedMediumTypes.contains(value) else {
                 throw PrintSCPFailure(.invalidAttributeValue, comment: "Unsupported Medium Type: \(medium)")
             }
