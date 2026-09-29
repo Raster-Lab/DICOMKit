@@ -42,19 +42,14 @@ D, X = nd.D, nd.X
 # of the finding text it silences (see DICOMKIT_STANDARD_IMPLEMENTATION.md, P-CONST, P-HP,
 # P-RT, P-SEG, P-SC, P-AI, P-TITLE).
 PENDING_API_APPROVAL = {
-    '(130488, DCM, "Region of Interest")', '(121233, DCM, "Measurement Location")', '(128178, DCM, "Temporal Extent")',
-    '(121071, DCM, "Comparison")',                                                        # P-CONST
-    '(126002, DCM, "Lesion Measurement Report")', '(126003, DCM, "CT Perfusion Analysis Report")',   # P-TITLE
-    'T-D0050', '(F-61769, SRT', '(M-12000, SRT', '(M-40000, SRT', 'R-00339', 'R-00340', 'R-00341',   # P-AI
-    '(3128005, SRT, "Pulmonary consolidation")',                                          # P-AI (no CID concept)
-    'HangingProtocolLevel:', 'FilterOperator:', 'ImageSetSelectorCategory:', 'SortByCategory:',
-    'ImageBoxLayoutType:', 'ReformattingType:', 'ThreeDRenderingType: "MIP"', 'abstractPriorValue',   # P-HP
-    'RTROIInterpretedType:', 'ContourGeometricType:',                                     # P-RT
-    'SegmentationType: "LABELMAP"',                                                       # P-SEG
-    'ConversionType: ""', 'ConversionType: "DRW"',                                        # P-SC
-    '"SL" not carried', '"UL" not carried', '"SV" not carried', '"UV" not carried',       # P-WAVE
+    # Every DICOMKit P-item was approved and implemented on 2026-09-29; only the
+    # DICOMCore row D26 (SRDocumentType.colonCADSR) still waits for its own module pass.
     'SRDocumentType.colonCADSR',                                                          # D26 (DICOMCore)
 }
+
+# Private coding schemes (PS3.16 2026a section 8: designators beginning with "99") are
+# by definition absent from the NEMA text; their concepts are reported as informational.
+PRIVATE_SCHEME_PREFIX = '99'
 
 
 # --- DocBook helpers ---------------------------------------------------------------------
@@ -114,8 +109,11 @@ def attribute_terms(part, attr_name, table_label=None):
                 if name != want:
                     continue
                 kind, cell = cell_terms(part, tds[-1])
-                for xref in tds[-1].iter(D + 'xref'):
-                    cell += dw.variablelist_terms(part, xref.get('linkend'))
+                if not cell:
+                    # "See C.x.y" carries the terms only when the cell itself lists none;
+                    # otherwise the xref is an explanation (and may list another attribute).
+                    for xref in tds[-1].iter(D + 'xref'):
+                        cell += dw.variablelist_terms(part, xref.get('linkend'))
                 if cell:
                     labels.append(lab)
                     kinds.add(kind)
@@ -124,6 +122,16 @@ def attribute_terms(part, attr_name, table_label=None):
                         return lab, kind, terms
     kind = 'Enumerated Values' if kinds == {'Enumerated Values'} else ('Defined Terms' if 'Defined Terms' in kinds else '')
     return ', '.join(labels[:4]) + (' …' if len(labels) > 4 else ''), kind, terms
+
+
+DEPRECATED_CASE = re.compile(r'^[ \t]*@available\(\*,\s*deprecated[^\n]*\n[ \t]*(?:public\s+)?case\s+\w+\s*=\s*"[^"]*"', re.M)
+
+
+def active_string_cases(src, enum_name):
+    """Raw values of the enum's cases that are not marked deprecated (deprecated cases are
+    kept for source compatibility and are never written by the serializers)."""
+    body = DEPRECATED_CASE.sub('', dw.enum_body(src, enum_name))
+    return re.findall(r'case\s+\w+\s*=\s*"([^"]*)"', body)
 
 
 def section_terms(part, xml_id):
@@ -211,7 +219,7 @@ def check_coded_concepts(rep, p16, files):
     cids = cid_index(p16)
     srt = srt_to_sct(p16)
     pat = re.compile(r'codeValue:\s*"([^"]+)"\s*,\s*codingSchemeDesignator:\s*"([^"]+)"\s*,\s*codeMeaning:\s*"([^"]*)"', re.S)
-    matched, wrong, extra, legacy = 0, [], [], []
+    matched, wrong, extra, legacy, private = 0, [], [], [], []
     seen = set()
     for fname, src in files.items():
         for m in pat.finditer(src):
@@ -236,6 +244,8 @@ def check_coded_concepts(rep, p16, files):
                     hits = cids.get(('SCT', sct[0]), [])
                     std = hits[0][0] if hits else sct[1]
                     legacy.append(f'{where}: ({value}, SRT, "{meaning}") -> (SCT, {sct[0]}, "{std}") per Table O-1' + ('' if hits else ' (FSN; not in a CID)'))
+            elif scheme.startswith(PRIVATE_SCHEME_PREFIX):
+                private.append(f'{where}: ({value}, {scheme}, "{meaning}") private scheme (PS3.16 section 8)')
             else:
                 hits = cids.get((scheme, value))
                 if not hits:
@@ -246,7 +256,7 @@ def check_coded_concepts(rep, p16, files):
                 else:
                     matched += 1
     wrong, pending = split_pending(wrong)
-    rep.check('PS3.16 Table D-1 / CID tables: coded concept literals (value, scheme, meaning)', matched, wrong, extra=extra, pending=pending)
+    rep.check('PS3.16 Table D-1 / CID tables: coded concept literals (value, scheme, meaning)', matched, wrong, extra=extra + private, pending=pending)
     legacy, pending = split_pending(legacy)
     rep.check('PS3.16 Table 8-1 / O-1: SRT-style SNOMED codes (2026a templates use SCT concept ids)', 0, legacy, pending=pending)
 
@@ -395,7 +405,7 @@ def check_citations(rep, parts, files):
                 wrong.append(f'{fname}:{line_of(src, m.start())}: "PS3.{part} Table {lab}" does not exist in the 2026a text')
         for m in tid_pat.finditer(src):
             lab = f'{m.group(1)} {m.group(2)}'
-            if lab in labels[16]:
+            if lab in labels[16] or f'sect_{m.group(1)}_{m.group(2)}' in ids[16]:
                 matched += 1
             else:
                 wrong.append(f'{fname}:{line_of(src, m.start())}: "{lab}" does not exist in PS3.16 2026a')
@@ -442,13 +452,13 @@ def check_enums(rep, parts, files):
         ('PresentationState/GraphicAnnotation.swift', 'AnnotationUnits', p3, 'Graphic Annotation Units', 'C.10-5'),
         ('PresentationState/SpatialTransformation.swift', 'PresentationSizeMode', p3, 'Presentation Size Mode', 'C.10-4'),
         ('PresentationState/ColorManagement.swift', 'func:extractColorSpace', p3, 'sect_C.11.15.1.2', None),
-        ('Segmentation/Segmentation.swift', 'SegmentationType', p3, 'Segmentation Type', None),
+        ('Segmentation/Segmentation.swift', 'SegmentationType', p3, 'Segmentation Type', 'C.8.20-2'),   # C.8.20-5 HEIGHTMAP is the Height Map Segmentation IOD (A.91), not modelled
         ('Segmentation/Segmentation.swift', 'SegmentationFractionalType', p3, 'sect_C.8.20.2.3', None),
         ('Segmentation/Segmentation.swift', 'SegmentAlgorithmType', p3, 'Segment Algorithm Type', None),
         ('RadiationTherapy/RTStructureSet.swift', 'ContourGeometricType', p3, 'Contour Geometric Type', None),
         ('RadiationTherapy/RTStructureSet.swift', 'RTROIInterpretedType', p3, 'RT ROI Interpreted Type', None),
         ('Waveform/Waveform.swift', 'WaveformOriginality', p3, 'Waveform Originality', 'C.10-9'),
-        ('HangingProtocol/DisplaySet.swift', 'ImageBoxLayoutType', p3, 'Image Box Layout Type', None),
+        ('HangingProtocol/DisplaySet.swift', 'ImageBoxLayoutType', p3, 'Image Box Layout Type', 'C.23.3-1'),   # C.11.17-1 is Structured Display, not modelled
         ('HangingProtocol/DisplaySet.swift', 'ScrollDirection', p3, 'Image Box Scroll Direction', None),
         ('HangingProtocol/DisplaySet.swift', 'ReformattingType', p3, 'Reformatting Operation Type', None),
         ('HangingProtocol/DisplaySet.swift', 'ThreeDRenderingType', p3, '3D Rendering Type', None),
@@ -475,7 +485,7 @@ def check_enums(rep, parts, files):
             else:
                 code = re.findall(r'"([^"]*)"', ' '.join(re.findall(r'case\s+((?:"[^"]*"\s*,?\s*)+):', body)))
         else:
-            code = dw.string_cases(src, enum)
+            code = active_string_cases(src, enum)
         if not code:
             rep.check(f'{enum} ({fname}): enum not found', 0, [f'no `enum {enum}` with string raw values'])
             continue
@@ -623,7 +633,7 @@ def check_waveform_sample_interpretation(rep, p3, files):
         cells = [c for c in row if c]
         if len(cells) >= 2 and re.fullmatch(r'[A-Z]{2}', cells[-2]):
             std[cells[-2]] = cells[-1].startswith('signed')
-    code = dw.string_cases(src, 'WaveformSampleInterpretation')
+    code = active_string_cases(src, 'WaveformSampleInterpretation')
     body = dw.func_body(src, r'var\s+isSigned\b')
     signed_cases = set(re.findall(r'\.(\w+)', re.search(r'case ([^:]+): return true', body).group(1))) if 'return true' in body else set()
     raw_of = dict(re.findall(r'case\s+(\w+)\s*=\s*"([A-Z]{2})"', dw.enum_body(src, 'WaveformSampleInterpretation')))

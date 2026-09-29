@@ -374,8 +374,6 @@ let package = Package(
             // against the standard dictionary rather than a hand-copied table.
             dependencies: ["DICOMKit", "DICOMCore", "DICOMDictionary"],
             exclude: [
-                "AI",
-                "EncapsulatedDocument",
                 // RealWorldValue: the parser suite is in the sources allowlist below
                 // (DICOM_TAG_AUDIT_FINDINGS.md); the remaining files are listed here
                 // so they stay out of the build.
@@ -383,12 +381,10 @@ let package = Package(
                 "RealWorldValue/RealWorldValueRendererTests.swift",
                 "RealWorldValue/SUVCalculatorTests.swift",
                 "PresentationStateTests",
-                "SecondaryCapture",
                 // "Video" is NOT excluded: its files are in the sources allowlist
                 // below. An excluded directory wins over the allowlist, which is
                 // how the Video suite silently never ran.
                 "DICOMFileTests.swift",
-                "DICOMWritingTests.swift",
                 "DataSetTests.swift",
                 "ImagePreparationTests.swift",
                 "SequenceParsingTests.swift",
@@ -447,6 +443,10 @@ let package = Package(
                 // GSPS writer ⇄ parser round trip: a saved presentation state
                 // the parser cannot read back is not worth storing.
                 "GrayscalePresentationStateBuilderTests.swift",
+                // The Pseudo-Color (A.33.3) and Color (A.33.2) Softcopy builders:
+                // the same round-trip contract, each pinned to its Table A.33.x-1.
+                "PseudoColorPresentationStateBuilderTests.swift",
+                "ColorPresentationStateBuilderTests.swift",
                 // DICOM_TAG_AUDIT_FINDINGS.md: parsers rebuilt from numeric PS3.6
                 // tags, so a wrong Tag constant cannot round-trip through itself.
                 "TagAuditRegressionTests.swift",
@@ -512,10 +512,33 @@ let package = Package(
                 "StructuredReporting/MeasurementReportExtractorTests.swift",
                 "StructuredReporting/SRDocumentBuilderTests.swift",
                 "StructuredReporting/SRDocumentParserTests.swift",
+                // PS3.3 Tables C.17-1, C.17-2, 8.8-1a and C.18.10-1 round trip (P-SRSER, 2026-09-29).
+                "StructuredReporting/SRDocumentModuleRoundTripTests.swift",
                 // PS3.3 C.18.10 TABLE content item round trip (P8, 2026-09-25).
                 "StructuredReporting/TableContentItemRoundTripTests.swift",
                 "Waveform/WaveformTests.swift",
-                "PerformanceTests/SIMDImageProcessorTests.swift"
+                "PerformanceTests/SIMDImageProcessorTests.swift",
+                // PS3.3 C.11.2.1.2.1 LINEAR / C.11.2.1.3 SIGMOID: SIMD ⇄ scalar window parity (P-RENDER, 2026-09-29).
+                "PerformanceTests/SIMDWindowParityTests.swift",
+                // PS3.3 C.7.6.3.1.2 YBR_FULL / YBR_PARTIAL / ICT / RCT / packed 4:2:2 (P-RENDER, 2026-09-29).
+                "PixelDataRendererYBRTests.swift",
+                // PS3.3 Table C.7-10 / C.7.6.2.1.1 slice spacing and Table C.7-11c descriptor (P-VOL, 2026-09-29).
+                "VolumeSpacingTests.swift",
+                // PS3.3 Table C.7-13 Cine, C.7.6.1.1.5.1 terms, PS3.5 8.2.5/8.2.12 (P-VIDEO, 2026-09-29).
+                "Video/VideoCineModuleTests.swift",
+                // PS3.3 C.8.9.1.1.3/C.8.9.1.1.5, PS3.16 CID 85 and DCM 126410-126413 (P-SUV, 2026-09-29).
+                // DICOM 2026a verification (DICOMKIT_STANDARD_IMPLEMENTATION.md): suites
+                // that were never in this allowlist, plus the P-item suites of 2026-09-29.
+                "DICOMWritingTests.swift",
+                "DICOMDIRReaderRecordTypeTests.swift",
+                "CompressionManagerXYBTests.swift",
+                "StructuredReporting/SpatialCoordinatesClosedPolylineTests.swift",
+                "StructuredReporting/CADSRBuilderValueTypeTests.swift",
+                "AI/AIInferenceResultTests.swift",
+                "EncapsulatedDocument/EncapsulatedDocumentTests.swift",
+                "SecondaryCapture/SecondaryCaptureTests.swift",
+                "Validation/IODRequirementValidatorTests.swift",
+                "RealWorldValue/SUVStandardConformanceTests.swift"
             ]
         ),
         .testTarget(
