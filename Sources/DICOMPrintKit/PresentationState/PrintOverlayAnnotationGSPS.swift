@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Graphic Type, Graphic/Bounding Box/Anchor Point Annotation Units, column-row order and Referenced Frame Number checked against PS3.3 2026a Table C.10-5 and C.10.5.1.2; layer colour per Table C.10-7 (0070,0401); Compound Graphic and Text/Line Style not modelled by DICOMKit (D39)
 // PrintOverlayAnnotationGSPS.swift
 // DICOMPrintKit
 //
@@ -5,13 +6,15 @@
 // PS3.3 C.10.5 text objects and polylines.
 //
 // This is a one-way, best-effort translation written *in addition to* the JSON
-// sidecar (see ``AnnotationSidecar``), never instead of it. DICOM's vocabulary
-// cannot say everything ``PrintOverlayAnnotation`` says — there is no arrow
-// primitive, no per-annotation colour (a layer carries one *recommended*
-// value), and nothing corresponding to `scale` — so the sidecar remains the
-// authority our own restore reads, and this sequence is what makes the saved
-// object legible to any other DICOM viewer: the words at their anchor, and the
-// arrow as the polylines of its shaft and head.
+// sidecar (see ``AnnotationSidecar``), never instead of it. The model DICOMKit
+// writes a GSPS from cannot say everything ``PrintOverlayAnnotation`` says: it
+// has no Compound Graphic Sequence (PS3.3 Table C.10-5, whose Compound Graphic
+// Type includes ARROW) and no Text/Line Style Sequence (Tables C.10-5a/5b, the
+// per-object CIELab colour), both deferred to DICOMKit as D39 — so an arrow is
+// written as the polylines of its shaft and head and every object takes its
+// layer's recommended colour — and nothing in C.10.5 corresponds to `scale`.
+// The sidecar therefore remains the authority our own restore reads, and this
+// sequence is what makes the saved object legible to any other DICOM viewer.
 
 import Foundation
 import DICOMKit
@@ -27,13 +30,15 @@ public enum PrintOverlayAnnotationGSPS {
     ///
     /// One layer rather than one per colour: layers exist for stacking order,
     /// and drawn annotations have none — they were placed on one image by one
-    /// reader. The layer's recommended RGB is the first annotation's colour,
-    /// which is right when the film uses one colour (the common case) and an
-    /// honest approximation when it does not.
+    /// reader. The layer's recommended colour — Graphic Layer Recommended
+    /// Display CIELab Value (0070,0401), Table C.10-7, which the builder
+    /// converts the model's RGB into — is the first annotation's colour, which
+    /// is right when the film uses one colour (the common case) and an honest
+    /// approximation when it does not.
     public static let layerName = "DRAWINGS"
 
-    /// The layer the annotation below belongs to — required by C.10.5, which
-    /// files every annotation under a named layer.
+    /// The layer the annotation below belongs to — Graphic Layer (0070,0002) is
+    /// Type 1 in every Graphic Annotation Sequence item (PS3.3 Table C.10-5).
     public static func graphicLayers(
         for annotations: [PrintOverlayAnnotation]
     ) -> [GraphicLayer] {
@@ -464,9 +469,10 @@ public enum PrintOverlayAnnotationGSPS {
     /// An arrow as two polylines: the shaft from tail to tip, and the open
     /// head traced left wing → tip → right wing.
     ///
-    /// GSPS has no arrow primitive, so this is the closest statement its
-    /// vocabulary makes: a viewer that renders the polylines shows a line with
-    /// a chevron at the pointing end. The head's size comes from the same
+    /// DICOMKit's graphic model has no Compound Graphic (the ARROW type of
+    /// PS3.3 Table C.10-5 — D39), so this is the closest statement it can
+    /// make: a viewer that renders the polylines shows a line with a chevron
+    /// at the pointing end. The head's size comes from the same
     /// ``PrintArrowGeometry`` the film is burned with, so the two agree.
     private static func arrowObjects(
         for annotation: PrintOverlayAnnotation,

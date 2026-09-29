@@ -301,7 +301,9 @@ final class ImportedPresentationStateTests: XCTestCase {
             stored.annotationsByFrame(forImage: imageA)[0]?.first { $0.kind == .shutter })
 
         XCTAssertEqual(shutter.points.count, 2)
-        XCTAssertEqual(shutter.points[0].x, 50.0 / 512, accuracy: 1e-9)
+        // Left edge 50 is a 1-based pixel position (PS3.3 Table C.7-17a) and
+        // pixel 50 is open, so the open region starts at its left edge, 49.
+        XCTAssertEqual(shutter.points[0].x, 49.0 / 512, accuracy: 1e-9)
         XCTAssertEqual(shutter.points[1].x, 462.0 / 512, accuracy: 1e-9)
         XCTAssertEqual(shutter.color, PrintOverlayColor(red: 0, green: 0, blue: 0))
     }
