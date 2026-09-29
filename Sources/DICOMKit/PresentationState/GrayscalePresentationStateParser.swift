@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — shutter row/column order (C.7.6.11), CIELab layer colour (C.10.7.1.1), LUT Descriptor and Data VRs (C.11.1.1) and MATRIX units per PS3.3 2026a
+// NEMA-verified: 2026a, checked 2026-09-29 — shutter row/column order and (0018,1624) (Tables C.7-17a, C.11.12-1), CIELab encoding (C.10.7.1.1), Displayed Area 1C attributes (Table C.10-4), PIXEL/DISPLAY/MATRIX units (Table C.10-5), LUT VRs (C.11.1.1) per PS3.3 2026a
 //
 // GrayscalePresentationStateParser.swift
 // DICOMKit
@@ -117,7 +117,13 @@ public struct GrayscalePresentationStateParser: Sendable {
         
         // Parse Display Shutter Module
         let shutters = try parseDisplayShutters(from: dataSet)
-        
+
+        // Shutter Presentation Color CIELab Value (0018,1624), three US values
+        // (Table C.11.12-1; encoding C.10.7.1.1). Read for every class: Type 3
+        // in the macro, 1C in the colour classes.
+        let shutterPresentationColor = dataSet[Tag(group: 0x0018, element: 0x1624)]?
+            .integerValuesTolerant.flatMap(CIELabColor.init(encodedValues:))
+
         return GrayscalePresentationState(
             sopInstanceUID: sopInstanceUID,
             sopClassUID: sopClassUID,
@@ -135,7 +141,8 @@ public struct GrayscalePresentationStateParser: Sendable {
             displayedArea: displayedArea,
             graphicLayers: graphicLayers,
             graphicAnnotations: graphicAnnotations,
-            shutters: shutters
+            shutters: shutters,
+            shutterPresentationColor: shutterPresentationColor
         )
     }
     
@@ -332,10 +339,34 @@ public struct GrayscalePresentationStateParser: Sendable {
         let topLeft = (column: topLeftValues[0], row: topLeftValues[1])
         let bottomRight = (column: bottomRightValues[0], row: bottomRightValues[1])
         
-        let sizeModeString = firstItem.string(for: .presentationSizeMode) ?? "SCALE TO FIT"
+        let sizeModeString = firstItem.string(for: .presentationSizeMode)?
+            .trimmingCharacters(in: .whitespaces) ?? "SCALE TO FIT"
         let sizeMode = PresentationSizeMode(rawValue: sizeModeString) ?? .scaleToFit
-        
-        return DisplayedArea(topLeft: topLeft, bottomRight: bottomRight, sizeMode: sizeMode)
+
+        // Table C.10-4 Type 1C attributes. Presentation Pixel Spacing (0070,0101)
+        // is DS, row spacing then column spacing (10.7.1.3); Presentation Pixel
+        // Aspect Ratio (0070,0102) is IS, vertical then horizontal; Presentation
+        // Pixel Magnification Ratio (0070,0103) is FL.
+        var pixelSpacing: (row: Double, column: Double)? = nil
+        if let spacing = firstItem[.presentationPixelSpacing]?.realValuesTolerant,
+           spacing.count == 2 {
+            pixelSpacing = (row: spacing[0], column: spacing[1])
+        }
+        var pixelAspectRatio: (vertical: Int, horizontal: Int)? = nil
+        if let ratio = firstItem[.presentationPixelAspectRatio]?.integerValuesTolerant,
+           ratio.count == 2 {
+            pixelAspectRatio = (vertical: ratio[0], horizontal: ratio[1])
+        }
+        let magnificationRatio = firstItem[.presentationPixelMagnificationRatio]?
+            .realValuesTolerant?.first
+
+        return DisplayedArea(
+            topLeft: topLeft,
+            bottomRight: bottomRight,
+            sizeMode: sizeMode,
+            pixelSpacing: pixelSpacing,
+            pixelAspectRatio: pixelAspectRatio,
+            magnificationRatio: magnificationRatio)
     }
     
     private func parseGraphicLayers(from dataSet: DataSet) -> [GraphicLayer] {
@@ -442,8 +473,9 @@ public struct GrayscalePresentationStateParser: Sendable {
 
         // Graphic Annotation Units (0070,0005) is the graphic object's own units
         // attribute; the bounding-box tag is kept as a fallback for files this
-        // parser accepted before the distinction was made. Units this model does
-        // not carry (MATRIX, C.10.5.1.1) skip the object rather than misplace it.
+        // parser accepted before the distinction was made. PIXEL, DISPLAY and
+        // MATRIX (Table C.10-5) are all carried; a value outside the enumeration
+        // skips the object rather than misplace it.
         let unitsString = item.string(for: .graphicAnnotationUnits)
             ?? item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
         guard let units = AnnotationUnits(rawValue: unitsString.trimmingCharacters(in: .whitespaces)) else {
@@ -478,7 +510,7 @@ public struct GrayscalePresentationStateParser: Sendable {
         let anchorVisibleString = item.string(for: .anchorPointVisibility)
         let anchorVisible = anchorVisibleString == "Y"
         
-        // Units this model does not carry (MATRIX) skip the object rather than misplace it
+        // A units value outside Table C.10-5's enumeration skips the object rather than misplace it
         let boundingBoxUnitsString = item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
         guard let boundingBoxUnits = AnnotationUnits(rawValue: boundingBoxUnitsString.trimmingCharacters(in: .whitespaces)) else {
             return nil

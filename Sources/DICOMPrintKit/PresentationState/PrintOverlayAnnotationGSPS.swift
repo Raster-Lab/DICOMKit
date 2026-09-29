@@ -444,10 +444,13 @@ public enum PrintOverlayAnnotationGSPS {
             let x = data[index]
             let y = data[index + 1]
             switch units {
-            case .pixel:
+            case .pixel, .matrix:
                 // The same convention the writers above use — a fraction of
                 // the image's size, no half-pixel offset — so a shape written
                 // by this app and read back lands exactly where it was.
+                // MATRIX (PS3.3 Table C.10-5) is relative to a tiled image's
+                // Total Pixel Matrix; the printed image is the whole matrix
+                // this code ever sees, so it is read the same way.
                 points.append(PrintOverlayPoint(x: x / width, y: y / height))
             case .display:
                 points.append(PrintOverlayPoint(x: x, y: y))

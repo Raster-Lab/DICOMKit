@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Graphic Type terms match PS3.3 2026a Table C.10-5; ELLIPSE points per C.10.5.1.2; MATRIX units are pending P-PS
+// NEMA-verified: 2026a, checked 2026-09-29 — Graphic Type terms and the PIXEL/DISPLAY/MATRIX units match PS3.3 2026a Table C.10-5; ELLIPSE points per C.10.5.1.2; layer colours per Table C.10-7
 //
 // GraphicAnnotation.swift
 // DICOMKit
@@ -26,9 +26,17 @@ public struct GraphicLayer: Sendable, Hashable {
     public let description: String?
     
     /// Recommended display grayscale value (0-65535)
+    ///
+    /// Graphic Layer Recommended Display Grayscale Value (0070,0066), Type 3, a P-Value.
     public let recommendedGrayscaleValue: Int?
-    
-    /// Recommended display RGB value
+
+    /// Recommended display colour, as 16-bit-per-channel sRGB.
+    ///
+    /// Table C.10-7 (2026a) carries the colour only as Graphic Layer Recommended
+    /// Display CIELab Value (0070,0401); the RGB attribute (0070,0067) is not in
+    /// the table any more. The builder converts this value to CIELab on the way
+    /// out (C.10.7.1.1) and the parser converts (0070,0401) back, reading the
+    /// retired RGB tag only for files that still carry it.
     public let recommendedRGBValue: (red: Int, green: Int, blue: Int)?
     
     /// Initialize a graphic layer
@@ -252,11 +260,34 @@ extension TextObject {
 
 /// Units for annotation coordinates
 ///
-/// Reference: PS3.3 Section C.10.5.1 - Graphic Annotation Module Attributes
-public enum AnnotationUnits: String, Sendable, Hashable {
-    /// Pixel coordinates
+/// The Enumerated Values of Bounding Box Annotation Units (0070,0003), which
+/// Anchor Point Annotation Units (0070,0004) and Graphic Annotation Units
+/// (0070,0005) share (PS3.3 Table C.10-5).
+///
+/// Reference: PS3.3 Section C.10.5 - Graphic Annotation Module
+public enum AnnotationUnits: String, Sendable, Hashable, CaseIterable {
+    /// Image relative, sub-pixel: the TLHC of the TLHC pixel is 0.0\0.0, the BRHC
+    /// of the BRHC pixel is Columns\Rows (Table C.10-5, Figure C.10.5-1).
     case pixel = "PIXEL"
-    
-    /// Display coordinates (normalized 0.0-1.0)
+
+    /// Fraction of the Specified Displayed Area: 0.0\0.0 is its TLHC and 1.0\1.0
+    /// its BRHC (Table C.10-5).
     case display = "DISPLAY"
+
+    /// Total Pixel Matrix relative, sub-pixel: the origin is the TLHC of the TLHC
+    /// pixel of the Total Pixel Matrix and the BRHC of its BRHC pixel is Total
+    /// Pixel Matrix Columns\Total Pixel Matrix Rows (Table C.10-5, Figure
+    /// C.10.5-1b). Table C.10-5: "MATRIX may be used only if the instance
+    /// referenced by Referenced Image Sequence (0008,1140) is tiled (i.e.,
+    /// contains Total Pixel Matrix Columns (0048,0006) and Total Pixel Matrix
+    /// Rows (0048,0007))" — whole slide images (A.32.8). Every presentation
+    /// state IOD that includes C.10.5 may carry it; a renderer of an untiled
+    /// image has no matrix to place it in and treats it like `pixel`.
+    case matrix = "MATRIX"
+
+    /// Whether the coordinates are relative to the image's own pixels (`pixel`,
+    /// `matrix`) rather than to the Specified Displayed Area (`display`).
+    public var isImageRelative: Bool {
+        self != .display
+    }
 }

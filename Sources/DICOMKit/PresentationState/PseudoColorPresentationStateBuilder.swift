@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a A.33.3: the palette carries no baked window (PS3.4 N.2, N.2.4.2); Palette Color LUT module (C.7.9) and ICC Profile module (C.11.15)
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table A.33.3-1: the palette carries no baked window (PS3.4 N.2, N.2.4.2); Palette Color LUT (C.7.9), ICC Profile (C.11.15) and Shutter Presentation Color CIELab Value (Table C.11.12-1)
 // PseudoColorPresentationStateBuilder.swift
 // DICOMKit
 //
@@ -79,6 +79,9 @@ public struct PseudoColorPresentationStateBuilder: Sendable {
     ///   - patient: Patient/study attributes copied from the source image.
     ///   - seriesInstanceUID: The presentation-state series this object joins.
     ///   - seriesNumber: Series Number of that series.
+    ///   - imageSize: Columns and rows of the referenced image, used to write
+    ///     the mandatory Displayed Area when the state records none (see the
+    ///     grayscale builder).
     /// - Returns: A data set carrying the full Pseudo-Color Softcopy
     ///   Presentation State IOD.
     public func buildDataSet(
@@ -87,17 +90,26 @@ public struct PseudoColorPresentationStateBuilder: Sendable {
         pixelDomain: PixelDomain? = nil,
         patient: PresentationStatePatientContext,
         seriesInstanceUID: String,
-        seriesNumber: Int
+        seriesNumber: Int,
+        imageSize: (columns: Int, rows: Int)? = nil
     ) -> DataSet {
         // Everything shared is written by the builder that owns it.
         var dataSet = GrayscalePresentationStateBuilder().buildDataSet(
             from: state,
             patient: patient,
             seriesInstanceUID: seriesInstanceUID,
-            seriesNumber: seriesNumber)
+            seriesNumber: seriesNumber,
+            imageSize: imageSize)
 
         // MARK: SOP Common — this is a different SOP class.
         dataSet.setString(Self.sopClassUID, for: .sopClassUID, vr: .UI)
+
+        // MARK: Presentation State Shutter (C.11.12)
+        //
+        // Table C.11.12-1: Shutter Presentation Color CIELab Value (0018,1624)
+        // is required with a shutter in every class but GSPS — this one included.
+        GrayscalePresentationStateBuilder.applyShutterPresentationColor(
+            state.shutterPresentationColor, to: &dataSet)
 
         // MARK: Presentation LUT, translated rather than dropped.
         //

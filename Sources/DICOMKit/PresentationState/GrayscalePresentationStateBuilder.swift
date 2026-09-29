@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a A.33.1: Modality LUT (C.11.1), LUT sequences (C.11.6, C.11.8), Display Shutter (C.7.6.11), conditional Graphic Filled (C.10.5), CIELab layer colour (C.10.7.1.1), Type 2 Content Creator Name (Table 10-12)
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table A.33.1-1 modules: Modality LUT (C.11.1), LUT sequences (C.11.6, C.11.8), Display Shutter and Presentation State Shutter (Tables C.7-17a, C.11.12-1), Displayed Area 1C attributes (Table C.10-4), conditional Graphic Filled (Table C.10-5), CIELab layer colour (C.10.7.1.1), Type 2 Content Creator Name (Table 10-12)
 // GrayscalePresentationStateBuilder.swift
 // DICOMKit
 //
@@ -49,12 +49,20 @@ public struct GrayscalePresentationStateBuilder: Sendable {
     ///   - seriesInstanceUID: The series the object belongs to. Callers that
     ///     group several states together pass the same UID for each.
     ///   - seriesNumber: Series Number of that series.
+    ///   - imageSize: Columns and rows of the referenced image. The Displayed
+    ///     Area Module is mandatory (Table A.33.1-1) and its selection sequence
+    ///     Type 1 (Table C.10-4); when the state records no area and the size
+    ///     is known, the whole image (1\1 to columns\rows, SCALE TO FIT) is
+    ///     written, which is what the absence meant to the viewer. Without
+    ///     either, the sequence is left out and ``validate(_:imageSize:)``
+    ///     says so.
     /// - Returns: A data set carrying the full GSPS IOD.
     public func buildDataSet(
         from state: GrayscalePresentationState,
         patient: PresentationStatePatientContext,
         seriesInstanceUID: String,
-        seriesNumber: Int
+        seriesNumber: Int,
+        imageSize: (columns: Int, rows: Int)? = nil
     ) -> DataSet {
         var dataSet = DataSet()
 
@@ -158,11 +166,18 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             dataSet.setInteger(spatial.rotation, for: .imageRotation)
             dataSet.setString(spatial.horizontalFlip ? "Y" : "N", for: .imageHorizontalFlip, vr: .CS)
         }
-        if let area = state.displayedArea {
+        if let area = Self.displayedArea(of: state, imageSize: imageSize) {
             dataSet[.displayedAreaSelectionSequence] = Self.displayedAreaElement(area)
         }
 
         // MARK: Display Shutter (C.7.6.11, C.11.12)
+        //
+        // Shutter Presentation Color CIELab Value (0018,1624) is not written
+        // here: Table C.11.12-1 requires it only "if the SOP Class is other
+        // than Grayscale Softcopy Presentation State Storage", and a 1C
+        // element whose condition fails shall be absent (PS3.5 7.4.2). The
+        // Pseudo-Color and Color builders add it with
+        // `applyShutterPresentationColor`.
         Self.applyShutters(state.shutters, to: &dataSet)
 
         // MARK: Annotations
@@ -197,6 +212,68 @@ public struct GrayscalePresentationStateBuilder: Sendable {
         }
 
         return dataSet
+    }
+
+    // MARK: - Validation
+
+    /// What keeps a state from being written as a conformant object.
+    public enum ValidationError: Error, Sendable, Equatable, CustomStringConvertible {
+        /// No Displayed Area and no image size to derive one from: the Type 1
+        /// Displayed Area Selection Sequence (Table C.10-4) would be absent.
+        case missingDisplayedArea
+        /// The Displayed Area breaks a Table C.10-4 Type 1C condition.
+        case displayedArea(DisplayedArea.ConformanceError)
+        /// Presentation State Relationship (Table C.11.11-1b): Referenced Series
+        /// Sequence and each item's Referenced Image Sequence are Type 1 with
+        /// one or more items.
+        case missingReferencedImages
+
+        public var description: String {
+            switch self {
+            case .missingDisplayedArea:
+                return "Displayed Area Selection Sequence (0070,005A) is Type 1 (PS3.3 Table C.10-4); give the state a displayedArea or the builder an imageSize"
+            case .displayedArea(let error):
+                return error.description
+            case .missingReferencedImages:
+                return "Referenced Series Sequence (0008,1115) needs at least one series with at least one image (PS3.3 Table C.11.11-1b)"
+            }
+        }
+    }
+
+    /// Checks the conditions ``buildDataSet(from:patient:seriesInstanceUID:seriesNumber:imageSize:)``
+    /// cannot satisfy on its own. The build itself never throws — the viewer's
+    /// save path must not fail on a state it could show — so callers that want
+    /// a conformance guarantee call this first.
+    public func validate(
+        _ state: GrayscalePresentationState,
+        imageSize: (columns: Int, rows: Int)? = nil
+    ) throws {
+        guard let area = Self.displayedArea(of: state, imageSize: imageSize) else {
+            throw ValidationError.missingDisplayedArea
+        }
+        do {
+            try area.validate()
+        } catch let error as DisplayedArea.ConformanceError {
+            throw ValidationError.displayedArea(error)
+        }
+        guard state.referencedSeries.contains(where: { !$0.referencedImages.isEmpty }) else {
+            throw ValidationError.missingReferencedImages
+        }
+    }
+
+    /// The area that goes out: the state's own, or the whole image when the
+    /// state has none and the size is known.
+    static func displayedArea(
+        of state: GrayscalePresentationState,
+        imageSize: (columns: Int, rows: Int)?
+    ) -> DisplayedArea? {
+        if let area = state.displayedArea { return area }
+        guard let size = imageSize, size.columns > 0, size.rows > 0 else { return nil }
+        // Table C.10-4: corners are column\row relative to the origin 1\1.
+        return DisplayedArea(
+            topLeft: (column: 1, row: 1),
+            bottomRight: (column: size.columns, row: size.rows),
+            sizeMode: .scaleToFit)
     }
 
     // MARK: - LUT and shutter encoding
@@ -253,6 +330,23 @@ public struct GrayscalePresentationStateBuilder: Sendable {
         dataSet.setInteger(shutters.first?.presentationValue ?? 0, for: .shutterPresentationValue)
     }
 
+    /// Shutter Presentation Color CIELab Value (0018,1624), three US values
+    /// encoded per C.10.7.1.1. Table C.11.12-1: Type 1C, "Required if the
+    /// Display Shutter Module or Bitmap Display Shutter Module is present and
+    /// the SOP Class is other than Grayscale Softcopy Presentation State
+    /// Storage" — so the colour builders call this after the shutters are
+    /// written, and it writes nothing when no shutter shape went out. A state
+    /// with shutters but no colour gets ``CIELabColor/shutterBlack``, the
+    /// colour of the P-Value 0 the monochrome attribute defaults to.
+    static func applyShutterPresentationColor(
+        _ color: CIELabColor?, to dataSet: inout DataSet
+    ) {
+        guard dataSet[.shutterShape] != nil else { return }
+        _ = dataSet.setIntegers(
+            (color ?? .shutterBlack).encodedValues,
+            for: Tag(group: 0x0018, element: 0x1624))
+    }
+
     // MARK: - Sequences
 
     private static func referencedSeriesElement(_ series: [ReferencedSeries]) -> DataElement {
@@ -287,26 +381,48 @@ public struct GrayscalePresentationStateBuilder: Sendable {
         return sequence(tag: .referencedSeriesSequence, items: items)
     }
 
+    /// One Displayed Area Selection Sequence item per Table C.10-4.
+    ///
+    /// The Type 1C attributes follow the table's conditions exactly, and PS3.5
+    /// 7.4.2 (a 1C element whose condition is not met shall be absent):
+    /// * Presentation Pixel Spacing (0070,0101) — required for TRUE SIZE, may be
+    ///   present otherwise; written whenever the state has it.
+    /// * Presentation Pixel Aspect Ratio (0070,0102) — required if the spacing
+    ///   is not present; then the state's ratio or 1\1, the square pixels the
+    ///   viewer assumes. Not written next to a spacing.
+    /// * Presentation Pixel Magnification Ratio (0070,0103) — required for
+    ///   MAGNIFY; written whenever the state has it.
+    /// A TRUE SIZE area without a spacing, or a MAGNIFY area without a ratio,
+    /// cannot be written truthfully — the required value does not exist — so
+    /// the mode goes out as SCALE TO FIT, the mode whose meaning needs neither.
+    /// ``validate(_:imageSize:)`` reports that downgrade before it happens.
     private static func displayedAreaElement(_ area: DisplayedArea) -> DataElement {
-        // Encodings come from the dictionary (SL here). The parser accepts the
-        // IS form older builds wrote, so existing states still read back.
-        let item = SequenceItem(elements: [
+        // Encodings come from the dictionary (SL for the corners, DS, IS, FL).
+        // The parser accepts the IS corners older builds wrote.
+        let sizeMode: PresentationSizeMode = (try? area.validate()) == nil
+            ? .scaleToFit : area.sizeMode
+        var elements: [DataElement] = [
             Self.integers([area.topLeft.column, area.topLeft.row],
                           for: .displayedAreaTopLeftHandCorner),
             Self.integers([area.bottomRight.column, area.bottomRight.row],
                           for: .displayedAreaBottomRightHandCorner),
             DataElement.string(
-                tag: .presentationSizeMode, vr: .CS, value: area.sizeMode.rawValue),
-            // Type 1C: C.10.4 requires one of Presentation Pixel Spacing
-            // (0070,0101) or Presentation Pixel Aspect Ratio (0070,0102) in
-            // every item — dcmpschk fails the object outright when both are
-            // absent. Physical spacing is not something this builder knows, so
-            // the aspect ratio is written instead: 1\\1, the square pixels the
-            // viewer already assumes when it composes the displayed area.
-            DataElement.string(
-                tag: .presentationPixelAspectRatio, vr: .IS, value: "1\\1")
-        ])
-        return sequence(tag: .displayedAreaSelectionSequence, items: [item])
+                tag: .presentationSizeMode, vr: .CS, value: sizeMode.rawValue),
+        ]
+        if let spacing = area.pixelSpacing {
+            // Row spacing then column spacing (Table C.10-4, 10.7.1.3)
+            elements.append(Self.reals([spacing.row, spacing.column],
+                                       for: .presentationPixelSpacing))
+        } else {
+            let ratio = area.pixelAspectRatio ?? (vertical: 1, horizontal: 1)
+            elements.append(Self.integers([ratio.vertical, ratio.horizontal],
+                                          for: .presentationPixelAspectRatio))
+        }
+        if let magnification = area.magnificationRatio {
+            elements.append(Self.reals([magnification],
+                                       for: .presentationPixelMagnificationRatio))
+        }
+        return sequence(tag: .displayedAreaSelectionSequence, items: [SequenceItem(elements: elements)])
     }
 
     private static func applyVOILUT(_ voiLUT: VOILUT, to dataSet: inout DataSet) {
@@ -477,7 +593,7 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             DataElement.string(tag: .graphicType, vr: .CS, value: object.type.rawValue),
         ]
         // Graphic Filled (0070,0024) is Type 1C (C.10.5): only for CIRCLE, ELLIPSE, or
-        // a POLYLINE / INTERPOLATED whose first point is also its last. PS3.5 7.4.4:
+        // a POLYLINE / INTERPOLATED whose first point is also its last. PS3.5 7.4.2:
         // a 1C element whose condition is not met shall not be present.
         let d = object.data
         let closed = object.type == .circle || object.type == .ellipse

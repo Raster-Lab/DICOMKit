@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — the four presentation state SOP Class UIDs match PS3.6 2026a Table A-1; IOD citations are A.33.1-A.33.4
+// NEMA-verified: 2026a, checked 2026-09-29 — the four presentation state SOP Class UIDs match PS3.6 2026a Table A-1; module sets per Tables A.33.1-1 to A.33.4-1; Shutter Presentation Color CIELab Value per Table C.11.12-1
 //
 // PresentationState.swift
 // DICOMKit
@@ -122,21 +122,37 @@ public struct GrayscalePresentationState: PresentationState, Sendable {
     public let spatialTransformation: SpatialTransformation?
     
     /// Displayed area selection (zoom and pan)
+    ///
+    /// The Displayed Area Module is M in every presentation state IOD (Tables
+    /// A.33.1-1 to A.33.4-1) and its Displayed Area Selection Sequence is Type 1
+    /// (Table C.10-4), so a conformant object always has one. The model keeps it
+    /// optional on purpose: the parser reads files that omit it rather than
+    /// losing their annotations, and a capturing viewer has no area to record
+    /// when the whole image is shown. The builders close the gap on the way out —
+    /// given the image size they write the full-image area — and
+    /// ``GrayscalePresentationStateBuilder/validate(_:imageSize:)`` reports a
+    /// state that would still go out without one.
     public let displayedArea: DisplayedArea?
-    
+
     // MARK: - Annotations
-    
+
     /// Graphic layers for organizing annotations
     public let graphicLayers: [GraphicLayer]
-    
+
     /// Graphic annotations on the image
     public let graphicAnnotations: [GraphicAnnotation]
-    
+
     // MARK: - Display Shutters
-    
+
     /// Display shutters for masking regions
     public let shutters: [DisplayShutter]
-    
+
+    /// Shutter Presentation Color CIELab Value (0018,1624): the colour of the
+    /// occluded pixels on a colour display. Table C.11.12-1 makes it Type 1C —
+    /// required with a shutter in every presentation state SOP class other than
+    /// Grayscale Softcopy; nil means none was recorded.
+    public let shutterPresentationColor: CIELabColor?
+
     /// Initialize a grayscale presentation state
     public init(
         sopInstanceUID: String,
@@ -155,7 +171,8 @@ public struct GrayscalePresentationState: PresentationState, Sendable {
         displayedArea: DisplayedArea? = nil,
         graphicLayers: [GraphicLayer] = [],
         graphicAnnotations: [GraphicAnnotation] = [],
-        shutters: [DisplayShutter] = []
+        shutters: [DisplayShutter] = [],
+        shutterPresentationColor: CIELabColor? = nil
     ) {
         self.sopInstanceUID = sopInstanceUID
         self.sopClassUID = sopClassUID
@@ -174,6 +191,7 @@ public struct GrayscalePresentationState: PresentationState, Sendable {
         self.graphicLayers = graphicLayers
         self.graphicAnnotations = graphicAnnotations
         self.shutters = shutters
+        self.shutterPresentationColor = shutterPresentationColor
     }
 }
 
@@ -181,6 +199,13 @@ public struct GrayscalePresentationState: PresentationState, Sendable {
 ///
 /// This IOD defines a presentation state for color images with ICC profile-based
 /// color management, spatial transformations, and annotations.
+///
+/// Table A.33.2-1 (2026a) has no Modality LUT, Softcopy VOI LUT or Softcopy
+/// Presentation LUT module — a colour image has no grey pipeline to record —
+/// and makes the ICC Profile module (C.11.15) mandatory; hence no LUT fields
+/// here and `iccProfile`, which ``ColorPresentationStateBuilder`` writes as
+/// sRGB when nil. Written by ``ColorPresentationStateBuilder``; read through
+/// `GrayscalePresentationStateParser` and ``init(parsed:iccProfile:)``.
 ///
 /// Reference: PS3.3 Section A.33.2 - Color Softcopy Presentation State IOD
 public struct ColorPresentationState: PresentationState, Sendable {
@@ -224,7 +249,13 @@ public struct ColorPresentationState: PresentationState, Sendable {
     
     /// Display shutters for masking regions
     public let shutters: [DisplayShutter]
-    
+
+    /// Shutter Presentation Color CIELab Value (0018,1624): the colour of the
+    /// occluded pixels on a colour display. Table C.11.12-1 makes it Type 1C —
+    /// required with a shutter in every presentation state SOP class other than
+    /// Grayscale Softcopy; nil means none was recorded.
+    public let shutterPresentationColor: CIELabColor?
+
     /// Initialize a color presentation state
     public init(
         sopInstanceUID: String,
@@ -241,7 +272,8 @@ public struct ColorPresentationState: PresentationState, Sendable {
         displayedArea: DisplayedArea? = nil,
         graphicLayers: [GraphicLayer] = [],
         graphicAnnotations: [GraphicAnnotation] = [],
-        shutters: [DisplayShutter] = []
+        shutters: [DisplayShutter] = [],
+        shutterPresentationColor: CIELabColor? = nil
     ) {
         self.sopInstanceUID = sopInstanceUID
         self.sopClassUID = sopClassUID
@@ -258,6 +290,7 @@ public struct ColorPresentationState: PresentationState, Sendable {
         self.graphicLayers = graphicLayers
         self.graphicAnnotations = graphicAnnotations
         self.shutters = shutters
+        self.shutterPresentationColor = shutterPresentationColor
     }
 }
 
@@ -314,7 +347,13 @@ public struct PseudoColorPresentationState: PresentationState, Sendable {
     
     /// Display shutters for masking regions
     public let shutters: [DisplayShutter]
-    
+
+    /// Shutter Presentation Color CIELab Value (0018,1624): the colour of the
+    /// occluded pixels on a colour display. Table C.11.12-1 makes it Type 1C —
+    /// required with a shutter in every presentation state SOP class other than
+    /// Grayscale Softcopy; nil means none was recorded.
+    public let shutterPresentationColor: CIELabColor?
+
     /// Initialize a pseudo-color presentation state
     public init(
         sopInstanceUID: String,
@@ -333,7 +372,8 @@ public struct PseudoColorPresentationState: PresentationState, Sendable {
         displayedArea: DisplayedArea? = nil,
         graphicLayers: [GraphicLayer] = [],
         graphicAnnotations: [GraphicAnnotation] = [],
-        shutters: [DisplayShutter] = []
+        shutters: [DisplayShutter] = [],
+        shutterPresentationColor: CIELabColor? = nil
     ) {
         self.sopInstanceUID = sopInstanceUID
         self.sopClassUID = sopClassUID
@@ -352,6 +392,7 @@ public struct PseudoColorPresentationState: PresentationState, Sendable {
         self.graphicLayers = graphicLayers
         self.graphicAnnotations = graphicAnnotations
         self.shutters = shutters
+        self.shutterPresentationColor = shutterPresentationColor
     }
 }
 
@@ -402,7 +443,13 @@ public struct BlendingPresentationState: PresentationState, Sendable {
     
     /// Display shutters for masking regions
     public let shutters: [DisplayShutter]
-    
+
+    /// Shutter Presentation Color CIELab Value (0018,1624): the colour of the
+    /// occluded pixels on a colour display. Table C.11.12-1 makes it Type 1C —
+    /// required with a shutter in every presentation state SOP class other than
+    /// Grayscale Softcopy; nil means none was recorded.
+    public let shutterPresentationColor: CIELabColor?
+
     /// Initialize a blending presentation state
     public init(
         sopInstanceUID: String,
@@ -419,7 +466,8 @@ public struct BlendingPresentationState: PresentationState, Sendable {
         displayedArea: DisplayedArea? = nil,
         graphicLayers: [GraphicLayer] = [],
         graphicAnnotations: [GraphicAnnotation] = [],
-        shutters: [DisplayShutter] = []
+        shutters: [DisplayShutter] = [],
+        shutterPresentationColor: CIELabColor? = nil
     ) {
         self.sopInstanceUID = sopInstanceUID
         self.sopClassUID = sopClassUID
@@ -436,6 +484,7 @@ public struct BlendingPresentationState: PresentationState, Sendable {
         self.graphicLayers = graphicLayers
         self.graphicAnnotations = graphicAnnotations
         self.shutters = shutters
+        self.shutterPresentationColor = shutterPresentationColor
     }
 }
 
