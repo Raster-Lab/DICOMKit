@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — SC modules per PS3.3 2026a A.8; the missing Conversion Type (Type 1) and Type 2 attributes are recorded (P-SC)
+// NEMA-verified: 2026a, checked 2026-09-29 — SC Image IOD (Table A.8-1) Type 1/2 attributes written: Patient C.7-1, General Study C.7-3, General Series C.7-5a, General Image C.7-9, Image Pixel C.7-11a, SC Equipment C.8-24 (Conversion Type), SC Image C.8-25 (Nominal Scanned Pixel Spacing); VRs per PS3.6 Table 6-1
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -51,12 +51,30 @@ public enum ImageConverter {
         public var seriesDescription: String?
         public var modality: String
         public var seriesNumber: Int?
+        /// Conversion Type (0008,0064), Type 1 in the SC Equipment Module (PS3.3
+        /// Table C.8-24). WSD (Workstation) by default; use `.scannedImage` /
+        /// `.scannedDocument` for scans, `.drawing` for drawings.
+        public var conversionType: ConversionType
+        /// Patient's Birth Date (0010,0030), Type 2; written empty when nil.
+        public var patientBirthDate: DICOMDate?
+        /// Patient's Sex (0010,0040), Type 2 (M, F or O); written empty when nil.
+        public var patientSex: String?
+        /// Referring Physician's Name (0008,0090), Type 2; written empty when nil.
+        public var referringPhysicianName: String?
+        /// Study ID (0020,0010), Type 2; written empty when nil.
+        public var studyID: String?
+        /// Accession Number (0008,0050), Type 2; written empty when nil.
+        public var accessionNumber: String?
 
         public init(
             patientName: String, patientID: String,
             studyUID: String, seriesUID: String, instanceNumber: Int,
             studyDescription: String? = nil, seriesDescription: String? = nil,
-            modality: String = "OT", seriesNumber: Int? = nil
+            modality: String = "OT", seriesNumber: Int? = nil,
+            conversionType: ConversionType = .workstation,
+            patientBirthDate: DICOMDate? = nil, patientSex: String? = nil,
+            referringPhysicianName: String? = nil, studyID: String? = nil,
+            accessionNumber: String? = nil
         ) {
             self.patientName = patientName
             self.patientID = patientID
@@ -67,6 +85,12 @@ public enum ImageConverter {
             self.seriesDescription = seriesDescription
             self.modality = modality
             self.seriesNumber = seriesNumber
+            self.conversionType = conversionType
+            self.patientBirthDate = patientBirthDate
+            self.patientSex = patientSex
+            self.referringPhysicianName = referringPhysicianName
+            self.studyID = studyID
+            self.accessionNumber = accessionNumber
         }
     }
 
@@ -129,37 +153,47 @@ public enum ImageConverter {
         dataSet.setString("1.2.840.10008.5.1.4.1.1.7", for: .sopClassUID, vr: .UI) // Secondary Capture Image Storage
         dataSet.setString(generateUID(), for: .sopInstanceUID, vr: .UI)
 
-        // Patient Module
+        // Patient Module (Table C.7-1): all four Type 2
         dataSet.setString(metadata.patientName, for: .patientName, vr: .PN)
         dataSet.setString(metadata.patientID, for: .patientID, vr: .LO)
+        dataSet.setString(metadata.patientBirthDate?.dicomString ?? "", for: .patientBirthDate, vr: .DA)
+        dataSet.setString(metadata.patientSex ?? "", for: .patientSex, vr: .CS)
 
-        // Study Module
+        // General Study Module (Table C.7-3)
         dataSet.setString(metadata.studyUID, for: .studyInstanceUID, vr: .UI)
         if let studyDesc = metadata.studyDescription {
             dataSet.setString(studyDesc, for: .studyDescription, vr: .LO)
         } else if let exifDesc = extractEXIFDescription(from: exifMetadata) {
             dataSet.setString(exifDesc, for: .studyDescription, vr: .LO)
         }
-        dataSet.setString(formatDate(Date()), for: .studyDate, vr: .DA)
-        dataSet.setString(formatTime(Date()), for: .studyTime, vr: .TM)
+        let now = Date()
+        dataSet.setString(formatDate(now), for: .studyDate, vr: .DA)
+        dataSet.setString(formatTime(now), for: .studyTime, vr: .TM)
+        dataSet.setString(metadata.referringPhysicianName ?? "", for: .referringPhysicianName, vr: .PN)
+        dataSet.setString(metadata.studyID ?? "", for: .studyID, vr: .SH)
+        dataSet.setString(metadata.accessionNumber ?? "", for: .accessionNumber, vr: .SH)
 
-        // Series Module
+        // General Series Module (Table C.7-5a)
         dataSet.setString(metadata.seriesUID, for: .seriesInstanceUID, vr: .UI)
         dataSet.setString(metadata.modality, for: .modality, vr: .CS)
         if let seriesDesc = metadata.seriesDescription {
             dataSet.setString(seriesDesc, for: .seriesDescription, vr: .LO)
         }
-        if let seriesNum = metadata.seriesNumber {
-            dataSet.setInt(seriesNum, for: .seriesNumber, vr: .IS)
-        }
+        dataSet.setString(metadata.seriesNumber.map(String.init) ?? "", for: .seriesNumber, vr: .IS)
 
-        // General Equipment Module
+        // General Equipment Module (Table C.7-8, U)
         dataSet.setString("DICOMKit", for: .manufacturer, vr: .LO)
         dataSet.setString("dicom-image CLI", for: .manufacturerModelName, vr: .LO)
         dataSet.setString("1.1.6", for: .softwareVersions, vr: .LO)
 
-        // General Image Module
+        // SC Equipment Module (Table C.8-24): Conversion Type Type 1
+        dataSet.setString(metadata.conversionType.standardTerm, for: .conversionType, vr: .CS)
+
+        // General Image Module (Table C.7-9): Instance Number Type 2, Patient
+        // Orientation Type 2C (required: the SC IOD carries no Image Orientation
+        // (Patient)); the orientation of an imported picture is unknown, so empty.
         dataSet.setInt(metadata.instanceNumber, for: .instanceNumber, vr: .IS)
+        dataSet.setString("", for: .patientOrientation, vr: .CS)
 
         // Image Pixel Module
         let width = image.width
@@ -312,13 +346,19 @@ public enum ImageConverter {
             }
         }
 
+        // The file's DPI is the spacing on the scanned/rendered medium, which is
+        // Nominal Scanned Pixel Spacing (0018,2010) of the SC Image Module (Table
+        // C.8-25: "Physical distance on the media being digitized or scanned"),
+        // not Pixel Spacing (0028,0030) of the Image Plane Module, whose Type 1
+        // Image Position/Orientation (Patient) the converter cannot supply.
         if let dpiWidth = exif[kCGImagePropertyDPIWidth as String] as? Double,
-           let dpiHeight = exif[kCGImagePropertyDPIHeight as String] as? Double {
+           let dpiHeight = exif[kCGImagePropertyDPIHeight as String] as? Double,
+           dpiWidth > 0, dpiHeight > 0 {
             let mmPerInch = 25.4
             let pixelSpacingX = mmPerInch / dpiWidth
             let pixelSpacingY = mmPerInch / dpiHeight
             let pixelSpacing = String(format: "%.6f\\%.6f", pixelSpacingY, pixelSpacingX)
-            dataSet.setString(pixelSpacing, for: .pixelSpacing, vr: .DS)
+            dataSet.setString(pixelSpacing, for: .nominalScannedPixelSpacing, vr: .DS)
         }
     }
 

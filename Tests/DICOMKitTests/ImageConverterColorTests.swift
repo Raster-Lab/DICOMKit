@@ -88,4 +88,59 @@ final class ImageConverterColorTests: XCTestCase {
         XCTAssertEqual(ds.string(for: .photometricInterpretation), "MONOCHROME2")
         XCTAssertEqual([UInt8](try XCTUnwrap(ds[.pixelData]?.valueData)), gray)
     }
+
+    /// PS3.3 2026a Table A.8-1: every Type 1 attribute of the mandatory modules has a
+    /// value and every Type 2 attribute is present (Tables C.7-1, C.7-3, C.7-5a,
+    /// C.7-9, C.7-11a, C.8-24, C.12-1).
+    func test_secondaryCapture_type1AndType2AttributesComplete() throws {
+        let url = try writePNG(rgba: [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 0, 0, 0, 0], width: 2, height: 2)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let bytes = try ImageConverter.secondaryCaptureData(imageURL: url, metadata: metadata, useExif: false)
+        let ds = try DICOMFile.read(from: bytes).dataSet
+
+        let type1: [Tag] = [.sopClassUID, .sopInstanceUID, .studyInstanceUID, .modality, .seriesInstanceUID,
+                            .conversionType, .samplesPerPixel, .photometricInterpretation, .rows, .columns,
+                            .bitsAllocated, .bitsStored, .highBit, .pixelRepresentation, .planarConfiguration, .pixelData]
+        for tag in type1 {
+            let element = try XCTUnwrap(ds[tag], "Type 1 \(tag) missing")
+            XCTAssertFalse(element.valueData.isEmpty, "Type 1 \(tag) empty")
+        }
+        let type2: [Tag] = [.patientName, .patientID, .patientBirthDate, .patientSex,
+                            .studyDate, .studyTime, .referringPhysicianName, .studyID, .accessionNumber,
+                            .seriesNumber, .instanceNumber, .patientOrientation]
+        for tag in type2 {
+            XCTAssertNotNil(ds[tag], "Type 2 \(tag) missing")
+        }
+        XCTAssertEqual(ds.string(for: .sopClassUID), SecondaryCaptureImage.secondaryCaptureImageStorageUID)
+        XCTAssertEqual(ds.string(for: .conversionType), "WSD", "Table C.8-24 default term")
+        XCTAssertEqual(ds.string(for: .patientBirthDate), "")
+        XCTAssertEqual(ds.string(for: .seriesNumber), "")
+        XCTAssertEqual(ds.string(for: .patientOrientation), "")
+        XCTAssertEqual(ds.string(for: .instanceNumber), "1")
+    }
+
+    func test_secondaryCapture_metadataConversionTypeAndType2Values() throws {
+        let url = try writePNG(rgba: [255, 0, 0, 255], width: 1, height: 1)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var meta = metadata
+        meta.conversionType = .drawing
+        meta.patientBirthDate = DICOMDate(year: 1970, month: 1, day: 2)
+        meta.patientSex = "M"
+        meta.referringPhysicianName = "Ref^Doc"
+        meta.studyID = "S9"
+        meta.accessionNumber = "ACC9"
+        meta.seriesNumber = 4
+
+        let bytes = try ImageConverter.secondaryCaptureData(imageURL: url, metadata: meta, useExif: false)
+        let ds = try DICOMFile.read(from: bytes).dataSet
+        XCTAssertEqual(ds.string(for: .conversionType), "DRW")
+        XCTAssertEqual(ds.string(for: .patientBirthDate), "19700102")
+        XCTAssertEqual(ds.string(for: .patientSex), "M")
+        XCTAssertEqual(ds.string(for: .referringPhysicianName), "Ref^Doc")
+        XCTAssertEqual(ds.string(for: .studyID), "S9")
+        XCTAssertEqual(ds.string(for: .accessionNumber), "ACC9")
+        XCTAssertEqual(ds.string(for: .seriesNumber), "4")
+    }
 }

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Image Type, Pixel Presentation and Acquisition Contrast literals checked against the PS3.3 2026a module tables; the Type 1 multi-frame SC gaps are recorded (P-SC)
+// NEMA-verified: 2026a, checked 2026-09-29 — Image Type, Pixel Presentation and Acquisition Contrast literals checked against the PS3.3 2026a module tables; SC multi-frame targets complete per Tables A.8-2…A.8-5 (C.7-1, C.7-3, C.7-5a, C.7-9 Type 2; C.7-14, C.8-24, C.8-25b, C.8-25c Type 1/1C; A.8.x.4 constraints)
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -669,8 +669,7 @@ public struct FrameMerger {
         }
         ds[.frameTimeVector] = nil
         if targetUID.hasPrefix(MultiframeSOPClassMap.UID.secondaryCapture) {
-            if ds[.conversionType] == nil { ds.setString("WSD", for: .conversionType, vr: .CS) }
-            if ds[.burnedInAnnotation] == nil { ds.setString("NO", for: .burnedInAnnotation, vr: .CS) }
+            completeSecondaryCaptureMultiframe(&ds, frames: frames, writer: writer)
         }
         if ds[.burnedInAnnotation] == nil { ds.setString("NO", for: .burnedInAnnotation, vr: .CS) }
         // Per-frame identity attributes that no longer describe the whole object.
@@ -680,6 +679,62 @@ public struct FrameMerger {
         }
         if verbose {
             log(MergeConsole.legacyMultiframeLine(target: sopClassName(targetUID), frameTime: ds.string(for: .frameTime)))
+        }
+    }
+
+    /// Makes a Multi-frame SC target (PS3.3 2026a Tables A.8-2 … A.8-5) complete:
+    /// - SC Equipment (Table C.8-24): Conversion Type Type 1, WSD (Workstation)
+    ///   when the sources carry none or an empty value.
+    /// - SC Multi-frame Image (Table C.8-25b): Burned In Annotation Type 1 ("NO"
+    ///   when absent); Presentation LUT Shape IDENTITY and Rescale Intercept /
+    ///   Slope / Type when Photometric Interpretation is MONOCHROME2 and Bits
+    ///   Stored > 1 — fixed to 0 / 1 / US for the Grayscale Byte IOD (A.8.3.4),
+    ///   the source values kept for the Grayscale Word IOD (A.8.4.4).
+    /// - Frame Increment Pointer (Type 1C, Number of Frames > 1) with a Page
+    ///   Number Vector 1…N (Table C.8-25c) when no Frame Time could be derived.
+    /// - Image Pixel constraints (A.8.2.4 / A.8.3.4 / A.8.4.4 / A.8.5.4): Planar
+    ///   Configuration absent for one sample per pixel, 0 for RGB.
+    /// - Type 2 attributes of the Patient, General Study, General Series and
+    ///   General Image Modules (Tables C.7-1, C.7-3, C.7-5a, C.7-9) present, empty
+    ///   when the sources lack them.
+    private func completeSecondaryCaptureMultiframe(_ ds: inout DataSet, frames: [DataSet], writer: DICOMWriter) {
+        typealias U = MultiframeSOPClassMap.UID
+        let targetUID = ds.string(for: .sopClassUID).map(MultiframeSOPClassMap.normalize) ?? ""
+
+        if ConversionType(definedTerm: ds.string(for: .conversionType) ?? "") == nil {
+            ds.setString(ConversionType.workstation.rawValue, for: .conversionType, vr: .CS)
+        }
+        if ds[.burnedInAnnotation] == nil { ds.setString("NO", for: .burnedInAnnotation, vr: .CS) }
+
+        let samples = Int(ds.uint16(for: .samplesPerPixel) ?? 1)
+        let bitsStored = Int(ds.uint16(for: .bitsStored) ?? 8)
+        let photometric = ds.string(for: .photometricInterpretation)?.trimmingCharacters(in: .whitespaces) ?? ""
+        if samples == 1 {
+            ds[.planarConfiguration] = nil
+        } else if photometric == "RGB" {
+            ds.setUInt16(0, for: .planarConfiguration)
+        }
+        if photometric == "MONOCHROME2", bitsStored > 1 {
+            ds.setString("IDENTITY", for: .presentationLUTShape, vr: .CS)
+            let byte = targetUID == U.multiframeGrayscaleByteSC
+            if byte || ds[.rescaleIntercept] == nil { ds.setString("0", for: .rescaleIntercept, vr: .DS) }
+            if byte || ds[.rescaleSlope] == nil { ds.setString("1", for: .rescaleSlope, vr: .DS) }
+            if byte || ds[.rescaleType] == nil { ds.setString("US", for: .rescaleType, vr: .LO) }
+        }
+
+        if frames.count > 1, ds[.frameIncrementPointer] == nil {
+            ds.setStrings((1...frames.count).map(String.init), for: .pageNumberVector, vr: .IS)
+            ds[.frameIncrementPointer] = DataElement(tag: .frameIncrementPointer, vr: .AT, length: 4,
+                                                     valueData: writer.serializeTag(.pageNumberVector))
+        }
+
+        let type2: [(Tag, VR)] = [
+            (.patientName, .PN), (.patientID, .LO), (.patientBirthDate, .DA), (.patientSex, .CS),
+            (.studyDate, .DA), (.studyTime, .TM), (.referringPhysicianName, .PN), (.studyID, .SH),
+            (.accessionNumber, .SH), (.seriesNumber, .IS), (.instanceNumber, .IS), (.patientOrientation, .CS),
+        ]
+        for (tag, vr) in type2 where ds[tag] == nil {
+            ds.setString("", for: tag, vr: vr)
         }
     }
 
