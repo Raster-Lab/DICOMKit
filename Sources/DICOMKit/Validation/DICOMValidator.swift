@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.10 2026a Table 7.1-1 Type 1 File Meta elements; PS3.5 Table 6.2-1 DA and TM formats; ISO_IR 192; SR classes via DICOMCore; the per-IOD required lists are partial (recorded, P-VALID)
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -86,11 +87,14 @@ public struct DICOMValidator {
     private func validateFileMetaInformation(dicomFile: DICOMFile, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
         let dataSet = dicomFile.fileMetaInformation
         
-        // Required File Meta Information elements
+        // The Type 1 File Meta Information elements of PS3.10 Table 7.1-1
         let requiredMetaTags: [(Tag, String)] = [
+            (.fileMetaInformationGroupLength, "File Meta Information Group Length"),
+            (.fileMetaInformationVersion, "File Meta Information Version"),
             (.mediaStorageSOPClassUID, "Media Storage SOP Class UID"),
             (.mediaStorageSOPInstanceUID, "Media Storage SOP Instance UID"),
-            (.transferSyntaxUID, "Transfer Syntax UID")
+            (.transferSyntaxUID, "Transfer Syntax UID"),
+            (.implementationClassUID, "Implementation Class UID")
         ]
         
         for (tag, name) in requiredMetaTags {
@@ -322,7 +326,7 @@ public struct DICOMValidator {
         if dataSet[.specificCharacterSet] == nil {
             warnings.append(ValidationIssue(
                 level: .warning,
-                message: "Specific Character Set not specified (ISO_IR 100 or UTF-8 recommended)",
+                message: "Specific Character Set not specified (ISO_IR 100 or ISO_IR 192 recommended)",
                 tag: .specificCharacterSet
             ))
         }
@@ -407,7 +411,7 @@ public struct DICOMValidator {
             return "GrayscaleSoftcopyPresentationState"
         case "1.2.840.10008.5.1.4.1.1.11.3":
             return "PseudoColorSoftcopyPresentationState"
-        case "1.2.840.10008.5.1.4.1.1.88.11", "1.2.840.10008.5.1.4.1.1.88.22", "1.2.840.10008.5.1.4.1.1.88.33":
+        case let uid where SRDocumentType.isSRDocument(sopClassUID: uid):
             return "StructuredReport"
         default:
             return nil
@@ -446,7 +450,8 @@ public struct DICOMValidator {
             return false
         }
         
-        guard year >= 1900 && year <= 9999 else { return false }
+        // PS3.5 Table 6.2-1 DA: YYYYMMDD; the year is not otherwise bounded
+        guard year >= 0 && year <= 9999 else { return false }
         guard month >= 1 && month <= 12 else { return false }
         guard day >= 1 && day <= 31 else { return false }
         
@@ -463,32 +468,30 @@ public struct DICOMValidator {
     }
     
     private func isValidTime(_ time: String) -> Bool {
-        // DICOM Time format: HHMMSS.FFFFFF (fractional seconds optional)
-        guard time.count >= 6 else { return false }
-        
+        // PS3.5 Table 6.2-1 TM: HHMMSS.FFFFFF, where MM, SS and FFFFFF are each optional
+        // after the preceding component; 60 seconds is allowed for a leap second
         let components = time.components(separatedBy: ".")
         guard components.count <= 2 else { return false }
-        
+
         let hhmmss = components[0]
-        guard hhmmss.count == 6 else { return false }
+        guard [2, 4, 6].contains(hhmmss.count) else { return false }
         guard hhmmss.allSatisfy({ $0.isNumber }) else { return false }
-        
-        guard let hh = Int(hhmmss.prefix(2)),
-              let mm = Int(hhmmss.dropFirst(2).prefix(2)),
-              let ss = Int(hhmmss.suffix(2)) else {
-            return false
+
+        guard let hh = Int(hhmmss.prefix(2)), hh >= 0 && hh <= 23 else { return false }
+        if hhmmss.count >= 4 {
+            guard let mm = Int(hhmmss.dropFirst(2).prefix(2)), mm >= 0 && mm <= 59 else { return false }
         }
-        
-        guard hh >= 0 && hh <= 23 else { return false }
-        guard mm >= 0 && mm <= 59 else { return false }
-        guard ss >= 0 && ss <= 59 else { return false }
-        
+        if hhmmss.count == 6 {
+            guard let ss = Int(hhmmss.suffix(2)), ss >= 0 && ss <= 60 else { return false }
+        }
+
         if components.count == 2 {
+            guard hhmmss.count == 6 else { return false }
             let fraction = components[1]
-            guard fraction.count <= 6 else { return false }
+            guard (1...6).contains(fraction.count) else { return false }
             guard fraction.allSatisfy({ $0.isNumber }) else { return false }
         }
-        
+
         return true
     }
     

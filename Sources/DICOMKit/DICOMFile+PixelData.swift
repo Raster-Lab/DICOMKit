@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — the non-image SOP Class list diffed by Scripts/diff_kit.py against PS3.6 2026a Table A-1 (two UIDs and two names corrected); JPEG YBR relabel per PS3.5 Table 8.2.1-1
 import Foundation
 import DICOMCore
 
@@ -563,11 +564,13 @@ extension DICOMFile {
         "1.2.840.10008.5.1.4.1.1.67",       // Real World Value Mapping Storage
         "1.2.840.10008.5.1.4.1.1.68.1",     // Surface Scan Mesh Storage
         "1.2.840.10008.5.1.4.1.1.68.2",     // Surface Scan Point Cloud Storage
-        "1.2.840.10008.5.1.4.1.1.91.1",     // Content Assessment Results Storage
+        "1.2.840.10008.5.1.4.1.1.90.1",     // Content Assessment Results Storage
+        "1.2.840.10008.5.1.4.1.1.91.1",     // Microscopy Bulk Simple Annotations Storage
         "1.2.840.10008.5.1.4.1.1.200.1",    // CT Defined Procedure Protocol Storage
         "1.2.840.10008.5.1.4.1.1.200.2",    // CT Performed Procedure Protocol Storage
-        "1.2.840.10008.5.1.4.1.1.200.8",    // XA Defined Procedure Protocol Storage
-        "1.2.840.10008.5.1.4.1.1.200.9",    // XA Performed Procedure Protocol Storage
+        "1.2.840.10008.5.1.4.1.1.200.3",    // Protocol Approval Storage
+        "1.2.840.10008.5.1.4.1.1.200.7",    // XA Defined Procedure Protocol Storage
+        "1.2.840.10008.5.1.4.1.1.200.8",    // XA Performed Procedure Protocol Storage
     ]
     
     /// Checks if a SOP Class UID represents a non-image DICOM object

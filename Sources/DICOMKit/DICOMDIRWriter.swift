@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a F.3.2.2 offsets and Table F.3-3 record keys; Implementation Class UID is no longer the Deflated Transfer Syntax UID; (0002,0000) is computed by DICOMFile.write() (PS3.10 Table 7.1-1)
 import Foundation
 import DICOMCore
 
@@ -198,11 +199,11 @@ public struct DICOMDIRWriter {
         // Transfer Syntax UID (Explicit VR Little Endian)
         fmi[.transferSyntaxUID] = DataElement.string(tag: .transferSyntaxUID, vr: .UI, value: TransferSyntax.explicitVRLittleEndian.uid)
         
-        // Implementation Class UID
-        fmi[.implementationClassUID] = DataElement.string(tag: .implementationClassUID, vr: .UI, value: "1.2.840.10008.1.2.1.99")
-        
-        // Implementation Version Name
-        fmi[.implementationVersionName] = DataElement.string(tag: .implementationVersionName, vr: .SH, value: "DICOMKit_1_0")
+        // Implementation Class UID and Version Name: the same values every file this
+        // library writes carries (the literal here used to be the Deflated Explicit VR
+        // Little Endian Transfer Syntax UID, which is not an implementation UID).
+        fmi[.implementationClassUID] = DataElement.string(tag: .implementationClassUID, vr: .UI, value: DICOMFile.implementationClassUID)
+        fmi[.implementationVersionName] = DataElement.string(tag: .implementationVersionName, vr: .SH, value: DICOMFile.implementationVersionName)
         
         return fmi
     }

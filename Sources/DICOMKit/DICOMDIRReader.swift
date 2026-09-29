@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table F.3-3, Table F.4-1 and F.6.1: unknown and PRIVATE record types are skipped, not fatal (D14); the profile is an assumption, no attribute carries it (D15)
 import Foundation
 import DICOMCore
 
@@ -56,12 +57,11 @@ public struct DICOMDIRReader {
         // Parse directory record sequence
         let rootRecords = try parseDirectoryRecordSequence(dataSet: dataSet)
         
-        // Determine profile (would need additional logic to detect from content)
-        let profile = DICOMDIRProfile.standardGeneralCD
-        
+        // No DICOMDIR attribute carries the PS3.11 Application Profile; it is conformance
+        // metadata of the medium. The type's default (STD-GEN-CD) is an assumption, and a
+        // caller that knows the medium sets `profile` itself.
         return DICOMDirectory(
             fileSetID: fileSetID,
-            profile: profile,
             specificCharacterSet: specificCharacterSet,
             fileSetDescriptorFileID: fileSetDescriptorFileID,
             specificCharacterSetOfFileSetDescriptorFile: specificCharacterSetOfFileSetDescriptorFile,
@@ -86,8 +86,8 @@ public struct DICOMDIRReader {
         
         // First pass: Parse all records and build a map
         for (index, item) in items.enumerated() {
-            let record = try parseDirectoryRecord(from: item)
-            
+            guard let record = try parseDirectoryRecord(from: item) else { continue }
+
             // Get offsets for navigation
             let nextOffset = item[.offsetOfTheNextDirectoryRecord]?.uint32Value
             let lowerOffset = item[.offsetOfReferencedLowerLevelDirectoryEntity]?.uint32Value
@@ -178,13 +178,19 @@ public struct DICOMDIRReader {
     /// Parse a single directory record from a SequenceItem
     ///
     /// - Parameter item: SequenceItem for the record
-    /// - Returns: Parsed directory record
-    /// - Throws: DICOMError if parsing fails
-    private static func parseDirectoryRecord(from item: SequenceItem) throws -> DirectoryRecord {
+    /// - Returns: Parsed directory record, or nil for a Directory Record Type this reader
+    ///   does not know. PS3.3 F.6.1 lets a File-set Reader ignore privately defined
+    ///   records and still find a conformant Directory; a type from a later edition is
+    ///   treated the same way rather than failing the whole DICOMDIR.
+    /// - Throws: DICOMError if the record has no Directory Record Type (Type 1)
+    private static func parseDirectoryRecord(from item: SequenceItem) throws -> DirectoryRecord? {
         // Get record type
-        guard let recordTypeString = item.string(for: .directoryRecordType),
-              let recordType = DirectoryRecordType(rawValue: recordTypeString) else {
-            throw DICOMError.parsingFailed("Missing or invalid Directory Record Type")
+        guard let recordTypeString = item.string(for: .directoryRecordType)?
+                .trimmingCharacters(in: .whitespaces) else {
+            throw DICOMError.parsingFailed("Missing Directory Record Type (0004,1430)")
+        }
+        guard let recordType = DirectoryRecordType(rawValue: recordTypeString) else {
+            return nil
         }
         
         // Get in-use flag

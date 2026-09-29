@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — the VR lists are the 34 VRs of PS3.5 2026a Table 6.2-1 and the 4-byte-length VRs of Table 7.1-1 (OV, SV, UV added)
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -184,11 +185,12 @@ public final class HexDumper {
         // Skip the 128-byte preamble + "DICM" if present.
         var offset = (data.count > 132) ? 132 : 0
 
+        // The 34 VRs of PS3.5 Table 6.2-1, and those with the 4-byte length field (Table 7.1-1)
         let knownVRs: Set<String> = [
             "AE","AS","AT","CS","DA","DS","DT","FL","FD","IS","LO","LT","OB","OD","OF",
-            "OL","OW","PN","SH","SL","SQ","SS","ST","TM","UC","UI","UL","UN","UR","US","UT"
+            "OL","OV","OW","PN","SH","SL","SQ","SS","ST","SV","TM","UC","UI","UL","UN","UR","US","UT","UV"
         ]
-        let extendedVRs: Set<String> = ["OB","OD","OF","OL","OW","SQ","UC","UR","UT","UN"]
+        let extendedVRs: Set<String> = ["OB","OD","OF","OL","OV","OW","SQ","SV","UC","UR","UT","UN","UV"]
 
         func byteAt(_ i: Int) -> UInt8 { data[data.index(base, offsetBy: i)] }
 

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.10 2026a Table 7.1-1: the Type 1 File Meta elements are written and (0002,0000) is computed in write(); the Implementation Class UID root is pending P-UID
 import Foundation
 import DICOMCore
 
@@ -141,7 +142,17 @@ extension DataSet {
 // MARK: - DICOMFile Writing Extension
 
 extension DICOMFile {
-    
+
+    /// Implementation Class UID (0002,0012) written by every file writer of this library.
+    ///
+    /// The value is under the OFFIS DCMTK root (`1.2.276.0.7230010.3`), the same root
+    /// `UIDGenerator.defaultRoot` uses; PS3.5 9.1 expects privately defined UIDs under a
+    /// root the organisation owns (see DICOMKIT_STANDARD_IMPLEMENTATION.md, P-UID).
+    public static let implementationClassUID = "1.2.276.0.7230010.3.0.3.6.5"
+
+    /// Implementation Version Name (0002,0013) written by every file writer of this library.
+    public static let implementationVersionName = "DICOMKIT_0.5.0"
+
     /// DICOM File Preamble size (128 bytes of zeros)
     private static let preambleSize = 128
     
@@ -169,8 +180,16 @@ extension DICOMFile {
         // 2. Write "DICM" prefix
         data.append(contentsOf: Self.dicomPrefix)
         
-        // 3. Write File Meta Information (always Explicit VR Little Endian per PS3.10)
+        // 3. Write File Meta Information (always Explicit VR Little Endian per PS3.10).
+        //    File Meta Information Group Length (0002,0000) is Type 1 (PS3.10 Table 7.1-1):
+        //    it is computed here when the caller did not set it.
         let fileMetaWriter = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
+        var fileMetaInformation = self.fileMetaInformation
+        if fileMetaInformation[.fileMetaInformationGroupLength] == nil {
+            let others = fileMetaInformation.write(using: fileMetaWriter)
+            fileMetaInformation[.fileMetaInformationGroupLength] = DataElement.uint32(
+                tag: .fileMetaInformationGroupLength, value: UInt32(others.count))
+        }
         data.append(fileMetaInformation.write(using: fileMetaWriter))
         
         // 4. Determine transfer syntax for main data set
@@ -233,15 +252,9 @@ extension DICOMFile {
         // Transfer Syntax UID (0002,0010)
         fileMetaInfo.setString(transferSyntaxUID, for: .transferSyntaxUID, vr: .UI)
         
-        // Implementation Class UID (0002,0012)
-        fileMetaInfo.setString(
-            "1.2.276.0.7230010.3.0.3.6.5",  // DICOMKit implementation UID
-            for: .implementationClassUID,
-            vr: .UI
-        )
-        
-        // Implementation Version Name (0002,0013)
-        fileMetaInfo.setString("DICOMKIT_0.5.0", for: .implementationVersionName, vr: .SH)
+        // Implementation Class UID (0002,0012) and Version Name (0002,0013)
+        fileMetaInfo.setString(Self.implementationClassUID, for: .implementationClassUID, vr: .UI)
+        fileMetaInfo.setString(Self.implementationVersionName, for: .implementationVersionName, vr: .SH)
         
         // Calculate and set File Meta Information Group Length (0002,0000)
         let writer = DICOMWriter()
