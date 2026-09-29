@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — the 13 tags named in ComposedFilmInfo (2000,xxxx; 2010,xxxx; 2050,0020) checked against PS3.6 2026a Table 6-1 names (Scripts/diff_printkit.py)
 //
 // ComposedFilm.swift
 // DICOMPrintKit

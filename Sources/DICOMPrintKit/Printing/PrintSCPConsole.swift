@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (event log text; status codes come from DICOMNetwork)
 //
 // PrintSCPConsole.swift
 // DICOMPrintKit
