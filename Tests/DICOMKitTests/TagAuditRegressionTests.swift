@@ -156,6 +156,19 @@ final class TagAuditRegressionTests: XCTestCase {
         XCTAssertEqual(selectors.first?.string(for: tag(0x0072, 0x0050)), "CS", "Selector Attribute VR is (0072,0050)")
         XCTAssertEqual(selectors.first?[tag(0x0072, 0x0062)]?.stringValue, "CT", "the value goes in Selector CS Value (0072,0062)")
         XCTAssertNil(selectors.first?[tag(0x0008, 0x0060)], "not under the selected attribute's own tag")
+        XCTAssertEqual(selectors.first?[tag(0x0072, 0x0028)]?.uint16Value, 0, "Selector Value Number (0072,0028) is Type 1; 0 = any value")
+
+        // PS3.3 2026a Table C.23.1-1: Image Set Number (0072,0032) and Image Set
+        // Selector Category (0072,0034) sit in Time Based Image Sets Sequence
+        // (0072,0030) items, not in the Image Sets Sequence item itself.
+        XCTAssertNil(imageSet[tag(0x0072, 0x0032)])
+        XCTAssertNil(imageSet[tag(0x0072, 0x0034)])
+        let timeBased = try XCTUnwrap(imageSet[tag(0x0072, 0x0030)]?.sequenceItems?.first,
+                                      "Time Based Image Sets Sequence is (0072,0030)")
+        XCTAssertEqual(timeBased[tag(0x0072, 0x0032)]?.uint16Value, 1, "Image Set Number is (0072,0032)")
+        XCTAssertEqual(timeBased.string(for: tag(0x0072, 0x0034)), "RELATIVE_TIME", "Image Set Selector Category is (0072,0034)")
+        XCTAssertNotNil(ds[tag(0x0072, 0x0102)], "Nominal Screen Definition Sequence (0072,0102) is Type 2")
+        XCTAssertNotNil(ds[tag(0x0072, 0x000E)], "HP User Identification Code Sequence (0072,000E) is Type 2")
 
         // And the parser reads the same numeric layout back.
         let parsed = try HangingProtocolParser().parse(from: ds)

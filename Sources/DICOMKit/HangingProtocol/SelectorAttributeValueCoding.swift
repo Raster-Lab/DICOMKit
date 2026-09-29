@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Selector Attribute value attributes per PS3.3 2026a C.23.4
+// NEMA-verified: 2026a, checked 2026-09-29 — Selector Attribute value attributes per PS3.3 2026a C.23.4; Code Sequence Macro elements reused for Abstract Prior Code Sequence (0072,003E) items (Table C.23.1-1); CID 31 contents not compared
 //
 //  SelectorAttributeValueCoding.swift
 //  DICOMKit
@@ -230,7 +230,7 @@ enum SelectorAttributeValueCoding {
     }
     
     /// Code Sequence Macro (PS3.3 Table 8.8-1) elements for one item.
-    private static func codeElements(_ code: CodedConcept) -> [DataElement] {
+    static func codeElements(_ code: CodedConcept) -> [DataElement] {
         var elements = [
             DataElement.string(tag: .codeValue, vr: .SH, value: code.codeValue),
             DataElement.string(tag: .codingSchemeDesignator, vr: .SH, value: code.codingSchemeDesignator),
@@ -248,7 +248,7 @@ enum SelectorAttributeValueCoding {
         return elements
     }
     
-    private static func codedConcept(from item: SequenceItem) -> CodedConcept? {
+    static func codedConcept(from item: SequenceItem) -> CodedConcept? {
         guard let designator = item.string(for: .codingSchemeDesignator) else { return nil }
         let value = item.string(for: .codeValue)
             ?? item.string(for: .longCodeValue)

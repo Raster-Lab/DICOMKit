@@ -462,6 +462,7 @@ let package = Package(
                 "HangingProtocol/DisplaySetTests.swift",
                 "HangingProtocol/HangingProtocolMatcherTests.swift",
                 "HangingProtocol/ImageSetDefinitionTests.swift",
+                "HangingProtocol/HangingProtocolNestingTests.swift",
                 "RealWorldValue/RealWorldValueLUTParserTests.swift",
                 // DICOM_VIDEO_CONVERSION_PLAN.md: the Video IOD suite. The
                 // encapsulation tests write through DICOMWriter and re-parse

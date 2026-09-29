@@ -144,7 +144,9 @@ final class HangingProtocolSerializerTests: XCTestCase {
         
         let dataSet = try serializer.serialize(protocol: hangingProtocol)
         
-        XCTAssertNil(dataSet.sequence(for: .nominalScreenDefinitionSequence))
+        // Type 2 (PS3.3 Table C.23.2-1): present with zero items
+        XCTAssertNotNil(dataSet[.nominalScreenDefinitionSequence])
+        XCTAssertEqual(dataSet.sequence(for: .nominalScreenDefinitionSequence)?.count ?? 0, 0)
     }
     
     func test_serialize_screenDefinitions_single() throws {
@@ -186,16 +188,20 @@ final class HangingProtocolSerializerTests: XCTestCase {
         XCTAssertNotNil(imageSetSequence)
         XCTAssertEqual(imageSetSequence?.count, 1)
         
+        // PS3.3 Table C.23.1-1: Image Set Number and Label are Time Based
+        // Image Sets Sequence (0072,0030) item attributes
         let imageSetItem = imageSetSequence?[0]
-        XCTAssertEqual(imageSetItem?[.imageSetNumber]?.uint16Value, 1)
-        XCTAssertEqual(imageSetItem?.string(for: .imageSetLabel), "Primary")
+        XCTAssertNil(imageSetItem?[.imageSetNumber])
+        XCTAssertNil(imageSetItem?[.imageSetLabel])
+        let timeItem = imageSetItem?[.timeBasedImageSetsSequence]?.sequenceItems?.first
+        XCTAssertEqual(timeItem?[.imageSetNumber]?.uint16Value, 1)
+        XCTAssertEqual(timeItem?.string(for: .imageSetLabel), "Primary")
     }
     
     func test_serialize_imageSetSelector() throws {
         let selector = ImageSetSelector(
             attribute: .modality,
             valueNumber: 1,
-            operator: .memberOf,
             values: ["CT"],
             usageFlag: .match
         )
@@ -216,7 +222,9 @@ final class HangingProtocolSerializerTests: XCTestCase {
         let item = selectorSequence?[0]
         XCTAssertEqual(item?[.selectorAttribute]?.attributeTagValue, .modality)
         XCTAssertEqual(item?[.selectorValueNumber]?.uint16Value, 1)
-        XCTAssertEqual(item?.string(for: .filterByOperator), "MEMBER_OF")   // PS3.3 Table C.23.3-1
+        // Filter-by attributes are not Image Set Selector Sequence attributes
+        // (PS3.3 Table C.23.1-1)
+        XCTAssertNil(item?[.filterByOperator])
         XCTAssertEqual(item?.string(for: .selectorAttributeVR), "CS")
         XCTAssertEqual(item?[.selectorCSValue]?.stringValue, "CT")
         XCTAssertNil(item?[.modality])
@@ -227,16 +235,22 @@ final class HangingProtocolSerializerTests: XCTestCase {
 
     // MARK: - Standard Terms (PS3.3 2026a Tables C.23.1-1 / C.23.3-1)
 
-    private func selectorItem(_ selector: ImageSetSelector) throws -> SequenceItem? {
-        let imageSet = ImageSetDefinition(number: 1, selectors: [selector])
-        let dataSet = try serializer.serialize(protocol: HangingProtocol(name: "T", imageSets: [imageSet]))
-        return dataSet.sequence(for: .imageSetsSequence)?[0][.imageSetSelectorSequence]?.sequenceItems?.first
+    /// A protocol whose display set 1 shows image set 1 through `filters`.
+    private func filterProtocol(_ filters: [FilterOperation], selectors: [ImageSetSelector] = []) -> HangingProtocol {
+        HangingProtocol(
+            name: "T",
+            imageSets: [ImageSetDefinition(number: 1, selectors: selectors)],
+            displaySets: [DisplaySet(number: 1, imageSetNumber: 1, filterOperations: filters)]
+        )
     }
 
-    private func roundTripSelector(_ selector: ImageSetSelector) throws -> ImageSetSelector? {
-        let imageSet = ImageSetDefinition(number: 1, selectors: [selector])
-        let dataSet = try serializer.serialize(protocol: HangingProtocol(name: "T", imageSets: [imageSet]))
-        return try HangingProtocolParser().parse(from: dataSet).imageSets.first?.selectors.first
+    /// The Filter Operations Sequence (0072,0400) item of display set 1 and
+    /// its parsed value (PS3.3 Table C.23.3-1).
+    private func filterItem(_ filter: FilterOperation) throws -> (SequenceItem?, FilterOperation?) {
+        let dataSet = try serializer.serialize(protocol: filterProtocol([filter]))
+        let item = dataSet.sequence(for: .displaySetsSequence)?[0][.filterOperationsSequence]?.sequenceItems?.first
+        let parsed = try HangingProtocolParser().parse(from: dataSet).displaySets.first?.filterOperations.first
+        return (item, parsed)
     }
 
     /// Filter-by Operator (0072,0406): every Enumerated Value round-trips
@@ -248,9 +262,11 @@ final class HangingProtocolSerializerTests: XCTestCase {
             (.memberOf, "MEMBER_OF"), (.notMemberOf, "NOT_MEMBER_OF"),
         ]
         for (op, term) in terms {
-            let selector = ImageSetSelector(attribute: .sliceLocation, operator: op, values: ["10", "20"])
-            XCTAssertEqual(try selectorItem(selector)?.string(for: .filterByOperator), term)
-            XCTAssertEqual(try roundTripSelector(selector)?.operator, op)
+            let (item, parsed) = try filterItem(FilterOperation(attribute: .sliceLocation, operator: op, values: ["10", "20"]))
+            XCTAssertEqual(item?.string(for: .filterByOperator), term)
+            XCTAssertEqual(item?.string(for: .selectorAttributeVR), "DS")
+            XCTAssertEqual(item?[.selectorValueNumber]?.uint16Value, 0, "Type 1C with an operator; 0 = any value")
+            XCTAssertEqual(parsed?.operator, op)
         }
     }
 
@@ -258,43 +274,65 @@ final class HangingProtocolSerializerTests: XCTestCase {
     /// Filter-by Attribute Presence (0072,0404)
     @available(*, deprecated)
     func test_serialize_filterByOperator_deprecatedCasesWriteStandardTerms() throws {
-        XCTAssertEqual(try selectorItem(ImageSetSelector(attribute: .modality, operator: .equal, values: ["CT"]))?
+        XCTAssertEqual(try filterItem(FilterOperation(attribute: .modality, operator: .equal, values: ["CT"])).0?
             .string(for: .filterByOperator), "MEMBER_OF")
-        XCTAssertEqual(try selectorItem(ImageSetSelector(attribute: .modality, operator: .notEqual, values: ["CT"]))?
+        XCTAssertEqual(try filterItem(FilterOperation(attribute: .modality, operator: .notEqual, values: ["CT"])).0?
             .string(for: .filterByOperator), "NOT_MEMBER_OF")
-        XCTAssertEqual(try selectorItem(ImageSetSelector(attribute: .seriesDescription, operator: .contains, values: ["CHEST"]))?
+        XCTAssertEqual(try filterItem(FilterOperation(attribute: .seriesDescription, operator: .contains, values: ["CHEST"])).0?
             .string(for: .filterByOperator), "MEMBER_OF")
 
-        let present = try selectorItem(ImageSetSelector(attribute: .sliceLocation, operator: .present))
+        let present = try filterItem(FilterOperation(attribute: .sliceLocation, operator: .present)).0
         XCTAssertNil(present?[.filterByOperator])
         XCTAssertEqual(present?.string(for: .filterByAttributePresence), "PRESENT")
 
-        let notPresent = try selectorItem(ImageSetSelector(attribute: .sliceLocation, operator: .notPresent))
+        let (notPresent, parsed) = try filterItem(FilterOperation(attribute: .sliceLocation, operator: .notPresent))
         XCTAssertNil(notPresent?[.filterByOperator])
         XCTAssertEqual(notPresent?.string(for: .filterByAttributePresence), "NOT_PRESENT")
-
-        let parsed = try roundTripSelector(ImageSetSelector(attribute: .sliceLocation, operator: .notPresent))
         XCTAssertNil(parsed?.operator)
         XCTAssertEqual(parsed?.attributePresence, .notPresent)
+    }
+
+    /// A filter given on the deprecated ImageSetSelector API is written as a
+    /// Filter Operations Sequence item of the display set that shows the
+    /// image set, never in the Image Set Selector Sequence item.
+    @available(*, deprecated)
+    func test_serialize_deprecatedSelectorFilterGoesToDisplaySet() throws {
+        let legacy = ImageSetSelector(attribute: .sliceLocation, operator: .greaterThan, values: ["10"])
+        let dataSet = try serializer.serialize(protocol: filterProtocol([], selectors: [legacy]))
+
+        let selectorItem = dataSet.sequence(for: .imageSetsSequence)?[0][.imageSetSelectorSequence]?.sequenceItems?.first
+        XCTAssertNil(selectorItem?[.filterByOperator])
+        XCTAssertNil(selectorItem?[.filterByAttributePresence])
+        XCTAssertNil(selectorItem?[.filterByCategory])
+
+        let filter = dataSet.sequence(for: .displaySetsSequence)?[0][.filterOperationsSequence]?.sequenceItems?.first
+        XCTAssertEqual(filter?[.selectorAttribute]?.attributeTagValue, .sliceLocation)
+        XCTAssertEqual(filter?.string(for: .filterByOperator), "GREATER_THAN")
+        XCTAssertEqual(filter?[.selectorDSValue]?.stringValue.map { $0.trimmingCharacters(in: .whitespaces) }, "10")
+
+        let parsed = try HangingProtocolParser().parse(from: dataSet)
+        XCTAssertEqual(parsed.displaySets.first?.filterOperations.first?.operator, .greaterThan)
     }
 
     /// Filter-by Attribute Presence (0072,0404) and Filter-by Category (0072,0402)
     func test_roundTrip_filterByPresenceAndCategory() throws {
         for presence in [FilterByAttributePresence.present, .notPresent] {
-            let selector = ImageSetSelector(attribute: .sliceLocation, attributePresence: presence)
-            XCTAssertEqual(try selectorItem(selector)?.string(for: .filterByAttributePresence), presence.rawValue)
-            XCTAssertEqual(try roundTripSelector(selector)?.attributePresence, presence)
+            let (item, parsed) = try filterItem(FilterOperation(attribute: .sliceLocation, attributePresence: presence))
+            XCTAssertEqual(item?.string(for: .filterByAttributePresence), presence.rawValue)
+            XCTAssertNil(item?[.filterByOperator])
+            XCTAssertEqual(parsed?.attributePresence, presence)
         }
 
-        // C.23.3.1.1: IMAGE_PLANE with Selector Attribute VR CS and Selector CS Value plane terms
-        let plane = ImageSetSelector(
-            attribute: .imageOrientationPatient, attributeVR: .CS, operator: .memberOf,
-            filterByCategory: .imagePlane, values: ["TRANSVERSE", "CORONAL"])
-        let item = try selectorItem(plane)
+        // C.23.3.1.1: IMAGE_PLANE with Selector Attribute VR CS and Selector CS
+        // Value plane terms; Selector Attribute is absent (Type 1C on the
+        // absence of Filter-by Category)
+        let plane = FilterOperation(filterByCategory: .imagePlane, operator: .memberOf, values: ["TRANSVERSE", "CORONAL"])
+        let (item, parsed) = try filterItem(plane)
         XCTAssertEqual(item?.string(for: .filterByCategory), "IMAGE_PLANE")
+        XCTAssertNil(item?[.selectorAttribute])
+        XCTAssertEqual(item?.string(for: .filterByOperator), "MEMBER_OF")
         XCTAssertEqual(item?.string(for: .selectorAttributeVR), "CS")
         XCTAssertEqual(item?[.selectorCSValue]?.stringValues, ["TRANSVERSE", "CORONAL"])
-        let parsed = try roundTripSelector(plane)
         XCTAssertEqual(parsed?.filterByCategory, .imagePlane)
         XCTAssertEqual(parsed?.values, ["TRANSVERSE", "CORONAL"])
     }
@@ -310,10 +348,14 @@ final class HangingProtocolSerializerTests: XCTestCase {
             .string(for: .hangingProtocolLevel), "MANUFACTURER")
     }
 
-    private func imageSetItem(_ imageSet: ImageSetDefinition) throws -> (SequenceItem?, ImageSetDefinition?) {
+    /// The first Time Based Image Sets Sequence (0072,0030) item of the
+    /// image set (PS3.3 Table C.23.1-1) and its parsed value.
+    private func imageSetItem(_ imageSet: ImageSetDefinition) throws -> (SequenceItem?, TimeBasedImageSet?) {
         let dataSet = try serializer.serialize(protocol: HangingProtocol(name: "T", imageSets: [imageSet]))
-        let parsed = try HangingProtocolParser().parse(from: dataSet).imageSets.first
-        return (dataSet.sequence(for: .imageSetsSequence)?.first, parsed)
+        let parsed = try HangingProtocolParser().parse(from: dataSet).imageSets.first?.timeBasedImageSets.first
+        let imageSetItem = dataSet.sequence(for: .imageSetsSequence)?.first
+        XCTAssertNil(imageSetItem?[.imageSetSelectorCategory], "not in the Image Sets Sequence item")
+        return (imageSetItem?[.timeBasedImageSetsSequence]?.sequenceItems?.first, parsed)
     }
 
     /// Image Set Selector Category (0072,0034): RELATIVE_TIME / ABSTRACT_PRIOR
@@ -375,11 +417,18 @@ final class HangingProtocolSerializerTests: XCTestCase {
         XCTAssertEqual(parsed?.timeSelection?.abstractPriorValue, "MOST_RECENT")
     }
 
+    /// The Sorting Operations Sequence (0072,0600) item of display set 1
+    /// (PS3.3 Table C.23.3-1) and its parsed value.
     private func sortItem(_ operation: SortOperation) throws -> (SequenceItem?, SortOperation?) {
-        let imageSet = ImageSetDefinition(number: 1, sortOperations: [operation])
-        let dataSet = try serializer.serialize(protocol: HangingProtocol(name: "T", imageSets: [imageSet]))
-        let item = dataSet.sequence(for: .imageSetsSequence)?[0][.sortingOperationsSequence]?.sequenceItems?.first
-        let parsed = try HangingProtocolParser().parse(from: dataSet).imageSets.first?.sortOperations.first
+        let dataSet = try serializer.serialize(protocol: HangingProtocol(
+            name: "T",
+            imageSets: [ImageSetDefinition(number: 1)],
+            displaySets: [DisplaySet(number: 1, imageSetNumber: 1, sortingOperations: [operation])]
+        ))
+        XCTAssertNil(dataSet.sequence(for: .imageSetsSequence)?[0][.sortingOperationsSequence],
+                     "not in the Image Sets Sequence item")
+        let item = dataSet.sequence(for: .displaySetsSequence)?[0][.sortingOperationsSequence]?.sequenceItems?.first
+        let parsed = try HangingProtocolParser().parse(from: dataSet).displaySets.first?.sortingOperations.first
         return (item, parsed)
     }
 
@@ -477,6 +526,20 @@ final class HangingProtocolSerializerTests: XCTestCase {
         XCTAssertEqual(parsed?.smallScrollType, .page)
     }
 
+    /// The Display Sets Sequence item of `displaySet` (reformatting and 3D
+    /// Rendering Type are display set attributes, PS3.3 Table C.23.3-1) and
+    /// the parsed display set.
+    private func displaySetItem(_ displaySet: DisplaySet) throws -> (SequenceItem?, DisplaySet?) {
+        let dataSet = try serializer.serialize(protocol: HangingProtocol(name: "T", displaySets: [displaySet]))
+        let item = dataSet.sequence(for: .displaySetsSequence)?.first
+        let box = item?[.imageBoxesSequence]?.sequenceItems?.first
+        for tag in [Tag.reformattingOperationType, .reformattingThickness, .reformattingInterval,
+                    .reformattingOperationInitialViewDirection, .threeDRenderingType] {
+            XCTAssertNil(box?[tag], "\(tag) is not an Image Boxes Sequence attribute")
+        }
+        return (item, try HangingProtocolParser().parse(from: dataSet).displaySets.first)
+    }
+
     /// Reformatting Operation Type (0072,0510) MPR / 3D_RENDERING / SLAB, Initial View Direction
     /// (0072,0516) SAGITTAL / TRANSVERSE / CORONAL / OBLIQUE, 3D Rendering Type (0072,0520)
     func test_roundTrip_reformattingTerms() throws {
@@ -484,8 +547,11 @@ final class HangingProtocolSerializerTests: XCTestCase {
         for (type, term) in types {
             for plane in ImagePlane.allCases {
                 let op = ReformattingOperation(type: type, thickness: 2, interval: 1, initialViewPlane: plane)
-                let (item, parsed) = try imageBoxItem(ImageBox(number: 1, reformattingOperation: op, threeDRenderingType: .mip))
+                let (item, parsed) = try displaySetItem(DisplaySet(
+                    number: 1, imageBoxes: [ImageBox(number: 1)], reformattingOperation: op, threeDRenderingType: .mip))
                 XCTAssertEqual(item?.string(for: .reformattingOperationType), term)
+                XCTAssertEqual(item?[.reformattingThickness]?.float64Value, 2)
+                XCTAssertEqual(item?[.reformattingInterval]?.float64Value, 1)
                 XCTAssertEqual(item?.string(for: .reformattingOperationInitialViewDirection), plane.rawValue)
                 XCTAssertEqual(parsed?.reformattingOperation?.type, type)
                 XCTAssertEqual(parsed?.reformattingOperation?.initialViewPlane, plane)
@@ -493,39 +559,45 @@ final class HangingProtocolSerializerTests: XCTestCase {
         }
 
         for rendering in [ThreeDRenderingType.mip, .surfaceRendering, .volumeRendering] {
-            let box = ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .threeDRendering, initialViewPlane: .transverse),
-                               threeDRenderingType: rendering, threeDRenderingSubtypes: ["SHADED"])
-            let (item, parsed) = try imageBoxItem(box)
+            let displaySet = DisplaySet(
+                number: 1, imageBoxes: [ImageBox(number: 1)],
+                reformattingOperation: ReformattingOperation(type: .threeDRendering, initialViewPlane: .transverse),
+                threeDRenderingType: rendering, threeDRenderingSubtypes: ["SHADED"])
+            let (item, parsed) = try displaySetItem(displaySet)
             XCTAssertEqual(item?[.threeDRenderingType]?.stringValues, [rendering.rawValue, "SHADED"])
             XCTAssertEqual(parsed?.threeDRenderingType, rendering)
             XCTAssertEqual(parsed?.threeDRenderingSubtypes, ["SHADED"])
         }
     }
 
-    /// CPR -> MPR; MIP / MinIP / AvgIP -> 3D_RENDERING with an implied 3D Rendering Type
+    /// CPR -> MPR; MIP / MinIP / AvgIP -> 3D_RENDERING with an implied 3D Rendering Type.
+    /// Values given on the deprecated ImageBox API are written at display set level.
     @available(*, deprecated)
     func test_serialize_deprecatedReformattingCasesWriteStandardTerms() throws {
-        let cpr = try imageBoxItem(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .cpr))).0
+        func boxed(_ box: ImageBox) throws -> SequenceItem? {
+            try displaySetItem(DisplaySet(number: 1, imageBoxes: [box])).0
+        }
+        let cpr = try boxed(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .cpr)))
         XCTAssertEqual(cpr?.string(for: .reformattingOperationType), "MPR")
         XCTAssertNil(cpr?[.threeDRenderingType])
 
-        let mip = try imageBoxItem(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .mip))).0
+        let mip = try boxed(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .mip)))
         XCTAssertEqual(mip?.string(for: .reformattingOperationType), "3D_RENDERING")
         XCTAssertEqual(mip?[.threeDRenderingType]?.stringValues, ["MIP"])
 
-        let minIP = try imageBoxItem(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .minIP))).0
+        let minIP = try boxed(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .minIP)))
         XCTAssertEqual(minIP?.string(for: .reformattingOperationType), "3D_RENDERING")
         XCTAssertEqual(minIP?[.threeDRenderingType]?.stringValues, ["VOLUME", "MINIP"])
 
-        let avgIP = try imageBoxItem(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .avgIP))).0
+        let avgIP = try boxed(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .avgIP)))
         XCTAssertEqual(avgIP?[.threeDRenderingType]?.stringValues, ["VOLUME", "AVGIP"])
 
         // An explicit 3D Rendering Type on the box wins over the implied one
-        let explicit = try imageBoxItem(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .minIP),
-                                                 threeDRenderingType: .surfaceRendering)).0
+        let explicit = try boxed(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .minIP),
+                                          threeDRenderingType: .surfaceRendering))
         XCTAssertEqual(explicit?[.threeDRenderingType]?.stringValues, ["SURFACE"])
 
-        let axial = try imageBoxItem(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .mpr, initialViewDirection: "AXIAL"))).0
+        let axial = try boxed(ImageBox(number: 1, reformattingOperation: ReformattingOperation(type: .mpr, initialViewDirection: "AXIAL")))
         XCTAssertEqual(axial?.string(for: .reformattingOperationInitialViewDirection), "TRANSVERSE")
     }
 

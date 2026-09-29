@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Hanging Protocol Level (MANUFACTURER, SITE, USER_GROUP, SINGLE_USER) per PS3.3 2026a Table C.23.1-1; Partial Data Display Handling top-level Type 2 per Table C.23.3-1; Screen Specifications per Table C.23.2-2
+// NEMA-verified: 2026a, checked 2026-09-29 — Hanging Protocol Level (MANUFACTURER, SITE, USER_GROUP, SINGLE_USER) per PS3.3 2026a Table C.23.1-1; Partial Data Display Handling top-level Type 2 per Table C.23.3-1; Screen Specifications per Table C.23.2-2; Synchronized Scrolling Sequence (0072,0210) and Navigation Indicator Sequence (0072,0214) top-level Type 3 per Table C.23.3-1; Image Set Number resolution per Table C.23.3-1 (Display Sets item refers to a Time Based Image Sets item)
 //
 // HangingProtocol.swift
 // DICOMKit
@@ -69,6 +69,16 @@ public struct HangingProtocol: Sendable {
     /// zero length, meaning the behaviour is not defined (PS3.3 Table C.23.3-1).
     public let partialDataDisplayHandling: PartialDataDisplayHandling?
 
+    /// Synchronized Scrolling Sequence (0072,0210), Type 3: top level of the
+    /// Hanging Protocol Display Module (PS3.3 Table C.23.3-1). When empty,
+    /// display sets sharing a deprecated `DisplaySet.scrollingGroup` value
+    /// are written as one item each.
+    public let synchronizedScrolling: [SynchronizedScrollingGroup]
+
+    /// Navigation Indicator Sequence (0072,0214), Type 3: top level of the
+    /// Hanging Protocol Display Module (PS3.3 Table C.23.3-1)
+    public let navigationIndicators: [NavigationIndicator]
+
     // MARK: - Initialization
 
     public init(
@@ -84,7 +94,9 @@ public struct HangingProtocol: Sendable {
         numberOfScreens: Int = 1,
         screenDefinitions: [ScreenDefinition] = [],
         displaySets: [DisplaySet] = [],
-        partialDataDisplayHandling: PartialDataDisplayHandling? = nil
+        partialDataDisplayHandling: PartialDataDisplayHandling? = nil,
+        synchronizedScrolling: [SynchronizedScrollingGroup] = [],
+        navigationIndicators: [NavigationIndicator] = []
     ) {
         self.name = name
         self.description = description
@@ -99,7 +111,24 @@ public struct HangingProtocol: Sendable {
         self.screenDefinitions = screenDefinitions
         self.displaySets = displaySets
         self.partialDataDisplayHandling = partialDataDisplayHandling
+        self.synchronizedScrolling = synchronizedScrolling
+        self.navigationIndicators = navigationIndicators
     }
+
+    /// Every Image Set Number (0072,0032) defined by the Time Based Image
+    /// Sets Sequence items of all image sets.
+    public var imageSetNumbers: [Int] { imageSets.flatMap(\.imageSetNumbers) }
+
+    /// The Image Set Number (0072,0032) a display set shows: its own, else
+    /// the first of the deprecated `ImageBox.imageSetNumbers`, else the only
+    /// image set number when the protocol defines exactly one.
+    public func resolvedImageSetNumber(for displaySet: DisplaySet) -> Int? {
+        if let number = displaySet.imageSetNumber { return number }
+        if let legacy = displaySet.imageBoxes.lazy.flatMap(\.legacyImageSetNumbers).first { return legacy }
+        let all = imageSetNumbers
+        return all.count == 1 ? all[0] : nil
+    }
+
 }
 
 // MARK: - Hanging Protocol Level

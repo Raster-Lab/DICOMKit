@@ -21,7 +21,11 @@ final class ImageSetDefinitionTests: XCTestCase {
         XCTAssertNil(imageSet.label)
         XCTAssertEqual(imageSet.selectors.count, 0)
         XCTAssertEqual(imageSet.sortOperations.count, 0)
-        XCTAssertNil(imageSet.category)
+        // Image Set Selector Category (0072,0034) is Type 1 in the Time Based
+        // Image Sets Sequence item (PS3.3 Table C.23.1-1): inferred when not given
+        XCTAssertEqual(imageSet.category, .relativeTime)
+        XCTAssertEqual(imageSet.timeBasedImageSets.count, 1)
+        XCTAssertEqual(imageSet.timeBasedImageSets.first?.number, 1)
         XCTAssertNil(imageSet.timeSelection)
     }
     

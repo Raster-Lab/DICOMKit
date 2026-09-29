@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — reads every CS term of PS3.3 2026a Tables C.23.1-1 / C.23.3-1 (Level, Selector Category, Filter-by Category/Presence/Operator, Sort-by Category, Layout Type, Scroll Types, Reformatting Type, Initial View Direction, 3D Rendering Type VM 1-n, Partial Data Display Handling top-level, YES/NO flags); Relative Time US VM 2 and Abstract Prior Value SS VM 2 per PS3.6 Table 6-1; the old DICOMKit spellings are mapped where a mapping exists
+// NEMA-verified: 2026a, checked 2026-09-29 — reads every CS term of PS3.3 2026a Tables C.23.1-1 / C.23.3-1 (Level, Selector Category, Filter-by Category/Presence/Operator, Sort-by Category, Layout Type, Scroll Types, Reformatting Type, Initial View Direction, 3D Rendering Type VM 1-n, Partial Data Display Handling top-level, YES/NO flags); Relative Time US VM 2 and Abstract Prior Value SS VM 2 per PS3.6 Table 6-1; the old DICOMKit spellings are mapped where a mapping exists; item nesting per Tables C.23.1-1 / C.23.2-1 / C.23.3-1 (Time Based Image Sets items, Filter/Sorting Operations and reformatting in Display Sets items, Synchronized Scrolling / Navigation Indicator top level), with the earlier DICOMKit layout read as a fallback
 //
 // HangingProtocolParser.swift
 // DICOMKit
@@ -50,7 +50,34 @@ public struct HangingProtocolParser {
         // Parse display specification
         let numberOfScreens = dataSet.uint16(for: .numberOfScreens).map { Int($0) } ?? 1
         let screenDefinitions = try parseScreenDefinitions(from: dataSet)
-        let displaySets = try parseDisplaySets(from: dataSet)
+        var displaySets = try parseDisplaySets(from: dataSet, imageSets: imageSets)
+
+        // Synchronized Scrolling Sequence (0072,0210) and Navigation Indicator
+        // Sequence (0072,0214) - top level (PS3.3 Table C.23.3-1). Earlier
+        // DICOMKit versions wrote a single Display Set Scrolling Group
+        // (0072,0212) value in each Display Sets Sequence item; display sets
+        // sharing a value are read as one synchronized scrolling group.
+        var synchronizedScrolling = (dataSet.sequence(for: .synchronizedScrollingSequence) ?? []).compactMap { item -> SynchronizedScrollingGroup? in
+            guard let numbers = item[.displaySetScrollingGroup]?.integerValuesTolerant, !numbers.isEmpty else { return nil }
+            return SynchronizedScrollingGroup(displaySetNumbers: numbers)
+        }
+        if synchronizedScrolling.isEmpty {
+            synchronizedScrolling = HangingProtocolSerializer.legacySynchronizedScrolling(displaySets)
+        } else {
+            displaySets = displaySets.map { displaySet in
+                guard displaySet.legacyScrollingGroup == nil,
+                      let index = synchronizedScrolling.firstIndex(where: { $0.displaySetNumbers.contains(displaySet.number) }) else {
+                    return displaySet
+                }
+                return displaySet.replacing(legacyScrollingGroup: index + 1)
+            }
+        }
+        let navigationIndicators = (dataSet.sequence(for: .navigationIndicatorSequence) ?? []).map { item in
+            NavigationIndicator(
+                navigationDisplaySet: item[.navigationDisplaySet]?.integerValueTolerant,
+                referenceDisplaySets: item[.referenceDisplaySets]?.integerValuesTolerant ?? []
+            )
+        }
 
         // Partial Data Display Handling (0072,0208) - top-level Type 2 (PS3.3
         // Table C.23.3-1); earlier DICOMKit versions wrote it inside each
@@ -77,7 +104,9 @@ public struct HangingProtocolParser {
             numberOfScreens: numberOfScreens,
             screenDefinitions: screenDefinitions,
             displaySets: displaySets,
-            partialDataDisplayHandling: partialData
+            partialDataDisplayHandling: partialData,
+            synchronizedScrolling: synchronizedScrolling,
+            navigationIndicators: navigationIndicators
         )
     }
     
@@ -121,50 +150,115 @@ public struct HangingProtocolParser {
         guard let imageSetsSequence = dataSet.sequence(for: .imageSetsSequence) else {
             return []
         }
-        
+
         var imageSets: [ImageSetDefinition] = []
-        
+        var nextNumber = 1
+
         for (index, imageSetItem) in imageSetsSequence.enumerated() {
-            let number = imageSetItem[.imageSetNumber]?.uint16Value.map(Int.init) ?? (index + 1)
-            let label = imageSetItem.string(for: .imageSetLabel)
             let selectors = try parseSelectors(from: imageSetItem)
-            let sortOperations = parseSortOperations(from: imageSetItem)
-            let category = imageSetItem.string(for: .imageSetSelectorCategory)
-                .flatMap { ImageSetSelectorCategory.reading($0) }
-            let timeSelection = parseTimeSelection(from: imageSetItem)
-            
+
+            // Time Based Image Sets Sequence (0072,0030) items carry Image Set
+            // Number, Image Set Selector Category, Relative Time / Abstract
+            // Prior and Image Set Label (PS3.3 Table C.23.1-1). Earlier DICOMKit
+            // versions wrote those directly in the Image Sets Sequence item,
+            // which is read as a single time based image set.
+            var timeBased: [TimeBasedImageSet] = []
+            if let timeItems = imageSetItem[.timeBasedImageSetsSequence]?.sequenceItems {
+                for timeItem in timeItems {
+                    let number = timeItem[.imageSetNumber]?.integerValueTolerant ?? nextNumber
+                    timeBased.append(parseTimeBasedImageSet(from: timeItem, number: number))
+                    nextNumber = max(nextNumber, number) + 1
+                }
+            } else {
+                let number = imageSetItem[.imageSetNumber]?.integerValueTolerant ?? (index + 1)
+                timeBased.append(parseTimeBasedImageSet(from: imageSetItem, number: number))
+                nextNumber = max(nextNumber, number) + 1
+            }
+
+            // Sorting Operations Sequence (0072,0600) in an Image Sets Sequence
+            // item is where earlier DICOMKit versions wrote it; it is kept as
+            // the deprecated ImageSetDefinition.sortOperations and applied to
+            // the display sets that show the image set (parseDisplaySets).
+            let legacySorts = parseSortOperations(from: imageSetItem)
+
             imageSets.append(ImageSetDefinition(
-                number: number,
-                label: label,
                 selectors: selectors,
-                sortOperations: sortOperations,
-                category: category,
-                timeSelection: timeSelection
+                timeBasedImageSets: timeBased,
+                legacySortOperations: legacySorts
             ))
         }
-        
+
         return imageSets
     }
-    
+
+    private func parseTimeBasedImageSet(from item: SequenceItem, number: Int) -> TimeBasedImageSet {
+        let timeSelection = parseTimeSelection(from: item)
+        // Abstract Prior Code Sequence (0072,003E): a single item
+        let abstractPriorCode = item[.abstractPriorCodeSequence]?.sequenceItems?.first
+            .flatMap { SelectorAttributeValueCoding.codedConcept(from: $0) }
+        let category = item.string(for: .imageSetSelectorCategory)
+            .flatMap { ImageSetSelectorCategory.reading($0) }
+            ?? TimeBasedImageSet.inferredCategory(timeSelection: timeSelection, abstractPriorCode: abstractPriorCode)
+        return TimeBasedImageSet(
+            number: number,
+            category: category,
+            timeSelection: timeSelection,
+            abstractPriorCode: abstractPriorCode,
+            label: item.string(for: .imageSetLabel)
+        )
+    }
+
+    /// Selector Attribute VR (0072,0050) names the Selector xx Value element
+    /// that carries the values (PS3.3 Table C.23.4-1). Without it, take
+    /// whichever Selector xx Value element is present; failing that, the
+    /// attribute's own tag, which is where DICOMKit wrote the values before
+    /// it followed the macro.
+    private func parseSelectorValues(from item: SequenceItem, attribute: Tag?) -> (vr: VR?, values: [String], codeValues: [CodedConcept]) {
+        var attributeVR = item.string(for: .selectorAttributeVR)
+            .flatMap { VR(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+        var valueElement = attributeVR.flatMap { item[SelectorAttributeValueCoding.valueTag(for: $0)] }
+        if valueElement == nil {
+            valueElement = item.allElements
+                .filter { SelectorAttributeValueCoding.vr(forValueTag: $0.tag) != nil }
+                .min { $0.tag < $1.tag }
+            if attributeVR == nil, let found = valueElement {
+                attributeVR = SelectorAttributeValueCoding.vr(forValueTag: found.tag)
+            }
+        }
+        if valueElement == nil, let attribute {
+            valueElement = item[attribute]
+        }
+
+        var values: [String] = []
+        var codeValues: [CodedConcept] = []
+        if let valueElement {
+            (values, codeValues) = SelectorAttributeValueCoding.decode(valueElement)
+        }
+        return (attributeVR, values, codeValues)
+    }
+
     private func parseSelectors(from imageSetItem: SequenceItem) throws -> [ImageSetSelector] {
         guard let selectorSequence = imageSetItem[.imageSetSelectorSequence]?.sequenceItems else {
             return []
         }
-        
+
         var selectors: [ImageSetSelector] = []
-        
+
         for selectorItem in selectorSequence {
             // Parse the attribute tag from Selector Attribute (AT VR)
             guard let attributeElement = selectorItem[.selectorAttribute],
                   let attributeTag = try? Self.parseAttributeTag(from: attributeElement) else {
                 continue
             }
-            
+
             let valueNumber = selectorItem[.selectorValueNumber]?.uint16Value.map(Int.init)
-            // Filter-by Operator (0072,0406): Table C.23.3-1 terms; EQUAL /
-            // NOT_EQUAL / CONTAINS written by earlier DICOMKit versions map to
-            // MEMBER_OF / NOT_MEMBER_OF, and PRESENT / NOT_PRESENT to
-            // Filter-by Attribute Presence (0072,0404).
+            // Filter-by Operator / Attribute Presence / Category are Filter
+            // Operations Sequence attributes (PS3.3 Table C.23.3-1). Earlier
+            // DICOMKit versions wrote them in the selector item; they are read
+            // into the deprecated ImageSetSelector fields and applied to the
+            // display sets that show the image set. EQUAL / NOT_EQUAL /
+            // CONTAINS map to MEMBER_OF / NOT_MEMBER_OF, and PRESENT /
+            // NOT_PRESENT to Filter-by Attribute Presence (0072,0404).
             let operatorString = selectorItem.string(for: .filterByOperator)
             let filterOperator = operatorString.flatMap { FilterOperator.reading($0) }
             let attributePresence = selectorItem.string(for: .filterByAttributePresence)
@@ -173,55 +267,61 @@ public struct HangingProtocolParser {
             let filterByCategory = selectorItem.string(for: .filterByCategory)
                 .flatMap { FilterByCategory(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
             let sequencePointer = selectorItem[.selectorSequencePointer].flatMap { try? Self.parseAttributeTag(from: $0) }
-            
-            // Selector Attribute VR (0072,0050) names the Selector xx Value
-            // element that carries the values (PS3.3 Table C.23.4-1). Without
-            // it, take whichever Selector xx Value element is present; failing
-            // that, the attribute's own tag, which is where DICOMKit wrote the
-            // values before it followed the macro.
-            var attributeVR = selectorItem.string(for: .selectorAttributeVR)
-                .flatMap { VR(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
-            var valueElement = attributeVR.flatMap { selectorItem[SelectorAttributeValueCoding.valueTag(for: $0)] }
-            if valueElement == nil {
-                valueElement = selectorItem.allElements
-                    .filter { SelectorAttributeValueCoding.vr(forValueTag: $0.tag) != nil }
-                    .min { $0.tag < $1.tag }
-                if attributeVR == nil, let found = valueElement {
-                    attributeVR = SelectorAttributeValueCoding.vr(forValueTag: found.tag)
-                }
-            }
-            if valueElement == nil {
-                valueElement = selectorItem[attributeTag]
-            }
-            
-            var values: [String] = []
-            var codeValues: [CodedConcept] = []
-            if let valueElement {
-                (values, codeValues) = SelectorAttributeValueCoding.decode(valueElement)
-            }
-            
+
+            let decoded = parseSelectorValues(from: selectorItem, attribute: attributeTag)
+
             let usageFlagString = selectorItem.string(for: .imageSetSelectorUsageFlag)
             let usageFlag = usageFlagString.flatMap { SelectorUsageFlag(rawValue: $0) } ?? .match
-            
+
             selectors.append(ImageSetSelector(
                 attribute: attributeTag,
-                attributeVR: attributeVR,
+                attributeVR: decoded.vr,
                 sequencePointer: sequencePointer,
                 valueNumber: valueNumber,
-                operator: filterOperator,
-                filterByCategory: filterByCategory,
-                attributePresence: attributePresence,
-                values: values,
-                codeValues: codeValues,
+                legacyOperator: filterOperator,
+                legacyFilterByCategory: filterByCategory,
+                legacyAttributePresence: attributePresence,
+                values: decoded.values,
+                codeValues: decoded.codeValues,
                 usageFlag: usageFlag
             ))
         }
 
         return selectors
     }
-    
-    private func parseSortOperations(from imageSetItem: SequenceItem) -> [SortOperation] {
-        guard let sortSequence = imageSetItem[.sortingOperationsSequence]?.sequenceItems else {
+
+    /// Filter Operations Sequence (0072,0400) items of a Display Sets
+    /// Sequence item (PS3.3 Table C.23.3-1).
+    private func parseFilterOperations(from displaySetItem: SequenceItem) -> [FilterOperation] {
+        guard let filterSequence = displaySetItem[.filterOperationsSequence]?.sequenceItems else {
+            return []
+        }
+
+        return filterSequence.map { item in
+            let attribute = item[.selectorAttribute].flatMap { try? Self.parseAttributeTag(from: $0) }
+            let operatorString = item.string(for: .filterByOperator)
+            let decoded = parseSelectorValues(from: item, attribute: attribute)
+            return FilterOperation(
+                attribute: attribute,
+                attributeVR: decoded.vr,
+                sequencePointer: item[.selectorSequencePointer].flatMap { try? Self.parseAttributeTag(from: $0) },
+                valueNumber: item[.selectorValueNumber]?.integerValueTolerant,
+                filterByCategory: item.string(for: .filterByCategory)
+                    .flatMap { FilterByCategory(rawValue: $0.trimmingCharacters(in: .whitespaces)) },
+                attributePresence: item.string(for: .filterByAttributePresence)
+                    .flatMap { FilterByAttributePresence(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+                    ?? operatorString.flatMap { FilterByAttributePresence(rawValue: $0.trimmingCharacters(in: .whitespaces)) },
+                operator: operatorString.flatMap { FilterOperator.reading($0) },
+                values: decoded.values,
+                codeValues: decoded.codeValues,
+                usageFlag: item.string(for: .imageSetSelectorUsageFlag)
+                    .flatMap { SelectorUsageFlag(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+            )
+        }
+    }
+
+    private func parseSortOperations(from item: SequenceItem) -> [SortOperation] {
+        guard let sortSequence = item[.sortingOperationsSequence]?.sequenceItems else {
             return []
         }
         
@@ -339,13 +439,14 @@ public struct HangingProtocolParser {
     
     // MARK: - Display Set Parsing
     
-    private func parseDisplaySets(from dataSet: DataSet) throws -> [DisplaySet] {
+    private func parseDisplaySets(from dataSet: DataSet, imageSets: [ImageSetDefinition]) throws -> [DisplaySet] {
         guard let displaySetsSequence = dataSet.sequence(for: .displaySetsSequence) else {
             return []
         }
-        
+
+        let allImageSetNumbers = imageSets.flatMap(\.imageSetNumbers)
         var displaySets: [DisplaySet] = []
-        
+
         for (index, displaySetItem) in displaySetsSequence.enumerated() {
             let number = displaySetItem[.displaySetNumber]?.uint16Value.map(Int.init) ?? (index + 1)
             let label = displaySetItem.string(for: .displaySetLabel)
@@ -353,8 +454,50 @@ public struct HangingProtocolParser {
             let groupDescription = displaySetItem.string(for: .displaySetPresentationGroupDescription)
             // Partial Data Display Handling (0072,0208) is read at the top
             // level into HangingProtocol.partialDataDisplayHandling.
-            let scrollingGroup = displaySetItem[.displaySetScrollingGroup]?.uint16Value.map(Int.init)
+
+            // Display Set Scrolling Group (0072,0212) in a Display Sets
+            // Sequence item is where earlier DICOMKit versions wrote it (one
+            // value); PS3.3 Table C.23.3-1 puts it in Synchronized Scrolling
+            // Sequence items, read in parse(from:).
+            let legacyScrollingGroup = displaySetItem[.displaySetScrollingGroup]?.integerValueTolerant
+
+            // Image Set Number (0072,0032) - Type 1 in the Display Sets
+            // Sequence item (PS3.3 Table C.23.3-1)
+            let imageSetNumber = displaySetItem[.imageSetNumber]?.integerValueTolerant
             let imageBoxes = try parseImageBoxes(from: displaySetItem)
+
+            // Filter Operations Sequence (0072,0400) and Sorting Operations
+            // Sequence (0072,0600). When the item has none, the filters and
+            // sorts an earlier DICOMKit version wrote in the Image Sets
+            // Sequence item of the image set shown are applied here.
+            var filterOperations = parseFilterOperations(from: displaySetItem)
+            var sortingOperations = parseSortOperations(from: displaySetItem)
+            let shown = imageSetNumber ?? (allImageSetNumbers.count == 1 ? allImageSetNumbers[0] : nil)
+            let sourceImageSets = shown.map { number in imageSets.filter { $0.imageSetNumbers.contains(number) } } ?? []
+            if filterOperations.isEmpty {
+                filterOperations = sourceImageSets.flatMap { imageSet in
+                    imageSet.selectors.filter { $0.isLegacyFilter }.map { $0.legacyFilterOperation }
+                }
+            }
+            if sortingOperations.isEmpty {
+                sortingOperations = sourceImageSets.flatMap { $0.legacySortOperations }
+            }
+
+            // Blending Operation Type (0072,0500), Defined Term COLOR
+            let blending = displaySetItem.string(for: .blendingOperationType)
+                .flatMap { BlendingOperationType(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+
+            // Reformatting (0072,0510 - 0516) and 3D Rendering Type (0072,0520)
+            // are display set attributes (PS3.3 Table C.23.3-1); earlier
+            // DICOMKit versions wrote them in Image Boxes Sequence items, read
+            // as a fallback from the first image box that has them.
+            let reformatting = parseReformattingOperation(from: displaySetItem)
+                ?? imageBoxes.lazy.compactMap(\.legacyReformattingOperation).first
+            var rendering = Self.parseThreeDRenderingType(from: displaySetItem)
+            if rendering.type == nil, let box = imageBoxes.first(where: { $0.legacyThreeDRenderingType != nil }) {
+                rendering = (box.legacyThreeDRenderingType, box.legacyThreeDRenderingSubtypes)
+            }
+
             let displayOptions = parseDisplayOptions(from: displaySetItem)
 
             displaySets.append(DisplaySet(
@@ -362,15 +505,31 @@ public struct HangingProtocolParser {
                 label: label,
                 presentationGroup: presentationGroup,
                 presentationGroupDescription: groupDescription,
-                scrollingGroup: scrollingGroup,
+                scrollingGroup: legacyScrollingGroup,
+                imageSetNumber: imageSetNumber,
                 imageBoxes: imageBoxes,
+                filterOperations: filterOperations,
+                sortingOperations: sortingOperations,
+                blendingOperationType: blending,
+                reformattingOperation: reformatting,
+                threeDRenderingType: rendering.type,
+                threeDRenderingSubtypes: rendering.subtypes,
                 displayOptions: displayOptions
             ))
         }
-        
+
         return displaySets
     }
-    
+
+    /// 3D Rendering Type (0072,0520) VM 1-n: Value 1 a Defined Term, the
+    /// rest implementation specific sub-types (PS3.3 Table C.23.3-1)
+    private static func parseThreeDRenderingType(from item: SequenceItem) -> (type: ThreeDRenderingType?, subtypes: [String]) {
+        let values = (item[.threeDRenderingType]?.stringValues ?? [])
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        let type = values.first.flatMap { ThreeDRenderingType(rawValue: $0) }
+        return (type, values.count > 1 ? Array(values.dropFirst()) : [])
+    }
+
     private func parseImageBoxes(from displaySetItem: SequenceItem) throws -> [ImageBox] {
         guard let imageBoxSequence = displaySetItem[.imageBoxesSequence]?.sequenceItems else {
             return []
@@ -383,10 +542,9 @@ public struct HangingProtocolParser {
             let layoutTypeString = boxItem.string(for: .imageBoxLayoutType)
             let layoutType = layoutTypeString.flatMap { ImageBoxLayoutType.reading($0) } ?? .stack
             
-            // Parse referenced image set numbers
-            let imageSetNumbers: [Int] = []
-            // This would typically come from a reference sequence
-            
+            // Display Environment Spatial Position (0072,0108), FD VM 4
+            let spatialPosition = boxItem[.displayEnvironmentSpatialPosition]?.float64Values
+
             let tileHorizontal = boxItem[.imageBoxTileHorizontalDimension]?.uint16Value.map(Int.init)
             let tileVertical = boxItem[.imageBoxTileVerticalDimension]?.uint16Value.map(Int.init)
             
@@ -402,21 +560,24 @@ public struct HangingProtocolParser {
             let largeScrollAmount = boxItem[.imageBoxLargeScrollAmount]?.uint16Value.map(Int.init)
             
             let overlapPriority = boxItem[.imageBoxOverlapPriority]?.uint16Value.map(Int.init)
+            // Preferred Playback Sequencing (0018,1244) US, Enumerated Values
+            // 0, 1, 2; Recommended Display Frame Rate (0008,2144) IS
+            let playback = boxItem[.preferredPlaybackSequencing]?.integerValueTolerant
+                .flatMap { UInt16(exactly: $0) }
+                .flatMap { PreferredPlaybackSequencing(rawValue: $0) }
+            let frameRate = boxItem[.recommendedDisplayFrameRate]?.integerValueTolerant
             let cineRelative = boxItem[.cineRelativeToRealTime]?.float64Value
-            
+
+            // Reformatting / 3D Rendering Type in an image box item is where
+            // earlier DICOMKit versions wrote them; kept on the deprecated
+            // ImageBox fields and promoted to the display set (parseDisplaySets).
             let reformattingOp = parseReformattingOperation(from: boxItem)
-            
-            // 3D Rendering Type (0072,0520) VM 1-n: Value 1 a Defined Term,
-            // the rest implementation specific sub-types (PS3.3 Table C.23.3-1)
-            let renderingValues = (boxItem[.threeDRenderingType]?.stringValues ?? [])
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-            let renderingType = renderingValues.first.flatMap { ThreeDRenderingType(rawValue: $0) }
-            let renderingSubtypes = renderingValues.count > 1 ? Array(renderingValues.dropFirst()) : []
+            let rendering = Self.parseThreeDRenderingType(from: boxItem)
 
             imageBoxes.append(ImageBox(
                 number: number,
                 layoutType: layoutType,
-                imageSetNumbers: imageSetNumbers,
+                displayEnvironmentSpatialPosition: spatialPosition,
                 tileHorizontalDimension: tileHorizontal,
                 tileVerticalDimension: tileVertical,
                 scrollDirection: scrollDirection,
@@ -425,30 +586,32 @@ public struct HangingProtocolParser {
                 largeScrollType: largeScrollType,
                 largeScrollAmount: largeScrollAmount,
                 overlapPriority: overlapPriority,
+                preferredPlaybackSequencing: playback,
+                recommendedDisplayFrameRate: frameRate,
                 cineRelativeToRealTime: cineRelative,
                 reformattingOperation: reformattingOp,
-                threeDRenderingType: renderingType,
-                threeDRenderingSubtypes: renderingSubtypes
+                threeDRenderingType: rendering.type,
+                threeDRenderingSubtypes: rendering.subtypes
             ))
         }
 
         return imageBoxes
     }
 
-    private func parseReformattingOperation(from boxItem: SequenceItem) -> ReformattingOperation? {
+    private func parseReformattingOperation(from item: SequenceItem) -> ReformattingOperation? {
         // Reformatting Operation Type (0072,0510): MPR / 3D_RENDERING / SLAB;
         // CPR, MIP, MinIP, AvgIP written by earlier DICOMKit versions map to
         // MPR / 3D_RENDERING (see ReformattingType.reading).
-        guard let typeString = boxItem.string(for: .reformattingOperationType),
+        guard let typeString = item.string(for: .reformattingOperationType),
               let type = ReformattingType.reading(typeString) else {
             return nil
         }
 
-        let thickness = boxItem[.reformattingThickness]?.float64Value
-        let interval = boxItem[.reformattingInterval]?.float64Value
+        let thickness = item[.reformattingThickness]?.float64Value
+        let interval = item[.reformattingInterval]?.float64Value
         // Reformatting Operation Initial View Direction (0072,0516): SAGITTAL /
         // TRANSVERSE / CORONAL / OBLIQUE ("AXIAL" reads as TRANSVERSE)
-        let initialViewPlane = boxItem.string(for: .reformattingOperationInitialViewDirection)
+        let initialViewPlane = item.string(for: .reformattingOperationInitialViewDirection)
             .flatMap { ImagePlane.reading($0) }
 
         return ReformattingOperation(

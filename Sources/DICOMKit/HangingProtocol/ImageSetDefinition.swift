@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Filter-by Operator, Filter-by Category, Filter-by Attribute Presence, Sort-by Category, Sorting Direction (PS3.3 Table C.23.3-1, C.23.3.1.1), Image Set Selector Usage Flag, Image Set Selector Category, Relative Time (US VM 2), Relative Time Units, Abstract Prior Value (SS VM 2) (Table C.23.1-1, PS3.6 Table 6-1)
+// NEMA-verified: 2026a, checked 2026-09-29 — Filter-by Operator, Filter-by Category, Filter-by Attribute Presence, Sort-by Category, Sorting Direction (PS3.3 Table C.23.3-1, C.23.3.1.1), Image Set Selector Usage Flag, Image Set Selector Category, Relative Time (US VM 2), Relative Time Units, Abstract Prior Value (SS VM 2) (Table C.23.1-1, PS3.6 Table 6-1); Time Based Image Sets Sequence (0072,0030) item attributes (Image Set Number, Selector Category Type 1, Relative Time, Abstract Prior Value / Code Sequence 0072,003E, Label) and Filter Operations Sequence (0072,0400) item attributes placed per Tables C.23.1-1 / C.23.3-1
 //
 // ImageSetDefinition.swift
 // DICOMKit
@@ -12,28 +12,62 @@ import DICOMCore
 
 /// Image Set Definition for Hanging Protocol
 ///
-/// Defines criteria for selecting images from a study to be displayed together.
+/// One item of the Image Sets Sequence (0072,0020), PS3.3 Table C.23.1-1:
+/// the Image Set Selector Sequence (0072,0022) items collectively identify
+/// one type of image set, and each Time Based Image Sets Sequence (0072,0030)
+/// item identifies one image set of that type by time (e.g. current and
+/// prior), carrying its Image Set Number (0072,0032). PS3.3 C.23.1.1.2.
 ///
-/// Reference: PS3.3 Table C.23.1-1 - Image Sets Sequence (0072,0020)
+/// Filtering and sorting are not image set attributes: they belong to the
+/// Display Sets Sequence item that shows the image set
+/// (`DisplaySet.filterOperations`, `DisplaySet.sortingOperations`,
+/// PS3.3 Table C.23.3-1).
 public struct ImageSetDefinition: Sendable {
-    /// Image Set Number (0072,0032), 1-based
-    public let number: Int
-
-    /// Image Set Label (0072,0040)
-    public let label: String?
-
-    /// Selectors for filtering images
+    /// Image Set Selector Sequence (0072,0022) items
     public let selectors: [ImageSetSelector]
 
-    /// Sort operations for ordering selected images
-    public let sortOperations: [SortOperation]
+    /// Time Based Image Sets Sequence (0072,0030) items; one image set each
+    public let timeBasedImageSets: [TimeBasedImageSet]
 
-    /// Image Set Selector Category (0072,0034)
-    public let category: ImageSetSelectorCategory?
+    /// Sort operations given through the deprecated image-set-level API.
+    let legacySortOperations: [SortOperation]
 
-    /// Time-based selection for prior studies
-    public let timeSelection: TimeBasedSelection?
+    /// An Image Sets Sequence item with any number of time based image sets.
+    public init(
+        selectors: [ImageSetSelector],
+        timeBasedImageSets: [TimeBasedImageSet]
+    ) {
+        self.selectors = selectors
+        self.timeBasedImageSets = timeBasedImageSets
+        self.legacySortOperations = []
+    }
 
+    /// An Image Sets Sequence item with a single Time Based Image Sets
+    /// Sequence (0072,0030) item holding `number`, `label`, `category` and
+    /// `timeSelection`. A nil `category` is inferred (see
+    /// `TimeBasedImageSet.inferredCategory`).
+    public init(
+        number: Int,
+        label: String? = nil,
+        selectors: [ImageSetSelector] = [],
+        category: ImageSetSelectorCategory? = nil,
+        timeSelection: TimeBasedSelection? = nil
+    ) {
+        self.selectors = selectors
+        self.timeBasedImageSets = [TimeBasedImageSet(
+            number: number,
+            category: category ?? TimeBasedImageSet.inferredCategory(timeSelection: timeSelection),
+            timeSelection: timeSelection,
+            label: label
+        )]
+        self.legacySortOperations = []
+    }
+
+    /// Sorting Operations Sequence (0072,0600) is a Display Sets Sequence
+    /// item attribute (PS3.3 Table C.23.3-1). Sorts given here are written
+    /// to each display set that shows this image set and has no
+    /// `DisplaySet.sortingOperations` of its own.
+    @available(*, deprecated, message: "Sorting Operations Sequence (0072,0600) belongs to Display Sets Sequence (0072,0200) items in PS3.3 2026a Table C.23.3-1; use DisplaySet.sortingOperations and ImageSetDefinition.init(number:label:selectors:category:timeSelection:)")
     public init(
         number: Int,
         label: String? = nil,
@@ -42,12 +76,94 @@ public struct ImageSetDefinition: Sendable {
         category: ImageSetSelectorCategory? = nil,
         timeSelection: TimeBasedSelection? = nil
     ) {
-        self.number = number
-        self.label = label
         self.selectors = selectors
-        self.sortOperations = sortOperations
+        self.timeBasedImageSets = [TimeBasedImageSet(
+            number: number,
+            category: category ?? TimeBasedImageSet.inferredCategory(timeSelection: timeSelection),
+            timeSelection: timeSelection,
+            label: label
+        )]
+        self.legacySortOperations = sortOperations
+    }
+
+    init(selectors: [ImageSetSelector], timeBasedImageSets: [TimeBasedImageSet], legacySortOperations: [SortOperation]) {
+        self.selectors = selectors
+        self.timeBasedImageSets = timeBasedImageSets
+        self.legacySortOperations = legacySortOperations
+    }
+
+    /// The Image Set Numbers (0072,0032) this item defines.
+    public var imageSetNumbers: [Int] { timeBasedImageSets.map(\.number) }
+
+    /// Image Set Number (0072,0032) of the first time based image set.
+    @available(*, deprecated, message: "Image Set Number (0072,0032) is a Time Based Image Sets Sequence (0072,0030) item attribute in PS3.3 2026a Table C.23.1-1; use timeBasedImageSets[n].number")
+    public var number: Int { timeBasedImageSets.first?.number ?? 0 }
+
+    /// Image Set Label (0072,0040) of the first time based image set.
+    @available(*, deprecated, message: "Image Set Label (0072,0040) is a Time Based Image Sets Sequence (0072,0030) item attribute in PS3.3 2026a Table C.23.1-1; use timeBasedImageSets[n].label")
+    public var label: String? { timeBasedImageSets.first?.label }
+
+    /// Image Set Selector Category (0072,0034) of the first time based image set.
+    @available(*, deprecated, message: "Image Set Selector Category (0072,0034) is a Time Based Image Sets Sequence (0072,0030) item attribute in PS3.3 2026a Table C.23.1-1; use timeBasedImageSets[n].category")
+    public var category: ImageSetSelectorCategory? { timeBasedImageSets.first?.category }
+
+    /// Relative Time / Abstract Prior attributes of the first time based image set.
+    @available(*, deprecated, message: "Relative Time and Abstract Prior Value are Time Based Image Sets Sequence (0072,0030) item attributes in PS3.3 2026a Table C.23.1-1; use timeBasedImageSets[n].timeSelection")
+    public var timeSelection: TimeBasedSelection? { timeBasedImageSets.first?.timeSelection }
+
+    /// Sorts given through the deprecated initializer, or read from a file
+    /// an earlier DICOMKit version wrote with (0072,0600) in the image set item.
+    @available(*, deprecated, message: "Sorting Operations Sequence (0072,0600) belongs to Display Sets Sequence (0072,0200) items in PS3.3 2026a Table C.23.3-1; use DisplaySet.sortingOperations")
+    public var sortOperations: [SortOperation] { legacySortOperations }
+}
+
+// MARK: - Time Based Image Set
+
+/// One item of the Time Based Image Sets Sequence (0072,0030), PS3.3 Table
+/// C.23.1-1: one image set, identified by time criteria, within an Image
+/// Sets Sequence (0072,0020) item.
+public struct TimeBasedImageSet: Sendable {
+    /// Image Set Number (0072,0032), Type 1: unique across all Image Sets
+    /// Sequence items; Display Sets Sequence items refer to it.
+    public let number: Int
+
+    /// Image Set Selector Category (0072,0034), Type 1
+    public let category: ImageSetSelectorCategory
+
+    /// Relative Time (0072,0038), Relative Time Units (0072,003A) and
+    /// Abstract Prior Value (0072,003C), all Type 1C
+    public let timeSelection: TimeBasedSelection?
+
+    /// Abstract Prior Code Sequence (0072,003E), Type 1C: a single item
+    /// (PS3.16 CID 31), required for ABSTRACT_PRIOR without Abstract Prior Value.
+    public let abstractPriorCode: CodedConcept?
+
+    /// Image Set Label (0072,0040), Type 3
+    public let label: String?
+
+    public init(
+        number: Int,
+        category: ImageSetSelectorCategory = .relativeTime,
+        timeSelection: TimeBasedSelection? = nil,
+        abstractPriorCode: CodedConcept? = nil,
+        label: String? = nil
+    ) {
+        self.number = number
         self.category = category
         self.timeSelection = timeSelection
+        self.abstractPriorCode = abstractPriorCode
+        self.label = label
+    }
+
+    /// The category implied by the attributes present when none is given:
+    /// ABSTRACT_PRIOR when an Abstract Prior Value or Code is present,
+    /// otherwise RELATIVE_TIME.
+    static func inferredCategory(timeSelection: TimeBasedSelection?, abstractPriorCode: CodedConcept? = nil) -> ImageSetSelectorCategory {
+        if abstractPriorCode != nil { return .abstractPrior }
+        if let timeSelection, !timeSelection.abstractPriorRange.isEmpty, timeSelection.relativeTimeRange.isEmpty {
+            return .abstractPrior
+        }
+        return .relativeTime
     }
 }
 
@@ -61,11 +177,15 @@ public struct ImageSetDefinition: Sendable {
 /// (PS3.3 Table C.23.4-2). `values` holds every VR as text: numeric VRs as
 /// decimal, AT as "(GGGG,EEEE)", the byte VRs (OB/OW/OD/OF/OL/OV/UN) as one
 /// hexadecimal string, and SQ as the Code Value of each `codeValues` item.
+/// An image matches when its attribute matches any one of the values
+/// (PS3.3 C.23.1.1.2).
 ///
-/// `operator`, `filterByCategory` and `attributePresence` are the Filter
-/// Operations Sequence (0072,0400) attributes of PS3.3 Table C.23.3-1; DICOMKit
-/// carries them in the same selector item so one selector can both select and
-/// filter. Their values are always the Table C.23.3-1 terms.
+/// The deprecated `operator`, `filterByCategory` and `attributePresence` are
+/// Filter Operations Sequence (0072,0400) attributes, which PS3.3 Table
+/// C.23.3-1 places in Display Sets Sequence items (`FilterOperation`). A
+/// selector that carries one (other than MEMBER_OF) is written as a filter
+/// operation of each display set that shows the image set and has no
+/// `DisplaySet.filterOperations` of its own.
 public struct ImageSetSelector: Sendable {
     /// DICOM tag to filter on — Selector Attribute (0072,0026)
     public let attribute: Tag
@@ -83,17 +203,25 @@ public struct ImageSetSelector: Sendable {
     /// attribute is compared (1 = first). Zero identifies any value.
     public let valueNumber: Int?
 
+    /// Filter attributes given through the deprecated API.
+    let legacyOperator: FilterOperator?
+    let legacyFilterByCategory: FilterByCategory?
+    let legacyAttributePresence: FilterByAttributePresence?
+
     /// Filter-by Operator (0072,0406)
-    public let `operator`: FilterOperator?
+    @available(*, deprecated, message: "Filter-by Operator (0072,0406) belongs to Filter Operations Sequence (0072,0400) items of a Display Sets Sequence item in PS3.3 2026a Table C.23.3-1; use DisplaySet.filterOperations")
+    public var `operator`: FilterOperator? { legacyOperator }
 
     /// Filter-by Category (0072,0402). With `.imagePlane` the `values` are
     /// `ImagePlane` terms computed from Image Orientation (Patient) rather
     /// than the value of `attribute` (PS3.3 C.23.3.1.1).
-    public let filterByCategory: FilterByCategory?
+    @available(*, deprecated, message: "Filter-by Category (0072,0402) belongs to Filter Operations Sequence (0072,0400) items of a Display Sets Sequence item in PS3.3 2026a Table C.23.3-1; use DisplaySet.filterOperations")
+    public var filterByCategory: FilterByCategory? { legacyFilterByCategory }
 
     /// Filter-by Attribute Presence (0072,0404): include the image according
     /// to whether `attribute` is present, instead of comparing values.
-    public let attributePresence: FilterByAttributePresence?
+    @available(*, deprecated, message: "Filter-by Attribute Presence (0072,0404) belongs to Filter Operations Sequence (0072,0400) items of a Display Sets Sequence item in PS3.3 2026a Table C.23.3-1; use DisplaySet.filterOperations")
+    public var attributePresence: FilterByAttributePresence? { legacyAttributePresence }
 
     /// Expected values for the attribute
     public let values: [String]
@@ -106,6 +234,32 @@ public struct ImageSetSelector: Sendable {
     /// attribute is not available in the image.
     public let usageFlag: SelectorUsageFlag
 
+    /// An Image Set Selector Sequence (0072,0022) item (PS3.3 Table C.23.1-1).
+    public init(
+        attribute: Tag,
+        attributeVR: VR? = nil,
+        sequencePointer: Tag? = nil,
+        valueNumber: Int? = nil,
+        values: [String] = [],
+        codeValues: [CodedConcept] = [],
+        usageFlag: SelectorUsageFlag = .match
+    ) {
+        self.attribute = attribute
+        self.attributeVR = attributeVR
+        self.sequencePointer = sequencePointer
+        self.valueNumber = valueNumber
+        self.legacyOperator = nil
+        self.legacyFilterByCategory = nil
+        self.legacyAttributePresence = nil
+        self.values = values
+        self.codeValues = codeValues
+        self.usageFlag = usageFlag
+    }
+
+    /// A selector that also filters. The filter attributes are written as a
+    /// Filter Operations Sequence (0072,0400) item of each display set that
+    /// shows the image set (PS3.3 Table C.23.3-1), see `ImageSetSelector`.
+    @available(*, deprecated, message: "Filter-by Operator, Category and Attribute Presence belong to Filter Operations Sequence (0072,0400) items of a Display Sets Sequence item in PS3.3 2026a Table C.23.3-1; use FilterOperation in DisplaySet.filterOperations")
     public init(
         attribute: Tag,
         attributeVR: VR? = nil,
@@ -122,9 +276,131 @@ public struct ImageSetSelector: Sendable {
         self.attributeVR = attributeVR
         self.sequencePointer = sequencePointer
         self.valueNumber = valueNumber
-        self.operator = `operator`
+        self.legacyOperator = `operator`
+        self.legacyFilterByCategory = filterByCategory
+        self.legacyAttributePresence = attributePresence
+        self.values = values
+        self.codeValues = codeValues
+        self.usageFlag = usageFlag
+    }
+
+    init(
+        attribute: Tag,
+        attributeVR: VR?,
+        sequencePointer: Tag?,
+        valueNumber: Int?,
+        legacyOperator: FilterOperator?,
+        legacyFilterByCategory: FilterByCategory?,
+        legacyAttributePresence: FilterByAttributePresence?,
+        values: [String],
+        codeValues: [CodedConcept],
+        usageFlag: SelectorUsageFlag
+    ) {
+        self.attribute = attribute
+        self.attributeVR = attributeVR
+        self.sequencePointer = sequencePointer
+        self.valueNumber = valueNumber
+        self.legacyOperator = legacyOperator
+        self.legacyFilterByCategory = legacyFilterByCategory
+        self.legacyAttributePresence = legacyAttributePresence
+        self.values = values
+        self.codeValues = codeValues
+        self.usageFlag = usageFlag
+    }
+
+    /// True when the selector carries a filter that an Image Set Selector
+    /// Sequence item cannot express: a Filter-by Category, a Filter-by
+    /// Attribute Presence, or an operator other than MEMBER_OF (which is the
+    /// "any one of the values" matching of PS3.3 C.23.1.1.2).
+    var isLegacyFilter: Bool {
+        if legacyFilterByCategory != nil || legacyAttributePresence != nil { return true }
+        guard let op = legacyOperator else { return false }
+        return op.standardTerm != .memberOf
+    }
+
+    /// The Filter Operations Sequence item this selector's filter stands for.
+    var legacyFilterOperation: FilterOperation {
+        FilterOperation(
+            attribute: legacyFilterByCategory == nil ? attribute : nil,
+            attributeVR: attributeVR,
+            sequencePointer: sequencePointer,
+            valueNumber: valueNumber,
+            filterByCategory: legacyFilterByCategory,
+            attributePresence: legacyAttributePresence ?? legacyOperator?.presenceTerm,
+            operator: legacyOperator?.presenceTerm == nil ? legacyOperator : nil,
+            values: values,
+            codeValues: codeValues,
+            usageFlag: usageFlag
+        )
+    }
+}
+
+// MARK: - Filter Operation
+
+/// One item of the Filter Operations Sequence (0072,0400) of a Display Sets
+/// Sequence item, PS3.3 Table C.23.3-1: selects the subset of the display
+/// set's image set to display. Successive items are applied in order, each
+/// on the output of the previous one (an AND, PS3.3 C.23.3.1.1).
+///
+/// Either `filterByCategory` or `attribute` is given (each Type 1C on the
+/// other's absence). The values travel in the Selector *xx* Value element
+/// of Selector Attribute VR (0072,0050), as for `ImageSetSelector`; with
+/// `.imagePlane` the VR is CS and the values are `ImagePlane` terms.
+public struct FilterOperation: Sendable {
+    /// Selector Attribute (0072,0026), Type 1C: required if Filter-by
+    /// Category is absent
+    public let attribute: Tag?
+
+    /// Selector Attribute VR (0072,0050), Type 1C. `nil` means "look it up in
+    /// the data dictionary" (CS for IMAGE_PLANE).
+    public let attributeVR: VR?
+
+    /// Selector Sequence Pointer (0072,0052) (PS3.3 Table C.23.4-1)
+    public let sequencePointer: Tag?
+
+    /// Selector Value Number (0072,0028), Type 1C: which value is compared
+    /// (1 = first, 0 = any)
+    public let valueNumber: Int?
+
+    /// Filter-by Category (0072,0402), Type 1C
+    public let filterByCategory: FilterByCategory?
+
+    /// Filter-by Attribute Presence (0072,0404), Type 1C
+    public let attributePresence: FilterByAttributePresence?
+
+    /// Filter-by Operator (0072,0406), Type 1C. Deprecated cases are
+    /// written as their Table C.23.3-1 equivalents (see `FilterOperator`).
+    public let `operator`: FilterOperator?
+
+    /// Selector values compared with the image's values
+    public let values: [String]
+
+    /// Selector Code Sequence Value (0072,0080) items
+    public let codeValues: [CodedConcept]
+
+    /// Image Set Selector Usage Flag (0072,0024), Type 3 here: behaviour
+    /// when the attribute or the selected value is not available
+    public let usageFlag: SelectorUsageFlag?
+
+    public init(
+        attribute: Tag? = nil,
+        attributeVR: VR? = nil,
+        sequencePointer: Tag? = nil,
+        valueNumber: Int? = nil,
+        filterByCategory: FilterByCategory? = nil,
+        attributePresence: FilterByAttributePresence? = nil,
+        operator: FilterOperator? = nil,
+        values: [String] = [],
+        codeValues: [CodedConcept] = [],
+        usageFlag: SelectorUsageFlag? = nil
+    ) {
+        self.attribute = attribute
+        self.attributeVR = attributeVR
+        self.sequencePointer = sequencePointer
+        self.valueNumber = valueNumber
         self.filterByCategory = filterByCategory
         self.attributePresence = attributePresence
+        self.operator = `operator`
         self.values = values
         self.codeValues = codeValues
         self.usageFlag = usageFlag

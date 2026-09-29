@@ -128,12 +128,22 @@ final class SelectorAttributeValueTests: XCTestCase {
         XCTAssertThrowsError(try HangingProtocolSerializer().serialize(protocol: hp))
     }
     
-    func test_presenceSelector_writesVRButNoValueElement() throws {
-        let item = try serializedItem(ImageSetSelector(attribute: .sliceLocation, attributePresence: .present))
+    func test_presenceFilter_writesNoVRAndNoValueElement() throws {
+        // PS3.3 Table C.23.3-1: PRESENT is a Filter-by Attribute Presence
+        // (0072,0404) term of a Filter Operations Sequence (0072,0400) item;
+        // Selector Attribute VR is Type 1C only with a Filter-by Operator.
+        let hp = HangingProtocol(
+            name: "Sel",
+            imageSets: [ImageSetDefinition(number: 1)],
+            displaySets: [DisplaySet(number: 1, imageSetNumber: 1, filterOperations: [
+                FilterOperation(attribute: .sliceLocation, attributePresence: .present)])]
+        )
+        let dataSet = try HangingProtocolSerializer().serialize(protocol: hp)
+        let item = try XCTUnwrap(dataSet.sequence(for: .displaySetsSequence)?[0][.filterOperationsSequence]?.sequenceItems?.first)
 
-        XCTAssertEqual(item.string(for: tag(0x0072, 0x0050)), "DS")
+        XCTAssertEqual(item[tag(0x0072, 0x0026)]?.attributeTagValue, .sliceLocation)
+        XCTAssertNil(item[tag(0x0072, 0x0050)])
         XCTAssertNil(item[tag(0x0072, 0x0072)])
-        // PS3.3 Table C.23.3-1: PRESENT is a Filter-by Attribute Presence (0072,0404) term
         XCTAssertEqual(item.string(for: tag(0x0072, 0x0404)), "PRESENT")
         XCTAssertNil(item[tag(0x0072, 0x0406)])
     }
@@ -156,7 +166,7 @@ final class SelectorAttributeValueTests: XCTestCase {
             ImageSetSelector(attribute: .sliceThickness, values: ["1.25"]),
             ImageSetSelector(attribute: tag(0x0018, 0x9089), values: ["0.5", "0.25", "1.0"]),
             ImageSetSelector(attribute: .frameIncrementPointer, values: ["(0018,1063)"]),
-            ImageSetSelector(attribute: .seriesDescription, valueNumber: 1, operator: .memberOf, values: ["CHEST"]),
+            ImageSetSelector(attribute: .seriesDescription, valueNumber: 1, values: ["CHEST"]),
             ImageSetSelector(attribute: tag(0x0029, 0x1010), attributeVR: .OB, values: ["DEADBEEF"]),
             ImageSetSelector(attribute: tag(0x0029, 0x1011), attributeVR: .SV, values: ["-5", "9000000000"]),
             ImageSetSelector(attribute: tag(0x0029, 0x1012), attributeVR: .UV, values: ["18446744073709551615"]),
@@ -168,8 +178,9 @@ final class SelectorAttributeValueTests: XCTestCase {
             XCTAssertEqual(back.attribute, selector.attribute, "\(selector.attribute)")
             XCTAssertEqual(back.values, selector.values, "\(selector.attribute)")
             XCTAssertEqual(back.sequencePointer, selector.sequencePointer, "\(selector.attribute)")
-            XCTAssertEqual(back.valueNumber, selector.valueNumber, "\(selector.attribute)")
-            XCTAssertEqual(back.operator, selector.operator, "\(selector.attribute)")
+            // Selector Value Number (0072,0028) is Type 1 here (PS3.3 Table
+            // C.23.1-1): nil is written as 0, "any value"
+            XCTAssertEqual(back.valueNumber, selector.valueNumber ?? 0, "\(selector.attribute)")
             XCTAssertEqual(back.usageFlag, selector.usageFlag, "\(selector.attribute)")
             XCTAssertNotNil(back.attributeVR, "\(selector.attribute): VR read back from (0072,0050)")
         }

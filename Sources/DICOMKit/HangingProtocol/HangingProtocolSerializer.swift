@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — VRs per PS3.6 2026a Table 6-1 (SH name, LO description, US VM 2 Relative Time, SS VM 2 Abstract Prior Value, CS 1-n 3D Rendering Type); every CS term written is one of PS3.3 2026a Tables C.23.1-1 / C.23.3-1 (deprecated DICOMKit cases are mapped, see the enum doc comments); Partial Data Display Handling written top-level Type 2
+// NEMA-verified: 2026a, checked 2026-09-29 — VRs per PS3.6 2026a Table 6-1 (SH name, LO description, US VM 2 Relative Time, SS VM 2 Abstract Prior Value, CS 1-n 3D Rendering Type); every CS term written is one of PS3.3 2026a Tables C.23.1-1 / C.23.3-1 (deprecated DICOMKit cases are mapped, see the enum doc comments); Partial Data Display Handling written top-level Type 2; every element placed per PS3.3 2026a Tables C.23.1-1, C.23.2-1, C.23.3-1 (macros C.23.4-1/-2, C.23.2-2) by script-generated (parent, tag) comparison in HangingProtocolNestingTests: 145 table rows, 0 misplaced; Type 2 sequences 0072,000E / 0072,0102 / 0072,0400 / 0072,0600 written empty; Selector Value Number Type 1 in selector items
 //
 // HangingProtocolSerializer.swift
 // DICOMKit
@@ -79,16 +79,17 @@ public struct HangingProtocolSerializer {
             )
         }
         
-        // MARK: - Hanging Protocol Environment Module (C.23.2)
-        
         // Hanging Protocol Definition Sequence (0072,000C) - Required, Type 1
         if !hangingProtocol.environments.isEmpty {
             let environmentItems = serializeEnvironments(hangingProtocol.environments)
             dataSet.setSequence(environmentItems, for: .hangingProtocolDefinitionSequence)
         }
         
-        // MARK: - Hanging Protocol User Identification Module (C.23.3)
-        
+        // Hanging Protocol User Identification Code Sequence (0072,000E) -
+        // Type 2, zero or one item (PS3.3 Table C.23.1-1); not modelled, so
+        // written empty
+        dataSet.setSequence([], for: .hangingProtocolUserIdentificationCodeSequence)
+
         // Hanging Protocol User Group Name (0072,0010) - Optional, Type 3
         if !hangingProtocol.userGroups.isEmpty {
             // Serialize first user group (DICOM allows only one in practice)
@@ -101,33 +102,34 @@ public struct HangingProtocolSerializer {
             }
         }
         
-        // MARK: - Image Set Selector Module (C.23.4)
-        
-        // Image Sets Sequence (0072,0020) - Conditional, Type 1C
+        // Image Sets Sequence (0072,0020) - Type 1 (PS3.3 Table C.23.1-1):
+        // each item holds an Image Set Selector Sequence (0072,0022) and a
+        // Time Based Image Sets Sequence (0072,0030)
         if !hangingProtocol.imageSets.isEmpty {
             let imageSetItems = try serializeImageSets(hangingProtocol.imageSets)
             dataSet.setSequence(imageSetItems, for: .imageSetsSequence)
         }
         
-        // MARK: - Display Set Presentation Module (C.23.5)
-        
-        // Number of Screens (0072,0100) - Required, Type 1
+        // MARK: - Hanging Protocol Environment Module (C.23.2)
+
+        // Number of Screens (0072,0100) - Type 2 (PS3.3 Table C.23.2-1)
         dataSet[.numberOfScreens] = DataElement.uint16(
             tag: .numberOfScreens,
             value: UInt16(hangingProtocol.numberOfScreens)
         )
         
-        // Nominal Screen Definition Sequence (0072,0102) - Optional, Type 3
-        if !hangingProtocol.screenDefinitions.isEmpty {
-            let screenItems = serializeScreenDefinitions(hangingProtocol.screenDefinitions)
-            dataSet.setSequence(screenItems, for: .nominalScreenDefinitionSequence)
-        }
+        // Nominal Screen Definition Sequence (0072,0102) - Type 2 (PS3.3 Table
+        // C.23.2-1): zero or more items, written empty when there are no screens
+        dataSet.setSequence(
+            serializeScreenDefinitions(hangingProtocol.screenDefinitions),
+            for: .nominalScreenDefinitionSequence
+        )
         
-        // MARK: - Display Set Specification Module (C.23.6)
-        
+        // MARK: - Hanging Protocol Display Module (C.23.3)
+
         // Display Sets Sequence (0072,0200) - Required, Type 1
         if !hangingProtocol.displaySets.isEmpty {
-            let displaySetItems = try serializeDisplaySets(hangingProtocol.displaySets)
+            let displaySetItems = try serializeDisplaySets(hangingProtocol.displaySets, of: hangingProtocol)
             dataSet.setSequence(displaySetItems, for: .displaySetsSequence)
         }
 
@@ -143,7 +145,57 @@ public struct HangingProtocolSerializer {
             value: partialData?.rawValue ?? ""
         )
 
+        // Synchronized Scrolling Sequence (0072,0210) - Type 3, top level (PS3.3
+        // Table C.23.3-1); each item's Display Set Scrolling Group (0072,0212)
+        // is US VM 2-n. Display sets sharing a deprecated
+        // DisplaySet.scrollingGroup value become one item when none is given.
+        let scrolling = hangingProtocol.synchronizedScrolling.isEmpty
+            ? Self.legacySynchronizedScrolling(hangingProtocol.displaySets)
+            : hangingProtocol.synchronizedScrolling
+        if !scrolling.isEmpty {
+            dataSet.setSequence(scrolling.map { group in
+                SequenceItem(elements: [DataElement.uint16s(
+                    tag: .displaySetScrollingGroup,
+                    values: group.displaySetNumbers.map { UInt16(clamping: $0) }
+                )])
+            }, for: .synchronizedScrollingSequence)
+        }
+
+        // Navigation Indicator Sequence (0072,0214) - Type 3, top level (PS3.3
+        // Table C.23.3-1): Navigation Display Set (0072,0216) US Type 1C,
+        // Reference Display Sets (0072,0218) US VM 1-n Type 1
+        if !hangingProtocol.navigationIndicators.isEmpty {
+            dataSet.setSequence(hangingProtocol.navigationIndicators.map { indicator in
+                var elements: [DataElement] = []
+                if let navigation = indicator.navigationDisplaySet {
+                    elements.append(DataElement.uint16(tag: .navigationDisplaySet, value: UInt16(clamping: navigation)))
+                }
+                elements.append(DataElement.uint16s(
+                    tag: .referenceDisplaySets,
+                    values: indicator.referenceDisplaySets.map { UInt16(clamping: $0) }
+                ))
+                return SequenceItem(elements: elements)
+            }, for: .navigationIndicatorSequence)
+        }
+
         return dataSet
+    }
+
+    /// Groups display sets by the deprecated `DisplaySet.scrollingGroup`, in
+    /// order of first appearance; a group needs two or more display sets
+    /// (Display Set Scrolling Group VM 2-n).
+    static func legacySynchronizedScrolling(_ displaySets: [DisplaySet]) -> [SynchronizedScrollingGroup] {
+        var order: [Int] = []
+        var members: [Int: [Int]] = [:]
+        for displaySet in displaySets {
+            guard let group = displaySet.legacyScrollingGroup else { continue }
+            if members[group] == nil { order.append(group) }
+            members[group, default: []].append(displaySet.number)
+        }
+        return order.compactMap { group in
+            guard let numbers = members[group], numbers.count >= 2 else { return nil }
+            return SynchronizedScrollingGroup(displaySetNumbers: numbers)
+        }
     }
 
     private static func legacyPartialDataHandling(_ displaySets: [DisplaySet]) -> PartialDataDisplayHandling? {
@@ -189,67 +241,83 @@ public struct HangingProtocolSerializer {
     
     private func serializeImageSets(_ imageSets: [ImageSetDefinition]) throws -> [SequenceItem] {
         var items: [SequenceItem] = []
-        
+
         for imageSet in imageSets {
             var elements: [DataElement] = []
-            
-            // Image Set Number (0072,0032) - Required, Type 1
-            elements.append(DataElement.uint16(
-                tag: .imageSetNumber,
-                value: UInt16(imageSet.number)
-            ))
-            
-            // Image Set Label (0072,0040) - Optional, Type 3
-            if let label = imageSet.label {
-                elements.append(DataElement.string(
-                    tag: .imageSetLabel,
-                    vr: .LO,
-                    value: label
-                ))
-            }
-            
-            // Image Set Selector Category (0072,0034) - PS3.3 Table C.23.1-1
-            // Enumerated Values RELATIVE_TIME / ABSTRACT_PRIOR; deprecated
-            // cases are mapped (see ImageSetSelectorCategory).
-            if let category = imageSet.category {
-                elements.append(DataElement.string(
-                    tag: .imageSetSelectorCategory,
-                    vr: .CS,
-                    value: category.standardTerm.rawValue
-                ))
-            }
-            
-            // Image Set Selector Sequence (0072,0022) - Required, Type 1
-            if !imageSet.selectors.isEmpty {
-                let selectorItems = try serializeSelectors(imageSet.selectors)
-                let selectorSequence = createSequenceElement(
+
+            // Image Set Selector Sequence (0072,0022) - Type 1. Selectors that
+            // carry a deprecated filter (see ImageSetSelector.isLegacyFilter)
+            // are written as Filter Operations of the display sets instead.
+            var selectors = imageSet.selectors.filter { !$0.isLegacyFilter }
+            if selectors.isEmpty { selectors = imageSet.selectors }
+            if !selectors.isEmpty {
+                let selectorItems = try serializeSelectors(selectors)
+                elements.append(createSequenceElement(
                     tag: .imageSetSelectorSequence,
                     items: selectorItems
-                )
-                elements.append(selectorSequence)
+                ))
             }
-            
-            // Sorting Operations Sequence (0072,0600) - Optional, Type 3
-            if !imageSet.sortOperations.isEmpty {
-                let sortItems = serializeSortOperations(imageSet.sortOperations)
-                let sortSequence = createSequenceElement(
-                    tag: .sortingOperationsSequence,
-                    items: sortItems
-                )
-                elements.append(sortSequence)
+
+            // Time Based Image Sets Sequence (0072,0030) - Type 1 (PS3.3 Table
+            // C.23.1-1): Image Set Number, Image Set Selector Category, Relative
+            // Time / Abstract Prior and Image Set Label live in its items.
+            if !imageSet.timeBasedImageSets.isEmpty {
+                elements.append(createSequenceElement(
+                    tag: .timeBasedImageSetsSequence,
+                    items: imageSet.timeBasedImageSets.map(serializeTimeBasedImageSet)
+                ))
             }
-            
-            // Time-based selection attributes
-            if let timeSelection = imageSet.timeSelection {
-                serializeTimeSelection(timeSelection, into: &elements)
-            }
-            
+
             items.append(SequenceItem(elements: elements))
         }
-        
+
         return items
     }
-    
+
+    private func serializeTimeBasedImageSet(_ timeBased: TimeBasedImageSet) -> SequenceItem {
+        var elements: [DataElement] = []
+
+        // Image Set Number (0072,0032) - Type 1
+        elements.append(DataElement.uint16(
+            tag: .imageSetNumber,
+            value: UInt16(clamping: timeBased.number)
+        ))
+
+        // Image Set Selector Category (0072,0034) - Type 1; Enumerated Values
+        // RELATIVE_TIME / ABSTRACT_PRIOR; deprecated cases are mapped (see
+        // ImageSetSelectorCategory).
+        elements.append(DataElement.string(
+            tag: .imageSetSelectorCategory,
+            vr: .CS,
+            value: timeBased.category.standardTerm.rawValue
+        ))
+
+        // Relative Time (0072,0038), Relative Time Units (0072,003A), Abstract
+        // Prior Value (0072,003C) - Type 1C
+        if let timeSelection = timeBased.timeSelection {
+            serializeTimeSelection(timeSelection, into: &elements)
+        }
+
+        // Abstract Prior Code Sequence (0072,003E) - Type 1C, a single item
+        if let code = timeBased.abstractPriorCode {
+            elements.append(createSequenceElement(
+                tag: .abstractPriorCodeSequence,
+                items: [SequenceItem(elements: SelectorAttributeValueCoding.codeElements(code))]
+            ))
+        }
+
+        // Image Set Label (0072,0040) - Type 3
+        if let label = timeBased.label {
+            elements.append(DataElement.string(
+                tag: .imageSetLabel,
+                vr: .LO,
+                value: label
+            ))
+        }
+
+        return SequenceItem(elements: elements)
+    }
+
     private func serializeSelectors(_ selectors: [ImageSetSelector]) throws -> [SequenceItem] {
         var items: [SequenceItem] = []
         
@@ -262,41 +330,18 @@ public struct HangingProtocolSerializer {
                 value: selector.attribute
             ))
             
-            // Selector Value Number (0072,0028) - Optional, Type 3
-            if let valueNumber = selector.valueNumber {
-                elements.append(DataElement.uint16(
-                    tag: .selectorValueNumber,
-                    value: UInt16(valueNumber)
-                ))
-            }
+            // Selector Value Number (0072,0028) - Type 1 in an Image Set
+            // Selector Sequence item (PS3.3 Table C.23.1-1); nil is written
+            // as 0, "any value"
+            elements.append(DataElement.uint16(
+                tag: .selectorValueNumber,
+                value: UInt16(clamping: selector.valueNumber ?? 0)
+            ))
             
-            // Filter-by Category (0072,0402), Filter-by Attribute Presence
-            // (0072,0404) and Filter-by Operator (0072,0406) - PS3.3 Table
-            // C.23.3-1 terms. The deprecated FilterOperator cases are mapped:
-            // EQUAL / CONTAINS -> MEMBER_OF, NOT_EQUAL -> NOT_MEMBER_OF,
-            // PRESENT / NOT_PRESENT -> Filter-by Attribute Presence.
-            if let category = selector.filterByCategory {
-                elements.append(DataElement.string(
-                    tag: .filterByCategory,
-                    vr: .CS,
-                    value: category.rawValue
-                ))
-            }
-            if let presence = selector.attributePresence ?? selector.operator?.presenceTerm {
-                elements.append(DataElement.string(
-                    tag: .filterByAttributePresence,
-                    vr: .CS,
-                    value: presence.rawValue
-                ))
-            }
-            if let filterOperator = selector.operator?.standardTerm {
-                elements.append(DataElement.string(
-                    tag: .filterByOperator,
-                    vr: .CS,
-                    value: filterOperator.rawValue
-                ))
-            }
-            
+            // Filter-by Category / Attribute Presence / Operator are not Image
+            // Set Selector Sequence attributes (PS3.3 Table C.23.1-1); they are
+            // written in Filter Operations Sequence items (serializeFilterOperations).
+
             // Selector Sequence Pointer (0072,0052) - Conditional, Type 1C
             if let sequencePointer = selector.sequencePointer {
                 elements.append(serializeTagAsAttributeTag(
@@ -342,6 +387,114 @@ public struct HangingProtocolSerializer {
         return items
     }
     
+    private func serializeFilterOperations(_ operations: [FilterOperation]) throws -> [SequenceItem] {
+        var items: [SequenceItem] = []
+
+        for operation in operations {
+            var elements: [DataElement] = []
+
+            // Filter-by Category (0072,0402) - Type 1C, required if Selector
+            // Attribute is absent (PS3.3 Table C.23.3-1)
+            if let category = operation.filterByCategory {
+                elements.append(DataElement.string(
+                    tag: .filterByCategory,
+                    vr: .CS,
+                    value: category.rawValue
+                ))
+            }
+
+            // Filter-by Attribute Presence (0072,0404) - Type 1C
+            if let presence = operation.attributePresence ?? operation.operator?.presenceTerm {
+                elements.append(DataElement.string(
+                    tag: .filterByAttributePresence,
+                    vr: .CS,
+                    value: presence.rawValue
+                ))
+            }
+
+            // Selector Attribute (0072,0026) - Type 1C, required if Filter-by
+            // Category is absent
+            if let attribute = operation.attribute {
+                elements.append(serializeTagAsAttributeTag(
+                    tag: .selectorAttribute,
+                    value: attribute
+                ))
+            }
+
+            // Selector Sequence Pointer (0072,0052) - PS3.3 Table C.23.4-1
+            if let sequencePointer = operation.sequencePointer {
+                elements.append(serializeTagAsAttributeTag(
+                    tag: .selectorSequencePointer,
+                    value: sequencePointer
+                ))
+            }
+
+            // Filter-by Operator (0072,0406) - Type 1C; deprecated cases are
+            // mapped: EQUAL / CONTAINS -> MEMBER_OF, NOT_EQUAL -> NOT_MEMBER_OF,
+            // PRESENT / NOT_PRESENT -> Filter-by Attribute Presence.
+            let filterOperator = operation.operator?.standardTerm
+
+            // Selector Attribute VR (0072,0050) and the Selector xx Value -
+            // Type 1C when an operator compares values; CS for IMAGE_PLANE
+            // (PS3.3 C.23.3.1.1).
+            let hasValues = !operation.values.isEmpty || !operation.codeValues.isEmpty
+            if filterOperator != nil || hasValues {
+                let attributeVR = operation.attributeVR
+                    ?? (operation.filterByCategory == .imagePlane ? .CS : nil)
+                    ?? operation.attribute.flatMap { SelectorAttributeValueCoding.dictionaryVR(for: $0) }
+                if let attributeVR {
+                    elements.append(DataElement.string(
+                        tag: .selectorAttributeVR,
+                        vr: .CS,
+                        value: attributeVR.rawValue
+                    ))
+                    if hasValues {
+                        elements.append(try SelectorAttributeValueCoding.encode(
+                            values: operation.values,
+                            codeValues: operation.codeValues,
+                            vr: attributeVR
+                        ))
+                    }
+                } else if hasValues {
+                    throw HangingProtocolError.invalidAttributeValue(
+                        "Filter operation has no Selector Attribute VR; set FilterOperation.attributeVR to encode its values")
+                }
+            }
+
+            // Selector Value Number (0072,0028) - Type 1C, required if Selector
+            // Attribute and Filter-by Operator are present; 0 = any value
+            if let valueNumber = operation.valueNumber
+                ?? (operation.attribute != nil && filterOperator != nil ? 0 : nil) {
+                elements.append(DataElement.uint16(
+                    tag: .selectorValueNumber,
+                    value: UInt16(clamping: valueNumber)
+                ))
+            }
+
+            if let filterOperator {
+                elements.append(DataElement.string(
+                    tag: .filterByOperator,
+                    vr: .CS,
+                    value: filterOperator.rawValue
+                ))
+            }
+
+            // Image Set Selector Usage Flag (0072,0024) - Type 3 here; absent
+            // means MATCH, and it is ignored without a Filter-by Operator
+            if let usageFlag = operation.usageFlag, filterOperator != nil {
+                elements.append(DataElement.string(
+                    tag: .imageSetSelectorUsageFlag,
+                    vr: .CS,
+                    value: usageFlag.rawValue
+                ))
+            }
+
+            items.append(SequenceItem(elements: elements))
+        }
+
+        return items
+    }
+
     private func serializeSortOperations(_ operations: [SortOperation]) -> [SequenceItem] {
         var items: [SequenceItem] = []
         
@@ -488,18 +641,18 @@ public struct HangingProtocolSerializer {
     
     // MARK: - Display Set Serialization
     
-    private func serializeDisplaySets(_ displaySets: [DisplaySet]) throws -> [SequenceItem] {
+    private func serializeDisplaySets(_ displaySets: [DisplaySet], of hangingProtocol: HangingProtocol) throws -> [SequenceItem] {
         var items: [SequenceItem] = []
-        
+
         for displaySet in displaySets {
             var elements: [DataElement] = []
-            
+
             // Display Set Number (0072,0202) - Required, Type 1
             elements.append(DataElement.uint16(
                 tag: .displaySetNumber,
                 value: UInt16(displaySet.number)
             ))
-            
+
             // Display Set Label (0072,0203) - Optional, Type 3
             if let label = displaySet.label {
                 elements.append(DataElement.string(
@@ -508,15 +661,15 @@ public struct HangingProtocolSerializer {
                     value: label
                 ))
             }
-            
-            // Display Set Presentation Group (0072,0204) - Optional, Type 3
+
+            // Display Set Presentation Group (0072,0204) - Type 1
             if let presentationGroup = displaySet.presentationGroup {
                 elements.append(DataElement.uint16(
                     tag: .displaySetPresentationGroup,
                     value: UInt16(presentationGroup)
                 ))
             }
-            
+
             // Display Set Presentation Group Description (0072,0206) - Optional, Type 3
             if let groupDescription = displaySet.presentationGroupDescription {
                 elements.append(DataElement.string(
@@ -525,18 +678,21 @@ public struct HangingProtocolSerializer {
                     value: groupDescription
                 ))
             }
-            
-            // Partial Data Display Handling (0072,0208) is a top-level
-            // attribute (PS3.3 Table C.23.3-1) and is written in serialize(protocol:).
 
-            // Display Set Scrolling Group (0072,0212) - Optional, Type 3
-            if let scrollingGroup = displaySet.scrollingGroup {
+            // Image Set Number (0072,0032) - Type 1 in the Display Sets Sequence
+            // item (PS3.3 Table C.23.3-1): the image set this display set shows
+            let imageSetNumber = hangingProtocol.resolvedImageSetNumber(for: displaySet)
+            if let imageSetNumber {
                 elements.append(DataElement.uint16(
-                    tag: .displaySetScrollingGroup,
-                    value: UInt16(scrollingGroup)
+                    tag: .imageSetNumber,
+                    value: UInt16(clamping: imageSetNumber)
                 ))
             }
-            
+
+            // Partial Data Display Handling (0072,0208) and Synchronized
+            // Scrolling Sequence (0072,0210) are top-level attributes (PS3.3
+            // Table C.23.3-1), written in serialize(protocol:).
+
             // Image Boxes Sequence (0072,0300) - Required, Type 1
             if !displaySet.imageBoxes.isEmpty {
                 let imageBoxItems = try serializeImageBoxes(displaySet.imageBoxes)
@@ -546,16 +702,76 @@ public struct HangingProtocolSerializer {
                 )
                 elements.append(imageBoxSequence)
             }
-            
+
+            // Filter Operations Sequence (0072,0400) - Type 2, written empty
+            // when there is none. Filters given on the deprecated
+            // ImageSetSelector API of the shown image set apply when the
+            // display set has none of its own.
+            let sourceImageSets = imageSetNumber.map { number in
+                hangingProtocol.imageSets.filter { $0.imageSetNumbers.contains(number) }
+            } ?? []
+            var filters = displaySet.filterOperations
+            if filters.isEmpty {
+                filters = sourceImageSets.flatMap { imageSet in
+                    imageSet.selectors.filter { $0.isLegacyFilter }.map { $0.legacyFilterOperation }
+                }
+            }
+            elements.append(createSequenceElement(
+                tag: .filterOperationsSequence,
+                items: try serializeFilterOperations(filters)
+            ))
+
+            // Sorting Operations Sequence (0072,0600) - Type 2, written empty
+            // when there is none; sorts given on the deprecated image-set
+            // API apply when the display set has none of its own.
+            var sorts = displaySet.sortingOperations
+            if sorts.isEmpty {
+                sorts = sourceImageSets.flatMap { $0.legacySortOperations }
+            }
+            elements.append(createSequenceElement(
+                tag: .sortingOperationsSequence,
+                items: serializeSortOperations(sorts)
+            ))
+
+            // Blending Operation Type (0072,0500) - Type 3, Defined Term COLOR
+            if let blending = displaySet.blendingOperationType {
+                elements.append(DataElement.string(
+                    tag: .blendingOperationType,
+                    vr: .CS,
+                    value: blending.rawValue
+                ))
+            }
+
+            // Reformatting Operation Type ... Initial View Direction (0072,0510 -
+            // 0516) - display set level (PS3.3 Table C.23.3-1); a value given
+            // on the deprecated ImageBox API is used when the display set has none.
+            if let reformattingOp = displaySet.effectiveReformattingOperation {
+                serializeReformattingOperation(reformattingOp, into: &elements)
+            }
+
+            // 3D Rendering Type (0072,0520) CS VM 1-n - Type 1C if Reformatting
+            // Operation Type is 3D_RENDERING: Value 1 a Defined Term (MIP,
+            // SURFACE, VOLUME), further values implementation specific
+            // sub-types (PS3.3 Table C.23.3-1). A deprecated projection
+            // ReformattingType supplies the values when none is stated.
+            let renderingValues = displaySet.effectiveThreeDRenderingValues
+            if !renderingValues.isEmpty {
+                elements.append(DataElement.strings(
+                    tag: .threeDRenderingType,
+                    vr: .CS,
+                    values: renderingValues
+                ))
+            }
+
             // Display options
             serializeDisplayOptions(displaySet.displayOptions, into: &elements)
-            
+
             items.append(SequenceItem(elements: elements))
         }
-        
+
         return items
     }
-    
+
     private func serializeImageBoxes(_ imageBoxes: [ImageBox]) throws -> [SequenceItem] {
         var items: [SequenceItem] = []
         
@@ -576,6 +792,15 @@ public struct HangingProtocolSerializer {
                 value: imageBox.layoutType.standardTerm.rawValue
             ))
             
+            // Display Environment Spatial Position (0072,0108) FD VM 4 - Type 1
+            // in an Image Boxes Sequence item (PS3.3 Table C.23.3-1)
+            if let spatialPosition = imageBox.displayEnvironmentSpatialPosition {
+                elements.append(DataElement.float64s(
+                    tag: .displayEnvironmentSpatialPosition,
+                    values: spatialPosition
+                ))
+            }
+
             // Image Box Tile Horizontal Dimension (0072,0306) - Conditional, Type 1C
             if let tileHorizontal = imageBox.tileHorizontalDimension {
                 elements.append(DataElement.uint16(
@@ -645,7 +870,25 @@ public struct HangingProtocolSerializer {
                 ))
             }
             
-            // Cine Relative to Real-Time (0072,0330) - Optional, Type 3
+            // Preferred Playback Sequencing (0018,1244) US - Type 1C for CINE
+            // (PS3.3 Table C.23.3-1, Enumerated Values 0, 1, 2)
+            if let playback = imageBox.preferredPlaybackSequencing {
+                elements.append(DataElement.uint16(
+                    tag: .preferredPlaybackSequencing,
+                    value: playback.rawValue
+                ))
+            }
+
+            // Recommended Display Frame Rate (0008,2144) IS - Type 1C for CINE
+            if let frameRate = imageBox.recommendedDisplayFrameRate {
+                elements.append(DataElement.string(
+                    tag: .recommendedDisplayFrameRate,
+                    vr: .IS,
+                    value: String(frameRate)
+                ))
+            }
+
+            // Cine Relative to Real-Time (0072,0330) - Type 1C for CINE
             if let cineRelative = imageBox.cineRelativeToRealTime {
                 elements.append(DataElement.float64(
                     tag: .cineRelativeToRealTime,
@@ -653,29 +896,8 @@ public struct HangingProtocolSerializer {
                 ))
             }
             
-            // Reformatting Operation
-            if let reformattingOp = imageBox.reformattingOperation {
-                serializeReformattingOperation(reformattingOp, into: &elements)
-            }
-
-            // 3D Rendering Type (0072,0520) CS VM 1-n - Type 1C if Reformatting
-            // Operation Type is 3D_RENDERING: Value 1 a Defined Term (MIP,
-            // SURFACE, VOLUME), further values implementation specific
-            // sub-types (PS3.3 Table C.23.3-1). A deprecated projection
-            // ReformattingType supplies the values when the box states none.
-            var renderingValues: [String] = []
-            if let renderingType = imageBox.threeDRenderingType {
-                renderingValues = [renderingType.rawValue] + imageBox.threeDRenderingSubtypes
-            } else if let implied = imageBox.reformattingOperation?.type.impliedRenderingType {
-                renderingValues = [implied.type.rawValue] + implied.subtypes
-            }
-            if !renderingValues.isEmpty {
-                elements.append(DataElement.strings(
-                    tag: .threeDRenderingType,
-                    vr: .CS,
-                    values: renderingValues
-                ))
-            }
+            // Reformatting and 3D Rendering Type are Display Sets Sequence item
+            // attributes (PS3.3 Table C.23.3-1), written in serializeDisplaySets.
 
             items.append(SequenceItem(elements: elements))
         }
