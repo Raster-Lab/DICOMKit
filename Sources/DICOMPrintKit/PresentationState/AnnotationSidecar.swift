@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — claims about GSPS vocabulary checked against PS3.3 2026a Table C.10-5 (Compound Graphic Type ARROW) and Tables C.10-5a/5b (per-object CIELab colour) and corrected; colour-image inversion kept here because Table A.33.2-1 has no Presentation LUT module; otherwise private JSON, no DICOM data
+// NEMA-verified: 2026a, checked 2026-09-29 — claims about GSPS vocabulary checked against PS3.3 2026a Table C.10-5 (Compound Graphic Type ARROW) and Tables C.10-5a/5b (per-object CIELab colour), which the GSPS now carries (D39); colour-image inversion kept here because Table A.33.2-1 has no Presentation LUT module; otherwise private JSON, no DICOM data
 // AnnotationSidecar.swift
 // DICOMPrintKit
 //
@@ -6,16 +6,14 @@
 //
 // A GSPS can carry annotations — Graphic Annotation Sequence (PS3.3 C.10.5) is
 // part of the standard, and the parser in DICOMKit already reads it. It is not
-// what these are written to, for one reason: the model DICOMKit writes it from
-// cannot hold what a `PrintOverlayAnnotation` actually says. PS3.3 2026a has
-// the vocabulary — a Compound Graphic of type ARROW (Table C.10-5), and
-// per-object colour through the Text Style and Line Style Sequences (Tables
-// C.10-5a, C.10-5b, CIELab) — but DICOMKit's `GraphicAnnotation` models
-// neither (deferred as D39), so an arrow goes out as two polylines and every
-// object takes its layer's one recommended colour; and nothing corresponds to
-// `scale`. Writing an annotation out through that model and reading it back
-// would return a different annotation than the reader drew, which is the exact
-// failure this file exists to prevent.
+// what our own restore reads, for one reason: the standard's vocabulary says
+// a drawing's position, colour and halo — a Compound Graphic of type ARROW
+// (PS3.3 Table C.10-5) and per-object CIELab colour and shadow through the Text
+// Style and Line Style Sequences (Tables C.10-5a, C.10-5b), all of which the
+// GSPS now carries — but not the reader's `scale`, nor which tool drew it.
+// Reading an annotation back from the object alone would return a close cousin
+// of what the reader drew, not the drawing, which is the exact failure this
+// file exists to prevent.
 //
 // So the sidecar is lossless and private, and the GSPS beside it stays
 // conformant and describes the display parameters it can describe honestly.

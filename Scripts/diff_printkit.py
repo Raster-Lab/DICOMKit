@@ -468,16 +468,24 @@ def check_ps_terms(rep, p3, files, kit):
     for case in sorted(set(re.findall(r'[Uu]nits:\s*\.(\w+)', src))):
         v = units.get(case)
         (matched := matched + 1) if v in std['units'] else wrong.append(f'Annotation Units .{case} = {v}')
+    compound = enum_raw_values(kit['GraphicStyle.swift'], 'CompoundGraphicType')
+    compound_terms = attr_terms(p3, 'C.10-5', 'Compound Graphic Type')
     for case in sorted(set(re.findall(r'type\s*=\s*\.(\w+)|type:\s*\.(\w+)', src))):
         case = case[0] or case[1]
-        v = gtype.get(case)
-        (matched := matched + 1) if v in std['gtype'] else wrong.append(f'Graphic Type .{case} = {v}')
+        if case in gtype:
+            v = gtype[case]
+            (matched := matched + 1) if v in std['gtype'] else wrong.append(f'Graphic Type .{case} = {v}')
+        elif case in compound:
+            v = compound[case]
+            (matched := matched + 1) if v in compound_terms else wrong.append(f'Compound Graphic Type .{case} = {v}')
+        else:
+            wrong.append(f'.{case} is neither a Graphic Type nor a Compound Graphic Type case')
     rot = re.search(r'rotation:\s*quarterTurns\s*\*\s*90', src)
     if rot and sorted(std['rotation'], key=int) == ['0', '90', '180', '270']:
         matched += 1
     else:
         wrong.append(f'Image Rotation not written as quarterTurns * 90 (C.10-6 enumerates {std["rotation"]})')
-    rep.check('PS3.3 Tables C.10-4, C.10-5, C.10-6: terms the presentation-state bridge writes', matched, wrong)
+    rep.check('PS3.3 Tables C.10-4, C.10-5, C.10-6: terms the presentation-state bridge writes (Graphic and Compound Graphic Type included)', matched, wrong)
 
 
 def check_state_writers(rep, p3, p4, files):
