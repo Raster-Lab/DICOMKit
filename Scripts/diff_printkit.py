@@ -47,10 +47,7 @@ D, X = nd.D, nd.X
 # owner's decision; reported as PEND, not FAIL. Each entry is a substring of the finding text
 # it silences (see DICOMPRINTKIT_STANDARD_IMPLEMENTATION.md, priority action list).
 PENDING_API_APPROVAL = {
-    'MAMMO CLEAR FILM',        # P-MAMMO (DICOMNetwork MediumType raw values; D23 remainder)
-    'MAMMO BLUE FILM',         # P-MAMMO
-    'P-GSDF',                  # composer renders P-Values linearly, not through the PS3.14 GSDF
-    'P-CROP',                  # CROP without Requested Image Size: "optimal filling" is not defined
+    # P-MAMMO, P-GSDF and P-CROP were approved and applied on 2026-09-29.
 }
 
 
@@ -201,7 +198,8 @@ def check_catalog_terms(rep, p3, files, net):
         cases = re.findall(r'\(\s*(?:\w+\.)?\.?(\w+)\s*,', body.group(1)) if body else []
         wire = raw
         if enum == 'PresentationLUTShape':
-            off = set(re.findall(r'case\s+\.(\w+)\s*:\s*return\s+nil', dw.func_body(net, r'var\s+wireValue\b')))
+            off = set(re.findall(r'case\s+\.(\w+)\s*:\s*return\s+nil',
+                                 dw.func_body(dw.enum_body(net, 'PresentationLUTShape'), r'var\s+wireValue\b')))
             wire = {c: v for c, v in raw.items() if c not in off}
         matched, wrong, offered = 0, [], set()
         for case in cases:
@@ -539,32 +537,52 @@ def check_shutter_coordinates(rep, p3, files):
 
 
 def check_gsdf(rep, p14, files):
-    """PS3.14 7.2: a hardcopy device maps P-Values through the GSDF (j linear in p between
-    j(Lmin) and j(Lmax)), and C.11.4 LIN OD makes the input linear in density. The emulator's
-    composer renders P-Values linearly into device grey — a rendering choice pending (P-GSDF)."""
-    sec = ' '.join(dw.section_paras(p14, 'sect_7.2')) if hasattr(dw, 'section_paras') else ''
-    src = files.get('Printing/FilmComposer.swift', '')
-    has = re.search(r'func\s+\w*(?:gsdf|GSDF|jndIndex|luminance\(forJND)', src)
-    if has:
-        rep.check('PS3.14 7.2: composer renders P-Values through the Grayscale Standard Display Function', 1)
+    """PS3.14 7.1-7.3 and Annex D.2: the calibrated rendering (DensityMapping.gsdf). The
+    coefficients of L(j) and j(L) in the Swift must be the 7.1 values, the mapping must exist,
+    and the test fixture PrintGSDFTests.tableD21 must be Table D.2-1 (256 densities)."""
+    text = nd.norm(' '.join(dw.section_by_id(p14, 'sect_7.1').itertext()))
+    std = {name: float(value.replace(' ', '')) for name, value in
+           re.findall(r'\b([a-mA-I]) = (- ?[\d.]+(?:E-?\d+)?|[\d.]+(?:E-?\d+)?)', text)}
+    src = files.get('Printing/GrayscaleStandardDisplayFunction.swift', '')
+    ours = {name: float(value) for name, value in
+            re.findall(r'\b([a-mA-I]) = (-?[\d.]+(?:e-?\d+)?)', src)}
+    matched, wrong, missing = 0, [], []
+    for name, value in std.items():
+        if name not in ours:
+            missing.append(f'{name} = {value} (PS3.14 7.1) not in GrayscaleStandardDisplayFunction.swift')
+        elif abs(ours[name] - value) > 1e-12 * max(1, abs(value)):
+            wrong.append(f'{name} = {ours[name]}; PS3.14 7.1 gives {value}')
+        else:
+            matched += 1
+    if 'case gsdf' not in files.get('Printing/ComposedFilm.swift', ''):
+        missing.append('DensityMapping has no calibrated (GSDF) mapping')
+    table = [float(v) for row in dw.table_rows(p14, 'D.2-1') for v in [c for c in row if c][1::2]]
+    test_path = os.path.join(ROOT, 'Tests', 'DICOMPrintKitTests', 'PrintGSDFTests.swift')
+    body = re.search(r'tableD21: \[Double\] = \[(.*?)\]', dw.read(test_path), re.S) if os.path.exists(test_path) else None
+    fixture = [float(v) for v in re.findall(r'-?\d+\.\d+', body.group(1))] if body else []
+    if fixture == table and len(table) == 256:
+        matched += 1
     else:
-        items = ['P-GSDF: FilmComposer maps P-Values straight to device grey; PS3.14 7.2 defines '
-                 'D(p) = -log10((L(j(p)) - La)/L0) with j linear in p']
-        wrong, pending = split_pending(items)
-        rep.check('PS3.14 7.2: composer renders P-Values through the Grayscale Standard Display Function', 0,
-                  wrong, pending=pending)
+        wrong.append(f'PrintGSDFTests.tableD21 ({len(fixture)} values) is not PS3.14 Table D.2-1 ({len(table)} values)')
+    rep.check('PS3.14 7.1-7.3, Table D.2-1: GSDF coefficients and the calibrated rendering (DensityMapping.gsdf)',
+              matched, wrong, missing)
 
 
 def check_crop(rep, p3, files):
-    text = table_cell_text(p3, 'C.13-5', 'Requested Decimate/Crop Behavior')
+    """PS3.3 Table C.13-5 leaves "optimal filling" undefined; the reading (CROP with no size fills
+    the box, P-CROP) must be stated in the conformance statement and at the composer."""
+    text = table_cell_text(p3, 'C.13-5', 'Requested Image Size')
+    doc = dw.read(os.path.join(ROOT, 'PRINT_CONFORMANCE.md'))
     src = files.get('Printing/FilmGeometry.swift', '')
-    body = src[src.find('case .crop:'):src.find('case .failOver:')]
-    fills = 'max(cell.width / imageWidth' in body
-    items = ['P-CROP: CROP with no Requested Image Size covers the cell; C.13-5 applies CROP only "if the image '
-             'rows or columns is greater than the available printable pixels" at the size of "optimal filling"'] if fills else []
-    wrong, pending = split_pending(items)
-    rep.check('PS3.3 Table C.13-5: Requested Decimate/Crop Behavior CROP when no size is requested',
-              0 if fills else 1, wrong, pending=pending)
+    problems = []
+    if 'optimal filling' not in text:
+        problems.append('Table C.13-5 no longer says "optimal filling"; re-read the clause')
+    if not re.search(r'3\.5 Image placement.*?optimal filling.*?CROP, no size', doc, re.S):
+        problems.append('PRINT_CONFORMANCE.md does not state how CROP without a size is read')
+    if 'PRINT_CONFORMANCE.md 3.5' not in src:
+        problems.append('FilmImageFitter does not point at the stated reading')
+    rep.check('PS3.3 Table C.13-5: CROP without a Requested Image Size read as stated in PRINT_CONFORMANCE.md 3.5',
+              0 if problems else 1, problems)
 
 
 def main():
