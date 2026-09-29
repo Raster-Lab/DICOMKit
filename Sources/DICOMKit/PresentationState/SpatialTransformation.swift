@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — rotation, flip and Presentation Size Mode terms match PS3.3 2026a C.10.4 and C.10.6
 //
 // SpatialTransformation.swift
 // DICOMKit

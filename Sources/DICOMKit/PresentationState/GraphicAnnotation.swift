@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Graphic Type terms match PS3.3 2026a Table C.10-5; ELLIPSE points per C.10.5.1.2; MATRIX units are pending P-PS
 //
 // GraphicAnnotation.swift
 // DICOMKit
@@ -168,7 +169,7 @@ public enum PresentationGraphicType: String, Sendable, Hashable {
     /// Circle (center + radius point)
     case circle = "CIRCLE"
     
-    /// Ellipse (4 corner points of bounding box)
+    /// Ellipse: four points, the endpoints of the major axis then of the minor axis (C.10.5.1.2)
     case ellipse = "ELLIPSE"
 }
 

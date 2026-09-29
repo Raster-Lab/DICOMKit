@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — shutter row/column order (C.7.6.11), CIELab layer colour (C.10.7.1.1), LUT Descriptor and Data VRs (C.11.1.1) and MATRIX units per PS3.3 2026a
 //
 // GrayscalePresentationStateParser.swift
 // DICOMKit
@@ -63,12 +64,12 @@ public struct GrayscalePresentationStateParser: Sendable {
         }
         
         // Verify this is a presentation state this parser can read. Pseudo-Color
-        // (PS3.3 A.33.4) is the grayscale IOD's shape plus a Palette Color LUT
+        // (PS3.3 A.33.3) is the grayscale IOD's shape plus a Palette Color LUT
         // module and minus the Presentation LUT — everything parsed here means
         // the same thing in both, and the model records which class it was via
         // `sopClassUID`. The palette itself is read separately, through the
         // data set's own `paletteColorLUT()`, by callers that want it.
-        // Color Softcopy (A.33.3) is read too: it has no Modality, VOI or
+        // Color Softcopy (A.33.2) is read too: it has no Modality, VOI or
         // Presentation LUT module — every LUT parse below returns nil for it
         // — and carries an ICC profile this model does not hold, but its
         // spatial transformation, displayed area, shutters and graphic
@@ -272,11 +273,25 @@ public struct GrayscalePresentationStateParser: Sendable {
     }
     
     private func parseLUTData(from item: SequenceItem) throws -> LUTData {
-        guard let descriptorInts = item[.lutDescriptor]?.integerStringValues?.map({ $0.value }) else {
+        // LUT Descriptor (0028,3002) is US or SS; LUT Data (0028,3006) is US or OW
+        // (C.11.1.1). Files that carried them as IS are still read.
+        func integers(_ element: DataElement?) -> [Int]? {
+            guard let element else { return nil }
+            if element.vr == .OW || element.vr == .OB {
+                return element.uint16Values?.map(Int.init)
+            }
+            return element.integerValuesTolerant
+        }
+        guard var descriptorInts = integers(item[.lutDescriptor]), descriptorInts.count == 3 else {
             throw ParseError.invalidLUTDescriptor("Missing LUT Descriptor")
         }
-        
-        guard let data = item[.lutData]?.integerStringValues?.map({ $0.value }) else {
+        // The first mapped value of a descriptor read as US may be a two's-complement SS
+        if item[.lutDescriptor]?.vr == .US, descriptorInts[1] > 32767, descriptorInts[0] != 0,
+           descriptorInts[1] + descriptorInts[0] > 65536 {
+            descriptorInts[1] -= 65536
+        }
+
+        guard let data = integers(item[.lutData]) else {
             throw ParseError.invalidLUTDescriptor("Missing LUT Data")
         }
         
@@ -337,9 +352,14 @@ public struct GrayscalePresentationStateParser: Sendable {
             let description = item.string(for: .graphicLayerDescription)
             let grayscaleValue = item[.graphicLayerRecommendedDisplayGrayscaleValue]?.integerValueTolerant
             
+            // Graphic Layer Recommended Display CIELab Value (0070,0401) is the current
+            // attribute (C.10.7); the retired RGB value (0070,0067) is read for older files.
             var rgbValue: (red: Int, green: Int, blue: Int)? = nil
-            if let rgbValues = item[.graphicLayerRecommendedDisplayRGBValue]?.integerValuesTolerant,
-               rgbValues.count == 3 {
+            if let lab = item[Tag(group: 0x0070, element: 0x0401)]?.integerValuesTolerant,
+               let rgb = GrayscalePresentationStateBuilder.rgb(fromCIELabEncoded: lab) {
+                rgbValue = rgb
+            } else if let rgbValues = item[.graphicLayerRecommendedDisplayRGBValue]?.integerValuesTolerant,
+                      rgbValues.count == 3 {
                 rgbValue = (red: rgbValues[0], green: rgbValues[1], blue: rgbValues[2])
             }
             
@@ -422,10 +442,13 @@ public struct GrayscalePresentationStateParser: Sendable {
 
         // Graphic Annotation Units (0070,0005) is the graphic object's own units
         // attribute; the bounding-box tag is kept as a fallback for files this
-        // parser accepted before the distinction was made.
+        // parser accepted before the distinction was made. Units this model does
+        // not carry (MATRIX, C.10.5.1.1) skip the object rather than misplace it.
         let unitsString = item.string(for: .graphicAnnotationUnits)
             ?? item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
-        let units = AnnotationUnits(rawValue: unitsString) ?? .pixel
+        guard let units = AnnotationUnits(rawValue: unitsString.trimmingCharacters(in: .whitespaces)) else {
+            return nil
+        }
 
         return GraphicObject(type: type, data: data, filled: filled, units: units)
     }
@@ -455,11 +478,16 @@ public struct GrayscalePresentationStateParser: Sendable {
         let anchorVisibleString = item.string(for: .anchorPointVisibility)
         let anchorVisible = anchorVisibleString == "Y"
         
+        // Units this model does not carry (MATRIX) skip the object rather than misplace it
         let boundingBoxUnitsString = item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
-        let boundingBoxUnits = AnnotationUnits(rawValue: boundingBoxUnitsString) ?? .pixel
-        
+        guard let boundingBoxUnits = AnnotationUnits(rawValue: boundingBoxUnitsString.trimmingCharacters(in: .whitespaces)) else {
+            return nil
+        }
+
         let anchorPointUnitsString = item.string(for: .anchorPointAnnotationUnits) ?? "PIXEL"
-        let anchorPointUnits = AnnotationUnits(rawValue: anchorPointUnitsString) ?? .pixel
+        guard let anchorPointUnits = AnnotationUnits(rawValue: anchorPointUnitsString.trimmingCharacters(in: .whitespaces)) else {
+            return nil
+        }
         
         return TextObject(
             text: text,
@@ -480,7 +508,7 @@ public struct GrayscalePresentationStateParser: Sendable {
         let shapes = shapesString.split(separator: "\\").map { String($0) }
         var shutters: [DisplayShutter] = []
         
-        let presentationValue = dataSet.integerString(for: .shutterPresentationValue)?.value
+        let presentationValue = dataSet.uint16(for: .shutterPresentationValue).map { Int($0) }
         
         for shape in shapes {
             switch shape {
@@ -502,9 +530,10 @@ public struct GrayscalePresentationStateParser: Sendable {
                 if let centerValues = dataSet.integerStrings(for: .centerOfCircularShutter)?.map({ $0.value }),
                    centerValues.count == 2,
                    let radius = dataSet.integerString(for: .radiusOfCircularShutter)?.value {
+                    // (0018,1610) is "row and column" (C.7.6.11)
                     shutters.append(.circular(
-                        centerColumn: centerValues[0],
-                        centerRow: centerValues[1],
+                        centerColumn: centerValues[1],
+                        centerRow: centerValues[0],
                         radius: radius,
                         presentationValue: presentationValue
                     ))
@@ -513,15 +542,16 @@ public struct GrayscalePresentationStateParser: Sendable {
             case "POLYGONAL":
                 if let vertexData = dataSet.integerStrings(for: .verticesOfThePolygonalShutter)?.map({ $0.value }),
                    vertexData.count >= 6, vertexData.count % 2 == 0 {
+                    // (0018,1620) is row\column pairs (C.7.6.11)
                     var vertices: [(column: Int, row: Int)] = []
                     for i in stride(from: 0, to: vertexData.count, by: 2) {
-                        vertices.append((column: vertexData[i], row: vertexData[i+1]))
+                        vertices.append((column: vertexData[i+1], row: vertexData[i]))
                     }
                     shutters.append(.polygonal(vertices: vertices, presentationValue: presentationValue))
                 }
                 
             case "BITMAP":
-                if let overlayGroup = dataSet.integerString(for: .shutterOverlayGroup)?.value {
+                if let overlayGroup = dataSet.uint16(for: .shutterOverlayGroup).map({ Int($0) }) {
                     shutters.append(.bitmap(overlayGroup: overlayGroup, presentationValue: presentationValue))
                 }
                 

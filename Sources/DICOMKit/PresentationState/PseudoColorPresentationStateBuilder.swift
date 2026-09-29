@@ -1,7 +1,8 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a A.33.3: the palette carries no baked window (PS3.4 N.2, N.2.4.2); Palette Color LUT module (C.7.9) and ICC Profile module (C.11.15)
 // PseudoColorPresentationStateBuilder.swift
 // DICOMKit
 //
-// Writes a Pseudo-Color Softcopy Presentation State (PS3.3 A.33.4) — the
+// Writes a Pseudo-Color Softcopy Presentation State (PS3.3 A.33.3) — the
 // standard object for "this monochrome image was being read through a colour
 // table".
 //
@@ -108,21 +109,16 @@ public struct PseudoColorPresentationStateBuilder: Sendable {
 
         // MARK: Palette Color Lookup Table module (C.7.9), the point of it all.
         //
-        // The state's own window rides into the table: with a domain given,
-        // the palette's 256 colours are spread across the *windowed* slice of
-        // the stored range rather than the whole of it. Weasis — the viewer
-        // this was verified against, reading its rendering code and rendering
-        // through its own jars — indexes this table with raw stored pixels
-        // before any VOI, so a table spread over the whole range shows a CT's
-        // narrow used band as a few dark entries. The window is still written
-        // as VOI as well; the table is how the colours land where the reader
-        // put them.
-        var window: (center: Double, width: Double)?
-        if case .window(let center, let width, _, _)? = state.voiLUT, width > 0 {
-            window = (center, width)
-        }
+        // PS3.4 N.2 (Figure N.2-1) applies the VOI LUT first and then scales its
+        // full output range onto the palette's whole input range (N.2.4.2 says so
+        // for the same stage in blending), so the table carries the palette's
+        // ramp evenly and the window is written once, as VOI. Baking the window
+        // into the table as well doubled the windowing in a conforming viewer.
+        // Weasis indexes the table with raw stored pixels before any VOI; that
+        // is a known interoperability limitation of that viewer, not encoded
+        // around here.
         Self.applyPaletteColorLUT(
-            palette, inverted: inverted, domain: pixelDomain, window: window,
+            palette, inverted: inverted, domain: pixelDomain, window: nil,
             to: &dataSet)
 
         // MARK: ICC Profile module (C.11.15) — mandatory in this IOD.

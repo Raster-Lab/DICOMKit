@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a C.7.6.11: the shape is the visible region, origin 1,1; the CIELab shutter colour is pending P-PS
 //
 // DisplayShutter.swift
 // DICOMKit
@@ -11,7 +12,9 @@ import DICOMCore
 
 /// Display shutter for masking image regions
 ///
-/// Shutters define areas of the image that should be masked (blacked out).
+/// A shutter shape marks the part of the image that stays visible; the pixels
+/// outside it are neutralised with the Shutter Presentation Value (PS3.3 C.7.6.11).
+/// Geometry is in row/column image coordinates with origin 1,1.
 ///
 /// Reference: PS3.3 Section C.7.6.11 - Display Shutter Module
 public enum DisplayShutter: Sendable, Hashable {
@@ -38,12 +41,12 @@ public enum DisplayShutter: Sendable, Hashable {
         }
     }
     
-    /// Check if a point is inside the shutter (should be masked)
+    /// Check if a point is inside the shutter shape (the visible region)
     ///
     /// - Parameters:
-    ///   - column: Column coordinate
-    ///   - row: Row coordinate
-    /// - Returns: true if the point is inside the shutter (should be masked)
+    ///   - column: Column coordinate (1-based)
+    ///   - row: Row coordinate (1-based)
+    /// - Returns: true if the point is inside the shape and therefore stays visible
     public func contains(column: Int, row: Int) -> Bool {
         switch self {
         case .rectangular(let left, let right, let top, let bottom, _):

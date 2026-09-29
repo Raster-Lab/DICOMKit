@@ -471,10 +471,28 @@ final class GrayscalePresentationStateBuilderTests: XCTestCase {
 
     func test_build_writesGraphicLayerRecommendedValuesAsUS() throws {
         let item = try XCTUnwrap(annotatedDataSet()[.graphicLayerSequence]?.sequenceItems?.first)
-        let rgb = try XCTUnwrap(item[.graphicLayerRecommendedDisplayRGBValue])
 
-        XCTAssertEqual(rgb.vr, .US, "(0070,0067) is US")
-        XCTAssertEqual(rgb.uint16Values, [65535, 65535, 0])
+        // (0070,0067) Graphic Layer Recommended Display RGB Value is retired (PS3.6);
+        // the colour is written as (0070,0401) CIELab per PS3.3 C.10.7.1.1
+        XCTAssertNil(item[.graphicLayerRecommendedDisplayRGBValue])
+        let lab = try XCTUnwrap(item[DICOMCore.Tag(group: 0x0070, element: 0x0401)])
+        XCTAssertEqual(lab.vr, .US, "(0070,0401) is US")
+        let encoded = try XCTUnwrap(lab.uint16Values?.map(Int.init))
+        XCTAssertEqual(encoded.count, 3)
+
+        // The yellow the state carries comes back within 16-bit rounding
+        let rgb = try XCTUnwrap(GrayscalePresentationStateBuilder.rgb(fromCIELabEncoded: encoded))
+        XCTAssertEqual(rgb.red, 65535, accuracy: 300)
+        XCTAssertEqual(rgb.green, 65535, accuracy: 300)
+        XCTAssertEqual(rgb.blue, 0, accuracy: 300)
+    }
+
+    func test_cieLabEncoding_followsC10711() {
+        // C.10.7.1.1: L = 100 is 0xFFFF; a* = b* = 0 is 0x8080
+        XCTAssertEqual(GrayscalePresentationStateBuilder.cieLabEncoded(from: (red: 65535, green: 65535, blue: 65535)),
+                       [65535, 32896, 32896])
+        XCTAssertEqual(GrayscalePresentationStateBuilder.cieLabEncoded(from: (red: 0, green: 0, blue: 0)),
+                       [0, 32896, 32896])
     }
 
     func test_build_writesGraphicDataAsFL() throws {

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Color Space terms of PS3.3 2026a C.11.15.1.2 are read (DISPLAYP3 added); the ColorSpace enum is a display model, not (0028,2002) terms
 //
 // ColorManagement.swift
 // DICOMKit
@@ -134,7 +135,7 @@ public struct ICCProfile: Sendable, Hashable {
             return .adobeRGB
         case "ROMMRGB", "PROPHOTO":
             return .proPhotoRGB
-        case "P3":
+        case "DISPLAYP3", "P3":
             return .displayP3
         case "REC2020", "BT2020":
             return .rec2020

@@ -1,7 +1,8 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a A.33.1: Modality LUT (C.11.1), LUT sequences (C.11.6, C.11.8), Display Shutter (C.7.6.11), conditional Graphic Filled (C.10.5), CIELab layer colour (C.10.7.1.1), Type 2 Content Creator Name (Table 10-12)
 // GrayscalePresentationStateBuilder.swift
 // DICOMKit
 //
-// Writes a Grayscale Softcopy Presentation State (PS3.3 A.34.1) — the standard
+// Writes a Grayscale Softcopy Presentation State (PS3.3 A.33.1) — the standard
 // object that records *how* an image was being looked at, without touching the
 // image itself.
 //
@@ -120,12 +121,32 @@ public struct GrayscalePresentationStateBuilder: Sendable {
         if let creationTime = state.presentationCreationTime {
             dataSet.setString(creationTime.dicomString, for: .presentationCreationTime, vr: .TM)
         }
-        if let creator = state.presentationCreatorsName {
-            dataSet.setString(creator.dicomString, for: .contentCreatorName, vr: .PN)
-        }
+        // Type 2 (PS3.3 Table 10-12): present, empty when unknown.
+        dataSet.setString(state.presentationCreatorsName?.dicomString ?? "", for: .contentCreatorName, vr: .PN)
 
         // MARK: Presentation State Relationship
         dataSet[.referencedSeriesSequence] = Self.referencedSeriesElement(state.referencedSeries)
+
+        // MARK: Modality LUT (C.11.1)
+        //
+        // PS3.4 N.2.1.1: a viewer applies only the Modality LUT carried by the
+        // presentation state and never the image's own; a window written in
+        // rescaled units without one is applied to stored values.
+        switch state.modalityLUT {
+        case .rescale(let slope, let intercept, let type)?:
+            dataSet.setString(Self.decimalString(intercept), for: .rescaleIntercept, vr: .DS)
+            dataSet.setString(Self.decimalString(slope), for: .rescaleSlope, vr: .DS)
+            dataSet.setString(type ?? "US", for: .rescaleType, vr: .LO)   // Type 1C with the intercept
+        case .lut(let lut)?:
+            dataSet[.modalityLUTSequence] = Self.sequence(
+                tag: .modalityLUTSequence,
+                items: [Self.lutItem(lut, extra: [
+                    // Modality LUT Type (0028,3004), Type 1; "US" is the unspecified type
+                    DataElement.string(tag: Tag(group: 0x0028, element: 0x3004), vr: .LO, value: "US")
+                ])])
+        case nil:
+            break
+        }
 
         // MARK: Display transformations
         if let voiLUT = state.voiLUT {
@@ -140,6 +161,9 @@ public struct GrayscalePresentationStateBuilder: Sendable {
         if let area = state.displayedArea {
             dataSet[.displayedAreaSelectionSequence] = Self.displayedAreaElement(area)
         }
+
+        // MARK: Display Shutter (C.7.6.11, C.11.12)
+        Self.applyShutters(state.shutters, to: &dataSet)
 
         // MARK: Annotations
         //
@@ -164,13 +188,69 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             dataSet.setString("INVERSE", for: .presentationLUTShape, vr: .CS)
         case .identity, .none:
             dataSet.setString("IDENTITY", for: .presentationLUTShape, vr: .CS)
-        case .lut:
-            // A table-valued presentation LUT is not something this builder
-            // composes; falling back to IDENTITY keeps the object conformant.
-            dataSet.setString("IDENTITY", for: .presentationLUTShape, vr: .CS)
+        case .lut(let lut):
+            // C.11.6: a table is carried in the Presentation LUT Sequence and
+            // the Shape is then absent; replacing it with IDENTITY would change
+            // what the state shows.
+            dataSet[.presentationLUTSequence] = Self.sequence(
+                tag: .presentationLUTSequence, items: [Self.lutItem(lut)])
         }
 
         return dataSet
+    }
+
+    // MARK: - LUT and shutter encoding
+
+    /// One item of a Modality, VOI or Presentation LUT Sequence: LUT Descriptor
+    /// (entries, first mapped value, bits per entry; 65536 entries are written as 0
+    /// per C.11.1.1), LUT Data as 16-bit words, and the explanation when there is one.
+    private static func lutItem(_ lut: LUTData, extra: [DataElement] = []) -> SequenceItem {
+        let entries = lut.numberOfEntries >= 65536 ? 0 : lut.numberOfEntries
+        var words = Data(capacity: lut.data.count * 2)
+        for value in lut.data {
+            let word = UInt16(truncatingIfNeeded: value)
+            words.append(UInt8(word & 0xFF))
+            words.append(UInt8(word >> 8))
+        }
+        var elements: [DataElement] = [
+            Self.integers([entries, lut.firstValueMapped & 0xFFFF, lut.bitsPerEntry], for: .lutDescriptor),
+            DataElement(tag: .lutData, vr: .OW, length: UInt32(words.count), valueData: words),
+        ]
+        if let explanation = lut.explanation {
+            elements.append(DataElement.string(tag: .lutExplanation, vr: .LO, value: explanation))
+        }
+        return SequenceItem(elements: elements + extra)
+    }
+
+    /// Display Shutter module (C.7.6.11): geometry is row/column with origin 1,1;
+    /// (0018,1610) and (0018,1620) are written row first.
+    private static func applyShutters(_ shutters: [DisplayShutter], to dataSet: inout DataSet) {
+        var shapes: [String] = []
+        for shutter in shutters {
+            switch shutter {
+            case .rectangular(let left, let right, let top, let bottom, _):
+                shapes.append("RECTANGULAR")
+                dataSet.setInteger(left, for: .shutterLeftVerticalEdge)
+                dataSet.setInteger(right, for: .shutterRightVerticalEdge)
+                dataSet.setInteger(top, for: .shutterUpperHorizontalEdge)
+                dataSet.setInteger(bottom, for: .shutterLowerHorizontalEdge)
+            case .circular(let column, let row, let radius, _):
+                shapes.append("CIRCULAR")
+                _ = dataSet.setIntegers([row, column], for: .centerOfCircularShutter)
+                dataSet.setInteger(radius, for: .radiusOfCircularShutter)
+            case .polygonal(let vertices, _):
+                shapes.append("POLYGONAL")
+                _ = dataSet.setIntegers(vertices.flatMap { [$0.row, $0.column] },
+                                        for: .verticesOfThePolygonalShutter)
+            case .bitmap:
+                // Bitmap Display Shutter (C.7.6.15) needs the overlay plane as well
+                continue
+            }
+        }
+        guard !shapes.isEmpty else { return }
+        dataSet.setString(shapes.joined(separator: "\\"), for: .shutterShape, vr: .CS)
+        // Shutter Presentation Value (0018,1622) is Type 1C in C.11.12: a P-Value
+        dataSet.setInteger(shutters.first?.presentationValue ?? 0, for: .shutterPresentationValue)
     }
 
     // MARK: - Sequences
@@ -272,10 +352,14 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             if function != .linear {
                 dataSet.setString(function.rawValue, for: .voiLUTFunction, vr: .CS)
             }
-        case .lut:
-            // Table-valued VOI LUTs are carried by the source image, not
-            // composed here.
-            break
+        case .lut(let lut):
+            // A table lives in the VOI LUT Sequence inside the Softcopy VOI LUT
+            // Sequence item (C.11.8); dropping it would change the shown contrast.
+            let item = SequenceItem(elements: [
+                sequence(tag: .voiLUTSequence, items: [Self.lutItem(lut)])
+            ])
+            dataSet[.softcopyVOILUTSequence] = sequence(
+                tag: .softcopyVOILUTSequence, items: [item])
         }
     }
 
@@ -295,13 +379,50 @@ public struct GrayscalePresentationStateBuilder: Sendable {
                     [grayscale], for: .graphicLayerRecommendedDisplayGrayscaleValue))
             }
             if let rgb = layer.recommendedRGBValue {
+                // (0070,0067) Graphic Layer Recommended Display RGB Value is retired;
+                // C.10.7 replaced it with the CIELab value (0070,0401), encoded per
+                // C.10.7.1.1: L* over 0...0xFFFF, a* and b* offset so 0x8080 is 0.
                 elements.append(Self.integers(
-                    [rgb.red, rgb.green, rgb.blue],
-                    for: .graphicLayerRecommendedDisplayRGBValue))
+                    Self.cieLabEncoded(from: rgb),
+                    for: Tag(group: 0x0070, element: 0x0401)))
             }
             return SequenceItem(elements: elements)
         }
         return sequence(tag: .graphicLayerSequence, items: items)
+    }
+
+    /// The three unsigned shorts of a Graphic Layer Recommended Display CIELab
+    /// Value (C.10.7.1.1) for a 16-bit-per-channel sRGB colour.
+    static func cieLabEncoded(from rgb: (red: Int, green: Int, blue: Int)) -> [Int] {
+        let linear = (
+            red: ColorTransform.sRGBToLinear(Double(rgb.red) / 65535),
+            green: ColorTransform.sRGBToLinear(Double(rgb.green) / 65535),
+            blue: ColorTransform.sRGBToLinear(Double(rgb.blue) / 65535))
+        let lab = ColorTransform.rgbToLAB(linear)
+        return [lab.l / 100 * 65535, (lab.a + 128) * 257, (lab.b + 128) * 257]
+            .map { min(65535, max(0, Int($0.rounded()))) }
+    }
+
+    /// The inverse of ``cieLabEncoded(from:)``, for reading (0070,0401) back.
+    static func rgb(fromCIELabEncoded encoded: [Int]) -> (red: Int, green: Int, blue: Int)? {
+        guard encoded.count == 3 else { return nil }
+        let l = Double(encoded[0]) / 65535 * 100
+        let a = Double(encoded[1]) / 257 - 128
+        let b = Double(encoded[2]) / 257 - 128
+        // CIELab -> XYZ (same D65 reference as ColorTransform.xyzToLAB) -> linear RGB -> sRGB
+        let fy = (l + 16) / 116
+        let fx = fy + a / 500
+        let fz = fy - b / 200
+        func finv(_ t: Double) -> Double {
+            let delta = 6.0 / 29.0
+            return t > delta ? t * t * t : 3 * delta * delta * (t - 4.0 / 29.0)
+        }
+        let xyz = (x: 0.95047 * finv(fx), y: 1.0 * finv(fy), z: 1.08883 * finv(fz))
+        let linear = ColorTransform.xyzToRGB(xyz)
+        func channel(_ v: Double) -> Int {
+            min(65535, max(0, Int((ColorTransform.linearToSRGB(v) * 65535).rounded())))
+        }
+        return (red: channel(linear.red), green: channel(linear.green), blue: channel(linear.blue))
     }
 
     private static func graphicAnnotationElement(
@@ -346,7 +467,7 @@ public struct GrayscalePresentationStateBuilder: Sendable {
     }
 
     private static func graphicObjectItem(_ object: GraphicObject) -> SequenceItem {
-        SequenceItem(elements: [
+        var elements: [DataElement] = [
             DataElement.string(
                 tag: .graphicAnnotationUnits, vr: .CS, value: object.units.rawValue),
             // Always 2: Graphic Data here is (column, row) pairs.
@@ -354,9 +475,19 @@ public struct GrayscalePresentationStateBuilder: Sendable {
             Self.integers([object.pointCount], for: .numberOfGraphicPoints),
             Self.reals(object.data, for: .graphicData),
             DataElement.string(tag: .graphicType, vr: .CS, value: object.type.rawValue),
-            DataElement.string(
-                tag: .graphicFilled, vr: .CS, value: object.filled ? "Y" : "N")
-        ])
+        ]
+        // Graphic Filled (0070,0024) is Type 1C (C.10.5): only for CIRCLE, ELLIPSE, or
+        // a POLYLINE / INTERPOLATED whose first point is also its last. PS3.5 7.4.4:
+        // a 1C element whose condition is not met shall not be present.
+        let d = object.data
+        let closed = object.type == .circle || object.type == .ellipse
+            || ((object.type == .polyline || object.type == .interpolated)
+                && d.count >= 4 && d[0] == d[d.count - 2] && d[1] == d[d.count - 1])
+        if closed {
+            elements.append(DataElement.string(
+                tag: .graphicFilled, vr: .CS, value: object.filled ? "Y" : "N"))
+        }
+        return SequenceItem(elements: elements)
     }
 
     private static func textObjectItem(_ text: TextObject) -> SequenceItem {

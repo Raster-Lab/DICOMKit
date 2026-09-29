@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — the four presentation state SOP Class UIDs match PS3.6 2026a Table A-1; IOD citations are A.33.1-A.33.4
 //
 // PresentationState.swift
 // DICOMKit
@@ -181,7 +182,7 @@ public struct GrayscalePresentationState: PresentationState, Sendable {
 /// This IOD defines a presentation state for color images with ICC profile-based
 /// color management, spatial transformations, and annotations.
 ///
-/// Reference: PS3.3 Part 3 Section A.34 - Color Softcopy Presentation State IOD
+/// Reference: PS3.3 Section A.33.2 - Color Softcopy Presentation State IOD
 public struct ColorPresentationState: PresentationState, Sendable {
     // MARK: - Presentation State Identification
     
@@ -265,7 +266,7 @@ public struct ColorPresentationState: PresentationState, Sendable {
 /// This IOD defines a presentation state for grayscale images displayed with
 /// pseudo-color (false color) mapping using RGB lookup tables.
 ///
-/// Reference: PS3.3 Part 3 Section A.35 - Pseudo-Color Softcopy Presentation State IOD
+/// Reference: PS3.3 Section A.33.3 - Pseudo-Color Softcopy Presentation State IOD
 public struct PseudoColorPresentationState: PresentationState, Sendable {
     // MARK: - Presentation State Identification
     
@@ -359,7 +360,7 @@ public struct PseudoColorPresentationState: PresentationState, Sendable {
 /// This IOD defines a presentation state for blending multiple images together,
 /// typically used for multi-modality fusion (e.g., PET/CT, PET/MR).
 ///
-/// Reference: PS3.3 Part 3 Section A.36 - Blending Softcopy Presentation State IOD
+/// Reference: PS3.3 Section A.33.4 - Blending Softcopy Presentation State IOD
 public struct BlendingPresentationState: PresentationState, Sendable {
     // MARK: - Presentation State Identification
     
