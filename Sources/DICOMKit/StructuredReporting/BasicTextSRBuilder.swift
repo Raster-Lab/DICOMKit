@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — DCM section concepts diffed by Scripts/diff_kit.py against PS3.16 2026a Table D-1 (121074 Recommendations); the comparison constant is pending P-CONST
 /// Basic Text SR Document Builder
 ///
 /// Provides a specialized fluent API for creating DICOM Basic Text SR documents.
@@ -939,11 +940,11 @@ extension CodedConcept {
         codeMeaning: "Conclusion"
     )
     
-    /// Recommendation section concept
+    /// Recommendations section concept
     public static let recommendation = CodedConcept(
         codeValue: "121074",
         codingSchemeDesignator: "DCM",
-        codeMeaning: "Recommendation"
+        codeMeaning: "Recommendations"
     )
     
     /// Procedure Description section concept

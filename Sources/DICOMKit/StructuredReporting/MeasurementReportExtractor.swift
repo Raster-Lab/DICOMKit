@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — TID 1500/1501/1600 concept codes diffed by Scripts/diff_kit.py against PS3.16 2026a Table D-1 and the CID tables
 /// Measurement Report Extraction API
 ///
 /// Provides high-level extraction of TID 1500 Measurement Report data from SR documents.

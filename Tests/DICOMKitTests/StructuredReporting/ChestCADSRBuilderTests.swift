@@ -269,23 +269,24 @@ final class ChestCADSRBuilderTests: XCTestCase {
     
     func testNoduleFindingType() {
         let concept = ChestFindingType.nodule.concept
-        XCTAssertEqual(concept.codeValue, "39607008")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
-        XCTAssertEqual(concept.codeMeaning, "Lung nodule")
+        // PS3.16 CID 6104 Abnormal Opacity Finding or Feature
+        XCTAssertEqual(concept.codeValue, "27925004")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
+        XCTAssertEqual(concept.codeMeaning, "Nodule")
     }
-    
+
     func testMassFindingType() {
         let concept = ChestFindingType.mass.concept
-        XCTAssertEqual(concept.codeValue, "126952004")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
-        XCTAssertEqual(concept.codeMeaning, "Lung mass")
+        XCTAssertEqual(concept.codeValue, "4147007")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
+        XCTAssertEqual(concept.codeMeaning, "Mass")
     }
-    
+
     func testLesionFindingType() {
         let concept = ChestFindingType.lesion.concept
-        XCTAssertEqual(concept.codeValue, "126601007")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
-        XCTAssertEqual(concept.codeMeaning, "Lesion of lung")
+        XCTAssertEqual(concept.codeValue, "52988006")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
+        XCTAssertEqual(concept.codeMeaning, "Lesion")
     }
     
     func testConsolidationFindingType() {
@@ -297,9 +298,9 @@ final class ChestCADSRBuilderTests: XCTestCase {
     
     func testTreeInBudFindingType() {
         let concept = ChestFindingType.treeInBud.concept
-        XCTAssertEqual(concept.codeValue, "44914007")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
-        XCTAssertEqual(concept.codeMeaning, "Tree-in-bud pattern")
+        XCTAssertEqual(concept.codeValue, "112127")
+        XCTAssertEqual(concept.codingSchemeDesignator, "DCM")
+        XCTAssertEqual(concept.codeMeaning, "Tree-in-bud sign")
     }
     
     func testCustomFindingType() {

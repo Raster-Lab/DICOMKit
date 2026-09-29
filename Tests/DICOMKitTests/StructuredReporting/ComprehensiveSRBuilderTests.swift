@@ -411,10 +411,22 @@ struct ComprehensiveSRBuilderTests {
         let document = try ComprehensiveSRBuilder()
             .addPolygon(points: points)
             .build()
-        
+
+        // PS3.3 C.18.6.1.2: a closed 2D shape is a POLYLINE whose last vertex repeats the first
         let item = document.rootContent.contentItems[0]
         let scoord = item.asSpatialCoordinates
-        #expect(scoord?.graphicType == .polygon)
+        #expect(scoord?.graphicType == .polyline)
+        #expect(scoord?.pointCount == 5)
+        #expect(scoord?.graphicData.suffix(2) == [100.0, 100.0])
+    }
+
+    @Test("Add polygon that is already closed is not closed twice")
+    func testAddClosedPolygon() throws {
+        let document = try ComprehensiveSRBuilder()
+            .addPolygon(points: [(0, 0), (10, 0), (10, 10), (0, 0)])
+            .build()
+        let scoord = document.rootContent.contentItems[0].asSpatialCoordinates
+        #expect(scoord?.graphicType == .polyline)
         #expect(scoord?.pointCount == 4)
     }
     
@@ -900,14 +912,15 @@ struct ComprehensiveSRBuilderTests {
         #expect(item.asSpatialCoordinates?.graphicType == .polyline)
     }
     
-    @Test("Section content - polygon creation")
+    @Test("Section content - polygon creation is a closed POLYLINE")
     func testSectionContentPolygon() {
         let item = ComprehensiveSectionContent.polygon(points: [
             (100.0, 100.0),
             (200.0, 100.0),
             (200.0, 200.0)
         ])
-        #expect(item.asSpatialCoordinates?.graphicType == .polygon)
+        #expect(item.asSpatialCoordinates?.graphicType == .polyline)
+        #expect(item.asSpatialCoordinates?.graphicData == [100.0, 100.0, 200.0, 100.0, 200.0, 200.0, 100.0, 100.0])
     }
     
     @Test("Section content - circle creation")

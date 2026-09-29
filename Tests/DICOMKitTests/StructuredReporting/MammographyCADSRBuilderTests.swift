@@ -264,30 +264,32 @@ final class MammographyCADSRBuilderTests: XCTestCase {
     
     func testFindingTypeMass() {
         let concept = FindingType.mass.concept
-        XCTAssertEqual(concept.codeValue, "F-01796")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
-        XCTAssertEqual(concept.codeMeaning, "Mass")
+        // PS3.16 CID 6015 Single Image Finding from BI-RADS
+        XCTAssertEqual(concept.codeValue, "129793001")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
+        XCTAssertEqual(concept.codeMeaning, "Mammography breast density")
     }
-    
+
     func testFindingTypeCalcification() {
         let concept = FindingType.calcification.concept
-        XCTAssertEqual(concept.codeValue, "F-61769")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
-        XCTAssertEqual(concept.codeMeaning, "Calcification")
+        XCTAssertEqual(concept.codeValue, "129770007")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
+        XCTAssertEqual(concept.codeMeaning, "Individual Calcification")
     }
-    
+
     func testFindingTypeArchitecturalDistortion() {
         let concept = FindingType.architecturalDistortion.concept
-        XCTAssertEqual(concept.codeValue, "F-01775")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
-        XCTAssertEqual(concept.codeMeaning, "Architectural Distortion")
+        XCTAssertEqual(concept.codeValue, "129792006")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
+        XCTAssertEqual(concept.codeMeaning, "Architectural distortion of breast")
     }
-    
+
     func testFindingTypeAsymmetry() {
+        // PS3.16 CID 6017 Composite Feature from BI-RADS
         let concept = FindingType.asymmetry.concept
-        XCTAssertEqual(concept.codeValue, "F-01710")
-        XCTAssertEqual(concept.codingSchemeDesignator, "SRT")
-        XCTAssertEqual(concept.codeMeaning, "Asymmetry")
+        XCTAssertEqual(concept.codeValue, "129790003")
+        XCTAssertEqual(concept.codingSchemeDesignator, "SCT")
+        XCTAssertEqual(concept.codeMeaning, "Asymmetric breast tissue")
     }
     
     func testFindingTypeCustom() {

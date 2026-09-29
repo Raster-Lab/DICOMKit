@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — 2D SCOORD closed shapes are POLYLINE with the first vertex repeated, per PS3.3 2026a C.18.6.1.2 (D18); three concept constants are pending P-CONST
 /// Comprehensive SR Document Builder
 ///
 /// Provides a specialized fluent API for creating DICOM Comprehensive SR documents.
@@ -526,6 +527,10 @@ public struct ComprehensiveSRBuilder: Sendable {
     }
     
     /// Adds a polygon coordinate (closed shape)
+    ///
+    /// PS3.3 C.18.6.1.2 defines no POLYGON Graphic Type for 2D SCOORD; a closed shape is a
+    /// POLYLINE whose first and last vertices are the same, so the first vertex is repeated
+    /// last unless the caller already closed the shape.
     /// - Parameters:
     ///   - conceptName: The concept name for this coordinate
     ///   - points: Array of (column, row) tuples forming the polygon vertices
@@ -534,11 +539,10 @@ public struct ComprehensiveSRBuilder: Sendable {
         conceptName: CodedConcept? = nil,
         points: [(column: Float, row: Float)]
     ) -> ComprehensiveSRBuilder {
-        let graphicData = points.flatMap { [$0.column, $0.row] }
-        return addSpatialCoordinates(
+        addSpatialCoordinates(
             conceptName: conceptName,
-            graphicType: .polygon,
-            graphicData: graphicData
+            graphicType: .polyline,
+            graphicData: ComprehensiveSectionContent.closedPolylineData(points)
         )
     }
     
@@ -1254,6 +1258,9 @@ public enum ComprehensiveSectionContent {
     }
     
     /// Creates a polygon coordinate (closed shape)
+    ///
+    /// Encoded as a closed POLYLINE (first vertex repeated last), since PS3.3 C.18.6.1.2
+    /// defines POLYGON only for SCOORD3D.
     /// - Parameters:
     ///   - conceptName: Optional concept name
     ///   - points: Array of (column, row) tuples forming the polygon vertices
@@ -1262,12 +1269,20 @@ public enum ComprehensiveSectionContent {
         conceptName: CodedConcept? = nil,
         points: [(column: Float, row: Float)]
     ) -> AnyContentItem {
-        let graphicData = points.flatMap { [$0.column, $0.row] }
-        return spatialCoordinates(
+        spatialCoordinates(
             conceptName: conceptName,
-            graphicType: .polygon,
-            graphicData: graphicData
+            graphicType: .polyline,
+            graphicData: closedPolylineData(points)
         )
+    }
+
+    static func closedPolylineData(_ points: [(column: Float, row: Float)]) -> [Float] {
+        var vertices = points
+        if let first = points.first, let last = points.last, points.count >= 2,
+           first.column != last.column || first.row != last.row {
+            vertices.append(first)
+        }
+        return vertices.flatMap { [$0.column, $0.row] }
     }
     
     /// Creates a circle coordinate

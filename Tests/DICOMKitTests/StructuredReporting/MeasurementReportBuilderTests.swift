@@ -658,7 +658,7 @@ struct MeasurementReportDocumentTitleTests {
     @Test("PET Measurement Report title")
     func testPETMeasurementReportTitle() {
         let title = MeasurementReportDocumentTitle.petMeasurementReport
-        #expect(title.codeValue == "126010")
+        #expect(title.codeValue == "126003")   // CID 7021
     }
 }
 

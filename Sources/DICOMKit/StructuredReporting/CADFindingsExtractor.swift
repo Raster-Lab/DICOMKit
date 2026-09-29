@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — reads the TID 4006/4104/4019 concepts of PS3.16 2026a that the builders write, and the codes written before the check
 /// CAD Findings Extraction API
 ///
 /// Provides high-level extraction of Computer-Aided Detection (CAD) findings from
@@ -99,11 +100,12 @@ public struct CADFindings: Sendable, Equatable {
         var algorithmVersion: String?
         var manufacturer: String?
         
-        // Look for CAD Processing Summary container (TID 4001)
+        // Look for the (111017, DCM, "CAD Processing and Findings Summary") container the
+        // builders write; documents written before the 2026a check used (111001, DCM).
         for item in container.contentItems {
             if let summaryContainer = item.asContainer,
-               summaryContainer.conceptName?.codeValue == "111001" { // Algorithm Name
-                
+               ["111017", "111001"].contains(summaryContainer.conceptName?.codeValue ?? "") {
+
                 for summaryItem in summaryContainer.contentItems {
                     if let textItem = summaryItem.asText {
                         if textItem.conceptName?.codeValue == "111001" { // Algorithm Name
@@ -112,13 +114,13 @@ public struct CADFindings: Sendable, Equatable {
                             algorithmVersion = textItem.textValue
                         }
                     } else if let codeItem = summaryItem.asCode,
-                              codeItem.conceptName?.codeValue == "113878" { // Manufacturer, as a CODE
+                              manufacturerConceptCodes.contains(codeItem.conceptName?.codeValue ?? "") {
                         manufacturer = codeItem.conceptCode.codeMeaning
                     }
-                    // Manufacturer (113878, DCM) as TEXT is what the CAD SR
-                    // builders write (TID 4001 Algorithm Identification).
+                    // (122405, DCM, "Algorithm Manufacturer") as TEXT is what the CAD SR
+                    // builders write (TID 4019 row 2b); (113878, DCM) is read for older files.
                     if let textItem = summaryItem.asText,
-                       textItem.conceptName?.codeValue == "113878" {
+                       manufacturerConceptCodes.contains(textItem.conceptName?.codeValue ?? "") {
                         manufacturer = textItem.textValue
                     }
                 }
@@ -141,14 +143,28 @@ public struct CADFindings: Sendable, Equatable {
         )
     }
     
-    /// Concept names that carry a finding's probability: (111047, DCM)
-    /// "Probability of cancer" is what the builders write and what PS3.16
-    /// TID 4021 / 4104 specify; (111023, DCM) is kept for documents that
-    /// used it.
-    private static let probabilityConceptCodes: Set<String> = ["111047", "111023"]
-    
+    /// Concept names that carry a finding's probability: (111047, DCM, "Probability of
+    /// cancer") (TID 4006 row 7, a 0-1 value) and (111012, DCM, "Certainty of Finding")
+    /// (TID 4006 row 6 / TID 4104 row 12, 0-100 percent); (111023, DCM) is kept for
+    /// documents that used it.
+    private static let probabilityConceptCodes: Set<String> = ["111047", "111012", "111023"]
+
+    /// (122405, DCM, "Algorithm Manufacturer") (TID 4019 row 2b); (113878, DCM) was written
+    /// before the 2026a check.
+    private static let manufacturerConceptCodes: Set<String> = ["122405", "113878"]
+
+    /// (111059, DCM, "Single Image Finding") (TID 4006 / TID 4104 row 1); (121071, DCM,
+    /// "Finding") was written before the 2026a check.
+    private static let findingTypeConceptCodes: Set<String> = ["111059", "121071"]
+
     private static func isProbability(_ item: NumericContentItem) -> Bool {
         item.conceptName.map { probabilityConceptCodes.contains($0.codeValue) } ?? false
+    }
+
+    /// The probability as a 0-1 fraction, whichever concept carried it
+    private static func probabilityValue(_ item: NumericContentItem) -> Double? {
+        guard let value = item.numericValues.first else { return nil }
+        return item.conceptName?.codeValue == "111012" ? value / 100 : value
     }
     
     private static func extractFindings(from container: ContainerContentItem) -> [ExtractedCADFinding] {
@@ -182,26 +198,26 @@ public struct CADFindings: Sendable, Equatable {
         var location: CADFindingLocation?
         var characteristics: [CodedConcept] = []
         var imageReference: ImageReference?
-        // The builders write the finding type and each characteristic as a
-        // CODE item under the same concept name (121071, DCM) "Finding", type
-        // first. The first one is therefore the type; the rest are
-        // characteristics.
+        // The builders write the finding type as a CODE item named (111059, DCM,
+        // "Single Image Finding") and each characteristic as a CODE item named
+        // (121071, DCM, "Finding"). Older files used (121071, DCM) for both, type first;
+        // the first such item is therefore the type and the rest are characteristics.
         var hasExplicitType = false
-        
+
         for item in container.contentItems {
             // Extract finding type from concept name or CODE items
             if findingType == nil, let conceptName = container.conceptName {
                 findingType = conceptName
             }
-            
+
             // Extract probability
             if let numItem = item.asNumeric, isProbability(numItem) {
-                probability = numItem.numericValues.first
+                probability = probabilityValue(numItem)
             }
-            
-            // Extract finding type from CODE items  
+
+            // Extract finding type from CODE items
             else if let codeItem = item.asCode,
-                    codeItem.conceptName?.codeValue == "121071", // Finding
+                    findingTypeConceptCodes.contains(codeItem.conceptName?.codeValue ?? ""),
                     !hasExplicitType {
                 findingType = codeItem.conceptCode
                 hasExplicitType = true

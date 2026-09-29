@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — concept names and finding codes diffed by Scripts/diff_kit.py against PS3.16 2026a Table D-1, TID 4006/4019 and CID 6015/6017; no DATETIME (Table A.35.5-2, D17); the template structure is pending P-CAD
 /// Mammography CAD SR Document Builder
 ///
 /// Provides a specialized fluent API for creating DICOM Mammography Computer-Aided Detection (CAD)
@@ -44,16 +45,15 @@ import DICOMCore
 /// - Asymmetries
 ///
 /// ## Supported Content
-/// Mammography CAD SR documents support:
+/// Mammography CAD SR documents support the value types of PS3.3 Table A.35.5-2:
 /// - TEXT - Text descriptions
 /// - CODE - Coded concepts
 /// - NUM - Numeric measurements (confidence, size)
-/// - DATETIME, DATE, TIME - Temporal information
+/// - DATE, TIME - Temporal information (DATETIME is not permitted)
 /// - UIDREF - UID references
 /// - PNAME - Person names
 /// - COMPOSITE, IMAGE - References to mammography images
 /// - SCOORD - 2D spatial coordinates for findings
-/// - TCOORD - Temporal coordinates
 /// - CONTAINER - Hierarchical structure
 public struct MammographyCADSRBuilder: Sendable {
     
@@ -526,39 +526,28 @@ public struct MammographyCADSRBuilder: Sendable {
             contentItems.append(AnyContentItem(versionItem))
         }
         
-        // Manufacturer
+        // Manufacturer (TID 4019 row 2b)
         if let mfr = manufacturer {
             let mfrItem = TextContentItem(
                 conceptName: CodedConcept(
-                    codeValue: "113878",
+                    codeValue: "122405",
                     codingSchemeDesignator: "DCM",
-                    codeMeaning: "Manufacturer"
+                    codeMeaning: "Algorithm Manufacturer"
                 ),
                 textValue: mfr,
                 relationshipType: .contains
             )
             contentItems.append(AnyContentItem(mfrItem))
         }
-        
-        // Processing Date/Time
-        if let dateTime = processingDateTime {
-            let dateTimeItem = DateTimeContentItem(
-                conceptName: CodedConcept(
-                    codeValue: "111005",
-                    codingSchemeDesignator: "DCM",
-                    codeMeaning: "Processing Date Time"
-                ),
-                dateTimeValue: dateTime,
-                relationshipType: .contains
-            )
-            contentItems.append(AnyContentItem(dateTimeItem))
-        }
-        
+
+        // `processingDateTime` is not written: TID 4019 has no date/time row and PS3.3
+        // Table A.35.5-2 permits no DATETIME content item in a Mammography CAD SR.
+
         return ContainerContentItem(
             conceptName: CodedConcept(
-                codeValue: "111001",
+                codeValue: "111017",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "CAD Processing Summary"
+                codeMeaning: "CAD Processing and Findings Summary"
             ),
             continuityOfContent: .separate,
             contentItems: contentItems,
@@ -569,24 +558,24 @@ public struct MammographyCADSRBuilder: Sendable {
     private func buildFinding(_ finding: CADFinding) throws -> ContainerContentItem {
         var contentItems: [AnyContentItem] = []
         
-        // Finding type
+        // Finding type (TID 4006 row 1)
         let typeItem = CodeContentItem(
             conceptName: CodedConcept(
-                codeValue: "121071",
+                codeValue: "111059",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "Finding"
+                codeMeaning: "Single Image Finding"
             ),
             conceptCode: finding.type.concept,
             relationshipType: .contains
         )
         contentItems.append(AnyContentItem(typeItem))
-        
-        // Probability/confidence
+
+        // Probability/confidence (TID 4006 row 7)
         let probabilityItem = NumericContentItem(
             conceptName: CodedConcept(
                 codeValue: "111047",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "Probability"
+                codeMeaning: "Probability of cancer"
             ),
             value: finding.probability,
             units: CodedConcept(
@@ -603,7 +592,7 @@ public struct MammographyCADSRBuilder: Sendable {
         case .point2D(let x, let y, let imageRef):
             let coordItem = SpatialCoordinatesContentItem(
                 conceptName: CodedConcept(
-                    codeValue: "111030",
+                    codeValue: "111010",
                     codingSchemeDesignator: "DCM",
                     codeMeaning: "Center"
                 ),
@@ -624,9 +613,9 @@ public struct MammographyCADSRBuilder: Sendable {
         case .roi2D(let points, let imageRef):
             let coordItem = SpatialCoordinatesContentItem(
                 conceptName: CodedConcept(
-                    codeValue: "111034",
+                    codeValue: "111030",
                     codingSchemeDesignator: "DCM",
-                    codeMeaning: "ROI"
+                    codeMeaning: "Image Region"
                 ),
                 graphicType: .polyline,
                 graphicData: points.map { Float($0) },
@@ -645,9 +634,9 @@ public struct MammographyCADSRBuilder: Sendable {
         case .circle2D(let centerX, let centerY, let radius, let imageRef):
             let coordItem = SpatialCoordinatesContentItem(
                 conceptName: CodedConcept(
-                    codeValue: "111034",
+                    codeValue: "111030",
                     codingSchemeDesignator: "DCM",
-                    codeMeaning: "ROI"
+                    codeMeaning: "Image Region"
                 ),
                 graphicType: .circle,
                 // PS3.3 C.18.6.1.2: CIRCLE is two points, the centre and a
@@ -686,7 +675,7 @@ public struct MammographyCADSRBuilder: Sendable {
             conceptName: CodedConcept(
                 codeValue: "111034",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "CAD Finding"
+                codeMeaning: "Individual Impression/Recommendation"
             ),
             continuityOfContent: .separate,
             contentItems: contentItems,
@@ -767,32 +756,32 @@ public enum FindingType: Sendable, Equatable {
     /// Custom finding type
     case custom(CodedConcept)
     
-    /// The coded concept for this finding type
+    /// The coded concept for this finding type (PS3.16 CID 6015 / CID 6017)
     public var concept: CodedConcept {
         switch self {
         case .mass:
             return CodedConcept(
-                codeValue: "F-01796",
-                codingSchemeDesignator: "SRT",
-                codeMeaning: "Mass"
+                codeValue: "129793001",
+                codingSchemeDesignator: "SCT",
+                codeMeaning: "Mammography breast density"
             )
         case .calcification:
             return CodedConcept(
-                codeValue: "F-61769",
-                codingSchemeDesignator: "SRT",
-                codeMeaning: "Calcification"
+                codeValue: "129770007",
+                codingSchemeDesignator: "SCT",
+                codeMeaning: "Individual Calcification"
             )
         case .architecturalDistortion:
             return CodedConcept(
-                codeValue: "F-01775",
-                codingSchemeDesignator: "SRT",
-                codeMeaning: "Architectural Distortion"
+                codeValue: "129792006",
+                codingSchemeDesignator: "SCT",
+                codeMeaning: "Architectural distortion of breast"
             )
         case .asymmetry:
             return CodedConcept(
-                codeValue: "F-01710",
-                codingSchemeDesignator: "SRT",
-                codeMeaning: "Asymmetry"
+                codeValue: "129790003",
+                codingSchemeDesignator: "SCT",
+                codeMeaning: "Asymmetric breast tissue"
             )
         case .custom(let concept):
             return concept

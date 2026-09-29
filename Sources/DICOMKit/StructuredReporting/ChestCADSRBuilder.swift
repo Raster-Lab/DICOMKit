@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — concept names and finding codes diffed by Scripts/diff_kit.py against PS3.16 2026a Table D-1, TID 4100/4104/4019 and CID 6104; no DATETIME (Table A.35.6-2); the consolidation code is pending P-AI; Sup 65 (before 2014a) kept as provenance
 /// Chest CAD SR Document Builder
 ///
 /// Provides a specialized fluent API for creating DICOM Chest Computer-Aided Detection (CAD)
@@ -432,7 +433,7 @@ public struct ChestCADSRBuilder: Sendable {
         
         // Document title for CAD report
         let documentTitle = CodedConcept(
-            codeValue: "111037",
+            codeValue: "112000",
             codingSchemeDesignator: "DCM",
             codeMeaning: "Chest CAD Report"
         )
@@ -479,12 +480,12 @@ public struct ChestCADSRBuilder: Sendable {
             contentItems.append(AnyContentItem(findingContainer))
         }
         
-        // Create root container
+        // Create root container (TID 4100 row 1)
         return ContainerContentItem(
             conceptName: CodedConcept(
-                codeValue: "113701",
+                codeValue: "112000",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "X-Ray Report"
+                codeMeaning: "Chest CAD Report"
             ),
             continuityOfContent: .separate,
             contentItems: contentItems,
@@ -527,39 +528,28 @@ public struct ChestCADSRBuilder: Sendable {
             contentItems.append(AnyContentItem(versionItem))
         }
         
-        // Manufacturer
+        // Manufacturer (TID 4019 row 2b)
         if let mfr = manufacturer {
             let mfrItem = TextContentItem(
                 conceptName: CodedConcept(
-                    codeValue: "113878",
+                    codeValue: "122405",
                     codingSchemeDesignator: "DCM",
-                    codeMeaning: "Device Role in Procedure"
+                    codeMeaning: "Algorithm Manufacturer"
                 ),
                 textValue: mfr,
                 relationshipType: .contains
             )
             contentItems.append(AnyContentItem(mfrItem))
         }
-        
-        // Processing DateTime
-        if let dateTime = processingDateTime {
-            let dateTimeItem = DateTimeContentItem(
-                conceptName: CodedConcept(
-                    codeValue: "111005",
-                    codingSchemeDesignator: "DCM",
-                    codeMeaning: "Observer DateTime"
-                ),
-                dateTimeValue: dateTime,
-                relationshipType: .contains
-            )
-            contentItems.append(AnyContentItem(dateTimeItem))
-        }
-        
+
+        // `processingDateTime` is not written: TID 4019 has no date/time row and PS3.3
+        // Table A.35.6-2 permits no DATETIME content item in a Chest CAD SR.
+
         return ContainerContentItem(
             conceptName: CodedConcept(
-                codeValue: "111001",
+                codeValue: "111017",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "CAD Processing Summary"
+                codeMeaning: "CAD Processing and Findings Summary"
             ),
             continuityOfContent: .separate,
             contentItems: contentItems,
@@ -570,30 +560,30 @@ public struct ChestCADSRBuilder: Sendable {
     private func buildFinding(_ finding: ChestCADFinding) throws -> ContainerContentItem {
         var contentItems: [AnyContentItem] = []
         
-        // Finding type
+        // Finding type (TID 4104 row 1)
         let typeItem = CodeContentItem(
             conceptName: CodedConcept(
-                codeValue: "121071",
+                codeValue: "111059",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "Finding"
+                codeMeaning: "Single Image Finding"
             ),
             conceptCode: finding.type.concept,
             relationshipType: .contains
         )
         contentItems.append(AnyContentItem(typeItem))
-        
-        // Probability/confidence
+
+        // Certainty of Finding (TID 4104 row 12): 0-100 percent
         let probItem = NumericContentItem(
             conceptName: CodedConcept(
-                codeValue: "111047",
+                codeValue: "111012",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "Probability"
+                codeMeaning: "Certainty of Finding"
             ),
-            value: finding.probability,
+            value: finding.probability * 100,
             units: CodedConcept(
-                codeValue: "1",
+                codeValue: "%",
                 codingSchemeDesignator: "UCUM",
-                codeMeaning: "no units"
+                codeMeaning: "Percent"
             ),
             relationshipType: .contains
         )
@@ -605,7 +595,7 @@ public struct ChestCADSRBuilder: Sendable {
             // Add spatial coordinate
             let coordItem = SpatialCoordinatesContentItem(
                 conceptName: CodedConcept(
-                    codeValue: "111030",
+                    codeValue: "111010",
                     codingSchemeDesignator: "DCM",
                     codeMeaning: "Center"
                 ),
@@ -628,9 +618,9 @@ public struct ChestCADSRBuilder: Sendable {
             let floatPoints = points.map { Float($0) }
             let coordItem = SpatialCoordinatesContentItem(
                 conceptName: CodedConcept(
-                    codeValue: "111034",
+                    codeValue: "111030",
                     codingSchemeDesignator: "DCM",
-                    codeMeaning: "ROI"
+                    codeMeaning: "Image Region"
                 ),
                 graphicType: .polyline,
                 graphicData: floatPoints,
@@ -650,9 +640,9 @@ public struct ChestCADSRBuilder: Sendable {
             // Add spatial coordinate
             let coordItem = SpatialCoordinatesContentItem(
                 conceptName: CodedConcept(
-                    codeValue: "111034",
+                    codeValue: "111030",
                     codingSchemeDesignator: "DCM",
-                    codeMeaning: "ROI"
+                    codeMeaning: "Image Region"
                 ),
                 graphicType: .circle,
                 // PS3.3 C.18.6.1.2: CIRCLE is two points, the centre and a
@@ -691,7 +681,7 @@ public struct ChestCADSRBuilder: Sendable {
             conceptName: CodedConcept(
                 codeValue: "111034",
                 codingSchemeDesignator: "DCM",
-                codeMeaning: "CAD Finding"
+                codeMeaning: "Individual Impression/Recommendation"
             ),
             continuityOfContent: .separate,
             contentItems: contentItems,
@@ -780,21 +770,21 @@ public enum ChestFindingType: Sendable, Equatable {
         switch self {
         case .nodule:
             return CodedConcept(
-                codeValue: "39607008",
-                codingSchemeDesignator: "SRT",
-                codeMeaning: "Lung nodule"
+                codeValue: "27925004",
+                codingSchemeDesignator: "SCT",
+                codeMeaning: "Nodule"
             )
         case .mass:
             return CodedConcept(
-                codeValue: "126952004",
-                codingSchemeDesignator: "SRT",
-                codeMeaning: "Lung mass"
+                codeValue: "4147007",
+                codingSchemeDesignator: "SCT",
+                codeMeaning: "Mass"
             )
         case .lesion:
             return CodedConcept(
-                codeValue: "126601007",
-                codingSchemeDesignator: "SRT",
-                codeMeaning: "Lesion of lung"
+                codeValue: "52988006",
+                codingSchemeDesignator: "SCT",
+                codeMeaning: "Lesion"
             )
         case .consolidation:
             return CodedConcept(
@@ -804,9 +794,9 @@ public enum ChestFindingType: Sendable, Equatable {
             )
         case .treeInBud:
             return CodedConcept(
-                codeValue: "44914007",
-                codingSchemeDesignator: "SRT",
-                codeMeaning: "Tree-in-bud pattern"
+                codeValue: "112127",
+                codingSchemeDesignator: "DCM",
+                codeMeaning: "Tree-in-bud sign"
             )
         case .custom(let concept):
             return concept

@@ -909,40 +909,41 @@ struct EnhancedSRCodedConceptTests {
     @Test("Measurements coded concept")
     func testMeasurementsCodedConcept() {
         let concept = CodedConcept.measurements
-        #expect(concept.codeValue == "121206")
+        #expect(concept.codeValue == "126010")
         #expect(concept.codingSchemeDesignator == "DCM")
-        #expect(concept.codeMeaning == "Measurements")
+        #expect(concept.codeMeaning == "Imaging Measurements")
     }
-    
+
+    // PS3.16 2026a CID 7470 (linear), 7471 (area), 7472 (volume): SCT concept ids
     @Test("Diameter coded concept")
     func testDiameterCodedConcept() {
         let concept = CodedConcept.diameter
-        #expect(concept.codeValue == "G-D785")
-        #expect(concept.codingSchemeDesignator == "SRT")
+        #expect(concept.codeValue == "81827009")
+        #expect(concept.codingSchemeDesignator == "SCT")
         #expect(concept.codeMeaning == "Diameter")
     }
-    
+
     @Test("Length coded concept")
     func testLengthCodedConcept() {
         let concept = CodedConcept.length
-        #expect(concept.codeValue == "G-D7FE")
-        #expect(concept.codingSchemeDesignator == "SRT")
+        #expect(concept.codeValue == "410668003")
+        #expect(concept.codingSchemeDesignator == "SCT")
         #expect(concept.codeMeaning == "Length")
     }
-    
+
     @Test("Area coded concept")
     func testAreaCodedConcept() {
         let concept = CodedConcept.area
-        #expect(concept.codeValue == "G-A220")
-        #expect(concept.codingSchemeDesignator == "SRT")
+        #expect(concept.codeValue == "42798000")
+        #expect(concept.codingSchemeDesignator == "SCT")
         #expect(concept.codeMeaning == "Area")
     }
-    
+
     @Test("Volume coded concept")
     func testVolumeCodedConcept() {
         let concept = CodedConcept.volume
-        #expect(concept.codeValue == "G-D705")
-        #expect(concept.codingSchemeDesignator == "SRT")
+        #expect(concept.codeValue == "118565006")
+        #expect(concept.codingSchemeDesignator == "SCT")
         #expect(concept.codeMeaning == "Volume")
     }
 }

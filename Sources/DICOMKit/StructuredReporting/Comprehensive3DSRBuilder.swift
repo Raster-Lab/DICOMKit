@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — SCOORD3D graphic types match PS3.3 2026a C.18.9.1.2; Referenced Frame of Reference UID per Table C.18.9-1
 /// Comprehensive 3D SR Document Builder
 ///
 /// Provides a specialized fluent API for creating DICOM Comprehensive 3D SR documents.

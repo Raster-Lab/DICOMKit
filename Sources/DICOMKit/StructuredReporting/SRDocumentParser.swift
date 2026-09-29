@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — SCOORD3D reads Referenced Frame of Reference UID (3006,0024) per PS3.3 2026a Table C.18.9-1; content module tags per PS3.6 Table 6-1; the TABLE and NUM qualifier gaps are recorded
 /// DICOM Structured Reporting Document Parser
 ///
 /// Parses DICOM SR data sets into the content item tree model.
@@ -743,9 +744,11 @@ public struct SRDocumentParser: Sendable {
         let graphicDataTag = Tag(group: 0x0070, element: 0x0022)
         let graphicData = item[graphicDataTag]?.float32Values ?? []
         
-        // Parse Referenced Frame of Reference UID (0020,0052)
-        let frameOfRefTag = Tag(group: 0x0020, element: 0x0052)
-        let frameOfReferenceUID = item.string(for: frameOfRefTag)
+        // Referenced Frame of Reference UID (3006,0024), Type 1 of the 3D Spatial
+        // Coordinates Macro (PS3.3 Table C.18.9-1); (0020,0052) is what this serializer
+        // wrote before the 2026a check and is still read.
+        let frameOfReferenceUID = item.string(for: .referencedFrameOfReferenceUID)
+            ?? item.string(for: Tag(group: 0x0020, element: 0x0052))
         
         return AnyContentItem(SpatialCoordinates3DContentItem(
             conceptName: conceptName,

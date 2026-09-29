@@ -642,7 +642,7 @@ struct BasicTextSRBuilderTests {
         #expect(CodedConcept.impression.codeMeaning == "Impression")
         #expect(CodedConcept.clinicalHistory.codeMeaning == "History")
         #expect(CodedConcept.conclusion.codeMeaning == "Conclusion")
-        #expect(CodedConcept.recommendation.codeMeaning == "Recommendation")
+        #expect(CodedConcept.recommendation.codeMeaning == "Recommendations")   // (121074, DCM) in Table D-1
         #expect(CodedConcept.procedureDescription.codeMeaning == "Procedure Description")
         #expect(CodedConcept.comparison.codeMeaning == "Comparison")
     }

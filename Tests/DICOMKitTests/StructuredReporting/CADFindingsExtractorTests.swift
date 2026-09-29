@@ -197,7 +197,7 @@ final class CADFindingsExtractorTests: XCTestCase {
         let finding = findings.findings[0]
         
         XCTAssertNotNil(finding.findingType)
-        XCTAssertEqual(finding.findingType?.codeMeaning, "Mass")
+        XCTAssertEqual(finding.findingType?.codeValue, FindingType.mass.concept.codeValue)
         XCTAssertEqual(finding.probability ?? 0.0, 0.87, accuracy: 0.01)
     }
     
@@ -216,7 +216,7 @@ final class CADFindingsExtractorTests: XCTestCase {
         let findings = try CADFindings.extract(from: parsed)
         
         XCTAssertEqual(findings.findings.count, 1)
-        XCTAssertEqual(findings.findings[0].findingType?.codeMeaning, "Calcification")
+        XCTAssertEqual(findings.findings[0].findingType?.codeValue, FindingType.calcification.concept.codeValue)
         XCTAssertEqual(findings.findings[0].probability ?? 0.0, 0.65, accuracy: 0.01)
     }
     
@@ -235,7 +235,7 @@ final class CADFindingsExtractorTests: XCTestCase {
         let findings = try CADFindings.extract(from: parsed)
         
         XCTAssertEqual(findings.findings.count, 1)
-        XCTAssertEqual(findings.findings[0].findingType?.codeMeaning, "Architectural Distortion")
+        XCTAssertEqual(findings.findings[0].findingType?.codeValue, FindingType.architecturalDistortion.concept.codeValue)
     }
     
     func testExtractSingleFindingAsymmetry() throws {
@@ -253,7 +253,7 @@ final class CADFindingsExtractorTests: XCTestCase {
         let findings = try CADFindings.extract(from: parsed)
         
         XCTAssertEqual(findings.findings.count, 1)
-        XCTAssertEqual(findings.findings[0].findingType?.codeMeaning, "Asymmetry")
+        XCTAssertEqual(findings.findings[0].findingType?.codeValue, FindingType.asymmetry.concept.codeValue)
     }
     
     // MARK: - Multiple Findings Tests
@@ -283,9 +283,9 @@ final class CADFindingsExtractorTests: XCTestCase {
         let findings = try CADFindings.extract(from: parsed)
         
         XCTAssertEqual(findings.findings.count, 3)
-        XCTAssertEqual(findings.findings[0].findingType?.codeMeaning, "Mass")
-        XCTAssertEqual(findings.findings[1].findingType?.codeMeaning, "Calcification")
-        XCTAssertEqual(findings.findings[2].findingType?.codeMeaning, "Architectural Distortion")
+        XCTAssertEqual(findings.findings[0].findingType?.codeValue, FindingType.mass.concept.codeValue)
+        XCTAssertEqual(findings.findings[1].findingType?.codeValue, FindingType.calcification.concept.codeValue)
+        XCTAssertEqual(findings.findings[2].findingType?.codeValue, FindingType.architecturalDistortion.concept.codeValue)
     }
     
     func testExtractManyFindings() throws {
@@ -653,13 +653,14 @@ final class CADFindingsExtractorTests: XCTestCase {
         // Verify findings
         XCTAssertEqual(extracted.findings.count, 2)
         
-        let massFindings = extracted.findings.filter { $0.findingType?.codeMeaning == "Mass" }
+        // The finding types round-trip as the CID 6015 concepts the builder writes
+        let massFindings = extracted.findings.filter { $0.findingType?.codeValue == FindingType.mass.concept.codeValue }
         XCTAssertEqual(massFindings.count, 1)
-        XCTAssertEqual(massFindings[0].probability ?? 0.0, 0.87, accuracy: 0.01)
-        
-        let calcFindings = extracted.findings.filter { $0.findingType?.codeMeaning == "Calcification" }
+        XCTAssertEqual(massFindings.first?.probability ?? 0.0, 0.87, accuracy: 0.01)
+
+        let calcFindings = extracted.findings.filter { $0.findingType?.codeValue == FindingType.calcification.concept.codeValue }
         XCTAssertEqual(calcFindings.count, 1)
-        XCTAssertEqual(calcFindings[0].probability ?? 0.0, 0.64, accuracy: 0.01)
+        XCTAssertEqual(calcFindings.first?.probability ?? 0.0, 0.64, accuracy: 0.01)
     }
     
     func testCompleteWorkflowChest() throws {

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (content tree traversal; relationship types are DICOMCore enums)
 /// Content Tree Navigation
 ///
 /// Provides traversal, query, and navigation APIs for SR content trees.

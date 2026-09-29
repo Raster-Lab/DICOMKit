@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Completion, Verification and Preliminary Flag terms match PS3.3 2026a Table C.17-2
 /// DICOM Structured Reporting Document
 ///
 /// Represents a parsed DICOM SR document with its content tree.
@@ -250,7 +251,7 @@ public struct SRDocument: Sendable, Equatable {
 
 /// Completion flag for SR documents
 ///
-/// Reference: PS3.3 Table C.17.2.5-1
+/// Reference: PS3.3 Table C.17-2 (SR Document General Module)
 public enum CompletionFlag: String, Sendable, Equatable, Hashable {
     /// Document content is complete
     case complete = "COMPLETE"
@@ -261,7 +262,7 @@ public enum CompletionFlag: String, Sendable, Equatable, Hashable {
 
 /// Verification flag for SR documents
 ///
-/// Reference: PS3.3 Table C.17.2.5-1
+/// Reference: PS3.3 Table C.17-2 (SR Document General Module)
 public enum VerificationFlag: String, Sendable, Equatable, Hashable {
     /// Document content is verified
     case verified = "VERIFIED"
@@ -272,7 +273,7 @@ public enum VerificationFlag: String, Sendable, Equatable, Hashable {
 
 /// Preliminary flag for SR documents
 ///
-/// Reference: PS3.3 Table C.17.2.5-1
+/// Reference: PS3.3 Table C.17-2 (SR Document General Module)
 public enum PreliminaryFlag: String, Sendable, Equatable, Hashable {
     /// Document is preliminary
     case preliminary = "PRELIMINARY"

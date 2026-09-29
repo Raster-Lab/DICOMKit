@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — SCOORD3D writes (3006,0024) per PS3.3 2026a Table C.18.9-1; VR literals per PS3.6 Table 6-1; series module and TABLE cell findings are recorded (P-SRSER)
 /// DICOM Structured Reporting Document Serializer
 ///
 /// Converts SRDocument objects to DICOM DataSet format for storage.
@@ -749,10 +750,10 @@ public struct SRDocumentSerializer: Sendable {
             valueData: graphicData
         ))
         
-        // Referenced Frame of Reference UID (0020,0052)
+        // Referenced Frame of Reference UID (3006,0024), Type 1 (PS3.3 Table C.18.9-1)
         if let frameOfRefUID = item.frameOfReferenceUID {
             elements.append(DataElement.string(
-                tag: .frameOfReferenceUID,
+                tag: .referencedFrameOfReferenceUID,
                 vr: .UI,
                 value: frameOfRefUID
             ))
@@ -896,8 +897,4 @@ extension Tag {
     /// Graphic Data (0070,0022)
     /// VR: FL, VM: 2-n
     public static let graphicData = Tag(group: 0x0070, element: 0x0022)
-    
-    /// Frame of Reference UID (0020,0052)
-    /// VR: UI, VM: 1
-    public static let frameOfReferenceUID = Tag(group: 0x0020, element: 0x0052)
 }

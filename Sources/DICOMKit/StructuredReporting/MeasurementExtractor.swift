@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — CID 42 qualifier meanings match PS3.16 2026a; closed POLYLINE handled per PS3.3 C.18.6.1.2; DerivationMethod is library-local
 /// Measurement and Coordinate Extraction for DICOM Structured Reporting
 ///
 /// Provides types and APIs for extracting quantitative measurements and
@@ -372,40 +373,56 @@ public struct SpatialCoordinates: Sendable, Equatable, Hashable {
         return (column: sumColumn / count, row: sumRow / count)
     }
     
+    /// Whether the shape is closed: a POLYLINE whose first and last vertices are the same
+    /// (PS3.3 C.18.6.1.2), or the deprecated 2D POLYGON.
+    public var isClosed: Bool {
+        if graphicType == .polyline, points.count >= 4,
+           let first = points.first, let last = points.last {
+            return first.column == last.column && first.row == last.row
+        }
+        return graphicType == .polygon && points.count >= 3
+    }
+
+    /// The vertices of a closed shape, without the repeated closing vertex.
+    private var closedVertices: [(column: Float, row: Float)] {
+        graphicType == .polyline ? Array(points.dropLast()) : points
+    }
+
     /// Computes the perimeter/length of the shape
     /// - Returns: The perimeter for closed shapes, length for open shapes
     public var perimeter: Float {
         guard points.count >= 2 else { return 0 }
-        
+
         var total: Float = 0
         for i in 0..<(points.count - 1) {
             let dx = points[i + 1].column - points[i].column
             let dy = points[i + 1].row - points[i].row
             total += sqrt(dx * dx + dy * dy)
         }
-        
-        // Close the polygon if it's a polygon type
+
+        // A closed POLYLINE already carries its closing segment; POLYGON does not
         if graphicType == .polygon && points.count >= 3 {
             let dx = points[0].column - points[points.count - 1].column
             let dy = points[0].row - points[points.count - 1].row
             total += sqrt(dx * dx + dy * dy)
         }
-        
+
         return total
     }
-    
-    /// Computes the area of a closed polygon using the Shoelace formula
-    /// - Returns: The area, or nil if not a closed polygon
+
+    /// Computes the area of a closed shape using the Shoelace formula
+    /// - Returns: The area, or nil if the shape is not closed
     public var area: Float? {
-        guard graphicType == .polygon && points.count >= 3 else { return nil }
-        
+        guard isClosed else { return nil }
+        let vertices = closedVertices
+
         var sum: Float = 0
-        for i in 0..<points.count {
-            let j = (i + 1) % points.count
-            sum += points[i].column * points[j].row
-            sum -= points[j].column * points[i].row
+        for i in 0..<vertices.count {
+            let j = (i + 1) % vertices.count
+            sum += vertices[i].column * vertices[j].row
+            sum -= vertices[j].column * vertices[i].row
         }
-        
+
         return abs(sum) / 2
     }
     

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — CID 7021 titles diffed by Scripts/diff_kit.py against PS3.16 2026a (126003); two title constants are pending P-TITLE; TID 1500 placement findings are recorded (P-TID1500)
 /// TID 1500 Measurement Report Builder
 ///
 /// Provides a specialized fluent API for creating DICOM TID 1500 Measurement Report
@@ -861,9 +862,9 @@ public enum MeasurementReportDocumentTitle {
         codeMeaning: "CT Perfusion Analysis Report"
     )
     
-    /// PET Measurement Report (126010)
+    /// PET Measurement Report (126003)
     public static let petMeasurementReport = CodedConcept(
-        codeValue: "126010",
+        codeValue: "126003",
         codingSchemeDesignator: "DCM",
         codeMeaning: "PET Measurement Report"
     )
