@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — RT Plan module reads per PS3.3 2026a C.8.8.x; the Fraction Pattern finding is recorded (P-RT)
+// NEMA-verified: 2026a, checked 2026-09-29 — RT General Plan (Table C.8-45), RT Prescription (C.8-46), RT Fraction Scheme (C.8-49; Fraction Pattern (300A,007B) is LT per PS3.6), RT Beams (C.8-50) and Brachy Application Setup (C.8-51) reads per PS3.3 2026a
 //
 // RTPlanParser.swift
 // DICOMKit
@@ -206,10 +206,14 @@ public struct RTPlanParser {
             let primaryDosimeterUnit = item.string(for: .primaryDosimeterUnit)
             let sourceAxisDistance = item[.sourceAxisDistance]?.decimalStringValue?.value
             let finalCumulativeMetersetWeight = item[.finalCumulativeMetersetWeight]?.decimalStringValue?.value
-            
+            // Treatment Delivery Type (300A,00CE) CS Type 3 and High-Dose Technique Type (300A,00C7) CS Type 1C
+            // (PS3.3 Table C.8-50)
+            let treatmentDeliveryType = item.string(for: Tag(group: 0x300A, element: 0x00CE))
+            let highDoseTechniqueType = item.string(for: Tag(group: 0x300A, element: 0x00C7))
+
             // Parse control points
             let controlPoints = parseControlPoints(from: item)
-            
+
             beams.append(RTBeam(
                 number: number,
                 name: name,
@@ -222,7 +226,9 @@ public struct RTPlanParser {
                 primaryDosimeterUnit: primaryDosimeterUnit,
                 sourceAxisDistance: sourceAxisDistance,
                 controlPoints: controlPoints,
-                finalCumulativeMetersetWeight: finalCumulativeMetersetWeight
+                finalCumulativeMetersetWeight: finalCumulativeMetersetWeight,
+                treatmentDeliveryType: treatmentDeliveryType,
+                highDoseTechniqueType: highDoseTechniqueType
             ))
         }
         
