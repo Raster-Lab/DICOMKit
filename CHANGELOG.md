@@ -27,6 +27,19 @@ marker. The three decisions of the first pass were approved and applied the same
   PAPER), LIN OD and numeric Border/Empty densities as densities, shown as the sheet's luminance
   under PS3.14's typical viewing conditions. Reproduces PS3.14 Table D.2-1 within 0.0015 OD. The
   default mapping is unchanged.
+- **Compound graphics and annotation styles (D39, DICOMKit).** The Graphic Annotation Module's
+  Compound Graphic Sequence (0070,0209) — MULTILINE, INFINITELINE, CUTLINE, RANGELINE, RULER,
+  AXIS, CROSSHAIR, ARROW, RECTANGLE, ELLIPSE — and the Text, Line and Fill Style Sequence Macros
+  (PS3.3 2026a Tables C.10-5, C.10-5a/5b/5c) are modelled (`CompoundGraphic`, `TextStyle`,
+  `LineStyle`, `FillStyle`, `GraphicShadow`), written with their 1C conditions and read back;
+  graphic and text objects carry Compound Graphic Instance ID and Graphic Group ID; `validate`
+  requires every compound graphic's alternate rendering (C.10.5.1.3.1). The parser now reads
+  text objects that carry only an anchor point. DICOMPrintKit writes a drawn arrow as an ARROW
+  compound graphic (with its polylines as the alternate rendering) and every drawing's own colour
+  and halo in its Line or Text Style, and reads them back the same way.
+- **Print annotation text and a citation (D40, D41, DICOMNetwork).** Text String (2030,0020) is
+  written as a legal LO for every caller (`PrintAnnotation.textStringValue`: 64 characters, no
+  backslash or control characters, PS3.5 Table 6.2-1); Enumerated Values cited as PS3.5 6.3.
 - **Round-trip tests (D43).** `PDFRoundTripTests` expected the encapsulated-document output from
   before the DICOMKit P-ENCAP fix; its pins are now the 2026a values (STL `model/stl`, CDA
   `text/XML` with an HL7 Instance Identifier, Series/Instance Number 1, empty Type 2 Document

@@ -98,6 +98,7 @@ DICOMNetwork, DICOMPrintKit, DICOMRenderKit, DICOMRoundTrip, DICOMStudio, DICOMV
 | 2026-09-28 | B2 Print (P17-P24) | PS3.4 Tables H.3.2.2.1-1, H.3.2.2.2-1, H.3.3.2-1, H.4-3, H.4-4, H.4-6, H.4-8, H.4-9, H.4.2.2.1.2-1; PS3.3 C.13.1, C.13.3, Table C.13-5, C.13-8, C.13-9; PS3.7 §10.1.4.1.10, Annex C | 8 commits 3729188..1e13e2a (merged); markers | DICOMNetworkTests and DICOMPrintKitTests green in the worktree |
 | 2026-09-28 | B2 Upper layer (P4-P7, P25-P30) | PS3.8 Tables 9-1..9-5, 9-10, 9-11, 9-18, 9-21, 9-26, §7.2.2, Annex D.1, Annex E.2; PS3.7 Tables D.3-1/D.3-3, §10.1.1.1.8, §10.1.4.1.10 | 10 commits 620db54..a9a22a2 (merged); PrintSCP maximum-length rule; markers | 1,339 XCTest + 226 swift-testing in the worktree |
 | 2026-09-28 | Close | `Scripts/diff_network.py` re-run: 43 ok, 0 fail, 1 pending (P-MAMMO). `check_nema_markers.py`: 63 of 63. CHANGELOG `[Unreleased]`; DICOMCore status table updated. | — | Full `swift test`: every bundle and run passes, exit 0 (DICOMNetworkTests 1,401 XCTest + 226 swift-testing) |
+| 2026-09-29 | P-MAMMO, D40, D41 (with the DICOMPrintKit pass) | PS3.3 Table C.13-1; PS3.5 6.3 and Table 6.2-1 | MAMMO CLEAR FILM / MAMMO BLUE FILM (see P-MAMMO); `PrintPixelDepthConformance` cites PS3.5 6.3; Text String (2030,0020) written through `PrintAnnotation.textStringValue` (LO: 64 characters, no backslash or control characters) | DICOMNetworkTests 1,403, all pass |
 
 ---
 
