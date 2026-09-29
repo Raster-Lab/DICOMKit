@@ -42,9 +42,8 @@ D, X = nd.D, nd.X
 # of the finding text it silences (see DICOMKIT_STANDARD_IMPLEMENTATION.md, P-CONST, P-HP,
 # P-RT, P-SEG, P-SC, P-AI, P-TITLE).
 PENDING_API_APPROVAL = {
-    # Every DICOMKit P-item was approved and implemented on 2026-09-29; only the
-    # DICOMCore row D26 (SRDocumentType.colonCADSR) still waits for its own module pass.
-    'SRDocumentType.colonCADSR',                                                          # D26 (DICOMCore)
+    # Every DICOMKit P-item was approved and implemented on 2026-09-29; the DICOMCore row
+    # D26 (SRDocumentType.colonCADSR) was closed on 2026-09-29. Nothing is pending.
 }
 
 # Private coding schemes (PS3.16 2026a section 8: designators beginning with "99") are

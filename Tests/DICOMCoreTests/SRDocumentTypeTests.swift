@@ -237,7 +237,7 @@ struct SRDocumentTypeTests {
         (SRDocumentType.keyObjectSelectionDocument, [.text, .code, .uidref, .pname, .composite, .image, .waveform, .container]),  // A.35.4
         (SRDocumentType.mammographyCADSR, [.text, .code, .num, .date, .time, .uidref, .pname, .composite, .image, .scoord, .container]),  // A.35.5
         (SRDocumentType.chestCADSR, [.text, .code, .num, .date, .time, .uidref, .pname, .composite, .image, .waveform, .scoord, .tcoord, .container]),  // A.35.6
-        (SRDocumentType.colonCADSR, [.text, .code, .num, .date, .time, .uidref, .pname, .composite, .image, .scoord, .scoord3D, .tcoord, .container]),  // A.35.10
+        (SRDocumentType.colonCADSR, [.text, .code, .num, .date, .time, .uidref, .pname, .composite, .image, .waveform, .scoord, .scoord3D, .container]),  // A.35.10 (Table A.35.10-2 targets; TCOORD is only a source)
         (SRDocumentType.xRayRadiationDoseSR, [.text, .code, .num, .datetime, .uidref, .pname, .composite, .image, .container]),  // A.35.8
         (SRDocumentType.enhancedXRayRadiationDoseSR, [.text, .code, .num, .datetime, .uidref, .pname, .composite, .image, .scoord3D, .container, .table]),  // A.35.22
         (SRDocumentType.radiopharmaceuticalRadiationDoseSR, [.text, .code, .num, .datetime, .uidref, .pname, .container]),  // A.35.14

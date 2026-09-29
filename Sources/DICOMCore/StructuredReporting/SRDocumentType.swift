@@ -250,8 +250,10 @@ public enum SRDocumentType: Sendable, Equatable, Hashable {
             return [.text, .code, .num, .date, .time, .uidref, .pname, .composite, .image, .waveform, .scoord, .tcoord, .container]
 
         case .colonCADSR:
-            // PS3.3 A.35.10
-            return [.text, .code, .num, .date, .time, .uidref, .pname, .composite, .image, .scoord, .scoord3D, .tcoord, .container]
+            // PS3.3 A.35.10, Table A.35.10-2: the targets of the relationship rows. TCOORD is listed
+            // only as a source (TCOORD SELECTED FROM) and no row admits it as a target, so it cannot
+            // occur; WAVEFORM is one of that row's targets.
+            return [.text, .code, .num, .date, .time, .uidref, .pname, .composite, .image, .waveform, .scoord, .scoord3D, .container]
 
         case .xRayRadiationDoseSR:
             // PS3.3 A.35.8
