@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Photometric Interpretation literals are PS3.3 2026a C.7.6.3.1.2 terms; the YBR_PARTIAL, ICT and RCT conversion finding is recorded (P-RENDER)
+// NEMA-verified: 2026a, checked 2026-09-29 — YBR_FULL/YBR_FULL_422 (full-range), YBR_PARTIAL_420/422 (partial-range, Y−16) inverse equations and the packed 4:2:2 layout follow PS3.3 2026a C.7.6.3.1.2; YBR_ICT/YBR_RCT are JPEG 2000 codestream transforms already inverted by the decoder and are not re-converted (P-RENDER)
 import Foundation
 import DICOMCore
 
@@ -147,18 +147,44 @@ public struct PixelDataRenderer: Sendable {
         guard descriptor.samplesPerPixel == 3 else {
             return nil
         }
-        
-        guard let frameData = pixelData.frameData(at: frameIndex) else {
-            return nil
-        }
-        
+
         let width = descriptor.columns
         let height = descriptor.rows
         let totalPixels = width * height
-        
+
+        // YBR_FULL_422 (and the retired YBR_PARTIAL_422) in Native format is packed
+        // "Y1 Y2 Cb Cr" per pixel pair, so a frame is Rows × Columns × 2 bytes, not
+        // × 3 (PS3.3 C.7.6.3.1.2). Unpack it to full-resolution samples first.
+        if let packed = packed422Frame(frameIndex) {
+            var outputBytes = [UInt8](repeating: 255, count: totalPixels * 4)
+            let fullRange = descriptor.photometricInterpretation == .ybrFull422
+            for pair in 0..<(totalPixels / 2) {
+                let base = pair * 4
+                let y1 = Double(packed[base])
+                let y2 = Double(packed[base + 1])
+                let cb = Double(packed[base + 2])
+                let cr = Double(packed[base + 3])
+                for (slot, y) in [(0, y1), (1, y2)] {
+                    let (r, g, b) = fullRange
+                        ? Self.ybrFullToRGB(y: y, cb: cb, cr: cr)
+                        : Self.ybrPartialToRGB(y: y, cb: cb, cr: cr)
+                    let outputOffset = (pair * 2 + slot) * 4
+                    outputBytes[outputOffset] = r
+                    outputBytes[outputOffset + 1] = g
+                    outputBytes[outputOffset + 2] = b
+                    outputBytes[outputOffset + 3] = 255
+                }
+            }
+            return createRGBACGImage(from: outputBytes, width: width, height: height)
+        }
+
+        guard let frameData = pixelData.frameData(at: frameIndex) else {
+            return nil
+        }
+
         // Create RGB output buffer (4 bytes per pixel: RGBA)
         var outputBytes = [UInt8](repeating: 255, count: totalPixels * 4)
-        
+
         let bytesPerSample = descriptor.bytesPerSample
         let planarConfig = descriptor.planarConfiguration
         let bitShift = descriptor.bitShift
@@ -223,12 +249,45 @@ public struct PixelDataRenderer: Sendable {
             outputBytes[outputOffset + 3] = 255 // Alpha
         }
         
-        // Handle YBR to RGB conversion if needed
-        if isYBRPhotometricInterpretation(descriptor.photometricInterpretation) {
-            convertYBRToRGB(&outputBytes, totalPixels: totalPixels)
+        // Convert YBR samples to RGB where the samples in the buffer are still YBR.
+        switch descriptor.photometricInterpretation {
+        case .ybrFull, .ybrFull422:
+            convertYBRToRGB(&outputBytes, totalPixels: totalPixels, fullRange: true)
+        case .ybrPartial420, .ybrPartial422:
+            convertYBRToRGB(&outputBytes, totalPixels: totalPixels, fullRange: false)
+        case .ybrICT, .ybrRCT:
+            // YBR_ICT / YBR_RCT "shall only be used for pixel data in an Encapsulated
+            // (compressed) format" and are the JPEG 2000 irreversible / reversible
+            // component transforms of ISO/IEC 15444-1 (PS3.3 C.7.6.3.1.2). The JPEG
+            // 2000 codestream signals the transform and the decoder inverts it as
+            // part of decoding, so the decoded samples reaching this renderer are
+            // already RGB. Converting again would corrupt the colours; do nothing.
+            break
+        default:
+            break
         }
-        
+
         return createRGBACGImage(from: outputBytes, width: width, height: height)
+    }
+
+    /// The packed bytes of a Native-format 4:2:2 frame, or nil when this is not one.
+    ///
+    /// Only YBR_FULL_422 (and the retired YBR_PARTIAL_422) with Bits Allocated 8 use
+    /// the "two Y values followed by one CB and one CR value" layout of PS3.3
+    /// C.7.6.3.1.2, giving a Value Length of Rows × Columns × Frames × 2 bytes.
+    /// Codec-decoded 4:2:2 sources arrive here already upsampled to three full
+    /// samples per pixel and are recognised by their frame length instead.
+    private func packed422Frame(_ frameIndex: Int) -> Data? {
+        let descriptor = pixelData.descriptor
+        guard descriptor.photometricInterpretation == .ybrFull422
+                || descriptor.photometricInterpretation == .ybrPartial422,
+              descriptor.bitsAllocated == 8,
+              frameIndex >= 0, frameIndex < descriptor.numberOfFrames else { return nil }
+        let packedFrameSize = descriptor.rows * descriptor.columns * 2
+        guard (descriptor.rows * descriptor.columns) % 2 == 0,
+              pixelData.data.count == packedFrameSize * descriptor.numberOfFrames else { return nil }
+        let start = pixelData.data.startIndex + frameIndex * packedFrameSize
+        return Data(pixelData.data[start..<(start + packedFrameSize)])
     }
     
     /// Renders a palette color frame to a CGImage
@@ -414,35 +473,63 @@ public struct PixelDataRenderer: Sendable {
         )
     }
     
-    /// Checks if photometric interpretation is a YBR variant
-    private func isYBRPhotometricInterpretation(_ pi: PhotometricInterpretation) -> Bool {
-        switch pi {
-        case .ybrFull, .ybrFull422, .ybrPartial422, .ybrPartial420, .ybrICT, .ybrRCT:
-            return true
-        default:
-            return false
-        }
-    }
-    
-    /// Converts YBR pixel data to RGB in place
-    /// Reference: DICOM PS3.3 C.7.6.3.1.2
-    private func convertYBRToRGB(_ bytes: inout [UInt8], totalPixels: Int) {
+    /// Converts 8-bit YBR samples (already normalised to 0…255) to RGB in place.
+    ///
+    /// - Parameter fullRange: `true` for YBR_FULL / YBR_FULL_422, `false` for
+    ///   YBR_PARTIAL_420 / YBR_PARTIAL_422 (PS3.3 C.7.6.3.1.2).
+    private func convertYBRToRGB(_ bytes: inout [UInt8], totalPixels: Int, fullRange: Bool) {
         for i in 0..<totalPixels {
             let offset = i * 4
             let y = Double(bytes[offset])
             let cb = Double(bytes[offset + 1])
             let cr = Double(bytes[offset + 2])
-            
-            // YBR_FULL to RGB conversion
-            // Reference: PS3.3 C.7.6.3.1.2
-            let r = y + 1.402 * (cr - 128.0)
-            let g = y - 0.344136 * (cb - 128.0) - 0.714136 * (cr - 128.0)
-            let b = y + 1.772 * (cb - 128.0)
-            
-            bytes[offset] = UInt8(max(0, min(255, r)))
-            bytes[offset + 1] = UInt8(max(0, min(255, g)))
-            bytes[offset + 2] = UInt8(max(0, min(255, b)))
+            let (r, g, b) = fullRange
+                ? Self.ybrFullToRGB(y: y, cb: cb, cr: cr)
+                : Self.ybrPartialToRGB(y: y, cb: cb, cr: cr)
+            bytes[offset] = r
+            bytes[offset + 1] = g
+            bytes[offset + 2] = b
         }
+    }
+
+    /// YBR_FULL → RGB for Bits Allocated 8.
+    ///
+    /// Inverse of the PS3.3 C.7.6.3.1.2 YBR_FULL equations
+    /// `Y = .2990R + .5870G + .1140B`, `CB = −.1687R − .3313G + .5000B + 128`,
+    /// `CR = .5000R − .4187G − .0813B + 128` ("Black is represented by Y equal to
+    /// zero. The absence of color is represented by both CB and CR values equal to
+    /// half full scale."). The Y coefficient of the inverse is exactly 1.
+    static func ybrFullToRGB(y: Double, cb: Double, cr: Double) -> (UInt8, UInt8, UInt8) {
+        let cbc = cb - 128.0
+        let crc = cr - 128.0
+        let r = y + 1.402 * crc
+        let g = y - 0.344136 * cbc - 0.714136 * crc
+        let b = y + 1.772 * cbc
+        return (clampToByte(r), clampToByte(g), clampToByte(b))
+    }
+
+    /// YBR_PARTIAL_420 / YBR_PARTIAL_422 → RGB for Bits Allocated 8.
+    ///
+    /// Inverse of the PS3.3 C.7.6.3.1.2 YBR_PARTIAL_420 equations
+    /// `Y = .2568R + .5041G + .0979B + 16`, `CB = −.1482R − .2910G + .4392B + 128`,
+    /// `CR = .4392R − .3678G − .0714B + 128`, where "black corresponds to Y = 16",
+    /// "Y is restricted to 220 levels (i.e., the maximum value is 235)", "CB and CR
+    /// each has a minimum value of 16" and "are restricted to 225 levels (i.e., the
+    /// maximum value is 240)", "lack of color is represented by CB and CR equal to
+    /// 128". Inverting that matrix gives the coefficients below (255/219 = 1.164384
+    /// on Y; the near-zero cross terms of the exact inverse are dropped).
+    static func ybrPartialToRGB(y: Double, cb: Double, cr: Double) -> (UInt8, UInt8, UInt8) {
+        let yc = y - 16.0
+        let cbc = cb - 128.0
+        let crc = cr - 128.0
+        let r = 1.164384 * yc + 1.596002 * crc
+        let g = 1.164384 * yc - 0.391725 * cbc - 0.813013 * crc
+        let b = 1.164384 * yc + 2.017291 * cbc
+        return (clampToByte(r), clampToByte(g), clampToByte(b))
+    }
+
+    private static func clampToByte(_ value: Double) -> UInt8 {
+        UInt8(max(0, min(255, value.rounded())))
     }
 }
 

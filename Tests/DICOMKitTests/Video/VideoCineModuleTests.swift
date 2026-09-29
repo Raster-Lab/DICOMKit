@@ -1,0 +1,178 @@
+//
+// VideoCineModuleTests.swift
+// DICOMKit
+//
+// Copyright © 2026 DICOMKit. All rights reserved.
+//
+
+import XCTest
+@testable import DICOMKit
+@testable import DICOMCore
+
+/// Pins `VideoBuilder` / `Video.toDataSet()` to PS3.3 Table C.7-13 (Cine Module),
+/// Table C.7-14 (Multi-frame Module), C.7.6.1.1.5.1 (Lossy Image Compression
+/// Method Defined Terms) and the PS3.5 8.2.5–8.2.12 encapsulation and audio rules.
+final class VideoCineModuleTests: XCTestCase {
+
+    private func makeBuilder(frames: Int = 4) -> VideoBuilder {
+        VideoBuilder(
+            videoType: .endoscopic,
+            rows: 1080,
+            columns: 1920,
+            numberOfFrames: frames,
+            studyInstanceUID: "1.2.3.4.5",
+            seriesInstanceUID: "1.2.3.4.5.6"
+        )
+    }
+
+    // MARK: - Frame Time vs Frame Time Vector (Type 1C, Table C.7-13)
+
+    func test_frameTimeVector_pointerPointsAtVector_andFrameTimeIsAbsent() throws {
+        let dataSet = try makeBuilder(frames: 4)
+            .setFrameTimeVector([0, 40, 40, 40])
+            .buildDataSet()
+        XCTAssertEqual(dataSet[.frameIncrementPointer]?.attributeTagValue, .frameTimeVector)
+        XCTAssertEqual(dataSet.strings(for: .frameTimeVector), ["0", "40", "40", "40"])
+        XCTAssertNil(dataSet[.frameTime], "Frame Time is required only when the pointer points at it")
+        XCTAssertEqual(dataSet.string(for: .numberOfFrames), "4")
+    }
+
+    func test_frameTime_pointerPointsAtFrameTime_whenNoVector() throws {
+        let dataSet = try makeBuilder().setFrameRate(25).buildDataSet()
+        XCTAssertEqual(dataSet[.frameIncrementPointer]?.attributeTagValue, .frameTime)
+        XCTAssertNotNil(dataSet[.frameTime])
+        XCTAssertNil(dataSet[.frameTimeVector])
+    }
+
+    func test_frameTimeVector_firstIncrementMustBeZero() {
+        // C.7.6.5.1.2: "The first Frame always has a time increment of 0."
+        XCTAssertThrowsError(try makeBuilder(frames: 3).setFrameTimeVector([40, 40, 40]).build())
+    }
+
+    func test_frameTimeVector_mustHaveOneIncrementPerFrame() {
+        XCTAssertThrowsError(try makeBuilder(frames: 3).setFrameTimeVector([0, 40]).build())
+    }
+
+    // MARK: - Type 3 Cine attributes
+
+    func test_preferredPlaybackSequencing_enumeratedValues() throws {
+        let looping = try makeBuilder().setPreferredPlaybackSequencing(0).buildDataSet()
+        XCTAssertEqual(looping[.preferredPlaybackSequencing]?.uint16Value, 0)
+        let sweeping = try makeBuilder().setPreferredPlaybackSequencing(1).buildDataSet()
+        XCTAssertEqual(sweeping[.preferredPlaybackSequencing]?.uint16Value, 1)
+        XCTAssertThrowsError(try makeBuilder().setPreferredPlaybackSequencing(2).build())
+        XCTAssertNil(try makeBuilder().buildDataSet()[.preferredPlaybackSequencing])
+    }
+
+    func test_effectiveDuration_andImageTriggerDelay_writtenAsDS() throws {
+        let dataSet = try makeBuilder()
+            .setEffectiveDuration(12.5)
+            .setImageTriggerDelay(3.25)
+            .buildDataSet()
+        XCTAssertEqual(dataSet.string(for: Video.effectiveDurationTag), "12.5")
+        XCTAssertEqual(dataSet[Video.effectiveDurationTag]?.vr, .DS)
+        XCTAssertEqual(dataSet.string(for: Video.imageTriggerDelayTag), "3.25")
+        XCTAssertEqual(Video.effectiveDurationTag, Tag(group: 0x0018, element: 0x0072))
+        XCTAssertEqual(Video.imageTriggerDelayTag, Tag(group: 0x0018, element: 0x1067))
+    }
+
+    // MARK: - Multiplexed audio (Type 2C, Table C.7-13, C.7.6.5.1.3)
+
+    func test_multiplexedAudioChannels_writtenWithStandardTerms() throws {
+        let dataSet = try makeBuilder()
+            .setMultiplexedAudioChannels([
+                VideoAudioChannel(channelIdentificationCode: 1, mode: .stereo, source: .operatorsNarrative),
+                VideoAudioChannel(channelIdentificationCode: 2, mode: .mono, source: .dopplerAudio),
+            ])
+            .buildDataSet()
+
+        let sequence = try XCTUnwrap(dataSet[Tag(group: 0x003A, element: 0x0300)])
+        XCTAssertEqual(sequence.vr, .SQ)
+        let items = try XCTUnwrap(sequence.sequenceItems)
+        XCTAssertEqual(items.count, 2)
+
+        XCTAssertEqual(items[0].string(for: Tag(group: 0x003A, element: 0x0301)), "1")
+        XCTAssertEqual(items[0].string(for: Tag(group: 0x003A, element: 0x0302)), "STEREO")
+        XCTAssertEqual(items[1].string(for: Tag(group: 0x003A, element: 0x0301)), "2")
+        XCTAssertEqual(items[1].string(for: Tag(group: 0x003A, element: 0x0302)), "MONO")
+
+        let source = try XCTUnwrap(items[0][.channelSourceSequence]?.sequenceItems?.first)
+        XCTAssertEqual(source.string(for: .codeValue), "109111")
+        XCTAssertEqual(source.string(for: .codingSchemeDesignator), "DCM")
+        XCTAssertEqual(source.string(for: .codeMeaning), "Operator's narrative")
+    }
+
+    func test_multiplexedAudioChannels_absentWhenNoAudio() throws {
+        XCTAssertNil(try makeBuilder().buildDataSet()[Tag(group: 0x003A, element: 0x0300)])
+    }
+
+    func test_cid3000_codeMeanings() {
+        XCTAssertEqual(VideoAudioChannel.Source.voice.codeMeaning, "Voice")
+        XCTAssertEqual(VideoAudioChannel.Source.ambientRoomEnvironment.rawValue, "109112")
+        XCTAssertEqual(VideoAudioChannel.Source.phonocardiogram.rawValue, "109114")
+        XCTAssertEqual(VideoAudioChannel.Source.physiologicalAudioSignal.codeMeaning, "Physiological audio signal")
+    }
+
+    // MARK: - Lossy Image Compression Method (C.7.6.1.1.5.1)
+
+    func test_lossyImageCompressionMethod_perTransferSyntax() throws {
+        let expectations: [(TransferSyntax, String)] = [
+            (.mpeg2MainProfile, "ISO_13818_2"),
+            (.mpeg2MainProfileHighLevel, "ISO_13818_2"),
+            (.mpeg2MainProfileFragmentable, "ISO_13818_2"),
+            (.mpeg2MainProfileHighLevelFragmentable, "ISO_13818_2"),
+            (.mpeg4AVCHP41, "ISO_14496_10"),
+            (.mpeg4AVCHP41BD, "ISO_14496_10"),
+            (.mpeg4AVCHP42For2DVideo, "ISO_14496_10"),
+            (.mpeg4AVCHP42For3DVideo, "ISO_14496_10"),
+            (.mpeg4AVCStereoHP42, "ISO_14496_10"),
+            (.mpeg4AVCHP41Fragmentable, "ISO_14496_10"),
+            (.mpeg4AVCHP41BDFragmentable, "ISO_14496_10"),
+            (.mpeg4AVCHP42For2DVideoFragmentable, "ISO_14496_10"),
+            (.mpeg4AVCHP42For3DVideoFragmentable, "ISO_14496_10"),
+            (.mpeg4AVCStereoHP42Fragmentable, "ISO_14496_10"),
+            (.hevcH265MainProfile, "ISO_23008_2"),
+            (.hevcH265Main10Profile, "ISO_23008_2"),
+            (.hevcH265MainProfileFragmentable, "ISO_23008_2"),
+            (.hevcH265Main10ProfileFragmentable, "ISO_23008_2"),
+        ]
+        for (syntax, method) in expectations {
+            let dataSet = try makeBuilder()
+                .setLossyCompression(transferSyntaxUID: syntax.uid, ratio: 20)
+                .buildDataSet()
+            XCTAssertEqual(dataSet.string(for: .lossyImageCompressionMethod), method, syntax.uid)
+            XCTAssertEqual(dataSet.string(for: .lossyImageCompression), "01", syntax.uid)
+            XCTAssertEqual(VideoCodec.compressionMethod(forTransferSyntaxUID: syntax.uid), method)
+        }
+    }
+
+    func test_lossyImageCompressionMethod_nonVideoSyntax_isNotWritten() throws {
+        let dataSet = try makeBuilder()
+            .setLossyCompression(transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid)
+            .buildDataSet()
+        XCTAssertNil(dataSet[.lossyImageCompressionMethod])
+        XCTAssertNil(VideoCodec.compressionMethod(forTransferSyntaxUID: TransferSyntax.jpegBaseline.uid))
+    }
+
+    func test_lossyImageCompressionMethod_rejectsNonStandardTerm() {
+        XCTAssertThrowsError(try makeBuilder().setLossyCompression(ratio: 10, method: "H264").build())
+        XCTAssertNoThrow(try makeBuilder().setLossyCompression(ratio: 10, method: "ISO_23008_2").build())
+    }
+
+    func test_definedTerms_matchC76115_1() {
+        XCTAssertEqual(Video.lossyImageCompressionMethodTerms, [
+            "ISO_10918_1", "ISO_14495_1", "ISO_15444_1", "ISO_15444_15",
+            "ISO_18181_1", "ISO_13818_2", "ISO_14496_10", "ISO_23008_2",
+        ])
+    }
+
+    // MARK: - Encapsulation (PS3.5 8.2.5 / 8.2.6 / A.4)
+
+    func test_basicOffsetTable_isEmpty_perMPEG2Rule() throws {
+        // "The Basic Offset Table shall be empty (present but zero length)"
+        let dataSet = try makeBuilder().setPixelData(Data(repeating: 0xAB, count: 512)).buildDataSet()
+        let element = try XCTUnwrap(dataSet[.pixelData])
+        XCTAssertEqual(element.encapsulatedOffsetTable, [])
+        XCTAssertEqual(element.encapsulatedFragmentCount, 1)
+    }
+}

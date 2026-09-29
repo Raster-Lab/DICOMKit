@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — container syntax is ISO/IEC 14496-12 (out of scope); the no-audio claim is recorded (P-VIDEO)
+// NEMA-verified: 2026a, checked 2026-09-29 — container syntax is ISO/IEC 14496-12 (out of scope); audio tracks are permitted in the MP4 container per PS3.5 2026a 8.2.7-8.2.11 and Table 8.2.12-1, described via PS3.3 Table C.7-13 (003A,0300) (P-VIDEO)
 //
 // MP4ContainerParser.swift
 // DICOMKit
@@ -101,7 +101,16 @@ public enum MP4ContainerParser {
         public let brands: [String]
         /// Video tracks found, in file order.
         public let videoTracks: [TrackInfo]
-        /// The number of audio tracks, which DICOM video IODs cannot carry.
+        /// The number of audio tracks (`soun` handler) in the container.
+        ///
+        /// DICOM video *can* carry audio: PS3.5 8.2.7–8.2.11 state "Any audio
+        /// components included in the data container shall follow the constraints
+        /// detailed in 8.2.12", and Table 8.2.12-1 allows AAC, MP3 and MPEG-1 Audio
+        /// Layer II in an MP4 container (LPCM and AC-3 only in MPEG-2 TS). PS3.5
+        /// 8.2.5 permits CBR MPEG-1 Layer III audio in an MPEG2 stream. Such channels
+        /// are described by Multiplexed Audio Channels Description Code Sequence
+        /// (003A,0300) in the Cine Module (PS3.3 Table C.7-13). A count here is
+        /// therefore information for that sequence, not a defect in the input.
         public let audioTrackCount: Int
     }
 

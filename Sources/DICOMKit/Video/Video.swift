@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — video transfer syntax UIDs and names match PS3.6 2026a Table A-1; Lossy Image Compression Method terms recorded (P-VIDEO)
+// NEMA-verified: 2026a, checked 2026-09-29 — video transfer syntax UIDs match PS3.6 2026a Table A-1; Lossy Image Compression Method terms ISO_13818_2/ISO_14496_10/ISO_23008_2 per PS3.3 C.7.6.1.1.5.1; Cine Module fields and audio statements per PS3.3 Table C.7-13, C.7.6.5.1.2-3 and PS3.5 8.2.5/8.2.12; Channel Mode MONO/STEREO and CID 3000 codes (P-VIDEO)
 //
 // Video.swift
 // DICOMKit
@@ -15,6 +15,21 @@ import DICOMCore
 /// Video objects store multi-frame image sequences captured from endoscopic, microscopic,
 /// or photographic equipment. Each video contains encapsulated pixel data compressed
 /// using MPEG2, H.264/AVC, or H.265/HEVC video codecs.
+///
+/// ## Audio
+///
+/// DICOM video **may** carry audio inside the encapsulated bit stream. PS3.5 8.2.5
+/// (MPEG2 MP@ML, applied to MP@HL by 8.2.6): "Any audio components present within
+/// the MPEG bit stream shall comply with the following restrictions: CBR MPEG-1
+/// LAYER III (MP3) Audio Standard, up to 24 bits, 32 kHz, 44.1 kHz or 48 kHz for
+/// the main channel …, one main mono or stereo channel, and optionally one or more
+/// complementary channel(s)". PS3.5 8.2.7–8.2.11 (H.264, HEVC): "Any audio
+/// components included in the data container shall follow the constraints detailed
+/// in 8.2.12", whose Table 8.2.12-1 allows LPCM, AC-3, AAC, MP3 and MPEG-1 Layer II
+/// in an MPEG-2 TS container and AAC, MP3 and MPEG-1 Layer II in an MP4 container.
+/// The Cine Module then describes the channels in Multiplexed Audio Channels
+/// Description Code Sequence (003A,0300) (PS3.3 Table C.7-13, C.7.6.5.1.3), see
+/// ``multiplexedAudioChannels``.
 ///
 /// Supported SOP Classes:
 /// - Video Endoscopic Image Storage (1.2.840.10008.5.1.4.1.1.77.1.1.1)
@@ -142,6 +157,30 @@ public struct Video: Sendable {
     /// Stop Trim frame number
     public let stopTrim: Int?
 
+    /// Frame Time Vector (0018,1065), Type 1C — "the real time increments (in msec)
+    /// between Frames"; "The first Frame always has a time increment of 0"
+    /// (PS3.3 C.7.6.5.1.2). When set, Frame Increment Pointer (0028,0009) points at
+    /// it instead of Frame Time.
+    public let frameTimeVector: [Double]?
+
+    /// Preferred Playback Sequencing (0018,1244), Type 3. Enumerated Values
+    /// (PS3.3 Table C.7-13): 0 = Looping (1,2…n,1,2,…n,…), 1 = Sweeping (1,2,…n,n-1,…2,1,…).
+    public let preferredPlaybackSequencing: Int?
+
+    /// Image Trigger Delay (0018,1067), Type 3 — "Delay time in milliseconds from
+    /// trigger (e.g., X-Ray on pulse) to the first Frame".
+    public let imageTriggerDelay: Double?
+
+    /// Effective Duration (0018,0072), Type 3 — "Total time in seconds that data was
+    /// actually taken for the entire Multi-frame Image".
+    public let effectiveDuration: Double?
+
+    /// Multiplexed Audio Channels Description Code Sequence (003A,0300), Type 2C —
+    /// "Required if the Transfer Syntax used to encode the Multi-frame Image contains
+    /// multiplexed (interleaved) audio channels" (PS3.3 Table C.7-13). Empty when
+    /// the bit stream carries no audio.
+    public let multiplexedAudioChannels: [VideoAudioChannel]
+
     // MARK: - Content Date/Time
 
     /// Content Date
@@ -259,6 +298,11 @@ public struct Video: Sendable {
         actualFrameDuration: Int? = nil,
         startTrim: Int? = nil,
         stopTrim: Int? = nil,
+        frameTimeVector: [Double]? = nil,
+        preferredPlaybackSequencing: Int? = nil,
+        imageTriggerDelay: Double? = nil,
+        effectiveDuration: Double? = nil,
+        multiplexedAudioChannels: [VideoAudioChannel] = [],
         contentDate: DICOMDate? = nil,
         contentTime: DICOMTime? = nil,
         lossyImageCompression: String? = nil,
@@ -309,6 +353,11 @@ public struct Video: Sendable {
         self.actualFrameDuration = actualFrameDuration
         self.startTrim = startTrim
         self.stopTrim = stopTrim
+        self.frameTimeVector = frameTimeVector
+        self.preferredPlaybackSequencing = preferredPlaybackSequencing
+        self.imageTriggerDelay = imageTriggerDelay
+        self.effectiveDuration = effectiveDuration
+        self.multiplexedAudioChannels = multiplexedAudioChannels
         self.contentDate = contentDate
         self.contentTime = contentTime
         self.lossyImageCompression = lossyImageCompression
@@ -478,7 +527,11 @@ public enum VideoCodec: String, Sendable {
         }
     }
 
-    /// The DICOM Lossy Image Compression Method identifier
+    /// The Lossy Image Compression Method (0028,2114) Defined Term for this codec.
+    ///
+    /// PS3.3 C.7.6.1.1.5.1 Defined Terms: `ISO_13818_2` (MPEG2 Video), `ISO_14496_10`
+    /// (MPEG-4 AVC/H.264), `ISO_23008_2` (HEVC/H.265). An unknown codec has no term
+    /// and yields an empty string; ``Video/toDataSet()`` never writes that.
     public var compressionMethod: String {
         switch self {
         case .mpeg2: return "ISO_13818_2"
@@ -486,6 +539,13 @@ public enum VideoCodec: String, Sendable {
         case .h265: return "ISO_23008_2"
         case .unknown: return ""
         }
+    }
+
+    /// The Lossy Image Compression Method term for a transfer syntax UID, or nil
+    /// when the UID is not one of the video transfer syntaxes of PS3.6 Table A-1.
+    public static func compressionMethod(forTransferSyntaxUID uid: String) -> String? {
+        let codec = VideoCodec(transferSyntaxUID: uid)
+        return codec == .unknown ? nil : codec.compressionMethod
     }
 
     /// Human-readable display name
@@ -497,6 +557,63 @@ public enum VideoCodec: String, Sendable {
         case .unknown: return "Unknown"
         }
     }
+}
+
+// MARK: - Multiplexed Audio
+
+/// One Item of Multiplexed Audio Channels Description Code Sequence (003A,0300),
+/// PS3.3 Table C.7-13.
+public struct VideoAudioChannel: Sendable, Equatable {
+    /// Channel Mode (003A,0302), Type 1. Enumerated Values: MONO ("1 signal"),
+    /// STEREO ("2 simultaneously acquired (left and right) signals").
+    public enum Mode: String, Sendable {
+        case mono = "MONO"
+        case stereo = "STEREO"
+    }
+
+    /// Channel Source (003A,0208) item code, Type 1, from PS3.16 CID 3000
+    /// Audio Channel Source (Coding Scheme Designator DCM).
+    public enum Source: String, Sendable, CaseIterable {
+        case voice = "109110"
+        case operatorsNarrative = "109111"
+        case ambientRoomEnvironment = "109112"
+        case dopplerAudio = "109113"
+        case phonocardiogram = "109114"
+        case physiologicalAudioSignal = "109115"
+
+        /// Code Meaning exactly as CID 3000 lists it.
+        public var codeMeaning: String {
+            switch self {
+            case .voice: return "Voice"
+            case .operatorsNarrative: return "Operator's narrative"
+            case .ambientRoomEnvironment: return "Ambient room environment"
+            case .dopplerAudio: return "Doppler audio"
+            case .phonocardiogram: return "Phonocardiogram"
+            case .physiologicalAudioSignal: return "Physiological audio signal"
+            }
+        }
+    }
+
+    /// Channel Identification Code (003A,0301), Type 1 — "1 for the main channel, 2
+    /// for the second channel and 3 to 9 to the complementary channels".
+    public let channelIdentificationCode: Int
+    /// Channel Mode (003A,0302), Type 1.
+    public let mode: Mode
+    /// Channel Source Sequence (003A,0208), Type 1, "Only a single Item".
+    public let source: Source
+
+    public init(channelIdentificationCode: Int, mode: Mode, source: Source) {
+        self.channelIdentificationCode = channelIdentificationCode
+        self.mode = mode
+        self.source = source
+    }
+
+    /// Multiplexed Audio Channels Description Code Sequence (003A,0300).
+    static let multiplexedAudioChannelsDescriptionCodeSequence = Tag(group: 0x003A, element: 0x0300)
+    /// Channel Identification Code (003A,0301), VR IS.
+    static let channelIdentificationCodeTag = Tag(group: 0x003A, element: 0x0301)
+    /// Channel Mode (003A,0302), VR CS.
+    static let channelModeTag = Tag(group: 0x003A, element: 0x0302)
 }
 
 // MARK: - Bit Depth

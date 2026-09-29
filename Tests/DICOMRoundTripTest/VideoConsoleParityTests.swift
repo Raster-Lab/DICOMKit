@@ -554,7 +554,8 @@ final class VideoConsoleParityTests: XCTestCase {
 
         XCTAssertEqual(element.length, 0xFFFF_FFFF, "encapsulated, not a native OB value")
         XCTAssertEqual(element.encapsulatedFragments?.count, 1)
-        XCTAssertEqual(element.encapsulatedOffsetTable, [0])
+        // PS3.5 8.2.5 / 8.2.6: "The Basic Offset Table shall be empty (present but zero length)".
+        XCTAssertEqual(element.encapsulatedOffsetTable, [])
     }
 
     // MARK: - Batch

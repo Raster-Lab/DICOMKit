@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a C.7.6.2 Pixel Spacing and Image Position reads; the hard-coded MONOCHROME2 descriptor, High Bit and Slice Thickness used as spacing are recorded findings (P-VOL)
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table C.7-10 (Pixel Spacing row\column order, Image Position/Orientation (Patient), Slice Thickness nominal, Spacing Between Slices), C.7.6.2.1.1 normal, Table C.7-11c Image Pixel (Photometric Interpretation, Bits Stored, High Bit, Pixel Representation read from the source; High Bit default per PS3.5 8.1.1) (P-VOL)
 import Foundation
 import DICOMCore
 import J2KCore
@@ -117,17 +117,7 @@ extension DICOMFile {
         // Decode pixel data through CodecRegistry if compressed
         let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID)
             ?? TransferSyntax.explicitVRLittleEndian.uid
-        let descriptor = PixelDataDescriptor(
-            rows: rows,
-            columns: cols,
-            numberOfFrames: frames,
-            bitsAllocated: bitsAlloc,
-            bitsStored: bitsStored,
-            highBit: bitsStored - 1,
-            isSigned: isSigned,
-            samplesPerPixel: Int(ds.uint16(for: .samplesPerPixel) ?? 1),
-            photometricInterpretation: .monochrome2
-        )
+        let descriptor = sourceDescriptor(from: ds, rows: rows, columns: cols, numberOfFrames: frames)
 
         let rawPixelData: Data
         if let element = ds[.pixelData] {
@@ -142,7 +132,14 @@ extension DICOMFile {
         }
 
         let pixelSpacing = extractPixelSpacing(from: ds)
-        let sliceThickness = ds.string(for: .sliceThickness).flatMap(Double.init) ?? 1.0
+        // Slice spacing of a single multi-frame object: Spacing Between Slices
+        // (0018,0088), "measured from the center-to-center of each slice", when
+        // present; otherwise Slice Thickness (0018,0050), which is only the
+        // "Nominal slice thickness" (PS3.3 Table C.7-10) and is used as a fallback
+        // because a single object carries no second Image Position (Patient).
+        let sliceSpacing = ds.string(for: .spacingBetweenSlices).flatMap(Double.init)
+            ?? ds.string(for: .sliceThickness).flatMap(Double.init)
+            ?? 1.0
         let origin = extractOriginFromDataSet(ds)
 
         return DICOMVolume(
@@ -154,7 +151,7 @@ extension DICOMFile {
             isSigned: isSigned,
             spacingX: pixelSpacing.x,
             spacingY: pixelSpacing.y,
-            spacingZ: sliceThickness,
+            spacingZ: sliceSpacing,
             originX: origin.x,
             originY: origin.y,
             originZ: origin.z,
@@ -219,22 +216,15 @@ extension DICOMFile {
         var allPixels = Data(capacity: rows * cols * (bitsAlloc / 8) * depth)
         let tsUID = sorted[0].fileMetaInformation.string(for: .transferSyntaxUID)
             ?? TransferSyntax.explicitVRLittleEndian.uid
-        let descriptor = PixelDataDescriptor(
-            rows: rows,
-            columns: cols,
-            numberOfFrames: 1,
-            bitsAllocated: bitsAlloc,
-            bitsStored: bitsStored,
-            highBit: bitsStored - 1,
-            isSigned: isSigned,
-            samplesPerPixel: Int(refDS.uint16(for: .samplesPerPixel) ?? 1),
-            photometricInterpretation: .monochrome2
-        )
 
         for file in sorted {
             guard let element = file.dataSet[.pixelData] else { continue }
             let raw = element.valueData
             if let codec = CodecRegistry.shared.codec(for: tsUID) {
+                // Each slice is described by its own Image Pixel Module; the
+                // reference slice's values are not assumed for the others.
+                let descriptor = sourceDescriptor(
+                    from: file.dataSet, rows: rows, columns: cols, numberOfFrames: 1)
                 let decoded = try codec.decode(raw, descriptor: descriptor)
                 allPixels.append(decoded)
             } else {
@@ -265,6 +255,49 @@ extension DICOMFile {
         )
     }
 
+    // MARK: - Image Pixel Module
+
+    /// The pixel-encoding descriptor exactly as the source Image Pixel Module
+    /// (PS3.3 C.7.6.3, Table C.7-11c) states it — nothing is assumed.
+    ///
+    /// - Photometric Interpretation (0028,0004) is carried through as written. A
+    ///   MONOCHROME1 source is **not** inverted: PS3.3 C.7.6.3.1.2 defines it as
+    ///   "The minimum sample value is intended to be displayed as white after any
+    ///   VOI gray scale transformations have been performed" — a display-stage
+    ///   rule applied *after* windowing, so the stored sample values are preserved
+    ///   untouched and any Window Center/Width read from the object stays valid.
+    ///   (`DICOMVolume` has no field for the interpretation, so a MONOCHROME1
+    ///   volume displays inverted until one is added; see the P-VOL report.)
+    /// - High Bit (0028,0102) is read from the object; when absent it defaults to
+    ///   Bits Stored − 1, the only value PS3.5 8.1.1 permits ("High Bit (0028,0102)
+    ///   shall be one less than Bits Stored (0028,0101)").
+    /// - Pixel Representation (0028,0103) and Samples per Pixel (0028,0002) are read
+    ///   from the object.
+    static func sourceDescriptor(
+        from ds: DataSet, rows: Int, columns: Int, numberOfFrames: Int
+    ) -> PixelDataDescriptor {
+        let bitsAlloc = Int(ds.uint16(for: .bitsAllocated) ?? 16)
+        let bitsStored = ds.uint16(for: .bitsStored).map(Int.init) ?? bitsAlloc
+        let highBit = ds.uint16(for: .highBit).map(Int.init) ?? max(0, bitsStored - 1)
+        let isSigned = (ds.uint16(for: .pixelRepresentation) ?? 0) != 0
+        let samplesPerPixel = Int(ds.uint16(for: .samplesPerPixel) ?? 1)
+        let photometric = ds.string(for: .photometricInterpretation)
+            .flatMap { PhotometricInterpretation(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+            ?? .monochrome2
+        return PixelDataDescriptor(
+            rows: rows,
+            columns: columns,
+            numberOfFrames: numberOfFrames,
+            bitsAllocated: bitsAlloc,
+            bitsStored: bitsStored,
+            highBit: highBit,
+            isSigned: isSigned,
+            samplesPerPixel: samplesPerPixel,
+            photometricInterpretation: photometric,
+            planarConfiguration: Int(ds.uint16(for: .planarConfiguration) ?? 0)
+        )
+    }
+
     // MARK: - Spatial helpers
 
     private typealias Vec3 = (x: Double, y: Double, z: Double)
@@ -275,50 +308,111 @@ extension DICOMFile {
         // Pixel spacing (row spacing, column spacing in mm)
         let ps = extractPixelSpacing(from: refDS)
 
-        // Slice spacing from consecutive positions
-        let sliceSpacing: Double
-        if slices.count > 1 {
-            let z0 = extractZ(from: slices[0].dataSet) ?? 0.0
-            let z1 = extractZ(from: slices[1].dataSet) ?? 1.0
-            sliceSpacing = abs(z1 - z0)
-        } else {
-            sliceSpacing = refDS.string(for: .sliceThickness).flatMap(Double.init) ?? 1.0
-        }
-
         let origin = extractOriginFromDataSet(refDS)
-        return (Vec3(ps.x, ps.y, sliceSpacing), origin)
+        return (Vec3(ps.x, ps.y, sliceSpacing(of: slices)), origin)
+    }
+
+    /// Centre-to-centre distance between adjacent slices, in mm.
+    ///
+    /// Slice Thickness (0018,0050) is *not* used when anything better exists: PS3.3
+    /// Table C.7-10 defines it as the "Nominal slice thickness, in mm", which says
+    /// nothing about how far apart the slices were acquired (gaps and overlaps are
+    /// both common). In order of preference:
+    ///
+    /// 1. The distance between consecutive Image Position (Patient) (0020,0032)
+    ///    values — "the x, y, and z coordinates of the upper left hand corner
+    ///    (center of the first voxel transmitted) of the image, in mm" — projected
+    ///    onto the slice normal, the cross product of the row and column direction
+    ///    cosines of Image Orientation (Patient) (0020,0037) (PS3.3 C.7.6.2.1.1).
+    ///    Without an orientation the Euclidean distance between the positions is used.
+    /// 2. Spacing Between Slices (0018,0088): "Spacing between adjacent slices, in
+    ///    mm. The spacing is measured from the center-to-center of each slice."
+    /// 3. The difference of consecutive Slice Location (0020,1041) values.
+    /// 4. Slice Thickness (0018,0050), nominal, as a last resort.
+    static func sliceSpacing(of slices: [DICOMFile]) -> Double {
+        let refDS = slices[0].dataSet
+        if slices.count > 1,
+           let p0 = imagePosition(refDS),
+           let p1 = imagePosition(slices[1].dataSet) {
+            let delta = Vec3(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z)
+            if let normal = sliceNormal(refDS) {
+                let projected = abs(delta.x * normal.x + delta.y * normal.y + delta.z * normal.z)
+                if projected > 0 { return projected }
+            }
+            let distance = (delta.x * delta.x + delta.y * delta.y + delta.z * delta.z).squareRoot()
+            if distance > 0 { return distance }
+        }
+        if let between = refDS.string(for: .spacingBetweenSlices).flatMap(Double.init), between > 0 {
+            return between
+        }
+        if slices.count > 1,
+           let l0 = refDS.string(for: .sliceLocation).flatMap(Double.init),
+           let l1 = slices[1].dataSet.string(for: .sliceLocation).flatMap(Double.init),
+           abs(l1 - l0) > 0 {
+            return abs(l1 - l0)
+        }
+        return refDS.string(for: .sliceThickness).flatMap(Double.init) ?? 1.0
     }
 
     private static func extractPixelSpacing(from ds: DataSet) -> Vec3 {
         if let psStr = ds.string(for: .pixelSpacing) {
             let parts = psStr.split(separator: "\\").compactMap { Double($0) }
             if parts.count >= 2 {
-                return Vec3(parts[1], parts[0], 1.0) // [row spacing, col spacing]
+                // Pixel Spacing (0028,0030) is "adjacent row spacing (delimiter)
+                // adjacent column spacing in mm" (PS3.3 Table C.7-10): value 1 is
+                // the Y (row) spacing, value 2 the X (column) spacing.
+                return Vec3(parts[1], parts[0], 1.0)
             }
         }
         return Vec3(1.0, 1.0, 1.0)
     }
 
     private static func extractOriginFromDataSet(_ ds: DataSet) -> Vec3 {
-        if let posStr = ds.string(for: .imagePositionPatient) {
-            let parts = posStr.split(separator: "\\").compactMap { Double($0) }
-            if parts.count == 3 { return Vec3(parts[0], parts[1], parts[2]) }
-        }
-        return Vec3(0.0, 0.0, 0.0)
+        imagePosition(ds) ?? Vec3(0.0, 0.0, 0.0)
     }
 
-    private static func extractZ(from ds: DataSet) -> Double? {
-        if let posStr = ds.string(for: .imagePositionPatient) {
-            let parts = posStr.split(separator: "\\").compactMap { Double($0) }
-            if parts.count == 3 { return parts[2] }
+    private static func imagePosition(_ ds: DataSet) -> Vec3? {
+        guard let posStr = ds.string(for: .imagePositionPatient) else { return nil }
+        let parts = posStr.split(separator: "\\").compactMap { Double($0) }
+        guard parts.count == 3 else { return nil }
+        return Vec3(parts[0], parts[1], parts[2])
+    }
+
+    /// The unit normal of the image plane: row cosines × column cosines from Image
+    /// Orientation (Patient) (0020,0037), "Row value for the x, y, and z axes
+    /// respectively followed by the Column value for the x, y, and z axes
+    /// respectively" (PS3.3 C.7.6.2.1.1).
+    private static func sliceNormal(_ ds: DataSet) -> Vec3? {
+        guard let str = ds.string(for: .imageOrientationPatient) else { return nil }
+        let c = str.split(separator: "\\").compactMap { Double($0) }
+        guard c.count == 6 else { return nil }
+        let n = Vec3(
+            c[1] * c[5] - c[2] * c[4],
+            c[2] * c[3] - c[0] * c[5],
+            c[0] * c[4] - c[1] * c[3]
+        )
+        let length = (n.x * n.x + n.y * n.y + n.z * n.z).squareRoot()
+        guard length > 0 else { return nil }
+        return Vec3(n.x / length, n.y / length, n.z / length)
+    }
+
+    /// The slice's position along the stack: the Image Position (Patient) projected
+    /// onto the slice normal when an orientation is present, else its z coordinate,
+    /// else Slice Location (0020,1041).
+    private static func stackCoordinate(of ds: DataSet) -> Double? {
+        if let p = imagePosition(ds) {
+            if let n = sliceNormal(ds) {
+                return p.x * n.x + p.y * n.y + p.z * n.z
+            }
+            return p.z
         }
         return ds.string(for: .sliceLocation).flatMap(Double.init)
     }
 
     private static func sortSlicesByPosition(_ files: [DICOMFile]) -> [DICOMFile] {
         files.sorted { a, b in
-            let zA = extractZ(from: a.dataSet) ?? 0
-            let zB = extractZ(from: b.dataSet) ?? 0
+            let zA = stackCoordinate(of: a.dataSet) ?? 0
+            let zB = stackCoordinate(of: b.dataSet) ?? 0
             if zA != zB { return zA < zB }
             let ia = a.dataSet.string(for: .instanceNumber).flatMap(Int.init) ?? 0
             let ib = b.dataSet.string(for: .instanceNumber).flatMap(Int.init) ?? 0
