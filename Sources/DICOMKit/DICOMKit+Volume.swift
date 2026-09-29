@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table C.7-10 (Pixel Spacing row\column order, Image Position/Orientation (Patient), Slice Thickness nominal, Spacing Between Slices), C.7.6.2.1.1 normal, Table C.7-11c Image Pixel (Photometric Interpretation, Bits Stored, High Bit, Pixel Representation read from the source; High Bit default per PS3.5 8.1.1) (P-VOL)
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table C.7-10 (Pixel Spacing row\column order, Image Position/Orientation (Patient), Slice Thickness nominal, Spacing Between Slices), C.7.6.2.1.1 normal, Table C.7-11c Image Pixel (Photometric Interpretation, Bits Stored, High Bit, Pixel Representation read from the source; High Bit default per PS3.5 8.1.1) (P-VOL); Photometric Interpretation and High Bit carried into DICOMVolume and required identical across slices (Table C.7-11c; C.7.6.3.1.2 MONOCHROME1 not inverted) (D33)
 import Foundation
 import DICOMCore
 import J2KCore
@@ -63,9 +63,8 @@ extension DICOMFile {
         let refDS = slices[0].dataSet
         let rows = Int(refDS.uint16(for: .rows) ?? 0)
         let cols = Int(refDS.uint16(for: .columns) ?? 0)
-        let bitsAlloc = Int(refDS.uint16(for: .bitsAllocated) ?? 16)
-        let bitsStored = Int(refDS.uint16(for: .bitsStored) ?? 12)
-        let isSigned = (refDS.uint16(for: .pixelRepresentation) ?? 0) != 0
+        let pixel = try uniformPixelEncoding(of: slices, rows: rows, columns: cols)
+        let bitsAlloc = pixel.bitsAllocated
         let depth = slices.count
 
         var allPixels = Data(capacity: rows * cols * (bitsAlloc / 8) * depth)
@@ -82,9 +81,11 @@ extension DICOMFile {
             width: cols,
             height: rows,
             depth: depth,
-            bitsAllocated: bitsAlloc,
-            bitsStored: bitsStored,
-            isSigned: isSigned,
+            bitsAllocated: pixel.bitsAllocated,
+            bitsStored: pixel.bitsStored,
+            highBit: pixel.highBit,
+            isSigned: pixel.isSigned,
+            photometricInterpretation: pixel.photometricInterpretation,
             spacingX: spacing.x,
             spacingY: spacing.y,
             spacingZ: spacing.z,
@@ -105,9 +106,6 @@ extension DICOMFile {
         let ds = file.dataSet
         let rows = Int(ds.uint16(for: .rows) ?? 0)
         let cols = Int(ds.uint16(for: .columns) ?? 0)
-        let bitsAlloc = Int(ds.uint16(for: .bitsAllocated) ?? 16)
-        let bitsStored = Int(ds.uint16(for: .bitsStored) ?? 12)
-        let isSigned = (ds.uint16(for: .pixelRepresentation) ?? 0) != 0
         let frames = Int(ds.string(for: .numberOfFrames).flatMap(Int.init) ?? 1)
 
         guard rows > 0, cols > 0 else {
@@ -118,6 +116,7 @@ extension DICOMFile {
         let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID)
             ?? TransferSyntax.explicitVRLittleEndian.uid
         let descriptor = sourceDescriptor(from: ds, rows: rows, columns: cols, numberOfFrames: frames)
+        let pixel = VolumePixelEncoding(descriptor)
 
         let rawPixelData: Data
         if let element = ds[.pixelData] {
@@ -146,9 +145,11 @@ extension DICOMFile {
             width: cols,
             height: rows,
             depth: frames,
-            bitsAllocated: bitsAlloc,
-            bitsStored: bitsStored,
-            isSigned: isSigned,
+            bitsAllocated: pixel.bitsAllocated,
+            bitsStored: pixel.bitsStored,
+            highBit: pixel.highBit,
+            isSigned: pixel.isSigned,
+            photometricInterpretation: pixel.photometricInterpretation,
             spacingX: pixelSpacing.x,
             spacingY: pixelSpacing.y,
             spacingZ: sliceSpacing,
@@ -204,14 +205,13 @@ extension DICOMFile {
         let refDS = sorted[0].dataSet
         let rows = Int(refDS.uint16(for: .rows) ?? 0)
         let cols = Int(refDS.uint16(for: .columns) ?? 0)
-        let bitsAlloc = Int(refDS.uint16(for: .bitsAllocated) ?? 16)
-        let bitsStored = Int(refDS.uint16(for: .bitsStored) ?? 12)
-        let isSigned = (refDS.uint16(for: .pixelRepresentation) ?? 0) != 0
         let depth = sorted.count
 
         guard rows > 0, cols > 0 else {
             throw DICOMError.parsingFailed("Slice series has no valid image dimensions")
         }
+        let pixel = try uniformPixelEncoding(of: sorted, rows: rows, columns: cols)
+        let bitsAlloc = pixel.bitsAllocated
 
         var allPixels = Data(capacity: rows * cols * (bitsAlloc / 8) * depth)
         let tsUID = sorted[0].fileMetaInformation.string(for: .transferSyntaxUID)
@@ -238,9 +238,11 @@ extension DICOMFile {
             width: cols,
             height: rows,
             depth: depth,
-            bitsAllocated: bitsAlloc,
-            bitsStored: bitsStored,
-            isSigned: isSigned,
+            bitsAllocated: pixel.bitsAllocated,
+            bitsStored: pixel.bitsStored,
+            highBit: pixel.highBit,
+            isSigned: pixel.isSigned,
+            photometricInterpretation: pixel.photometricInterpretation,
             spacingX: spacing.x,
             spacingY: spacing.y,
             spacingZ: spacing.z,
@@ -257,6 +259,66 @@ extension DICOMFile {
 
     // MARK: - Image Pixel Module
 
+    /// The Image Pixel Module attributes a `DICOMVolume` carries (PS3.3 C.7.6.3,
+    /// Table C.7-11c), as the source states them.
+    struct VolumePixelEncoding: Equatable {
+        var rows: Int
+        var columns: Int
+        var bitsAllocated: Int
+        var bitsStored: Int
+        var highBit: Int
+        var isSigned: Bool
+        var samplesPerPixel: Int
+        var photometricInterpretation: PhotometricInterpretation
+
+        init(_ d: PixelDataDescriptor) {
+            rows = d.rows
+            columns = d.columns
+            bitsAllocated = d.bitsAllocated
+            bitsStored = d.bitsStored
+            highBit = d.highBit
+            isSigned = d.isSigned
+            samplesPerPixel = d.samplesPerPixel
+            photometricInterpretation = d.photometricInterpretation
+        }
+    }
+
+    /// The pixel encoding shared by every slice, or an error naming the first slice
+    /// that differs.
+    ///
+    /// A volume is one array of voxels with one interpretation, so every slice must
+    /// agree on Rows, Columns, Bits Allocated, Bits Stored, High Bit, Pixel
+    /// Representation, Samples per Pixel and Photometric Interpretation (PS3.3 Table
+    /// C.7-11c). A MONOCHROME1 slice among MONOCHROME2 slices would display inverted
+    /// relative to its neighbours (C.7.6.3.1.2), and a different High Bit would put
+    /// its samples in different bits, so neither is silently merged.
+    static func uniformPixelEncoding(
+        of slices: [DICOMFile], rows: Int, columns: Int
+    ) throws -> VolumePixelEncoding {
+        let reference = VolumePixelEncoding(
+            sourceDescriptor(from: slices[0].dataSet, rows: rows, columns: columns, numberOfFrames: 1))
+        for (index, slice) in slices.enumerated().dropFirst() {
+            let ds = slice.dataSet
+            let encoding = VolumePixelEncoding(sourceDescriptor(
+                from: ds,
+                rows: Int(ds.uint16(for: .rows) ?? 0),
+                columns: Int(ds.uint16(for: .columns) ?? 0),
+                numberOfFrames: 1))
+            guard encoding == reference else {
+                throw DICOMError.parsingFailed(
+                    "Slice \(index) Image Pixel Module differs from slice 0 "
+                    + "(\(describe(encoding)) vs \(describe(reference))); a volume needs one pixel encoding")
+            }
+        }
+        return reference
+    }
+
+    private static func describe(_ e: VolumePixelEncoding) -> String {
+        "\(e.columns)x\(e.rows), \(e.photometricInterpretation.rawValue), "
+            + "allocated \(e.bitsAllocated), stored \(e.bitsStored), high bit \(e.highBit), "
+            + "\(e.isSigned ? "signed" : "unsigned"), \(e.samplesPerPixel) sample(s)"
+    }
+
     /// The pixel-encoding descriptor exactly as the source Image Pixel Module
     /// (PS3.3 C.7.6.3, Table C.7-11c) states it — nothing is assumed.
     ///
@@ -266,8 +328,8 @@ extension DICOMFile {
     ///   VOI gray scale transformations have been performed" — a display-stage
     ///   rule applied *after* windowing, so the stored sample values are preserved
     ///   untouched and any Window Center/Width read from the object stays valid.
-    ///   (`DICOMVolume` has no field for the interpretation, so a MONOCHROME1
-    ///   volume displays inverted until one is added; see the P-VOL report.)
+    ///   The interpretation is carried in ``DICOMVolume/photometricInterpretation``
+    ///   so that renderers invert after windowing (D33).
     /// - High Bit (0028,0102) is read from the object; when absent it defaults to
     ///   Bits Stored − 1, the only value PS3.5 8.1.1 permits ("High Bit (0028,0102)
     ///   shall be one less than Bits Stored (0028,0101)").

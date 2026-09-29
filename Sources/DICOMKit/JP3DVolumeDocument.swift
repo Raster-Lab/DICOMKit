@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — writes every Type 1/2 attribute of the Encapsulated Document IOD modules (PS3.3 2026a Tables C.7-1, C.7-3, C.24-1, C.7-8, C.8-24, C.24-2, C.12-1) with the VRs of PS3.6 Table 6-1; Source Instance Sequence 1C and Burned In Annotation per Table C.24-2 (private SOP Class, EXPERIMENTAL)
+// NEMA-verified: 2026a, checked 2026-09-29 — writes every Type 1/2 attribute of the Encapsulated Document IOD modules (PS3.3 2026a Tables C.7-1, C.7-3, C.24-1, C.7-8, C.8-24, C.24-2, C.12-1) with the VRs of PS3.6 Table 6-1; Source Instance Sequence 1C and Burned In Annotation per Table C.24-2 (private SOP Class, EXPERIMENTAL); the source Photometric Interpretation (PS3.3 C.7.6.3.1.2) round-trips through the sidecar instead of being forced to MONOCHROME2 (D33)
 import Foundation
 import DICOMCore
 import J2KCore
@@ -114,6 +114,14 @@ public enum JP3DVolumeDocument: Sendable {
 
         // Build volume from series
         let volume = try JP3DVolumeBridge.makeVolume(from: series)
+
+        // One Photometric Interpretation / High Bit / Bits Stored for the whole
+        // volume: the sidecar records the first slice's (PS3.3 Table C.7-11c).
+        let ref = series[0].dataSet
+        _ = try DICOMFile.uniformPixelEncoding(
+            of: series,
+            rows: Int(ref.uint16(for: .rows) ?? 0),
+            columns: Int(ref.uint16(for: .columns) ?? 0))
 
         // Encode volume to JP3D codestream
         let descriptor = makeDescriptor(from: series[0].dataSet, depth: series.count)
@@ -306,9 +314,16 @@ public enum JP3DVolumeDocument: Sendable {
         // Use bridge to reconstruct slices from decoded volume
         let sliceSpacing = meta["sliceSpacing"] as? Double
         let origin = meta["origin"] as? [Double] ?? [0, 0, 0]
+        // Sidecars written before the field existed carry no interpretation; the
+        // encoder then always wrote MONOCHROME2.
+        let photometric = (meta["photometricInterpretation"] as? String)
+            .flatMap(PhotometricInterpretation.init(rawValue:))
+            .flatMap { $0 == .monochrome1 || $0 == .monochrome2 ? $0 : nil }
+            ?? .monochrome2
         return try reconstructSlices(
             pixelData: pixelData,
             descriptor: descriptor,
+            photometricInterpretation: photometric,
             template: template,
             sliceSpacing: sliceSpacing ?? 1.0,
             origin: origin
@@ -344,6 +359,12 @@ public enum JP3DVolumeDocument: Sendable {
             "bitsAllocated": Int(ds.uint16(for: .bitsAllocated) ?? 16),
             "bitsStored": Int(ds.uint16(for: .bitsStored) ?? 12),
             "signed": (ds.uint16(for: .pixelRepresentation) ?? 0) != 0,
+            // The source Photometric Interpretation is kept so that a MONOCHROME1
+            // series (minimum displayed as white, PS3.3 C.7.6.3.1.2) is not
+            // reconstructed as MONOCHROME2 with the same stored values, which
+            // would display it inverted.
+            "photometricInterpretation": ds.string(for: .photometricInterpretation)
+                .map { $0.trimmingCharacters(in: .whitespaces) } ?? "MONOCHROME2",
             "spacingX": volume.spacingX,
             "spacingY": volume.spacingY,
             "spacingZ": volume.spacingZ,
@@ -428,6 +449,7 @@ public enum JP3DVolumeDocument: Sendable {
     private static func reconstructSlices(
         pixelData: Data,
         descriptor: PixelDataDescriptor,
+        photometricInterpretation: PhotometricInterpretation,
         template: DICOMFile,
         sliceSpacing: Double,
         origin: [Double]
@@ -452,7 +474,7 @@ public enum JP3DVolumeDocument: Sendable {
             ds.setUInt16(UInt16(descriptor.bitsStored - 1), for: .highBit)
             ds.setUInt16(descriptor.isSigned ? 1 : 0, for: .pixelRepresentation)
             ds.setUInt16(1, for: .samplesPerPixel)
-            ds.setString("MONOCHROME2", for: .photometricInterpretation, vr: .CS)
+            ds.setString(photometricInterpretation.rawValue, for: .photometricInterpretation, vr: .CS)
 
             // Identity
             ds.setString(UIDGenerator.generateUID().value, for: .sopInstanceUID, vr: .UI)

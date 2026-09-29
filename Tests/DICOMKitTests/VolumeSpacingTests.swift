@@ -23,14 +23,15 @@ struct VolumeSpacingTests {
         sliceThickness: String,
         spacingBetweenSlices: String? = nil,
         photometric: String = "MONOCHROME2",
+        bitsStored: UInt16 = 12,
         firstPixel: UInt16 = 100
     ) throws -> DICOMFile {
         var ds = DataSet()
         ds.setUInt16(2, for: .rows)
         ds.setUInt16(2, for: .columns)
         ds.setUInt16(16, for: .bitsAllocated)
-        ds.setUInt16(12, for: .bitsStored)
-        ds.setUInt16(11, for: .highBit)
+        ds.setUInt16(bitsStored, for: .bitsStored)
+        ds.setUInt16(bitsStored - 1, for: .highBit)
         ds.setUInt16(0, for: .pixelRepresentation)
         ds.setUInt16(1, for: .samplesPerPixel)
         ds.setString(photometric, for: .photometricInterpretation, vr: .CS)
@@ -200,5 +201,121 @@ struct VolumeSpacingTests {
         let d2 = DICOMFile.sourceDescriptor(from: noHighBit, rows: 1, columns: 1, numberOfFrames: 1)
         #expect(d2.highBit == 9)
         #expect(d2.photometricInterpretation == .monochrome2)
+    }
+
+    // MARK: - Photometric Interpretation and High Bit on the volume (D33)
+
+    @Test("a MONOCHROME1 series yields a volume flagged MONOCHROME1 with the source High Bit")
+    func monochrome1_flagAndHighBitCarried() async throws {
+        let files = try (0..<2).map { k in
+            try makeSlice(index: k, position: (0, 0, Double(k)), orientation: nil, sliceThickness: "1.0",
+                          photometric: "MONOCHROME1", bitsStored: 10, firstPixel: 7)
+        }
+        let dir = try writeSeries(files)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let volume = try await DICOMFile.openVolume(from: dir)
+        #expect(volume.photometricInterpretation == .monochrome1)
+        #expect(volume.isMonochrome1)
+        #expect(volume.bitsStored == 10)
+        #expect(volume.highBit == 9)
+        // Stored values are not inverted (C.7.6.3.1.2 inverts after VOI, at display).
+        #expect(volume.voxel(x: 0, y: 0, z: 0) == 7)
+    }
+
+    @Test("a MONOCHROME2 series is flagged MONOCHROME2")
+    func monochrome2_flagCarried() async throws {
+        let dir = try writeSeries([
+            try makeSlice(index: 0, position: (0, 0, 0), orientation: nil, sliceThickness: "1.0"),
+        ])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let volume = try await DICOMFile.openVolume(from: dir)
+        #expect(volume.photometricInterpretation == .monochrome2)
+        #expect(!volume.isMonochrome1)
+        #expect(volume.highBit == 11)
+    }
+
+    @Test("slices that disagree on Photometric Interpretation are not merged into one volume")
+    func mixedPhotometric_throws() async throws {
+        let dir = try writeSeries([
+            try makeSlice(index: 0, position: (0, 0, 0), orientation: nil, sliceThickness: "1.0",
+                          photometric: "MONOCHROME2"),
+            try makeSlice(index: 1, position: (0, 0, 1), orientation: nil, sliceThickness: "1.0",
+                          photometric: "MONOCHROME1"),
+        ])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await #expect(throws: DICOMError.self) { _ = try await DICOMFile.openVolume(from: dir) }
+    }
+
+    @Test("slices that disagree on Bits Stored / High Bit are not merged into one volume")
+    func mixedHighBit_throws() async throws {
+        let dir = try writeSeries([
+            try makeSlice(index: 0, position: (0, 0, 0), orientation: nil, sliceThickness: "1.0", bitsStored: 12),
+            try makeSlice(index: 1, position: (0, 0, 1), orientation: nil, sliceThickness: "1.0", bitsStored: 16),
+        ])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        await #expect(throws: DICOMError.self) { _ = try await DICOMFile.openVolume(from: dir) }
+    }
+
+    @Test("a multi-frame MONOCHROME1 object yields a MONOCHROME1 volume")
+    func multiframe_monochrome1Carried() async throws {
+        var ds = DataSet()
+        ds.setUInt16(2, for: .rows)
+        ds.setUInt16(2, for: .columns)
+        ds.setUInt16(16, for: .bitsAllocated)
+        ds.setUInt16(14, for: .bitsStored)
+        ds.setUInt16(13, for: .highBit)
+        ds.setUInt16(0, for: .pixelRepresentation)
+        ds.setUInt16(1, for: .samplesPerPixel)
+        ds.setString("MONOCHROME1", for: .photometricInterpretation, vr: .CS)
+        ds.setString("2", for: .numberOfFrames, vr: .IS)
+        ds.setString("1.2.3.4.5.10", for: .sopInstanceUID, vr: .UI)
+        ds.setString(Self.ctSOPClass, for: .sopClassUID, vr: .UI)
+        ds[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: Data(repeating: 0, count: 16))
+        let file = try DICOMFile.create(dataSet: ds, sopClassUID: Self.ctSOPClass,
+                                        sopInstanceUID: "1.2.3.4.5.10",
+                                        transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("mf1_\(UUID().uuidString).dcm")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try file.write().write(to: url)
+        let volume = try await DICOMFile.openVolume(from: url)
+        #expect(volume.photometricInterpretation == .monochrome1)
+        #expect(volume.highBit == 13)
+        #expect(volume.bitsStored == 14)
+    }
+
+    @Test("DICOMVolume defaults: High Bit = Bits Stored - 1 (Table C.7-11c), MONOCHROME2")
+    func volumeInitDefaults() {
+        let v = DICOMVolume(width: 1, height: 1, depth: 1, bitsAllocated: 16, bitsStored: 12,
+                            pixelData: Data(count: 2))
+        #expect(v.highBit == 11)
+        #expect(v.photometricInterpretation == .monochrome2)
+        #expect(!v.isMonochrome1)
+    }
+
+    @Test("voxel() reads the Bits Stored bits ending at High Bit and sign-extends from High Bit")
+    func voxel_masksAndSignExtendsFromHighBit() {
+        func volume(_ raw: [UInt16], bitsStored: Int, signed: Bool) -> DICOMVolume {
+            var data = Data()
+            for v in raw { var le = v.littleEndian; data.append(Data(bytes: &le, count: 2)) }
+            return DICOMVolume(width: raw.count, height: 1, depth: 1, bitsAllocated: 16,
+                               bitsStored: bitsStored, isSigned: signed, pixelData: data)
+        }
+        // 12-bit two's complement: 0x800 is -2048 (bit 11 is the sign bit), whether
+        // or not the writer sign-extended into bits 12-15.
+        let signed12 = volume([0x0800, 0xF800, 0xFFFB, 0x07FF], bitsStored: 12, signed: true)
+        #expect(signed12.voxel(x: 0, y: 0, z: 0) == -2048)
+        #expect(signed12.voxel(x: 1, y: 0, z: 0) == -2048)
+        #expect(signed12.voxel(x: 2, y: 0, z: 0) == -5)
+        #expect(signed12.voxel(x: 3, y: 0, z: 0) == 2047)
+        // Unsigned: bits above High Bit are not part of the sample.
+        let unsigned12 = volume([0xF123], bitsStored: 12, signed: false)
+        #expect(unsigned12.voxel(x: 0, y: 0, z: 0) == 0x123)
+        // Full 16-bit signed.
+        let signed16 = volume([0x8000], bitsStored: 16, signed: true)
+        #expect(signed16.voxel(x: 0, y: 0, z: 0) == -32768)
+        // 8-bit signed.
+        let v8 = DICOMVolume(width: 1, height: 1, depth: 1, bitsAllocated: 8, bitsStored: 8,
+                             isSigned: true, pixelData: Data([0xFF]))
+        #expect(v8.voxel(x: 0, y: 0, z: 0) == -1)
     }
 }

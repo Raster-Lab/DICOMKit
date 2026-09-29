@@ -14,7 +14,8 @@ struct JP3DVolumeDocumentTests {
         columns: Int,
         sliceIndex: Int,
         seriesUID: String,
-        studyUID: String
+        studyUID: String,
+        photometric: String = "MONOCHROME2"
     ) throws -> DICOMFile {
         let bytesPerPixel = 2
         var pixelData = Data(capacity: rows * columns * bytesPerPixel)
@@ -33,7 +34,7 @@ struct JP3DVolumeDocumentTests {
         ds.setUInt16(11, for: .highBit)
         ds.setUInt16(0, for: .pixelRepresentation)
         ds.setUInt16(1, for: .samplesPerPixel)
-        ds.setString("MONOCHROME2", for: .photometricInterpretation, vr: .CS)
+        ds.setString(photometric, for: .photometricInterpretation, vr: .CS)
         ds.setString("CT", for: .modality, vr: .CS)
         ds.setString(studyUID, for: .studyInstanceUID, vr: .UI)
         ds.setString(seriesUID, for: .seriesInstanceUID, vr: .UI)
@@ -237,6 +238,38 @@ struct JP3DVolumeDocumentTests {
             let origPx = original.dataSet[.pixelData]!.valueData
             let decodedPx = decoded[i].dataSet[.pixelData]!.valueData
             #expect(origPx == decodedPx, "Slice \(i) pixel data mismatch")
+        }
+    }
+
+    @Test("encode/decode round-trip keeps MONOCHROME1 (PS3.3 C.7.6.3.1.2) instead of forcing MONOCHROME2")
+    func test_roundTrip_monochrome1() async throws {
+        let studyUID = UIDGenerator.generateUID().value
+        let seriesUID = UIDGenerator.generateUID().value
+        let series = try (0..<3).map { i in
+            try makeGrayscaleFile(rows: 8, columns: 8, sliceIndex: i, seriesUID: seriesUID,
+                                  studyUID: studyUID, photometric: "MONOCHROME1")
+        }
+        let doc = try await JP3DVolumeDocument.encode(series: series, compressionMode: .lossless)
+        let decoded = try await JP3DVolumeDocument.decode(from: doc)
+        #expect(decoded.count == 3)
+        for slice in decoded {
+            #expect(slice.dataSet.string(for: .photometricInterpretation) == "MONOCHROME1")
+            #expect(slice.dataSet.uint16(for: .highBit) == 11)
+        }
+        // Stored values are kept as written (no inversion).
+        #expect(decoded[1].dataSet[.pixelData]?.valueData == series[1].dataSet[.pixelData]?.valueData)
+    }
+
+    @Test("encode refuses a series whose slices disagree on Photometric Interpretation")
+    func test_encode_mixedPhotometricThrows() async throws {
+        let studyUID = UIDGenerator.generateUID().value
+        let seriesUID = UIDGenerator.generateUID().value
+        let series = try (0..<2).map { i in
+            try makeGrayscaleFile(rows: 8, columns: 8, sliceIndex: i, seriesUID: seriesUID,
+                                  studyUID: studyUID, photometric: i == 0 ? "MONOCHROME2" : "MONOCHROME1")
+        }
+        await #expect(throws: DICOMError.self) {
+            _ = try await JP3DVolumeDocument.encode(series: series, compressionMode: .lossless)
         }
     }
 

@@ -6,6 +6,7 @@
 import Testing
 @testable import DICOMStudio
 import DICOMKit
+import DICOMCore
 import Foundation
 
 // MARK: - Test Volume Factory
@@ -589,5 +590,46 @@ struct JP3DMPRViewModelTests {
             #expect(t >= 0.0)
             #expect(t <= 1.0)
         }
+    }
+}
+
+// MARK: - MONOCHROME1 display (PS3.3 C.7.6.3.1.2)
+
+@Suite("MONOCHROME1 volume display")
+struct Monochrome1VolumeDisplayTests {
+
+    /// 2x1x1, 8-bit: stored values 0 and 255.
+    private func volume(_ photometric: PhotometricInterpretation) -> DICOMVolume {
+        DICOMVolume(width: 2, height: 1, depth: 1, bitsAllocated: 8, bitsStored: 8,
+                    photometricInterpretation: photometric, pixelData: Data([0, 255]))
+    }
+
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    @Test("MPR buffer of a MONOCHROME1 volume shows the minimum as white, after windowing")
+    @MainActor
+    func mprBufferInverted() {
+        let mono2 = JP3DMPRViewModel()
+        mono2.setVolume(volume(.monochrome2))
+        mono2.setWindowLevel(center: 127.5, width: 255)
+        let mono1 = JP3DMPRViewModel()
+        mono1.setVolume(volume(.monochrome1))
+        mono1.setWindowLevel(center: 127.5, width: 255)
+        #expect(mono2.axialBuffer.map { Array($0) } == [0, 255])
+        #expect(mono1.axialBuffer.map { Array($0) } == [255, 0])
+    }
+
+    @Test("thick-slab projection of a MONOCHROME1 volume is inverted after projection")
+    func thickSlabInverted() {
+        let v1 = volume(.monochrome1)
+        let dims = JP3DMPRSliceExtractor.dimensionsModel(for: v1)
+        let out = EnterpriseRenderHelpers.thickSlabBuffer(
+            volume: v1, plane: .axial, centerIndex: 0, slabThicknessMM: 1,
+            projectionMode: .mip, windowCenter: 127.5, windowWidth: 255, dimensions: dims)
+        #expect(out.map { Array($0) } == [255, 0])
+        let v2 = volume(.monochrome2)
+        let out2 = EnterpriseRenderHelpers.thickSlabBuffer(
+            volume: v2, plane: .axial, centerIndex: 0, slabThicknessMM: 1,
+            projectionMode: .mip, windowCenter: 127.5, windowWidth: 255, dimensions: dims)
+        #expect(out2.map { Array($0) } == [0, 255])
     }
 }

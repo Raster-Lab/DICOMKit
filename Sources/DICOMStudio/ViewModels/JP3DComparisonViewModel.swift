@@ -291,7 +291,9 @@ public final class JP3DComparisonViewModel {
             let decoded = DICOMVolume(
                 width: volume.width, height: volume.height, depth: volume.depth,
                 bitsAllocated: volume.bitsAllocated, bitsStored: volume.bitsStored,
+                highBit: volume.highBit,
                 isSigned: volume.isSigned,
+                photometricInterpretation: volume.photometricInterpretation,
                 spacingX: volume.spacingX, spacingY: volume.spacingY, spacingZ: volume.spacingZ,
                 originX: volume.originX, originY: volume.originY, originZ: volume.originZ,
                 pixelData: decodedData,
