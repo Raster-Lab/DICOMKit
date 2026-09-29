@@ -124,4 +124,38 @@ final class MWLResponseParsingTests: XCTestCase {
         XCTAssertEqual(string(attrs, 0x0040, 0x0002), "20211210")
         XCTAssertEqual(string(attrs, 0x0040, 0x0003), "161100")
     }
+
+    /// Requested Procedure Description (0032,1060) returned at the top level must
+    /// surface through the shared `WorklistItem` accessor and the shared console
+    /// formatter used by both the dicom-mwl CLI and DICOMStudio.
+    func testRequestedProcedureDescription_surfacesFromResponse() throws {
+        func le16(_ v: UInt16) -> Data { Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF)]) }
+        func le32(_ v: UInt32) -> Data {
+            Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF),
+                  UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)])
+        }
+        func elem(_ g: UInt16, _ e: UInt16, _ value: String) -> Data {
+            var v = value.data(using: .ascii)!
+            if v.count % 2 != 0 { v.append(0x20) }
+            var d = Data()
+            d.append(le16(g)); d.append(le16(e))
+            d.append(le32(UInt32(v.count)))
+            d.append(v)
+            return d
+        }
+        var data = Data()
+        data.append(elem(0x0010, 0x0010, "DOE^JANE"))
+        data.append(elem(0x0032, 0x1060, "CT HEAD W/O CONTRAST"))
+        data.append(elem(0x0032, 0x1070, "NONE"))   // Requested Contrast Agent — must not be confused
+
+        let item = WorklistItem(attributes: parse(data))
+        XCTAssertEqual(item.requestedProcedureDescription, "CT HEAD W/O CONTRAST")
+
+        let text = NetworkConsole.mwlItem(index: 1, item: item, verbose: false)
+        XCTAssertTrue(text.contains("CT HEAD W/O CONTRAST"), text)
+
+        let json = NetworkConsole.mwlJSON(items: [item])
+        let parsed = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]])
+        XCTAssertEqual(parsed.first?["RequestedProcedureDescription"] as? String, "CT HEAD W/O CONTRAST")
+    }
 }

@@ -50,6 +50,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   surfaces through `localizedDescription` instead of Foundation's generic
   "TranscodingError error N" fallback.
 
+### Fixed — `dicom-mwl` and DICOMStudio never returned the Requested Procedure Description
+
+- The Modality Worklist service used tag (0032,1070), which is Requested
+  Contrast Agent, instead of Requested Procedure Description (0032,1060). The
+  default C-FIND return keys therefore never asked the SCP for the description,
+  and `WorklistItem.requestedProcedureDescription` read the wrong tag, so the
+  field was silently absent from the text and JSON output of `dicom-mwl` and
+  from the DICOMStudio CLI Workshop, which share this code in DICOMNetwork.
+- The query keys, the result accessor and the worklist create path
+  (`DICOMModalityWorklistService.create`) now all use (0032,1060). Worklist
+  items created by earlier versions carry the description in (0032,1070) and
+  will not show it when queried back.
+- Added regression tests for the default return keys and for surfacing the
+  description through the accessor and the shared text and JSON formatters.
+
 ## [2.2.16] - 2026-09-22 (released on the 2.2 line; cherry-picked to main)
 
 ### Fixed — The 64-bit Value Representations OV, SV and UV were missing

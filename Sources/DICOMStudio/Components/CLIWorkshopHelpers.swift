@@ -1005,7 +1005,7 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "procedure-desc", flag: "--procedure-desc", displayName: "Procedure Description",
                     parameterType: .textField, placeholder: "e.g. CT Head Without Contrast",
-                    helpText: "Requested Procedure Description (0032,1070)",
+                    helpText: "Requested Procedure Description (0032,1060)",
                     isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),

@@ -181,7 +181,7 @@ public struct WorklistQueryKeys: Sendable {
         wlk.keys[Tag(group: 0x0010, element: 0x0040)]    = ""  // Patient's Sex
         wlk.keys[Tag(group: 0x0008, element: 0x0090)]    = ""  // Referring Physician's Name
         wlk.keys[Tag(group: 0x0040, element: 0x1001)]    = ""  // Requested Procedure ID
-        wlk.keys[Tag(group: 0x0032, element: 0x1070)]    = ""  // Requested Procedure Description
+        wlk.keys[.requestedProcedureDescription]          = ""  // Requested Procedure Description (0032,1060)
         // SPS return attributes (encoded inside (0040,0100) sequence)
         wlk.spsKeys[Tag(group: 0x0040, element: 0x0001)] = ""  // Scheduled Station AE Title
         wlk.spsKeys[Tag(group: 0x0040, element: 0x0002)] = ""  // Scheduled Procedure Step Start Date
@@ -431,8 +431,8 @@ public struct WorklistItem: Sendable {
     /// Requested Procedure ID (0040,1001)
     public var requestedProcedureID: String? { stringValue(group: 0x0040, element: 0x1001) }
 
-    /// Requested Procedure Description (0032,1070)
-    public var requestedProcedureDescription: String? { stringValue(group: 0x0032, element: 0x1070) }
+    /// Requested Procedure Description (0032,1060)
+    public var requestedProcedureDescription: String? { stringValue(group: 0x0032, element: 0x1060) }
 
     // MARK: - Scheduled Procedure Step (SPS) attributes — from (0040,0100) sequence
 
@@ -1014,7 +1014,7 @@ public enum DICOMModalityWorklistService {
     ///   - accessionNumber: Accession Number (0008,0050)
     ///   - referringPhysicianName: Referring Physician's Name (0008,0090)
     ///   - requestedProcedureID: Requested Procedure ID (0040,1001)
-    ///   - requestedProcedureDescription: Requested Procedure Description (0032,1070)
+    ///   - requestedProcedureDescription: Requested Procedure Description (0032,1060)
     ///   - studyInstanceUID: Study Instance UID (0020,000D) — auto-generated if nil
     ///   - modality: Modality, e.g. "CT", "MR" (0008,0060)
     ///   - scheduledStationAETitle: Scheduled Station AE Title (0040,0001)
@@ -1224,8 +1224,8 @@ public enum DICOMModalityWorklistService {
         // Study Instance UID (0020,000D) — Type 1
         json["0020000D"] = ["vr": "UI", "Value": [studyInstanceUID]]
 
-        // Requested Procedure Description (0032,1070) — Type 2
-        json["00321070"] = ["vr": "LO", "Value": [requestedProcedureDescription ?? ""]]
+        // Requested Procedure Description (0032,1060) — Type 2
+        json["00321060"] = ["vr": "LO", "Value": [requestedProcedureDescription ?? ""]]
 
         // --- Scheduled Procedure Step Sequence (0040,0100) ---
         let dateFormatter = DateFormatter()
