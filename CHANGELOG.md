@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — DICOMKit verified against DICOM 2026a (2026-09-29)
+
+Audit report: `DICOMKIT_STANDARD_IMPLEMENTATION.md`. Every constant the module carries is diffed
+against the frozen NEMA text by `Scripts/diff_kit.py` (41 checks against PS3.3, PS3.5, PS3.6,
+PS3.15 and PS3.16 2026a; 14 report a pending public-API decision), and all 156 Swift files carry a
+`NEMA-verified` marker. Behaviour fixes were each verified against the clause named.
+
+- **Coded concepts (PS3.16 Table D-1, CID tables).** 58 code/meaning pairs were wrong and are
+  corrected: RWV and parametric-map quantities (T1 113063, T2 113065, T2* 113064, ve 126314,
+  Vp 126331, rCBF 113055, rCBV 113056, MTT 113052; SUV meanings SUVbw/lbm/bsa/ibw), KOS document
+  titles (Best In Set 113013, For Printing 113018, For Report Attachment 113020), Chest CAD title
+  and root (112000), the CAD finding concepts (111059 Single Image Finding, 111047 Probability of
+  cancer, 111012 Certainty of Finding, 111010 Center, 111030 Image Region, 111017, 111034,
+  122405 Algorithm Manufacturer), Enhanced SR measurement concepts (SCT 81827009 Diameter,
+  410668003 Length, 42798000 Area, 118565006 Volume; 126010 Imaging Measurements), PET
+  Measurement Report 126003, 121074 "Recommendations". SRT ids that meant other concepts are
+  replaced by the SCT codes of CID 6015/6017/6104. Mammography and Chest CAD SRs no longer write a
+  DATETIME item (Tables A.35.5-2 / A.35.6-2 do not permit one; `processingDateTime` is accepted
+  and ignored). `CADFindingsExtractor` reads both the new and the old codes.
+- **Structured Reporting.** `SRDocumentType.allowsValueType(_:)` is deprecated and forwards to
+  DICOMCore's `allows(_:)` (D16). `ComprehensiveSRBuilder.addPolygon` / `.polygon` write a
+  closed POLYLINE, since 2D SCOORD has no POLYGON (C.18.6.1.2, D18); `SpatialCoordinates.isClosed`
+  and `area` recognise it. SCOORD3D writes and reads Referenced Frame of Reference UID
+  (3006,0024), not (0020,0052) (Table C.18.9-1). KOS series Modality is `KO` (C.17.6.1).
+- **DICOMDIR and file meta.** A DICOMDIR with an unknown or PRIVATE Directory Record Type now
+  opens; the record is skipped (F.6.1, D14). `DICOMFile.write()` computes File Meta Information
+  Group Length when absent (PS3.10 Table 7.1-1); `DICOMDIRWriter` no longer writes the Deflated
+  Transfer Syntax UID as its Implementation Class UID (`DICOMFile.implementationClassUID` is the
+  one constant). The VR lists of `DICOMFile` and `HexDumper` include OV, SV, UV.
+- **Segmentation.** 1-bit frames are packed and unpacked least-significant-bit first (PS3.5 8.1.1,
+  D.1); they were MSB first, so every SEG DICOMKit wrote was mirrored byte-wise for other readers.
+  **Behaviour change:** SEG objects written by earlier versions are now read mirrored.
+- **Presentation states** (audit NC-1, 5–15, 19; MF-3, MF-10). The GSPS builder writes the
+  Modality LUT (rescale or sequence), table-valued VOI and Presentation LUTs, the Display Shutter
+  module, Graphic Filled only for closed shapes (C.10.5 1C), the layer colour as Graphic Layer
+  Recommended Display CIELab Value (0070,0401) instead of the retired RGB value, and a Type 2
+  Content Creator's Name. The parser reads circular/polygonal shutters row/column (C.7.6.11),
+  CIELab first, LUT Descriptor/Data as binary, and skips MATRIX-unit objects instead of placing
+  them in pixels. `PresentationStateApplicator` masks outside every shutter (intersection,
+  origin 1,1, P-Value scaled) before rotating then flipping (C.10.6), and normalises the no-VOI
+  range over the Modality LUT output. The PCSPS palette no longer bakes the window (PS3.4 N.2).
+  The embedded ICC profile is Input Device class `scnr` (C.11.15.1.1). Citations corrected.
+- **Hanging protocols.** Wire values follow Tables C.23.1-1/C.23.3-1 where one-to-one:
+  Hanging Protocol Level `USER_GROUP`/`SINGLE_USER`, Sorting Direction `INCREASING`/`DECREASING`,
+  Filter-by `LESS_OR_EQUAL`/`GREATER_OR_EQUAL`, 3D Rendering `VOLUME`/`SURFACE`, the display
+  flags `YES`/`NO` (`Y`/`N` still read); Hanging Protocol Name SH, Description LO. The
+  remaining enumerations need API changes (report P-HP).
+- **Other data.** RT ROI Interpreted Type `IRRAD_VOLUME`, `FIXATION` (Table C.8-44);
+  `WaveformSampleInterpretation.isSigned` follows Table C.10-10 (SB signed, US unsigned);
+  Unformatted Text Value (0070,0006) as ST, Document Title (0042,0010) as ST, Frame Acquisition
+  Number as US, Instance Number read as IS; Color Space `DISPLAYP3` read; STL MIME `model/stl`
+  (A.85.1); PS3.15 Table E.1-1 actions for Device UID (U) and Placer/Filler Order Number (Z);
+  `ComparisonReport` treats OL, OV and UN as binary (D5); `CompressionManager` relabels XYB to
+  RGB after JPEG XL decode (D12); `DICOMValidator` requires the Type 1 file meta elements,
+  accepts TM values of 2, 4 or 6 digits, drops the 1900 year bound, names ISO_IR 192 and detects
+  every SR SOP Class; `nonImageSOPClasses` corrects `90.1`/`91.1` and `200.7`/`200.8`.
+
 ### Audited — Presentation State (GSPS/CSPS/PCSPS) against DICOM 2026a (2026-09-25)
 
 Read-only audit report: `PRESENTATION_STATE_COMPLIANCE_AUDIT.md`. Covers

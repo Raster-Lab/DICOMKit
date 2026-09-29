@@ -181,12 +181,12 @@ report:
 |---|---|---|---|
 | DICOMCore | 104 | 104 | this report — complete |
 | DICOMDictionary | 5 | 5 | [DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md](DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md) — complete 2026-09-28; D6, D7, D20 closed; D21 (DICOMNetwork) opened there |
-| DICOMKit | 156 | 0 | Not started. Deferred D5, D12, D14–D19, D24 |
+| DICOMKit | 156 | 156 | [DICOMKIT_STANDARD_IMPLEMENTATION.md](DICOMKIT_STANDARD_IMPLEMENTATION.md) — complete 2026-09-29 with 14 API decisions pending (P-HP, P-RT, P-SEG, P-SC, P-AI, P-CONST, P-TITLE, P-WAVE, P-PS, P-PRINT, P-UID, P-CAD, P-TID1500, P-SRSER); D5, D12, D14–D19 closed, D24 pending P-PRINT; NC-1–NC-19 of the Presentation State audit closed or carried; D26 (DICOMCore), D27/D30 (DICOMPrintKit), D28/D29 (DICOMStudio, dicom-dcmdir) opened there |
 | DICOMNetwork | 63 | 63 | [DICOMNETWORK_STANDARD_IMPLEMENTATION.md](DICOMNETWORK_STANDARD_IMPLEMENTATION.md) — complete 2026-09-28 (one API decision pending, P-MAMMO); D1, D13, D21 closed; D22–D24 (DICOMStudio, DICOMPrintKit, DICOMKit) opened there |
 | DICOMWeb | 54 | 54 | [DICOMWEB_STANDARD_IMPLEMENTATION.md](DICOMWEB_STANDARD_IMPLEMENTATION.md) — complete 2026-09-28 (the four API decisions approved and applied); D2, D3, D4 closed; D25 (DICOMCore, `DataElement.stringValues`) opened there and fixed |
 | Other modules and CLI tools | — | 0 | Not started. Deferred D5, D9–D11, D15 (DICOMStudio, dicom-compress, dicom-dcmdir) |
 
-The Deferred findings table below holds D1–D20. D21 onwards are in the later module reports (D21: DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md; D22–D24: DICOMNETWORK_STANDARD_IMPLEMENTATION.md; D25: DICOMWEB_STANDARD_IMPLEMENTATION.md, a DICOMCore finding, fixed 2026-09-28).
+The Deferred findings table below holds D1–D20. D21 onwards are in the later module reports (D21: DICOMDICTIONARY_STANDARD_IMPLEMENTATION.md; D22–D24: DICOMNETWORK_STANDARD_IMPLEMENTATION.md; D25: DICOMWEB_STANDARD_IMPLEMENTATION.md, a DICOMCore finding, fixed 2026-09-28; D26–D30: DICOMKIT_STANDARD_IMPLEMENTATION.md — D26 is a DICOMCore finding, `SRDocumentType.colonCADSR` value types vs Table A.35.10-2, open).
 
 ---
 
