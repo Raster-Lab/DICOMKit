@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a C.11.1.1 and C.11.2.1.1 LUT Descriptor semantics; the 8...16 bits-per-entry tolerance and output normalisation are recorded
 // GrayscaleLUT.swift
 // DICOMKit
 //

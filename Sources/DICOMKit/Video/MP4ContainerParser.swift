@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — container syntax is ISO/IEC 14496-12 (out of scope); the no-audio claim is recorded (P-VIDEO)
 //
 // MP4ContainerParser.swift
 // DICOMKit

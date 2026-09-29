@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — the window approximation differs from PS3.3 2026a C.11.2.1.2 (recorded, P-RENDER)
 import Foundation
 
 #if canImport(Accelerate)

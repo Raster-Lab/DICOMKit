@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — UID prefixes and names checked against PS3.6 2026a Table A-1; the .20x prefix also covers JPIP HTJ2K .204/.205 (recorded)
 import Foundation
 import DICOMCore
 import DICOMDictionary

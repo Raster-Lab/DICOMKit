@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — the C.11.2.1.2 window formula matches PS3.3 2026a; DS is at most 16 bytes; File Meta group length per PS3.10 7.1
 import Foundation
 import DICOMCore
 import DICOMDictionary

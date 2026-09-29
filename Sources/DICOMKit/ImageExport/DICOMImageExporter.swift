@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — window and rescale per PS3.3 2026a C.11.2.1.2 and C.11.1.1.2
 import Foundation
 import DICOMCore
 import DICOMDictionary

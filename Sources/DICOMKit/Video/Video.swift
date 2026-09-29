@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — video transfer syntax UIDs and names match PS3.6 2026a Table A-1; Lossy Image Compression Method terms recorded (P-VIDEO)
 //
 // Video.swift
 // DICOMKit

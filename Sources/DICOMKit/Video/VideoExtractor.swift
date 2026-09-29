@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — one fragment per frame per PS3.5 2026a A.4 and 8.2.x
 //
 // VideoExtractor.swift
 // DICOMKit

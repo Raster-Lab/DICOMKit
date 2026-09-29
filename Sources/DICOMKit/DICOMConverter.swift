@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — transfer syntax capabilities via DICOMCore; UID literals, names and PS3.5 citations diffed by Scripts/diff_kit.py against PS3.6 2026a Table A-1 and the PS3.5 text
 import Foundation
 import DICOMCore
 

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — transfer syntax detection via DICOMCore; UIDs per PS3.6 2026a Table A-1
 //
 // VideoParser.swift
 // DICOMKit

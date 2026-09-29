@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — profile, level and BD flag of every video transfer syntax diffed by Scripts/diff_kit.py against the PS3.6 2026a Table A-1 names; BD formats per PS3.5 Table 8-4
 //
 // VideoConformanceValidator.swift
 // DICOMKit

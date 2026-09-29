@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.5 2026a 9.1 UID syntax (at most 64 characters, numeric components, no leading zeros); UIDType labels via DICOMDictionary
 import Foundation
 import DICOMCore
 import DICOMDictionary

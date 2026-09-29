@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — SOP Class names match PS3.6 2026a Table A-1
 import Foundation
 
 /// Console lines and input parsing for `dicom-split` — the single source of truth

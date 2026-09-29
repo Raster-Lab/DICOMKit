@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — SC attribute reads per PS3.3 2026a C.8.6
 //
 // SecondaryCaptureParser.swift
 // DICOMKit

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — video IOD modules per PS3.3 2026a A.32; Cine module gaps recorded (P-VIDEO)
 //
 // VideoBuilder.swift
 // DICOMKit

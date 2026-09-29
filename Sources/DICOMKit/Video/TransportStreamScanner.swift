@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (ISO/IEC 13818-1 transport stream, out of scope)
 //
 // TransportStreamScanner.swift
 // DICOMKit

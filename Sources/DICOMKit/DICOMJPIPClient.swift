@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — JPIP Referenced transfer syntax UIDs match PS3.6 2026a Table A-1; the Pixel Data Provider URL (0028,7FE0) finding of PS3.5 A.6 is recorded (P-JPIP)
 // DICOMJPIPClient.swift
 // DICOMKit — Phase 6: JPIP Streaming
 

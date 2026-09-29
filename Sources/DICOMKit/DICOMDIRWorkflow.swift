@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (file discovery, build loop and report text; only the DICOMDIR file name of PS3.10 8.6)
 //
 // DICOMDIRWorkflow.swift
 // DICOMKit

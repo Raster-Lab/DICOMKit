@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Photometric Interpretation literals are PS3.3 2026a C.7.6.3.1.2 terms; the YBR_PARTIAL, ICT and RCT conversion finding is recorded (P-RENDER)
 import Foundation
 import DICOMCore
 

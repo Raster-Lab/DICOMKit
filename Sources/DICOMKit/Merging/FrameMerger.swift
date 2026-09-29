@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Image Type, Pixel Presentation and Acquisition Contrast literals checked against the PS3.3 2026a module tables; the Type 1 multi-frame SC gaps are recorded (P-SC)
 import Foundation
 import DICOMCore
 import DICOMDictionary

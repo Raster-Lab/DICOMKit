@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Image Pixel (C.7.6.3), Modality LUT (C.11.1), VOI (C.11.2), Palette (C.7.9) and functional-group (C.7.6.16) reads checked against PS3.3 2026a; defaults for absent Type 1 attributes are recorded as robustness choices
 import Foundation
 import DICOMCore
 

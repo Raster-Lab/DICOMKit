@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (in-memory voxel container; its defaults are API defaults, not standard claims)
 import Foundation
 import DICOMCore
 import J2KCore

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (text, tree and JSON presentation of a DICOMDirectory)
 import Foundation
 import DICOMCore
 

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — SC modules per PS3.3 2026a A.8; the missing Conversion Type (Type 1) and Type 2 attributes are recorded (P-SC)
 import Foundation
 import DICOMCore
 import DICOMDictionary

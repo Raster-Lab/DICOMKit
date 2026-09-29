@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — concatenation and Number of Frames rules per PS3.3 2026a C.7.6.16 and C.7.6.6
 import Foundation
 import DICOMCore
 import DICOMDictionary

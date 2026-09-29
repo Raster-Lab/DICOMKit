@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — SOP Class UIDs match PS3.6 2026a Table A-1; Conversion Type terms per PS3.3 Table C.8-24 (DRW and the empty value pending P-SC)
 //
 // SecondaryCaptureImage.swift
 // DICOMKit

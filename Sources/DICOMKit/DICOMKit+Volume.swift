@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a C.7.6.2 Pixel Spacing and Image Position reads; the hard-coded MONOCHROME2 descriptor, High Bit and Slice Thickness used as spacing are recorded findings (P-VOL)
 import Foundation
 import DICOMCore
 import J2KCore

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — SC IOD modules per PS3.3 2026a A.8; Image Type DERIVED\SECONDARY; the Type 1 multi-frame gaps are recorded (P-SC)
 //
 // SecondaryCaptureBuilder.swift
 // DICOMKit
