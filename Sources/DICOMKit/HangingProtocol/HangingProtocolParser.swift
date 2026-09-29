@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — display flags read as YES/NO per PS3.3 2026a Table C.23.3-1 (legacy Y/N still accepted)
+// NEMA-verified: 2026a, checked 2026-09-29 — reads every CS term of PS3.3 2026a Tables C.23.1-1 / C.23.3-1 (Level, Selector Category, Filter-by Category/Presence/Operator, Sort-by Category, Layout Type, Scroll Types, Reformatting Type, Initial View Direction, 3D Rendering Type VM 1-n, Partial Data Display Handling top-level, YES/NO flags); Relative Time US VM 2 and Abstract Prior Value SS VM 2 per PS3.6 Table 6-1; the old DICOMKit spellings are mapped where a mapping exists
 //
 // HangingProtocolParser.swift
 // DICOMKit
@@ -51,7 +51,19 @@ public struct HangingProtocolParser {
         let numberOfScreens = dataSet.uint16(for: .numberOfScreens).map { Int($0) } ?? 1
         let screenDefinitions = try parseScreenDefinitions(from: dataSet)
         let displaySets = try parseDisplaySets(from: dataSet)
-        
+
+        // Partial Data Display Handling (0072,0208) - top-level Type 2 (PS3.3
+        // Table C.23.3-1); earlier DICOMKit versions wrote it inside each
+        // Display Sets Sequence item, which is still read as a fallback.
+        var partialData = dataSet.string(for: .partialDataDisplayHandling)
+            .flatMap { PartialDataDisplayHandling(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+        if partialData == nil, let displaySetsSequence = dataSet.sequence(for: .displaySetsSequence) {
+            partialData = displaySetsSequence.lazy
+                .compactMap { $0.string(for: .partialDataDisplayHandling) }
+                .compactMap { PartialDataDisplayHandling(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+                .first
+        }
+
         return HangingProtocol(
             name: name,
             description: description,
@@ -64,7 +76,8 @@ public struct HangingProtocolParser {
             imageSets: imageSets,
             numberOfScreens: numberOfScreens,
             screenDefinitions: screenDefinitions,
-            displaySets: displaySets
+            displaySets: displaySets,
+            partialDataDisplayHandling: partialData
         )
     }
     
@@ -117,7 +130,7 @@ public struct HangingProtocolParser {
             let selectors = try parseSelectors(from: imageSetItem)
             let sortOperations = parseSortOperations(from: imageSetItem)
             let category = imageSetItem.string(for: .imageSetSelectorCategory)
-                .flatMap { ImageSetSelectorCategory(rawValue: $0) }
+                .flatMap { ImageSetSelectorCategory.reading($0) }
             let timeSelection = parseTimeSelection(from: imageSetItem)
             
             imageSets.append(ImageSetDefinition(
@@ -148,8 +161,17 @@ public struct HangingProtocolParser {
             }
             
             let valueNumber = selectorItem[.selectorValueNumber]?.uint16Value.map(Int.init)
+            // Filter-by Operator (0072,0406): Table C.23.3-1 terms; EQUAL /
+            // NOT_EQUAL / CONTAINS written by earlier DICOMKit versions map to
+            // MEMBER_OF / NOT_MEMBER_OF, and PRESENT / NOT_PRESENT to
+            // Filter-by Attribute Presence (0072,0404).
             let operatorString = selectorItem.string(for: .filterByOperator)
-            let filterOperator = operatorString.flatMap { FilterOperator(rawValue: $0) }
+            let filterOperator = operatorString.flatMap { FilterOperator.reading($0) }
+            let attributePresence = selectorItem.string(for: .filterByAttributePresence)
+                .flatMap { FilterByAttributePresence(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+                ?? operatorString.flatMap { FilterByAttributePresence(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+            let filterByCategory = selectorItem.string(for: .filterByCategory)
+                .flatMap { FilterByCategory(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
             let sequencePointer = selectorItem[.selectorSequencePointer].flatMap { try? Self.parseAttributeTag(from: $0) }
             
             // Selector Attribute VR (0072,0050) names the Selector xx Value
@@ -187,12 +209,14 @@ public struct HangingProtocolParser {
                 sequencePointer: sequencePointer,
                 valueNumber: valueNumber,
                 operator: filterOperator,
+                filterByCategory: filterByCategory,
+                attributePresence: attributePresence,
                 values: values,
                 codeValues: codeValues,
                 usageFlag: usageFlag
             ))
         }
-        
+
         return selectors
     }
     
@@ -204,44 +228,79 @@ public struct HangingProtocolParser {
         var operations: [SortOperation] = []
         
         for sortItem in sortSequence {
-            guard let categoryString = sortItem.string(for: .sortByCategory),
-                  let category = SortByCategory(rawValue: categoryString) else {
-                continue
-            }
-            
             let directionString = sortItem.string(for: .sortingDirection)
-            let direction = directionString.flatMap { SortDirection(rawValue: $0) } ?? .ascending
-            
-            // Parse attribute tag if present
+            let direction = directionString.flatMap { SortDirection(rawValue: $0.trimmingCharacters(in: .whitespaces)) } ?? .ascending
+
+            // Selector Attribute (0072,0026) + Selector Value Number (0072,0028)
             var attribute: Tag?
             if let attrElement = sortItem[.selectorAttribute] {
                 attribute = try? Self.parseAttributeTag(from: attrElement)
             }
-            
-            operations.append(SortOperation(
-                sortByCategory: category,
-                direction: direction,
-                attribute: attribute
-            ))
+            let valueNumber = sortItem[.selectorValueNumber]?.integerValueTolerant
+
+            // Sort-by Category (0072,0602): ALONG_AXIS / BY_ACQ_TIME (PS3.3
+            // Table C.23.3-1). The spellings earlier DICOMKit versions wrote
+            // map to a category or to the attribute they named.
+            let categoryString = sortItem.string(for: .sortByCategory)?.trimmingCharacters(in: .whitespaces)
+            var category: SortByCategory?
+            switch categoryString {
+            case nil, "ATTRIBUTE"?:
+                category = nil
+            case "ACQUISITION_TIME"?:
+                category = .byAcquisitionTime
+            case "IMAGE_POSITION"?:
+                category = .alongAxis
+            case "INSTANCE_NUMBER"?:
+                attribute = attribute ?? .instanceNumber
+            case "SLICE_LOCATION"?:
+                attribute = attribute ?? .sliceLocation
+            case let term?:
+                category = SortByCategory(rawValue: term)
+            }
+
+            if let category {
+                operations.append(SortOperation(sortByCategory: category, direction: direction))
+            } else if let attribute {
+                operations.append(SortOperation(
+                    attribute: attribute,
+                    valueNumber: max(1, valueNumber ?? 1),
+                    direction: direction
+                ))
+            }
         }
-        
+
         return operations
     }
     
     private func parseTimeSelection(from imageSetItem: SequenceItem) -> TimeBasedSelection? {
-        let relativeTime = imageSetItem[.relativeTime]?.uint16Value.map(Int.init)
+        // Relative Time (0072,0038) US VM 2; a single value written by an
+        // earlier DICOMKit version reads as the pair n\n.
+        var relativeTimeRange = imageSetItem[.relativeTime]?.integerValuesTolerant ?? []
+        if relativeTimeRange.count == 1 { relativeTimeRange.append(relativeTimeRange[0]) }
         let relativeTimeUnitsString = imageSetItem.string(for: .relativeTimeUnits)
-        let relativeTimeUnits = relativeTimeUnitsString.flatMap { RelativeTimeUnits(rawValue: $0) }
-        let abstractPriorValue = imageSetItem.string(for: .abstractPriorValue)
-        
-        if relativeTime != nil || relativeTimeUnits != nil || abstractPriorValue != nil {
+        let relativeTimeUnits = relativeTimeUnitsString.flatMap { RelativeTimeUnits(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+
+        // Abstract Prior Value (0072,003C) SS VM 2 (PS3.6 Table 6-1). Earlier
+        // DICOMKit versions wrote text (SH) such as MOST_RECENT / OLDEST, which
+        // maps to 1\1 / -1\-1 (PS3.3 Table C.23.1-1).
+        var abstractPriorRange: [Int] = []
+        if let element = imageSetItem[.abstractPriorValue] {
+            if let ints = element.integerValuesTolerant {
+                abstractPriorRange = ints
+            } else {
+                abstractPriorRange = TimeBasedSelection.abstractPriorRange(from: element.stringValue)
+            }
+            if abstractPriorRange.count == 1 { abstractPriorRange.append(abstractPriorRange[0]) }
+        }
+
+        if !relativeTimeRange.isEmpty || relativeTimeUnits != nil || !abstractPriorRange.isEmpty {
             return TimeBasedSelection(
-                relativeTime: relativeTime,
+                relativeTimeRange: relativeTimeRange,
                 relativeTimeUnits: relativeTimeUnits,
-                abstractPriorValue: abstractPriorValue
+                abstractPriorRange: abstractPriorRange
             )
         }
-        
+
         return nil
     }
     
@@ -292,17 +351,17 @@ public struct HangingProtocolParser {
             let label = displaySetItem.string(for: .displaySetLabel)
             let presentationGroup = displaySetItem[.displaySetPresentationGroup]?.uint16Value.map(Int.init)
             let groupDescription = displaySetItem.string(for: .displaySetPresentationGroupDescription)
-            let partialDataHandling = displaySetItem.string(for: .partialDataDisplayHandling)
+            // Partial Data Display Handling (0072,0208) is read at the top
+            // level into HangingProtocol.partialDataDisplayHandling.
             let scrollingGroup = displaySetItem[.displaySetScrollingGroup]?.uint16Value.map(Int.init)
             let imageBoxes = try parseImageBoxes(from: displaySetItem)
             let displayOptions = parseDisplayOptions(from: displaySetItem)
-            
+
             displaySets.append(DisplaySet(
                 number: number,
                 label: label,
                 presentationGroup: presentationGroup,
                 presentationGroupDescription: groupDescription,
-                partialDataHandling: partialDataHandling,
                 scrollingGroup: scrollingGroup,
                 imageBoxes: imageBoxes,
                 displayOptions: displayOptions
@@ -322,7 +381,7 @@ public struct HangingProtocolParser {
         for (index, boxItem) in imageBoxSequence.enumerated() {
             let number = boxItem[.imageBoxNumber]?.uint16Value.map(Int.init) ?? (index + 1)
             let layoutTypeString = boxItem.string(for: .imageBoxLayoutType)
-            let layoutType = layoutTypeString.flatMap { ImageBoxLayoutType(rawValue: $0) } ?? .stack
+            let layoutType = layoutTypeString.flatMap { ImageBoxLayoutType.reading($0) } ?? .stack
             
             // Parse referenced image set numbers
             let imageSetNumbers: [Int] = []
@@ -335,11 +394,11 @@ public struct HangingProtocolParser {
             let scrollDirection = scrollDirectionString.flatMap { ScrollDirection(rawValue: $0) }
             
             let smallScrollTypeString = boxItem.string(for: .imageBoxSmallScrollType)
-            let smallScrollType = smallScrollTypeString.flatMap { ScrollType(rawValue: $0) }
+            let smallScrollType = smallScrollTypeString.flatMap { ScrollType.reading($0) }
             let smallScrollAmount = boxItem[.imageBoxSmallScrollAmount]?.uint16Value.map(Int.init)
             
             let largeScrollTypeString = boxItem.string(for: .imageBoxLargeScrollType)
-            let largeScrollType = largeScrollTypeString.flatMap { ScrollType(rawValue: $0) }
+            let largeScrollType = largeScrollTypeString.flatMap { ScrollType.reading($0) }
             let largeScrollAmount = boxItem[.imageBoxLargeScrollAmount]?.uint16Value.map(Int.init)
             
             let overlapPriority = boxItem[.imageBoxOverlapPriority]?.uint16Value.map(Int.init)
@@ -347,9 +406,13 @@ public struct HangingProtocolParser {
             
             let reformattingOp = parseReformattingOperation(from: boxItem)
             
-            let renderingTypeString = boxItem.string(for: .threeDRenderingType)
-            let renderingType = renderingTypeString.flatMap { ThreeDRenderingType(rawValue: $0) }
-            
+            // 3D Rendering Type (0072,0520) VM 1-n: Value 1 a Defined Term,
+            // the rest implementation specific sub-types (PS3.3 Table C.23.3-1)
+            let renderingValues = (boxItem[.threeDRenderingType]?.stringValues ?? [])
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            let renderingType = renderingValues.first.flatMap { ThreeDRenderingType(rawValue: $0) }
+            let renderingSubtypes = renderingValues.count > 1 ? Array(renderingValues.dropFirst()) : []
+
             imageBoxes.append(ImageBox(
                 number: number,
                 layoutType: layoutType,
@@ -364,28 +427,35 @@ public struct HangingProtocolParser {
                 overlapPriority: overlapPriority,
                 cineRelativeToRealTime: cineRelative,
                 reformattingOperation: reformattingOp,
-                threeDRenderingType: renderingType
+                threeDRenderingType: renderingType,
+                threeDRenderingSubtypes: renderingSubtypes
             ))
         }
-        
+
         return imageBoxes
     }
-    
+
     private func parseReformattingOperation(from boxItem: SequenceItem) -> ReformattingOperation? {
+        // Reformatting Operation Type (0072,0510): MPR / 3D_RENDERING / SLAB;
+        // CPR, MIP, MinIP, AvgIP written by earlier DICOMKit versions map to
+        // MPR / 3D_RENDERING (see ReformattingType.reading).
         guard let typeString = boxItem.string(for: .reformattingOperationType),
-              let type = ReformattingType(rawValue: typeString) else {
+              let type = ReformattingType.reading(typeString) else {
             return nil
         }
-        
+
         let thickness = boxItem[.reformattingThickness]?.float64Value
         let interval = boxItem[.reformattingInterval]?.float64Value
-        let initialViewDirection = boxItem.string(for: .reformattingOperationInitialViewDirection)
-        
+        // Reformatting Operation Initial View Direction (0072,0516): SAGITTAL /
+        // TRANSVERSE / CORONAL / OBLIQUE ("AXIAL" reads as TRANSVERSE)
+        let initialViewPlane = boxItem.string(for: .reformattingOperationInitialViewDirection)
+            .flatMap { ImagePlane.reading($0) }
+
         return ReformattingOperation(
             type: type,
             thickness: thickness,
             interval: interval,
-            initialViewDirection: initialViewDirection
+            initialViewPlane: initialViewPlane
         )
     }
     

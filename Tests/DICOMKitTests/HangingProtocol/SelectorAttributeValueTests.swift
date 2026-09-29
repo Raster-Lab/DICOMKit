@@ -129,11 +129,13 @@ final class SelectorAttributeValueTests: XCTestCase {
     }
     
     func test_presenceSelector_writesVRButNoValueElement() throws {
-        let item = try serializedItem(ImageSetSelector(attribute: .sliceLocation, operator: .present, values: []))
-        
+        let item = try serializedItem(ImageSetSelector(attribute: .sliceLocation, attributePresence: .present))
+
         XCTAssertEqual(item.string(for: tag(0x0072, 0x0050)), "DS")
         XCTAssertNil(item[tag(0x0072, 0x0072)])
-        XCTAssertEqual(item.string(for: tag(0x0072, 0x0406)), "PRESENT")
+        // PS3.3 Table C.23.3-1: PRESENT is a Filter-by Attribute Presence (0072,0404) term
+        XCTAssertEqual(item.string(for: tag(0x0072, 0x0404)), "PRESENT")
+        XCTAssertNil(item[tag(0x0072, 0x0406)])
     }
     
     func test_sequencePointer_writesSelectorSequencePointer() throws {
@@ -154,7 +156,7 @@ final class SelectorAttributeValueTests: XCTestCase {
             ImageSetSelector(attribute: .sliceThickness, values: ["1.25"]),
             ImageSetSelector(attribute: tag(0x0018, 0x9089), values: ["0.5", "0.25", "1.0"]),
             ImageSetSelector(attribute: .frameIncrementPointer, values: ["(0018,1063)"]),
-            ImageSetSelector(attribute: .seriesDescription, valueNumber: 1, operator: .contains, values: ["CHEST"]),
+            ImageSetSelector(attribute: .seriesDescription, valueNumber: 1, operator: .memberOf, values: ["CHEST"]),
             ImageSetSelector(attribute: tag(0x0029, 0x1010), attributeVR: .OB, values: ["DEADBEEF"]),
             ImageSetSelector(attribute: tag(0x0029, 0x1011), attributeVR: .SV, values: ["-5", "9000000000"]),
             ImageSetSelector(attribute: tag(0x0029, 0x1012), attributeVR: .UV, values: ["18446744073709551615"]),

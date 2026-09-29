@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — VRs per PS3.6 2026a Table 6-1 (SH name, LO description); display flags YES/NO per Table C.23.3-1; Abstract Prior Value as SS is pending P-HP
+// NEMA-verified: 2026a, checked 2026-09-29 — VRs per PS3.6 2026a Table 6-1 (SH name, LO description, US VM 2 Relative Time, SS VM 2 Abstract Prior Value, CS 1-n 3D Rendering Type); every CS term written is one of PS3.3 2026a Tables C.23.1-1 / C.23.3-1 (deprecated DICOMKit cases are mapped, see the enum doc comments); Partial Data Display Handling written top-level Type 2
 //
 // HangingProtocolSerializer.swift
 // DICOMKit
@@ -130,8 +130,27 @@ public struct HangingProtocolSerializer {
             let displaySetItems = try serializeDisplaySets(hangingProtocol.displaySets)
             dataSet.setSequence(displaySetItems, for: .displaySetsSequence)
         }
-        
+
+        // Partial Data Display Handling (0072,0208) - Type 2, top level of the
+        // Hanging Protocol Display Module (PS3.3 Table C.23.3-1). Zero length
+        // means the behaviour is not defined. A term left in the deprecated
+        // DisplaySet.partialDataHandling is promoted when the protocol has none.
+        let partialData = hangingProtocol.partialDataDisplayHandling
+            ?? Self.legacyPartialDataHandling(hangingProtocol.displaySets)
+        dataSet[.partialDataDisplayHandling] = DataElement.string(
+            tag: .partialDataDisplayHandling,
+            vr: .CS,
+            value: partialData?.rawValue ?? ""
+        )
+
         return dataSet
+    }
+
+    private static func legacyPartialDataHandling(_ displaySets: [DisplaySet]) -> PartialDataDisplayHandling? {
+        displaySets.lazy
+            .compactMap { $0.partialDataHandling }
+            .compactMap { PartialDataDisplayHandling(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
+            .first
     }
     
     // MARK: - Environment Serialization
@@ -189,12 +208,14 @@ public struct HangingProtocolSerializer {
                 ))
             }
             
-            // Image Set Selector Category (0072,0034) - Optional, Type 3
+            // Image Set Selector Category (0072,0034) - PS3.3 Table C.23.1-1
+            // Enumerated Values RELATIVE_TIME / ABSTRACT_PRIOR; deprecated
+            // cases are mapped (see ImageSetSelectorCategory).
             if let category = imageSet.category {
                 elements.append(DataElement.string(
                     tag: .imageSetSelectorCategory,
                     vr: .CS,
-                    value: category.rawValue
+                    value: category.standardTerm.rawValue
                 ))
             }
             
@@ -249,8 +270,26 @@ public struct HangingProtocolSerializer {
                 ))
             }
             
-            // Filter-by Operator (0072,0406) - Optional, Type 3
-            if let filterOperator = selector.operator {
+            // Filter-by Category (0072,0402), Filter-by Attribute Presence
+            // (0072,0404) and Filter-by Operator (0072,0406) - PS3.3 Table
+            // C.23.3-1 terms. The deprecated FilterOperator cases are mapped:
+            // EQUAL / CONTAINS -> MEMBER_OF, NOT_EQUAL -> NOT_MEMBER_OF,
+            // PRESENT / NOT_PRESENT -> Filter-by Attribute Presence.
+            if let category = selector.filterByCategory {
+                elements.append(DataElement.string(
+                    tag: .filterByCategory,
+                    vr: .CS,
+                    value: category.rawValue
+                ))
+            }
+            if let presence = selector.attributePresence ?? selector.operator?.presenceTerm {
+                elements.append(DataElement.string(
+                    tag: .filterByAttributePresence,
+                    vr: .CS,
+                    value: presence.rawValue
+                ))
+            }
+            if let filterOperator = selector.operator?.standardTerm {
                 elements.append(DataElement.string(
                     tag: .filterByOperator,
                     vr: .CS,
@@ -308,30 +347,42 @@ public struct HangingProtocolSerializer {
         
         for operation in operations {
             var elements: [DataElement] = []
-            
-            // Sort-by Category (0072,0602) - Required, Type 1
-            elements.append(DataElement.string(
-                tag: .sortByCategory,
-                vr: .CS,
-                value: operation.sortByCategory.rawValue
-            ))
-            
+            let sort = operation.standardized
+
+            // PS3.3 Table C.23.3-1: either Sort-by Category (0072,0602) with
+            // a Defined Term (ALONG_AXIS, BY_ACQ_TIME), or Selector Attribute
+            // (0072,0026) + Selector Value Number (0072,0028). The deprecated
+            // SortByCategory cases become one or the other (see SortOperation).
+
+            // Selector Attribute (0072,0026) - Type 1C, required if Sort-by Category is absent
+            if let attribute = sort.attribute {
+                elements.append(serializeTagAsAttributeTag(
+                    tag: .selectorAttribute,
+                    value: attribute
+                ))
+                // Selector Value Number (0072,0028) - Type 1C, shall not be zero
+                elements.append(DataElement.uint16(
+                    tag: .selectorValueNumber,
+                    value: UInt16(clamping: max(1, sort.valueNumber ?? 1))
+                ))
+            }
+
+            // Sort-by Category (0072,0602) - Type 1C, required if Selector Attribute is absent
+            if let category = sort.category {
+                elements.append(DataElement.string(
+                    tag: .sortByCategory,
+                    vr: .CS,
+                    value: category.rawValue
+                ))
+            }
+
             // Sorting Direction (0072,0604) - Required, Type 1
             elements.append(DataElement.string(
                 tag: .sortingDirection,
                 vr: .CS,
                 value: operation.direction.rawValue
             ))
-            
-            // Selector Attribute (0072,0026) - Conditional, Type 1C
-            // Required when Sort-by Category is ATTRIBUTE
-            if let attribute = operation.attribute {
-                elements.append(serializeTagAsAttributeTag(
-                    tag: .selectorAttribute,
-                    value: attribute
-                ))
-            }
-            
+
             items.append(SequenceItem(elements: elements))
         }
         
@@ -339,15 +390,17 @@ public struct HangingProtocolSerializer {
     }
     
     private func serializeTimeSelection(_ timeSelection: TimeBasedSelection, into elements: inout [DataElement]) {
-        // Relative Time (0072,0038) US - Optional, Type 3
-        if let relativeTime = timeSelection.relativeTime {
-            elements.append(DataElement.uint16(
+        // Relative Time (0072,0038) US VM 2 - Type 1C (PS3.3 Table C.23.1-1,
+        // PS3.6 Table 6-1): exactly two values, start and end; one value n
+        // is written as the pair n\n.
+        if let range = Self.pair(timeSelection.relativeTimeRange) {
+            elements.append(DataElement.uint16s(
                 tag: .relativeTime,
-                value: UInt16(clamping: relativeTime)
+                values: range.map { UInt16(clamping: $0) }
             ))
         }
-        
-        // Relative Time Units (0072,003A) - Conditional, Type 1C
+
+        // Relative Time Units (0072,003A) - Type 1C, required if Relative Time is present
         if let relativeTimeUnits = timeSelection.relativeTimeUnits {
             elements.append(DataElement.string(
                 tag: .relativeTimeUnits,
@@ -355,14 +408,23 @@ public struct HangingProtocolSerializer {
                 value: relativeTimeUnits.rawValue
             ))
         }
-        
-        // Abstract Prior Value (0072,003C) - Optional, Type 3
-        if let abstractPriorValue = timeSelection.abstractPriorValue {
-            elements.append(DataElement.string(
+
+        // Abstract Prior Value (0072,003C) SS VM 2 - Type 1C (PS3.6 Table 6-1):
+        // exactly two integers, 1 = most recent prior, -1 = oldest prior.
+        if let range = Self.pair(timeSelection.abstractPriorRange) {
+            elements.append(DataElement.int16s(
                 tag: .abstractPriorValue,
-                vr: .SH,
-                value: abstractPriorValue
+                values: range.map { Int16(clamping: $0) }
             ))
+        }
+    }
+
+    /// Exactly two values from a range given as one or two values; nil when empty.
+    private static func pair(_ values: [Int]) -> [Int]? {
+        switch values.count {
+        case 0: return nil
+        case 1: return [values[0], values[0]]
+        default: return Array(values.prefix(2))
         }
     }
     
@@ -464,15 +526,9 @@ public struct HangingProtocolSerializer {
                 ))
             }
             
-            // Partial Data Display Handling (0072,0208) - Optional, Type 3
-            if let partialDataHandling = displaySet.partialDataHandling {
-                elements.append(DataElement.string(
-                    tag: .partialDataDisplayHandling,
-                    vr: .CS,
-                    value: partialDataHandling
-                ))
-            }
-            
+            // Partial Data Display Handling (0072,0208) is a top-level
+            // attribute (PS3.3 Table C.23.3-1) and is written in serialize(protocol:).
+
             // Display Set Scrolling Group (0072,0212) - Optional, Type 3
             if let scrollingGroup = displaySet.scrollingGroup {
                 elements.append(DataElement.uint16(
@@ -512,11 +568,12 @@ public struct HangingProtocolSerializer {
                 value: UInt16(imageBox.number)
             ))
             
-            // Image Box Layout Type (0072,0304) - Required, Type 1
+            // Image Box Layout Type (0072,0304) - Required, Type 1; PS3.3 Table
+            // C.23.3-1 Defined Terms (TILED_ALL is written as TILED).
             elements.append(DataElement.string(
                 tag: .imageBoxLayoutType,
                 vr: .CS,
-                value: imageBox.layoutType.rawValue
+                value: imageBox.layoutType.standardTerm.rawValue
             ))
             
             // Image Box Tile Horizontal Dimension (0072,0306) - Conditional, Type 1C
@@ -544,12 +601,14 @@ public struct HangingProtocolSerializer {
                 ))
             }
             
-            // Image Box Small Scroll Type (0072,0312) - Optional, Type 3
+            // Image Box Small Scroll Type (0072,0312) - Type 2C; PS3.3 Table
+            // C.23.3-1 Enumerated Values PAGE / ROW_COLUMN / IMAGE (FRACTION is
+            // written as PAGE).
             if let smallScrollType = imageBox.smallScrollType {
                 elements.append(DataElement.string(
                     tag: .imageBoxSmallScrollType,
                     vr: .CS,
-                    value: smallScrollType.rawValue
+                    value: smallScrollType.standardTerm.rawValue
                 ))
             }
             
@@ -561,12 +620,12 @@ public struct HangingProtocolSerializer {
                 ))
             }
             
-            // Image Box Large Scroll Type (0072,0316) - Optional, Type 3
+            // Image Box Large Scroll Type (0072,0316) - Type 2C, same terms
             if let largeScrollType = imageBox.largeScrollType {
                 elements.append(DataElement.string(
                     tag: .imageBoxLargeScrollType,
                     vr: .CS,
-                    value: largeScrollType.rawValue
+                    value: largeScrollType.standardTerm.rawValue
                 ))
             }
             
@@ -598,28 +657,40 @@ public struct HangingProtocolSerializer {
             if let reformattingOp = imageBox.reformattingOperation {
                 serializeReformattingOperation(reformattingOp, into: &elements)
             }
-            
-            // 3D Rendering Type (0072,0520) - Optional, Type 3
+
+            // 3D Rendering Type (0072,0520) CS VM 1-n - Type 1C if Reformatting
+            // Operation Type is 3D_RENDERING: Value 1 a Defined Term (MIP,
+            // SURFACE, VOLUME), further values implementation specific
+            // sub-types (PS3.3 Table C.23.3-1). A deprecated projection
+            // ReformattingType supplies the values when the box states none.
+            var renderingValues: [String] = []
             if let renderingType = imageBox.threeDRenderingType {
-                elements.append(DataElement.string(
+                renderingValues = [renderingType.rawValue] + imageBox.threeDRenderingSubtypes
+            } else if let implied = imageBox.reformattingOperation?.type.impliedRenderingType {
+                renderingValues = [implied.type.rawValue] + implied.subtypes
+            }
+            if !renderingValues.isEmpty {
+                elements.append(DataElement.strings(
                     tag: .threeDRenderingType,
                     vr: .CS,
-                    value: renderingType.rawValue
+                    values: renderingValues
                 ))
             }
-            
+
             items.append(SequenceItem(elements: elements))
         }
-        
+
         return items
     }
-    
+
     private func serializeReformattingOperation(_ operation: ReformattingOperation, into elements: inout [DataElement]) {
-        // Reformatting Operation Type (0072,0510) - Required, Type 1
+        // Reformatting Operation Type (0072,0510) - PS3.3 Table C.23.3-1
+        // Defined Terms MPR / 3D_RENDERING / SLAB (CPR is written as MPR,
+        // MIP / MinIP / AvgIP as 3D_RENDERING; see ReformattingType).
         elements.append(DataElement.string(
             tag: .reformattingOperationType,
             vr: .CS,
-            value: operation.type.rawValue
+            value: operation.type.standardTerm.rawValue
         ))
         
         // Reformatting Thickness (0072,0512) - Optional, Type 3
@@ -638,12 +709,14 @@ public struct HangingProtocolSerializer {
             ))
         }
         
-        // Reformatting Operation Initial View Direction (0072,0516) - Optional, Type 3
-        if let initialViewDirection = operation.initialViewDirection {
+        // Reformatting Operation Initial View Direction (0072,0516) - Type 1C
+        // for MPR / 3D_RENDERING; Defined Terms SAGITTAL, TRANSVERSE, CORONAL,
+        // OBLIQUE (PS3.3 Table C.23.3-1)
+        if let plane = operation.initialViewPlane {
             elements.append(DataElement.string(
                 tag: .reformattingOperationInitialViewDirection,
                 vr: .CS,
-                value: initialViewDirection
+                value: plane.rawValue
             ))
         }
     }

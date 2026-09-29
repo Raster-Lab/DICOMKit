@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Hanging Protocol Level terms match PS3.3 2026a Table C.23.1-1 (MANUFACTURER pending P-HP)
+// NEMA-verified: 2026a, checked 2026-09-29 — Hanging Protocol Level (MANUFACTURER, SITE, USER_GROUP, SINGLE_USER) per PS3.3 2026a Table C.23.1-1; Partial Data Display Handling top-level Type 2 per Table C.23.3-1; Screen Specifications per Table C.23.2-2
 //
 // HangingProtocol.swift
 // DICOMKit
@@ -26,7 +26,7 @@ public struct HangingProtocol: Sendable {
     /// Human-readable description of the protocol
     public let description: String?
     
-    /// Protocol level (SITE, GROUP, USER)
+    /// Hanging Protocol Level (0072,0006)
     public let level: HangingProtocolLevel
     
     /// Creator of the protocol
@@ -63,9 +63,14 @@ public struct HangingProtocol: Sendable {
     
     /// Display sets specifying how images should be arranged
     public let displaySets: [DisplaySet]
-    
+
+    /// Partial Data Display Handling (0072,0208), Type 2: whether to keep
+    /// the layout when an image set is not available. `nil` is written as
+    /// zero length, meaning the behaviour is not defined (PS3.3 Table C.23.3-1).
+    public let partialDataDisplayHandling: PartialDataDisplayHandling?
+
     // MARK: - Initialization
-    
+
     public init(
         name: String,
         description: String? = nil,
@@ -78,7 +83,8 @@ public struct HangingProtocol: Sendable {
         imageSets: [ImageSetDefinition] = [],
         numberOfScreens: Int = 1,
         screenDefinitions: [ScreenDefinition] = [],
-        displaySets: [DisplaySet] = []
+        displaySets: [DisplaySet] = [],
+        partialDataDisplayHandling: PartialDataDisplayHandling? = nil
     ) {
         self.name = name
         self.description = description
@@ -92,13 +98,20 @@ public struct HangingProtocol: Sendable {
         self.numberOfScreens = numberOfScreens
         self.screenDefinitions = screenDefinitions
         self.displaySets = displaySets
+        self.partialDataDisplayHandling = partialDataDisplayHandling
     }
 }
 
 // MARK: - Hanging Protocol Level
 
-/// Level at which a hanging protocol is defined
-public enum HangingProtocolLevel: String, Sendable, Codable {
+/// Hanging Protocol Level (0072,0006)
+///
+/// PS3.3 Table C.23.1-1 Enumerated Values: MANUFACTURER, SITE, USER_GROUP,
+/// SINGLE_USER.
+public enum HangingProtocolLevel: String, Sendable, Codable, CaseIterable {
+    /// Manufacturer-level protocol (shipped with the application)
+    case manufacturer = "MANUFACTURER"
+
     /// Site-level protocol (applies to entire institution)
     case site = "SITE"
     
