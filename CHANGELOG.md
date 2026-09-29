@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — DICOMPrintKit verified against DICOM 2026a (2026-09-29)
+
+Audit report: `DICOMPRINTKIT_STANDARD_IMPLEMENTATION.md`. Every value the module uses is diffed
+against the frozen NEMA text by `Scripts/diff_printkit.py` (32 checks against PS3.3, PS3.4, PS3.5,
+PS3.6 and PS3.14 2026a; 0 failing; 3 pending the owner's decision: P-MAMMO, P-GSDF, P-CROP), and
+all 30 Swift files carry a `NEMA-verified` marker.
+
+- **Saved views are conformant presentation states (D27, D36).** `PresentationStateStore.save`
+  passes the image size to the builders, so a fitted view carries the Type 1 Displayed Area
+  Selection Sequence (the whole image, SCALE TO FIT; PS3.3 Table C.10-4); writes the image's
+  rescale as the state's own Modality LUT (PS3.4 N.2.1.1: the image's rescale is not used under a
+  presentation state), with `ImageToSave.rescaleType` (default `US`); and saves a colour image as a
+  Color Softcopy Presentation State (A.33.1.1: GSPS and Pseudo-Color reference monochrome images
+  only), keeping a colour image's inversion in the sidecar. New defaulted input
+  `ImageToSave.photometricInterpretation`.
+- **MONOCHROME1 polarity.** `ViewerPresentationStateBridge.capture/restore` take an optional
+  `photometricInterpretation`; for MONOCHROME1 the upright view is written as Presentation LUT
+  INVERSE and read back the same way (PS3.4 N.2: the image's photometric is ignored under a
+  presentation state).
+- **Shutters from a study's presentation states** are placed on 1-based pixel positions (Table
+  C.7-17a): the first open row and column were shuttered.
+- **`--raw` print jobs** whose pixel module a Basic Grayscale or Color Image Box cannot carry
+  (signed pixels, Bits Stored other than 8/12, YBR or PALETTE COLOR, High Bit ≠ Bits Stored − 1;
+  PS3.3 Table C.13-5) now fail with the rule instead of being sent non-conformant.
+- **Film geometry.** 10INX14IN is composed on 257 × 364 mm, as PS3.3 Table C.13-3 states (was
+  254 × 355.6 mm). The Print SCP simulator writes the job's own Image Display Format (a `ROW\1,2`
+  job was composed as `STANDARD\2,2`).
+- **Emulator status.** The FAILURE default Printer Status Info is `SUPPLY EMPTY`, a C.13.9.1
+  Defined Term (was `NO SUPPLY`).
+- **Annotation Text String** (2030,0020) footer lines are kept legal LO values: at most 64
+  characters, no backslash, no control characters (PS3.5 Table 6.2-1;
+  `FilmIdentificationFooter.textString(_:)`).
+- **Citations and comments** corrected against the 2026a text: Bits Stored 8/12 is Table C.13-5,
+  not C.13-3 (D23; also in the `--bit-depth` message and the clamp note); Spatial Transformation
+  is C.10.6 (not C.10.10); the hardcopy Presentation LUT is C.11.4; Film Size ID is C.13.3 (C.13.6
+  is retired); Max Density is (2010,0130); the YBR 4:2:2 layout is C.7.6.3.1.2 (PS3.5 8.7.4 does
+  not exist); Content Label (0070,0080); C.11.2 sets no precedence between VOI LUT Sequence and
+  window and no default pair; C.10.5 does have an ARROW compound graphic and per-object colour
+  (DICOMKit does not model them yet, D39).
+
 ### Fixed — DICOMKit verified against DICOM 2026a (2026-09-29)
 
 Audit report: `DICOMKIT_STANDARD_IMPLEMENTATION.md`. Every constant the module carries is diffed
