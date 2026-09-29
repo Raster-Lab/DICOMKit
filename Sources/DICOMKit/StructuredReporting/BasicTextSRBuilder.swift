@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — DCM section concepts diffed by Scripts/diff_kit.py against PS3.16 2026a Table D-1 (121074 Recommendations); comparison against Table D-1 111424, CID 6052 and TID 3318 row 1
+// NEMA-verified: 2026a, checked 2026-09-29 — DCM section concepts diffed by Scripts/diff_kit.py against PS3.16 2026a Table D-1 (121074 Recommendations); comparison against Table D-1 111424, CID 6052 and TID 3318 row 1; validation recurses into the Content Sequence (0040,A730) of every value type per PS3.3 2026a Table C.17-6 (D31)
 /// Basic Text SR Document Builder
 ///
 /// Provides a specialized fluent API for creating DICOM Basic Text SR documents.
@@ -730,10 +730,9 @@ public struct BasicTextSRBuilder: Sendable {
                 throw BuildError.unsupportedValueType(valueType: item.valueType)
             }
             
-            // Recursively validate container children
-            if let container = item.asContainer {
-                try validateValueTypes(items: container.contentItems)
-            }
+            // Recursively validate children: a CONTAINER's, and the Content Sequence
+            // any other value type may carry (PS3.3 Table C.17-6)
+            try validateValueTypes(items: item.contentItems)
         }
     }
 }

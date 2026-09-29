@@ -9,6 +9,8 @@
 /// PS3.3 2026a C.18.6.1.2 (SCOORD Graphic Type), C.18.9.1.2 (SCOORD3D Graphic Type),
 /// C.18.7.1.1 (TCOORD Temporal Range Type), Table C.18.8-1 (Continuity of Content) and
 /// PS3.16 2026a CID 42 (Numeric Value Qualifier, with CIDs 43 and 44 included).
+/// NEMA-verified: 2026a, checked 2026-09-29 — `contentItems` models Content Sequence (0040,A730)
+/// of the Document Relationship Macro, PS3.3 2026a Table C.17-6, on every content item (D31).
 
 /// Protocol defining common properties and behaviors for all SR content items
 public protocol ContentItem: Sendable, Equatable {
@@ -33,6 +35,13 @@ public protocol ContentItem: Sendable, Equatable {
     
     /// Returns whether this content item can have children
     var canHaveChildren: Bool { get }
+
+    /// The Target Content Items of this item's by-value relationships, each carrying its
+    /// Relationship Type (0040,A010). Encoded as Content Sequence (0040,A730), which the
+    /// Document Relationship Macro (PS3.3 Table C.17-6) gives every content item, not only
+    /// CONTAINER: templates hang children under CODE, NUM, IMAGE and SCOORD items (e.g.
+    /// PS3.16 TID 1204 row 2, TID 1501 rows 7 and 10d, TID 320 rows 3-4).
+    var contentItems: [AnyContentItem] { get }
 }
 
 // MARK: - Default Implementations
@@ -41,6 +50,9 @@ extension ContentItem {
     public var canHaveChildren: Bool {
         valueType.canHaveChildren
     }
+
+    /// No children, for conforming types that do not store any
+    public var contentItems: [AnyContentItem] { [] }
 }
 
 // MARK: - Continuity of Content

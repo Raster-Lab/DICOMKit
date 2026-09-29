@@ -2,6 +2,8 @@
 // reads template rows as PS3.16 2026a §6.1 defines them: nesting by NL, INCLUDE expanded with the
 // §6.2 parameter bindings, M rows required, VM counted, extra content allowed only where a template
 // is Type Extensible, Code Meaning not significant when comparing codes.
+// NEMA-verified: 2026a, checked 2026-09-29 — nested rows are matched against the Content Sequence of
+// any value type, not only CONTAINER, per PS3.3 2026a Table C.17-6 (D31).
 
 /// DICOM SR Template Validation
 ///
@@ -428,8 +430,11 @@ public struct TemplateValidator: Sendable {
                     repeatable: false,
                     visited: slot.visited
                 )
+                // The rows nested under this one (NL ">") are checked against the item's
+                // Content Sequence, which any value type may carry (PS3.3 Table C.17-6), so
+                // e.g. TID 1204 row 2 is found under the row 1 CODE.
                 validateLevel(
-                    contentItems: item.children ?? [],
+                    contentItems: item.contentItems,
                     level: childLevel,
                     path: itemPath,
                     depth: depth + 1,

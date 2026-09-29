@@ -47,6 +47,19 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         XCTAssertEqual(actual.2, concept, "concept name of \(item)", file: file, line: line)
     }
 
+    /// The items and all their descendants in document order: CONTAINER contents and the
+    /// Content Sequence of CODE/IMAGE/SCOORD items (PS3.3 Table C.17-6)
+    private func descendants(_ items: [AnyContentItem]) -> [AnyContentItem] {
+        items.flatMap { [$0] + descendants($0.contentItems) }
+    }
+
+    /// The (111034, DCM) Individual Impression/Recommendation containers: TID 4001 row 3,
+    /// INFERRED FROM children of the (111017, DCM) CODE (TID 4000 row 5)
+    private func impressions(_ document: SRDocument) -> [ContainerContentItem] {
+        let summary = document.rootContent.contentItems.first { $0.conceptName?.codeValue == "111017" }
+        return (summary?.contentItems ?? []).compactMap { $0.asContainer }.filter { $0.conceptName?.codeValue == "111034" }
+    }
+
     // MARK: - Initialization Tests
 
     func testBuilderInitialization() {
@@ -418,7 +431,7 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         XCTAssertEqual(root.mappingResource, "DCMR")
 
         let items = root.contentItems
-        XCTAssertEqual(items.count, 7, "\(items)")
+        XCTAssertEqual(items.count, 5, "\(items)")
 
         // Row 2: HAS CONCEPT MOD INCLUDE TID 1204 -> row 1 CODE (121049, DCM), DCID 5000
         assertRow(items[0], .hasConceptMod, .code, "121049")
@@ -435,9 +448,12 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         assertRow(items[2], .contains, .code, "111017")
         XCTAssertEqual(items[2].asCode?.conceptCode.codeValue, "111242") // All algorithms succeeded; with findings
 
-        // TID 4001 row 3: INFERRED FROM INCLUDE TID 4003 -> CONTAINER (111034, DCM)
-        assertRow(items[3], .inferredFrom, .container, "111034")
-        let impression = try XCTUnwrap(items[3].asContainer)
+        // TID 4001 row 3 (">"): INFERRED FROM INCLUDE TID 4003 -> CONTAINER (111034, DCM),
+        // nested in the Content Sequence of the row 1 CODE (PS3.3 Table C.17-6)
+        XCTAssertEqual(items[2].contentItems.count, 1)
+        assertRow(items[2].contentItems[0], .inferredFrom, .container, "111034")
+        let impression = try XCTUnwrap(items[2].contentItems[0].asContainer)
+        XCTAssertEqual(impression.contentItems.count, 2)
         // TID 4003 row 2: HAS CONCEPT MOD CODE (111056, DCM, "Rendering Intent"), DCID 6034
         assertRow(impression.contentItems[0], .hasConceptMod, .code, "111056")
         XCTAssertEqual(impression.contentItems[0].asCode?.conceptCode.codeValue, "111150")
@@ -445,9 +461,9 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         assertRow(impression.contentItems[1], .contains, .code, "111059")
         XCTAssertEqual(impression.contentItems[1].asCode?.conceptCode, FindingType.mass.concept)
 
-        // TID 4006 children (flattened after the 111059 CODE)
-        let findingRows = Array(impression.contentItems.dropFirst(2))
-        XCTAssertEqual(findingRows.count, 7, "\(findingRows)")
+        // TID 4006 rows 2-8 (">"), nested in the 111059 CODE's Content Sequence
+        let findingRows = impression.contentItems[1].contentItems
+        XCTAssertEqual(findingRows.count, 6, "\(findingRows)")
         // Row 2: HAS CONCEPT MOD CODE Rendering Intent
         assertRow(findingRows[0], .hasConceptMod, .code, "111056")
         // Row 5: HAS PROPERTIES INCLUDE TID 4019 -> TEXT 111001, TEXT 111003, TEXT 122405
@@ -462,32 +478,39 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         XCTAssertEqual(findingRows[4].asNumeric?.value ?? 0, 85, accuracy: 0.0001)
         XCTAssertEqual(findingRows[4].asNumeric?.measurementUnits?.codeValue, "%")
         XCTAssertEqual(findingRows[4].asNumeric?.measurementUnits?.codingSchemeDesignator, "UCUM")
-        // Row 8: HAS PROPERTIES INCLUDE TID 4021 -> row 1 SCOORD (111010, DCM, "Center"), POINT; row 2 SELECTED FROM IMAGE
+        // Row 8: HAS PROPERTIES INCLUDE TID 4021 -> row 1 SCOORD (111010, DCM, "Center"), POINT;
+        // row 2 (">") SELECTED FROM IMAGE, nested in the SCOORD
         assertRow(findingRows[5], .hasProperties, .scoord, "111010")
         XCTAssertEqual(findingRows[5].asSpatialCoordinates?.graphicType, .point)
         XCTAssertEqual(findingRows[5].asSpatialCoordinates?.graphicData, [128.5, 256.3])
-        assertRow(findingRows[6], .selectedFrom, .image, nil)
-        XCTAssertEqual(findingRows[6].asImage?.imageReference, imageRef)
+        XCTAssertEqual(findingRows[5].contentItems.count, 1)
+        assertRow(findingRows[5].contentItems[0], .selectedFrom, .image, nil)
+        XCTAssertEqual(findingRows[5].contentItems[0].asImage?.imageReference, imageRef)
         // Row 6: CONTAINS CODE (111064, DCM, "Summary of Detections"), DCID 6042
-        assertRow(items[4], .contains, .code, "111064")
-        XCTAssertEqual(items[4].asCode?.conceptCode.codeValue, "111222") // Succeeded
-        // Row 7: INFERRED FROM INCLUDE TID 4015 -> row 1 CONTAINER (111063, DCM, "Successful Detections")
-        // (the container follows the CODE it is inferred from: flattened child)
-        assertRow(items[5], .inferredFrom, .container, "111063")
-        let detections = try XCTUnwrap(items[5].asContainer)
+        assertRow(items[3], .contains, .code, "111064")
+        XCTAssertEqual(items[3].asCode?.conceptCode.codeValue, "111222") // Succeeded
+        // Row 7 (">>"): INFERRED FROM INCLUDE TID 4015 -> row 1 CONTAINER (111063, DCM,
+        // "Successful Detections"), nested in the Summary of Detections CODE
+        XCTAssertEqual(items[3].contentItems.count, 1)
+        assertRow(items[3].contentItems[0], .inferredFrom, .container, "111063")
+        let detections = try XCTUnwrap(items[3].contentItems[0].asContainer)
         // TID 4015 row 2: CONTAINS INCLUDE TID 4017 -> row 1 CODE (111022, DCM, "Detection Performed") = $DetectionCode (DCID 6014)
+        XCTAssertEqual(detections.contentItems.count, 1)
         assertRow(detections.contentItems[0], .contains, .code, "111022")
         XCTAssertEqual(detections.contentItems[0].asCode?.conceptCode, FindingType.mass.concept)
-        // TID 4017 row 2: HAS PROPERTIES INCLUDE TID 4019; row 3: HAS PROPERTIES IMAGE
-        assertRow(detections.contentItems[1], .hasProperties, .text, "111001")
-        assertRow(detections.contentItems[2], .hasProperties, .text, "111003")
-        assertRow(detections.contentItems[3], .hasProperties, .text, "122405")
-        assertRow(detections.contentItems[4], .hasProperties, .image, nil)
-        XCTAssertEqual(detections.contentItems.count, 5)
+        // TID 4017 rows 2-3 (">"), nested in the Detection Performed CODE: HAS PROPERTIES
+        // INCLUDE TID 4019; HAS PROPERTIES IMAGE
+        let detectionRows = detections.contentItems[0].contentItems
+        XCTAssertEqual(detectionRows.count, 4)
+        assertRow(detectionRows[0], .hasProperties, .text, "111001")
+        assertRow(detectionRows[1], .hasProperties, .text, "111003")
+        assertRow(detectionRows[2], .hasProperties, .text, "122405")
+        assertRow(detectionRows[3], .hasProperties, .image, nil)
 
         // Row 8: CONTAINS CODE (111065, DCM, "Summary of Analyses"), DCID 6042: Not Attempted, so no TID 4016 (row 9 condition)
-        assertRow(items[6], .contains, .code, "111065")
-        XCTAssertEqual(items[6].asCode?.conceptCode.codeValue, "111225")
+        assertRow(items[4], .contains, .code, "111065")
+        XCTAssertEqual(items[4].asCode?.conceptCode.codeValue, "111225")
+        XCTAssertTrue(items[4].contentItems.isEmpty)
     }
 
     func testCircleLocationWritesCenterAndOutline() throws {
@@ -495,16 +518,18 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         let document = try createBasicBuilder()
             .addFinding(type: .mass, probability: 0.5, location: .circle2D(centerX: 200, centerY: 300, radius: 25, imageReference: imageRef))
             .build()
-        let impression = try XCTUnwrap(document.rootContent.contentItems[3].asContainer)
-        let scoords = impression.contentItems.compactMap { $0.asSpatialCoordinates }
+        let impression = try XCTUnwrap(impressions(document).first)
+        let finding = try XCTUnwrap(impression.contentItems.first { $0.conceptName?.codeValue == "111059" })
+        let scoords = finding.contentItems.compactMap { $0.asSpatialCoordinates }
         // TID 4021 row 1: Center POINT; row 3: Outline (CIRCLE: centre and a point on the circumference, PS3.3 C.18.6.1.2)
         XCTAssertEqual(scoords.map { $0.conceptName?.codeValue }, ["111010", "111041"])
         XCTAssertEqual(scoords[0].graphicType, .point)
         XCTAssertEqual(scoords[0].graphicData, [200, 300])
         XCTAssertEqual(scoords[1].graphicType, .circle)
         XCTAssertEqual(scoords[1].graphicData, [200, 300, 225, 300])
-        // Rows 2 and 4: each SELECTED FROM the same image
-        let images = impression.contentItems.filter { $0.asImage != nil }
+        // Rows 2 and 4 (">"): each SELECTED FROM the same image, nested in its SCOORD
+        XCTAssertTrue(scoords.allSatisfy { $0.contentItems.count == 1 })
+        let images = scoords.flatMap { $0.contentItems }.filter { $0.asImage != nil }
         XCTAssertEqual(images.count, 2)
         XCTAssertTrue(images.allSatisfy { $0.relationshipType == .selectedFrom && $0.asImage?.imageReference == imageRef })
     }
@@ -514,8 +539,8 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         let document = try createBasicBuilder()
             .addFinding(type: .mass, probability: 0.5, location: .roi2D(points: [0, 0, 10, 0, 10, 10, 0, 10], imageReference: imageRef))
             .build()
-        let impression = try XCTUnwrap(document.rootContent.contentItems[3].asContainer)
-        let scoords = impression.contentItems.compactMap { $0.asSpatialCoordinates }
+        let impression = try XCTUnwrap(impressions(document).first)
+        let scoords = descendants(impression.contentItems).compactMap { $0.asSpatialCoordinates }
         XCTAssertEqual(scoords.map { $0.conceptName?.codeValue }, ["111010", "111041"])
         XCTAssertEqual(scoords[0].graphicData, [5, 5])
         XCTAssertEqual(scoords[1].graphicType, .polyline)
@@ -533,13 +558,13 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         let calcification = CADFinding(type: .calcification, probability: 0.5, location: .point2D(x: 1, y: 1, imageReference: imageRef), descriptors: [shape])
         let document = try createBasicBuilder().addFinding(density).addFinding(calcification).build()
 
-        let impressions = document.rootContent.contentItems.compactMap { $0.asContainer }.filter { $0.conceptName?.codeValue == "111034" }
+        let impressions = impressions(document)
         XCTAssertEqual(impressions.count, 2)
-        let densityShape = impressions[0].contentItems.first { $0.conceptName?.codeValue == "107644003" }
+        let densityShape = descendants(impressions[0].contentItems).first { $0.conceptName?.codeValue == "107644003" }
         XCTAssertNotNil(densityShape)
         XCTAssertEqual(densityShape?.relationshipType, .hasProperties)
         XCTAssertEqual(densityShape?.asCode?.conceptCode.codeValue, "129734002")
-        XCTAssertNil(impressions[1].contentItems.first { $0.conceptName?.codeValue == "107644003" })
+        XCTAssertNil(descendants(impressions[1].contentItems).first { $0.conceptName?.codeValue == "107644003" })
     }
 
     func testCertaintyAndRenderingIntent() throws {
@@ -547,13 +572,13 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         let finding = CADFinding(type: .mass, probability: 0.5, location: .point2D(x: 1, y: 1, imageReference: imageRef),
                                  renderingIntent: .notForPresentation, certainty: 0.9)
         let document = try createBasicBuilder().addFinding(finding).build()
-        let impression = try XCTUnwrap(document.rootContent.contentItems[3].asContainer)
+        let impression = try XCTUnwrap(impressions(document).first)
         // TID 4003 row 2 and TID 4006 row 2 carry the intent (CID 6034)
-        let intents = impression.contentItems.filter { $0.conceptName?.codeValue == "111056" }
+        let intents = descendants(impression.contentItems).filter { $0.conceptName?.codeValue == "111056" }
         XCTAssertEqual(intents.count, 2)
         XCTAssertTrue(intents.allSatisfy { $0.asCode?.conceptCode.codeValue == "111152" && $0.relationshipType == .hasConceptMod })
         // TID 4006 row 6: HAS PROPERTIES NUM (111012, DCM, "Certainty of Finding"), %
-        let certainty = try XCTUnwrap(impression.contentItems.first { $0.conceptName?.codeValue == "111012" })
+        let certainty = try XCTUnwrap(descendants(impression.contentItems).first { $0.conceptName?.codeValue == "111012" })
         XCTAssertEqual(certainty.relationshipType, .hasProperties)
         XCTAssertEqual(certainty.asNumeric?.value ?? 0, 90, accuracy: 0.0001)
         XCTAssertEqual(certainty.asNumeric?.measurementUnits?.codeValue, "%")
@@ -566,9 +591,9 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         let document = try createBasicBuilder()
             .addFinding(type: .custom(nonLesion), probability: 0.5, location: .point2D(x: 1, y: 1, imageReference: imageRef))
             .build()
-        let impression = try XCTUnwrap(document.rootContent.contentItems[3].asContainer)
-        XCTAssertNil(impression.contentItems.first { $0.conceptName?.codeValue == "111047" })
-        XCTAssertNotNil(impression.contentItems.first { $0.conceptName?.codeValue == "111010" })
+        let impression = try XCTUnwrap(impressions(document).first)
+        XCTAssertNil(descendants(impression.contentItems).first { $0.conceptName?.codeValue == "111047" })
+        XCTAssertNotNil(descendants(impression.contentItems).first { $0.conceptName?.codeValue == "111010" })
     }
 
     func testImageLibraryEntryAcquisitionContext() throws {
@@ -588,21 +613,25 @@ final class MammographyCADSRBuilderTests: XCTestCase {
             .addFinding(type: .mass, probability: 0.5, location: .point2D(x: 1, y: 1, imageReference: imageRef))
             .build()
         let library = try XCTUnwrap(document.rootContent.contentItems[1].asContainer)
-        let rows = library.contentItems
-        XCTAssertEqual(rows.count, 12, "\(rows)")
-        assertRow(rows[0], .contains, .image, nil)
-        assertRow(rows[1], .hasAcqContext, .code, "111027")
-        assertRow(rows[2], .hasAcqContext, .code, "111031")
-        assertRow(rows[3], .hasConceptMod, .code, "111032")
-        assertRow(rows[4], .hasAcqContext, .text, "111044")
-        assertRow(rows[5], .hasAcqContext, .text, "111043")
-        assertRow(rows[6], .hasAcqContext, .date, "111060")
-        assertRow(rows[7], .hasAcqContext, .time, "111061")
-        assertRow(rows[8], .hasAcqContext, .date, "111018")
-        assertRow(rows[9], .hasAcqContext, .time, "111019")
-        assertRow(rows[10], .hasAcqContext, .num, "111026")
-        XCTAssertEqual(rows[10].asNumeric?.measurementUnits?.codeValue, "mm")
-        assertRow(rows[11], .hasAcqContext, .num, "111066")
+        // Row 1: the IMAGE; rows 2-12 (">") nested in its Content Sequence; row 4 (">>")
+        // nested in the row 3 Image View CODE
+        XCTAssertEqual(library.contentItems.count, 1)
+        assertRow(library.contentItems[0], .contains, .image, nil)
+        let rows = library.contentItems[0].contentItems
+        XCTAssertEqual(rows.count, 10, "\(rows)")
+        assertRow(rows[0], .hasAcqContext, .code, "111027")
+        assertRow(rows[1], .hasAcqContext, .code, "111031")
+        XCTAssertEqual(rows[1].contentItems.count, 1)
+        assertRow(rows[1].contentItems[0], .hasConceptMod, .code, "111032")
+        assertRow(rows[2], .hasAcqContext, .text, "111044")
+        assertRow(rows[3], .hasAcqContext, .text, "111043")
+        assertRow(rows[4], .hasAcqContext, .date, "111060")
+        assertRow(rows[5], .hasAcqContext, .time, "111061")
+        assertRow(rows[6], .hasAcqContext, .date, "111018")
+        assertRow(rows[7], .hasAcqContext, .time, "111019")
+        assertRow(rows[8], .hasAcqContext, .num, "111026")
+        XCTAssertEqual(rows[8].asNumeric?.measurementUnits?.codeValue, "mm")
+        assertRow(rows[9], .hasAcqContext, .num, "111066")
     }
 
     func testFailedDetectionAndAnalysisContainers() throws {
@@ -624,16 +653,22 @@ final class MammographyCADSRBuilderTests: XCTestCase {
 
         let items = try builder.build().rootContent.contentItems
         let concepts = items.map { $0.conceptName?.codeValue }
-        XCTAssertEqual(concepts, ["121049", "111028", "111017", "111064", "111063", "111025", "111065", "111062"])
+        XCTAssertEqual(concepts, ["121049", "111028", "111017", "111064", "111065"])
         XCTAssertEqual(items[2].asCode?.conceptCode.codeValue, "111243")
         XCTAssertEqual(items[3].asCode?.conceptCode.codeValue, "111223")
-        XCTAssertEqual(items[4].asContainer?.contentItems[0].asCode?.conceptCode, FindingType.mass.concept)
-        XCTAssertEqual(items[5].asContainer?.contentItems[0].asCode?.conceptCode, FindingType.calcification.concept)
-        let analyses = try XCTUnwrap(items[7].asContainer)
+        // TID 4000 rows 7 and 9 (">>" INFERRED FROM TID 4015 / TID 4016), nested in the
+        // Summary of Detections / Summary of Analyses CODEs
+        XCTAssertEqual(items[3].contentItems.map { $0.conceptName?.codeValue }, ["111063", "111025"])
+        XCTAssertTrue(items[3].contentItems.allSatisfy { $0.relationshipType == .inferredFrom })
+        XCTAssertEqual(items[3].contentItems[0].asContainer?.contentItems[0].asCode?.conceptCode, FindingType.mass.concept)
+        XCTAssertEqual(items[3].contentItems[1].asContainer?.contentItems[0].asCode?.conceptCode, FindingType.calcification.concept)
+        XCTAssertEqual(items[4].contentItems.map { $0.conceptName?.codeValue }, ["111062"])
+        let analyses = try XCTUnwrap(items[4].contentItems[0].asContainer)
         assertRow(analyses.contentItems[0], .contains, .code, "111004")
         XCTAssertEqual(analyses.contentItems[0].asCode?.conceptCode.codeValue, "133887000")
-        // TID 4018 row 5: HAS PROPERTIES UIDREF (112002, DCM, "Series Instance UID")
-        let uidref = try XCTUnwrap(analyses.contentItems.first { $0.valueType == .uidref })
+        // TID 4018 row 5 (">"): HAS PROPERTIES UIDREF (112002, DCM, "Series Instance UID"),
+        // nested in the row 1 Analysis Performed CODE
+        let uidref = try XCTUnwrap(analyses.contentItems[0].contentItems.first { $0.valueType == .uidref })
         assertRow(uidref, .hasProperties, .uidref, "112002")
     }
 
@@ -647,7 +682,7 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         func walk(_ items: [AnyContentItem]) {
             for item in items {
                 valueTypes.insert(item.valueType)
-                if let c = item.asContainer { walk(c.contentItems) }
+                walk(item.contentItems)
             }
         }
         walk(document.rootContent.contentItems)
@@ -666,7 +701,7 @@ final class MammographyCADSRBuilderTests: XCTestCase {
         let document = try builder.build()
         
         // One (111034, DCM) container per finding (TID 4001 row 3, 1-n)
-        let impressions = document.rootContent.contentItems.filter { $0.conceptName?.codeValue == "111034" }
+        let impressions = impressions(document)
         XCTAssertEqual(impressions.count, 3)
         // One Detection Performed per distinct finding type (TID 4015 row 2, 1-n)
         XCTAssertEqual(builder.effectiveDetectionsPerformed.count, 3)

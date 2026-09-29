@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — SR Document Series / General Module attributes per PS3.3 2026a Tables C.17-1 and C.17-2; Code Sequence Macro reading (one of Code Value / Long Code Value / URN Code Value, Coding Scheme Designator 1C) per Table 8.8-1a; TABLE cells per Table C.18.10-1; SCOORD3D (3006,0024) per Table C.18.9-1; content module tags per PS3.6 Table 6-1; the NUM qualifier gap is recorded
+// NEMA-verified: 2026a, checked 2026-09-29 — SR Document Series / General Module attributes per PS3.3 2026a Tables C.17-1 and C.17-2; Code Sequence Macro reading (one of Code Value / Long Code Value / URN Code Value, Coding Scheme Designator 1C) per Table 8.8-1a; TABLE cells per Table C.18.10-1; SCOORD3D (3006,0024) per Table C.18.9-1; content module tags per PS3.6 Table 6-1; the NUM qualifier gap is recorded; Content Sequence (0040,A730) read under every value type per Table C.17-6 (D31)
 /// DICOM Structured Reporting Document Parser
 ///
 /// Parses DICOM SR data sets into the content item tree model.
@@ -234,6 +234,29 @@ public struct SRDocumentParser: Sendable {
         let observationUID = item.string(for: .observationUID)
         
         // Parse based on value type
+        guard let parsed = try parseValue(of: valueType, from: item, conceptName: conceptName, relationshipType: relationshipType, observationDateTime: observationDateTime, observationUID: observationUID, depth: depth) else {
+            return nil
+        }
+
+        // Content Sequence (0040,A730) of a non-CONTAINER item: PS3.3 Table C.17-6 gives
+        // every content item one, so children under a CODE, NUM, IMAGE, SCOORD, ... item are
+        // read as its children. CONTAINER reads its own in parseContainerContentItem.
+        if valueType != .container, let contentSequence = item[.contentSequence]?.sequenceItems, !contentSequence.isEmpty {
+            return parsed.withContentItems(try parseContentSequence(contentSequence, depth: depth + 1))
+        }
+        return parsed
+    }
+
+    /// Parses the value of a content item of the given value type
+    private func parseValue(
+        of valueType: ContentItemValueType,
+        from item: SequenceItem,
+        conceptName: CodedConcept?,
+        relationshipType: RelationshipType?,
+        observationDateTime: String?,
+        observationUID: String?,
+        depth: Int
+    ) throws -> AnyContentItem? {
         switch valueType {
         case .text:
             return try parseTextContentItem(from: item, conceptName: conceptName, relationshipType: relationshipType, observationDateTime: observationDateTime, observationUID: observationUID)

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — SR Document Series Module per PS3.3 2026a Table C.17-1 (Modality SR, Table C.17.6-1 KO; Referenced PPS Sequence Type 2), SR Document General Module per Table C.17-2 (Type 1 Instance Number, Completion/Verification Flag, Content Date/Time; Performed Procedure Code Sequence Type 2), Code Sequence Macro per Table 8.8-1a (exactly one of Code Value / Long Code Value / URN Code Value), TABLE cells per Table C.18.10-1 (IS or SV integer cells), SCOORD3D (3006,0024) per Table C.18.9-1
+// NEMA-verified: 2026a, checked 2026-09-29 — SR Document Series Module per PS3.3 2026a Table C.17-1 (Modality SR, Table C.17.6-1 KO; Referenced PPS Sequence Type 2), SR Document General Module per Table C.17-2 (Type 1 Instance Number, Completion/Verification Flag, Content Date/Time; Performed Procedure Code Sequence Type 2), Code Sequence Macro per Table 8.8-1a (exactly one of Code Value / Long Code Value / URN Code Value), TABLE cells per Table C.18.10-1 (IS or SV integer cells), SCOORD3D (3006,0024) per Table C.18.9-1; Content Sequence (0040,A730) nested in every value type per Table C.17-6 (D31)
 /// DICOM Structured Reporting Document Serializer
 ///
 /// Converts SRDocument objects to DICOM DataSet format for storage.
@@ -494,7 +494,15 @@ public struct SRDocumentSerializer: Sendable {
         
         // Value type-specific elements
         try addValueTypeSpecificElements(to: &elements, item: item)
-        
+
+        // Content Sequence (0040,A730) of a non-CONTAINER item: the Document Relationship
+        // Macro (PS3.3 Table C.17-6) applies to every content item, so children of a CODE,
+        // NUM, IMAGE, SCOORD, ... item are nested inside it (Type 1C: present only when the
+        // item has relationships). CONTAINER writes its own in addContainerElements.
+        if !item.isContainer, !item.contentItems.isEmpty {
+            elements.append(try createContentSequenceElement(items: item.contentItems))
+        }
+
         return SequenceItem(elements: elements)
     }
     

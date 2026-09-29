@@ -537,6 +537,8 @@ let package = Package(
                 "CompressionManagerXYBTests.swift",
                 "StructuredReporting/SpatialCoordinatesClosedPolylineTests.swift",
                 "StructuredReporting/CADSRBuilderValueTypeTests.swift",
+                // PS3.3 Table C.17-6 Content Sequence under every SR value type (D31, 2026-09-29).
+                "StructuredReporting/SRNestedContentItemTests.swift",
                 "AI/AIInferenceResultTests.swift",
                 "EncapsulatedDocument/EncapsulatedDocumentTests.swift",
                 "SecondaryCapture/SecondaryCaptureTests.swift",

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — reads the content tree per PS3.16 2026a Tables TID 1500, TID 1204, TID 1600/1601/1602, TID 1501 (rows 2, 3, 3b, 6, 11) and tolerates the pre-2026-09-29 flat placements (images directly under Image Library, Country of Language beside the language item); concept codes per Table D-1
+// NEMA-verified: 2026a, checked 2026-09-29 — reads the content tree per PS3.16 2026a Tables TID 1500, TID 1204, TID 1600/1601/1602, TID 1501 (rows 2, 3, 3b, 6, 11) and tolerates the pre-2026-09-29 flat placements (images directly under Image Library, Country of Language beside the language item); reads TID 1204 row 2 nested under row 1 per PS3.3 Table C.17-6 (D31), and TID 1501 row 7 is not taken for an evaluation nested or beside the Finding Site; concept codes per Table D-1
 /// Measurement Report Extraction API
 ///
 /// Provides high-level extraction of TID 1500 Measurement Report data from SR documents.
@@ -119,8 +119,9 @@ public struct MeasurementReport: Sendable, Equatable {
     }
 
     /// TID 1500 row 2 → TID 1204: row 1 (121049, DCM) HAS CONCEPT MOD CODE at the root; row 2
-    /// (121046, DCM) is its child. DICOMCore cannot nest under a CODE item, so the country is
-    /// also accepted as a root-level sibling (what `MeasurementReportBuilder` writes).
+    /// (121046, DCM) is its child, in the language item's Content Sequence (PS3.3 Table
+    /// C.17-6). A root-level sibling, as `MeasurementReportBuilder` wrote it before
+    /// 2026-09-29 (D31), is accepted as well.
     private static func extractLanguage(from container: ContainerContentItem) -> (CodedConcept?, CodedConcept?) {
         var language: CodedConcept?
         var country: CodedConcept?
@@ -128,6 +129,10 @@ public struct MeasurementReport: Sendable, Equatable {
             guard let codeItem = item.asCode, let concept = codeItem.conceptName else { continue }
             if concept.codeValue == "121049", language == nil {
                 language = codeItem.conceptCode
+                if country == nil {
+                    country = codeItem.contentItems.lazy.compactMap { $0.asCode }
+                        .first { $0.conceptName?.codeValue == "121046" }?.conceptCode
+                }
             } else if concept.codeValue == "121046", country == nil {
                 country = codeItem.conceptCode
             }

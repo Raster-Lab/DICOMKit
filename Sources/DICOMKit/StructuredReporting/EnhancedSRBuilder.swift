@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — measurement concepts are the SCT codes of PS3.16 2026a CID 7470-7472 and (126010, DCM, Imaging Measurements)
+// NEMA-verified: 2026a, checked 2026-09-29 — measurement concepts are the SCT codes of PS3.16 2026a CID 7470-7472 and (126010, DCM, Imaging Measurements); validation recurses into the Content Sequence (0040,A730) of every value type per PS3.3 2026a Table C.17-6 (D31)
 /// Enhanced SR Document Builder
 ///
 /// Provides a specialized fluent API for creating DICOM Enhanced SR documents.
@@ -865,10 +865,9 @@ public struct EnhancedSRBuilder: Sendable {
                 throw BuildError.unsupportedValueType(valueType: item.valueType)
             }
             
-            // Recursively validate container children
-            if let container = item.asContainer {
-                try validateValueTypes(items: container.contentItems)
-            }
+            // Recursively validate children: a CONTAINER's, and the Content Sequence
+            // any other value type may carry (PS3.3 Table C.17-6)
+            try validateValueTypes(items: item.contentItems)
         }
     }
 }

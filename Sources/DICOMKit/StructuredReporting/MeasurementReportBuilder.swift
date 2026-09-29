@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — content tree rows (relationship, value type, concept name, nesting) per PS3.16 2026a Tables TID 1500, TID 1204, TID 1600/1601/1602, TID 1501, TID 1502 and TID 300; CID 7021 titles (126000-126003) per Table CID 7021; concept meanings per Table D-1. Rows that nest under a non-CONTAINER item (TID 1204 row 2, TID 1501 rows 7-8 and 10d, TID 320) cannot be modelled by DICOMCore and are documented at each site.
+// NEMA-verified: 2026a, checked 2026-09-29 — content tree rows (relationship, value type, concept name, nesting) per PS3.16 2026a Tables TID 1500, TID 1204, TID 1600/1601/1602, TID 1501, TID 1502 and TID 300; TID 1204 row 2 and TID 1501 row 7 nested in the parent CODE's Content Sequence per PS3.3 Table C.17-6 (D31); CID 7021 titles (126000-126003) per Table CID 7021; concept meanings per Table D-1. TID 1501 row 8, row 10d and TID 320 under a NUM have no builder input (documented at each site).
 /// TID 1500 Measurement Report Builder
 ///
 /// Provides a specialized fluent API for creating DICOM TID 1500 Measurement Report
@@ -508,25 +508,24 @@ public struct MeasurementReportBuilder: Sendable {
         // TID 1204 row 1: HAS CONCEPT MOD CODE (121049, DCM, "Language of Content Item and
         // Descendants").
         if let language = languageOfContent {
-            rootContentItems.append(AnyContentItem(CodeContentItem(
-                conceptName: CodedConcept.languageOfContentItemAndDescendants,
-                conceptCode: language,
-                relationshipType: .hasConceptMod
-            )))
-
             // TID 1204 row 2: ">" HAS CONCEPT MOD CODE (121046, DCM, "Country of Language"),
-            // i.e. a child of the language CODE item. DICOMCore's CodeContentItem carries no
-            // children, so the country is written as the next root-level HAS CONCEPT MOD item;
-            // TID 1500 is Extensible, so the extra root row is permitted, but readers that
-            // look for it under the language item will not find it. `MeasurementReport`
-            // reads both placements.
+            // a child of the language CODE item, in its Content Sequence (PS3.3 Table C.17-6).
+            // Until 2026-09-29 (D31) it was written as the next root-level item;
+            // `MeasurementReport` reads both placements.
+            var languageChildren: [AnyContentItem] = []
             if let country = countryOfLanguage {
-                rootContentItems.append(AnyContentItem(CodeContentItem(
+                languageChildren.append(AnyContentItem(CodeContentItem(
                     conceptName: CodedConcept.countryOfLanguage,
                     conceptCode: country,
                     relationshipType: .hasConceptMod
                 )))
             }
+            rootContentItems.append(AnyContentItem(CodeContentItem(
+                conceptName: CodedConcept.languageOfContentItemAndDescendants,
+                conceptCode: language,
+                relationshipType: .hasConceptMod,
+                contentItems: languageChildren
+            )))
         }
 
         // TID 1500 row 4: HAS CONCEPT MOD CODE (121058, DCM, "Procedure reported"), 1-n
@@ -669,9 +668,9 @@ public struct MeasurementReportBuilder: Sendable {
     /// - row 4: ">>" CONTAINS, INCLUDE TID 1601 (row 1: IMAGE), 1-n.
     ///
     /// Entries that share the same Modality / Target Region / Image Laterality are placed
-    /// in one group and the descriptors are written once at group level (TID 1600 row 3).
-    /// TID 1601 row 2 (descriptors as HAS ACQ CONTEXT children of the IMAGE item) cannot be
-    /// modelled because DICOMCore's ImageContentItem carries no children.
+    /// in one group and the descriptors are written once at group level (TID 1600 row 3),
+    /// so TID 1601 row 2 (the same descriptors as HAS ACQ CONTEXT children of each IMAGE,
+    /// U) is not used.
     private func buildImageLibrary() -> ContainerContentItem {
         struct Descriptors: Hashable {
             let modality: CodedConcept?
@@ -743,8 +742,8 @@ public struct MeasurementReportBuilder: Sendable {
     /// - 4: HAS OBS CONTEXT, INCLUDE TID 1502 (row 3: TEXT (C2348792, UMLS, "Time Point"));
     /// - 6: HAS CONCEPT MOD CODE (363698007, SCT, "Finding Site"), independent of row 3b;
     /// - 7: ">>" HAS CONCEPT MOD CODE (272741003, SCT, "Laterality") — a child of the
-    ///   Finding Site CODE item; DICOMCore's CodeContentItem carries no children, so the
-    ///   laterality is written as the next HAS CONCEPT MOD item of the group;
+    ///   Finding Site CODE item, in its Content Sequence (PS3.3 Table C.17-6). Until
+    ///   2026-09-29 (D31) it was written as the next HAS CONCEPT MOD item of the group;
     /// - 10, 10b-10e, 11, 12: the group's `contents` (see `MeasurementGroupContent`).
     private func buildMeasurementGroupItems() -> [AnyContentItem] {
         measurementGroups.map { group in
@@ -791,21 +790,22 @@ public struct MeasurementReportBuilder: Sendable {
                 )))
             }
 
-            // Row 6 (and row 7, flattened — see the doc comment)
+            // Row 6, with row 7 nested under it
             if let findingSite = group.findingSite {
-                groupItems.append(AnyContentItem(CodeContentItem(
-                    conceptName: Self.findingSiteConcept,
-                    conceptCode: findingSite,
-                    relationshipType: .hasConceptMod
-                )))
-
+                var siteChildren: [AnyContentItem] = []
                 if let laterality = group.laterality {
-                    groupItems.append(AnyContentItem(CodeContentItem(
+                    siteChildren.append(AnyContentItem(CodeContentItem(
                         conceptName: Self.lateralityConcept,
                         conceptCode: laterality,
                         relationshipType: .hasConceptMod
                     )))
                 }
+                groupItems.append(AnyContentItem(CodeContentItem(
+                    conceptName: Self.findingSiteConcept,
+                    conceptCode: findingSite,
+                    relationshipType: .hasConceptMod,
+                    contentItems: siteChildren
+                )))
             }
 
             // Rows 10-12
@@ -1003,13 +1003,15 @@ public enum MeasurementGroupContent: Sendable {
     /// Image reference: PS3.16 TID 1501 row 10b, ">" CONTAINS IMAGE ($ImagePurpose), a
     /// direct child of the Measurement Group. Until 2026-09-29 this was written with
     /// INFERRED FROM, a relationship TID 1501 does not define at group level (INFERRED FROM
-    /// IMAGE belongs under a NUM item, TID 300 row 1b → TID 301 row 13 → TID 320 row 1,
-    /// which DICOMCore's NumericContentItem cannot hold because it carries no children).
+    /// IMAGE belongs under a NUM item, TID 300 row 1b → TID 301 row 13 → TID 320 row 1;
+    /// DICOMCore can now nest it (`NumericContentItem(..., contentItems:)`), but no case of
+    /// this enum carries a NUM with its source image).
     case imageReference(sopClassUID: String, sopInstanceUID: String, frameNumbers: [Int]?)
 
-    /// 2D spatial coordinates: TID 1501 row 10c, ">" CONTAINS SCOORD. Row 10d requires a
-    /// ">>" SELECTED FROM IMAGE child, which DICOMCore's SpatialCoordinatesContentItem
-    /// cannot hold; callers should add the image with `imageReference` (row 10b).
+    /// 2D spatial coordinates: TID 1501 row 10c, ">" CONTAINS SCOORD. Row 10d (">>"
+    /// SELECTED FROM IMAGE, M) is a child of the SCOORD; this case carries no image, so
+    /// callers add it with `imageReference` (row 10b). No case is added for it here, as a
+    /// new case of this public enum needs the owner's approval.
     case spatialCoordinates(conceptName: CodedConcept?, graphicType: GraphicType, graphicData: [Float])
     
     /// 3D spatial coordinates

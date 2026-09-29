@@ -744,10 +744,11 @@ struct MeasurementReportTID1500StructureTests {
         #expect(language.conceptName?.codeMeaning == "Language of Content Item and Descendants")
         #expect(language.asCode?.conceptCode.codeValue == "en")
 
-        // TID 1204 row 2 nests under the language item; DICOMCore cannot express that, so the
-        // country follows the language item as a root-level HAS CONCEPT MOD CODE (121046, DCM).
-        let languageIndex = try #require(items.firstIndex { $0.conceptName?.codeValue == "121049" })
-        let country = items[languageIndex + 1]
+        // TID 1204 row 2 (">"): HAS CONCEPT MOD CODE (121046, DCM), nested in the language
+        // item's Content Sequence (PS3.3 Table C.17-6), not a root-level sibling
+        #expect(!items.contains { $0.conceptName?.codeValue == "121046" })
+        #expect(language.contentItems.count == 1)
+        let country = try #require(language.contentItems.first)
         #expect(country.conceptName?.codeValue == "121046")
         #expect(country.conceptName?.codeMeaning == "Country of Language")
         #expect(country.valueType == .code)
@@ -827,8 +828,7 @@ struct MeasurementReportTID1500StructureTests {
             (.hasObsContext, .text, "112039"),        // 2  Tracking Identifier
             (.hasObsContext, .uidref, "112040"),      // 3  Tracking Unique Identifier
             (.hasObsContext, .text, "C2348792"),      // 4  → TID 1502 row 3 Time Point
-            (.hasConceptMod, .code, "363698007"),     // 6  Finding Site
-            (.hasConceptMod, .code, "272741003"),     // 7  Laterality (flattened, see builder)
+            (.hasConceptMod, .code, "363698007"),     // 6  Finding Site (row 7 nested in it)
             (.contains, .num, "103339001"),           // 10 → TID 300 row 1 NUM
             (.contains, .image, nil),                 // 10b IMAGE
             (.contains, .code, "C0034375"),           // 11 CODE $QualType
@@ -848,7 +848,15 @@ struct MeasurementReportTID1500StructureTests {
         #expect(rows[1].conceptName?.codeMeaning == "Tracking Identifier")
         #expect(rows[2].conceptName?.codeMeaning == "Tracking Unique Identifier")
         #expect(rows[4].conceptName == CodedConcept(codeValue: "363698007", codingSchemeDesignator: "SCT", codeMeaning: "Finding Site"))
-        #expect(rows[5].conceptName == CodedConcept(codeValue: "272741003", codingSchemeDesignator: "SCT", codeMeaning: "Laterality"))
+        // Row 7 (">>"): HAS CONCEPT MOD CODE (272741003, SCT, "Laterality"), nested in the
+        // Finding Site CODE's Content Sequence (PS3.3 Table C.17-6)
+        #expect(!rows.contains { $0.conceptName?.codeValue == "272741003" })
+        let laterality = try #require(rows[4].contentItems.first)
+        #expect(rows[4].contentItems.count == 1)
+        #expect(laterality.relationshipType == .hasConceptMod)
+        #expect(laterality.valueType == .code)
+        #expect(laterality.conceptName == CodedConcept(codeValue: "272741003", codingSchemeDesignator: "SCT", codeMeaning: "Laterality"))
+        #expect(laterality.asCode?.conceptCode.codeValue == "7771000")
     }
 
     @Test("TID 1501 row 3b: CONTAINS CODE (121071, DCM, Finding)")
@@ -884,7 +892,7 @@ struct MeasurementReportTID1500StructureTests {
     func testRootRowOrder() throws {
         let items = try buildFullReport().rootContent.contentItems
         let order = items.map { $0.conceptName?.codeValue }
-        #expect(order == ["121049", "121046", "121058", "111028", "126010", "C0034375"])
+        #expect(order == ["121049", "121058", "111028", "126010", "C0034375"])
     }
 
     @Test("Round trip through the serializer and parser keeps the TID 1500 structure and reads back the extractor fields")
@@ -926,6 +934,24 @@ struct MeasurementReportTID1500StructureTests {
         let document = SRDocument(sopClassUID: SRDocumentType.comprehensiveSR.sopClassUID, sopInstanceUID: "1.2.3", rootContent: root)
         let report = try MeasurementReport.extract(from: document)
         #expect(report.imageLibraryEntries.map(\.sopReference.sopInstanceUID) == ["9.9.9"])
+    }
+
+    @Test("Extractor tolerates the pre-D31 Country of Language written beside the language item")
+    func testExtractorReadsSiblingCountryOfLanguage() throws {
+        // Before 2026-09-29 (D31) TID 1204 row 2 was written as the root-level sibling after row 1
+        let root = ContainerContentItem(
+            conceptName: MeasurementReportDocumentTitle.imagingMeasurementReport,
+            continuityOfContent: .separate,
+            contentItems: [
+                AnyContentItem(CodeContentItem(conceptName: .languageOfContentItemAndDescendants,
+                                               conceptCode: code("en", "RFC5646", "English"), relationshipType: .hasConceptMod)),
+                AnyContentItem(CodeContentItem(conceptName: .countryOfLanguage,
+                                               conceptCode: code("US", "ISO3166_1", "United States"), relationshipType: .hasConceptMod)),
+            ])
+        let document = SRDocument(sopClassUID: SRDocumentType.comprehensiveSR.sopClassUID, sopInstanceUID: "1.2.3", rootContent: root)
+        let report = try MeasurementReport.extract(from: document)
+        #expect(report.languageOfContent?.codeValue == "en")
+        #expect(report.countryOfLanguage?.codeValue == "US")
     }
 }
 

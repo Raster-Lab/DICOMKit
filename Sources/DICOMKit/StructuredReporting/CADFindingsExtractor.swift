@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — reads the TID 4000/4100 trees the builders write (TID 1204, 4020, 4001/4101, 4003, 4006/4104, 4019, 4021/4107, 4015-4018 concepts of PS3.16 2026a, flattened as CADSRNode documents) and the layouts written before the check
+// NEMA-verified: 2026a, checked 2026-09-29 — reads the TID 4000/4100 trees the builders write (TID 1204, 4020, 4001/4101, 4003, 4006/4104, 4019, 4021/4107, 4015-4018 concepts of PS3.16 2026a) with children nested in the Content Sequence of CODE/IMAGE/SCOORD items per PS3.3 Table C.17-6 (D31), the same tree flattened into following siblings (written before D31), and the layouts written before the check
 /// CAD Findings Extraction API
 ///
 /// Provides high-level extraction of Computer-Aided Detection (CAD) findings from
@@ -33,12 +33,17 @@ import DICOMCore
 /// ```
 ///
 /// ## Layouts read
-/// The builders emit the template tree with the children of CODE/IMAGE/SCOORD nodes
-/// flattened into the siblings that follow them (see ``MammographyCADSRBuilder``). A finding
-/// therefore starts at a CODE (111059, DCM, "Single Image Finding") and takes every following
-/// sibling that is not a CONTAINS-related item (the next 111059 CODE starts the next finding).
-/// Documents written before the 2026a check, where each finding was a CONTAINER of
-/// CONTAINS items, are read as well.
+/// - The template tree with the children of CODE/IMAGE/SCOORD items nested in their Content
+///   Sequence (PS3.3 Table C.17-6), as the builders write it since 2026-09-29 (D31): a
+///   finding is a CODE (111059, DCM, "Single Image Finding") and its descendants (TID 4006 /
+///   TID 4104 rows 2-18), found wherever it hangs, e.g. INFERRED FROM the TID 4001/4101
+///   (111017, DCM) CODE.
+/// - The same tree written by earlier versions with those children flattened into the
+///   siblings that follow their parent: a finding starts at a 111059 CODE without children
+///   and takes every following sibling that is not a CONTAINS-related item (the next 111059
+///   CODE starts the next finding).
+/// - Documents written before the 2026a check, where each finding was a CONTAINER of
+///   CONTAINS items.
 public struct CADFindings: Sendable, Equatable {
 
     // MARK: - Document Information
@@ -172,25 +177,33 @@ public struct CADFindings: Sendable, Equatable {
 
     // MARK: - Private Extraction Helpers
 
-    /// Every CODE item with the given concept name, depth first
+    /// Every CODE item with the given concept name, depth first through the children of every
+    /// item (CONTAINER contents and the Content Sequence of other value types)
     private static func collectCodes(named code: String, in container: ContainerContentItem) -> [CodedConcept] {
+        collectCodes(named: code, in: container.contentItems)
+    }
+
+    private static func collectCodes(named code: String, in items: [AnyContentItem]) -> [CodedConcept] {
         var result: [CodedConcept] = []
-        for item in container.contentItems {
+        for item in items {
             if let codeItem = item.asCode, codeItem.conceptName?.codeValue == code {
                 result.append(codeItem.conceptCode)
-            } else if let child = item.asContainer {
-                result.append(contentsOf: collectCodes(named: code, in: child))
             }
+            result.append(contentsOf: collectCodes(named: code, in: item.contentItems))
         }
         return result
     }
 
     /// The first TEXT item with the given concept name, depth first
     private static func firstText(named codes: Set<String>, in container: ContainerContentItem) -> String? {
-        for item in container.contentItems {
+        firstText(named: codes, in: container.contentItems)
+    }
+
+    private static func firstText(named codes: Set<String>, in items: [AnyContentItem]) -> String? {
+        for item in items {
             if let textItem = item.asText, codes.contains(textItem.conceptName?.codeValue ?? "") {
                 return textItem.textValue
-            } else if let child = item.asContainer, let found = firstText(named: codes, in: child) {
+            } else if let found = firstText(named: codes, in: item.contentItems) {
                 return found
             }
         }
@@ -215,10 +228,14 @@ public struct CADFindings: Sendable, Equatable {
     }
 
     private static func firstCode(named codes: Set<String>, in container: ContainerContentItem) -> CodedConcept? {
-        for item in container.contentItems {
+        firstCode(named: codes, in: container.contentItems)
+    }
+
+    private static func firstCode(named codes: Set<String>, in items: [AnyContentItem]) -> CodedConcept? {
+        for item in items {
             if let codeItem = item.asCode, codes.contains(codeItem.conceptName?.codeValue ?? "") {
                 return codeItem.conceptCode
-            } else if let child = item.asContainer, let found = firstCode(named: codes, in: child) {
+            } else if let found = firstCode(named: codes, in: item.contentItems) {
                 return found
             }
         }
@@ -257,7 +274,17 @@ public struct CADFindings: Sendable, Equatable {
         return value
     }
 
+    /// The descendants of an item in document order (pre-order), i.e. the sequence of items
+    /// that earlier versions wrote as the siblings following it
+    private static func descendants(of item: AnyContentItem) -> [AnyContentItem] {
+        item.contentItems.flatMap { [$0] + descendants(of: $0) }
+    }
+
     private static func extractFindings(from container: ContainerContentItem) -> [ExtractedCADFinding] {
+        extractFindings(in: container.contentItems)
+    }
+
+    private static func extractFindings(in contentItems: [AnyContentItem]) -> [ExtractedCADFinding] {
         var findings: [ExtractedCADFinding] = []
         var current: [AnyContentItem]? = nil
 
@@ -268,13 +295,19 @@ public struct CADFindings: Sendable, Equatable {
             current = nil
         }
 
-        for item in container.contentItems {
+        for item in contentItems {
             if let codeItem = item.asCode, findingTypeConceptCodes.contains(codeItem.conceptName?.codeValue ?? ""),
                current == nil || codeItem.conceptName?.codeValue == "111059" {
                 // A (111059, DCM) CODE starts a finding; a (121071, DCM) CODE only when none is open
                 // (older files used it for the type and for each characteristic).
                 flush()
-                current = [item]
+                if item.contentItems.isEmpty {
+                    // Written before D31: the finding's rows are the siblings that follow
+                    current = [item]
+                } else if let finding = extractSingleFinding(from: [item] + descendants(of: item), container: nil) {
+                    // TID 4006 / TID 4104 rows 2-18 nested in the CODE's Content Sequence
+                    findings.append(finding)
+                }
             } else if let child = item.asContainer {
                 flush()
                 if child.contentItems.contains(where: { $0.asNumeric.map(isProbability) ?? false }),
@@ -287,16 +320,23 @@ public struct CADFindings: Sendable, Equatable {
                     findings.append(contentsOf: extractFindings(from: child))
                 }
             } else if current != nil, belongsToOpenFinding(item) {
-                current?.append(item)
+                current?.append(contentsOf: [item] + descendants(of: item))
             } else {
                 flush()
+                // Findings nested under a non-CONTAINER item, e.g. INFERRED FROM the TID 4101
+                // (111017, DCM) CODE (row 3), or in the TID 4003 containers INFERRED FROM the
+                // TID 4001 CODE (row 3)
+                if !item.contentItems.isEmpty {
+                    findings.append(contentsOf: extractFindings(in: item.contentItems))
+                }
             }
         }
         flush()
         return findings
     }
 
-    /// Whether a sibling after a Single Image Finding CODE is one of its flattened children:
+    /// Whether a sibling after a Single Image Finding CODE without children is one of the
+    /// children earlier versions flattened after it:
     /// anything not CONTAINS-related (HAS CONCEPT MOD, HAS PROPERTIES, HAS OBS CONTEXT,
     /// SELECTED FROM, INFERRED FROM) or, in the layout written before the 2026a check, a
     /// CONTAINS-related probability NUM, SCOORD, IMAGE or (121071, DCM) CODE.

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Completion, Verification and Preliminary Flag terms match PS3.3 2026a Table C.17-2
+// NEMA-verified: 2026a, checked 2026-09-29 — Completion, Verification and Preliminary Flag terms match PS3.3 2026a Table C.17-2; the tree walk descends into the Content Sequence of every value type (Table C.17-6, D31)
 /// DICOM Structured Reporting Document
 ///
 /// Represents a parsed DICOM SR document with its content tree.
@@ -171,27 +171,24 @@ public struct SRDocument: Sendable, Equatable {
     
     // MARK: - Content Tree Helpers
     
-    /// Collects all content items from the tree (depth-first)
+    /// Collects all content items from the tree (depth-first), including the children of
+    /// non-CONTAINER items (PS3.3 Table C.17-6)
     private func collectAllContentItems(from container: ContainerContentItem) -> [AnyContentItem] {
+        collectAllContentItems(in: container.contentItems)
+    }
+
+    private func collectAllContentItems(in contentItems: [AnyContentItem]) -> [AnyContentItem] {
         var items: [AnyContentItem] = []
-        for item in container.contentItems {
+        for item in contentItems {
             items.append(item)
-            if let nestedContainer = item.asContainer {
-                items.append(contentsOf: collectAllContentItems(from: nestedContainer))
-            }
+            items.append(contentsOf: collectAllContentItems(in: item.contentItems))
         }
         return items
     }
     
     /// Counts all content items in the tree
     private func countContentItems(in container: ContainerContentItem) -> Int {
-        var count = container.contentItems.count
-        for item in container.contentItems {
-            if let nestedContainer = item.asContainer {
-                count += countContentItems(in: nestedContainer)
-            }
-        }
-        return count
+        collectAllContentItems(from: container).count
     }
     
     // MARK: - Content Access Methods

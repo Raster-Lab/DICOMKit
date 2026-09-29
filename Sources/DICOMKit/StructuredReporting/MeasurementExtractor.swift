@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — CID 42 qualifier meanings match PS3.16 2026a; closed POLYLINE handled per PS3.3 C.18.6.1.2; DerivationMethod is library-local
+// NEMA-verified: 2026a, checked 2026-09-29 — CID 42 qualifier meanings match PS3.16 2026a; closed POLYLINE handled per PS3.3 C.18.6.1.2; DerivationMethod is library-local; SCOORD image from its nested SELECTED FROM IMAGE and ROIs from a NUM's nested INFERRED FROM SCOORD per PS3.3 Table C.17-6 and PS3.16 2026a TID 320 rows 3-4 (D31)
 /// Measurement and Coordinate Extraction for DICOM Structured Reporting
 ///
 /// Provides types and APIs for extracting quantitative measurements and
@@ -856,7 +856,7 @@ public struct MeasurementExtractor: Sendable {
             
             // Create ROIs from 2D coordinates
             for item in scoordItems {
-                let imageRef = imageItems.first?.imageReference
+                let imageRef = selectedFromImage(of: item) ?? imageItems.first?.imageReference
                 let measurements = numericItems.map { Measurement(from: $0) }
                 let roi = ROI(
                     conceptName: container.conceptName ?? item.conceptName,
@@ -879,6 +879,22 @@ public struct MeasurementExtractor: Sendable {
             }
         }
         
+        // A NUM INFERRED FROM a SCOORD in its Content Sequence (PS3.16 TID 300 row 1b →
+        // TID 301 row 13 → TID 320 row 3): the SCOORD is the region the value was measured on
+        for numeric in document.findNumericItems() {
+            for child in numeric.contentItems where child.relationshipType == .inferredFrom {
+                guard let scoord = child.asSpatialCoordinates,
+                      !rois.contains(where: { $0.spatialCoordinates?.contentItem == scoord }) else { continue }
+                let imageRef = selectedFromImage(of: scoord)
+                rois.append(ROI(
+                    conceptName: numeric.conceptName ?? scoord.conceptName,
+                    spatialCoordinates: SpatialCoordinates(contentItem: scoord, imageReference: imageRef),
+                    measurements: [Measurement(from: numeric)],
+                    imageReference: imageRef
+                ))
+            }
+        }
+
         // Also check for standalone SCOORD items that might be ROIs
         let standaloneScoords = document.findSpatialCoordinateItems()
         for item in standaloneScoords {
@@ -951,10 +967,20 @@ public struct MeasurementExtractor: Sendable {
     
     /// Tries to find an image reference associated with a spatial coordinate item
     private func findImageReference(near item: SpatialCoordinatesContentItem, in document: SRDocument) -> ImageReference? {
-        // Look for IMAGE items in the same parent container or as siblings
-        // This is a simplified implementation - full implementation would traverse parent chain
+        // The IMAGE the SCOORD is SELECTED FROM, when nested under it; otherwise the first
+        // IMAGE of the document (a simplified fallback that does not traverse the parent chain)
+        if let selected = selectedFromImage(of: item) { return selected }
         let imageItems = document.findImageItems()
         return imageItems.first?.imageReference
+    }
+
+    /// The IMAGE a SCOORD is SELECTED FROM: a child in its Content Sequence (PS3.3 Table
+    /// C.17-6; PS3.16 TID 320 row 4, TID 1501 row 10d, TID 4021/4107 row 2)
+    private func selectedFromImage(of item: SpatialCoordinatesContentItem) -> ImageReference? {
+        item.contentItems.lazy
+            .filter { $0.relationshipType == .selectedFrom }
+            .compactMap { $0.asImage?.imageReference }
+            .first
     }
 }
 

@@ -5,6 +5,7 @@
 /// Reference: PS3.3 Table C.17.3-7 - Value Type Definitions
 ///
 /// NEMA-verified: 2026a, checked 2026-09-25 — each content item type maps to a PS3.3 2026a value macro (C.18.1-C.18.9) or a Table C.17-5 value attribute, and the value types are those of Table C.17.3-7 (TABLE, C.18.10, not modelled: P8). The 15 per-type citations pointed at C.17.3.2.1-C.17.3.2.15, of which only .1-.5 exist and none describes the type; all corrected.
+/// NEMA-verified: 2026a, checked 2026-09-29 — every value type carries `contentItems`, the Content Sequence (0040,A730) that the Document Relationship Macro (PS3.3 2026a Table C.17-6) includes in every content item (D31); only CONTAINER did before.
 
 // MARK: - Text Content Item
 
@@ -17,6 +18,11 @@ public struct TextContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The text value (0040,A160)
     public let textValue: String
@@ -28,13 +34,16 @@ public struct TextContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         textValue: String,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.textValue = textValue
         self.relationshipType = relationshipType
@@ -54,6 +63,11 @@ public struct CodeContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The coded concept value (0040,A168)
     public let conceptCode: CodedConcept
@@ -65,13 +79,16 @@ public struct CodeContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         conceptCode: CodedConcept,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.conceptCode = conceptCode
         self.relationshipType = relationshipType
@@ -91,6 +108,11 @@ public struct NumericContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The numeric value(s) (0040,A30A) as decimal strings
     public let numericValues: [Double]
@@ -112,14 +134,17 @@ public struct NumericContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         value: Double,
         units: CodedConcept? = nil,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.numericValues = [value]
         self.measurementUnits = units
@@ -140,6 +165,7 @@ public struct NumericContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         values: [Double],
@@ -148,8 +174,10 @@ public struct NumericContentItem: ContentItem, Sendable, Equatable, Hashable {
         qualifier: NumericValueQualifier? = nil,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.numericValues = values
         self.measurementUnits = units
@@ -177,6 +205,11 @@ public struct DateContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The date value (0040,A121) in DICOM DA format (YYYYMMDD)
     public let dateValue: String
@@ -188,13 +221,16 @@ public struct DateContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         dateValue: String,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.dateValue = dateValue
         self.relationshipType = relationshipType
@@ -214,6 +250,11 @@ public struct TimeContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The time value (0040,A122) in DICOM TM format (HHMMSS.FFFFFF)
     public let timeValue: String
@@ -225,13 +266,16 @@ public struct TimeContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         timeValue: String,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.timeValue = timeValue
         self.relationshipType = relationshipType
@@ -251,6 +295,11 @@ public struct DateTimeContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The datetime value (0040,A120) in DICOM DT format
     public let dateTimeValue: String
@@ -262,13 +311,16 @@ public struct DateTimeContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         dateTimeValue: String,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.dateTimeValue = dateTimeValue
         self.relationshipType = relationshipType
@@ -288,6 +340,11 @@ public struct PersonNameContentItem: ContentItem, Sendable, Equatable, Hashable 
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The person name value (0040,A123) in DICOM PN format
     public let personName: String
@@ -299,13 +356,16 @@ public struct PersonNameContentItem: ContentItem, Sendable, Equatable, Hashable 
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         personName: String,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.personName = personName
         self.relationshipType = relationshipType
@@ -325,6 +385,11 @@ public struct UIDRefContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The UID value (0040,A124)
     public let uidValue: String
@@ -336,13 +401,16 @@ public struct UIDRefContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         uidValue: String,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.uidValue = uidValue
         self.relationshipType = relationshipType
@@ -362,6 +430,11 @@ public struct CompositeContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The referenced SOP instance
     public let referencedSOPSequence: ReferencedSOP
@@ -373,13 +446,16 @@ public struct CompositeContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         referencedSOPSequence: ReferencedSOP,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.referencedSOPSequence = referencedSOPSequence
         self.relationshipType = relationshipType
@@ -392,8 +468,10 @@ public struct CompositeContentItem: ContentItem, Sendable, Equatable, Hashable {
         conceptName: CodedConcept? = nil,
         sopClassUID: String,
         sopInstanceUID: String,
-        relationshipType: RelationshipType? = nil
+        relationshipType: RelationshipType? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.referencedSOPSequence = ReferencedSOP(
             sopClassUID: sopClassUID,
@@ -416,6 +494,11 @@ public struct ImageContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The image reference
     public let imageReference: ImageReference
@@ -427,13 +510,16 @@ public struct ImageContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         imageReference: ImageReference,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.imageReference = imageReference
         self.relationshipType = relationshipType
@@ -447,8 +533,10 @@ public struct ImageContentItem: ContentItem, Sendable, Equatable, Hashable {
         sopClassUID: String,
         sopInstanceUID: String,
         frameNumbers: [Int]? = nil,
-        relationshipType: RelationshipType? = nil
+        relationshipType: RelationshipType? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.imageReference = ImageReference(
             sopClassUID: sopClassUID,
@@ -472,6 +560,11 @@ public struct WaveformContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The waveform reference
     public let waveformReference: WaveformReference
@@ -483,13 +576,16 @@ public struct WaveformContentItem: ContentItem, Sendable, Equatable, Hashable {
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         waveformReference: WaveformReference,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.waveformReference = waveformReference
         self.relationshipType = relationshipType
@@ -509,6 +605,11 @@ public struct SpatialCoordinatesContentItem: ContentItem, Sendable, Equatable, H
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The graphic type defining the shape
     public let graphicType: GraphicType
@@ -525,14 +626,17 @@ public struct SpatialCoordinatesContentItem: ContentItem, Sendable, Equatable, H
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         graphicType: GraphicType,
         graphicData: [Float],
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.graphicType = graphicType
         self.graphicData = graphicData
@@ -565,6 +669,11 @@ public struct SpatialCoordinates3DContentItem: ContentItem, Sendable, Equatable,
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The graphic type defining the shape
     public let graphicType: GraphicType3D
@@ -585,6 +694,7 @@ public struct SpatialCoordinates3DContentItem: ContentItem, Sendable, Equatable,
     ///   - relationshipType: Relationship to parent
     ///   - observationDateTime: Optional observation date/time
     ///   - observationUID: Optional observation UID
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         graphicType: GraphicType3D,
@@ -592,8 +702,10 @@ public struct SpatialCoordinates3DContentItem: ContentItem, Sendable, Equatable,
         frameOfReferenceUID: String? = nil,
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.graphicType = graphicType
         self.graphicData = graphicData
@@ -627,6 +739,11 @@ public struct TemporalCoordinatesContentItem: ContentItem, Sendable, Equatable, 
     public let relationshipType: RelationshipType?
     public let observationDateTime: String?
     public let observationUID: String?
+
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
     
     /// The temporal range type
     public let temporalRangeType: TemporalRangeType
@@ -646,12 +763,15 @@ public struct TemporalCoordinatesContentItem: ContentItem, Sendable, Equatable, 
     ///   - temporalRangeType: The type of temporal range
     ///   - samplePositions: Sample positions for waveform data
     ///   - relationshipType: Relationship to parent
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         temporalRangeType: TemporalRangeType,
         samplePositions: [UInt32],
-        relationshipType: RelationshipType? = nil
+        relationshipType: RelationshipType? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.temporalRangeType = temporalRangeType
         self.referencedSamplePositions = samplePositions
@@ -668,12 +788,15 @@ public struct TemporalCoordinatesContentItem: ContentItem, Sendable, Equatable, 
     ///   - temporalRangeType: The type of temporal range
     ///   - timeOffsets: Time offsets in seconds
     ///   - relationshipType: Relationship to parent
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         temporalRangeType: TemporalRangeType,
         timeOffsets: [Double],
-        relationshipType: RelationshipType? = nil
+        relationshipType: RelationshipType? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.temporalRangeType = temporalRangeType
         self.referencedSamplePositions = nil
@@ -690,12 +813,15 @@ public struct TemporalCoordinatesContentItem: ContentItem, Sendable, Equatable, 
     ///   - temporalRangeType: The type of temporal range
     ///   - dateTimes: DateTime values in DICOM DT format
     ///   - relationshipType: Relationship to parent
+    ///   - contentItems: Child content items, written as Content Sequence (0040,A730)
     public init(
         conceptName: CodedConcept? = nil,
         temporalRangeType: TemporalRangeType,
         dateTimes: [String],
-        relationshipType: RelationshipType? = nil
+        relationshipType: RelationshipType? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.temporalRangeType = temporalRangeType
         self.referencedSamplePositions = nil
@@ -806,6 +932,11 @@ public struct TableContentItem: ContentItem, Sendable, Equatable, Hashable {
     public let observationDateTime: String?
     public let observationUID: String?
 
+    /// Content Sequence (0040,A730): the items this one is the source of by-value
+    /// relationships to (Document Relationship Macro, PS3.3 Table C.17-6). See
+    /// ``ContentItem/contentItems``.
+    public internal(set) var contentItems: [AnyContentItem] = []
+
     /// Number of Table Rows (0040,A802)
     public let rows: Int
 
@@ -901,8 +1032,10 @@ public struct TableContentItem: ContentItem, Sendable, Equatable, Hashable {
         cells: [TableCell],
         relationshipType: RelationshipType? = nil,
         observationDateTime: String? = nil,
-        observationUID: String? = nil
+        observationUID: String? = nil,
+        contentItems: [AnyContentItem] = []
     ) {
+        self.contentItems = contentItems
         self.conceptName = conceptName
         self.rows = rows
         self.columns = columns

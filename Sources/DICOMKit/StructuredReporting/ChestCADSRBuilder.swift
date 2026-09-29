@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — content tree built row by row from PS3.16 2026a TID 4100, 1204, 4020, 4101, 4104, 4105, 4107, 4015-4019; values from CID 6101, 6102/6104, 6034, 6042, 6047, 6137, 244, 4010, 4011; codes checked in Table D-1; value types per PS3.3 Table A.35.6-2 (no DATETIME). Children of non-CONTAINER nodes are flattened into following siblings (DICOMCore limitation, see CADSRNode). .lesion/.consolidation have no CID 6101/6102 code and are deprecated (99DICOMKIT).
+// NEMA-verified: 2026a, checked 2026-09-29 — content tree built row by row from PS3.16 2026a TID 4100, 1204, 4020, 4101, 4104, 4105, 4107, 4015-4019; values from CID 6101, 6102/6104, 6034, 6042, 6047, 6137, 244, 4010, 4011; codes checked in Table D-1; value types per PS3.3 Table A.35.6-2 (no DATETIME). Children of non-CONTAINER nodes are nested in their Content Sequence per PS3.3 Table C.17-6 (D31, see CADSRNode). .lesion/.consolidation have no CID 6101/6102 code and are deprecated (99DICOMKIT).
 /// Chest CAD SR Document Builder
 ///
 /// Provides a specialized fluent API for creating DICOM Chest Computer-Aided Detection (CAD)
@@ -59,9 +59,10 @@ import DICOMCore
 ///     .build()
 /// ```
 ///
-/// ## Encoding limitation
-/// See ``MammographyCADSRBuilder``: children of CODE, IMAGE and SCOORD nodes are emitted as
-/// the siblings that immediately follow their logical parent, with the template's
+/// ## Nesting
+/// See ``MammographyCADSRBuilder``: children of CODE, IMAGE and SCOORD nodes (e.g. TID 4104
+/// rows 2-18 under the Single Image Finding CODE, TID 4107 row 2 under the Center SCOORD)
+/// are nested in that item's Content Sequence (PS3.3 Table C.17-6), with the template's
 /// relationship type; by-reference rows are written by value.
 ///
 /// ## Supported Content

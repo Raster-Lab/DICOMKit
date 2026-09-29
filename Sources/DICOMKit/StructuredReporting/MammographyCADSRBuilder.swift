@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — content tree built row by row from PS3.16 2026a TID 4000, 1204, 4020, 4001, 4003, 4006, 4011, 4015, 4017, 4016, 4018, 4019, 4021; values from CID 6014/6015, 6034, 6042, 6043, 6047, 6022/6023, 4014, 4015; codes checked in Table D-1; value types per PS3.3 Table A.35.5-2 (no DATETIME). Children of non-CONTAINER nodes are flattened into following siblings (DICOMCore limitation, see CADSRNode).
+// NEMA-verified: 2026a, checked 2026-09-29 — content tree built row by row from PS3.16 2026a TID 4000, 1204, 4020, 4001, 4003, 4006, 4011, 4015, 4017, 4016, 4018, 4019, 4021; values from CID 6014/6015, 6034, 6042, 6043, 6047, 6022/6023, 4014, 4015; codes checked in Table D-1; value types per PS3.3 Table A.35.5-2 (no DATETIME). Children of non-CONTAINER nodes are nested in their Content Sequence per PS3.3 Table C.17-6 (D31, see CADSRNode).
 /// Mammography CAD SR Document Builder
 ///
 /// Provides a specialized fluent API for creating DICOM Mammography Computer-Aided Detection (CAD)
@@ -61,14 +61,13 @@ import DICOMCore
 ///     .build()
 /// ```
 ///
-/// ## Encoding limitation
-/// The DICOMCore content item model (and the SR serializer/parser) only carries child content
-/// items under CONTAINER items. Where a template row hangs children under a CODE, IMAGE or
-/// SCOORD (for example TID 4006 rows 2-8 under the Single Image Finding CODE, or TID 4021 row 2
-/// under the Center SCOORD) this builder emits those children as the immediately following
-/// siblings of their logical parent, carrying the relationship type the template row gives.
-/// ``CADFindings`` reads that flattened form back. By-reference rows (R-SELECTED FROM,
-/// R-INFERRED FROM) are written by value (SELECTED FROM, INFERRED FROM).
+/// ## Nesting
+/// Where a template row hangs children under a CODE, IMAGE or SCOORD (for example TID 4006
+/// rows 2-8 under the Single Image Finding CODE, TID 4020 rows 2-12 under the IMAGE, or
+/// TID 4021 row 2 under the Center SCOORD) the children are written in that item's Content
+/// Sequence (PS3.3 Table C.17-6). Documents written before 2026-09-29 carried them as the
+/// siblings that follow the item; ``CADFindings`` reads both forms. By-reference rows
+/// (R-SELECTED FROM, R-INFERRED FROM) are written by value (SELECTED FROM, INFERRED FROM).
 ///
 /// ## Supported Content
 /// Mammography CAD SR documents support the value types of PS3.3 Table A.35.5-2:
@@ -1279,22 +1278,23 @@ enum CADSRCodes {
 
 /// A node of the logical template tree.
 ///
-/// DICOMCore's content item model (and the SR serializer and parser) carry child content
-/// items only under CONTAINER items. `encode()` therefore emits the children of a
-/// non-CONTAINER node as the siblings that immediately follow it, each keeping the
-/// relationship type its template row gives. Once the model supports child content on
-/// CODE/NUM/IMAGE/SCOORD items, only `encode()` needs to nest them instead.
+/// `encode()` nests the children of every node in its Content Sequence (0040,A730), each
+/// keeping the relationship type its template row gives: the Document Relationship Macro
+/// (PS3.3 Table C.17-6) applies to every content item, so a child row (">") under a CODE,
+/// IMAGE or SCOORD row is a child of that item (e.g. TID 4006 rows 2-8, TID 4021 row 2).
+/// Until 2026-09-29 (D31) the children of a non-CONTAINER node were written as the siblings
+/// that immediately follow it; ``CADFindings`` still reads that form.
 indirect enum CADSRNode {
-    /// A non-container item with its logical children
+    /// A non-container item with its template children
     case leaf(AnyContentItem, children: [CADSRNode])
     /// A CONTAINER item
     case container(conceptName: CodedConcept, relationship: RelationshipType?, templateIdentifier: String? = nil, children: [CADSRNode])
 
-    /// Flattens this node into content items (see the type comment)
+    /// Encodes this node as one content item with its children nested (see the type comment)
     func encode() -> [AnyContentItem] {
         switch self {
         case .leaf(let item, let children):
-            return [item] + children.flatMap { $0.encode() }
+            return [item.addingContentItems(children.flatMap { $0.encode() })]
         case .container:
             return [AnyContentItem(encodeRoot())]
         }

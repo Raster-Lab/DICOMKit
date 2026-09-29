@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — value-type rules delegate to DICOMCore allows(_:), which reproduces PS3.3 2026a Tables A.35.x-2 (D16)
+// NEMA-verified: 2026a, checked 2026-09-29 — value-type rules delegate to DICOMCore allows(_:), which reproduces PS3.3 2026a Tables A.35.x-2 (D16); validation recurses into the Content Sequence (0040,A730) of every value type per PS3.3 2026a Table C.17-6 (D31)
 /// DICOM Structured Reporting Document Builder
 ///
 /// Provides a fluent API for creating valid DICOM SR documents programmatically.
@@ -878,10 +878,9 @@ public struct SRDocumentBuilder: Sendable {
                 throw BuildError.invalidValueType(valueType: item.valueType, documentType: documentType)
             }
             
-            // Recursively validate container children
-            if let container = item.asContainer {
-                try validateValueTypes(items: container.contentItems)
-            }
+            // Recursively validate children: a CONTAINER's, and the Content Sequence
+            // any other value type may carry (PS3.3 Table C.17-6)
+            try validateValueTypes(items: item.contentItems)
         }
     }
 }

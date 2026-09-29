@@ -14,9 +14,9 @@ struct CADSRBuilderValueTypeTests {
     private func walk(_ items: [AnyContentItem], _ visit: (AnyContentItem) -> Void) {
         for item in items {
             visit(item)
-            if let container = item.asContainer {
-                walk(container.contentItems, visit)
-            }
+            // Children of every value type: CONTAINER contents and the Content Sequence of
+            // CODE/IMAGE/SCOORD items (PS3.3 Table C.17-6)
+            walk(item.contentItems, visit)
         }
     }
 
