@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Filter-by Operator and Sorting Direction terms match PS3.3 2026a Table C.23.3-1 where one-to-one; the rest is pending P-HP
 //
 // ImageSetDefinition.swift
 // DICOMKit
@@ -131,13 +132,13 @@ public enum FilterOperator: String, Sendable, Codable {
     case lessThan = "LESS_THAN"
     
     /// Less than or equal
-    case lessThanOrEqual = "LESS_THAN_OR_EQUAL"
-    
+    case lessThanOrEqual = "LESS_OR_EQUAL"
+
     /// Greater than
     case greaterThan = "GREATER_THAN"
-    
+
     /// Greater than or equal
-    case greaterThanOrEqual = "GREATER_THAN_OR_EQUAL"
+    case greaterThanOrEqual = "GREATER_OR_EQUAL"
     
     /// Contains (for string matching)
     case contains = "CONTAINS"
@@ -242,6 +243,6 @@ public enum SortByCategory: String, Sendable, Codable {
 
 /// Sort direction
 public enum SortDirection: String, Sendable, Codable {
-    case ascending = "ASCENDING"
-    case descending = "DESCENDING"
+    case ascending = "INCREASING"
+    case descending = "DECREASING"
 }

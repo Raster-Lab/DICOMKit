@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Selector Attribute value attributes per PS3.3 2026a C.23.4
 //
 //  SelectorAttributeValueCoding.swift
 //  DICOMKit

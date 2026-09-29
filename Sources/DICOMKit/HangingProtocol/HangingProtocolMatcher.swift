@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — matching logic over the ImageSetDefinition terms (P-HP)
 //
 // HangingProtocolMatcher.swift
 // DICOMKit

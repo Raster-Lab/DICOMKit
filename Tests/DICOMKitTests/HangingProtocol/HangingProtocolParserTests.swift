@@ -87,7 +87,7 @@ final class HangingProtocolParserTests: XCTestCase {
     
     func test_parse_protocolLevel_group() throws {
         var dataSet = createMinimalDataSet()
-        dataSet[.hangingProtocolLevel] = DataElement.string(tag: .hangingProtocolLevel, vr: .CS, value: "GROUP")
+        dataSet[.hangingProtocolLevel] = DataElement.string(tag: .hangingProtocolLevel, vr: .CS, value: "USER_GROUP")
         
         let hangingProtocol = try parser.parse(from: dataSet)
         
@@ -339,7 +339,8 @@ final class HangingProtocolParserTests: XCTestCase {
         var displaySetItem = DataSet()
         displaySetItem[.displaySetNumber] = DataElement.uint16(tag: .displaySetNumber, value: 1)
         displaySetItem[.displaySetPatientOrientation] = DataElement.string(tag: .displaySetPatientOrientation, vr: .CS, value: "L\\P")
-        displaySetItem[.showGrayscaleInverted] = DataElement.string(tag: .showGrayscaleInverted, vr: .CS, value: "Y")
+        displaySetItem[.showGrayscaleInverted] = DataElement.string(tag: .showGrayscaleInverted, vr: .CS, value: "YES")
+        // "Y" is what DICOMKit wrote before the Table C.23.3-1 check; it is still read
         displaySetItem[.showImageTrueSizeFlag] = DataElement.string(tag: .showImageTrueSizeFlag, vr: .CS, value: "Y")
         
         dataSet.setSequence([SequenceItem(elements: displaySetItem.allElements)], for: .displaySetsSequence)

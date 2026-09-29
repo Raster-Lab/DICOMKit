@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Hanging Protocol Level terms match PS3.3 2026a Table C.23.1-1 (MANUFACTURER pending P-HP)
 //
 // HangingProtocol.swift
 // DICOMKit
@@ -102,10 +103,10 @@ public enum HangingProtocolLevel: String, Sendable, Codable {
     case site = "SITE"
     
     /// Group-level protocol (applies to department or group)
-    case group = "GROUP"
-    
+    case group = "USER_GROUP"
+
     /// User-level protocol (applies to individual user)
-    case user = "USER"
+    case user = "SINGLE_USER"
 }
 
 // MARK: - Hanging Protocol Environment

@@ -85,14 +85,15 @@ final class HangingProtocolTests: XCTestCase {
     
     func test_hangingProtocolLevel_rawValues() {
         XCTAssertEqual(HangingProtocolLevel.site.rawValue, "SITE")
-        XCTAssertEqual(HangingProtocolLevel.group.rawValue, "GROUP")
-        XCTAssertEqual(HangingProtocolLevel.user.rawValue, "USER")
+        // PS3.3 Table C.23.1-1 Hanging Protocol Level: MANUFACTURER, SITE, USER_GROUP, SINGLE_USER
+        XCTAssertEqual(HangingProtocolLevel.group.rawValue, "USER_GROUP")
+        XCTAssertEqual(HangingProtocolLevel.user.rawValue, "SINGLE_USER")
     }
-    
+
     func test_hangingProtocolLevel_fromString() {
         XCTAssertEqual(HangingProtocolLevel(rawValue: "SITE"), .site)
-        XCTAssertEqual(HangingProtocolLevel(rawValue: "GROUP"), .group)
-        XCTAssertEqual(HangingProtocolLevel(rawValue: "USER"), .user)
+        XCTAssertEqual(HangingProtocolLevel(rawValue: "USER_GROUP"), .group)
+        XCTAssertEqual(HangingProtocolLevel(rawValue: "SINGLE_USER"), .user)
         XCTAssertNil(HangingProtocolLevel(rawValue: "INVALID"))
     }
     

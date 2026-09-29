@@ -227,14 +227,15 @@ final class DisplaySetTests: XCTestCase {
     // MARK: - ThreeDRenderingType Tests
     
     func test_threeDRenderingType_allValues() {
-        XCTAssertEqual(ThreeDRenderingType.volumeRendering.rawValue, "VOLUME_RENDERING")
-        XCTAssertEqual(ThreeDRenderingType.surfaceRendering.rawValue, "SURFACE_RENDERING")
+        // PS3.3 Table C.23.3-1 3D Rendering Type: SURFACE, VOLUME, ...
+        XCTAssertEqual(ThreeDRenderingType.volumeRendering.rawValue, "VOLUME")
+        XCTAssertEqual(ThreeDRenderingType.surfaceRendering.rawValue, "SURFACE")
         XCTAssertEqual(ThreeDRenderingType.mip.rawValue, "MIP")
     }
-    
+
     func test_threeDRenderingType_fromString() {
-        XCTAssertEqual(ThreeDRenderingType(rawValue: "VOLUME_RENDERING"), .volumeRendering)
-        XCTAssertEqual(ThreeDRenderingType(rawValue: "SURFACE_RENDERING"), .surfaceRendering)
+        XCTAssertEqual(ThreeDRenderingType(rawValue: "VOLUME"), .volumeRendering)
+        XCTAssertEqual(ThreeDRenderingType(rawValue: "SURFACE"), .surfaceRendering)
         XCTAssertEqual(ThreeDRenderingType(rawValue: "MIP"), .mip)
         XCTAssertNil(ThreeDRenderingType(rawValue: "INVALID"))
     }

@@ -27,7 +27,7 @@ final class HangingProtocolSerializerTests: XCTestCase {
         let dataSet = try serializer.serialize(protocol: hangingProtocol)
         
         XCTAssertEqual(dataSet.string(for: .hangingProtocolName), "Test Protocol")
-        XCTAssertEqual(dataSet.string(for: .hangingProtocolLevel), "USER")
+        XCTAssertEqual(dataSet.string(for: .hangingProtocolLevel), "SINGLE_USER")   // PS3.3 Table C.23.1-1
         XCTAssertEqual(dataSet.uint16(for: .numberOfScreens), 1)
     }
     
@@ -68,15 +68,15 @@ final class HangingProtocolSerializerTests: XCTestCase {
         
         let dataSet = try serializer.serialize(protocol: hangingProtocol)
         
-        XCTAssertEqual(dataSet.string(for: .hangingProtocolLevel), "GROUP")
+        XCTAssertEqual(dataSet.string(for: .hangingProtocolLevel), "USER_GROUP")
     }
     
     func test_serialize_protocolLevel_user() throws {
         let hangingProtocol = HangingProtocol(name: "Test", level: .user)
-        
+
         let dataSet = try serializer.serialize(protocol: hangingProtocol)
-        
-        XCTAssertEqual(dataSet.string(for: .hangingProtocolLevel), "USER")
+
+        XCTAssertEqual(dataSet.string(for: .hangingProtocolLevel), "SINGLE_USER")
     }
     
     // MARK: - Environment Serialization Tests
@@ -306,9 +306,10 @@ final class HangingProtocolSerializerTests: XCTestCase {
         let displaySetItem = displaySetSequence?[0]
         
         XCTAssertEqual(displaySetItem?.string(for: .displaySetPatientOrientation), "L\\P")
-        XCTAssertEqual(displaySetItem?.string(for: .showGrayscaleInverted), "Y")
-        XCTAssertEqual(displaySetItem?.string(for: .showImageTrueSizeFlag), "Y")
-        XCTAssertEqual(displaySetItem?.string(for: .showGraphicAnnotationFlag), "N")
+        // PS3.3 Table C.23.3-1: the display flags are enumerated YES / NO
+        XCTAssertEqual(displaySetItem?.string(for: .showGrayscaleInverted), "YES")
+        XCTAssertEqual(displaySetItem?.string(for: .showImageTrueSizeFlag), "YES")
+        XCTAssertEqual(displaySetItem?.string(for: .showGraphicAnnotationFlag), "NO")
     }
     
     // MARK: - Round-Trip Tests

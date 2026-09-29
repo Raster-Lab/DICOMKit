@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — 3D Rendering Type terms match PS3.3 2026a Table C.23.3-1; Image Box Layout and Reformatting terms are pending P-HP
 //
 // DisplaySet.swift
 // DICOMKit
@@ -222,10 +223,10 @@ public enum ReformattingType: String, Sendable, Codable {
 /// 3D rendering type
 public enum ThreeDRenderingType: String, Sendable, Codable {
     /// Volume rendering
-    case volumeRendering = "VOLUME_RENDERING"
-    
+    case volumeRendering = "VOLUME"
+
     /// Surface rendering
-    case surfaceRendering = "SURFACE_RENDERING"
+    case surfaceRendering = "SURFACE"
     
     /// Maximum intensity projection (3D)
     case mip = "MIP"

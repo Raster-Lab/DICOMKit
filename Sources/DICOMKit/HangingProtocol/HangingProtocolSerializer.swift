@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — VRs per PS3.6 2026a Table 6-1 (SH name, LO description); display flags YES/NO per Table C.23.3-1; Abstract Prior Value as SS is pending P-HP
 //
 // HangingProtocolSerializer.swift
 // DICOMKit
@@ -32,15 +33,15 @@ public struct HangingProtocolSerializer {
         // Hanging Protocol Name (0072,0002) - Required, Type 1
         dataSet[.hangingProtocolName] = DataElement.string(
             tag: .hangingProtocolName,
-            vr: .LO,
+            vr: .SH,
             value: hangingProtocol.name
         )
-        
+
         // Hanging Protocol Description (0072,0004) - Optional, Type 3
         if let description = hangingProtocol.description {
             dataSet[.hangingProtocolDescription] = DataElement.string(
                 tag: .hangingProtocolDescription,
-                vr: .ST,
+                vr: .LO,
                 value: description
             )
         }
@@ -675,43 +676,45 @@ public struct HangingProtocolSerializer {
             ))
         }
         
+        // The display flags of PS3.3 Table C.23.3-1 are enumerated YES / NO
+
         // Show Grayscale Inverted (0072,0706) - Optional, Type 3
         if options.showGrayscaleInverted {
             elements.append(DataElement.string(
                 tag: .showGrayscaleInverted,
                 vr: .CS,
-                value: "Y"
+                value: "YES"
             ))
         }
-        
+
         // Show Image True Size Flag (0072,0710) - Optional, Type 3
         if options.showImageTrueSize {
             elements.append(DataElement.string(
                 tag: .showImageTrueSizeFlag,
                 vr: .CS,
-                value: "Y"
+                value: "YES"
             ))
         }
-        
+
         // Show Graphic Annotation Flag (0072,0712) - Optional, Type 3
         elements.append(DataElement.string(
             tag: .showGraphicAnnotationFlag,
             vr: .CS,
-            value: options.showGraphicAnnotations ? "Y" : "N"
+            value: options.showGraphicAnnotations ? "YES" : "NO"
         ))
-        
+
         // Show Patient Demographics Flag (0072,0714) - Optional, Type 3
         elements.append(DataElement.string(
             tag: .showPatientDemographicsFlag,
             vr: .CS,
-            value: options.showPatientDemographics ? "Y" : "N"
+            value: options.showPatientDemographics ? "YES" : "NO"
         ))
-        
+
         // Show Acquisition Techniques Flag (0072,0716) - Optional, Type 3
         elements.append(DataElement.string(
             tag: .showAcquisitionTechniquesFlag,
             vr: .CS,
-            value: options.showAcquisitionTechniques ? "Y" : "N"
+            value: options.showAcquisitionTechniques ? "YES" : "NO"
         ))
         
         // Display Set Horizontal Justification (0072,0717) - Optional, Type 3

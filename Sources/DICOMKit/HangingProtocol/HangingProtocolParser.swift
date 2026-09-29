@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — display flags read as YES/NO per PS3.3 2026a Table C.23.3-1 (legacy Y/N still accepted)
 //
 // HangingProtocolParser.swift
 // DICOMKit
@@ -392,11 +393,16 @@ public struct HangingProtocolParser {
         let patientOrientation = displaySetItem.string(for: .displaySetPatientOrientation)
         let voiType = displaySetItem.string(for: .voiType)
         let pseudoColorType = displaySetItem.string(for: .pseudoColorType)
-        let showGrayscaleInverted = displaySetItem.string(for: .showGrayscaleInverted) == "Y"
-        let showImageTrueSize = displaySetItem.string(for: .showImageTrueSizeFlag) == "Y"
-        let showGraphicAnnotations = displaySetItem.string(for: .showGraphicAnnotationFlag) != "N"
-        let showPatientDemographics = displaySetItem.string(for: .showPatientDemographicsFlag) != "N"
-        let showAcquisitionTechniques = displaySetItem.string(for: .showAcquisitionTechniquesFlag) != "N"
+        // PS3.3 Table C.23.3-1 enumerates YES / NO; "Y" / "N" written by earlier DICOMKit
+        // versions are still read.
+        func flag(_ tag: Tag) -> String? {
+            displaySetItem.string(for: tag)?.trimmingCharacters(in: .whitespaces)
+        }
+        let showGrayscaleInverted = ["YES", "Y"].contains(flag(.showGrayscaleInverted) ?? "")
+        let showImageTrueSize = ["YES", "Y"].contains(flag(.showImageTrueSizeFlag) ?? "")
+        let showGraphicAnnotations = !["NO", "N"].contains(flag(.showGraphicAnnotationFlag) ?? "")
+        let showPatientDemographics = !["NO", "N"].contains(flag(.showPatientDemographicsFlag) ?? "")
+        let showAcquisitionTechniques = !["NO", "N"].contains(flag(.showAcquisitionTechniquesFlag) ?? "")
         
         let horizJustString = displaySetItem.string(for: .displaySetHorizontalJustification)
         let horizJust = horizJustString.flatMap { Justification(rawValue: $0) }

@@ -134,9 +134,9 @@ final class ImageSetDefinitionTests: XCTestCase {
         XCTAssertEqual(FilterOperator.equal.rawValue, "EQUAL")
         XCTAssertEqual(FilterOperator.notEqual.rawValue, "NOT_EQUAL")
         XCTAssertEqual(FilterOperator.lessThan.rawValue, "LESS_THAN")
-        XCTAssertEqual(FilterOperator.lessThanOrEqual.rawValue, "LESS_THAN_OR_EQUAL")
+        XCTAssertEqual(FilterOperator.lessThanOrEqual.rawValue, "LESS_OR_EQUAL")
         XCTAssertEqual(FilterOperator.greaterThan.rawValue, "GREATER_THAN")
-        XCTAssertEqual(FilterOperator.greaterThanOrEqual.rawValue, "GREATER_THAN_OR_EQUAL")
+        XCTAssertEqual(FilterOperator.greaterThanOrEqual.rawValue, "GREATER_OR_EQUAL")
         XCTAssertEqual(FilterOperator.contains.rawValue, "CONTAINS")
         XCTAssertEqual(FilterOperator.present.rawValue, "PRESENT")
         XCTAssertEqual(FilterOperator.notPresent.rawValue, "NOT_PRESENT")
@@ -272,13 +272,14 @@ final class ImageSetDefinitionTests: XCTestCase {
     // MARK: - SortDirection Tests
     
     func test_sortDirection_rawValues() {
-        XCTAssertEqual(SortDirection.ascending.rawValue, "ASCENDING")
-        XCTAssertEqual(SortDirection.descending.rawValue, "DESCENDING")
+        // PS3.3 Table C.23.3-1 Sorting Direction: INCREASING, DECREASING
+        XCTAssertEqual(SortDirection.ascending.rawValue, "INCREASING")
+        XCTAssertEqual(SortDirection.descending.rawValue, "DECREASING")
     }
-    
+
     func test_sortDirection_fromString() {
-        XCTAssertEqual(SortDirection(rawValue: "ASCENDING"), .ascending)
-        XCTAssertEqual(SortDirection(rawValue: "DESCENDING"), .descending)
+        XCTAssertEqual(SortDirection(rawValue: "INCREASING"), .ascending)
+        XCTAssertEqual(SortDirection(rawValue: "DECREASING"), .descending)
         XCTAssertNil(SortDirection(rawValue: "INVALID"))
     }
 }
