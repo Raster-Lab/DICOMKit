@@ -136,6 +136,16 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertEqual(MediumType.mammoBlueFilm.rawValue, "MAMMO BLUE FILM")
     }
 
+    /// Text String (2030,0020) is LO: 64 characters maximum, no backslash, no
+    /// control characters (PS3.5 Table 6.2-1) — D41.
+    func testAnnotationTextStringIsALegalLO() {
+        let long = PrintAnnotation(position: 1, text: String(repeating: "X", count: 90))
+        XCTAssertEqual(long.textStringValue.count, 64)
+        XCTAssertEqual(PrintAnnotation(position: 2, text: "DOE^JANE\\123\tA").textStringValue, "DOE^JANE/123A")
+        XCTAssertEqual(PrintAnnotation(position: 3, text: "short").textStringValue, "short")
+        XCTAssertEqual(PrintAnnotation.textStringMaximumLength, 64)
+    }
+
     /// The deprecated spellings still parse, and are read and written as the
     /// Table C.13-1 terms they stand for.
     func testLegacyMammoSpellingsMapToTheTerms() throws {

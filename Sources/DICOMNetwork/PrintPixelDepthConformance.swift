@@ -15,7 +15,7 @@
 // 8/8/7. (Table C.13-3 is the Basic Film Box Presentation Module and says
 // nothing about pixel depth.)
 //
-// These are Enumerated Values, so PS3.5 3.6.1 makes a value outside the list
+// These are Enumerated Values, so PS3.5 6.3 makes a value outside the list
 // non-conformant rather than merely unusual, and an SCP would be within its
 // rights to fail the N-SET.
 //
@@ -32,7 +32,7 @@
 // dropping eight is a worse one.
 
 import Foundation
-// NEMA-verified: 2026a, checked 2026-09-28 — Bits Stored 8/12 (grayscale) and 8 (colour) checked against PS3.3 2026a Table C.13-5
+// NEMA-verified: 2026a, checked 2026-09-28 — Bits Stored 8/12 (grayscale) and 8 (colour) checked against PS3.3 2026a Table C.13-5; Enumerated Values cited as PS3.5 2026a 6.3 (was the non-existent 3.6.1; D40, checked 2026-09-29)
 
 /// Reconciles received pixel depth with what a Basic Image Box may legally
 /// carry.

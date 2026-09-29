@@ -10,7 +10,7 @@ import DICOMCore
 
 #if canImport(CoreGraphics)
 import CoreGraphics
-// NEMA-verified: 2026a, checked 2026-09-28 — the 12 print SOP Class / instance UIDs registered in PS3.6 2026a Table A-1 and 11 defined-term enums text-diffed against PS3.3 2026a C.13.1/C.13.3/C.13.5/C.13.8/C.13.9 (Scripts/diff_network.py; MediumType MAMMO CLEAR FILM / MAMMO BLUE FILM added 2026-09-29, P-MAMMO, old spellings deprecated and written as the terms); N-ACTION-RSP Print Job reference per PS3.4 Tables H.4-3/H.4-8; colour item per Table C.13-5
+// NEMA-verified: 2026a, checked 2026-09-28 — the 12 print SOP Class / instance UIDs registered in PS3.6 2026a Table A-1 and 11 defined-term enums text-diffed against PS3.3 2026a C.13.1/C.13.3/C.13.5/C.13.8/C.13.9 (Scripts/diff_network.py; MediumType MAMMO CLEAR FILM / MAMMO BLUE FILM added 2026-09-29, P-MAMMO, old spellings deprecated and written as the terms); N-ACTION-RSP Print Job reference per PS3.4 Tables H.4-3/H.4-8; colour item per Table C.13-5; Text String (2030,0020) written as a legal LO per PS3.5 2026a Table 6.2-1 (D41, checked 2026-09-29)
 #else
 // Define CGSize for platforms without CoreGraphics
 public struct CGSize: Sendable {
@@ -893,6 +893,24 @@ public struct PrintAnnotation: Sendable, Equatable, Codable {
     public init(position: UInt16, text: String) {
         self.position = max(1, position)
         self.text = text
+    }
+
+    /// The most characters Text String (2030,0020) carries: it is LO,
+    /// "64 chars maximum" (PS3.5 Table 6.2-1).
+    public static let textStringMaximumLength = 64
+
+    /// ``text`` as the value written to Text String (2030,0020): a legal LO —
+    /// at most 64 characters, no backslash (the value delimiter; written as a
+    /// slash) and no control characters but ESC (PS3.5 Table 6.2-1).
+    public var textStringValue: String {
+        let cleaned = text
+            .replacingOccurrences(of: "\\", with: "/")
+            .filter { character in
+                !character.unicodeScalars.contains {
+                    $0.properties.generalCategory == .control && $0 != "\u{1B}"
+                }
+            }
+        return String(cleaned.prefix(Self.textStringMaximumLength))
     }
 }
 
@@ -4334,7 +4352,7 @@ public enum DICOMPrintService {
 
                         let annElements: [DataElement] = [
                             DataElement.uint16(tag: .annotationPosition, value: annotation.position),
-                            DataElement.string(tag: .textString, vr: .LO, value: annotation.text)
+                            DataElement.string(tag: .textString, vr: .LO, value: annotation.textStringValue)
                         ]
                         let annRequest = NSetRequest(
                             messageID: messageID,
