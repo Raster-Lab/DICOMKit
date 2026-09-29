@@ -1,21 +1,23 @@
 # DICOMPrintKit — DICOM Standard Implementation Report
 
-Generated 2026-09-29. Covers all 30 Swift files in `Sources/DICOMPrintKit/` (about 11,100 lines
+Generated 2026-09-29, last updated 2026-09-29 (approval pass). Covers all 31 Swift files (30 before the approval pass added `GrayscaleStandardDisplayFunction.swift`) in `Sources/DICOMPrintKit/` (about 11,100 lines
 before this pass): the print job model and option catalogue shared by `dicom-print` and DICOM
 Studio, the pixel preparation for image boxes, the film composer and output sinks of the Print SCP
 emulator, the burned-in annotation renderer, and the bridge that saves and restores a viewer's
 arrangement as a presentation state.
 
-**Status: complete, with three decisions pending.** Every file is bucketed and carries a
-`NEMA-verified` marker (`Scripts/check_nema_markers.py Sources/DICOMPrintKit` exits 0: 30 of 30).
-Every table of values the module uses is diffed by script against the frozen 2026a DocBook
-([Scripts/diff_printkit.py](Scripts/diff_printkit.py): 32 checks, 0 failing, 3 pending). The
-deferred rows for this module (D27, D36, D23; D30 was already closed) are closed, except the D23
-Medium Type remainder, which waits on DICOMNetwork's P-MAMMO. Every behaviour fix has a test;
+**Status: complete.** Every file is bucketed and carries a `NEMA-verified` marker
+(`Scripts/check_nema_markers.py Sources/DICOMPrintKit` exits 0: 31 of 31). Every table of values
+the module uses is diffed by script against the frozen 2026a DocBook
+([Scripts/diff_printkit.py](Scripts/diff_printkit.py): 32 checks, 0 failing, 0 pending). The
+deferred rows for this module (D23, D27, D36; D30 was already closed) are closed. The three
+decisions the first pass left open (P-MAMMO, P-GSDF, P-CROP) were approved by the owner on
+2026-09-29 ("complete the module as per your recommendation") and are implemented as
+recommended, each against the clause named. Every behaviour fix has a test;
 `swift build` passes and the full `swift test` passes apart from four pre-existing, proved
 DICOMRoundTripTests failures (Verification notes, D43). The work is committed on
-`feature/dicom-tag-modality-audit`, locally, for review. Three items need the owner's decision
-(P-MAMMO, P-GSDF, P-CROP) and five rows are opened for other modules (D39–D43). The full
+`feature/dicom-tag-modality-audit`, locally, for review. Five rows are opened for other modules
+(D39–D43). The full
 `swift test` exits 1 on four `PDFRoundTripTests` cases that fail identically on the untouched
 HEAD (a DICOMKit test file left behind by the P-ENCAP commit; D43).
 
@@ -44,11 +46,11 @@ clamp) was verified in its own pass and is not re-scored here.
 |---|---|---|---|
 | A — cites 2026a | 0 | — | ✅ (none) |
 | B1 — cites another edition, a CP or a Supplement | 0 | — | ✅ (none) |
-| B2 — no citation, data or behaviour differed from 2026a | 13 | See the bucket table; every finding verified against the frozen text | ✅ Fixed; three decisions pending (P-MAMMO, P-GSDF, P-CROP) |
+| B2 — no citation, data or behaviour differed from 2026a | 14 (one new file, `GrayscaleStandardDisplayFunction.swift`) | See the bucket table; every finding verified against the frozen text | ✅ Fixed; three decisions pending (P-MAMMO, P-GSDF, P-CROP) |
 | C1 — plumbing | 9 | Confirmed to carry no standard data | ✅ |
 | C2 — standard-derived, edition-stable | 8 | Diffed all the same; all values match | ✅ |
 
-**30 files total.**
+**31 files total.**
 
 ### Baseline diff, before any change (2026-09-29, `Scripts/diff_printkit.py` against the HEAD sources)
 
@@ -79,8 +81,11 @@ Tests at the start (HEAD `56115eaa`, `swift test --filter DICOMPrintKitTests` in
 323 XCTest cases (1 skipped: `DCMTKInteropTests.testDCMTKPrintSCUCanPrintToOurEmulator`, "No
 sample DICOM image available for the DCMTK tools") and 84 swift-testing tests pass, 0 failures.
 
-After this pass: DICOMPrintKitTests 351 XCTest cases (the same 1 skipped) and 84 swift-testing
-tests pass, 0 failures; `diff_printkit.py` 29 ok, 0 FAIL, 3 PEND.
+After the first pass: DICOMPrintKitTests 351 XCTest cases (the same 1 skipped) and 84
+swift-testing tests pass, 0 failures; `diff_printkit.py` 29 ok, 0 FAIL, 3 PEND. After the approval
+pass: 362 XCTest cases (1 skipped) and 84 swift-testing tests; `diff_printkit.py` 32 ok, 0 FAIL,
+0 PEND (the GSDF and CROP checks were strengthened: coefficients and Table D.2-1 by script, the
+stated CROP reading).
 
 ---
 
@@ -99,6 +104,10 @@ tests pass, 0 failures; `diff_printkit.py` 29 ok, 0 FAIL, 3 PEND.
 | 2026-09-29 | Text String | PS3.5 Table 6.2-1 LO; Table C.13-7 | Footer lines cut to 64 characters, backslash → slash, control characters dropped (`FilmIdentificationFooter.textString(_:)`, `textStringMaximumLength`) | 2 tests |
 | 2026-09-29 | Simulator | C.13.3 (Image Display Format), C.13.5.1 (box numbering) | `PrintSCPSimulator` writes the job's own Image Display Format; a `ROW\1,2` job was composed as `STANDARD\2,2` (four boxes for three images) | 1 test |
 | 2026-09-29 | Markers, close | `check_nema_markers.py`: 30 / 30; `diff_printkit.py`: 29 ok, 0 FAIL, 3 PEND | CHANGELOG `[Unreleased]`; DICOMCore status table; D23/D27/D36 status in the DICOMNetwork and DICOMKit reports | Full `swift test` below |
+| 2026-09-29 | Owner approval of P-MAMMO, P-GSDF, P-CROP ("complete the module as per your recommendation") | — | — | — |
+| 2026-09-29 | P-MAMMO (D23 remainder) | PS3.3 Table C.13-1 (PAPER, CLEAR FILM, BLUE FILM, MAMMO CLEAR FILM, MAMMO BLUE FILM) | DICOMNetwork `MediumType.mammoClearFilm` / `.mammoBlueFilm`; `.mammoFilmClearBase` / `.mammoFilmBlueBase` deprecated (renamed), still parsed and normalized; `wireValue` always writes the term (SCU session N-CREATE, SCP encoder); `allCases` lists the five terms; `PrintOptions.mammography` sends MAMMO BLUE FILM; the catalogue offers both (`mammo-clear-film`, `mammo-blue-film`); `diff_network.py` ignores deprecated cases and its pending set is empty | DICOMNetworkTests pins updated (+1 legacy-spelling test); 2 catalogue tests |
+| 2026-09-29 | P-GSDF | PS3.14 7.1 (L(j), j(L) coefficients, scripted), 7.2 (transmissive: L = La + L0·10^−D, j linear in p), 7.3 (reflective), Annex D.2 and Table D.2-1 (256 densities at L0 2000, La 10, Dmin 0.20, Dmax 3.00) | New `GrayscaleStandardDisplayFunction.swift`; `DensityMapping.gsdf` (token `gsdf`): P-Values laid down through the GSDF (PAPER reflective, film transmissive; Min/Max Density from the film box or 0.20/3.00), LIN OD and numeric Border/Empty densities as densities, shown as luminance relative to the sheet's brightest, sRGB-encoded. `paper` stays the default | `PrintGSDFTests` (9): Table B-1 end points, D.2 range, all 256 Table D.2-1 densities within 0.0015 OD |
+| 2026-09-29 | P-CROP | PS3.3 Table C.13-5 ("optimal filling" undefined) | Reading kept (CROP with no size fills the box) and stated in `PRINT_CONFORMANCE.md` 3.5, with the DECIMATE/CROP/FAIL and size table; the conformance statement's stale MAMMO, INVERSE-shape, 16-bits-stored and PS3.5 8.7.4 entries corrected and the three density mappings documented (3.6) | script checks the stated reading |
 
 ---
 
@@ -112,9 +121,9 @@ tests pass, 0 failures; `diff_printkit.py` 29 ok, 0 FAIL, 3 PEND.
 | P4 | 10INX14IN sheet size | Table C.13-3 | Medium: every 10×14 film composed ~1 % narrow and ~2 % short | ✅ |
 | P5 | Shutter pixel positions off by one | Table C.7-17a | Low: one extra shuttered row and column | ✅ |
 | P6 | Printer Status Info, Text String LO, simulator Image Display Format, citations (D23) | C.13.9.1; PS3.5 Table 6.2-1; C.13.3/C.13.5.1; see Progress log | Low–Medium | ✅ |
-| P-MAMMO | Medium Type MAMMO CLEAR FILM / MAMMO BLUE FILM not offered (D23 remainder) | PS3.3 Table C.13-1 | Medium | ⏸ **Needs the owner's decision** (carried from DICOMNETWORK_STANDARD_IMPLEMENTATION.md, where it is recorded). Recommendation unchanged: add `MediumType.mammoClearFilm = "MAMMO CLEAR FILM"` and `.mammoBlueFilm = "MAMMO BLUE FILM"` in DICOMNetwork, deprecate `.mammoFilmClearBase`/`.mammoFilmBlueBase`, keep parsing both; then this catalogue offers the two new cases (tokens `mammo-clear-film`, `mammo-blue-film`). `diff_printkit.py` reports PEND until then. |
-| P-GSDF | The film composer maps P-Values straight to device grey and numeric Border/Empty densities linearly between Min and Max Density | PS3.14 2026a 7.2: `j(p) = j_min + p/(2^N−1)·(j_max − j_min)`, `L = L_a + L_0·10^−D`; PS3.3 C.11.4 LIN OD; Table C.13-3 Illumination (2010,015E), Reflected Ambient Light (2010,0160) | Medium for the emulator's fidelity: the composed sheet is not the density a GSDF-calibrated printer produces; nothing on the wire changes | ⏸ **Needs a decision** — the fix adds a public enum case. Recommendation: add `DensityMapping.gsdf` ("Calibrated (PS3.14)"): map each P-Value through the GSDF between `L(D_max)` and `L(D_min)` with `L_0`/`L_a` from the film box or 2000/10 cd/m² (7.2's typical values), render LIN OD and numeric densities in the same luminance space, encode to sRGB for the screen/PDF; keep `.paperDirect` the default so existing films and golden hashes stay identical. |
-| P-CROP | CROP with no Requested Image Size | PS3.3 Table C.13-5: CROP applies "if the image rows or columns is greater than the available printable pixels"; Requested Image Size overrides "the size that corresponds with optimal filling", which is not defined | Low–Medium: the emulator (and the "Fill to Film" mode that sends CROP) reads it as *cover the cell*; a printer may read it as *fit* and print no crop | ⏸ **Ambiguous in the text — needs a decision.** Options: (a) keep the reading and state it in `PRINT_CONFORMANCE.md` (no code change; recommended); (b) read it strictly (CROP without a size = fit) and make Fill to Film local-only like Stretch. `diff_printkit.py` reports PEND until then. |
+| P-MAMMO | Medium Type MAMMO CLEAR FILM / MAMMO BLUE FILM not offered (D23 remainder) | PS3.3 Table C.13-1 | Medium | ✅ 2026-09-29, approved and implemented as recommended (Progress log). The recommendation was: add `MediumType.mammoClearFilm = "MAMMO CLEAR FILM"` and `.mammoBlueFilm = "MAMMO BLUE FILM"` in DICOMNetwork, deprecate `.mammoFilmClearBase`/`.mammoFilmBlueBase`, keep parsing both; then this catalogue offers the two new cases (tokens `mammo-clear-film`, `mammo-blue-film`). |
+| P-GSDF | The film composer maps P-Values straight to device grey and numeric Border/Empty densities linearly between Min and Max Density | PS3.14 2026a 7.2: `j(p) = j_min + p/(2^N−1)·(j_max − j_min)`, `L = L_a + L_0·10^−D`; PS3.3 C.11.4 LIN OD; Table C.13-3 Illumination (2010,015E), Reflected Ambient Light (2010,0160) | Medium for the emulator's fidelity: the composed sheet is not the density a GSDF-calibrated printer produces; nothing on the wire changes | ✅ 2026-09-29, approved and implemented as recommended; L0/La are 7.2/7.3's typical values (ReceivedFilm does not carry Illumination/Reflected Ambient Light). The recommendation was: add `DensityMapping.gsdf` ("Calibrated (PS3.14)"): map each P-Value through the GSDF between `L(D_max)` and `L(D_min)` with `L_0`/`L_a` from the film box or 2000/10 cd/m² (7.2's typical values), render LIN OD and numeric densities in the same luminance space, encode to sRGB for the screen/PDF; keep `.paperDirect` the default so existing films and golden hashes stay identical. |
+| P-CROP | CROP with no Requested Image Size | PS3.3 Table C.13-5: CROP applies "if the image rows or columns is greater than the available printable pixels"; Requested Image Size overrides "the size that corresponds with optimal filling", which is not defined | Low–Medium: the emulator (and the "Fill to Film" mode that sends CROP) reads it as *cover the cell*; a printer may read it as *fit* and print no crop | ✅ 2026-09-29, option (a) as recommended: the reading is kept and stated in `PRINT_CONFORMANCE.md` 3.5 (option (b), the strict fit reading, was not taken). |
 
 ### Decisions taken without asking (all within "fix behaviour that contradicts the standard")
 
@@ -160,7 +169,7 @@ Rows for this module from the earlier reports come first.
 
 | ID | Module | Where | Problem | Standard | Severity | Status |
 |---|---|---|---|---|---|---|
-| D23 | DICOMPrintKit | [PrintOptionCatalog.swift](Sources/DICOMPrintKit/PrintOptionCatalog.swift) | Bits Stored 8/12 cited as Table C.13-3; `mediumTypes` omits the two MAMMO terms | PS3.3 Table C.13-5, C.13.1 (Table C.13-1) | Low | ✅ 2026-09-29 citations, `0913064` (also in PrintJobRequest, PrintImagePreparer). The MAMMO remainder is P-MAMMO (DICOMNetwork raw values) — carried, PEND in the script |
+| D23 | DICOMPrintKit | [PrintOptionCatalog.swift](Sources/DICOMPrintKit/PrintOptionCatalog.swift) | Bits Stored 8/12 cited as Table C.13-3; `mediumTypes` omits the two MAMMO terms | PS3.3 Table C.13-5, C.13.1 (Table C.13-1) | Low | ✅ 2026-09-29 citations, `0913064` (also in PrintJobRequest, PrintImagePreparer); the MAMMO terms with P-MAMMO in the approval pass |
 | D27 | DICOMPrintKit | `ViewerPresentationStateBridge.capture`, `PresentationStateStore.save` | No Displayed Area for fitted views (NC-4); no Modality LUT in the state (S-1b); GSPS for colour images (NC-3) | PS3.3 C.10.4, A.33.1.1, A.33.2; PS3.4 N.2.1.1 | High | ✅ 2026-09-29, `dc2c0f0`; MONOCHROME1 polarity (PS3.4 N.2) fixed with it |
 | D30 | DICOMPrintKit | `PrintJobRequest.preprocessColorMode`, `PrintImagePreparer` | Map between two `PrintColorMode` types | — | Low | ✅ 2026-09-29 (closed in the DICOMKit pass; confirmed: `preprocessColorMode` returns `colorMode`) |
 | D36 | DICOMStudio, DICOMPrintKit | callers of the GSPS / PCSPS builders | `imageSize:` not passed | PS3.3 Table C.10-4 | High | ✅ DICOMPrintKit half 2026-09-29, `dc2c0f0`: the store passes the size DICOMStudio already hands it in `ImageToSave`, so DICOMStudio's saves are fixed too. What DICOMStudio still has to pass (photometric, rescale type) is D42 |
@@ -177,20 +186,21 @@ New findings for other modules:
 
 ---
 
-## Bucket B2 — No citation, data or behaviour differed from 2026a (13 files)
+## Bucket B2 — No citation, data or behaviour differed from 2026a (14 files)
 
 | File | Before | After |
 |---|---|---|
-| [PrintOptionCatalog.swift](Sources/DICOMPrintKit/PrintOptionCatalog.swift) | Bits Stored cited as Table C.13-3 (D23); MAMMO terms not offered | ✅ 31 offered values match Tables C.13-1/C.13-3/C.13-5/C.11-4 by script; citation C.13-5; MAMMO documented and PEND (P-MAMMO). Marked. |
+| [PrintOptionCatalog.swift](Sources/DICOMPrintKit/PrintOptionCatalog.swift) | Bits Stored cited as Table C.13-3 (D23); MAMMO terms not offered | ✅ 31 offered values match Tables C.13-1/C.13-3/C.13-5/C.11-4 by script; citation C.13-5; all five Medium Type terms offered since P-MAMMO. Marked. |
 | [PrintJobRequest.swift](Sources/DICOMPrintKit/PrintJobRequest.swift) | Bits Stored cited as Table C.13-3 in the doc and in the `--bit-depth` message (D23) | ✅ Table C.13-5. Marked. |
 | [PrintImagePreparer.swift](Sources/DICOMPrintKit/PrintImagePreparer.swift) | `--raw` sent any source pixel module; Table C.13-3 cited in the clamp note; C.11.2 said to rank VOI LUT over window and make the first pair the default | ✅ raw frames checked against Table C.13-5 (7 enumerations + High Bit), refused with the rule; C.13-5 cited; C.11.2 choices documented as this toolkit's. Marked. |
 | [PresentationState/PresentationStateStore.swift](Sources/DICOMPrintKit/PresentationState/PresentationStateStore.swift) | D27/D36; shutters one pixel in; Content Label called Presentation Label; state copies dropped Shutter Presentation Color | ✅ see Progress log. Marked. |
 | [PresentationState/ViewerPresentationStateBridge.swift](Sources/DICOMPrintKit/PresentationState/ViewerPresentationStateBridge.swift) | Rotation/flip cited as C.10.10; MONOCHROME1 polarity ignored | ✅ C.10.6 confirmed (rotate, then flip — the vertical flip as 180° + horizontal is right); MONOCHROME1 folded both ways. Marked. |
 | [PresentationState/AnnotationSidecar.swift](Sources/DICOMPrintKit/PresentationState/AnnotationSidecar.swift) | Said DICOM has no arrow primitive and no per-annotation colour | ✅ corrected against Tables C.10-5/5a/5b (D39); `inverted` for colour images. Marked. |
 | [PresentationState/PrintOverlayAnnotationGSPS.swift](Sources/DICOMPrintKit/PresentationState/PrintOverlayAnnotationGSPS.swift) | Same claims; layer colour described as RGB | ✅ corrected; Graphic Type, units, column/row order and frame numbers match Table C.10-5 / C.10.5.1.2; layer colour is (0070,0401). Marked. |
-| [Printing/FilmGeometry.swift](Sources/DICOMPrintKit/Printing/FilmGeometry.swift) | 10INX14IN 254 × 355.6 mm; "C.13.6 (Film Size ID)"; CROP attributed to PS3.4 H.4.3 | ✅ 12 / 12 sheet sizes match Table C.13-3 by script; C.13.3; CROP per Table C.13-5 with P-CROP recorded; COL numbering column-major per C.13.5.1 confirmed. Marked. |
+| [Printing/FilmGeometry.swift](Sources/DICOMPrintKit/Printing/FilmGeometry.swift) | 10INX14IN 254 × 355.6 mm; "C.13.6 (Film Size ID)"; CROP attributed to PS3.4 H.4.3 | ✅ 12 / 12 sheet sizes match Table C.13-3 by script; C.13.3; CROP per Table C.13-5, reading stated in PRINT_CONFORMANCE.md 3.5 (P-CROP); COL numbering column-major per C.13.5.1 confirmed. Marked. |
 | [Printing/PresentationLUTTransform.swift](Sources/DICOMPrintKit/Printing/PresentationLUTTransform.swift) | Max Density (2010,1030); default densities attributed to C.13.3 | ✅ (2010,0130); defaults documented as the toolkit's; IDENTITY/LIN OD per C.11.4; LIN OD luminance per PS3.14 7.2 (La = 0). Marked. |
-| [Printing/FilmComposer.swift](Sources/DICOMPrintKit/Printing/FilmComposer.swift) | C.11.6 cited for print; PS3.5 8.7.4 for YBR 4:2:2 | ✅ C.11.4; C.7.6.3.1.2 (YBR_FULL/PARTIAL_422 layout and inverse equations checked); polarity/MONOCHROME1 inversions per Table C.13-5 and C.7.6.3.1.2; GSDF rendering PEND (P-GSDF). Marked. |
+| [Printing/FilmComposer.swift](Sources/DICOMPrintKit/Printing/FilmComposer.swift) | C.11.6 cited for print; PS3.5 8.7.4 for YBR 4:2:2 | ✅ C.11.4; C.7.6.3.1.2 (YBR_FULL/PARTIAL_422 layout and inverse equations checked); polarity/MONOCHROME1 inversions per Table C.13-5 and C.7.6.3.1.2; `DensityMapping.gsdf` renders through the PS3.14 GSDF (P-GSDF). Marked. |
+| [Printing/GrayscaleStandardDisplayFunction.swift](Sources/DICOMPrintKit/Printing/GrayscaleStandardDisplayFunction.swift) | (new, P-GSDF) | ✅ 19 coefficients of PS3.14 7.1 diffed by script; 7.2/7.3 viewing; Table D.2-1 reproduced within 0.0015 OD. Marked. |
 | [Printing/PrintSCPSettings.swift](Sources/DICOMPrintKit/Printing/PrintSCPSettings.swift) | FAILURE default Printer Status Info `NO SUPPLY` | ✅ `SUPPLY EMPTY`; statuses match Table C.13-9. Marked. |
 | [Printing/PrintSCPSimulator.swift](Sources/DICOMPrintKit/Printing/PrintSCPSimulator.swift) | Film box written with the bounding grid, not the job's Image Display Format | ✅ the job's format (C.13.3, C.13.5.1). Marked. |
 | [Printing/FilmIdentification.swift](Sources/DICOMPrintKit/Printing/FilmIdentification.swift) | Footer Text String sent unchecked | ✅ LO per PS3.5 Table 6.2-1. Marked. |
@@ -272,9 +282,20 @@ New findings for other modules:
   DICOMViewerTests 51, DICOMWebTests 447 XCTest cases, and every swift-testing run (5,165 + 1,506
   + 751 + 630 + 474 + 226 + 84 + 53 + 30 + 20), **except** DICOMRoundTripTests (528 cases, 18
   skipped): 4 cases of `PDFRoundTripTests` fail (9 assertions), so `swift test` exits 1.
+- **Tests after the approval pass** (2026-09-29, full `swift test` after rebuilding dicom-merge and
+  dicom-split in release): DICOMPrintKitTests 362 XCTest cases (1 skipped; +11: `PrintGSDFTests`
+  9, two Medium Type tests) and 84 swift-testing tests; DICOMNetworkTests 1,402 (+1 legacy-spelling
+  test; four pins moved to the new cases); every other bundle and swift-testing run as in the first
+  pass. DICOMRoundTripTests still has the same 4 pre-existing `PDFRoundTripTests` failures (D43),
+  so `swift test` still exits 1; nothing else fails.
+- **Annex D.2 inconsistency (NEMA text):** D.2 quotes j_max = 848.75 for L_max = 1271.9 cd/m²;
+  both 7.1 j(L) and inverting L(j) give 847.2, and 848.75 would put P-Value 255 at 0.196 OD where
+  Table D.2-1 prints 0.200. The implementation matches the table (all 256 rows within 0.0015 OD;
+  the table is printed to three decimals).
 - **Commits** (local, `feature/dicom-tag-modality-audit`): `bb46504` diff script, `dc2c0f0`
   presentation states (D27, D36), `0913064` print management (D23), `54bb02f` markers on the
-  C1/C2 files, then this report, CHANGELOG and status tables.
+  C1/C2 files, `013456a` this report, CHANGELOG and status tables; then the approval pass:
+  P-MAMMO (DICOMNetwork + catalogue), P-GSDF (composer), P-CROP and the reports.
 - **That failure is pre-existing, proved on the untouched HEAD worktree**
   (`swift test --filter PDFRoundTripTests` at `56115eaa`: the same 4 cases, the same 9
   assertions). The test file still pins the encapsulated-document behaviour from before the

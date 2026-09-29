@@ -11,8 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Audit report: `DICOMPRINTKIT_STANDARD_IMPLEMENTATION.md`. Every value the module uses is diffed
 against the frozen NEMA text by `Scripts/diff_printkit.py` (32 checks against PS3.3, PS3.4, PS3.5,
-PS3.6 and PS3.14 2026a; 0 failing; 3 pending the owner's decision: P-MAMMO, P-GSDF, P-CROP), and
-all 30 Swift files carry a `NEMA-verified` marker.
+PS3.6 and PS3.14 2026a; 0 failing, 0 pending), and all 31 Swift files carry a `NEMA-verified`
+marker. The three decisions of the first pass were approved and applied the same day:
+
+- **Medium Type MAMMO terms (P-MAMMO, DICOMNetwork).** `MediumType.mammoClearFilm`
+  ("MAMMO CLEAR FILM") and `.mammoBlueFilm` ("MAMMO BLUE FILM") per PS3.3 Table C.13-1;
+  `.mammoFilmClearBase` / `.mammoFilmBlueBase` ("MAMMO CLEAR" / "MAMMO BLUE", not terms) are
+  deprecated, still parsed, normalized on receipt and written as the terms (`wireValue`,
+  `normalized`); `MediumType.allCases` lists the five terms; `PrintOptions.mammography` sends
+  MAMMO BLUE FILM; `PrintOptionCatalog.mediumTypes` offers both (`mammo-clear-film`,
+  `mammo-blue-film`).
+- **Calibrated film rendering (P-GSDF).** `DensityMapping.gsdf` (`--density gsdf`, "Calibrated
+  (PS3.14 GSDF)") draws the sheet a PS3.14-conforming printer produces: P-Values laid down through
+  the Grayscale Standard Display Function between Min and Max Density (7.2 for film, 7.3 for
+  PAPER), LIN OD and numeric Border/Empty densities as densities, shown as the sheet's luminance
+  under PS3.14's typical viewing conditions. Reproduces PS3.14 Table D.2-1 within 0.0015 OD. The
+  default mapping is unchanged.
+- **CROP without a Requested Image Size (P-CROP).** The existing reading (fill the box) is kept
+  and stated in `PRINT_CONFORMANCE.md` 3.5, whose stale Medium Type, Presentation LUT Shape, Bits
+  Stored and YBR entries are corrected.
 
 - **Saved views are conformant presentation states (D27, D36).** `PresentationStateStore.save`
   passes the image size to the builders, so a fitted view carries the Type 1 Displayed Area

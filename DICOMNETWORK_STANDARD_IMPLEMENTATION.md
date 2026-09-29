@@ -6,8 +6,8 @@ Query/Retrieve, Modality Worklist, MPPS, Storage Commitment and Print Management
 (PS3.4), with their encoders over PS3.5.
 
 **Status: complete, pending one owner decision.** All five buckets are done: every constant
-diffed by script (43 of 44 checks pass; the 44th is the `MediumType` raw-value change that needs
-approval, P-MAMMO), every behaviour finding fixed with a test, all 63 files marked
+diffed by script (43 checks, all pass; the `MediumType` raw-value change, P-MAMMO, was approved and
+applied on 2026-09-29 with the DICOMPrintKit pass), every behaviour finding fixed with a test, all 63 files marked
 (`Scripts/check_nema_markers.py Sources/DICOMNetwork` exits 0). The three deferred rows for this
 module (D1, D13, D21) are closed. Three new findings for other modules (D22-D24) are recorded
 below. The work is committed on `feature/dicom-tag-modality-audit`, locally, for review.**
@@ -39,7 +39,7 @@ B.13 are not enforced by the module, and the report says so rather than claiming
 |---|---|---|---|
 | A — cites 2026a | 0 | No file in the module named an edition | — |
 | B1 — cites another edition / CP / Sup | 1 (`UserIdentity.swift`, Supplement 99) | Kept as provenance; JWT (type 5) is not from Sup 99 | ✅ Diffed against PS3.7 Tables D.3-14/D.3-15 |
-| B2 — no citation, data or behaviour differs from 2026a | 23 | See the bucket table; every finding was verified against the frozen text | ✅ 22 of 23 fixed; `PrintService.swift` MediumType raw values wait for approval (P-MAMMO) |
+| B2 — no citation, data or behaviour differs from 2026a | 23 | See the bucket table; every finding was verified against the frozen text | ✅ 22 of 23 fixed; `PrintService.swift` MediumType MAMMO terms added 2026-09-29 (P-MAMMO) |
 | C1 — plumbing | 9 | Confirmed to carry no standard data; two doc claims corrected (audit, TLS) | ✅ |
 | C2 — standard-derived, edition-stable | 30 | Diffed all the same; all constants match | ✅ |
 
@@ -136,7 +136,7 @@ DICOMNetwork, DICOMPrintKit, DICOMRenderKit, DICOMRoundTrip, DICOMStudio, DICOMV
 | P29 | Listener never answered an N-EVENT-REPORT-RQ without a data set; SCP used 0110/0122 for unknown action type / SOP class | PS3.4 J.3.3.1.3; PS3.7 §10.1.4.1.10 | Medium | ✅ 4136039, 9d8ac0a |
 | P30 | StorageSCP silently ignored unsupported requests | PS3.7 Annex C (0211H) | Low-Medium | ✅ a9a22a2 |
 | P31 | Doc claims: TLS "PS3.8 Annex A", audit "PS3.15/ATNA", Supplement 99 for JWT, "16KB" defaults | PS3.15 B.12/B.13, A.5; PS3.7 D.3-14 | Low | ✅ c8d3f86 |
-| P-MAMMO | `MediumType.mammoFilmClearBase` / `mammoFilmBlueBase` raw values are `MAMMO CLEAR` / `MAMMO BLUE` | PS3.3 C.13.1: `MAMMO CLEAR FILM`, `MAMMO BLUE FILM` | Medium: a wrong Medium Type on the wire when selected | ⏸ **Needs approval:** raw values are public API. Recommendation: add `mammoClearFilm = "MAMMO CLEAR FILM"` and `mammoBlueFilm = "MAMMO BLUE FILM"`, deprecate the two old cases (`@available(*, deprecated, renamed:)`), keep parsing both; update DICOMStudio's copy (D22) at the same time. The script reports this as `PEND` until then. |
+| P-MAMMO | `MediumType.mammoFilmClearBase` / `mammoFilmBlueBase` raw values are `MAMMO CLEAR` / `MAMMO BLUE` | PS3.3 C.13.1: `MAMMO CLEAR FILM`, `MAMMO BLUE FILM` | Medium: a wrong Medium Type on the wire when selected | ✅ 2026-09-29, approved with the DICOMPrintKit pass and implemented as recommended: `mammoClearFilm` / `mammoBlueFilm` added, the old cases deprecated (renamed), still parsed and normalized, `wireValue` always writes the term, `allCases` lists the five terms; `diff_network.py` has no pending entry. DICOMStudio's `PrintMediumType` has no MAMMO case, so the D22 remainder is only its own terms |
 
 ### Decisions taken without asking (all within the method's "fix behaviour that contradicts the standard")
 
@@ -187,7 +187,7 @@ DICOMNetwork, DICOMPrintKit, DICOMRenderKit, DICOMRoundTrip, DICOMStudio, DICOMV
 | ID | Module | Location | Problem | Standard (2026a) | Severity | Status |
 |---|---|---|---|---|---|---|
 | D22 | DICOMStudio | [NetworkingModel.swift](Sources/DICOMStudio/Models/NetworkingModel.swift) `PrintMediumType.bluFilm = "BLU-RAY"` and the re-declared print enums (~L907-1050) | `BLU-RAY` is not a Medium Type defined term; the app re-declares `PrintPriority`, `PrintMediumType`, `PrintFilmSize`, `PrintJobStatus` with their own strings instead of using DICOMNetwork's enums, and inherits `MAMMO CLEAR` / `MAMMO BLUE` (see P-MAMMO) | PS3.3 C.13.1 (PAPER, CLEAR FILM, BLUE FILM, MAMMO CLEAR FILM, MAMMO BLUE FILM) | Medium: a wrong value on the wire if selected | ⏳ Open |
-| D23 | DICOMPrintKit | [PrintOptionCatalog.swift](Sources/DICOMPrintKit/PrintOptionCatalog.swift) (~L256) | Cites "PS3.3 Table C.13-3" for the Bits Stored 8/12 rule; the image-box pixel enumerations are Table C.13-5 (C.13-3 is the Film Box Presentation Module). Its `mediumTypes` list also omits the two MAMMO values | PS3.3 Table C.13-5, C.13.1 | Low: text | ✅ citations 2026-09-29 (DICOMPRINTKIT_STANDARD_IMPLEMENTATION.md); the MAMMO values wait on P-MAMMO |
+| D23 | DICOMPrintKit | [PrintOptionCatalog.swift](Sources/DICOMPrintKit/PrintOptionCatalog.swift) (~L256) | Cites "PS3.3 Table C.13-3" for the Bits Stored 8/12 rule; the image-box pixel enumerations are Table C.13-5 (C.13-3 is the Film Box Presentation Module). Its `mediumTypes` list also omits the two MAMMO values | PS3.3 Table C.13-5, C.13.1 | Low: text | ✅ citations 2026-09-29 (DICOMPRINTKIT_STANDARD_IMPLEMENTATION.md); the MAMMO values 2026-09-29 with P-MAMMO |
 | D24 | DICOMKit | [ImagePreprocessor.swift:23](Sources/DICOMKit/ImagePreprocessor.swift#L23) `PrintColorMode` | Second declaration of DICOMNetwork's `PrintColorMode` (same raw values). Not a standard error; a duplication to collapse when DICOMKit is audited | — | Low | ⏳ Open |
 
 ---
@@ -217,7 +217,7 @@ DICOMNetwork, DICOMPrintKit, DICOMRenderKit, DICOMRoundTrip, DICOMStudio, DICOMV
 | [PrintSCPEncoder.swift](Sources/DICOMNetwork/PrintSCPEncoder.swift) | Print Job N-GET with Number of Copies, without Originator | ✅ P22, (2100,0500) builder (P17). Marked. |
 | [PrintSCPParser.swift](Sources/DICOMNetwork/PrintSCPParser.swift) | Bits Allocated 16 on colour; Planar Configuration ignored | ✅ P21. Marked. |
 | [PrintSCPTypes.swift](Sources/DICOMNetwork/PrintSCPTypes.swift) | 0xC600 documented as "printing"; C601 scope | ✅ P19 (codes 21/21 match). Marked. |
-| [PrintService.swift](Sources/DICOMNetwork/PrintService.swift) | Job UID from Affected SOP Instance; interleaved colour without Planar Configuration; NORMAL fabricated; ~12 wrong citations; MAMMO terms | ✅ P17, P21, P23, P24; ⏸ P-MAMMO. Marked (marker says so). |
+| [PrintService.swift](Sources/DICOMNetwork/PrintService.swift) | Job UID from Affected SOP Instance; interleaved colour without Planar Configuration; NORMAL fabricated; ~12 wrong citations; MAMMO terms | ✅ P17, P21, P23, P24; P-MAMMO 2026-09-29. Marked. |
 | [QueryResults.swift](Sources/DICOMNetwork/QueryResults.swift) | Rows/Columns parsed as text | ✅ P10. Marked. |
 | [QueryService.swift](Sources/DICOMNetwork/QueryService.swift) | D1 length rule; nested items flattened | ✅ P1, P9. Marked. |
 | [RetrieveService.swift](Sources/DICOMNetwork/RetrieveService.swift) | D21; identifier order/charset/duplicates | ✅ P3, P8. Marked. |
@@ -281,7 +281,7 @@ DICOMNetwork, DICOMPrintKit, DICOMRenderKit, DICOMRoundTrip, DICOMStudio, DICOMV
 
 - Reproduce: `python3 Scripts/nema_docbook.py fetch 2026a N --out DIR` for N = 3, 4, 6, 7, 8
   (subtitles must read "DICOM PS3.N 2026a - …"), then `python3 Scripts/diff_network.py --nema DIR`.
-  Expected: 43 ok, 0 FAIL, 1 PEND (P-MAMMO). PS3.15 was read for the TLS header only.
+  Expected: 43 ok, 0 FAIL, 0 PEND (P-MAMMO applied 2026-09-29). PS3.15 was read for the TLS header only.
 - Behaviour clauses were compared by reading the extracted text (PS3.8 Table 9-10 cells, PS3.7
   status lists, PS3.4 Annex H/J/K prose); they are not scriptable and are cited in the markers and
   in the per-item tests (`UpperLayerConformanceTests`, `DIMSEConformanceTests`,
