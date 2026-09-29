@@ -587,7 +587,8 @@ extension PrintOptionCatalog {
     /// Density interpretations offered by the emulator, in `--density` order.
     public static let densityMappings: [(value: DensityMapping, cliToken: String, label: String)] = [
         (.paperDirect,   "paper", "Paper (direct)"),
-        (.filmEmulation, "film",  "Film emulation")
+        (.filmEmulation, "film",  "Film emulation"),
+        (.gsdf,          "gsdf",  "Calibrated (PS3.14 GSDF)")
     ]
 
     /// Resolves a CLI density token ("film") to its `DensityMapping`.

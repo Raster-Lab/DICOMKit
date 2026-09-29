@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Film Box / Image Box / Presentation LUT citations corrected to PS3.3 2026a C.13.3, C.13.5, C.11.4; YBR 4:2:2 layout and partial-range inverse per C.7.6.3.1.2; Border/Empty Density terms per Table C.13-3; P-Value rendering is linear, not PS3.14 GSDF (pending P-GSDF)
+// NEMA-verified: 2026a, checked 2026-09-29 — Film Box / Image Box / Presentation LUT citations corrected to PS3.3 2026a C.13.3, C.13.5, C.11.4; YBR 4:2:2 layout and partial-range inverse per C.7.6.3.1.2; Border/Empty Density terms per Table C.13-3; P-Value rendering through the PS3.14 7.2/7.3 GSDF under DensityMapping.gsdf (P-GSDF), linear under paper/film
 //
 // FilmComposer.swift
 // DICOMPrintKit
@@ -367,7 +367,7 @@ public struct FilmComposer: Sendable {
         emptyDensity: Double
     ) throws {
         let invert = shouldInvert(box: box, image: image, film: film)
-        let transfer = linODTransfer(film: film)
+        let transfer = displayTransfer(film: film)
         guard let cgImage = try makeCGImage(
             from: image, invert: invert, transfer: transfer, forceColor: isColor) else {
             throw FilmCompositionError.unsupportedPhotometricInterpretation(
@@ -697,6 +697,37 @@ public struct FilmComposer: Sendable {
         return invert
     }
 
+    /// The grayscale transfer the sheet is drawn through: the calibrated
+    /// P-Value (or LIN OD) → displayed-grey curve under ``DensityMapping/gsdf``,
+    /// else the LIN OD curve when that shape is in force, else none.
+    func displayTransfer(film: ReceivedFilm) -> [UInt8]? {
+        guard configuration.densityMapping == .gsdf else { return linODTransfer(film: film) }
+        let viewing = hardcopyViewing(for: film)
+        return (0...255).map { p in
+            let luminance = film.presentationLUTShape == .linearOpticalDensity
+                // C.11.4 LIN OD: the input is linear in optical density over
+                // Min…Max Density, low input light, as `linODTransfer` reads it.
+                ? viewing.luminance(density: viewing.minDensity
+                    + Double(p) / 255 * (viewing.maxDensity - viewing.minDensity))
+                // IDENTITY (or no shape): the input is P-Values, laid down
+                // through the GSDF (PS3.14 7.2 / 7.3).
+                : viewing.luminance(pValue: Double(p))
+            return viewing.displayValue(luminance: luminance)
+        }
+    }
+
+    /// How the sheet is viewed under ``DensityMapping/gsdf``: PAPER is a
+    /// reflective print (PS3.14 7.3), every film medium transmissive (7.2);
+    /// Min/Max Density from the film box, or 0.20/3.00 OD.
+    func hardcopyViewing(for film: ReceivedFilm) -> HardcopyViewing {
+        let minOD = Double(film.minDensity ?? 20) / 100
+        let maxOD = Double(film.maxDensity ?? 300) / 100
+        let (low, high) = maxOD > minOD ? (minOD, maxOD) : (0.2, 3.0)
+        return film.filmSession.mediumType == .paper
+            ? .reflective(minDensity: low, maxDensity: high)
+            : .transmissive(minDensity: low, maxDensity: high)
+    }
+
     /// The LIN OD transfer curve as a 256-entry P-value → luminance table.
     ///
     /// Under LIN OD the input values are linearly proportional to *optical
@@ -733,6 +764,21 @@ public struct FilmComposer: Sendable {
     /// Min and Max Density when both are known.
     func luminance(forDensity value: String, film: ReceivedFilm, default fallback: Double) -> Double {
         let text = value.trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")).uppercased()
+        if configuration.densityMapping == .gsdf {
+            // A density is a density: BLACK the sheet's maximum, WHITE its
+            // minimum, i hundredths of OD (Table C.13-3), seen as L = La +
+            // L0·10^−D (PS3.14 7.2 / 7.3).
+            let viewing = hardcopyViewing(for: film)
+            let density: Double
+            switch text {
+            case "BLACK": density = viewing.maxDensity
+            case "WHITE": density = viewing.minDensity
+            default:
+                guard let hundredths = Double(text) else { return fallback }
+                density = hundredths / 100
+            }
+            return Double(viewing.displayValue(luminance: viewing.luminance(density: density))) / 255
+        }
         switch text {
         case "BLACK": return configuration.densityMapping == .filmEmulation ? 1 : 0
         case "WHITE": return configuration.densityMapping == .filmEmulation ? 0 : 1
@@ -894,7 +940,7 @@ public struct FilmComposer: Sendable {
             imageDisplayFormat: film.filmBox.imageDisplayFormat,
             rows: format.layout.rows,
             columns: format.layout.columns,
-            mediumType: film.filmSession.mediumType.rawValue,
+            mediumType: film.filmSession.mediumType.wireValue,
             numberOfCopies: film.filmSession.numberOfCopies,
             filmSessionLabel: film.filmSession.filmSessionLabel,
             magnificationType: film.filmBox.magnificationType.rawValue,
