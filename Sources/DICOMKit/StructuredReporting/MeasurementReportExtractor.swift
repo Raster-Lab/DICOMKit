@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — TID 1500/1501/1600 concept codes diffed by Scripts/diff_kit.py against PS3.16 2026a Table D-1 and the CID tables
+// NEMA-verified: 2026a, checked 2026-09-29 — reads the content tree per PS3.16 2026a Tables TID 1500, TID 1204, TID 1600/1601/1602, TID 1501 (rows 2, 3, 3b, 6, 11) and tolerates the pre-2026-09-29 flat placements (images directly under Image Library, Country of Language beside the language item); concept codes per Table D-1
 /// Measurement Report Extraction API
 ///
 /// Provides high-level extraction of TID 1500 Measurement Report data from SR documents.
@@ -42,12 +42,17 @@ public struct MeasurementReport: Sendable, Equatable {
     /// Procedure reported codes
     public let proceduresReported: [CodedConcept]
     
-    /// Language of content
+    /// Language of content (TID 1204 row 1)
     public let languageOfContent: CodedConcept?
-    
+
+    /// Country of language (TID 1204 row 2)
+    public let countryOfLanguage: CodedConcept?
+
     // MARK: - Content Structures
-    
-    /// Image library entries (TID 1600)
+
+    /// Image library entries (TID 1600): the IMAGE items of every Image Library Group
+    /// (TID 1600 rows 2 and 4 → TID 1601 row 1), in document order. IMAGE items written
+    /// directly under the Image Library container (the pre-2026-09-29 layout) are read too.
     public let imageLibraryEntries: [ImageReference]
     
     /// Measurement groups (TID 1501)
@@ -75,70 +80,81 @@ public struct MeasurementReport: Sendable, Equatable {
         // Extract procedures reported
         let proceduresReported = extractProceduresReported(from: document.rootContent)
         
-        // Extract language of content
-        let languageOfContent = extractLanguageOfContent(from: document.rootContent)
-        
+        // Extract language of content and its country (TID 1204)
+        let (languageOfContent, countryOfLanguage) = extractLanguage(from: document.rootContent)
+
         // Extract image library (TID 1600)
         let imageLibraryEntries = extractImageLibrary(from: document.rootContent)
-        
+
         // Extract measurement groups (TID 1501)
         let measurementGroups = try extractMeasurementGroups(from: document.rootContent)
-        
+
         // Extract qualitative evaluations
         let qualitativeEvaluations = extractQualitativeEvaluations(from: document.rootContent)
-        
+
         return MeasurementReport(
             document: document,
             proceduresReported: proceduresReported,
             languageOfContent: languageOfContent,
+            countryOfLanguage: countryOfLanguage,
             imageLibraryEntries: imageLibraryEntries,
             measurementGroups: measurementGroups,
             qualitativeEvaluations: qualitativeEvaluations
         )
     }
-    
+
     // MARK: - Private Extraction Helpers
-    
+
     private static func extractProceduresReported(from container: ContainerContentItem) -> [CodedConcept] {
         var procedures: [CodedConcept] = []
-        
+
         for item in container.contentItems {
             if let codeItem = item.asCode,
-               codeItem.conceptName?.codeValue == "121058" { // Procedure Reported
+               codeItem.conceptName?.codeValue == "121058" { // TID 1500 row 4: Procedure reported
                 procedures.append(codeItem.conceptCode)
             }
         }
-        
+
         return procedures
     }
-    
-    private static func extractLanguageOfContent(from container: ContainerContentItem) -> CodedConcept? {
+
+    /// TID 1500 row 2 → TID 1204: row 1 (121049, DCM) HAS CONCEPT MOD CODE at the root; row 2
+    /// (121046, DCM) is its child. DICOMCore cannot nest under a CODE item, so the country is
+    /// also accepted as a root-level sibling (what `MeasurementReportBuilder` writes).
+    private static func extractLanguage(from container: ContainerContentItem) -> (CodedConcept?, CodedConcept?) {
+        var language: CodedConcept?
+        var country: CodedConcept?
         for item in container.contentItems {
-            if let codeItem = item.asCode,
-               codeItem.conceptName?.codeValue == "121049" { // Language of Content Item and Descendants
-                return codeItem.conceptCode
+            guard let codeItem = item.asCode, let concept = codeItem.conceptName else { continue }
+            if concept.codeValue == "121049", language == nil {
+                language = codeItem.conceptCode
+            } else if concept.codeValue == "121046", country == nil {
+                country = codeItem.conceptCode
             }
         }
-        return nil
+        return (language, country)
     }
-    
+
+    /// TID 1600: row 1 CONTAINER (111028, DCM, "Image Library"); row 2 CONTAINS CONTAINER
+    /// (126200, DCM, "Image Library Group"); row 4 CONTAINS TID 1601 row 1 IMAGE. IMAGE items
+    /// found directly under the Image Library container are read as well.
     private static func extractImageLibrary(from container: ContainerContentItem) -> [ImageReference] {
         var entries: [ImageReference] = []
-        
-        // Find Image Library container (TID 1600)
+
         for item in container.contentItems {
-            if let imageLibContainer = item.asContainer,
-               imageLibContainer.conceptName?.codeValue == "111028" { // Image Library
-                
-                // Extract image references from the library
-                for imageItem in imageLibContainer.contentItems {
-                    if let imageRef = imageItem.asImage {
-                        entries.append(imageRef.imageReference)
-                    }
+            guard let imageLibContainer = item.asContainer,
+                  imageLibContainer.conceptName?.codeValue == "111028" else { continue }
+
+            for libraryItem in imageLibContainer.contentItems {
+                if let group = libraryItem.asContainer,
+                   group.conceptName?.codeValue == "126200" {
+                    entries += group.contentItems.compactMap { $0.asImage?.imageReference }
+                } else if let image = libraryItem.asImage {
+                    entries.append(image.imageReference)
                 }
             }
         }
-        
+
         return entries
     }
     
@@ -174,38 +190,41 @@ public struct MeasurementReport: Sendable, Equatable {
         var qualitativeEvaluations: [CodedConcept] = []
         
         for item in container.contentItems {
-            // Extract tracking identifier
+            // TID 1501 row 2: HAS OBS CONTEXT TEXT (112039, DCM, "Tracking Identifier")
             if let textItem = item.asText,
-               textItem.conceptName?.codeValue == "112039" { // Tracking Identifier
+               textItem.conceptName?.codeValue == "112039" {
                 trackingIdentifier = textItem.textValue
             }
-            
-            // Extract tracking UID
+
+            // TID 1501 row 3: HAS OBS CONTEXT UIDREF (112040, DCM, "Tracking Unique Identifier")
             else if let uidItem = item.asUIDRef,
-                    uidItem.conceptName?.codeValue == "112040" { // Tracking Unique Identifier
+                    uidItem.conceptName?.codeValue == "112040" {
                 trackingUID = uidItem.uidValue
             }
-            
-            // Extract finding type
+
+            // TID 1501 row 3b: CONTAINS CODE (121071, DCM, "Finding")
             else if let codeItem = item.asCode,
-                    codeItem.conceptName?.codeValue == "121071" { // Finding
+                    codeItem.conceptName?.codeValue == "121071" {
                 findingType = codeItem.conceptCode
             }
-            
-            // Extract finding site
+
+            // TID 1501 row 6: HAS CONCEPT MOD CODE (363698007, SCT, "Finding Site")
             else if let codeItem = item.asCode,
-                    codeItem.conceptName?.codeValue == "363698007" { // Finding Site
+                    codeItem.conceptName?.codeValue == "363698007" {
                 findingSite = codeItem.conceptCode
             }
-            
-            // Extract numeric measurements
+
+            // TID 1501 row 10 → TID 300 row 1: NUM measurements
             else if let numItem = item.asNumeric {
                 let measurement = Measurement(from: numItem)
                 measurements.append(measurement)
             }
-            
-            // Extract qualitative evaluations (CODE items)
-            else if let codeItem = item.asCode {
+
+            // TID 1501 row 11: CONTAINS CODE ($QualType) qualitative evaluations. Concept
+            // modifiers of the group (HAS CONCEPT MOD, e.g. row 7 Laterality written beside
+            // the Finding Site) are not evaluations.
+            else if let codeItem = item.asCode,
+                    codeItem.relationshipType != .hasConceptMod {
                 qualitativeEvaluations.append(codeItem.conceptCode)
             }
         }

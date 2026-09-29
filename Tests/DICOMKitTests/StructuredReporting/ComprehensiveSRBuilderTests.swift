@@ -1024,4 +1024,34 @@ struct ComprehensiveSRBuilderTests {
         #expect(item.valueType == .pname)
         #expect(item.asPersonName?.personName == "Doe^John")
     }
+
+    // MARK: - Concept Constants (PS3.16 2026a)
+
+    @Test("regionOfInterest is (130488, DCM, \"Region in Space\") per PS3.16 2026a Table D-1 / TID 1410 row 8b")
+    func testRegionOfInterestConcept() {
+        #expect(CodedConcept.regionOfInterest.codeValue == "130488")
+        #expect(CodedConcept.regionOfInterest.codingSchemeDesignator == "DCM")
+        #expect(CodedConcept.regionOfInterest.codeMeaning == "Region in Space")
+    }
+
+    @Test("measurementLocation is (363698007, SCT, \"Finding Site\") per PS3.16 2026a CID 9000 / TID 301 row 5")
+    func testMeasurementLocationConcept() {
+        #expect(CodedConcept.measurementLocation.codeValue == "363698007")
+        #expect(CodedConcept.measurementLocation.codingSchemeDesignator == "SCT")
+        #expect(CodedConcept.measurementLocation.codeMeaning == "Finding Site")
+    }
+
+    @Test("temporalExtent is (130532, DCM, \"Duration of Time Period\") per PS3.16 2026a CID 10073")
+    func testTemporalExtentConcept() {
+        #expect(CodedConcept.temporalExtent.codeValue == "130532")
+        #expect(CodedConcept.temporalExtent.codingSchemeDesignator == "DCM")
+        #expect(CodedConcept.temporalExtent.codeMeaning == "Duration of Time Period")
+    }
+
+    @Test("imageRegion is (111030, DCM, \"Image Region\") per PS3.16 2026a TID 4104 row 21")
+    func testImageRegionConcept() {
+        #expect(CodedConcept.imageRegion.codeValue == "111030")
+        #expect(CodedConcept.imageRegion.codingSchemeDesignator == "DCM")
+        #expect(CodedConcept.imageRegion.codeMeaning == "Image Region")
+    }
 }

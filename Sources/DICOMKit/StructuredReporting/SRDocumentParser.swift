@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — SCOORD3D reads Referenced Frame of Reference UID (3006,0024) per PS3.3 2026a Table C.18.9-1; content module tags per PS3.6 Table 6-1; the TABLE and NUM qualifier gaps are recorded
+// NEMA-verified: 2026a, checked 2026-09-29 — SR Document Series / General Module attributes per PS3.3 2026a Tables C.17-1 and C.17-2; Code Sequence Macro reading (one of Code Value / Long Code Value / URN Code Value, Coding Scheme Designator 1C) per Table 8.8-1a; TABLE cells per Table C.18.10-1; SCOORD3D (3006,0024) per Table C.18.9-1; content module tags per PS3.6 Table 6-1; the NUM qualifier gap is recorded
 /// DICOM Structured Reporting Document Parser
 ///
 /// Parses DICOM SR data sets into the content item tree model.
@@ -891,57 +891,43 @@ public struct SRDocumentParser: Sendable {
     }
     
     /// Parses a coded concept from a sequence item containing code attributes
+    ///
+    /// PS3.3 Table 8.8-1a: exactly one of Code Value (0008,0100), Long Code Value
+    /// (0008,0119) or URN Code Value (0008,0120) is present; Code Meaning (0008,0104) is
+    /// Type 1; Coding Scheme Designator (0008,0102) is Type 1C, required with Code Value or
+    /// Long Code Value and optional with URN Code Value. The parser mirrors
+    /// `SRDocumentSerializer`: `codeValue` holds the Code Value, or "" when the identifier
+    /// is a Long or URN Code Value, and Items that (against the macro) carry more than one
+    /// identifier keep all of them.
     private func parseCodedConceptFromSequenceItem(_ item: SequenceItem) -> CodedConcept? {
-        // Get Code Value (0008,0100)
-        guard let codeValue = item.string(for: .codeValue) else {
-            // Try Long Code Value (0008,0119) if Code Value is missing
-            guard let longCodeValue = item.string(for: .longCodeValue) else {
-                // Try URN Code Value (0008,0120) if Long Code Value is also missing
-                guard let urnCodeValue = item.string(for: .urnCodeValue) else {
-                    return nil
-                }
-                // URN Code Value case
-                guard let codingSchemeDesignator = item.string(for: .codingSchemeDesignator),
-                      let codeMeaning = item.string(for: .codeMeaning) else {
-                    return nil
-                }
-                return CodedConcept(
-                    codeValue: "",
-                    codingSchemeDesignator: codingSchemeDesignator,
-                    codeMeaning: codeMeaning,
-                    codingSchemeVersion: item.string(for: .codingSchemeVersion),
-                    longCodeValue: nil,
-                    urnCodeValue: urnCodeValue
-                )
-            }
-            // Long Code Value case
-            guard let codingSchemeDesignator = item.string(for: .codingSchemeDesignator),
-                  let codeMeaning = item.string(for: .codeMeaning) else {
-                return nil
-            }
-            return CodedConcept(
-                codeValue: "",
-                codingSchemeDesignator: codingSchemeDesignator,
-                codeMeaning: codeMeaning,
-                codingSchemeVersion: item.string(for: .codingSchemeVersion),
-                longCodeValue: longCodeValue,
-                urnCodeValue: nil
-            )
-        }
-        
-        // Standard case with Code Value
-        guard let codingSchemeDesignator = item.string(for: .codingSchemeDesignator),
-              let codeMeaning = item.string(for: .codeMeaning) else {
+        let codeValue = item.string(for: .codeValue)
+        let longCodeValue = item.string(for: .longCodeValue)
+        let urnCodeValue = item.string(for: .urnCodeValue)
+
+        // At least one identifier must be present
+        guard codeValue != nil || longCodeValue != nil || urnCodeValue != nil else {
             return nil
         }
-        
+
+        // Code Meaning is Type 1
+        guard let codeMeaning = item.string(for: .codeMeaning) else {
+            return nil
+        }
+
+        // Coding Scheme Designator: required unless the identifier is a URN Code Value alone
+        let designator = item.string(for: .codingSchemeDesignator)
+        let identifiedByURNOnly = codeValue == nil && longCodeValue == nil && urnCodeValue != nil
+        guard let codingSchemeDesignator = designator ?? (identifiedByURNOnly ? "" : nil) else {
+            return nil
+        }
+
         return CodedConcept(
-            codeValue: codeValue,
+            codeValue: codeValue ?? "",
             codingSchemeDesignator: codingSchemeDesignator,
             codeMeaning: codeMeaning,
             codingSchemeVersion: item.string(for: .codingSchemeVersion),
-            longCodeValue: item.string(for: .longCodeValue),
-            urnCodeValue: item.string(for: .urnCodeValue)
+            longCodeValue: longCodeValue,
+            urnCodeValue: urnCodeValue
         )
     }
     

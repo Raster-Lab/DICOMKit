@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — SCOORD3D writes (3006,0024) per PS3.3 2026a Table C.18.9-1; VR literals per PS3.6 Table 6-1; series module and TABLE cell findings are recorded (P-SRSER)
+// NEMA-verified: 2026a, checked 2026-09-29 — SR Document Series Module per PS3.3 2026a Table C.17-1 (Modality SR, Table C.17.6-1 KO; Referenced PPS Sequence Type 2), SR Document General Module per Table C.17-2 (Type 1 Instance Number, Completion/Verification Flag, Content Date/Time; Performed Procedure Code Sequence Type 2), Code Sequence Macro per Table 8.8-1a (exactly one of Code Value / Long Code Value / URN Code Value), TABLE cells per Table C.18.10-1 (IS or SV integer cells), SCOORD3D (3006,0024) per Table C.18.9-1
 /// DICOM Structured Reporting Document Serializer
 ///
 /// Converts SRDocument objects to DICOM DataSet format for storage.
@@ -27,6 +27,11 @@ public struct SRDocumentSerializer: Sendable {
         
         /// Encoding error
         case encodingError(String)
+
+        /// Two attributes hold values the standard forbids together, e.g. Verification Flag
+        /// VERIFIED with Completion Flag PARTIAL (PS3.3 Table C.17-2: "A Value of VERIFIED
+        /// shall be used only when the Value of Completion Flag (0040,A491) is COMPLETE").
+        case inconsistentAttributes(String)
     }
     
     /// Creates a new SR document serializer
@@ -50,11 +55,12 @@ public struct SRDocumentSerializer: Sendable {
         // Add General Study Module
         addGeneralStudyModule(to: &dataSet, document: document)
         
-        // Add General Series Module
-        addGeneralSeriesModule(to: &dataSet, document: document)
-        
+        // Add SR Document Series Module (PS3.3 Table C.17-1; every A.35.x SR IOD except
+        // Key Object Selection / Rendition Selection, which carry Table C.17.6-1)
+        addSRDocumentSeriesModule(to: &dataSet, document: document)
+
         // Add SR Document General Module
-        addSRDocumentGeneralModule(to: &dataSet, document: document)
+        try addSRDocumentGeneralModule(to: &dataSet, document: document)
         
         // Add SR Document Content Module
         try addSRDocumentContentModule(to: &dataSet, document: document)
@@ -142,10 +148,33 @@ public struct SRDocumentSerializer: Sendable {
         }
     }
     
-    // MARK: - General Series Module
-    
-    private func addGeneralSeriesModule(to dataSet: inout DataSet, document: SRDocument) {
-        // Series Instance UID (0020,000E)
+    // MARK: - SR Document Series Module (PS3.3 Table C.17-1)
+
+    /// Series Number (0020,0011) and Instance Number (0020,0013) are Type 1 in Tables
+    /// C.17-1 and C.17-2; this is what is written when the document carries none.
+    public static let defaultNumber = "1"
+
+    /// The Modality (0008,0060) written when the document carries none: the single
+    /// Enumerated Value of Table C.17-1 ("SR") or, for the Key Object Selection and
+    /// Rendition Selection Document IODs (Tables A.35.4-1 and A.35.21-1, Key Object
+    /// Document Series Module), the single Enumerated Value of Table C.17.6-1 ("KO").
+    public static func defaultModality(forSOPClassUID sopClassUID: String) -> String {
+        switch SRDocumentType.from(sopClassUID: sopClassUID) {
+        case .keyObjectSelectionDocument?: return "KO"
+        default: return "SR"
+        }
+    }
+
+    private func addSRDocumentSeriesModule(to dataSet: inout DataSet, document: SRDocument) {
+        // Modality (0008,0060), Type 1
+        dataSet[.modality] = DataElement.string(
+            tag: .modality,
+            vr: .CS,
+            value: document.modality ?? Self.defaultModality(forSOPClassUID: document.sopClassUID)
+        )
+
+        // Series Instance UID (0020,000E), Type 1. Documents built without one (the
+        // builders generate one) are written without it rather than with a fabricated UID.
         if let seriesInstanceUID = document.seriesInstanceUID {
             dataSet[.seriesInstanceUID] = DataElement.string(
                 tag: .seriesInstanceUID,
@@ -153,74 +182,81 @@ public struct SRDocumentSerializer: Sendable {
                 value: seriesInstanceUID
             )
         }
-        
-        // Modality (0008,0060)
-        if let modality = document.modality {
-            dataSet[.modality] = DataElement.string(
-                tag: .modality,
-                vr: .CS,
-                value: modality
-            )
-        }
-        
-        // Series Number (0020,0011)
-        if let seriesNumber = document.seriesNumber {
-            dataSet[.seriesNumber] = DataElement.string(
-                tag: .seriesNumber,
-                vr: .IS,
-                value: seriesNumber
-            )
-        }
+
+        // Series Number (0020,0011), Type 1
+        dataSet[.seriesNumber] = DataElement.string(
+            tag: .seriesNumber,
+            vr: .IS,
+            value: document.seriesNumber ?? Self.defaultNumber
+        )
+
+        // Referenced Performed Procedure Step Sequence (0008,1111), Type 2: "Zero or one
+        // Item shall be included". SRDocument does not model the PPS, so it is written empty.
+        dataSet[.referencedPerformedProcedureStepSequence] = createSequenceElement(
+            tag: .referencedPerformedProcedureStepSequence,
+            items: []
+        )
     }
-    
-    // MARK: - SR Document General Module
-    
-    private func addSRDocumentGeneralModule(to dataSet: inout DataSet, document: SRDocument) {
-        // Content Date (0008,0023)
-        if let contentDate = document.contentDate {
-            dataSet[.contentDate] = DataElement.string(
-                tag: .contentDate,
-                vr: .DA,
-                value: contentDate
+
+    // MARK: - SR Document General Module (PS3.3 Table C.17-2)
+
+    private func addSRDocumentGeneralModule(to dataSet: inout DataSet, document: SRDocument) throws {
+        // Instance Number (0020,0013), Type 1
+        dataSet[.instanceNumber] = DataElement.string(
+            tag: .instanceNumber,
+            vr: .IS,
+            value: document.instanceNumber ?? Self.defaultNumber
+        )
+
+        // Completion Flag (0040,A491), Type 1, Enumerated Values PARTIAL / COMPLETE.
+        // A document that does not say is written as PARTIAL ("Partial content"): the
+        // value that claims nothing about completeness (C.17.2.7 leaves the criteria for
+        // COMPLETE to the creating application).
+        let completionFlag = document.completionFlag ?? .partial
+
+        // Verification Flag (0040,A493), Type 1, Enumerated Values UNVERIFIED / VERIFIED.
+        // Default UNVERIFIED ("Not attested to"); VERIFIED additionally requires the
+        // Verifying Observer Sequence (Type 1C) and Completion Flag COMPLETE.
+        let verificationFlag = document.verificationFlag ?? .unverified
+        if verificationFlag == .verified && completionFlag != .complete {
+            throw SerializationError.inconsistentAttributes(
+                "Verification Flag VERIFIED requires Completion Flag COMPLETE (PS3.3 Table C.17-2); got \(completionFlag.rawValue)"
             )
         }
-        
-        // Content Time (0008,0033)
-        if let contentTime = document.contentTime {
-            dataSet[.contentTime] = DataElement.string(
-                tag: .contentTime,
-                vr: .TM,
-                value: contentTime
-            )
-        }
-        
-        // Instance Number (0020,0013)
-        if let instanceNumber = document.instanceNumber {
-            dataSet[.instanceNumber] = DataElement.string(
-                tag: .instanceNumber,
-                vr: .IS,
-                value: instanceNumber
-            )
-        }
-        
-        // Completion Flag (0040,A491)
-        if let completionFlag = document.completionFlag {
-            dataSet[.completionFlag] = DataElement.string(
-                tag: .completionFlag,
-                vr: .CS,
-                value: completionFlag.rawValue
-            )
-        }
-        
-        // Verification Flag (0040,A493)
-        if let verificationFlag = document.verificationFlag {
-            dataSet[.verificationFlag] = DataElement.string(
-                tag: .verificationFlag,
-                vr: .CS,
-                value: verificationFlag.rawValue
-            )
-        }
-        
+
+        dataSet[.completionFlag] = DataElement.string(
+            tag: .completionFlag,
+            vr: .CS,
+            value: completionFlag.rawValue
+        )
+        dataSet[.verificationFlag] = DataElement.string(
+            tag: .verificationFlag,
+            vr: .CS,
+            value: verificationFlag.rawValue
+        )
+
+        // Content Date (0008,0023) and Content Time (0008,0033), Type 1: "the date/time
+        // the document content creation started". When the document carries neither, the
+        // moment of serialization is used.
+        let (nowDate, nowTime) = Self.currentDateAndTime()
+        dataSet[.contentDate] = DataElement.string(
+            tag: .contentDate,
+            vr: .DA,
+            value: document.contentDate ?? nowDate
+        )
+        dataSet[.contentTime] = DataElement.string(
+            tag: .contentTime,
+            vr: .TM,
+            value: document.contentTime ?? nowTime
+        )
+
+        // Performed Procedure Code Sequence (0040,A372), Type 2: "Zero or more Items shall
+        // be included". SRDocument does not model it, so it is written empty.
+        dataSet[.performedProcedureCodeSequence] = createSequenceElement(
+            tag: .performedProcedureCodeSequence,
+            items: []
+        )
+
         // Preliminary Flag (0040,A496)
         if let preliminaryFlag = document.preliminaryFlag {
             dataSet[.preliminaryFlag] = DataElement.string(
@@ -229,6 +265,19 @@ public struct SRDocumentSerializer: Sendable {
                 value: preliminaryFlag.rawValue
             )
         }
+    }
+
+    /// The current moment as a DA ("YYYYMMDD") and a TM ("HHMMSS") value.
+    private static func currentDateAndTime() -> (String, String) {
+        let now = Date()
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyyMMdd"
+        let date = formatter.string(from: now)
+        formatter.dateFormat = "HHmmss"
+        let time = formatter.string(from: now)
+        return (date, time)
     }
     
     // MARK: - SR Document Content Module
@@ -280,40 +329,91 @@ public struct SRDocumentSerializer: Sendable {
         return createSequenceElement(tag: tag, items: [sequenceItem])
     }
     
-    /// Creates a sequence item for a coded concept
+    /// Which of the three identifier attributes of PS3.3 Table 8.8-1a a coded concept is
+    /// written with. Exactly one is present:
+    /// - Code Value (0008,0100) "shall be present if the length of the code value is 16
+    ///   characters or less, and the code value is not a URN or URL";
+    /// - Long Code Value (0008,0119) "shall be present if Code Value is not present and the
+    ///   Code Value is not a URN or URL";
+    /// - URN Code Value (0008,0120) "shall be present if Code Value is not present and the
+    ///   Code Value is a URN or URL".
+    enum CodeIdentifier: Equatable {
+        case codeValue(String)
+        case longCodeValue(String)
+        case urnCodeValue(String)
+
+        init(_ code: CodedConcept) {
+            let short = code.codeValue
+            if !short.isEmpty, short.count <= 16, !Self.looksLikeURN(short) {
+                self = .codeValue(short)
+            } else if let urn = code.urnCodeValue, !urn.isEmpty {
+                self = .urnCodeValue(urn)
+            } else if let long = code.longCodeValue, !long.isEmpty {
+                self = .longCodeValue(long)
+            } else if Self.looksLikeURN(short) {
+                self = .urnCodeValue(short)
+            } else if !short.isEmpty {
+                self = .longCodeValue(short)
+            } else {
+                // Nothing to write; an empty Code Value keeps the Item well-formed.
+                self = .codeValue("")
+            }
+        }
+
+        private static func looksLikeURN(_ value: String) -> Bool {
+            let lower = value.lowercased()
+            return lower.hasPrefix("urn:") || lower.hasPrefix("http://") || lower.hasPrefix("https://")
+        }
+    }
+
+    /// Creates a sequence item for a coded concept (PS3.3 Table 8.8-1a Basic Code Sequence Macro)
     private func createCodeSequenceItem(code: CodedConcept) -> SequenceItem {
         var elements: [DataElement] = []
-        
-        // Code Value (0008,0100)
-        elements.append(DataElement.string(
-            tag: .codeValue,
-            vr: .SH,
-            value: code.codeValue
-        ))
-        
-        // Coding Scheme Designator (0008,0102)
-        elements.append(DataElement.string(
-            tag: .codingSchemeDesignator,
-            vr: .SH,
-            value: code.codingSchemeDesignator
-        ))
-        
-        // Code Meaning (0008,0104)
-        elements.append(DataElement.string(
-            tag: .codeMeaning,
-            vr: .LO,
-            value: code.codeMeaning
-        ))
-        
-        // Coding Scheme Version (0008,0103) - optional
-        if let version = code.codingSchemeVersion {
+
+        let identifier = CodeIdentifier(code)
+        switch identifier {
+        case .codeValue(let value):
+            // Code Value (0008,0100), SH
+            elements.append(DataElement.string(tag: .codeValue, vr: .SH, value: value))
+        case .longCodeValue(let value):
+            // Long Code Value (0008,0119), UC
+            elements.append(DataElement.string(tag: .longCodeValue, vr: .UC, value: value))
+        case .urnCodeValue(let value):
+            // URN Code Value (0008,0120), UR
+            elements.append(DataElement.string(tag: .urnCodeValue, vr: .UR, value: value))
+        }
+
+        // Coding Scheme Designator (0008,0102), Type 1C: "Shall be present if Code Value or
+        // Long Code Value is present. May be present otherwise."
+        let designatorWritten: Bool
+        if case .urnCodeValue = identifier, code.codingSchemeDesignator.isEmpty {
+            designatorWritten = false
+        } else {
+            elements.append(DataElement.string(
+                tag: .codingSchemeDesignator,
+                vr: .SH,
+                value: code.codingSchemeDesignator
+            ))
+            designatorWritten = true
+        }
+
+        // Coding Scheme Version (0008,0103), Type 1C: "Shall not be present if Coding Scheme
+        // Designator is absent."
+        if designatorWritten, let version = code.codingSchemeVersion {
             elements.append(DataElement.string(
                 tag: .codingSchemeVersion,
                 vr: .SH,
                 value: version
             ))
         }
-        
+
+        // Code Meaning (0008,0104), Type 1
+        elements.append(DataElement.string(
+            tag: .codeMeaning,
+            vr: .LO,
+            value: code.codeMeaning
+        ))
+
         return SequenceItem(elements: elements)
     }
     
@@ -545,7 +645,16 @@ public struct SRDocumentSerializer: Sendable {
         var els: [DataElement] = []
         if let row = cell.row { els.append(DataElement.uint32(tag: .tableRowNumber, value: UInt32(row))) }
         if let column = cell.column { els.append(DataElement.uint32(tag: .tableColumnNumber, value: UInt32(column))) }
-        if let vr = cell.value.selectorVR {
+        // Selector Attribute VR (0072,0050), Type 1C: names the Selector <VR> Value attribute
+        // that carries the cell (Table C.18.10-1). Integer cells are IS unless a value lies
+        // outside the IS range, in which case they are SV (see `integerSelectorVR`).
+        let selectorVR: VR?
+        if case .integer(let values) = cell.value {
+            selectorVR = Self.integerSelectorVR(values)
+        } else {
+            selectorVR = cell.value.selectorVR
+        }
+        if let vr = selectorVR {
             els.append(DataElement.string(tag: .selectorAttributeVR, vr: .CS, value: vr.rawValue))
         }
         switch cell.value {
@@ -556,7 +665,18 @@ public struct SRDocumentSerializer: Sendable {
         case .floatingPoint(let values):
             els.append(DataElement.float64s(tag: .selectorFDValue, values: values))
         case .integer(let values):
-            els.append(DataElement.strings(tag: .selectorISValue, vr: .IS, values: values.map { String($0) }))
+            if selectorVR == .SV {
+                // Selector SV Value (0072,0082), VR SV: 64-bit signed integers, little endian
+                var data = Data(capacity: values.count * 8)
+                for value in values {
+                    var le = value.littleEndian
+                    withUnsafeBytes(of: &le) { data.append(contentsOf: $0) }
+                }
+                els.append(DataElement(tag: .selectorSVValue, vr: .SV, length: UInt32(data.count), valueData: data))
+            } else {
+                // Selector IS Value (0072,0064), VR IS
+                els.append(DataElement.strings(tag: .selectorISValue, vr: .IS, values: values.map { String($0) }))
+            }
         case .dateTime(let values):
             els.append(DataElement.strings(tag: .selectorDTValue, vr: .DT, values: values))
         case .code(let codes):
@@ -571,6 +691,15 @@ public struct SRDocumentSerializer: Sendable {
         return SequenceItem(elements: els)
     }
     
+    /// The Selector Attribute VR for an integer TABLE cell: IS while every value fits the
+    /// IS range of PS3.5 Table 6.2-1 (-2^31 ... 2^31-1), otherwise SV. The model keeps every
+    /// integer VR read from a file (IS, SL, SS, UL, US, SV, UV) as `Int64`, so a re-encoded
+    /// table carries the same values in IS or SV.
+    static func integerSelectorVR(_ values: [Int64]) -> VR {
+        let fitsIS = values.allSatisfy { $0 >= Int64(Int32.min) && $0 <= Int64(Int32.max) }
+        return fitsIS ? .IS : .SV
+    }
+
     // MARK: - Numeric Content Item Elements
     
     /// Adds numeric content item elements using Measured Value Sequence
@@ -871,30 +1000,14 @@ extension SRDocument {
 }
 
 // MARK: - Tag Extensions for SR Serialization
-// Note: Some tags are already defined in SRDocumentParser.swift and Tag+StructuredReporting.swift
+// Note: Temporal Range Type, Referenced Sample Positions, Referenced Time Offsets and
+// Referenced DateTime (DICOMCore Tag+Waveforms.swift) and Graphic Type / Graphic Data
+// (DICOMCore Tag+PresentationState.swift) are defined by DICOMCore, which DICOMKit
+// re-exports; the copies this file carried made `Tag.referencedSamplePositions` ambiguous
+// for code importing both modules and were removed 2026-09-29.
 
 extension Tag {
-    /// Temporal Range Type (0040,A130)
-    /// VR: CS, VM: 1
-    public static let temporalRangeType = Tag(group: 0x0040, element: 0xA130)
-    
-    /// Referenced Sample Positions (0040,A132)
-    /// VR: UL, VM: 1-n
-    public static let referencedSamplePositions = Tag(group: 0x0040, element: 0xA132)
-    
-    /// Referenced Time Offsets (0040,A138)
-    /// VR: DS, VM: 1-n
-    public static let referencedTimeOffsets = Tag(group: 0x0040, element: 0xA138)
-    
-    /// Referenced DateTime (0040,A13A) for TCOORD
-    /// VR: DT, VM: 1-n
-    public static let referencedDateTime = Tag(group: 0x0040, element: 0xA13A)
-    
-    /// Graphic Type (0070,0023)
-    /// VR: CS, VM: 1
-    public static let graphicType = Tag(group: 0x0070, element: 0x0023)
-    
-    /// Graphic Data (0070,0022)
-    /// VR: FL, VM: 2-n
-    public static let graphicData = Tag(group: 0x0070, element: 0x0022)
+    /// Performed Procedure Code Sequence (0040,A372)
+    /// VR: SQ, VM: 1 — Type 2 in the SR Document General Module (PS3.3 Table C.17-2)
+    public static let performedProcedureCodeSequence = Tag(group: 0x0040, element: 0xA372)
 }

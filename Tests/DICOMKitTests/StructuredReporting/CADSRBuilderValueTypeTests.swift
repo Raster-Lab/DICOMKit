@@ -5,7 +5,9 @@ import DICOMCore
 
 /// PS3.3 2026a Tables A.35.5-2 (Mammography CAD SR) and A.35.6-2 (Chest CAD SR) list no
 /// DATETIME target value type, and PS3.16 TID 4019 (Algorithm Identification) has no date/time
-/// row; its manufacturer row is (122405, DCM, "Algorithm Manufacturer") (D17).
+/// row; its manufacturer row is (122405, DCM, "Algorithm Manufacturer") (D17). TID 4019 is
+/// included under every Single Image Finding (TID 4006 row 5 / TID 4104 row 11) and every
+/// Detection Performed (TID 4017 row 2), so the manufacturer TEXT appears once per inclusion.
 @Suite("CAD SR builders: value types and TID 4019 codes")
 struct CADSRBuilderValueTypeTests {
 
@@ -54,7 +56,8 @@ struct CADSRBuilderValueTypeTests {
         }
         #expect(!valueTypes.contains(.datetime))
         #expect(valueTypes.isSubset(of: Set(SRDocumentType.mammographyCADSR.allowedValueTypes)))
-        #expect(manufacturerCodes == ["Algorithm Manufacturer"])
+        #expect(valueTypes.contains(.scoord) && valueTypes.contains(.image))
+        #expect(!manufacturerCodes.isEmpty && Set(manufacturerCodes) == ["Algorithm Manufacturer"])
     }
 
     @Test("Chest CAD SR carries no DATETIME item and names the manufacturer with 122405")
@@ -85,6 +88,7 @@ struct CADSRBuilderValueTypeTests {
             #expect(item.conceptName?.codeValue != "111005")
         }
         #expect(!valueTypes.contains(.datetime))
-        #expect(manufacturerCodes == ["Algorithm Manufacturer"])
+        #expect(valueTypes.isSubset(of: Set(SRDocumentType.chestCADSR.allowedValueTypes)))
+        #expect(!manufacturerCodes.isEmpty && Set(manufacturerCodes) == ["Algorithm Manufacturer"])
     }
 }

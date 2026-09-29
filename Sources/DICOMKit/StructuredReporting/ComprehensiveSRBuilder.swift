@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — 2D SCOORD closed shapes are POLYLINE with the first vertex repeated, per PS3.3 2026a C.18.6.1.2 (D18); three concept constants are pending P-CONST
+// NEMA-verified: 2026a, checked 2026-09-29 — 2D SCOORD closed shapes are POLYLINE with the first vertex repeated, per PS3.3 2026a C.18.6.1.2 (D18); regionOfInterest, measurementLocation and temporalExtent against PS3.16 2026a Table D-1, CID 9000, CID 10073, TID 1410 row 8b, TID 301 row 5
 /// Comprehensive SR Document Builder
 ///
 /// Provides a specialized fluent API for creating DICOM Comprehensive SR documents.
@@ -1516,24 +1516,37 @@ extension CodedConcept {
         codeMeaning: "Image Region"
     )
     
-    /// Standard concept for region of interest
+    /// Standard concept for a region of interest that is not tied to a particular image
+    ///
+    /// (130488, DCM, "Region in Space") — PS3.16 2026a Table D-1: "A continuous part of space, not
+    /// necessarily associated with a particular image." Used as the concept name of the ROI reference
+    /// in TID 1410 row 8b and TID 1411 row 12b. For an ROI drawn on an image use ``imageRegion``
+    /// (111030, DCM, "Image Region").
     public static let regionOfInterest = CodedConcept(
         codeValue: "130488",
         codingSchemeDesignator: "DCM",
-        codeMeaning: "Region of Interest"
+        codeMeaning: "Region in Space"
     )
-    
-    /// Standard concept for measurement location
+
+    /// Standard concept for the anatomic location a measurement was taken at
+    ///
+    /// (363698007, SCT, "Finding Site") — PS3.16 2026a CID 9000 "Physical Quantity Descriptor";
+    /// the HAS CONCEPT MOD concept of TID 301 row 5, TID 1419 row 2 and TID 1501 row 6.
+    /// (The former value 121233 is "Source image for segmentation" in Table D-1.)
     public static let measurementLocation = CodedConcept(
-        codeValue: "121233",
-        codingSchemeDesignator: "DCM",
-        codeMeaning: "Measurement Location"
+        codeValue: "363698007",
+        codingSchemeDesignator: "SCT",
+        codeMeaning: "Finding Site"
     )
-    
-    /// Standard concept for temporal extent
+
+    /// Standard concept for the temporal extent (duration) of a period of time
+    ///
+    /// (130532, DCM, "Duration of Time Period") — PS3.16 2026a CID 10073 "Value Timing";
+    /// Table D-1: "All the points in time throughout a defined period of time".
+    /// (The former value 128178 does not exist in Table D-1.)
     public static let temporalExtent = CodedConcept(
-        codeValue: "128178",
+        codeValue: "130532",
         codingSchemeDesignator: "DCM",
-        codeMeaning: "Temporal Extent"
+        codeMeaning: "Duration of Time Period"
     )
 }
