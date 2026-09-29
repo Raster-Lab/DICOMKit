@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Audit report: `DICOMKIT_STANDARD_IMPLEMENTATION.md`. Every constant the module carries is diffed
 against the frozen NEMA text by `Scripts/diff_kit.py` (41 checks against PS3.3, PS3.5, PS3.6,
-PS3.15 and PS3.16 2026a; 14 report a pending public-API decision), and all 156 Swift files carry a
-`NEMA-verified` marker. Behaviour fixes were each verified against the clause named.
+PS3.15 and PS3.16 2026a; 0 failing; the one pending item is the DICOMCore row D26), and all 157
+Swift files carry a `NEMA-verified` marker. Behaviour fixes were each verified against the clause named.
 
 - **Coded concepts (PS3.16 Table D-1, CID tables).** 58 code/meaning pairs were wrong and are
   corrected: RWV and parametric-map quantities (T1 113063, T2 113065, T2* 113064, ve 126314,
@@ -31,6 +31,45 @@ PS3.15 and PS3.16 2026a; 14 report a pending public-API decision), and all 156 S
   closed POLYLINE, since 2D SCOORD has no POLYGON (C.18.6.1.2, D18); `SpatialCoordinates.isClosed`
   and `area` recognise it. SCOORD3D writes and reads Referenced Frame of Reference UID
   (3006,0024), not (0020,0052) (Table C.18.9-1). KOS series Modality is `KO` (C.17.6.1).
+- **Approved public-API items (2026-09-29, second pass).** Every P-item of the report was approved
+  and implemented, each against the 2026a clause named in the report's Progress log:
+  - *Hanging Protocol* (Tables C.23.1-1, C.23.3-1): the standard Filter-by Operator, Filter-by
+    Category IMAGE_PLANE, Image Set Selector Category, Relative Time (US 2) / Abstract Prior Value
+    (SS 2), Sort-by Category, Image Box Layout, Scroll, Reformatting and 3D Rendering terms,
+    Hanging Protocol Level MANUFACTURER, VOI Type, top-level Partial Data Display Handling; the
+    invented cases are deprecated and mapped; the matcher's MATCH/NO_MATCH semantics were inverted.
+  - *RT* (Tables C.8-39…C.8-51): `CLOSEDPLANAR_XOR`, the full RT ROI Interpreted Type list, typed
+    enums for every Dose/DVH/Beam/Plan/Brachy term (String storage unchanged).
+  - *Segmentation*: LABELMAP write and read, Label Map Segmentation Storage, `Segmentation.toDataSet`.
+  - *Waveform* (Tables C.10-8/9/10): all ten Sample Interpretation terms with correct names
+    (`unsignedInteger`/`signedShort` deprecated), Type 1 attributes written, UL sample positions.
+  - *Secondary Capture* (Tables A.8-x, C.8-24/25b/25c): DRW, `.unknown` deprecated (writes WSD),
+    every Type 1/2 attribute written by the builder, converter and `FrameMerger`; EXIF DPI as
+    Nominal Scanned Pixel Spacing.
+  - *Coded concepts*: `regionOfInterest`, `measurementLocation`, `temporalExtent`, `comparison`
+    now carry real 2026a concepts; `99DICOMKIT` private scheme (PS3.16 section 8) for the three AI
+    detection types without a DICOM concept; `anatomicalStructure(_:)` with verified anatomy codes;
+    confidence as (111012, DCM, "Certainty of Finding") in percent; CID 7021 titles renamed.
+  - *SR serializer*: SR Document Series module, Type 1 flags always written, one code identifier per
+    Table 8.8-1a, TABLE integer cells IS/SV; TID 1500 and TID 4000/4100 families emitted row by row
+    (`MammographyCADSRBuilder`, `ChestCADSRBuilder`, `MeasurementReportBuilder`); extractors read
+    the new and the old layouts.
+  - *Presentation states*: MATRIX units, Shutter Presentation Color CIELab Value, Presentation
+    Pixel Spacing / Aspect Ratio / Magnification Ratio with their 1C rules, a
+    `ColorPresentationStateBuilder` (CSPS), builders take `imageSize:` so the Type 1 Displayed
+    Area Selection Sequence is always written.
+  - *UIDs* (PS3.5 9.2.2): `UIDGenerator.defaultRoot` and `DICOMFile.implementationClassUID` are
+    under the library's root `1.2.826.0.1.3680043.10.511` (arcs .4 and .3), no longer the OFFIS
+    DCMTK root; `PrintColorMode` is one DICOMCore type (D24).
+  - *Validator*: data-driven Type 1/2 tables per IOD (PS3.5 7.4); *de-identification*: Patient
+    Identity Removed, De-identification Method and Method Code Sequence (CID 7050) written;
+    *encapsulated documents*: every Type 1/2 attribute; *volume*: slice spacing from Image Position
+    deltas, source pixel descriptor; *rendering*: partial-range YBR, ICT/RCT pass-through, exact
+    C.11.2.1.2.1 windowing in SIMD; *JPIP*: (0028,7FE0); *video*: Cine module, Lossy Image
+    Compression Method per transfer syntax, empty Basic Offset Table, audio per PS3.5 8.2.12;
+    *SUV*: CID 85 units, DCM 126411–126413 factors, decay START/ADMIN.
+  - Test suites that had never been in the `DICOMKitTests` allowlist (AI, EncapsulatedDocument,
+    SecondaryCapture, four first-pass suites) now compile and pass.
 - **DICOMDIR and file meta.** A DICOMDIR with an unknown or PRIVATE Directory Record Type now
   opens; the record is skipped (F.6.1, D14). `DICOMFile.write()` computes File Meta Information
   Group Length when absent (PS3.10 Table 7.1-1); `DICOMDIRWriter` no longer writes the Deflated
