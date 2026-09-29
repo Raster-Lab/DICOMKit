@@ -803,7 +803,7 @@ public struct SRDocumentBuilder: Sendable {
         }
         
         // Generate UIDs if not provided.
-        // Note: Auto-generated UIDs use UIDGenerator with the default UID root (1.2.276.0.7230010.3).
+        // Note: Auto-generated UIDs use UIDGenerator with the default UID root (UIDGenerator.defaultRoot).
         // In production environments with specific UID root requirements, developers should
         // provide their own UIDs using withSOPInstanceUID(), withStudyInstanceUID(), and
         // withSeriesInstanceUID() methods to ensure compliance with organizational policies.

@@ -188,11 +188,10 @@ public struct PrintConfiguration: Sendable {
     }
 }
 
-/// Print color mode
-public enum PrintColorMode: String, Sendable, Codable {
-    case grayscale = "GRAYSCALE"
-    case color = "COLOR"
-}
+/// Print color mode.
+///
+/// The same type as `DICOMKit.PrintColorMode`: both are `DICOMCore.PrintColorMode` (D24).
+public typealias PrintColorMode = DICOMCore.PrintColorMode
 
 // MARK: - Film Session
 

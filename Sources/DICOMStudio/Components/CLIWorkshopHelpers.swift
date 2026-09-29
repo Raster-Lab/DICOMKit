@@ -2987,8 +2987,8 @@ case "dicom-uid":
         ),
         CLIParameterDefinition(
             id: "root", flag: "--root", displayName: "UID Root",
-            parameterType: .textField, placeholder: "1.2.276.0.7230010.3",
-            helpText: "Custom UID root prefix (default: 1.2.276.0.7230010.3)",
+            parameterType: .textField, placeholder: UIDGenerator.defaultRoot,
+            helpText: "Custom UID root prefix (default: \(UIDGenerator.defaultRoot))",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["generate", "regenerate"])
         ),
         CLIParameterDefinition(

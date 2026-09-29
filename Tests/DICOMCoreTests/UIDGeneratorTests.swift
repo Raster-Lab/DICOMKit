@@ -25,6 +25,22 @@ struct UIDGeneratorTests {
         #expect(DICOMUniqueIdentifier.parse(UIDGenerator.defaultRoot) != nil)
     }
 
+    /// PS3.5 2026a §9.2.2: privately defined UIDs are built on a registered root the
+    /// defining organisation owns. The library's root is the one its JP3D transfer
+    /// syntaxes already use, never the OFFIS DCMTK root (`1.2.276.0.7230010.3`).
+    @Test("Default root is the library's private root, not the DCMTK root (PS3.5 9.2.2)")
+    func testDefaultRootIsOwnRoot() {
+        #expect(UIDGenerator.defaultRoot == "1.2.826.0.1.3680043.10.511.4")
+        #expect(!UIDGenerator.defaultRoot.hasPrefix("1.2.276.0.7230010"))
+        // Generated UIDs must still fit in 64 characters with the longer root (§9.1).
+        let generator = UIDGenerator()
+        for _ in 0..<50 {
+            let uid = generator.generate(type: 3).value
+            #expect(uid.count <= 64)
+            #expect(uid.hasPrefix("1.2.826.0.1.3680043.10.511.4.3."))
+        }
+    }
+
     @Test("generate() obeys PS3.5 §9.1 and starts with the root")
     func testGenerate() {
         let generator = UIDGenerator()

@@ -341,16 +341,12 @@ public struct PrintJobRequest: Sendable, Codable {
         layoutSelection.imageDisplayFormat
     }
 
-    /// The DICOMKit-side color mode used by `ImagePreprocessor`.
+    /// The color mode used by `ImagePreprocessor`.
     ///
-    /// A distinct type from `DICOMNetwork.PrintColorMode`, mapped here so call
-    /// sites never have to disambiguate.
-    public var preprocessColorMode: DICOMKit.PrintColorMode {
-        switch colorMode {
-        case .grayscale: return .grayscale
-        case .color:     return .color
-        }
-    }
+    /// `DICOMKit.PrintColorMode` and `DICOMNetwork.PrintColorMode` are both
+    /// `DICOMCore.PrintColorMode` since D24 was closed, so this is `colorMode` itself;
+    /// kept so existing call sites keep compiling.
+    public var preprocessColorMode: DICOMKit.PrintColorMode { colorMode }
 
     /// The `PrintOptions` this request maps to for the Print SCU.
     public var printOptions: PrintOptions {

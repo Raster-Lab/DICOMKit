@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a C.7.6.3.1.2 YBR conversions and C.13 image box citations checked; the PrintColorMode duplicate is pending P-PRINT (D24)
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a C.7.6.3.1.2 YBR conversions and C.13 image box citations checked; PrintColorMode is the DICOMCore type (D24 closed)
 /// Image Preprocessing for DICOM Print Management
 ///
 /// Phase 3.1 of the DICOM Print Management implementation.
@@ -20,11 +20,11 @@ import Accelerate
 
 // MARK: - Print Color Mode
 
-/// Print color mode for image preparation
-public enum PrintColorMode: String, Sendable {
-    case grayscale = "GRAYSCALE"
-    case color = "COLOR"
-}
+/// Print color mode for image preparation.
+///
+/// The same type as `DICOMNetwork.PrintColorMode`: both are `DICOMCore.PrintColorMode`
+/// (D24), so a `PrintConfiguration` colour mode can be passed straight to the preprocessor.
+public typealias PrintColorMode = DICOMCore.PrintColorMode
 
 // MARK: - Prepared Image
 

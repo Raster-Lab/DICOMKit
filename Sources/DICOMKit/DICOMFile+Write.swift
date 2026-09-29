@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.10 2026a Table 7.1-1: the Type 1 File Meta elements are written and (0002,0000) is computed in write(); the Implementation Class UID root is pending P-UID
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.10 2026a Table 7.1-1: the Type 1 File Meta elements are written and (0002,0000) is computed in write(); the Implementation Class UID is under the library's own root per PS3.5 9.2.2 (P-UID closed)
 import Foundation
 import DICOMCore
 
@@ -145,10 +145,12 @@ extension DICOMFile {
 
     /// Implementation Class UID (0002,0012) written by every file writer of this library.
     ///
-    /// The value is under the OFFIS DCMTK root (`1.2.276.0.7230010.3`), the same root
-    /// `UIDGenerator.defaultRoot` uses; PS3.5 9.1 expects privately defined UIDs under a
-    /// root the organisation owns (see DICOMKIT_STANDARD_IMPLEMENTATION.md, P-UID).
-    public static let implementationClassUID = "1.2.276.0.7230010.3.0.3.6.5"
+    /// PS3.10 Table 7.1-1 makes it Type 1 and PS3.5 §9.2.2 requires a privately defined UID
+    /// under a registered root the organisation owns. The value is arc `.3` of the library's
+    /// private root `1.2.826.0.1.3680043.10.511` followed by the library version (0.5.0).
+    /// Before 2026-09-29 it was `1.2.276.0.7230010.3.0.3.6.5`, which is DCMTK 3.6.5's own
+    /// Implementation Class UID under the OFFIS root.
+    public static let implementationClassUID = "1.2.826.0.1.3680043.10.511.3.0.5.0"
 
     /// Implementation Version Name (0002,0013) written by every file writer of this library.
     public static let implementationVersionName = "DICOMKIT_0.5.0"
