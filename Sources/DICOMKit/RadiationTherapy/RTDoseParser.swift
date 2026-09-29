@@ -243,7 +243,7 @@ public struct RTDoseParser {
             let doseUnits = item.string(for: .doseUnits)
             let doseType = item.string(for: .doseType)
             // DVH Volume Units (3004,0054), CS, Type 1 in the DVH Sequence (PS3.3 Table C.8-40)
-            let volumeUnits = item.string(for: Tag(group: 0x3004, element: 0x0054))
+            let volumeUnits = item.string(for: .dvhVolumeUnits)
             let referencedROINumber = item[.referencedROINumber]?.integerStringValue?.value
             
             let normalizationPoint = parsePoint3DFromItem(item, tag: .dvhNormalizationPoint)

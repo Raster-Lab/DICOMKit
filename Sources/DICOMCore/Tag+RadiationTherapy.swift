@@ -238,6 +238,12 @@ extension Tag {
     /// Radiation Type (300A,00C6)
     public static let radiationType = Tag(group: 0x300A, element: 0x00C6)
     
+    /// High-Dose Technique Type (300A,00C7) — CS, VM 1 (PS3.6 2026a Table 6-1)
+    public static let highDoseTechniqueType = Tag(group: 0x300A, element: 0x00C7)
+    
+    /// Treatment Delivery Type (300A,00CE) — CS, VM 1 (PS3.6 2026a Table 6-1)
+    public static let treatmentDeliveryType = Tag(group: 0x300A, element: 0x00CE)
+    
     /// Treatment Machine Name (300A,00B2)
     public static let treatmentMachineName = Tag(group: 0x300A, element: 0x00B2)
     
@@ -377,6 +383,9 @@ extension Tag {
     
     /// DVH Normalization Dose Value (3004,0042)
     public static let dvhNormalizationDoseValue = Tag(group: 0x3004, element: 0x0042)
+    
+    /// DVH Volume Units (3004,0054) — CS, VM 1 (PS3.6 2026a Table 6-1)
+    public static let dvhVolumeUnits = Tag(group: 0x3004, element: 0x0054)
     
     /// DVH Data (3004,0058)
     public static let dvhData = Tag(group: 0x3004, element: 0x0058)

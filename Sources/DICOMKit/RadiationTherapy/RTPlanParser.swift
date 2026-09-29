@@ -208,8 +208,8 @@ public struct RTPlanParser {
             let finalCumulativeMetersetWeight = item[.finalCumulativeMetersetWeight]?.decimalStringValue?.value
             // Treatment Delivery Type (300A,00CE) CS Type 3 and High-Dose Technique Type (300A,00C7) CS Type 1C
             // (PS3.3 Table C.8-50)
-            let treatmentDeliveryType = item.string(for: Tag(group: 0x300A, element: 0x00CE))
-            let highDoseTechniqueType = item.string(for: Tag(group: 0x300A, element: 0x00C7))
+            let treatmentDeliveryType = item.string(for: .treatmentDeliveryType)
+            let highDoseTechniqueType = item.string(for: .highDoseTechniqueType)
 
             // Parse control points
             let controlPoints = parseControlPoints(from: item)
