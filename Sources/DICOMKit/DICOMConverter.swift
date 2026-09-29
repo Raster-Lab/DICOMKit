@@ -99,8 +99,9 @@ public enum DICOMConverter {
     ///
     /// `JPEGXLRecompression` (…4.111) is a distinct target that losslessly rewraps an
     /// existing JPEG bitstream rather than encoding pixels; it therefore applies only to
-    /// a JPEG Baseline (…4.50) *source* (``DICOMCore/TransferSyntaxConverter`` rejects the
-    /// transcode with a clear error for any other source).
+    /// an 8-bit JPEG Baseline (…4.50) or JPEG Extended (…4.51) *source*, including
+    /// progressive JPEG found inside those fragments (``DICOMCore/TransferSyntaxConverter``
+    /// rejects the transcode with a clear error for any other source, and for 12-bit JPEG).
     public static let targets: [Target] = [
         // Uncompressed
         Target(.explicitVRLittleEndian,          cli: "ExplicitVRLittleEndian",  alias: "explicit-vr-le", extra: ["explicit", "evle"]),
@@ -295,8 +296,30 @@ public enum DICOMConverter {
     ///   - encoding: The target UID + encode intent (typically from ``resolveTargetEncoding(_:)``).
     ///   - stripPrivate: Remove all private (odd-group) tags before transcoding.
     /// - Returns: The serialised output plus conversion metadata.
-    /// - Throws: A ``DICOMCore/TranscodingError`` if the transcode is unsupported.
+    /// - Throws: A ``ConversionFailure`` explaining why the conversion cannot run or failed.
     public static func convertToDICOM(
+        dicomFile: DICOMFile,
+        to encoding: SelectableEncoding,
+        stripPrivate: Bool
+    ) throws -> Outcome {
+        // Reject a mismatched source transfer syntax or pixel format up front with a
+        // readable reason, then wrap any later codec/parser error with the same
+        // source → target context. Both the CLI and the app print the resulting
+        // ``ConversionFailure`` through ``ConvertConsole/failureReport(for:)``.
+        try checkConversion(dicomFile: dicomFile, to: encoding)
+        do {
+            return try performConversion(dicomFile: dicomFile, to: encoding, stripPrivate: stripPrivate)
+        } catch {
+            let sourceUID = dicomFile.transferSyntaxUID ?? TransferSyntax.explicitVRLittleEndian.uid
+            throw ConversionFailure.translate(
+                error,
+                source: ConversionFailure.label(forUID: sourceUID),
+                target: ConversionFailure.label(for: encoding.transferSyntax))
+        }
+    }
+
+    /// The conversion itself, without the pre-checks and error wrapping.
+    private static func performConversion(
         dicomFile: DICOMFile,
         to encoding: SelectableEncoding,
         stripPrivate: Bool

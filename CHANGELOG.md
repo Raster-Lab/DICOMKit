@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — JPEG XL JPEG Recompression (…4.111) now supports JPEG Extended sources
+
+- `TransferSyntaxConverter` recompresses JPEG Extended (…4.51, SOF1/SOF2) in
+  addition to JPEG Baseline (…4.50, SOF0) into JPEG XL JPEG Recompression
+  (…4.111), both forward and reverse, since JXLSwift's `encodeLosslessJPEG`
+  bridges any 8-bit Huffman DCT JPEG. `jxlRecompressibleJPEGSyntaxUIDs`
+  replaces the previous single-UID check.
+- A 12-bit or signed JPEG Extended source is rejected up front with a clear
+  message (PS3.5 Table 8.2.15-1 limits …4.111 to 8-bit unsigned pixel data),
+  and lossless JPEG (SOF3) sources get a specific "no DCT coefficients to
+  carry over" explanation instead of a generic unsupported-target error.
+- On reverse recompression the rebuilt JPEG's Start-Of-Frame marker is
+  checked against the chosen target UID (`jpegFrame(_:isAllowedIn:)`) so a
+  progressive/extended JPEG is never mislabelled JPEG Baseline.
+- Decoding a JPEG Baseline/Extended colour image to an uncompressed target
+  now relabels `YBR_FULL_422`/`YBR_FULL` Photometric Interpretation to `RGB`,
+  since ImageIO's JPEG decoder converts YCbCr to RGB and `YBR_FULL_422` is
+  invalid on native pixel data (PS3.3 C.7.6.3.1.2).
+- The lossless-compression gate (`allowLossyCompression`) now looks only at
+  whether the *target* syntax is lossy, not source-and-target: decoding an
+  already-lossy source (e.g. JPEG Baseline → Implicit VR LE) adds no
+  additional loss.
+
+### Added — Readable, shared conversion failure messages for `dicom-convert` and DICOMStudio's Workshop
+
+- New `ConversionFailure` (`Sources/DICOMKit/ConversionDiagnostics.swift`)
+  explains why a conversion cannot run or failed, in plain words: source and
+  target transfer syntax labels, the reason, the source's pixel attributes
+  when relevant, and a suggested alternative target.
+- `DICOMConverter.checkConversion(dicomFile:to:)` validates a chosen target
+  before any work starts (unknown source transfer syntax, missing decoder,
+  JPEG XL Recompression source rules, pixel format vs. encoder capability)
+  and is public so a UI can validate a choice before running.
+  `convertToDICOM` now wraps any later codec/parser error the same way, so
+  both success and failure paths report through `ConversionFailure`.
+- `ConvertConsole.failureReport(for:)` / `.failureSummary(for:)` render the
+  shared multi-line and one-line failure text; the `dicom-convert` CLI and
+  DICOMStudio's `CLIWorkshopViewModel` both use them instead of
+  `error.localizedDescription`, so the two surfaces can no longer drift.
+- `TranscodingError` now conforms to `LocalizedError` so its `description`
+  surfaces through `localizedDescription` instead of Foundation's generic
+  "TranscodingError error N" fallback.
+
+### Fixed — `dicom-mwl` and DICOMStudio never returned the Requested Procedure Description
+
+- The Modality Worklist service used tag (0032,1070), which is Requested
+  Contrast Agent, instead of Requested Procedure Description (0032,1060). The
+  default C-FIND return keys therefore never asked the SCP for the description,
+  and `WorklistItem.requestedProcedureDescription` read the wrong tag, so the
+  field was silently absent from the text and JSON output of `dicom-mwl` and
+  from the DICOMStudio CLI Workshop, which share this code in DICOMNetwork.
+- The query keys, the result accessor and the worklist create path
+  (`DICOMModalityWorklistService.create`) now all use (0032,1060). Worklist
+  items created by earlier versions carry the description in (0032,1070) and
+  will not show it when queried back.
+- Added regression tests for the default return keys and for surfacing the
+  description through the accessor and the shared text and JSON formatters.
+
 ## [2.2.16] - 2026-09-22 (released on the 2.2 line; cherry-picked to main)
 
 ### Fixed — The 64-bit Value Representations OV, SV and UV were missing

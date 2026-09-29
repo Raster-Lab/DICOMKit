@@ -125,4 +125,16 @@ final class WorklistQueryKeysTests: XCTestCase {
     func testForQuery_invalidTimePropagatesError() {
         XCTAssertThrowsError(try WorklistQueryKeys.forQuery(time: "not-a-time"))
     }
+
+    // MARK: - Default return keys
+
+    /// Requested Procedure Description is (0032,1060). The default keys used to
+    /// request (0032,1070) — Requested Contrast Agent — so a conforming SCP never
+    /// returned the description to either the dicom-mwl CLI or DICOMStudio.
+    func testDefaultKeys_requestRequestedProcedureDescriptionTag() {
+        let keys = WorklistQueryKeys.default()
+        XCTAssertNotNil(keys.allKeys[.requestedProcedureDescription])
+        XCTAssertNotNil(keys.allKeys[Tag(group: 0x0032, element: 0x1060)])
+        XCTAssertNil(keys.allKeys[.requestedContrastAgent])
+    }
 }
