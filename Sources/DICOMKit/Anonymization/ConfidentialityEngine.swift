@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — applies the PS3.15 2026a Table E.1-1 actions; the De-identification Method Code Sequence gap is recorded (P-ANON)
+// NEMA-verified: 2026a, checked 2026-09-29 — applies the PS3.15 2026a Table E.1-1 actions; records (0012,0062) YES, (0012,0063) LO 1-n and (0012,0064) SQ of CID 7050 codes per PS3.15 E.1.1 and PS3.3 Table C.7-1; VRs per PS3.6 Table 6-1
 import Foundation
 import DICOMCore
 
@@ -13,7 +13,8 @@ import DICOMCore
 ///    so an attribute absent from the explicit table is never silently kept.
 /// 4. Regenerates UIDs through one consistent map (same input UID → same output UID),
 ///    preserving referential integrity within the file.
-/// 5. Records the de-identification method attributes (0012,0062)/(0012,0063)/(0012,0064).
+/// 5. Records the de-identification method attributes (0012,0062)/(0012,0063)/(0012,0064)
+///    as PS3.15 E.1.1 requires, with one CID 7050 code per profile/option applied.
 ///
 /// **Scope: dataset only.** Pixel Data is never inspected or modified, so identifiers
 /// burned into the image (and identifying overlay planes) survive a pass. When such
@@ -252,8 +253,18 @@ public struct ConfidentialityEngine {
         return f.string(from: shifted)
     }
 
-    // MARK: - Method recording (PS3.15 E.1.1 / C.7.1.1)
+    // MARK: - Method recording (PS3.15 E.1.1 / PS3.3 C.7.1.1)
 
+    /// PS3.15 E.1.1: "The Attribute Patient Identity Removed (0012,0062) shall be
+    /// replaced or added to the Data Set with a value of YES. Additionally, one or more
+    /// codes from PS3.16 CID 7050 corresponding to the Profile and Options used shall
+    /// be added to De-identification Method Code Sequence (0012,0064), and/or a text
+    /// string describing the method used shall be inserted in or added to
+    /// De-identification Method (0012,0063)."
+    ///
+    /// PS3.3 Table C.7-1 makes (0012,0063) and (0012,0064) Type 1C when (0012,0062) is
+    /// YES ("May be present otherwise"), so both are written in every case. VRs per
+    /// PS3.6 Table 6-1: (0012,0062) CS, (0012,0063) LO VM 1-n, (0012,0064) SQ.
     private func recordMethod(in dataSet: inout DataSet, pixelsMayCarryPHI: Bool) {
         // (0012,0062) Patient Identity Removed. PS3.15 conditions YES on the whole
         // object being de-identified — pixels included. This engine only scrubs the
@@ -262,25 +273,41 @@ public struct ConfidentialityEngine {
         // downstream consumers treat it as a release gate. Write NO instead, so the
         // state is explicit rather than merely absent.
         dataSet.setString(pixelsMayCarryPHI ? "NO" : "YES",
-                          for: Tag(group: 0x0012, element: 0x0062), vr: .CS)
+                          for: Self.patientIdentityRemovedTag, vr: .CS)
 
-        // (0012,0063) De-identification Method — human-readable summary.
-        var method = "PS3.15 Basic Application Level Confidentiality Profile"
-        var opts: [String] = []
-        if options.retainLongitudinalTemporal { opts.append("Retain Longitudinal Temporal") }
-        if options.retainPatientCharacteristics { opts.append("Retain Patient Characteristics") }
-        if options.retainDeviceIdentity { opts.append("Retain Device Identity") }
-        if options.retainInstitutionIdentity { opts.append("Retain Institution Identity") }
-        if options.retainUIDs { opts.append("Retain UIDs") }
-        if options.cleanDescriptors { opts.append("Clean Descriptors") }
-        if !opts.isEmpty { method += " with " + opts.joined(separator: ", ") }
+        // (0012,0064) De-identification Method Code Sequence: one Item per CID 7050
+        // code for the profile and each option applied (Table C.7-1: "Multiple Items
+        // are used … to describe options of a defined profile"). Items another pass
+        // already recorded (e.g. 113101 from the pixel redactor) are kept.
+        let codes = options.methodCodes
+        var items = dataSet.sequence(for: Self.deidentificationMethodCodeSequence) ?? []
+        let recorded = Set(items.compactMap {
+            $0.string(for: .codeValue)?.trimmingCharacters(in: .whitespaces)
+        })
+        for code in codes where !recorded.contains(code.codeValue) {
+            items.append(code.sequenceItem)
+        }
+        dataSet.setSequence(items, for: Self.deidentificationMethodCodeSequence)
+
+        // (0012,0063) De-identification Method — LO, VM 1-n: one value per profile /
+        // option (each Code Meaning is within the 64-character LO limit), so the
+        // human-readable record mirrors the coded one value for value.
+        var method = ["PS3.15 Basic Application Level Confidentiality Profile"]
+        method += codes.dropFirst().map(\.meaning)
         // Make the metadata-only scope explicit in the record itself, so a reader of the
         // file (not just of our console output) can see the pixels were never cleaned.
-        if pixelsMayCarryPHI { method += "; DATASET ONLY — pixel data not de-identified" }
-        dataSet.setString(method, for: Tag(group: 0x0012, element: 0x0063), vr: .LO)
+        if pixelsMayCarryPHI { method.append("DATASET ONLY - pixel data not de-identified") }
+        dataSet.setStrings(method, for: Self.deidentificationMethod, vr: .LO)
 
         // Burned In Annotation (0028,0301): we do not inspect pixels, so we cannot
         // assert NO. Leave any existing value; if absent, do not fabricate one.
         // When it says YES, the caller has already been warned and (0012,0062) is NO.
     }
+
+    /// (0012,0062) Patient Identity Removed, CS.
+    static let patientIdentityRemovedTag = Tag(group: 0x0012, element: 0x0062)
+    /// (0012,0063) De-identification Method, LO VM 1-n.
+    static let deidentificationMethod = Tag(group: 0x0012, element: 0x0063)
+    /// (0012,0064) De-identification Method Code Sequence, SQ.
+    static let deidentificationMethodCodeSequence = Tag(group: 0x0012, element: 0x0064)
 }

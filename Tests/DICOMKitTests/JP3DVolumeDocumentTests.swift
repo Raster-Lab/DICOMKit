@@ -136,6 +136,41 @@ struct JP3DVolumeDocumentTests {
         #expect((payload?.count ?? 0) > 8) // At least header bytes
     }
 
+    @Test("encode writes every Type 1/2 attribute of the Encapsulated Document IOD modules")
+    func test_encode_iodType1Type2Attributes() async throws {
+        let series = try makeSeries()
+        let ds = try await JP3DVolumeDocument.encode(series: series).dataSet
+
+        // Type 2 (present, may be empty): Tables C.7-1, C.7-3, C.7-8, C.24-2
+        for tag in [Tag.patientName, .patientID, .patientBirthDate, .patientSex,
+                    .studyDate, .studyTime, .referringPhysicianName, .studyID, .accessionNumber,
+                    .manufacturer, .contentDate, .contentTime, .acquisitionDateTime,
+                    .documentTitle, .conceptNameCodeSequence] {
+            #expect(ds[tag] != nil, "\(tag) must be present")
+        }
+        // Type 1 (present and non-empty): Tables C.7-3, C.24-1, C.8-24, C.24-2, C.12-1
+        for tag in [Tag.studyInstanceUID, .modality, .seriesInstanceUID, .seriesNumber, .conversionType,
+                    .instanceNumber, .burnedInAnnotation, .mimeTypeOfEncapsulatedDocument,
+                    .encapsulatedDocument, .sopClassUID, .sopInstanceUID] {
+            let element = ds[tag]
+            #expect(element != nil && element!.length > 0, "\(tag) is Type 1")
+        }
+        #expect(ds.string(for: .modality) == "DOC")
+        #expect(ds.string(for: .conversionType) == "WSD")
+        #expect(ds[.acquisitionDateTime]?.vr == .DT)
+        #expect(ds[.documentTitle]?.vr == .ST)
+        #expect(ds[.conceptNameCodeSequence]?.vr == .SQ)
+
+        // The sidecar carries Patient's Name / ID → Burned In Annotation YES (Table C.24-2).
+        #expect(ds.string(for: .burnedInAnnotation) == "YES")
+
+        // Source Instance Sequence (1C: derived from DICOM Instances): one Item per slice.
+        let sources = ds.sequence(for: .sourceInstanceSequence) ?? []
+        #expect(sources.count == series.count)
+        #expect(sources.first?.string(for: .referencedSOPClassUID) == "1.2.840.10008.5.1.4.1.1.2")
+        #expect(sources.first?.string(for: .referencedSOPInstanceUID) == series[0].dataSet.string(for: .sopInstanceUID))
+    }
+
     @Test("encode with custom study/series/SOP UIDs uses provided UIDs")
     func test_encode_customUIDs() async throws {
         let series = try makeSeries()

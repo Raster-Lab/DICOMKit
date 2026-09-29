@@ -230,6 +230,89 @@ final class ConfidentialityProfileTests: XCTestCase {
             "the convenience overload must not silently re-introduce the false claim")
     }
 
+    // MARK: - De-identification Method Code Sequence (PS3.15 E.1.1, PS3.16 CID 7050)
+
+    private func methodCodes(in ds: DataSet) -> [(String, String, String)] {
+        (ds.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []).map {
+            ($0.string(for: .codeValue) ?? "", $0.string(for: .codingSchemeDesignator) ?? "",
+             $0.string(for: .codeMeaning) ?? "")
+        }
+    }
+
+    /// Every CID 7050 row, Code Value and Code Meaning verbatim (PS3.16 2026a).
+    func testCID7050CodesAndMeanings() {
+        let expected: [(String, String)] = [
+            ("113100", "Basic Application Confidentiality Profile"),
+            ("113101", "Clean Pixel Data Option"),
+            ("113102", "Clean Recognizable Visual Features Option"),
+            ("113103", "Clean Graphics Option"),
+            ("113104", "Clean Structured Content Option"),
+            ("113105", "Clean Descriptors Option"),
+            ("113106", "Retain Longitudinal Temporal Information Full Dates Option"),
+            ("113107", "Retain Longitudinal Temporal Information Modified Dates Option"),
+            ("113108", "Retain Patient Characteristics Option"),
+            ("113109", "Retain Device Identity Option"),
+            ("113110", "Retain UIDs Option"),
+            ("113111", "Retain Safe Private Option"),
+            ("113112", "Retain Institution Identity Option"),
+        ]
+        XCTAssertEqual(ConfidentialityProfile.DeidentificationMethodCode.allCases.count, expected.count)
+        for (value, meaning) in expected {
+            let code = ConfidentialityProfile.DeidentificationMethodCode(rawValue: value)
+            XCTAssertNotNil(code, "CID 7050 code \(value) missing")
+            XCTAssertEqual(code?.meaning, meaning)
+            XCTAssertEqual(code?.codeValue, value)
+        }
+        XCTAssertEqual(ConfidentialityProfile.DeidentificationMethodCode.codingSchemeDesignator, "DCM")
+    }
+
+    func testOptionsMapToCID7050Codes() {
+        XCTAssertEqual(ConfidentialityProfile.Options.basic.methodCodes, [.basicApplicationConfidentialityProfile])
+
+        let all = ConfidentialityProfile.Options(
+            retainLongitudinalTemporal: true, retainPatientCharacteristics: true,
+            retainDeviceIdentity: true, retainInstitutionIdentity: true, retainUIDs: true,
+            cleanDescriptors: true)
+        XCTAssertEqual(all.methodCodes.map(\.codeValue),
+                       ["113100", "113105", "113106", "113108", "113109", "113110", "113112"])
+
+        // A date offset means dates are modified, not kept: 113107 instead of 113106.
+        let shifted = ConfidentialityProfile.Options(retainLongitudinalTemporal: true, dateOffsetDays: 10)
+        XCTAssertEqual(shifted.methodCodes.map(\.codeValue), ["113100", "113107"])
+    }
+
+    func testEngineWritesMethodCodeSequenceAndMultiValuedMethod() {
+        let options = ConfidentialityProfile.Options(retainUIDs: true, cleanDescriptors: true)
+        var engine = ConfidentialityEngine(options: options)
+        let (out, _) = engine.deidentify(identifiedDataSet())
+
+        XCTAssertEqual(out.string(for: Tag(group: 0x0012, element: 0x0062)), "YES")
+        XCTAssertEqual(out[Tag(group: 0x0012, element: 0x0062)]?.vr, .CS)
+        XCTAssertEqual(out[Tag(group: 0x0012, element: 0x0063)]?.vr, .LO)
+        XCTAssertEqual(out[Tag(group: 0x0012, element: 0x0064)]?.vr, .SQ)
+
+        let codes = methodCodes(in: out)
+        XCTAssertEqual(codes.map { $0.0 }, ["113100", "113105", "113110"])
+        XCTAssertTrue(codes.allSatisfy { $0.1 == "DCM" })
+        XCTAssertEqual(codes.map { $0.2 },
+                       ["Basic Application Confidentiality Profile", "Clean Descriptors Option", "Retain UIDs Option"])
+
+        // (0012,0063) LO VM 1-n: one value per profile / option, each within 64 chars.
+        let values = out[Tag(group: 0x0012, element: 0x0063)]?.stringValues ?? []
+        XCTAssertEqual(values.count, 3)
+        XCTAssertTrue(values.allSatisfy { $0.count <= 64 })
+        XCTAssertEqual(values.dropFirst().map { $0 }, ["Clean Descriptors Option", "Retain UIDs Option"])
+    }
+
+    func testEngineKeepsCodesRecordedByAnEarlierPass() {
+        var ds = identifiedDataSet()
+        ds.setSequence([ConfidentialityProfile.DeidentificationMethodCode.cleanPixelDataOption.sequenceItem],
+                       for: Tag(group: 0x0012, element: 0x0064))
+        var engine = ConfidentialityEngine()
+        let (out, _) = engine.deidentify(ds)
+        XCTAssertEqual(methodCodes(in: out).map { $0.0 }, ["113101", "113100"])
+    }
+
     // MARK: - Coverage sanity
 
     func testTableCoversAtLeastTheDirectIdentifierCore() {

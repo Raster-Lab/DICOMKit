@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Document Title (0042,0010) written as ST per PS3.6 2026a Table 6-1; the missing Type 1/2 Encapsulated Document attributes are recorded (P-ENCAP)
+// NEMA-verified: 2026a, checked 2026-09-29 — writes every Type 1/2 attribute of the Encapsulated Document IOD modules (PS3.3 2026a Tables C.7-1, C.7-3, C.24-1, C.7-8, C.8-24, C.24-2, C.12-1) with the VRs of PS3.6 Table 6-1; Source Instance Sequence 1C and Burned In Annotation per Table C.24-2 (private SOP Class, EXPERIMENTAL)
 import Foundation
 import DICOMCore
 import J2KCore
@@ -145,59 +145,75 @@ public enum JP3DVolumeDocument: Sendable {
         let seriesUID = seriesInstanceUID ?? UIDGenerator.generateUID().value
         let instanceUID = sopInstanceUID ?? UIDGenerator.generateUID().value
 
-        // Build data set
+        // Build data set. The private SOP Class follows the Encapsulated Document
+        // IOD shape (PS3.3 Table A.45.1-1): every Type 1/2 attribute of its Mandatory
+        // modules is written, empty where unknown (PS3.5 7.4.3).
+
         var ds = DataSet()
 
-        // Patient Module
-        if let name = template.string(for: .patientName) {
-            ds.setString(name, for: .patientName, vr: .PN)
-        }
-        if let pid = template.string(for: .patientID) {
-            ds.setString(pid, for: .patientID, vr: .LO)
-        }
-        if let dob = template.string(for: .patientBirthDate) {
-            ds.setString(dob, for: .patientBirthDate, vr: .DA)
-        }
-        if let sex = template.string(for: .patientSex) {
-            ds.setString(sex, for: .patientSex, vr: .CS)
-        }
+        // Patient Module, Table C.7-1 (all Type 2).
+        ds.setString(template.string(for: .patientName) ?? "", for: .patientName, vr: .PN)
+        ds.setString(template.string(for: .patientID) ?? "", for: .patientID, vr: .LO)
+        ds.setString(template.string(for: .patientBirthDate) ?? "", for: .patientBirthDate, vr: .DA)
+        ds.setString(template.string(for: .patientSex) ?? "", for: .patientSex, vr: .CS)
 
-        // General Study Module
+        // General Study Module, Table C.7-3 (Study Instance UID 1, the rest Type 2).
         ds.setString(studyUID, for: .studyInstanceUID, vr: .UI)
-        if let acc = template.string(for: .accessionNumber) {
-            ds.setString(acc, for: .accessionNumber, vr: .SH)
-        }
-        if let studyDate = template.string(for: .studyDate) {
-            ds.setString(studyDate, for: .studyDate, vr: .DA)
-        }
-        if let studyTime = template.string(for: .studyTime) {
-            ds.setString(studyTime, for: .studyTime, vr: .TM)
-        }
+        ds.setString(template.string(for: .studyDate) ?? "", for: .studyDate, vr: .DA)
+        ds.setString(template.string(for: .studyTime) ?? "", for: .studyTime, vr: .TM)
+        ds.setString(template.string(for: .referringPhysicianName) ?? "", for: .referringPhysicianName, vr: .PN)
+        ds.setString(template.string(for: .studyID) ?? "", for: .studyID, vr: .SH)
+        ds.setString(template.string(for: .accessionNumber) ?? "", for: .accessionNumber, vr: .SH)
 
-        // General Series Module
+        // Encapsulated Document Series Module, Table C.24-1 (all Type 1).
         ds.setString(seriesUID, for: .seriesInstanceUID, vr: .UI)
         ds.setString(Modality.doc.rawValue, for: .modality, vr: .CS)
         ds.setInt(1, for: .seriesNumber, vr: .IS)
 
-        // SOP Common Module
+        // SOP Common Module, Table C.12-1.
         ds.setString(sopClassUID, for: .sopClassUID, vr: .UI)
         ds.setString(instanceUID, for: .sopInstanceUID, vr: .UI)
-        ds.setString("1", for: .instanceNumber, vr: .IS)
 
-        // General Equipment Module (minimal)
+        // General Equipment Module, Table C.7-8 (Manufacturer Type 2) and SC Equipment
+        // Module, Table C.8-24 (Conversion Type Type 1; Defined Term WSD = Workstation).
         ds.setString("DICOMKit", for: .manufacturer, vr: .LO)
-        ds.setString("JP3DVolumeDocument", for: .softwareVersions, vr: .LO)
+        ds.setString("JP3DVolumeDocument", for: .manufacturerModelName, vr: .LO)
+        ds.setString("DICOMKit \(version)", for: .softwareVersions, vr: .LO)
+        ds.setString("WSD", for: .conversionType, vr: .CS)
 
-        // Encapsulated Document Module
-        ds.setString(mimeType, for: .mimeTypeOfEncapsulatedDocument, vr: .LO)
-        ds.setString(documentTitle, for: .documentTitle, vr: .ST)
-        ds[.encapsulatedDocument] = DataElement.data(
+        // Encapsulated Document Module, Table C.24-2.
+        ds.setString("1", for: .instanceNumber, vr: .IS)                                   // Type 1
+        ds.setString(mimeType, for: .mimeTypeOfEncapsulatedDocument, vr: .LO)              // Type 1
+        ds.setString(documentTitle, for: .documentTitle, vr: .ST)                          // Type 2
+        ds.setSequence([], for: .conceptNameCodeSequence)                                  // Type 2
+        ds.setString(template.string(for: .acquisitionDateTime) ?? "", for: .acquisitionDateTime, vr: .DT) // Type 2
+        ds[.encapsulatedDocument] = DataElement.data(                                      // Type 1
             tag: .encapsulatedDocument,
             vr: .OB,
             data: payload
         )
+        // Burned In Annotation (Type 1): Table C.24-2 equates patient identification
+        // as text in the document with burned-in annotation, and the JSON sidecar
+        // carries Patient's Name / Patient ID when the source series has them.
+        let sidecarIdentifies = meta["patientName"] != nil || meta["patientID"] != nil
+        ds.setString(sidecarIdentifies ? "YES" : "NO", for: .burnedInAnnotation, vr: .CS)
 
-        // Content Date/Time
+        // Source Instance Sequence (Type 1C: "Required if derived from one or more
+        // DICOM Instances") — one Item per source slice (Table 10-11 SOP Instance
+        // Reference Macro: Referenced SOP Class UID 1, Referenced SOP Instance UID 1).
+        let sourceItems: [SequenceItem] = series.compactMap { file in
+            guard let classUID = file.dataSet.string(for: .sopClassUID),
+                  let instance = file.dataSet.string(for: .sopInstanceUID) else { return nil }
+            return SequenceItem(elements: [
+                DataElement.string(tag: .referencedSOPClassUID, vr: .UI, value: classUID),
+                DataElement.string(tag: .referencedSOPInstanceUID, vr: .UI, value: instance),
+            ])
+        }
+        if !sourceItems.isEmpty {
+            ds.setSequence(sourceItems, for: .sourceInstanceSequence)
+        }
+
+        // Content Date/Time (Type 2): the document content creation start.
         let now = Date()
         let cal = Calendar(identifier: .gregorian)
         let comps = cal.dateComponents([.year, .month, .day, .hour, .minute, .second], from: now)

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.10 2026a Table 7.1-1 Type 1 File Meta elements; PS3.5 Table 6.2-1 DA and TM formats; ISO_IR 192; SR classes via DICOMCore; the per-IOD required lists are partial (recorded, P-VALID)
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.10 2026a Table 7.1-1 Type 1 File Meta elements; PS3.5 Table 6.2-1 DA and TM formats; ISO_IR 192; per-IOD Type 1/2 tables from PS3.3 Tables A.2-1, A.3-1, A.4-1, A.6-1, A.8-1, A.33.1-1, A.33.3-1, A.35.1-1..A.35.4-1 and the module tables C.7-1, C.7-3, C.7-5a, C.7-6, C.7-8, C.7-9, C.7-10, C.7-11b/c, C.8-1, C.8-3, C.8-4, C.8-18, C.8-24, C.10-4, C.11.9-1 (PR), C.11.10-1, 10-12, C.11.11-1b, C.11.6-1, C.11.15-1, C.12-1, C.17-1 (SR), C.17-2, C.17-5, C.18.8-1, C.17.6-1 (KO), C.17.6-2; Type semantics PS3.5 7.4.1-7.4.4
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -307,7 +307,7 @@ public struct DICOMValidator {
             validator = GrayscaleSoftcopyPresentationStateValidator()
         case "pseudocolorsoftcopypresentationstate":
             validator = PseudoColorSoftcopyPresentationStateValidator()
-        case "basictextsr", "enhancedsr", "comprehensivesr", "structuredreport", "sr":
+        case "basictextsr", "enhancedsr", "comprehensivesr", "structuredreport", "sr", "keyobjectselection", "kos":
             validator = StructuredReportValidator()
         default:
             warnings.append(ValidationIssue(
@@ -406,12 +406,13 @@ public struct DICOMValidator {
         case "1.2.840.10008.5.1.4.1.1.6.1":
             return "USImageStorage"
         case "1.2.840.10008.5.1.4.1.1.7":
-            return "SecondaryCapture ImageStorage"
+            return "SecondaryCaptureImageStorage"
         case "1.2.840.10008.5.1.4.1.1.11.1":
             return "GrayscaleSoftcopyPresentationState"
         case "1.2.840.10008.5.1.4.1.1.11.3":
             return "PseudoColorSoftcopyPresentationState"
         case let uid where SRDocumentType.isSRDocument(sopClassUID: uid):
+            // Includes Key Object Selection; the SR validator branches on the SOP Class.
             return "StructuredReport"
         default:
             return nil
@@ -638,31 +639,462 @@ protocol IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue])
 }
 
-/// CT Image Storage validator
-struct CTImageStorageValidator: IODValidator {
-    func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        // CT-specific required attributes
-        let requiredTags: [(Tag, String)] = [
-            (.patientName, "Patient Name"),
-            (.patientID, "Patient ID"),
-            (.studyInstanceUID, "Study Instance UID"),
-            (.seriesInstanceUID, "Series Instance UID"),
-            (.modality, "Modality"),
-            (.rows, "Rows"),
-            (.columns, "Columns")
+// MARK: - IOD attribute requirement tables (PS3.3 2026a)
+
+/// The attribute Types the validator enforces, per PS3.5 2026a 7.4:
+///
+/// - 7.4.1 Type 1: "shall be included … The Length of the Value Field shall not be
+///   zero. Absence of a valid Value in a Type 1 Data Element is a protocol violation."
+/// - 7.4.3 Type 2: "shall be included … it is permissible that if a Value for a
+///   Type 2 Data Element is unknown it can be encoded with zero Value Length and no
+///   Value … their absence is a protocol violation."
+///
+/// Both absences are therefore errors; only a Type 1 may additionally be rejected
+/// for being empty.
+public enum IODAttributeType: String, Sendable {
+    case type1 = "1"
+    case type2 = "2"
+}
+
+/// One row of an IOD's requirement table: an attribute the IOD's Mandatory modules
+/// make Type 1 or Type 2, with the PS3.3 table it was read from.
+public struct IODAttributeRequirement: Sendable {
+    public let tag: Tag
+    public let type: IODAttributeType
+    public let name: String
+    /// PS3.3 module/table label, e.g. "C.7.1.1 Patient (Table C.7-1)".
+    public let module: String
+
+    public init(_ tag: Tag, _ type: IODAttributeType, _ name: String, _ module: String) {
+        self.tag = tag
+        self.type = type
+        self.name = name
+        self.module = module
+    }
+}
+
+/// Type 1/2 attributes of the Mandatory modules of every IOD the validator knows,
+/// keyed by SOP Class UID, read from the PS3.3 2026a IOD module tables (A.x-1) and
+/// the module attribute tables they reference. Conditionally included modules and
+/// 1C/2C attributes are handled in the per-IOD validators, where the condition can
+/// be evaluated against the data set.
+public enum IODRequirementTables {
+
+    // MARK: Shared modules
+
+    /// C.7.1.1 Patient Module, Table C.7-1.
+    static let patient: [IODAttributeRequirement] = [
+        .init(.patientName,      .type2, "Patient's Name",       "C.7.1.1 Patient (Table C.7-1)"),
+        .init(.patientID,        .type2, "Patient ID",           "C.7.1.1 Patient (Table C.7-1)"),
+        .init(.patientBirthDate, .type2, "Patient's Birth Date", "C.7.1.1 Patient (Table C.7-1)"),
+        .init(.patientSex,       .type2, "Patient's Sex",        "C.7.1.1 Patient (Table C.7-1)"),
+    ]
+
+    /// C.7.2.1 General Study Module, Table C.7-3.
+    static let generalStudy: [IODAttributeRequirement] = [
+        .init(.studyInstanceUID,       .type1, "Study Instance UID",         "C.7.2.1 General Study (Table C.7-3)"),
+        .init(.studyDate,              .type2, "Study Date",                 "C.7.2.1 General Study (Table C.7-3)"),
+        .init(.studyTime,              .type2, "Study Time",                 "C.7.2.1 General Study (Table C.7-3)"),
+        .init(.referringPhysicianName, .type2, "Referring Physician's Name", "C.7.2.1 General Study (Table C.7-3)"),
+        .init(.studyID,                .type2, "Study ID",                   "C.7.2.1 General Study (Table C.7-3)"),
+        .init(.accessionNumber,        .type2, "Accession Number",           "C.7.2.1 General Study (Table C.7-3)"),
+    ]
+
+    /// C.7.3.1 General Series Module, Table C.7-5a (Modality 1, Series Instance UID 1,
+    /// Series Number 2). Laterality 2C and Patient Position 2C are conditional.
+    static let generalSeries: [IODAttributeRequirement] = [
+        .init(.modality,          .type1, "Modality",            "C.7.3.1 General Series (Table C.7-5a)"),
+        .init(.seriesInstanceUID, .type1, "Series Instance UID", "C.7.3.1 General Series (Table C.7-5a)"),
+        .init(.seriesNumber,      .type2, "Series Number",       "C.7.3.1 General Series (Table C.7-5a)"),
+    ]
+
+    /// C.7.3.1 General Series for the Secondary Capture IOD: Table C.8-24 SC Equipment
+    /// makes Modality Type 3 ("This type definition shall override the definition in
+    /// the C.7.3.1"), so only the UID and number remain required.
+    static let generalSeriesSC: [IODAttributeRequirement] = [
+        .init(.seriesInstanceUID, .type1, "Series Instance UID", "C.7.3.1 General Series (Table C.7-5a)"),
+        .init(.seriesNumber,      .type2, "Series Number",       "C.7.3.1 General Series (Table C.7-5a)"),
+    ]
+
+    /// C.7.4.1 Frame of Reference Module, Table C.7-6.
+    static let frameOfReference: [IODAttributeRequirement] = [
+        .init(.frameOfReferenceUID,       .type1, "Frame of Reference UID",       "C.7.4.1 Frame of Reference (Table C.7-6)"),
+        .init(.positionReferenceIndicator, .type2, "Position Reference Indicator", "C.7.4.1 Frame of Reference (Table C.7-6)"),
+    ]
+
+    /// C.7.5.1 General Equipment Module, Table C.7-8 (Manufacturer is its only Type 2).
+    static let generalEquipment: [IODAttributeRequirement] = [
+        .init(.manufacturer, .type2, "Manufacturer", "C.7.5.1 General Equipment (Table C.7-8)"),
+    ]
+
+    /// C.7.6.1 General Image Module, Table C.7-9 (Instance Number 2; Patient
+    /// Orientation 2C and Content Date/Time 2C are conditional).
+    static let generalImage: [IODAttributeRequirement] = [
+        .init(.instanceNumber, .type2, "Instance Number", "C.7.6.1 General Image (Table C.7-9)"),
+    ]
+
+    /// C.7.6.2 Image Plane Module, Table C.7-10.
+    static let imagePlane: [IODAttributeRequirement] = [
+        .init(.pixelSpacing,            .type1, "Pixel Spacing",               "C.7.6.2 Image Plane (Table C.7-10)"),
+        .init(.imageOrientationPatient, .type1, "Image Orientation (Patient)", "C.7.6.2 Image Plane (Table C.7-10)"),
+        .init(.imagePositionPatient,    .type1, "Image Position (Patient)",    "C.7.6.2 Image Plane (Table C.7-10)"),
+        .init(.sliceThickness,          .type2, "Slice Thickness",             "C.7.6.2 Image Plane (Table C.7-10)"),
+    ]
+
+    /// C.7.6.3 Image Pixel Module: Table C.7-11b (Pixel Data 1) including Table
+    /// C.7-11c Image Pixel Description Macro. Planar Configuration 1C and the Palette
+    /// Color LUT 1C rows are conditional.
+    static let imagePixel: [IODAttributeRequirement] = [
+        .init(.samplesPerPixel,           .type1, "Samples per Pixel",          "C.7.6.3 Image Pixel (Table C.7-11c)"),
+        .init(.photometricInterpretation, .type1, "Photometric Interpretation", "C.7.6.3 Image Pixel (Table C.7-11c)"),
+        .init(.rows,                      .type1, "Rows",                       "C.7.6.3 Image Pixel (Table C.7-11c)"),
+        .init(.columns,                   .type1, "Columns",                    "C.7.6.3 Image Pixel (Table C.7-11c)"),
+        .init(.bitsAllocated,             .type1, "Bits Allocated",             "C.7.6.3 Image Pixel (Table C.7-11c)"),
+        .init(.bitsStored,                .type1, "Bits Stored",                "C.7.6.3 Image Pixel (Table C.7-11c)"),
+        .init(.highBit,                   .type1, "High Bit",                   "C.7.6.3 Image Pixel (Table C.7-11c)"),
+        .init(.pixelRepresentation,       .type1, "Pixel Representation",       "C.7.6.3 Image Pixel (Table C.7-11c)"),
+        .init(.pixelData,                 .type1, "Pixel Data",                 "C.7.6.3 Image Pixel (Table C.7-11b)"),
+    ]
+
+    /// C.12.1 SOP Common Module, Table C.12-1.
+    static let sopCommon: [IODAttributeRequirement] = [
+        .init(.sopClassUID,    .type1, "SOP Class UID",    "C.12.1 SOP Common (Table C.12-1)"),
+        .init(.sopInstanceUID, .type1, "SOP Instance UID", "C.12.1 SOP Common (Table C.12-1)"),
+    ]
+
+    // MARK: Modality-specific modules
+
+    /// C.8.2.1 CT Image Module, Table C.8-3 (the pixel-description rows repeat the
+    /// Image Pixel ones and are listed once there). Rescale Type is 1C.
+    static let ctImageModule: [IODAttributeRequirement] = [
+        .init(.imageType,         .type1, "Image Type",         "C.8.2.1 CT Image (Table C.8-3)"),
+        .init(.rescaleIntercept,  .type1, "Rescale Intercept",  "C.8.2.1 CT Image (Table C.8-3)"),
+        .init(.rescaleSlope,      .type1, "Rescale Slope",      "C.8.2.1 CT Image (Table C.8-3)"),
+        .init(.kvp,               .type2, "KVP",                "C.8.2.1 CT Image (Table C.8-3)"),
+        .init(.acquisitionNumber, .type2, "Acquisition Number", "C.8.2.1 CT Image (Table C.8-3)"),
+    ]
+
+    /// C.8.3.1 MR Image Module, Table C.8-4. Repetition Time 2C, Inversion Time 2C
+    /// and Trigger Time 2C are conditional.
+    static let mrImageModule: [IODAttributeRequirement] = [
+        .init(.imageType,         .type1, "Image Type",          "C.8.3.1 MR Image (Table C.8-4)"),
+        .init(.scanningSequence,  .type1, "Scanning Sequence",   "C.8.3.1 MR Image (Table C.8-4)"),
+        .init(.sequenceVariant,   .type1, "Sequence Variant",    "C.8.3.1 MR Image (Table C.8-4)"),
+        .init(.scanOptions,       .type2, "Scan Options",        "C.8.3.1 MR Image (Table C.8-4)"),
+        .init(.mrAcquisitionType, .type2, "MR Acquisition Type", "C.8.3.1 MR Image (Table C.8-4)"),
+        .init(.echoTime,          .type2, "Echo Time",           "C.8.3.1 MR Image (Table C.8-4)"),
+        .init(.echoTrainLength,   .type2, "Echo Train Length",   "C.8.3.1 MR Image (Table C.8-4)"),
+    ]
+
+    /// C.8.1.1 CR Series Module, Table C.8-1.
+    static let crSeries: [IODAttributeRequirement] = [
+        .init(.bodyPartExamined, .type2, "Body Part Examined", "C.8.1.1 CR Series (Table C.8-1)"),
+        .init(Tag(group: 0x0018, element: 0x5101), .type2, "View Position", "C.8.1.1 CR Series (Table C.8-1)"),
+    ]
+
+    /// C.8.1.2 CR Image Module, Table C.8-2 (Photometric Interpretation 1, listed
+    /// with Image Pixel; everything else Type 3).
+    static let crImageModule: [IODAttributeRequirement] = []
+
+    /// C.8.5.6 US Image Module, Table C.8-18 (pixel-description rows are listed with
+    /// Image Pixel; Image Type is Type 2 here). Frame Increment Pointer 1C is conditional.
+    static let usImageModule: [IODAttributeRequirement] = [
+        .init(.imageType, .type2, "Image Type", "C.8.5.6 US Image (Table C.8-18)"),
+    ]
+
+    /// C.8.6.1 SC Equipment Module, Table C.8-24.
+    static let scEquipment: [IODAttributeRequirement] = [
+        .init(.conversionType, .type1, "Conversion Type", "C.8.6.1 SC Equipment (Table C.8-24)"),
+    ]
+
+    // MARK: Presentation State modules
+
+    /// C.11.9 Presentation Series Module, Table C.11.9-1 (Modality 1, Enumerated Value PR).
+    static let presentationSeries: [IODAttributeRequirement] = [
+        .init(.modality, .type1, "Modality", "C.11.9 Presentation Series (Table C.11.9-1)"),
+    ]
+
+    /// C.11.10 Presentation State Identification Module, Table C.11.10-1, including
+    /// the Content Identification Macro, Table 10-12.
+    static let presentationStateIdentification: [IODAttributeRequirement] = [
+        .init(.presentationCreationDate, .type1, "Presentation Creation Date", "C.11.10 Presentation State Identification (Table C.11.10-1)"),
+        .init(.presentationCreationTime, .type1, "Presentation Creation Time", "C.11.10 Presentation State Identification (Table C.11.10-1)"),
+        .init(.instanceNumber,           .type1, "Instance Number",            "C.11.10 Presentation State Identification (Table 10-12)"),
+        .init(.contentLabel,             .type1, "Content Label",              "C.11.10 Presentation State Identification (Table 10-12)"),
+        .init(.contentDescription,       .type2, "Content Description",        "C.11.10 Presentation State Identification (Table 10-12)"),
+        .init(.contentCreatorName,       .type2, "Content Creator's Name",     "C.11.10 Presentation State Identification (Table 10-12)"),
+    ]
+
+    /// C.11.11 Presentation State Relationship Module, Table C.11.11-1 including the
+    /// Presentation State Relationship Macro, Table C.11.11-1b.
+    static let presentationStateRelationship: [IODAttributeRequirement] = [
+        .init(.referencedSeriesSequence, .type1, "Referenced Series Sequence", "C.11.11 Presentation State Relationship (Table C.11.11-1b)"),
+    ]
+
+    /// Table C.11.11-1b, per Item of Referenced Series Sequence.
+    static let presentationStateRelationshipItem: [IODAttributeRequirement] = [
+        .init(.seriesInstanceUID,       .type1, "Series Instance UID",       "C.11.11 Presentation State Relationship (Table C.11.11-1b, Item)"),
+        .init(.referencedImageSequence, .type1, "Referenced Image Sequence", "C.11.11 Presentation State Relationship (Table C.11.11-1b, Item)"),
+    ]
+
+    /// C.10.4 Displayed Area Module, Table C.10-4.
+    static let displayedArea: [IODAttributeRequirement] = [
+        .init(.displayedAreaSelectionSequence, .type1, "Displayed Area Selection Sequence", "C.10.4 Displayed Area (Table C.10-4)"),
+    ]
+
+    /// Table C.10-4, per Item of Displayed Area Selection Sequence.
+    static let displayedAreaItem: [IODAttributeRequirement] = [
+        .init(.displayedAreaTopLeftHandCorner,     .type1, "Displayed Area Top Left Hand Corner",     "C.10.4 Displayed Area (Table C.10-4, Item)"),
+        .init(.displayedAreaBottomRightHandCorner, .type1, "Displayed Area Bottom Right Hand Corner", "C.10.4 Displayed Area (Table C.10-4, Item)"),
+        .init(.presentationSizeMode,               .type1, "Presentation Size Mode",                  "C.10.4 Displayed Area (Table C.10-4, Item)"),
+    ]
+
+    /// C.7.9 Palette Color Lookup Table Module (Mandatory in Table A.33.3-1): the
+    /// descriptors and data are Type 1 in Table C.7-11c when the module is present.
+    static let paletteColorLUT: [IODAttributeRequirement] = [
+        .init(.redPaletteColorLookupTableDescriptor,   .type1, "Red Palette Color LUT Descriptor",   "C.7.9 Palette Color Lookup Table"),
+        .init(.greenPaletteColorLookupTableDescriptor, .type1, "Green Palette Color LUT Descriptor", "C.7.9 Palette Color Lookup Table"),
+        .init(.bluePaletteColorLookupTableDescriptor,  .type1, "Blue Palette Color LUT Descriptor",  "C.7.9 Palette Color Lookup Table"),
+        .init(.redPaletteColorLookupTableData,         .type1, "Red Palette Color LUT Data",         "C.7.9 Palette Color Lookup Table"),
+        .init(.greenPaletteColorLookupTableData,       .type1, "Green Palette Color LUT Data",       "C.7.9 Palette Color Lookup Table"),
+        .init(.bluePaletteColorLookupTableData,        .type1, "Blue Palette Color LUT Data",        "C.7.9 Palette Color Lookup Table"),
+    ]
+
+    /// C.11.15 ICC Profile Module, Table C.11.15-1.
+    static let iccProfile: [IODAttributeRequirement] = [
+        .init(.iccProfile, .type1, "ICC Profile", "C.11.15 ICC Profile (Table C.11.15-1)"),
+    ]
+
+    // MARK: Structured Report modules
+
+    /// C.17.1 SR Document Series Module, Table C.17-1 (Modality 1, Enumerated Value SR).
+    static let srDocumentSeries: [IODAttributeRequirement] = [
+        .init(.modality,          .type1, "Modality",            "C.17.1 SR Document Series (Table C.17-1)"),
+        .init(.seriesInstanceUID, .type1, "Series Instance UID", "C.17.1 SR Document Series (Table C.17-1)"),
+        .init(.seriesNumber,      .type1, "Series Number",       "C.17.1 SR Document Series (Table C.17-1)"),
+        .init(.referencedPerformedProcedureStepSequence, .type2, "Referenced Performed Procedure Step Sequence", "C.17.1 SR Document Series (Table C.17-1)"),
+    ]
+
+    /// C.17.2 SR Document General Module, Table C.17-2. Verifying Observer Sequence
+    /// 1C is conditional on Verification Flag.
+    static let srDocumentGeneral: [IODAttributeRequirement] = [
+        .init(.instanceNumber,   .type1, "Instance Number",   "C.17.2 SR Document General (Table C.17-2)"),
+        .init(.completionFlag,   .type1, "Completion Flag",   "C.17.2 SR Document General (Table C.17-2)"),
+        .init(.verificationFlag, .type1, "Verification Flag", "C.17.2 SR Document General (Table C.17-2)"),
+        .init(.contentDate,      .type1, "Content Date",      "C.17.2 SR Document General (Table C.17-2)"),
+        .init(.contentTime,      .type1, "Content Time",      "C.17.2 SR Document General (Table C.17-2)"),
+        .init(Tag(group: 0x0040, element: 0xA372), .type2, "Performed Procedure Code Sequence", "C.17.2 SR Document General (Table C.17-2)"),
+    ]
+
+    /// C.17.3 SR Document Content Module, Table C.17-4: the Document Content Macro
+    /// (Table C.17-5) with Value Type CONTAINER, whose Concept Name Code Sequence is
+    /// required for the Root Content Item, and the Container Macro (Table C.18.8-1).
+    static let srDocumentContent: [IODAttributeRequirement] = [
+        .init(.valueType,               .type1, "Value Type",                 "C.17.3 SR Document Content (Table C.17-5)"),
+        .init(.conceptNameCodeSequence, .type1, "Concept Name Code Sequence", "C.17.3 SR Document Content (Table C.17-5, Root Content Item)"),
+        .init(.continuityOfContent,     .type1, "Continuity of Content",      "C.17.3 SR Document Content (Table C.18.8-1)"),
+    ]
+
+    /// C.17.6.1 Key Object Document Series Module, Table C.17.6-1 (Modality 1,
+    /// Enumerated Value KO).
+    static let keyObjectDocumentSeries: [IODAttributeRequirement] = [
+        .init(.modality,          .type1, "Modality",            "C.17.6.1 Key Object Document Series (Table C.17.6-1)"),
+        .init(.seriesInstanceUID, .type1, "Series Instance UID", "C.17.6.1 Key Object Document Series (Table C.17.6-1)"),
+        .init(.seriesNumber,      .type1, "Series Number",       "C.17.6.1 Key Object Document Series (Table C.17.6-1)"),
+        .init(.referencedPerformedProcedureStepSequence, .type2, "Referenced Performed Procedure Step Sequence", "C.17.6.1 Key Object Document Series (Table C.17.6-1)"),
+    ]
+
+    /// C.17.6.2 Key Object Document Module, Table C.17.6-2.
+    static let keyObjectDocument: [IODAttributeRequirement] = [
+        .init(.instanceNumber, .type1, "Instance Number", "C.17.6.2 Key Object Document (Table C.17.6-2)"),
+        .init(.contentDate,    .type1, "Content Date",    "C.17.6.2 Key Object Document (Table C.17.6-2)"),
+        .init(.contentTime,    .type1, "Content Time",    "C.17.6.2 Key Object Document (Table C.17.6-2)"),
+        .init(Tag(group: 0x0040, element: 0xA375), .type1, "Current Requested Procedure Evidence Sequence", "C.17.6.2 Key Object Document (Table C.17.6-2)"),
+    ]
+
+    // MARK: Per-IOD composition (the Mandatory rows of Tables A.x-1)
+
+    /// Table A.3-1 CT Image IOD Modules (M rows): Patient, General Study, General
+    /// Series, Frame of Reference, General Equipment, General Acquisition (all Type 3),
+    /// General Image, Image Plane, Image Pixel, CT Image, SOP Common.
+    public static let ctImage: [IODAttributeRequirement] =
+        patient + generalStudy + generalSeries + frameOfReference + generalEquipment
+        + generalImage + imagePlane + imagePixel + ctImageModule + sopCommon
+
+    /// Table A.4-1 MR Image IOD Modules (M rows): as CT with MR Image (C.8.3.1).
+    public static let mrImage: [IODAttributeRequirement] =
+        patient + generalStudy + generalSeries + frameOfReference + generalEquipment
+        + generalImage + imagePlane + imagePixel + mrImageModule + sopCommon
+
+    /// Table A.2-1 Computed Radiography Image IOD Modules (M rows): Patient, General
+    /// Study, General Series, CR Series, General Equipment, General Acquisition,
+    /// General Image, Image Pixel, CR Image, SOP Common (no Frame of Reference, no
+    /// Image Plane).
+    public static let crImage: [IODAttributeRequirement] =
+        patient + generalStudy + generalSeries + crSeries + generalEquipment
+        + generalImage + imagePixel + crImageModule + sopCommon
+
+    /// Table A.6-1 Ultrasound Image IOD Modules (M rows): Patient, General Study,
+    /// General Series, General Equipment, General Acquisition, General Image, Image
+    /// Pixel, US Image, SOP Common (Frame of Reference is U).
+    public static let usImage: [IODAttributeRequirement] =
+        patient + generalStudy + generalSeries + generalEquipment
+        + generalImage + imagePixel + usImageModule + sopCommon
+
+    /// Table A.8-1 Secondary Capture Image IOD Modules (M rows): Patient, General
+    /// Study, General Series, SC Equipment, General Acquisition, General Image, Image
+    /// Pixel, SC Image (all Type 3), SOP Common. General Equipment is U and Frame of
+    /// Reference is C (evaluated in the validator).
+    public static let secondaryCaptureImage: [IODAttributeRequirement] =
+        patient + generalStudy + generalSeriesSC + scEquipment
+        + generalImage + imagePixel + sopCommon
+
+    /// Table A.33.1-1 Grayscale Softcopy Presentation State IOD Modules (M rows):
+    /// Patient, General Study, General Series, Presentation Series, General Equipment,
+    /// Presentation State Identification, Presentation State Relationship,
+    /// Presentation State Shutter (1C only), Presentation State Mask (1C only),
+    /// Displayed Area, Softcopy Presentation LUT (either-or 1C, evaluated in the
+    /// validator), SOP Common.
+    public static let grayscaleSoftcopyPresentationState: [IODAttributeRequirement] =
+        patient + generalStudy + generalSeries + presentationSeries + generalEquipment
+        + presentationStateIdentification + presentationStateRelationship
+        + displayedArea + sopCommon
+
+    /// Table A.33.3-1 Pseudo-Color Softcopy Presentation State IOD Modules (M rows):
+    /// the grayscale set without Softcopy Presentation LUT, plus Palette Color Lookup
+    /// Table and ICC Profile.
+    public static let pseudoColorSoftcopyPresentationState: [IODAttributeRequirement] =
+        patient + generalStudy + generalSeries + presentationSeries + generalEquipment
+        + presentationStateIdentification + presentationStateRelationship
+        + displayedArea + paletteColorLUT + iccProfile + sopCommon
+
+    /// Tables A.35.1-1 Basic Text SR, A.35.2-1 Enhanced SR and A.35.3-1
+    /// Comprehensive SR IOD Modules (M rows): Patient, General Study, SR Document
+    /// Series, General Equipment, SR Document General, SR Document Content, SOP Common.
+    public static let structuredReport: [IODAttributeRequirement] =
+        patient + generalStudy + srDocumentSeries + generalEquipment
+        + srDocumentGeneral + srDocumentContent + sopCommon
+
+    /// Table A.35.4-1 Key Object Selection Document IOD Modules (M rows): Patient,
+    /// General Study, Key Object Document Series, General Equipment, Key Object
+    /// Document, SR Document Content, SOP Common.
+    public static let keyObjectSelectionDocument: [IODAttributeRequirement] =
+        patient + generalStudy + keyObjectDocumentSeries + generalEquipment
+        + keyObjectDocument + srDocumentContent + sopCommon
+
+    /// SOP Class UID → requirement rows.
+    public static let bySOPClassUID: [String: [IODAttributeRequirement]] = {
+        var t: [String: [IODAttributeRequirement]] = [
+            "1.2.840.10008.5.1.4.1.1.2":      ctImage,                                 // CT Image Storage
+            "1.2.840.10008.5.1.4.1.1.4":      mrImage,                                 // MR Image Storage
+            "1.2.840.10008.5.1.4.1.1.1":      crImage,                                 // CR Image Storage
+            "1.2.840.10008.5.1.4.1.1.6.1":    usImage,                                 // US Image Storage
+            "1.2.840.10008.5.1.4.1.1.7":      secondaryCaptureImage,                   // SC Image Storage
+            "1.2.840.10008.5.1.4.1.1.11.1":   grayscaleSoftcopyPresentationState,      // GSPS
+            "1.2.840.10008.5.1.4.1.1.11.3":   pseudoColorSoftcopyPresentationState,    // Pseudo-Color PS
+            "1.2.840.10008.5.1.4.1.1.88.59":  keyObjectSelectionDocument,              // KOS
         ]
-        
-        for (tag, name) in requiredTags {
-            if dataSet[tag] == nil {
+        for uid in SRDocumentType.allSOPClassUIDs where t[uid] == nil {
+            t[uid] = structuredReport
+        }
+        return t
+    }()
+}
+
+// MARK: - Requirement checking
+
+extension IODValidator {
+
+    /// Reports every row of `requirements` that the data set violates: a missing
+    /// Type 1 or Type 2 attribute (PS3.5 7.4.1 / 7.4.3: absence is a protocol
+    /// violation) and an empty Type 1 attribute (PS3.5 7.4.1: "The Length of the
+    /// Value Field shall not be zero").
+    func checkRequirements(
+        _ requirements: [IODAttributeRequirement],
+        in dataSet: DataSet,
+        iod: String,
+        errors: inout [ValidationIssue]
+    ) {
+        for req in requirements {
+            guard let element = dataSet[req.tag] else {
                 errors.append(ValidationIssue(
                     level: .error,
-                    message: "CT Image Storage: Missing required attribute \(name)",
-                    tag: tag
+                    message: "\(iod): Missing Type \(req.type.rawValue) attribute \(req.name) "
+                        + "[PS3.3 \(req.module); PS3.5 7.4.\(req.type == .type1 ? "1" : "3")]",
+                    tag: req.tag
+                ))
+                continue
+            }
+            if req.type == .type1 && Self.isEmpty(element) {
+                errors.append(ValidationIssue(
+                    level: .error,
+                    message: "\(iod): Type 1 attribute \(req.name) is empty "
+                        + "[PS3.3 \(req.module); PS3.5 7.4.1]",
+                    tag: req.tag
                 ))
             }
         }
-        
-        // Validate modality
+    }
+
+    /// The same check inside every Item of a sequence.
+    func checkItemRequirements(
+        _ requirements: [IODAttributeRequirement],
+        inItemsOf sequenceTag: Tag,
+        sequenceName: String,
+        dataSet: DataSet,
+        iod: String,
+        errors: inout [ValidationIssue]
+    ) {
+        guard let items = dataSet[sequenceTag]?.sequenceItems else { return }
+        for (index, item) in items.enumerated() {
+            let itemSet = DataSet(elements: item.allElements)
+            var itemErrors: [ValidationIssue] = []
+            checkRequirements(requirements, in: itemSet,
+                              iod: "\(iod): \(sequenceName) Item \(index + 1)", errors: &itemErrors)
+            errors.append(contentsOf: itemErrors)
+        }
+    }
+
+    /// Enforces an Enumerated Value of a Type 1 CS attribute: a value outside the
+    /// list is an error, not a warning (PS3.5 6.1 — an Enumerated Value is the only
+    /// permitted set of values).
+    func checkEnumeratedValue(
+        _ tag: Tag,
+        name: String,
+        allowed: [String],
+        module: String,
+        dataSet: DataSet,
+        iod: String,
+        errors: inout [ValidationIssue]
+    ) {
+        guard let raw = dataSet.string(for: tag)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return }   // absence/emptiness is reported by the Type check
+        if !allowed.contains(raw) {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "\(iod): \(name) must be \(allowed.joined(separator: " or ")) "
+                    + "(Enumerated Value, PS3.3 \(module)); found '\(raw)'",
+                tag: tag
+            ))
+        }
+    }
+
+    static func isEmpty(_ element: DataElement) -> Bool {
+        if let items = element.sequenceItems { return items.isEmpty }
+        return element.length == 0 || element.valueData.isEmpty
+    }
+}
+
+// MARK: - Per-IOD validators
+
+/// CT Image Storage validator — Table A.3-1.
+struct CTImageStorageValidator: IODValidator {
+    func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
+        let iod = "CT Image Storage"
+        checkRequirements(IODRequirementTables.ctImage, in: dataSet, iod: iod, errors: &errors)
+        ImageIODConditionals.checkImagePixelConditionals(dataSet: dataSet, iod: iod, errors: &errors)
+        ImageIODConditionals.checkPatientPositionCTMR(dataSet: dataSet, iod: iod, errors: &errors)
+
         if let raw = dataSet.string(for: .modality),
            Modality.normalized(raw) != Modality.ct {
             errors.append(ValidationIssue(
@@ -674,29 +1106,34 @@ struct CTImageStorageValidator: IODValidator {
     }
 }
 
-/// MR Image Storage validator
+/// MR Image Storage validator — Table A.4-1.
 struct MRImageStorageValidator: IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let requiredTags: [(Tag, String)] = [
-            (.patientName, "Patient Name"),
-            (.patientID, "Patient ID"),
-            (.studyInstanceUID, "Study Instance UID"),
-            (.seriesInstanceUID, "Series Instance UID"),
-            (.modality, "Modality"),
-            (.rows, "Rows"),
-            (.columns, "Columns")
-        ]
-        
-        for (tag, name) in requiredTags {
-            if dataSet[tag] == nil {
-                errors.append(ValidationIssue(
-                    level: .error,
-                    message: "MR Image Storage: Missing required attribute \(name)",
-                    tag: tag
-                ))
-            }
+        let iod = "MR Image Storage"
+        checkRequirements(IODRequirementTables.mrImage, in: dataSet, iod: iod, errors: &errors)
+        ImageIODConditionals.checkImagePixelConditionals(dataSet: dataSet, iod: iod, errors: &errors)
+        ImageIODConditionals.checkPatientPositionCTMR(dataSet: dataSet, iod: iod, errors: &errors)
+
+        // Table C.8-4: Repetition Time 2C "Required if Sequence Variant (0018,0021) is
+        // SK or if Scanning Sequence (0018,0020) is not EP"; Inversion Time 2C
+        // "Required if Scanning Sequence (0018,0020) has Values of IR".
+        let scanning = (dataSet.strings(for: .scanningSequence) ?? []).map { $0.trimmingCharacters(in: .whitespaces) }
+        let variant = (dataSet.strings(for: .sequenceVariant) ?? []).map { $0.trimmingCharacters(in: .whitespaces) }
+        if (variant.contains("SK") || !scanning.contains("EP")) && dataSet[.repetitionTime] == nil {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "\(iod): Missing Type 2C attribute Repetition Time (required when Sequence Variant is SK or Scanning Sequence is not EP) [PS3.3 C.8.3.1 MR Image (Table C.8-4); PS3.5 7.4.4]",
+                tag: .repetitionTime
+            ))
         }
-        
+        if scanning.contains("IR") && dataSet[.inversionTime] == nil {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "\(iod): Missing Type 2C attribute Inversion Time (required when Scanning Sequence includes IR) [PS3.3 C.8.3.1 MR Image (Table C.8-4); PS3.5 7.4.4]",
+                tag: .inversionTime
+            ))
+        }
+
         if let raw = dataSet.string(for: .modality),
            Modality.normalized(raw) != Modality.mr {
             errors.append(ValidationIssue(
@@ -708,27 +1145,14 @@ struct MRImageStorageValidator: IODValidator {
     }
 }
 
-/// CR Image Storage validator
+/// CR Image Storage validator — Table A.2-1.
 struct CRImageStorageValidator: IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let requiredTags: [(Tag, String)] = [
-            (.patientName, "Patient Name"),
-            (.patientID, "Patient ID"),
-            (.studyInstanceUID, "Study Instance UID"),
-            (.seriesInstanceUID, "Series Instance UID"),
-            (.modality, "Modality")
-        ]
-        
-        for (tag, name) in requiredTags {
-            if dataSet[tag] == nil {
-                errors.append(ValidationIssue(
-                    level: .error,
-                    message: "CR Image Storage: Missing required attribute \(name)",
-                    tag: tag
-                ))
-            }
-        }
-        
+        let iod = "CR Image Storage"
+        checkRequirements(IODRequirementTables.crImage, in: dataSet, iod: iod, errors: &errors)
+        ImageIODConditionals.checkImagePixelConditionals(dataSet: dataSet, iod: iod, errors: &errors)
+        ImageIODConditionals.checkPatientOrientation(dataSet: dataSet, iod: iod, imagePlaneOptional: false, errors: &errors)
+
         if let raw = dataSet.string(for: .modality),
            Modality.normalized(raw) != Modality.cr {
             errors.append(ValidationIssue(
@@ -740,27 +1164,23 @@ struct CRImageStorageValidator: IODValidator {
     }
 }
 
-/// Ultrasound Image Storage validator
+/// Ultrasound Image Storage validator — Table A.6-1.
 struct USImageStorageValidator: IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let requiredTags: [(Tag, String)] = [
-            (.patientName, "Patient Name"),
-            (.patientID, "Patient ID"),
-            (.studyInstanceUID, "Study Instance UID"),
-            (.seriesInstanceUID, "Series Instance UID"),
-            (.modality, "Modality")
-        ]
-        
-        for (tag, name) in requiredTags {
-            if dataSet[tag] == nil {
-                errors.append(ValidationIssue(
-                    level: .error,
-                    message: "US Image Storage: Missing required attribute \(name)",
-                    tag: tag
-                ))
-            }
+        let iod = "US Image Storage"
+        checkRequirements(IODRequirementTables.usImage, in: dataSet, iod: iod, errors: &errors)
+        ImageIODConditionals.checkImagePixelConditionals(dataSet: dataSet, iod: iod, errors: &errors)
+        ImageIODConditionals.checkPatientOrientation(dataSet: dataSet, iod: iod, imagePlaneOptional: false, errors: &errors)
+
+        // Table C.8-18: Frame Increment Pointer 1C "Required if Number of Frames is present".
+        if dataSet[.numberOfFrames] != nil && dataSet[.frameIncrementPointer] == nil {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "\(iod): Missing Type 1C attribute Frame Increment Pointer (required when Number of Frames is present) [PS3.3 C.8.5.6 US Image (Table C.8-18); PS3.5 7.4.2]",
+                tag: .frameIncrementPointer
+            ))
         }
-        
+
         if let raw = dataSet.string(for: .modality),
            Modality.normalized(raw) != Modality.us {
             errors.append(ValidationIssue(
@@ -772,128 +1192,169 @@ struct USImageStorageValidator: IODValidator {
     }
 }
 
-/// Secondary Capture Image Storage validator
+/// Secondary Capture Image Storage validator — Table A.8-1.
+///
+/// Modality is not required: Table C.8-24 SC Equipment makes it Type 3 and states
+/// that this overrides the General Series definition.
 struct SecondaryCaptureImageStorageValidator: IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let requiredTags: [(Tag, String)] = [
-            (.patientName, "Patient Name"),
-            (.patientID, "Patient ID"),
-            (.studyInstanceUID, "Study Instance UID"),
-            (.seriesInstanceUID, "Series Instance UID"),
-            (.modality, "Modality")
-        ]
-        
-        for (tag, name) in requiredTags {
-            if dataSet[tag] == nil {
-                errors.append(ValidationIssue(
-                    level: .error,
-                    message: "Secondary Capture: Missing required attribute \(name)",
-                    tag: tag
-                ))
-            }
+        let iod = "Secondary Capture Image Storage"
+        checkRequirements(IODRequirementTables.secondaryCaptureImage, in: dataSet, iod: iod, errors: &errors)
+        ImageIODConditionals.checkImagePixelConditionals(dataSet: dataSet, iod: iod, errors: &errors)
+        ImageIODConditionals.checkPatientOrientation(dataSet: dataSet, iod: iod, imagePlaneOptional: true, errors: &errors)
+
+        // Table A.8-1: Frame of Reference "C - Required if Image Position (Patient)
+        // (0020,0032) or Image Orientation (Patient) (0020,0037) are present."
+        if dataSet[.imagePositionPatient] != nil || dataSet[.imageOrientationPatient] != nil {
+            checkRequirements(IODRequirementTables.frameOfReference, in: dataSet, iod: iod, errors: &errors)
         }
     }
 }
 
-/// Grayscale Softcopy Presentation State validator
+/// Conditions shared by the image IODs.
+enum ImageIODConditionals {
+
+    /// Table C.7-11c: Planar Configuration 1C "Required if Samples per Pixel
+    /// (0028,0002) has a Value greater than 1"; the six Palette Color LUT rows are 1C
+    /// "Required if Photometric Interpretation (0028,0004) has a Value of PALETTE COLOR".
+    static func checkImagePixelConditionals(dataSet: DataSet, iod: String, errors: inout [ValidationIssue]) {
+        if let spp = dataSet.uint16(for: .samplesPerPixel), spp > 1, dataSet[.planarConfiguration] == nil {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "\(iod): Missing Type 1C attribute Planar Configuration (required when Samples per Pixel > 1) [PS3.3 C.7.6.3 Image Pixel (Table C.7-11c); PS3.5 7.4.2]",
+                tag: .planarConfiguration
+            ))
+        }
+        if dataSet.string(for: .photometricInterpretation)?.trimmingCharacters(in: .whitespaces) == "PALETTE COLOR" {
+            for req in IODRequirementTables.paletteColorLUT where dataSet[req.tag] == nil {
+                errors.append(ValidationIssue(
+                    level: .error,
+                    message: "\(iod): Missing Type 1C attribute \(req.name) (required for PALETTE COLOR) [PS3.3 C.7.6.3 Image Pixel (Table C.7-11c); PS3.5 7.4.2]",
+                    tag: req.tag
+                ))
+            }
+        }
+    }
+
+    /// Table C.7-5a: Patient Position 2C "Required for images where Patient
+    /// Orientation Code Sequence (0054,0410) is not present and whose SOP Class UID
+    /// (0008,0016) is one of … CT Image Storage, MR Image Storage …".
+    static func checkPatientPositionCTMR(dataSet: DataSet, iod: String, errors: inout [ValidationIssue]) {
+        let patientOrientationCodeSequence = Tag(group: 0x0054, element: 0x0410)
+        if dataSet[patientOrientationCodeSequence] == nil && dataSet[.patientPosition] == nil {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "\(iod): Missing Type 2C attribute Patient Position (required for CT/MR when Patient Orientation Code Sequence is absent) [PS3.3 C.7.3.1 General Series (Table C.7-5a); PS3.5 7.4.4]",
+                tag: .patientPosition
+            ))
+        }
+    }
+
+    /// Table C.7-9: Patient Orientation 2C "Required if image does not require Image
+    /// Orientation (Patient) (0020,0037) and Image Position (Patient) (0020,0032) …".
+    /// IODs without a Mandatory Image Plane module do not require them, so the
+    /// attribute is required unless (for an IOD where Image Plane is U) both are
+    /// present anyway.
+    static func checkPatientOrientation(dataSet: DataSet, iod: String, imagePlaneOptional: Bool, errors: inout [ValidationIssue]) {
+        let hasPlane = dataSet[.imageOrientationPatient] != nil && dataSet[.imagePositionPatient] != nil
+        if imagePlaneOptional && hasPlane { return }
+        if dataSet[.patientOrientation] == nil {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "\(iod): Missing Type 2C attribute Patient Orientation (required when the image does not carry Image Orientation/Position (Patient)) [PS3.3 C.7.6.1 General Image (Table C.7-9); PS3.5 7.4.4]",
+                tag: .patientOrientation
+            ))
+        }
+    }
+}
+
+/// Grayscale Softcopy Presentation State validator — Table A.33.1-1.
 struct GrayscaleSoftcopyPresentationStateValidator: IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let requiredTags: [(Tag, String)] = [
-            (.patientName, "Patient Name"),
-            (.patientID, "Patient ID"),
-            (.studyInstanceUID, "Study Instance UID"),
-            (.seriesInstanceUID, "Series Instance UID"),
-            (.modality, "Modality")
-        ]
-        
-        for (tag, name) in requiredTags {
-            if dataSet[tag] == nil {
-                errors.append(ValidationIssue(
-                    level: .error,
-                    message: "GSPS: Missing required attribute \(name)",
-                    tag: tag
-                ))
-            }
-        }
-        
-        if let raw = dataSet.string(for: .modality),
-           Modality.normalized(raw) != Modality.pr {
-            warnings.append(ValidationIssue(
-                level: .warning,
-                message: "GSPS: Modality should be 'PR'",
-                tag: .modality
+        let iod = "GSPS"
+        checkRequirements(IODRequirementTables.grayscaleSoftcopyPresentationState, in: dataSet, iod: iod, errors: &errors)
+        PresentationStateConditionals.checkCommon(dataSet: dataSet, iod: iod, validator: self, errors: &errors)
+
+        // Table C.11.6-1 Softcopy Presentation LUT (M): Presentation LUT Sequence 1C
+        // "Required if Presentation LUT Shape (2050,0020) is absent" and Presentation
+        // LUT Shape 1C "Required if Presentation LUT Sequence (2050,0010) is absent".
+        if dataSet[.presentationLUTSequence] == nil && dataSet[.presentationLUTShape] == nil {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "\(iod): Missing Softcopy Presentation LUT: either Presentation LUT Sequence or Presentation LUT Shape is required (Type 1C) [PS3.3 C.11.6 Softcopy Presentation LUT (Table C.11.6-1); PS3.5 7.4.2]",
+                tag: .presentationLUTShape
             ))
         }
     }
 }
 
-/// Pseudo-Color Softcopy Presentation State validator
-///
-/// The grayscale checks plus the two modules that make this IOD what it is:
-/// the Palette Color Lookup Table (Type 1 — without it the object says
-/// "coloured" and cannot say how) and the ICC Profile (mandatory per PS3.3
-/// A.33.4).
+/// Pseudo-Color Softcopy Presentation State validator — Table A.33.3-1: the
+/// grayscale modules without Softcopy Presentation LUT, plus Palette Color Lookup
+/// Table (C.7.9, M) and ICC Profile (C.11.15, M).
 struct PseudoColorSoftcopyPresentationStateValidator: IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        GrayscaleSoftcopyPresentationStateValidator()
-            .validate(dataSet: dataSet, errors: &errors, warnings: &warnings)
-
-        let paletteTags: [(Tag, String)] = [
-            (.redPaletteColorLookupTableDescriptor, "Red Palette Color LUT Descriptor"),
-            (.greenPaletteColorLookupTableDescriptor, "Green Palette Color LUT Descriptor"),
-            (.bluePaletteColorLookupTableDescriptor, "Blue Palette Color LUT Descriptor"),
-            (.redPaletteColorLookupTableData, "Red Palette Color LUT Data"),
-            (.greenPaletteColorLookupTableData, "Green Palette Color LUT Data"),
-            (.bluePaletteColorLookupTableData, "Blue Palette Color LUT Data")
-        ]
-        for (tag, name) in paletteTags {
-            if dataSet[tag] == nil {
-                errors.append(ValidationIssue(
-                    level: .error,
-                    message: "Pseudo-Color PS: Missing required attribute \(name)",
-                    tag: tag
-                ))
-            }
-        }
-
-        if dataSet[.iccProfile] == nil {
-            errors.append(ValidationIssue(
-                level: .error,
-                message: "Pseudo-Color PS: Missing required ICC Profile",
-                tag: .iccProfile
-            ))
-        }
+        let iod = "Pseudo-Color PS"
+        checkRequirements(IODRequirementTables.pseudoColorSoftcopyPresentationState, in: dataSet, iod: iod, errors: &errors)
+        PresentationStateConditionals.checkCommon(dataSet: dataSet, iod: iod, validator: self, errors: &errors)
     }
 }
 
-/// Structured Report validator
+enum PresentationStateConditionals {
+    /// Table C.11.9-1: Modality Enumerated Value PR; Table C.11.11-1b and Table
+    /// C.10-4 Item-level Type 1 rows.
+    static func checkCommon(dataSet: DataSet, iod: String, validator: some IODValidator, errors: inout [ValidationIssue]) {
+        validator.checkEnumeratedValue(
+            .modality, name: "Modality", allowed: ["PR"],
+            module: "C.11.9 Presentation Series (Table C.11.9-1)",
+            dataSet: dataSet, iod: iod, errors: &errors)
+        validator.checkItemRequirements(
+            IODRequirementTables.presentationStateRelationshipItem,
+            inItemsOf: .referencedSeriesSequence, sequenceName: "Referenced Series Sequence",
+            dataSet: dataSet, iod: iod, errors: &errors)
+        validator.checkItemRequirements(
+            IODRequirementTables.displayedAreaItem,
+            inItemsOf: .displayedAreaSelectionSequence, sequenceName: "Displayed Area Selection Sequence",
+            dataSet: dataSet, iod: iod, errors: &errors)
+    }
+}
+
+/// Structured Report validator — Tables A.35.1-1 / A.35.2-1 / A.35.3-1 (and the
+/// other SR Storage SOP Classes that use the SR Document Series and General
+/// modules); Key Object Selection uses Table A.35.4-1.
 struct StructuredReportValidator: IODValidator {
+    static let keyObjectSelectionDocumentUID = "1.2.840.10008.5.1.4.1.1.88.59"
+
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let requiredTags: [(Tag, String)] = [
-            (.patientName, "Patient Name"),
-            (.patientID, "Patient ID"),
-            (.studyInstanceUID, "Study Instance UID"),
-            (.seriesInstanceUID, "Series Instance UID"),
-            (.modality, "Modality")
-        ]
-        
-        for (tag, name) in requiredTags {
-            if dataSet[tag] == nil {
+        let isKOS = dataSet.string(for: .sopClassUID)?.trimmingCharacters(in: .whitespaces) == Self.keyObjectSelectionDocumentUID
+        let iod = isKOS ? "Key Object Selection Document" : "Structured Report"
+
+        if isKOS {
+            checkRequirements(IODRequirementTables.keyObjectSelectionDocument, in: dataSet, iod: iod, errors: &errors)
+            // Table C.17.6-1: Modality Enumerated Value KO.
+            checkEnumeratedValue(.modality, name: "Modality", allowed: ["KO"],
+                                 module: "C.17.6.1 Key Object Document Series (Table C.17.6-1)",
+                                 dataSet: dataSet, iod: iod, errors: &errors)
+        } else {
+            checkRequirements(IODRequirementTables.structuredReport, in: dataSet, iod: iod, errors: &errors)
+            // Table C.17-1: Modality Enumerated Value SR.
+            checkEnumeratedValue(.modality, name: "Modality", allowed: ["SR"],
+                                 module: "C.17.1 SR Document Series (Table C.17-1)",
+                                 dataSet: dataSet, iod: iod, errors: &errors)
+            // Table C.17-2: Verifying Observer Sequence 1C "Required if Verification
+            // Flag (0040,A493) is VERIFIED".
+            if dataSet.string(for: .verificationFlag)?.trimmingCharacters(in: .whitespaces) == "VERIFIED",
+               dataSet[.verifyingObserverSequence] == nil {
                 errors.append(ValidationIssue(
                     level: .error,
-                    message: "Structured Report: Missing required attribute \(name)",
-                    tag: tag
+                    message: "\(iod): Missing Type 1C attribute Verifying Observer Sequence (required when Verification Flag is VERIFIED) [PS3.3 C.17.2 SR Document General (Table C.17-2); PS3.5 7.4.2]",
+                    tag: .verifyingObserverSequence
                 ))
             }
         }
-        
-        if let raw = dataSet.string(for: .modality),
-           Modality.normalized(raw) != Modality.sr {
-            errors.append(ValidationIssue(
-                level: .error,
-                message: "Structured Report: Modality must be 'SR'",
-                tag: .modality
-            ))
-        }
+
+        // C.17.3.1: "The root Content Item is of type CONTAINER".
+        checkEnumeratedValue(.valueType, name: "Value Type of the root Content Item", allowed: ["CONTAINER"],
+                             module: "C.17.3.1 SR Document Content Tree",
+                             dataSet: dataSet, iod: iod, errors: &errors)
     }
 }

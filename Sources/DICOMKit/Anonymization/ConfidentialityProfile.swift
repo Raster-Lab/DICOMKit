@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — the Basic Profile action of every row diffed by Scripts/diff_kit.py against PS3.15 2026a Table E.1-1 (62 rows; Device UID U and the order numbers Z corrected)
+// NEMA-verified: 2026a, checked 2026-09-29 — the Basic Profile action of every row diffed by Scripts/diff_kit.py against PS3.15 2026a Table E.1-1 (62 rows; Device UID U and the order numbers Z corrected); DeidentificationMethodCode values and meanings from PS3.16 2026a CID 7050 (113100-113112), option mapping from PS3.15 E.3
 import Foundation
 import DICOMCore
 
@@ -74,6 +74,81 @@ public enum ConfidentialityProfile {
 
         /// The strict Basic Application Level Confidentiality Profile: every option off.
         public static let basic = Options()
+
+        /// The PS3.16 CID 7050 codes that describe this profile and its options, in
+        /// the order the items are written to De-identification Method Code Sequence
+        /// (0012,0064): the profile code first, then one code per option applied.
+        public var methodCodes: [DeidentificationMethodCode] {
+            var codes: [DeidentificationMethodCode] = [.basicApplicationConfidentialityProfile]
+            if cleanDescriptors { codes.append(.cleanDescriptorsOption) }
+            if retainLongitudinalTemporal {
+                // E.3: "Retain Longitudinal Temporal Information with Full Dates" keeps
+                // dates verbatim; "… with Modified Dates" shifts them, which is what a
+                // date offset does.
+                codes.append(dateOffsetDays == nil
+                             ? .retainLongitudinalTemporalInformationFullDatesOption
+                             : .retainLongitudinalTemporalInformationModifiedDatesOption)
+            }
+            if retainPatientCharacteristics { codes.append(.retainPatientCharacteristicsOption) }
+            if retainDeviceIdentity { codes.append(.retainDeviceIdentityOption) }
+            if retainUIDs { codes.append(.retainUIDsOption) }
+            if retainInstitutionIdentity { codes.append(.retainInstitutionIdentityOption) }
+            return codes
+        }
+    }
+
+    /// PS3.16 2026a CID 7050 De-identification Method (DCM codes), the vocabulary of
+    /// De-identification Method Code Sequence (0012,0064). The raw value is the Code
+    /// Value; ``meaning`` is the Code Meaning exactly as printed in CID 7050.
+    public enum DeidentificationMethodCode: String, CaseIterable, Sendable {
+        case basicApplicationConfidentialityProfile = "113100"
+        case cleanPixelDataOption = "113101"
+        case cleanRecognizableVisualFeaturesOption = "113102"
+        case cleanGraphicsOption = "113103"
+        case cleanStructuredContentOption = "113104"
+        case cleanDescriptorsOption = "113105"
+        case retainLongitudinalTemporalInformationFullDatesOption = "113106"
+        case retainLongitudinalTemporalInformationModifiedDatesOption = "113107"
+        case retainPatientCharacteristicsOption = "113108"
+        case retainDeviceIdentityOption = "113109"
+        case retainUIDsOption = "113110"
+        case retainSafePrivateOption = "113111"
+        case retainInstitutionIdentityOption = "113112"
+
+        /// Coding Scheme Designator (0008,0102) of every CID 7050 row.
+        public static let codingSchemeDesignator = "DCM"
+
+        /// Code Value (0008,0100).
+        public var codeValue: String { rawValue }
+
+        /// Code Meaning (0008,0104), verbatim from CID 7050.
+        public var meaning: String {
+            switch self {
+            case .basicApplicationConfidentialityProfile: return "Basic Application Confidentiality Profile"
+            case .cleanPixelDataOption: return "Clean Pixel Data Option"
+            case .cleanRecognizableVisualFeaturesOption: return "Clean Recognizable Visual Features Option"
+            case .cleanGraphicsOption: return "Clean Graphics Option"
+            case .cleanStructuredContentOption: return "Clean Structured Content Option"
+            case .cleanDescriptorsOption: return "Clean Descriptors Option"
+            case .retainLongitudinalTemporalInformationFullDatesOption: return "Retain Longitudinal Temporal Information Full Dates Option"
+            case .retainLongitudinalTemporalInformationModifiedDatesOption: return "Retain Longitudinal Temporal Information Modified Dates Option"
+            case .retainPatientCharacteristicsOption: return "Retain Patient Characteristics Option"
+            case .retainDeviceIdentityOption: return "Retain Device Identity Option"
+            case .retainUIDsOption: return "Retain UIDs Option"
+            case .retainSafePrivateOption: return "Retain Safe Private Option"
+            case .retainInstitutionIdentityOption: return "Retain Institution Identity Option"
+            }
+        }
+
+        /// A Code Sequence Item (PS3.3 Table 8.8-1: Code Value SH, Coding Scheme
+        /// Designator SH, Code Meaning LO) for De-identification Method Code Sequence.
+        public var sequenceItem: SequenceItem {
+            SequenceItem(elements: [
+                DataElement.string(tag: .codeValue, vr: .SH, value: codeValue),
+                DataElement.string(tag: .codingSchemeDesignator, vr: .SH, value: Self.codingSchemeDesignator),
+                DataElement.string(tag: .codeMeaning, vr: .LO, value: meaning),
+            ])
+        }
     }
 
     /// A single row of the confidentiality table: which option (if any) can relax it.
