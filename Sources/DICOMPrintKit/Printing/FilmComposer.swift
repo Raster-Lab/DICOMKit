@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Film Box / Image Box / Presentation LUT citations corrected to PS3.3 2026a C.13.3, C.13.5, C.11.4; YBR 4:2:2 layout and partial-range inverse per C.7.6.3.1.2; Border/Empty Density terms per Table C.13-3; P-Value rendering is linear, not PS3.14 GSDF (pending P-GSDF)
 //
 // FilmComposer.swift
 // DICOMPrintKit
@@ -8,7 +9,9 @@
 // This is the only genuinely new piece of the emulator: everything upstream is
 // protocol handling and everything downstream is a sink.
 //
-// Reference: PS3.3 C.13.3 (Film Box), C.13.5 (Image Box), C.11.6 (Presentation LUT).
+// Reference: PS3.3 C.13.3 (Basic Film Box Presentation), C.13.5 (Image Box Pixel
+// Presentation), C.11.4 (Presentation LUT — the hardcopy module; C.11.6 is the
+// softcopy one).
 //
 
 import Foundation
@@ -587,8 +590,12 @@ public struct FilmComposer: Sendable {
 
     /// 8-bit interleaved RGB samples for a colour image box.
     ///
-    /// Our own SCU converts to RGB before sending, but third-party SCUs do send
-    /// YBR — including the 4:2:2 packed form (PS3.5 8.7.4) — so both are handled.
+    /// PS3.3 Table C.13-5 enumerates only RGB for the Basic Color Image
+    /// Sequence, and our own SCU converts to RGB before sending, but
+    /// third-party SCUs do send YBR — including the 4:2:2 packed form, Y1 Y2 Cb
+    /// Cr per pixel pair (PS3.3 C.7.6.3.1.2) — so the composer reads both
+    /// rather than refuse the film. The partial-range equations are the
+    /// inverse of the C.7.6.3.1.2 YBR_PARTIAL_422 definition.
     private func rgbSamples(from image: PrintImageData, photometric: String) throws -> Data {
         let width = Int(image.columns), height = Int(image.rows)
         let pixelCount = width * height

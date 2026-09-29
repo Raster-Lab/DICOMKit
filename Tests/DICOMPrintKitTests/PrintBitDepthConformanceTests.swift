@@ -110,7 +110,9 @@ final class PrintBitDepthConformanceTests: XCTestCase {
         let note = try XCTUnwrap(PrintImagePreparer.clampNote(request(bitDepth: 16)))
         XCTAssertTrue(note.contains("16-bit"), note)
         XCTAssertTrue(note.contains("12-bit"), note)
-        XCTAssertTrue(note.contains("C.13-3"), note)
+        // Bits Stored 8/12 is the Image Box Pixel Presentation Module, Table
+        // C.13-5 (C.13-3 is the Film Box module) — D23.
+        XCTAssertTrue(note.contains("C.13-5"), note)
     }
 
     func testPaletteNoteExplainsWhyDepthWasDropped() throws {

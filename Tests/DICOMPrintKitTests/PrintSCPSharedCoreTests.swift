@@ -106,7 +106,7 @@ final class PrintSCPSettingsMappingTests: XCTestCase {
     func testPrinterStatusInfoFallsBackToTheStatusText() {
         var settings = PrintSCPSettings()
         settings.printerStatus = .failure
-        XCTAssertEqual(settings.effectivePrinterStatusInfo, "NO SUPPLY")
+        XCTAssertEqual(settings.effectivePrinterStatusInfo, "SUPPLY EMPTY")  // a PS3.3 C.13.9.1 Defined Term
         settings.printerStatusInfo = "OUT OF FILM"
         XCTAssertEqual(settings.reportedPrinterStatus.statusInfo, "OUT OF FILM")
         XCTAssertEqual(settings.reportedPrinterStatus.status, "FAILURE")

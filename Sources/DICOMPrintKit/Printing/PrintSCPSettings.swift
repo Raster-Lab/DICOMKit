@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Printer Status NORMAL/WARNING/FAILURE per PS3.3 2026a Table C.13-9 and default Printer Status Info per C.13.9.1 Defined Terms (NO SUPPLY corrected to SUPPLY EMPTY); Medium Type / Film Size tokens via PrintOptionCatalog
 //
 // PrintSCPSettings.swift
 // DICOMPrintKit
@@ -57,12 +58,13 @@ public enum EmulatedPrinterStatus: String, Codable, Sendable, CaseIterable, Iden
         }
     }
 
-    /// Default Printer Status Info (2110,0020) for the state.
+    /// Default Printer Status Info (2110,0020) for the state — NORMAL, SUPPLY
+    /// LOW and SUPPLY EMPTY, each a Defined Term of PS3.3 C.13.9.1.
     public var defaultStatusInfo: String {
         switch self {
         case .normal:  return "NORMAL"
         case .warning: return "SUPPLY LOW"
-        case .failure: return "NO SUPPLY"
+        case .failure: return "SUPPLY EMPTY"
         }
     }
 }

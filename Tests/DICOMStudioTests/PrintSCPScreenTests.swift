@@ -81,7 +81,7 @@ struct PrintSCPSettingsTests {
     func testStatusInfoFallback() {
         var settings = PrintSCPSettings()
         settings.printerStatus = .failure
-        #expect(settings.effectivePrinterStatusInfo == "NO SUPPLY")
+        #expect(settings.effectivePrinterStatusInfo == "SUPPLY EMPTY")  // a PS3.3 C.13.9.1 Defined Term
         settings.printerStatusInfo = "OUT OF FILM"
         #expect(settings.effectivePrinterStatusInfo == "OUT OF FILM")
     }
@@ -185,7 +185,7 @@ struct PrintSCPConfigurationMappingTests {
         settings.printerName = "FILM-1"
         let status = settings.reportedPrinterStatus
         #expect(status.status == "FAILURE")
-        #expect(status.statusInfo == "NO SUPPLY")
+        #expect(status.statusInfo == "SUPPLY EMPTY")
         #expect(status.printerName == "FILM-1")
         #expect(!status.isNormal)
     }

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-29 — Film Size ID, Film Orientation, Print Priority, Medium Type, Film Destination, Magnification Type, Polarity, Trim, Presentation LUT Shape and Border/Empty Image Density values offered text-diffed against PS3.3 2026a Tables C.13-1, C.13-3, C.13-5, C.11-4 via the DICOMNetwork raw values (Scripts/diff_printkit.py: all match); bit depths 8/12 per Table C.13-5 (citation corrected from C.13-3, D23); MAMMO CLEAR FILM / MAMMO BLUE FILM not offered pending P-MAMMO
 // PrintOptionCatalog.swift
 // DICOMPrintKit
 //
@@ -202,6 +203,12 @@ public enum PrintOptionCatalog {
     ]
 
     /// Medium types.
+    ///
+    /// PS3.3 Table C.13-1 also defines MAMMO CLEAR FILM and MAMMO BLUE FILM.
+    /// They are not offered while DICOMNetwork's `MediumType` sends them as
+    /// `MAMMO CLEAR` / `MAMMO BLUE`, which are not terms: offering them would
+    /// put a wrong Medium Type on the wire. That fix is a raw-value change
+    /// waiting for the owner's decision (P-MAMMO).
     public static let mediumTypes: [(value: MediumType, cliToken: String, label: String)] = [
         (.paper,     "paper",      "Paper"),
         (.clearFilm, "clear-film", "Clear film"),
@@ -256,7 +263,8 @@ public enum PrintOptionCatalog {
 
     /// Grayscale output bit depths the Basic Grayscale Image Box allows.
     ///
-    /// Eight and twelve, and nothing else: PS3.3 Table C.13-3 enumerates Bits
+    /// Eight and twelve, and nothing else: PS3.3 Table C.13-5 (Image Box Pixel
+    /// Presentation Module, Basic Grayscale Image Sequence) enumerates Bits
     /// Stored as 8 or 12. Sixteen *bits allocated* is legal and is how 12-bit
     /// film travels, but 16 bits *stored* is not a value the table lists, so it
     /// is not offered here. A request that still asks for it is clamped rather
