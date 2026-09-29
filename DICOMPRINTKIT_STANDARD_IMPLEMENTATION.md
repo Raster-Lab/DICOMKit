@@ -14,12 +14,11 @@ deferred rows for this module (D23, D27, D36; D30 was already closed) are closed
 decisions the first pass left open (P-MAMMO, P-GSDF, P-CROP) were approved by the owner on
 2026-09-29 ("complete the module as per your recommendation") and are implemented as
 recommended, each against the clause named. Every behaviour fix has a test;
-`swift build` passes and the full `swift test` passes apart from four pre-existing, proved
-DICOMRoundTripTests failures (Verification notes, D43). The work is committed on
+`swift build` and the full `swift test` pass (exit 0; Verification notes). The work is committed on
 `feature/dicom-tag-modality-audit`, locally, for review. Five rows are opened for other modules
-(D39–D43). The full
-`swift test` exits 1 on four `PDFRoundTripTests` cases that fail identically on the untouched
-HEAD (a DICOMKit test file left behind by the P-ENCAP commit; D43).
+(D39–D43). The four
+`PDFRoundTripTests` cases that failed on the untouched HEAD (D43) were updated to the 2026a values
+at the owner's request; the full `swift test` now exits 0.
 
 Method: [DICOMCORE_STANDARD_IMPLEMENTATION.md → Verification method](DICOMCORE_STANDARD_IMPLEMENTATION.md#verification-method-reuse-for-every-module),
 used unchanged. Package target: **DICOM 2026a** (`dicomStandardEdition = "2026a"`,
@@ -181,7 +180,7 @@ New findings for other modules:
 | D39 | DICOMKit | [GraphicAnnotation.swift](Sources/DICOMKit/PresentationState/GraphicAnnotation.swift), `GrayscalePresentationStateBuilder`, `GrayscalePresentationStateParser` | No Compound Graphic Sequence (0070,0209) — Compound Graphic Type ARROW, RULER, RECTANGLE … — and no Text Style / Line Style / Fill Style Sequence (per-object CIELab colour, shadow = the "halo"); DICOMPrintKit therefore writes an arrow as two polylines and every object in its layer's colour | PS3.3 Tables C.10-5, C.10-5a, C.10-5b, C.10-5c | Medium | ⏳ Open |
 | D40 | DICOMNetwork | [PrintPixelDepthConformance.swift:18](Sources/DICOMNetwork/PrintPixelDepthConformance.swift) | Cites "PS3.5 3.6.1" for Enumerated Values; no such section in 2026a (it is PS3.5 6.3) | PS3.5 6.3 | Low: text | ⏳ Open |
 | D41 | DICOMNetwork | [PrintService.swift](Sources/DICOMNetwork/PrintService.swift) (~L4305, Basic Annotation Box N-SET) | Text String (2030,0020) written as LO without the 64-character limit or the backslash rule; DICOMPrintKit's footer now complies, other `PrintAnnotation` callers do not | PS3.5 Table 6.2-1 | Low | ⏳ Open |
-| D43 | DICOMKit tests | [Tests/DICOMRoundTripTest/PDFRoundTripTests.swift](Tests/DICOMRoundTripTest/PDFRoundTripTests.swift) (`testMIMETypeMapping`, `testOmittedOptionalFieldsAbsent`, `testWrapExtractCDABytesIdentical`, `testWrapExtractSTLBytesIdentical`) | Pin the behaviour from before P-ENCAP (`01fdeb66`); fail on HEAD `56115eaa` without any DICOMPrintKit change. Update the pins to the 2026a values the builder now writes (and set the HL7 Instance Identifier in the CDA fixture) | PS3.3 A.85 (STL `model/stl`), Table C.24-2, Tables A.45.x | Low: test only, but `swift test` exits 1 | ⏳ Open |
+| D43 | DICOMKit tests | [Tests/DICOMRoundTripTest/PDFRoundTripTests.swift](Tests/DICOMRoundTripTest/PDFRoundTripTests.swift) (`testMIMETypeMapping`, `testOmittedOptionalFieldsAbsent`, `testWrapExtractCDABytesIdentical`, `testWrapExtractSTLBytesIdentical`) | Pin the behaviour from before P-ENCAP (`01fdeb66`); fail on HEAD `56115eaa` without any DICOMPrintKit change. Update the pins to the 2026a values the builder now writes (and set the HL7 Instance Identifier in the CDA fixture) | PS3.3 A.85 (STL `model/stl`), Table C.24-2, Tables A.45.x | Low: test only, but `swift test` exits 1 | ✅ 2026-09-29 at the owner's request: pins set to the 2026a values (STL `model/stl` A.85.1.4.2; CDA `text/XML` A.45.2.4 and an HL7 Instance Identifier, Table C.24-2; Series/Instance Number Type 1 = 1 and Document Title Type 2 empty, Tables C.24-1/C.24-2); full `swift test` exits 0 |
 | D42 | DICOMStudio | [ImageViewerViewModel+PresentationStates.swift](Sources/DICOMStudio/ViewModels/ImageViewerViewModel+PresentationStates.swift) (~L460, 475, 610, 619, 1040), [PrintViewModel+PresentationStates.swift](Sources/DICOMStudio/ViewModels/PrintViewModel+PresentationStates.swift) (~L365) | Pass the image's Photometric Interpretation (and Rescale Type) to `ViewerPresentationStateBridge.capture/restore` and `ImageToSave`, so MONOCHROME1 images save and restore with the right Presentation LUT and colour images are saved as Color Softcopy Presentation States (D36 remainder) | PS3.4 N.2; PS3.3 A.33.1.1, Table A.33.2-1 | Medium | ⏳ Open |
 
 ---
@@ -286,8 +285,8 @@ New findings for other modules:
   dicom-split in release): DICOMPrintKitTests 362 XCTest cases (1 skipped; +11: `PrintGSDFTests`
   9, two Medium Type tests) and 84 swift-testing tests; DICOMNetworkTests 1,402 (+1 legacy-spelling
   test; four pins moved to the new cases); every other bundle and swift-testing run as in the first
-  pass. DICOMRoundTripTests still has the same 4 pre-existing `PDFRoundTripTests` failures (D43),
-  so `swift test` still exits 1; nothing else fails.
+  pass. After D43 was closed (the four `PDFRoundTripTests` pins moved to the 2026a values),
+  DICOMRoundTripTests passes too (528 cases, 18 skipped) and the full `swift test` exits 0.
 - **Annex D.2 inconsistency (NEMA text):** D.2 quotes j_max = 848.75 for L_max = 1271.9 cd/m²;
   both 7.1 j(L) and inverting L(j) give 847.2, and 848.75 would put P-Value 255 at 0.196 OD where
   Table D.2-1 prints 0.200. The implementation matches the table (all 256 rows within 0.0015 OD;

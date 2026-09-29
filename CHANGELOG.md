@@ -27,6 +27,10 @@ marker. The three decisions of the first pass were approved and applied the same
   PAPER), LIN OD and numeric Border/Empty densities as densities, shown as the sheet's luminance
   under PS3.14's typical viewing conditions. Reproduces PS3.14 Table D.2-1 within 0.0015 OD. The
   default mapping is unchanged.
+- **Round-trip tests (D43).** `PDFRoundTripTests` expected the encapsulated-document output from
+  before the DICOMKit P-ENCAP fix; its pins are now the 2026a values (STL `model/stl`, CDA
+  `text/XML` with an HL7 Instance Identifier, Series/Instance Number 1, empty Type 2 Document
+  Title). The full `swift test` passes.
 - **CROP without a Requested Image Size (P-CROP).** The existing reading (fill the box) is kept
   and stated in `PRINT_CONFORMANCE.md` 3.5, whose stale Medium Type, Presentation LUT Shape, Bits
   Stored and YBR entries are corrected.
