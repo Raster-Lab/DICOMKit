@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — Channel Source (003A,0208) keeps any code: PS3.3 2026a Table C.7-13 includes Table 8.8-1 with "DCID 3000" and PS3.16 2026a CID 3000 Audio Channel Source is "Type: Extensible" (DCM 109110-109115 verified by script) (D57)
 // NEMA-verified: 2026a, checked 2026-09-30 — modules per PS3.3 2026a Tables A.32.5-1/A.32.6-1/A.32.7-1; Cine Module Table C.7-13 (Frame Time / Frame Time Vector 1C, Preferred Playback Sequencing 0/1, Multiplexed Audio Channels 2C, written with no Items for undescribed audio), Multi-frame Table C.7-14, Lossy Image Compression Method terms C.7.6.1.1.5.1, empty Basic Offset Table and one fragment per PS3.5 8.2.5-8.2.8 (P-VIDEO, D34)
 //
 // VideoBuilder.swift
@@ -798,11 +799,7 @@ extension Video {
         }
         if !multiplexedAudioChannels.isEmpty || containsUndescribedMultiplexedAudio {
             let items = multiplexedAudioChannels.map { channel -> SequenceItem in
-                let sourceItem = SequenceItem(elements: [
-                    .string(tag: .codeValue, vr: .SH, value: channel.source.rawValue),
-                    .string(tag: .codingSchemeDesignator, vr: .SH, value: "DCM"),
-                    .string(tag: .codeMeaning, vr: .LO, value: channel.source.codeMeaning),
-                ])
+                let sourceItem = VideoBuilder.channelSourceItem(channel.source.code)
                 return SequenceItem(elements: [
                     .string(tag: VideoAudioChannel.channelIdentificationCodeTag, vr: .IS,
                             value: String(channel.channelIdentificationCode)),
@@ -900,5 +897,35 @@ extension Video {
         while result.hasSuffix("0") { result.removeLast() }
         if result.hasSuffix(".") { result.removeLast() }
         return result
+    }
+}
+
+extension VideoBuilder {
+    /// The one Channel Source Sequence (003A,0208) Item for a code, per the Code
+    /// Sequence Macro (PS3.3 2026a Table 8.8-1): exactly one of Code Value, Long
+    /// Code Value or URN Code Value; Coding Scheme Designator (Type 1C) with the
+    /// first two, and with a URN when one is given; Coding Scheme Version when
+    /// known; Code Meaning. Any code is written, CID 3000 being Extensible (D57).
+    static func channelSourceItem(_ code: CodedConcept) -> SequenceItem {
+        var elements: [DataElement] = []
+        let identifier = SRDocumentSerializer.CodeIdentifier(code)
+        switch identifier {
+        case .codeValue(let value):
+            elements.append(.string(tag: .codeValue, vr: .SH, value: value))
+        case .longCodeValue(let value):
+            elements.append(.string(tag: .longCodeValue, vr: .UC, value: value))
+        case .urnCodeValue(let value):
+            elements.append(.string(tag: .urnCodeValue, vr: .UR, value: value))
+        }
+        if case .urnCodeValue = identifier, code.codingSchemeDesignator.isEmpty {
+            // Type 1C: not required with a URN Code Value.
+        } else {
+            elements.append(.string(tag: .codingSchemeDesignator, vr: .SH, value: code.codingSchemeDesignator))
+        }
+        if let version = code.codingSchemeVersion, !version.isEmpty {
+            elements.append(.string(tag: .codingSchemeVersion, vr: .SH, value: version))
+        }
+        elements.append(.string(tag: .codeMeaning, vr: .LO, value: code.codeMeaning))
+        return SequenceItem(elements: elements)
     }
 }

@@ -666,8 +666,9 @@ final class VideoAudioTests: XCTestCase {
         XCTAssertEqual(sequence.sequenceItems?.count ?? 0, 0)
     }
 
-    /// An Item with a code this model cannot hold is skipped; the sequence stays.
-    func test_parser_skipsItemsOutsideCID3000() throws {
+    /// CID 3000 is Extensible (PS3.16 2026a "Type: Extensible"; Table C.7-13
+    /// "DCID 3000"), so an Item with another code is kept and written back (D57).
+    func test_parser_keepsItemsOutsideCID3000() throws {
         let video = try VideoBuilder(
             videoType: .endoscopic, rows: 1080, columns: 1920, numberOfFrames: 4,
             studyInstanceUID: "1.2.3.4.5", seriesInstanceUID: "1.2.3.4.5.6"
@@ -681,6 +682,41 @@ final class VideoAudioTests: XCTestCase {
             .string(tag: .codingSchemeDesignator, vr: .SH, value: "99LOCAL"),
             .string(tag: .codeMeaning, vr: .LO, value: "Local"),
         ])
+        let item = SequenceItem(elements: [
+            .string(tag: Tag(group: 0x003A, element: 0x0301), vr: .IS, value: "1"),
+            .string(tag: Tag(group: 0x003A, element: 0x0302), vr: .CS, value: "MONO"),
+            DataElement(tag: .channelSourceSequence, vr: .SQ, length: 0xFFFFFFFF,
+                        valueData: Data(), sequenceItems: [source]),
+        ])
+        dataSet[tag] = DataElement(tag: tag, vr: .SQ, length: 0xFFFFFFFF,
+                                   valueData: Data(), sequenceItems: [item])
+        let parsed = try VideoParser.parse(from: dataSet)
+        let local = VideoAudioChannel.Source(CodedConcept(
+            codeValue: "99999", codingSchemeDesignator: "99LOCAL", codeMeaning: "Local"))
+        XCTAssertEqual(parsed.multiplexedAudioChannels, [
+            VideoAudioChannel(channelIdentificationCode: 1, mode: .mono, source: local),
+        ])
+        XCTAssertEqual(parsed.multiplexedAudioChannels.first?.source.codeMeaning, "Local")
+        XCTAssertFalse(parsed.multiplexedAudioChannels.first?.source.isCID3000Member ?? true)
+        XCTAssertTrue(parsed.declaresMultiplexedAudio)
+
+        let written = try XCTUnwrap(parsed.toDataSet()[tag]?.sequenceItems)
+        XCTAssertEqual(written.count, 1)
+        let sourceItems = try XCTUnwrap(written[0][.channelSourceSequence]?.sequenceItems)
+        XCTAssertEqual(sourceItems.count, 1, "Only a single Item shall be included")
+        XCTAssertEqual(sourceItems[0].string(for: .codeValue), "99999")
+        XCTAssertEqual(sourceItems[0].string(for: .codingSchemeDesignator), "99LOCAL")
+        XCTAssertEqual(sourceItems[0].string(for: .codeMeaning), "Local")
+    }
+
+    /// A Channel Source Item with no code at all is still dropped (Type 1).
+    func test_parser_dropsChannelSourceWithoutCode() throws {
+        var dataSet = try VideoBuilder(
+            videoType: .endoscopic, rows: 1080, columns: 1920, numberOfFrames: 4,
+            studyInstanceUID: "1.2.3.4.5", seriesInstanceUID: "1.2.3.4.5.6"
+        ).build().toDataSet()
+        let tag = Tag(group: 0x003A, element: 0x0300)
+        let source = SequenceItem(elements: [.string(tag: .codeMeaning, vr: .LO, value: "No code")])
         let item = SequenceItem(elements: [
             .string(tag: Tag(group: 0x003A, element: 0x0301), vr: .IS, value: "1"),
             .string(tag: Tag(group: 0x003A, element: 0x0302), vr: .CS, value: "MONO"),

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — Channel Source (003A,0208) keeps any code: PS3.3 2026a Table C.7-13 includes Table 8.8-1 with "DCID 3000" and PS3.16 2026a CID 3000 Audio Channel Source is "Type: Extensible" (DCM 109110-109115 verified by script) (D57)
 // NEMA-verified: 2026a, checked 2026-09-30 — transfer syntax detection via DICOMCore; UIDs per PS3.6 2026a Table A-1; Multiplexed Audio Channels Description Code Sequence (003A,0300) read per PS3.3 2026a Table C.7-13 (Channel Identification Code IS, Channel Mode CS MONO/STEREO, Channel Source Sequence with a PS3.16 CID 3000 code) (D46)
 //
 // VideoParser.swift
@@ -223,8 +224,11 @@ public struct VideoParser {
 
     /// One Item of (003A,0300), or nil when it lacks a Type 1 attribute or uses a
     /// value ``VideoAudioChannel`` cannot represent: a Channel Mode other than the
-    /// Enumerated Values MONO and STEREO, or a Channel Source code outside PS3.16
-    /// CID 3000 (Coding Scheme Designator DCM).
+    /// Enumerated Values MONO and STEREO, or a Channel Source Item with no code.
+    ///
+    /// Any code is kept, not only CID 3000's: PS3.3 2026a Table C.7-13 includes
+    /// the Code Sequence Macro with "DCID 3000", and PS3.16 2026a CID 3000 is
+    /// "Type: Extensible" (D57).
     private static func audioChannel(_ item: SequenceItem) -> VideoAudioChannel? {
         guard let code = item[VideoAudioChannel.channelIdentificationCodeTag]?
                 .integerStringValue?.value,
@@ -232,12 +236,29 @@ public struct VideoParser {
                 .trimmingCharacters(in: .whitespaces),
               let mode = VideoAudioChannel.Mode(rawValue: modeText),
               let sourceItem = item[.channelSourceSequence]?.sequenceItems?.first,
-              sourceItem.string(for: .codingSchemeDesignator)?
-                .trimmingCharacters(in: .whitespaces) == "DCM",
-              let value = sourceItem.string(for: .codeValue)?.trimmingCharacters(in: .whitespaces),
-              let source = VideoAudioChannel.Source(rawValue: value)
+              let source = channelSource(sourceItem)
         else { return nil }
         return VideoAudioChannel(channelIdentificationCode: code, mode: mode, source: source)
+    }
+
+    /// The code of a Channel Source Sequence Item (PS3.3 Table 8.8-1): Code Value,
+    /// Long Code Value or URN Code Value. Coding Scheme Designator is Type 1C,
+    /// required with Code Value or Long Code Value; a URN code may omit it.
+    private static func channelSource(_ item: SequenceItem) -> VideoAudioChannel.Source? {
+        func text(_ tag: Tag) -> String? {
+            nonEmpty(item.string(for: tag)?.trimmingCharacters(in: .whitespaces))
+        }
+        let short = text(.codeValue), long = text(.longCodeValue), urn = text(.urnCodeValue)
+        let designator = text(.codingSchemeDesignator)
+        guard let value = short ?? long ?? urn else { return nil }
+        if short != nil || long != nil, designator == nil { return nil }
+        return VideoAudioChannel.Source(CodedConcept(
+            codeValue: value,
+            codingSchemeDesignator: designator ?? "",
+            codeMeaning: item.string(for: .codeMeaning)?.trimmingCharacters(in: .whitespaces) ?? "",
+            codingSchemeVersion: text(.codingSchemeVersion),
+            longCodeValue: short == nil ? long : nil,
+            urnCodeValue: short == nil && long == nil ? urn : nil))
     }
 
     /// Maps an empty or whitespace-only string to nil.

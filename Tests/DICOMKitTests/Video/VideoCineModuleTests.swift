@@ -145,9 +145,26 @@ final class VideoCineModuleTests: XCTestCase {
 
     func test_cid3000_codeMeanings() {
         XCTAssertEqual(VideoAudioChannel.Source.voice.codeMeaning, "Voice")
-        XCTAssertEqual(VideoAudioChannel.Source.ambientRoomEnvironment.rawValue, "109112")
-        XCTAssertEqual(VideoAudioChannel.Source.phonocardiogram.rawValue, "109114")
+        XCTAssertEqual(VideoAudioChannel.Source.ambientRoomEnvironment.codeValue, "109112")
+        XCTAssertEqual(VideoAudioChannel.Source.phonocardiogram.codeValue, "109114")
         XCTAssertEqual(VideoAudioChannel.Source.physiologicalAudioSignal.codeMeaning, "Physiological audio signal")
+        // PS3.16 2026a CID 3000: six DCM codes, 109110-109115, in table order.
+        XCTAssertEqual(VideoAudioChannel.Source.cid3000.map(\.codeValue),
+                       ["109110", "109111", "109112", "109113", "109114", "109115"])
+        XCTAssertTrue(VideoAudioChannel.Source.cid3000.allSatisfy { $0.codingSchemeDesignator == "DCM" && $0.isCID3000Member })
+    }
+
+    /// CID 3000 is Extensible (D57): any code can be a Channel Source; identity is
+    /// designator + value, so a different Code Meaning still matches a member.
+    func test_channelSource_isAnyCode() {
+        let local = VideoAudioChannel.Source(CodedConcept(
+            codeValue: "99999", codingSchemeDesignator: "99LOCAL", codeMeaning: "Local"))
+        XCTAssertFalse(local.isCID3000Member)
+        XCTAssertNil(local.cid3000Member)
+        let voice = VideoAudioChannel.Source(dcmCodeValue: "109110", codeMeaning: "voice")
+        XCTAssertEqual(voice, .voice)
+        XCTAssertEqual(voice.cid3000Member?.codeMeaning, "Voice")
+        XCTAssertTrue(voice.isCID3000Member)
     }
 
     // MARK: - Lossy Image Compression Method (C.7.6.1.1.5.1)

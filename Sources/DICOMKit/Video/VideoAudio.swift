@@ -526,7 +526,8 @@ extension VideoAudioChannel {
     /// to the complementary channels" —, a Channel Mode (003A,0302) whose
     /// Enumerated Values are MONO ("1 signal") and STEREO ("2 simultaneously
     /// acquired (left and right) signals"), and a Channel Source Sequence
-    /// (003A,0208) holding one code from PS3.16 CID 3000 Audio Channel Source.
+    /// (003A,0208) holding one code, "DCID 3000" (PS3.16 CID 3000 Audio Channel
+    /// Source, Extensible, so any code may be given).
     ///
     /// Each audio track is one channel in that sense, numbered in container order.
     /// The mode follows from the track's channel count. The source cannot be read

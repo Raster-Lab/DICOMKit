@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — Channel Source (003A,0208) keeps any code: PS3.3 2026a Table C.7-13 includes Table 8.8-1 with "DCID 3000" and PS3.16 2026a CID 3000 Audio Channel Source is "Type: Extensible" (DCM 109110-109115 verified by script) (D57)
 // NEMA-verified: 2026a, checked 2026-09-30 — video transfer syntax UIDs match PS3.6 2026a Table A-1; Lossy Image Compression Method terms ISO_13818_2/ISO_14496_10/ISO_23008_2 per PS3.3 C.7.6.1.1.5.1; Cine Module fields and audio statements per PS3.3 Table C.7-13 ((003A,0300) Type 2C, "Zero or more Items"; items (003A,0301) IS 1, (003A,0302) CS 1 MONO/STEREO, (003A,0208) SQ 1 one Item, DCID 3000; VRs per PS3.6 Table 6-1), C.7.6.5.1.2-3 and PS3.5 8.2.5/8.2.12; CID 3000 codes per PS3.16 (P-VIDEO, D34, D46)
 //
 // Video.swift
@@ -596,26 +597,82 @@ public struct VideoAudioChannel: Sendable, Equatable {
         case stereo = "STEREO"
     }
 
-    /// Channel Source (003A,0208) item code, Type 1, from PS3.16 CID 3000
-    /// Audio Channel Source (Coding Scheme Designator DCM).
-    public enum Source: String, Sendable, CaseIterable {
-        case voice = "109110"
-        case operatorsNarrative = "109111"
-        case ambientRoomEnvironment = "109112"
-        case dopplerAudio = "109113"
-        case phonocardiogram = "109114"
-        case physiologicalAudioSignal = "109115"
+    /// The one Item of Channel Source Sequence (003A,0208), Type 1: any coded
+    /// concept (PS3.3 Table 8.8-1 Code Sequence Macro).
+    ///
+    /// PS3.3 2026a Table C.7-13 includes the macro with "DCID 3000", and PS3.16
+    /// 2026a CID 3000 Audio Channel Source is "Type: Extensible" (Version
+    /// 20040326), so a file may carry a code outside its six members. `Source`
+    /// therefore wraps any ``CodedConcept``; the CID 3000 members are static
+    /// constants, and ``isCID3000Member`` tells them apart (D57).
+    ///
+    /// Two sources are equal when Coding Scheme Designator and Code Value (or
+    /// Long Code Value / URN Code Value) match; Code Meaning and Coding Scheme
+    /// Version do not take part.
+    public struct Source: Sendable, Hashable, CustomStringConvertible {
+        /// The code as read from, or to be written to, the Item.
+        public let code: CodedConcept
 
-        /// Code Meaning exactly as CID 3000 lists it.
-        public var codeMeaning: String {
-            switch self {
-            case .voice: return "Voice"
-            case .operatorsNarrative: return "Operator's narrative"
-            case .ambientRoomEnvironment: return "Ambient room environment"
-            case .dopplerAudio: return "Doppler audio"
-            case .phonocardiogram: return "Phonocardiogram"
-            case .physiologicalAudioSignal: return "Physiological audio signal"
-            }
+        public init(_ code: CodedConcept) {
+            self.code = code
+        }
+
+        /// A DCM code, for example one of CID 3000's.
+        public init(dcmCodeValue codeValue: String, codeMeaning: String) {
+            self.code = CodedConcept(codeValue: codeValue, codingSchemeDesignator: "DCM",
+                                     codeMeaning: codeMeaning)
+        }
+
+        /// Code Value (0008,0100), or the Long / URN Code Value when that is how
+        /// the code was given.
+        public var codeValue: String { code.codeValue }
+        /// Coding Scheme Designator (0008,0102).
+        public var codingSchemeDesignator: String { code.codingSchemeDesignator }
+        /// Code Meaning (0008,0104).
+        public var codeMeaning: String { code.codeMeaning }
+        public var description: String { "(\(codeValue), \(codingSchemeDesignator), \"\(codeMeaning)\")" }
+
+        // PS3.16 2026a CID 3000 Audio Channel Source, all DCM, Code Meaning as listed.
+        /// (109110, DCM, "Voice")
+        public static let voice = Source(dcmCodeValue: "109110", codeMeaning: "Voice")
+        /// (109111, DCM, "Operator's narrative")
+        public static let operatorsNarrative = Source(dcmCodeValue: "109111", codeMeaning: "Operator's narrative")
+        /// (109112, DCM, "Ambient room environment")
+        public static let ambientRoomEnvironment = Source(dcmCodeValue: "109112", codeMeaning: "Ambient room environment")
+        /// (109113, DCM, "Doppler audio")
+        public static let dopplerAudio = Source(dcmCodeValue: "109113", codeMeaning: "Doppler audio")
+        /// (109114, DCM, "Phonocardiogram")
+        public static let phonocardiogram = Source(dcmCodeValue: "109114", codeMeaning: "Phonocardiogram")
+        /// (109115, DCM, "Physiological audio signal")
+        public static let physiologicalAudioSignal = Source(dcmCodeValue: "109115", codeMeaning: "Physiological audio signal")
+
+        /// The six members of PS3.16 2026a CID 3000, in table order.
+        public static let cid3000: [Source] = [
+            .voice, .operatorsNarrative, .ambientRoomEnvironment,
+            .dopplerAudio, .phonocardiogram, .physiologicalAudioSignal,
+        ]
+
+        /// Whether the code is one of CID 3000's (DCM 109110–109115). A code
+        /// outside it is still valid: the CID is Extensible.
+        public var isCID3000Member: Bool { Self.cid3000.contains(self) }
+
+        /// The CID 3000 constant with this code's identity, so a parsed code
+        /// can be matched against the known members regardless of its meaning.
+        public var cid3000Member: Source? { Self.cid3000.first { $0 == self } }
+
+        public static func == (lhs: Source, rhs: Source) -> Bool {
+            lhs.identity == rhs.identity
+        }
+
+        public func hash(into hasher: inout Hasher) {
+            hasher.combine(identity.designator)
+            hasher.combine(identity.value)
+        }
+
+        private var identity: (designator: String, value: String) {
+            let value = code.urnCodeValue ?? code.longCodeValue ?? code.codeValue
+            return (code.codingSchemeDesignator.trimmingCharacters(in: .whitespaces),
+                    value.trimmingCharacters(in: .whitespaces))
         }
     }
 
@@ -624,7 +681,8 @@ public struct VideoAudioChannel: Sendable, Equatable {
     public let channelIdentificationCode: Int
     /// Channel Mode (003A,0302), Type 1.
     public let mode: Mode
-    /// Channel Source Sequence (003A,0208), Type 1, "Only a single Item".
+    /// Channel Source Sequence (003A,0208), Type 1, "Only a single Item": any
+    /// code, CID 3000 being Extensible.
     public let source: Source
 
     public init(channelIdentificationCode: Int, mode: Mode, source: Source) {
