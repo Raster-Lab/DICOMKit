@@ -4,6 +4,8 @@
 // The GPU backend. Wraps the decoded frame without copying it, dispatches a
 // compute kernel over a byte table built on the CPU, and hands the shader's own
 // output memory straight to CoreGraphics — no upload, no readback.
+//
+// NEMA-verified: 2026a, checked 2026-09-30 — Pixel Cells wider than two bytes are declined (PS3.5 2026a 8.1.1; were read as their low 16 bits); tables are the CPU's own DICOMCore builders; planar offsets per C.7.6.3.1.3; YBR stays on the CPU (C.7.6.3.1.2); parameter blocks match the kernels field for field (Scripts/diff_renderkit.py).
 
 import Foundation
 import DICOMCore
@@ -393,7 +395,12 @@ public final class MetalFrameRenderer: FrameRenderBackend, @unchecked Sendable {
             let descriptor = request.pixelData.descriptor
             let width = descriptor.columns
             let height = descriptor.rows
-            guard width > 0, height > 0, descriptor.bytesPerSample >= 1 else { return nil }
+            // The kernels assemble a sample from one or two bytes, and the tables
+            // have 256 or 65,536 entries. A Pixel Cell is Bits Allocated wide
+            // (PS3.5 8.1.1), so a 32-bit cell read as its low two bytes would be a
+            // different value. Declined: such frames go to the CPU.
+            guard width > 0, height > 0,
+                  (1...2).contains(descriptor.bytesPerSample) else { return nil }
 
             let pixelCount = width * height
             let frameByteCount = descriptor.bytesPerFrame
