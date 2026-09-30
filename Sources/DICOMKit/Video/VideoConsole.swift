@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — SOP Class names match PS3.6 2026a Table A-1
+// NEMA-verified: 2026a, checked 2026-09-30 — SOP Class names match PS3.6 2026a Table A-1; audio messages per PS3.5 2026a 8.2.5-8.2.12 and Table 8.2.12-1 (audio permitted, kept, not checked) and PS3.3 Table C.7-13 (003A,0300) Type 2C "Zero or more Items" (D34)
 //
 // VideoConsole.swift
 // DICOMKit
@@ -273,8 +273,11 @@ public enum VideoConsole {
             lines.append("Frame rate:       not declared")
         }
         lines.append("Frames:           \(probe.frameCount) (\(probe.frameCountSource.rawValue))")
+        // Audio is permitted in DICOM video (PS3.5 8.2.5-8.2.12, Table 8.2.12-1)
+        // and `convert` keeps it in the bit stream; what DICOMKit cannot yet do
+        // is check its format against those constraints.
         if probe.audioTrackCount > 0 {
-            lines.append("Audio tracks:     \(probe.audioTrackCount) (discarded; DICOM video has no audio)")
+            lines.append("Audio tracks:     \(probe.audioTrackCount) \(audioTrackNote)")
         }
         if let syntax = transferSyntax {
             lines.append("Transfer syntax:  \(syntax.uid)")
@@ -432,12 +435,43 @@ public enum VideoConsole {
         "\(name): series \(seriesNumber), instance \(instanceNumber), \(transferSyntaxUID)"
     }
 
-    /// The warning emitted when audio tracks are dropped.
-    public static func audioDiscardedLine(trackCount: Int) -> String {
+    /// The qualifier after the probe report's audio track count.
+    ///
+    /// DICOM video may carry audio: PS3.5 8.2.5 (MPEG2, applied to MP@HL by
+    /// 8.2.6) says "Any audio components present within the MPEG bit stream shall
+    /// comply with the following restrictions" (CBR MP3), and 8.2.7-8.2.11 (H.264,
+    /// HEVC) say "Any audio components included in the data container shall follow
+    /// the constraints detailed in" 8.2.12, whose Table 8.2.12-1 allows AAC, MP3
+    /// and MPEG-1 Audio Layer II in MP4 (plus LPCM and AC-3 in MPEG-2 TS).
+    public static let audioTrackNote =
+        "(carried in the bit stream; not checked against PS3.5 8.2.5/8.2.12)"
+
+    /// The warning emitted when the input has audio tracks.
+    ///
+    /// The audio is not removed: `convert` encapsulates the payload unchanged,
+    /// which PS3.5 8.2.5-8.2.12 permit. The warning names the library's
+    /// limitations instead — it does not check the audio against the codec, sample
+    /// rate and channel constraints of PS3.5 8.2.5 / 8.2.12 (Table 8.2.12-1), and
+    /// it writes Multiplexed Audio Channels Description Code Sequence (003A,0300)
+    /// with no Items (Type 2C, "Zero or more Items", PS3.3 Table C.7-13) because it
+    /// does not read the channel layout.
+    public static func audioCarriedLine(trackCount: Int) -> String {
         warningLine("""
-            input has \(trackCount) audio track\(trackCount == 1 ? "" : "s"); \
-            DICOM video has no audio, discarding.
+            input has \(trackCount) audio track\(trackCount == 1 ? "" : "s"), \
+            kept in the bit stream; DICOMKit does not check \(trackCount == 1 ? "it" : "them") \
+            against PS3.5 8.2.5/8.2.12 or describe \(trackCount == 1 ? "its" : "their") channels \
+            in (003A,0300).
             """)
+    }
+
+    /// The warning formerly emitted when audio tracks were said to be dropped.
+    ///
+    /// Its text claimed "DICOM video has no audio, discarding", which is wrong
+    /// twice: PS3.5 8.2.5-8.2.12 permit audio, and `convert` never removed it.
+    /// It now returns ``audioCarriedLine(trackCount:)``.
+    @available(*, deprecated, renamed: "audioCarriedLine(trackCount:)", message: "Audio is permitted in DICOM video (PS3.5 2026a 8.2.5-8.2.12, Table 8.2.12-1) and is kept in the bit stream; use audioCarriedLine(trackCount:)")
+    public static func audioDiscardedLine(trackCount: Int) -> String {
+        audioCarriedLine(trackCount: trackCount)
     }
 
     /// The `probe` conformance verdict lines.

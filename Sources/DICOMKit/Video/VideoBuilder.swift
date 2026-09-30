@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — modules per PS3.3 2026a Tables A.32.5-1/A.32.6-1/A.32.7-1; Cine Module Table C.7-13 (Frame Time / Frame Time Vector 1C, Preferred Playback Sequencing 0/1, Multiplexed Audio Channels 2C), Multi-frame Table C.7-14, Lossy Image Compression Method terms C.7.6.1.1.5.1, empty Basic Offset Table and one fragment per PS3.5 8.2.5-8.2.8 (P-VIDEO)
+// NEMA-verified: 2026a, checked 2026-09-30 — modules per PS3.3 2026a Tables A.32.5-1/A.32.6-1/A.32.7-1; Cine Module Table C.7-13 (Frame Time / Frame Time Vector 1C, Preferred Playback Sequencing 0/1, Multiplexed Audio Channels 2C, written with no Items for undescribed audio), Multi-frame Table C.7-14, Lossy Image Compression Method terms C.7.6.1.1.5.1, empty Basic Offset Table and one fragment per PS3.5 8.2.5-8.2.8 (P-VIDEO, D34)
 //
 // VideoBuilder.swift
 // DICOMKit
@@ -777,7 +777,9 @@ extension Video {
         // points to Frame Time"; Frame Time Vector is Type 1C, "Required if Frame
         // Increment Pointer (0028,0009) points to Frame Time Vector". Exactly one is
         // written. The remaining Cine attributes are Type 3, except the audio
-        // sequence (Type 2C, written when channels were described).
+        // sequence (Type 2C, written when channels were described, and with no
+        // Items when the bit stream carries audio that was not described — Table
+        // C.7-13 allows "Zero or more Items").
         if let vector = frameTimeVector {
             dataSet.setStrings(vector.map(Video.decimalString), for: .frameTimeVector, vr: .DS)
         } else {
@@ -794,7 +796,7 @@ extension Video {
         if let effectiveDuration = effectiveDuration {
             dataSet.setString(Video.decimalString(effectiveDuration), for: Video.effectiveDurationTag, vr: .DS)
         }
-        if !multiplexedAudioChannels.isEmpty {
+        if !multiplexedAudioChannels.isEmpty || containsUndescribedMultiplexedAudio {
             let items = multiplexedAudioChannels.map { channel -> SequenceItem in
                 let sourceItem = SequenceItem(elements: [
                     .string(tag: .codeValue, vr: .SH, value: channel.source.rawValue),

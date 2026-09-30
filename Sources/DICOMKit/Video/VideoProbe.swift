@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (container probing)
+// NEMA-verified: 2026a, checked 2026-09-30 — no DICOM-standard data (container probing); audio track count described per PS3.5 2026a 8.2.5, 8.2.7-8.2.11 and 8.2.12 Table 8.2.12-1 (audio permitted; not counted for MPEG-TS) (D34)
 //
 // VideoProbe.swift
 // DICOMKit
@@ -21,7 +21,13 @@ public struct VideoProbeResult: Sendable {
     /// How the frame count was obtained, which matters because one source is
     /// exact and the other is a scan.
     public let frameCountSource: FrameCountSource
-    /// The number of audio tracks, which DICOM video IODs cannot carry.
+    /// The number of audio tracks (`soun` handler) in an MP4 container.
+    ///
+    /// DICOM video may carry audio in the encapsulated bit stream (PS3.5 8.2.5,
+    /// 8.2.7-8.2.11, and 8.2.12 Table 8.2.12-1), so a non-zero count is not a
+    /// defect: `convert` keeps the tracks. The formats are not inspected. Always 0
+    /// for an elementary stream (which has no audio) and for MPEG-TS, whose
+    /// streams are not demultiplexed, so audio there is not counted.
     public let audioTrackCount: Int
     /// The transfer syntax that fits this stream, when one does.
     public let suggestedTransferSyntax: TransferSyntax?

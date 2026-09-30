@@ -376,7 +376,8 @@ final class MP4ContainerParserTests: XCTestCase {
     }
 
     func test_inspect_countsAudioTracks() throws {
-        // DICOM video IODs carry no audio, so the count drives a warning.
+        // DICOM video may carry audio (PS3.5 8.2.5-8.2.12, Table 8.2.12-1); the
+        // count drives the "kept, not checked" warning and (003A,0300).
         let videoEntry = visualSampleEntry(
             format: "avc1", width: 1920, height: 1080,
             extensions: avcC(sps: [Self.spsH264Unit], pps: []))

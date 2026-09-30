@@ -106,6 +106,43 @@ final class VideoCineModuleTests: XCTestCase {
         XCTAssertNil(try makeBuilder().buildDataSet()[Tag(group: 0x003A, element: 0x0300)])
     }
 
+    /// Audio present but not described: the Type 2C condition holds, and Table
+    /// C.7-13 allows "Zero or more Items", so the sequence is written empty (D34).
+    func test_multiplexedAudioChannels_emptyWhenAudioIsUndescribed() throws {
+        var video = try makeBuilder().build()
+        video.containsUndescribedMultiplexedAudio = true
+        let sequence = try XCTUnwrap(video.toDataSet()[Tag(group: 0x003A, element: 0x0300)])
+        XCTAssertEqual(sequence.vr, .SQ)
+        XCTAssertEqual(sequence.sequenceItems?.count ?? 0, 0)
+    }
+
+    /// Described channels win over the undescribed-audio flag.
+    func test_multiplexedAudioChannels_describedItemsKeptWhenFlagAlsoSet() throws {
+        var video = try makeBuilder()
+            .setMultiplexedAudioChannels([
+                VideoAudioChannel(channelIdentificationCode: 1, mode: .stereo, source: .voice),
+            ])
+            .build()
+        video.containsUndescribedMultiplexedAudio = true
+        let sequence = try XCTUnwrap(video.toDataSet()[Tag(group: 0x003A, element: 0x0300)])
+        XCTAssertEqual(sequence.sequenceItems?.count, 1)
+    }
+
+    /// PS3.5 8.2.5-8.2.12 permit audio; the console text must not say otherwise (D34).
+    func test_audioConsoleText_doesNotClaimDICOMVideoHasNoAudio() {
+        let one = VideoConsole.audioCarriedLine(trackCount: 1)
+        XCTAssertEqual(one, """
+            warning: input has 1 audio track, kept in the bit stream; DICOMKit does not \
+            check it against PS3.5 8.2.5/8.2.12 or describe its channels in (003A,0300).
+            """)
+        XCTAssertEqual(VideoConsole.audioTrackNote,
+                       "(carried in the bit stream; not checked against PS3.5 8.2.5/8.2.12)")
+        for text in [one, VideoConsole.audioCarriedLine(trackCount: 2), VideoConsole.audioTrackNote] {
+            XCTAssertFalse(text.contains("no audio"), text)
+            XCTAssertFalse(text.contains("discard"), text)
+        }
+    }
+
     func test_cid3000_codeMeanings() {
         XCTAssertEqual(VideoAudioChannel.Source.voice.codeMeaning, "Voice")
         XCTAssertEqual(VideoAudioChannel.Source.ambientRoomEnvironment.rawValue, "109112")

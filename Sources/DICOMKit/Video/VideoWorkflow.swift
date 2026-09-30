@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (workflow orchestration)
+// NEMA-verified: 2026a, checked 2026-09-30 — workflow orchestration; audio kept in the encapsulated bit stream per PS3.5 2026a 8.2.5-8.2.12 and Table 8.2.12-1, with (003A,0300) written with no Items per PS3.3 Table C.7-13 Type 2C (D34)
 //
 // VideoWorkflow.swift
 // DICOMKit
@@ -391,7 +391,16 @@ public enum VideoWorkflow {
         builder.setStudyDateTime(date: today, time: time)
         builder.setAcquisitionDateTime(date: today, time: time)
 
-        return try builder.build()
+        var video = try builder.build()
+        // The payload is encapsulated unchanged, so an MP4 `soun` track stays in
+        // Pixel Data. PS3.5 8.2.5-8.2.12 permit that; PS3.3 Table C.7-13 then
+        // requires Multiplexed Audio Channels Description Code Sequence (003A,0300)
+        // (Type 2C, "Zero or more Items"). It is written with no Items because
+        // DICOMKit does not yet read the channel layout an Item would describe.
+        if plan.probe.audioTrackCount > 0 {
+            video.containsUndescribedMultiplexedAudio = true
+        }
+        return video
     }
 
     /// Splits a `Date` into the DICOM date and time values the builder wants.
@@ -505,8 +514,10 @@ public enum VideoWorkflow {
             notices.append(VideoConsole.verboseBlock(plan.verboseLines))
         }
 
+        // Audio is permitted (PS3.5 8.2.5-8.2.12) and is not removed: the notice
+        // says what DICOMKit leaves unchecked, not that the audio is dropped.
         if plan.probe.audioTrackCount > 0 {
-            notices.append(VideoConsole.audioDiscardedLine(
+            notices.append(VideoConsole.audioCarriedLine(
                 trackCount: plan.probe.audioTrackCount))
         }
 

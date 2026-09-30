@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — video transfer syntax UIDs match PS3.6 2026a Table A-1; Lossy Image Compression Method terms ISO_13818_2/ISO_14496_10/ISO_23008_2 per PS3.3 C.7.6.1.1.5.1; Cine Module fields and audio statements per PS3.3 Table C.7-13, C.7.6.5.1.2-3 and PS3.5 8.2.5/8.2.12; Channel Mode MONO/STEREO and CID 3000 codes (P-VIDEO)
+// NEMA-verified: 2026a, checked 2026-09-30 — video transfer syntax UIDs match PS3.6 2026a Table A-1; Lossy Image Compression Method terms ISO_13818_2/ISO_14496_10/ISO_23008_2 per PS3.3 C.7.6.1.1.5.1; Cine Module fields and audio statements per PS3.3 Table C.7-13 ((003A,0300) Type 2C, "Zero or more Items"), C.7.6.5.1.2-3 and PS3.5 8.2.5/8.2.12; Channel Mode MONO/STEREO and CID 3000 codes (P-VIDEO, D34)
 //
 // Video.swift
 // DICOMKit
@@ -178,8 +178,21 @@ public struct Video: Sendable {
     /// Multiplexed Audio Channels Description Code Sequence (003A,0300), Type 2C —
     /// "Required if the Transfer Syntax used to encode the Multi-frame Image contains
     /// multiplexed (interleaved) audio channels" (PS3.3 Table C.7-13). Empty when
-    /// the bit stream carries no audio.
+    /// the bit stream carries no audio, or when it carries audio whose channels
+    /// have not been described (see ``VideoWorkflow``).
     public let multiplexedAudioChannels: [VideoAudioChannel]
+
+    /// True when the encapsulated bit stream is known to carry audio even though
+    /// ``multiplexedAudioChannels`` describes none of it.
+    ///
+    /// Multiplexed Audio Channels Description Code Sequence (003A,0300) is Type 2C
+    /// and takes "Zero or more Items" (PS3.3 Table C.7-13), so once the condition
+    /// "the Transfer Syntax … contains multiplexed (interleaved) audio channels"
+    /// holds, the sequence is written even with no Items. ``VideoWorkflow`` sets
+    /// this when an MP4 input has a `soun` track: the bit stream is encapsulated
+    /// unchanged, audio included, but DICOMKit does not yet identify the channel
+    /// numbering, mode or source that an Item would need.
+    var containsUndescribedMultiplexedAudio = false
 
     // MARK: - Content Date/Time
 

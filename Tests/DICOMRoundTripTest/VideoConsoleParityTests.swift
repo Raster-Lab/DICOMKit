@@ -168,7 +168,8 @@ final class VideoConsoleParityTests: XCTestCase {
             sampleEntry: entry, frameCount: frameCount, duration: 300_000)])
     }
 
-    /// The same clip carrying an audio track, which DICOM video cannot hold.
+    /// The same clip carrying an audio track. DICOM video may carry audio
+    /// (PS3.5 8.2.7-8.2.12, Table 8.2.12-1 allows AAC, MP3 and MP2 in MP4).
     private func h264MP4WithAudio() -> Data {
         let entry = visualSampleEntry(
             format: "avc1", width: 1920, height: 1080,
@@ -229,11 +230,21 @@ final class VideoConsoleParityTests: XCTestCase {
             """)
     }
 
-    func testProbeReportNamesDiscardedAudioTracks() throws {
+    /// PS3.5 8.2.5-8.2.12 permit audio, and `convert` keeps it, so the report
+    /// names the tracks without calling them discarded or forbidden (D34).
+    func testProbeReportNamesCarriedAudioTracks() throws {
         let outcome = try VideoWorkflow.probe(bitstream: h264MP4WithAudio())
         XCTAssertTrue(outcome.output.contains(
-            "Audio tracks:     1 (discarded; DICOM video has no audio)"),
-            "the report has to say the audio is dropped, not drop it silently")
+            "Audio tracks:     1 (carried in the bit stream; not checked against PS3.5 8.2.5/8.2.12)"),
+            outcome.output)
+        XCTAssertFalse(outcome.output.contains("no audio"))
+        XCTAssertFalse(outcome.output.contains("discard"))
+        XCTAssertEqual(outcome.exitCode, .success, "audio is not a conformance defect")
+    }
+
+    func testProbeReportHasNoAudioLineWithoutAudioTracks() throws {
+        let outcome = try VideoWorkflow.probe(bitstream: h264MP4())
+        XCTAssertFalse(outcome.output.contains("Audio tracks:"))
     }
 
     // MARK: - Default Type Notice
@@ -258,8 +269,55 @@ final class VideoConsoleParityTests: XCTestCase {
         let outcome = try VideoWorkflow.convert(
             bitstream: h264MP4WithAudio(), type: .endoscopic,
             typeWasExplicit: true, dryRun: true)
-        XCTAssertEqual(outcome.output,
-            "warning: input has 1 audio track; DICOM video has no audio, discarding.")
+        XCTAssertEqual(outcome.output, """
+            warning: input has 1 audio track, kept in the bit stream; DICOMKit does not \
+            check it against PS3.5 8.2.5/8.2.12 or describe its channels in (003A,0300).
+            """)
+    }
+
+    /// The payload is encapsulated unchanged, audio included (PS3.5 8.2.5-8.2.12
+    /// permit it), and the Cine Module then carries Multiplexed Audio Channels
+    /// Description Code Sequence (003A,0300): Type 2C, "Required if the Transfer
+    /// Syntax used to encode the Multi-frame Image contains multiplexed
+    /// (interleaved) audio channels", with "Zero or more Items" (PS3.3 Table C.7-13).
+    func testConvertKeepsAudioAndWritesAnEmptyAudioChannelsSequence() throws {
+        let input = h264MP4WithAudio()
+        let outcome = try VideoWorkflow.convert(
+            bitstream: input, type: .endoscopic, typeWasExplicit: true)
+        let dataSet = try XCTUnwrap(outcome.video).toDataSet()
+
+        let fragments = try XCTUnwrap(dataSet[.pixelData]?.encapsulatedFragments)
+        XCTAssertEqual(fragments.count, 1)
+        // A fragment is padded to even length, so compare the prefix.
+        XCTAssertEqual(fragments[0].prefix(input.count), input,
+                       "the audio track must not be stripped from the payload")
+
+        let audio = try XCTUnwrap(
+            dataSet[Tag(group: 0x003A, element: 0x0300)],
+            "(003A,0300) is required once the bit stream carries audio")
+        XCTAssertEqual(audio.vr, .SQ)
+        XCTAssertEqual(audio.sequenceItems?.count ?? 0, 0)
+
+        // The sequence survives encoding into a Part 10 file.
+        let reparsed = try DICOMFile.read(from: try XCTUnwrap(outcome.data))
+        XCTAssertNotNil(reparsed.dataSet[Tag(group: 0x003A, element: 0x0300)])
+    }
+
+    /// The deprecated name returns the corrected text rather than the old
+    /// "DICOM video has no audio, discarding" claim.
+    @available(*, deprecated)
+    func testDeprecatedAudioDiscardedLineForwardsToTheCorrectedText() {
+        XCTAssertEqual(VideoConsole.audioDiscardedLine(trackCount: 1),
+                       VideoConsole.audioCarriedLine(trackCount: 1))
+        XCTAssertFalse(VideoConsole.audioDiscardedLine(trackCount: 3).contains("no audio"))
+    }
+
+    /// Without audio the Type 2C condition is not met, so the sequence stays out.
+    func testConvertWithoutAudioOmitsTheAudioChannelsSequence() throws {
+        let outcome = try VideoWorkflow.convert(
+            bitstream: h264MP4(), type: .endoscopic, typeWasExplicit: true)
+        let dataSet = try XCTUnwrap(outcome.video).toDataSet()
+        XCTAssertNil(dataSet[Tag(group: 0x003A, element: 0x0300)])
     }
 
     // MARK: - Conformance Rejection
@@ -873,8 +931,10 @@ final class VideoConsoleParityTests: XCTestCase {
         XCTAssertEqual(VideoConsole.conformanceOKLine, "\nConformance:      OK")
         XCTAssertEqual(VideoConsole.batchConvertedLine(input: "a.mp4", output: "a.dcm"),
                        "a.mp4 -> a.dcm")
-        XCTAssertEqual(VideoConsole.audioDiscardedLine(trackCount: 2),
-                       "warning: input has 2 audio tracks; DICOM video has no audio, discarding.")
+        XCTAssertEqual(VideoConsole.audioCarriedLine(trackCount: 2), """
+            warning: input has 2 audio tracks, kept in the bit stream; DICOMKit does not \
+            check them against PS3.5 8.2.5/8.2.12 or describe their channels in (003A,0300).
+            """)
     }
 
     /// A rejection is only actionable if it names the constraint and the fix.
