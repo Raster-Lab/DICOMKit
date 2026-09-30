@@ -170,10 +170,21 @@ final class VideoAudioTests: XCTestCase {
     private func transportStream(_ streams: [TSStream], programInfo: Data = Data()) -> Data {
         let pmtPID = 0x1000
         func packet(pid: Int, start: Bool, payload: Data) -> Data {
-            var data = Data([0x47, UInt8((start ? 0x40 : 0) | (pid >> 8) & 0x1F), UInt8(pid & 0xFF), 0x10])
             let body = payload.prefix(184)
+            guard body.count < 184 else {
+                return Data([0x47, UInt8((start ? 0x40 : 0) | (pid >> 8) & 0x1F), UInt8(pid & 0xFF), 0x10])
+                    + body
+            }
+            // A short payload is padded with adaptation-field stuffing
+            // (ISO/IEC 13818-1 2.4.3.5), so the elementary stream gains no bytes.
+            var data = Data([0x47, UInt8((start ? 0x40 : 0) | (pid >> 8) & 0x1F), UInt8(pid & 0xFF), 0x30])
+            let adaptationLength = 183 - body.count
+            data.append(UInt8(adaptationLength))
+            if adaptationLength > 0 {
+                data.append(0x00)
+                data.append(Data(repeating: 0xFF, count: adaptationLength - 1))
+            }
             data.append(body)
-            data.append(Data(repeating: 0xFF, count: 184 - body.count))
             return data
         }
         func section(_ tableID: UInt8, _ body: Data) -> Data {
@@ -202,7 +213,12 @@ final class VideoAudioTests: XCTestCase {
         for stream in streams {
             var pes = Data([0x00, 0x00, 0x01, stream.streamID, 0x00, 0x00, 0x80, 0x00, 0x00])
             pes.append(stream.payload)
-            ts += packet(pid: stream.pid, start: true, payload: pes)
+            var offset = pes.startIndex
+            repeat {
+                let end = min(offset + 184, pes.endIndex)
+                ts += packet(pid: stream.pid, start: offset == pes.startIndex, payload: pes[offset..<end])
+                offset = end
+            } while offset < pes.endIndex
         }
         for _ in 0..<3 {
             ts += packet(pid: streams[0].pid, start: false, payload: Data())
@@ -313,7 +329,9 @@ final class VideoAudioTests: XCTestCase {
         XCTAssertEqual(track.codecTag, "mp4a")
         XCTAssertEqual(track.samplingFrequency, 48000)
         XCTAssertEqual(track.channelCount, 2)
-        XCTAssertEqual(track.bitsPerSample, 16)
+        // D58: the sample entry's samplesize is the ISO/IEC 14496-12 template 16,
+        // not a property of the AAC stream, so it is not reported.
+        XCTAssertNil(track.bitsPerSample)
         XCTAssertEqual(track.maximumBitRate, 192_000)
         XCTAssertEqual(track.averageBitRate, 128_000)
 
@@ -321,18 +339,22 @@ final class VideoAudioTests: XCTestCase {
             tracks: probe.audioTracks, container: .mp4, transferSyntax: .mpeg4AVCHP41)
         XCTAssertTrue(result.hasNoKnownViolations)
         XCTAssertEqual(result.tracks.first?.notChecked, [])
+        XCTAssertEqual(result.tracks.first?.notes.map(\.constraint), [.bitsPerSample])
 
         let outcome = try VideoWorkflow.convert(
             bitstream: input, type: .endoscopic, typeWasExplicit: true, dryRun: true)
         XCTAssertEqual(outcome.output, """
-            note: audio track 1 (AAC, 48 kHz, 2 channels, 16-bit, max 192 kbit/s) meets PS3.5 8.2.12.
+            note: audio track 1 (AAC, 48 kHz, 2 channels, max 192 kbit/s) meets PS3.5 8.2.12 \
+            as far as the bit stream shows.
+            note: audio track 1 (AAC, 48 kHz, 2 channels, max 192 kbit/s): bits per sample (16, 20 or 24 bits) \
+            cannot be read from the bit stream: AAC is coded without a PCM sample depth (ISO/IEC 13818-7, ISO/IEC 14496-3).
             note: Multiplexed Audio Channels Description Code Sequence (003A,0300) has no Items: \
             each Item needs a Channel Source code (PS3.16 CID 3000) that the container does not record.
             """)
 
         let report = try VideoWorkflow.probe(bitstream: input)
         XCTAssertTrue(report.output.contains("Audio tracks:     1 (carried in the bit stream)\n"
-            + "Audio track 1:    AAC, 48 kHz, 2 channels, 16-bit, max 192 kbit/s"), report.output)
+            + "Audio track 1:    AAC, 48 kHz, 2 channels, max 192 kbit/s"), report.output)
         XCTAssertEqual(report.exitCode, .success)
     }
 
@@ -350,7 +372,7 @@ final class VideoAudioTests: XCTestCase {
         // A warning, not a rejection: the object is still written, audio intact.
         let outcome = try VideoWorkflow.convert(bitstream: input, type: .endoscopic, typeWasExplicit: true)
         XCTAssertTrue(outcome.output.hasPrefix("""
-            warning: audio track 1 (AAC, 44.1 kHz, 2 channels, 16-bit, max 192 kbit/s): \
+            warning: audio track 1 (AAC, 44.1 kHz, 2 channels, max 192 kbit/s): \
             sampling frequency 44.1 kHz is not permitted for AAC; PS3.5 8.2.12 allows 48 kHz; \
             the audio is kept unchanged.
             """), outcome.output)
@@ -384,7 +406,7 @@ final class VideoAudioTests: XCTestCase {
         XCTAssertEqual(track.channelCount, 6)
         XCTAssertEqual(track.hasLFE, true)
         XCTAssertEqual(track.maximumBitRate, 640_000)
-        XCTAssertEqual(track.summary, "AC-3, 48 kHz, 5.1 channels, 16-bit, max 640 kbit/s")
+        XCTAssertEqual(track.summary, "AC-3, 48 kHz, 5.1 channels, max 640 kbit/s")
 
         let result = VideoConformanceValidator.validateAudio(
             tracks: [track], container: .mp4, transferSyntax: .mpeg4AVCHP41)
@@ -404,8 +426,10 @@ final class VideoAudioTests: XCTestCase {
         let result = VideoConformanceValidator.validateAudio(
             tracks: [track], container: .mp4, transferSyntax: .mpeg4AVCHP41)
         XCTAssertTrue(result.hasNoKnownViolations)
-        // CBR would need every frame read; no Layer III bit rate exceeds 320 kbit/s.
-        XCTAssertEqual(result.tracks.first?.notChecked, [.constantBitRate])
+        // This fixture has no stsc, so the samples cannot be located and CBR stays
+        // "not checked"; no Layer III bit rate exceeds 320 kbit/s.
+        XCTAssertNil(track.bitRateScan)
+        XCTAssertEqual(result.tracks.first?.notChecked, [.complementaryChannels, .constantBitRate])
     }
 
     /// An `mp4a` entry without `esds` names no format: nothing is claimed, and
@@ -437,14 +461,22 @@ final class VideoAudioTests: XCTestCase {
         let result = VideoConformanceValidator.validateAudio(
             tracks: probe.audioTracks, container: .mpegTS, transferSyntax: .mpeg4AVCHP41)
         XCTAssertTrue(result.hasNoKnownViolations)
-        XCTAssertEqual(result.tracks.first?.notChecked, [.bitsPerSample])
+        // D58: AC-3 codes no PCM sample depth, so bits per sample is stated as
+        // unreadable, not left "not checked".
+        XCTAssertEqual(result.tracks.first?.notChecked, [])
+        XCTAssertEqual(result.tracks.first?.notes.map(\.message), [
+            "bits per sample (16 bits) cannot be read from the bit stream: AC-3 is coded "
+                + "without a PCM sample depth (ETSI TS 102 366)",
+        ])
 
         let outcome = try VideoWorkflow.convert(
             bitstream: transportStream([h264Video(), ac3]), type: .endoscopic, typeWasExplicit: true,
             explicitTransferSyntax: TransferSyntax.mpeg4AVCHP41.uid, trustInput: true, dryRun: true)
         XCTAssertTrue(outcome.output.hasPrefix(
-            "note: audio track 1 (AC-3, 48 kHz, 2 channels, max 192 kbit/s): "
-            + "not checked against PS3.5 8.2.12: bits per sample."), outcome.output)
+            "note: audio track 1 (AC-3, 48 kHz, 2 channels, max 192 kbit/s) meets PS3.5 8.2.12 "
+            + "as far as the bit stream shows.\n"
+            + "note: audio track 1 (AC-3, 48 kHz, 2 channels, max 192 kbit/s): bits per sample "
+            + "(16 bits) cannot be read from the bit stream"), outcome.output)
     }
 
     func test_ts_ac3FivePointOne_andDVBDescriptor() throws {
@@ -501,14 +533,17 @@ final class VideoAudioTests: XCTestCase {
             tracks: [track], container: .mpegTS, transferSyntax: .mpeg2MainProfile)
         XCTAssertEqual(result.section, "PS3.5 8.2.5")
         XCTAssertTrue(result.hasNoKnownViolations)
-        XCTAssertEqual(result.tracks.first?.notChecked, [.bitsPerSample, .constantBitRate])
+        // The TS carries one frame, read whole: CBR holds; only the complementary
+        // channels stay "not checked" (D58).
+        XCTAssertEqual(track.bitRateScan?.bitRates, [128_000])
+        XCTAssertEqual(result.tracks.first?.notChecked, [.complementaryChannels])
 
         let outcome = try VideoWorkflow.convert(
             bitstream: ts, type: .endoscopic, typeWasExplicit: true,
             explicitTransferSyntax: TransferSyntax.mpeg2MainProfile.uid, trustInput: true, dryRun: true)
         XCTAssertTrue(outcome.output.hasPrefix(
             "note: audio track 1 (MP3, 44.1 kHz, 2 channels, 128 kbit/s): not checked against "
-            + "PS3.5 8.2.5: bits per sample, constant bit rate."), outcome.output)
+            + "PS3.5 8.2.5: complementary channels."), outcome.output)
 
         let aac = VideoAudioTrack(format: .aac, codecTag: "stream_type 0x0F",
                                   samplingFrequency: 48000, channelCount: 2)
@@ -525,7 +560,8 @@ final class VideoAudioTests: XCTestCase {
             container: .mp4, transferSyntax: .mpeg4AVCHP41)
         XCTAssertTrue(result.hasNoKnownViolations)
         XCTAssertEqual(result.tracks[0].notChecked,
-                       [.maximumBitRate, .samplingFrequency, .bitsPerSample, .channels])
+                       [.maximumBitRate, .samplingFrequency, .channels])
+        XCTAssertEqual(result.tracks[0].notes.map(\.constraint), [.bitsPerSample])
         XCTAssertEqual(result.tracks[1].notChecked, VideoAudioViolation.Constraint.allCases)
     }
 
@@ -589,6 +625,202 @@ final class VideoAudioTests: XCTestCase {
         XCTAssertEqual(mpeg2, [
             "E-AC-3 is not a permitted audio format; PS3.5 8.2.5 allows only CBR MPEG-1 Layer III (MP3)",
         ])
+    }
+
+
+    // MARK: - D58: MP3 CBR, LATM / raw MPEG-4 audio, bits per sample
+
+    /// One MPEG-1 Layer III frame, 48 kHz, joint stereo, no CRC (ISO/IEC 11172-3
+    /// 2.4.1.3): 144 * bit rate / 48000 bytes. bitrate_index 5 = 64, 9 = 128,
+    /// 10 = 160 kbit/s.
+    private func mp3Frame(bitRateIndex: UInt8, tag: String? = nil) -> Data {
+        let kbps = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160][Int(bitRateIndex)]
+        var frame = Data([0xFF, 0xFB, bitRateIndex << 4 | 0x04, 0x40])
+        frame.append(Data(repeating: 0, count: 144 * kbps / 48 - 4))
+        if let tag {
+            // Xing/Info after the 32-byte MPEG-1 stereo side information.
+            frame.replaceSubrange(36..<40, with: Data(tag.utf8))
+        }
+        return frame
+    }
+
+    /// An H.264 clip whose `.mp3` track stores one frame per sample, with a full
+    /// sample table: stsz sizes, one stsc run, one stco chunk.
+    private func mp3MP4(_ frames: [Data]) -> Data {
+        let head = ftyp()
+        let mdatBox = box("mdat", frames.reduce(Data(), +))
+        var stsd = Data()
+        stsd.append(uint32: 0)
+        stsd.append(uint32: 1)
+        stsd.append(audioEntry(".mp3", channels: 2, sampleSize: 16, rate: 48000))
+        var stsz = Data()
+        stsz.append(uint32: 0)
+        stsz.append(uint32: 0)
+        stsz.append(uint32: UInt32(frames.count))
+        for frame in frames { stsz.append(uint32: UInt32(frame.count)) }
+        var stsc = Data()
+        for value in [0, 1, 1, UInt32(frames.count), 1] as [UInt32] { stsc.append(uint32: value) }
+        var stco = Data()
+        for value in [0, 1, UInt32(head.count + 8)] as [UInt32] { stco.append(uint32: value) }
+        let stbl = box("stsd", stsd) + box("stsz", stsz) + box("stsc", stsc) + box("stco", stco)
+        let audio = box("trak", box("mdia", mdhd(timescale: 48000, duration: 48000) + hdlr("soun")
+                                    + box("minf", box("stbl", stbl))))
+        let video = track(handler: "vide", entry: avc1Entry(), samples: 300)
+        return head + mdatBox + box("moov", video + audio)
+    }
+
+    private func mp3TS(_ frames: [Data]) -> Data {
+        transportStream([h264Video(), TSStream(streamType: 0x03, pid: 0x0101, streamID: 0xC0,
+                                               descriptors: Data(), payload: frames.reduce(Data(), +))])
+    }
+
+    private func check(_ track: VideoAudioTrack, _ container: VideoContainer) -> VideoAudioTrackCheck? {
+        VideoConformanceValidator.validateAudio(
+            tracks: [track], container: container, transferSyntax: .mpeg4AVCHP41).tracks.first
+    }
+
+    /// PS3.5 8.2.12 "CBR MPEG-1 LAYER III": every sample's frame header is read.
+    func test_mp4_cbrMP3_everySampleShareOneBitRate_passes() throws {
+        let frames = Array(repeating: mp3Frame(bitRateIndex: 9), count: 5)
+        let track = try XCTUnwrap(VideoProbe.probe(mp3MP4(frames)).audioTracks.first)
+        XCTAssertEqual(track.format, .mp3)
+        XCTAssertNil(track.bitsPerSample, "MP3 carries no PCM sample depth")
+        XCTAssertEqual(track.bitRateScan, VideoAudioTrack.BitRateScan(
+            frameCount: 5, bitRates: [128_000], encoderHeader: nil, coversWholeStream: true))
+        let result = try XCTUnwrap(check(track, .mp4))
+        XCTAssertEqual(result.violations, [])
+        XCTAssertEqual(result.notChecked, [.complementaryChannels])
+        XCTAssertEqual(result.notes.map(\.constraint), [.bitsPerSample, .complementaryChannels])
+
+        // An Info header frame marks CBR and is not counted.
+        let info = try XCTUnwrap(VideoProbe.probe(mp3MP4([mp3Frame(bitRateIndex: 5, tag: "Info")] + frames))
+            .audioTracks.first)
+        XCTAssertEqual(info.bitRateScan?.encoderHeader, "Info")
+        XCTAssertEqual(info.bitRateScan?.frameCount, 5)
+        XCTAssertEqual(check(info, .mp4)?.violations, [])
+    }
+
+    func test_mp4_xingHeaderMP3_isFlaggedAsVariableBitRate() throws {
+        let frames = [mp3Frame(bitRateIndex: 9, tag: "Xing")]
+            + Array(repeating: mp3Frame(bitRateIndex: 9), count: 4)
+        let track = try XCTUnwrap(VideoProbe.probe(mp3MP4(frames)).audioTracks.first)
+        XCTAssertEqual(track.bitRateScan?.encoderHeader, "Xing")
+        XCTAssertEqual(check(track, .mp4)?.violations, [VideoAudioViolation(
+            constraint: .constantBitRate,
+            message: "MP3 is not constant bit rate: its first frame is a Xing header, which encoders "
+                + "write for variable bit rate; PS3.5 8.2.12 requires CBR MPEG-1 Layer III")])
+    }
+
+    func test_ts_mp3_differingBitRateIndexes_areFlagged_andCBRPasses() throws {
+        let vbr = [9, 10, 9, 5].map { mp3Frame(bitRateIndex: $0) }
+        let track = try XCTUnwrap(TransportStreamScanner.audioTracks(mp3TS(vbr)).first)
+        XCTAssertEqual(track.bitRateScan, VideoAudioTrack.BitRateScan(
+            frameCount: 4, bitRates: [64_000, 128_000, 160_000], encoderHeader: nil, coversWholeStream: true))
+        XCTAssertEqual(check(track, .mpegTS)?.violations.map(\.message), [
+            "MP3 is not constant bit rate: its frames declare 64 kbit/s, 128 kbit/s, 160 kbit/s "
+                + "(4 frames read); PS3.5 8.2.12 requires CBR MPEG-1 Layer III",
+        ])
+        // Under 8.2.5 (MPEG2) the same rule applies.
+        XCTAssertEqual(VideoConformanceValidator.validateAudio(
+            tracks: [track], container: .mpegTS, transferSyntax: .mpeg2MainProfile).violations.map(\.constraint),
+            [.constantBitRate])
+
+        let cbr = try XCTUnwrap(TransportStreamScanner.audioTracks(
+            mp3TS(Array(repeating: mp3Frame(bitRateIndex: 9), count: 6))).first)
+        XCTAssertEqual(cbr.bitRateScan?.frameCount, 6)
+        XCTAssertEqual(cbr.bitRateScan?.coversWholeStream, true)
+        XCTAssertEqual(check(cbr, .mpegTS)?.violations, [])
+        XCTAssertEqual(check(cbr, .mpegTS)?.notChecked, [.complementaryChannels])
+    }
+
+    /// Bits, most significant first, packed into bytes (zero-padded).
+    private func bits(_ fields: [(value: Int, width: Int)]) -> [UInt8] {
+        var bitList: [Bool] = []
+        for field in fields {
+            for shift in stride(from: field.width - 1, through: 0, by: -1) {
+                bitList.append((field.value >> shift) & 1 == 1)
+            }
+        }
+        while bitList.count % 8 != 0 { bitList.append(false) }
+        return stride(from: 0, to: bitList.count, by: 8).map { start in
+            bitList[start..<(start + 8)].reduce(UInt8(0)) { $0 << 1 | ($1 ? 1 : 0) }
+        }
+    }
+
+    /// A LOAS AudioSyncStream frame (ISO/IEC 14496-3 1.7.2): syncword 0x2B7,
+    /// audioMuxLengthBytes, then the AudioMuxElement bytes.
+    private func loas(_ element: [UInt8]) -> Data {
+        Data([0x56, 0xE0 | UInt8(element.count >> 8), UInt8(element.count & 0xFF)] + element)
+    }
+
+    /// AudioMuxElement with a StreamMuxConfig (audioMuxVersion 0) carrying AAC LC,
+    /// 48 kHz, channelConfiguration 2.
+    private func latmConfigElement(numProgram: Int = 0) -> [UInt8] {
+        bits([
+            (0, 1),           // useSameStreamMux
+            (0, 1),           // audioMuxVersion
+            (1, 1), (0, 6),   // allStreamsSameTimeFraming, numSubFrames
+            (numProgram, 4), (0, 3),  // numProgram, numLayer
+            (2, 5), (3, 4), (2, 4), (0, 3),  // AudioSpecificConfig: AOT 2, 48 kHz, 2 ch, GASpecificConfig
+            (0, 3), (0xFF, 8), (0, 1), (0, 1),  // frameLengthType, latmBufferFullness, other data, CRC
+        ]) + [UInt8](repeating: 0, count: 8)
+    }
+
+    func test_ts_latmAAC48kStereo_isIdentifiedAndChecked() throws {
+        let repeatFrame = loas([0x80] + [UInt8](repeating: 0, count: 8))  // useSameStreamMux 1
+        let latm = TSStream(streamType: 0x11, pid: 0x0102, streamID: 0xC0, descriptors: Data(),
+                            payload: loas(latmConfigElement()) + repeatFrame)
+        let track = try XCTUnwrap(TransportStreamScanner.audioTracks(transportStream([h264Video(), latm])).first)
+        XCTAssertEqual(track.format, .aac)
+        XCTAssertEqual(track.codecTag, "stream_type 0x11")
+        XCTAssertEqual(track.pid, 0x0102)
+        XCTAssertEqual(track.samplingFrequency, 48000)
+        XCTAssertEqual(track.channelCount, 2)
+        let result = try XCTUnwrap(check(track, .mpegTS))
+        XCTAssertEqual(result.violations, [])
+        // LATM states no bit rate; bits per sample is not in any AAC stream.
+        XCTAssertEqual(result.notChecked, [.maximumBitRate])
+        XCTAssertEqual(result.notes.map(\.constraint), [.bitsPerSample])
+
+        // A configuration first seen after a useSameStreamMux frame is still found.
+        let late = TSStream(streamType: 0x11, pid: 0x0102, streamID: 0xC0, descriptors: Data(),
+                            payload: repeatFrame + loas(latmConfigElement()) + repeatFrame)
+        XCTAssertEqual(TransportStreamScanner.audioTracks(transportStream([h264Video(), late])).first?.format, .aac)
+
+        // Two programs in one PID are outside the common case: left unidentified.
+        let twoPrograms = TSStream(streamType: 0x11, pid: 0x0102, streamID: 0xC0, descriptors: Data(),
+                                   payload: loas(latmConfigElement(numProgram: 1)) + repeatFrame)
+        let unread = try XCTUnwrap(TransportStreamScanner.audioTracks(
+            transportStream([h264Video(), twoPrograms])).first)
+        XCTAssertNil(unread.format)
+    }
+
+    func test_ts_rawMPEG4Audio_readsTheExtensionDescriptor() throws {
+        // MPEG-4_audio_extension_descriptor: ASC_flag 1, num_of_loops 1, one
+        // audioProfileLevelIndication, ASC_size 2, AudioSpecificConfig.
+        let descriptor = Data([0x2E, 0x05, 0x81, 0x29, 0x02] + Self.ascLC48Stereo)
+        let raw = TSStream(streamType: 0x1C, pid: 0x0103, streamID: 0xC0, descriptors: descriptor,
+                           payload: Data(repeating: 0, count: 16))
+        let track = try XCTUnwrap(TransportStreamScanner.audioTracks(transportStream([h264Video(), raw])).first)
+        XCTAssertEqual(track.format, .aac)
+        XCTAssertEqual(track.samplingFrequency, 48000)
+        XCTAssertEqual(track.channelCount, 2)
+
+        let bare = TSStream(streamType: 0x1C, pid: 0x0103, streamID: 0xC0, descriptors: Data(),
+                            payload: Data(repeating: 0, count: 16))
+        XCTAssertNil(TransportStreamScanner.audioTracks(transportStream([h264Video(), bare])).first?.format)
+    }
+
+    /// LPCM in MPEG-TS carries its depth in the HDMV header, so it is checked.
+    func test_ts_lpcmBitsPerSample_isChecked() throws {
+        let lpcm = TSStream(streamType: 0x80, pid: 0x1100, streamID: 0xBD, descriptors: Data(),
+                            payload: Data([0x01, 0xE0, 0x31, 0x40]))
+        let hdmv = Data([0x05, 0x04]) + Data("HDMV".utf8)
+        let track = try XCTUnwrap(TransportStreamScanner.audioTracks(
+            transportStream([h264Video(), lpcm], programInfo: hdmv)).first)
+        let result = try XCTUnwrap(check(track, .mpegTS))
+        XCTAssertEqual(result.notChecked, [])
+        XCTAssertEqual(result.notes, [])
     }
 
     // MARK: - Header Parsers
@@ -737,8 +969,11 @@ final class VideoAudioTests: XCTestCase {
         let outcome = try VideoWorkflow.convert(
             bitstream: input, type: .endoscopic, typeWasExplicit: true,
             metadata: VideoWorkflow.Metadata(audioChannelSource: .operatorsNarrative))
-        XCTAssertEqual(outcome.output,
-                       "note: audio track 1 (AAC, 48 kHz, 2 channels, 16-bit, max 192 kbit/s) meets PS3.5 8.2.12.")
+        XCTAssertEqual(outcome.output, [
+            "note: audio track 1 (AAC, 48 kHz, 2 channels, max 192 kbit/s) meets PS3.5 8.2.12 "
+                + "as far as the bit stream shows.",
+            "note: audio track 1 (AAC, 48 kHz, 2 channels, max 192 kbit/s): bits per sample (16, 20 or 24 bits) cannot be read from the bit stream: AAC is coded without a PCM sample depth (ISO/IEC 13818-7, ISO/IEC 14496-3).",
+        ].joined(separator: "\n"))
 
         let file = try DICOMFile.read(from: try XCTUnwrap(outcome.data))
         let items = try XCTUnwrap(file.dataSet[Tag(group: 0x003A, element: 0x0300)]?.sequenceItems)

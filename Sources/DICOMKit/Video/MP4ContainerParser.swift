@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — MP3 sample headers walked via stsz/stsc/stco for "CBR MPEG-1 LAYER III" (PS3.5 2026a 8.2.5, 8.2.12, verified by script); compressed audio's template samplesize (ISO/IEC 14496-12) no longer read as bits per sample (D58)
 // NEMA-verified: 2026a, checked 2026-09-30 — container syntax is ISO/IEC 14496-12/-14 (out of scope); audio tracks are permitted in the MP4 container per PS3.5 2026a 8.2.7-8.2.11 and Table 8.2.12-1 and are now read (format, sampling frequency, channels, bits per sample, bit rate) for the PS3.5 8.2.5/8.2.12 check, described via PS3.3 Table C.7-13 (003A,0300) (P-VIDEO, D46)
 //
 // MP4ContainerParser.swift
@@ -729,6 +730,16 @@ public enum MP4ContainerParser {
         if format == .lpcm, maximum == nil, let rate, let channels, let bits = sampleSize {
             maximum = rate * channels * bits  // PCM's rate follows from its format
         }
+        // A compressed format's samplesize is the ISO/IEC 14496-12 template value
+        // (16), not the coded stream's depth, which it has none of (D58).
+        if let format, VideoAudioTrack.codedWithoutSampleDepth.contains(format) {
+            sampleSize = nil
+        }
+        // "CBR MPEG-1 LAYER III" (PS3.5 8.2.5, 8.2.12): read every sample's frame
+        // header, within AudioHeaderParser.maximumScannedFrames.
+        if format == .mp3 {
+            codecTrack = codecTrack?.with(bitRateScan: mp3BitRateScan(data, stblRange: stblRange))
+        }
         return VideoAudioTrack(
             format: format,
             codecTag: tag,
@@ -739,7 +750,93 @@ public enum MP4ContainerParser {
             bitsPerSample: sampleSize,
             maximumBitRate: codecTrack?.maximumBitRate ?? maximum,
             averageBitRate: avgBitRate,
-            frameBitRate: codecTrack?.frameBitRate)
+            frameBitRate: codecTrack?.frameBitRate,
+            bitRateScan: codecTrack?.bitRateScan)
+    }
+
+    /// Walks the MPEG audio frame header at the start of each sample, in sample
+    /// order, up to ``AudioHeaderParser/maximumScannedFrames`` samples. An MP3
+    /// sample in MP4 is one frame (ISO/IEC 14496-3 1.6.2.1 object types 32-34;
+    /// the `.mp3` QuickTime entry likewise), so the sample table locates every
+    /// header without resynchronising.
+    private static func mp3BitRateScan(
+        _ data: Data, stblRange: Range<Int>
+    ) -> VideoAudioTrack.BitRateScan? {
+        let limit = AudioHeaderParser.maximumScannedFrames
+        guard let samples = sampleLocations(data, stblRange: stblRange, limit: limit) else { return nil }
+        var frames: [(header: AudioHeaderParser.MPEGAudioHeader, bytes: ArraySlice<UInt8>)] = []
+        for sample in samples.locations {
+            // The first 40 bytes hold the header, CRC, side information and any
+            // encoder tag ("Xing"/"Info" at 36 at most, "VBRI" at 36).
+            let window = bytes(data, sample.offset, min(sample.size, 40))
+            guard let header = AudioHeaderParser.mpegAudioHeader(window) else { return nil }
+            frames.append((header, window[...]))
+        }
+        return AudioHeaderParser.bitRateScan(frames, coversWholeStream: samples.isComplete)
+    }
+
+    /// Each sample's file offset and size, in order, from `stsz` (ISO/IEC
+    /// 14496-12 8.7.3), `stsc` (8.7.4) and `stco`/`co64` (8.7.5), up to `limit`
+    /// samples. `isComplete` is false when the limit cut the list short. nil
+    /// when a table is missing or inconsistent.
+    private static func sampleLocations(
+        _ data: Data, stblRange: Range<Int>, limit: Int
+    ) -> (locations: [(offset: Int, size: Int)], isComplete: Bool)? {
+        guard let stsz = findBox(type: "stsz", in: data, range: stblRange),
+              let stsc = findBox(type: "stsc", in: data, range: stblRange),
+              let constantSize = readUInt32(data, at: stsz.payloadOffset + 4),
+              let sampleCount = readUInt32(data, at: stsz.payloadOffset + 8).map(Int.init),
+              let runCount = readUInt32(data, at: stsc.payloadOffset + 4).map(Int.init)
+        else { return nil }
+        var chunkOffsets: [Int] = []
+        if let stco = findBox(type: "stco", in: data, range: stblRange),
+           let count = readUInt32(data, at: stco.payloadOffset + 4) {
+            for index in 0..<Int(count) {
+                guard let value = readUInt32(data, at: stco.payloadOffset + 8 + 4 * index) else { return nil }
+                chunkOffsets.append(Int(value))
+            }
+        } else if let co64 = findBox(type: "co64", in: data, range: stblRange),
+                  let count = readUInt32(data, at: co64.payloadOffset + 4) {
+            for index in 0..<Int(count) {
+                guard let value = readUInt64(data, at: co64.payloadOffset + 8 + 8 * index),
+                      value <= UInt64(Int.max) else { return nil }
+                chunkOffsets.append(Int(value))
+            }
+        } else {
+            return nil
+        }
+        // stsc runs: (first_chunk, samples_per_chunk, sample_description_index).
+        var runs: [(firstChunk: Int, samplesPerChunk: Int)] = []
+        for index in 0..<runCount {
+            let base = stsc.payloadOffset + 8 + 12 * index
+            guard let first = readUInt32(data, at: base), let perChunk = readUInt32(data, at: base + 4)
+            else { return nil }
+            runs.append((Int(first), Int(perChunk)))
+        }
+        let wanted = min(sampleCount, limit)
+        var locations: [(offset: Int, size: Int)] = []
+        var sampleIndex = 0
+        for (chunkIndex, chunkOffset) in chunkOffsets.enumerated() where sampleIndex < wanted {
+            let chunkNumber = chunkIndex + 1
+            guard let run = runs.last(where: { $0.firstChunk <= chunkNumber }) else { return nil }
+            var offset = chunkOffset
+            for _ in 0..<run.samplesPerChunk where sampleIndex < wanted {
+                let size: Int
+                if constantSize != 0 {
+                    size = Int(constantSize)
+                } else {
+                    guard let value = readUInt32(data, at: stsz.payloadOffset + 12 + 4 * sampleIndex)
+                    else { return nil }
+                    size = Int(value)
+                }
+                guard offset >= 0, offset < data.count else { return nil }
+                locations.append((offset, size))
+                offset += size
+                sampleIndex += 1
+            }
+        }
+        guard !locations.isEmpty else { return nil }
+        return (locations, locations.count == sampleCount)
     }
 
     /// The MPEG audio frame header at the start of the first sample.

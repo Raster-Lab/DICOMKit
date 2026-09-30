@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — MP3 frame headers walked for "CBR MPEG-1 LAYER III" (PS3.5 2026a 8.2.5, 8.2.12, verified by script); LATM/LOAS (stream_type 0x11) and raw MPEG-4 audio (0x1C) identified from the AudioSpecificConfig (ISO/IEC 14496-3, ISO/IEC 13818-1; out of DICOM scope) (D58)
 // NEMA-verified: 2026a, checked 2026-09-30 — transport stream syntax is ISO/IEC 13818-1 (out of scope); audio PIDs are identified for the PS3.5 2026a 8.2.5/8.2.12 check (Table 8.2.12-1 permits LPCM, AC-3, AAC, MP3 and MPEG-1 Layer II in MPEG-2 TS) (D46)
 //
 // TransportStreamScanner.swift
@@ -187,13 +188,22 @@ public enum TransportStreamScanner {
     /// How many bytes of each audio PID to read for its first frame header.
     private static let audioPayloadBudget = 16 * 1024
 
+    /// How many bytes of an MP3 PID to read for the constant-bit-rate walk: enough
+    /// for ``AudioHeaderParser/maximumScannedFrames`` of the largest Layer III
+    /// frame (1,441 bytes: 320 kbit/s at 32 kHz), so the frame bound, not the byte
+    /// budget, ends the walk of a long stream; a short one is read whole.
+    private static let mp3ScanBudget = AudioHeaderParser.maximumScannedFrames * 1441 + 4
+
     /// The audio streams a transport stream's PMTs list, with the parameters
     /// read from each stream's first frame where the format makes that simple.
     ///
     /// Identification follows the PMT stream_type (ISO/IEC 13818-1 Table 2-34):
-    /// 0x03 MPEG-1 audio and 0x04 MPEG-2 audio (layer from the frame header),
-    /// 0x0F AAC with ADTS, 0x11 and 0x1C MPEG-4 audio (LATM, raw; counted but
-    /// not identified further). Values from 0x80 are "User Private" in 13818-1
+    /// 0x03 MPEG-1 audio and 0x04 MPEG-2 audio (layer from the frame header; for
+    /// Layer III every frame header is then walked for the CBR rule, see
+    /// ``AudioHeaderParser/scanMPEGAudioFrames(_:)``), 0x0F AAC with ADTS, 0x11
+    /// MPEG-4 audio in LATM/LOAS (ISO/IEC 14496-3 1.7; the AudioSpecificConfig of
+    /// its StreamMuxConfig, common case), 0x1C raw MPEG-4 audio (the
+    /// AudioSpecificConfig of an MPEG-4_audio_extension_descriptor, when present). Values from 0x80 are "User Private" in 13818-1
     /// and are read as their registering systems define them: 0x81 AC-3 and 0x87
     /// E-AC-3 (ATSC A/52 and A/53, also used by Blu-ray); and, only in a
     /// stream carrying the "HDMV" registration descriptor (Blu-ray), 0x80 LPCM,
@@ -214,10 +224,19 @@ public enum TransportStreamScanner {
             let tag = String(format: "stream_type 0x%02X", entry.streamType)
             let bytes = payload(data, layout: layout, pid: entry.pid, budget: audioPayloadBudget)
                 .map { [UInt8]($0) } ?? []
-            let parsed: VideoAudioTrack?
+            var parsed: VideoAudioTrack?
             switch kind {
             case .mpegAudio:
                 parsed = AudioHeaderParser.findMPEGAudioHeader(bytes)?.track(codecTag: tag)
+                if parsed?.format == .mp3 {
+                    let stream = payload(data, layout: layout, pid: entry.pid, budget: mp3ScanBudget)
+                        .map { [UInt8]($0) } ?? []
+                    parsed = parsed?.with(bitRateScan: AudioHeaderParser.scanMPEGAudioFrames(stream))
+                }
+            case .latm: parsed = AudioHeaderParser.findLATMConfig(bytes)
+            case .mpeg4Raw:
+                parsed = entry.descriptors.lazy.filter { $0.tag == 0x2E }
+                    .compactMap { AudioHeaderParser.mpeg4AudioExtensionDescriptor($0.payload) }.first
             case .adts: parsed = AudioHeaderParser.findADTSHeader(bytes)
             case .ac3: parsed = AudioHeaderParser.findAC3Header(bytes)
             case .hdmvLPCM: parsed = AudioHeaderParser.hdmvLPCM(bytes)
@@ -233,7 +252,7 @@ public enum TransportStreamScanner {
 
     /// How an audio stream is identified and read.
     private enum AudioKind {
-        case mpegAudio, adts, ac3, hdmvLPCM, smpte302
+        case mpegAudio, adts, ac3, hdmvLPCM, smpte302, latm, mpeg4Raw
         /// Identified, but its header is not read (or it is not identifiable:
         /// a nil format).
         case named(VideoAudioTrack.Format?)
@@ -242,6 +261,7 @@ public enum TransportStreamScanner {
         var format: VideoAudioTrack.Format? {
             switch self {
             case .mpegAudio: return nil  // Layer I, II or III: only the frame says
+            case .latm, .mpeg4Raw: return nil  // any MPEG-4 audio object type
             case .adts: return .aac
             case .ac3: return .ac3
             case .hdmvLPCM, .smpte302: return .lpcm
@@ -257,7 +277,8 @@ public enum TransportStreamScanner {
         switch entry.streamType {
         case 0x03, 0x04: return .mpegAudio
         case 0x0F: return .adts
-        case 0x11, 0x1C: return .named(nil)
+        case 0x11: return .latm
+        case 0x1C: return .mpeg4Raw
         case 0x81: return .ac3
         case 0x87: return .named(.eac3)
         case 0x80 where isHDMV: return .hdmvLPCM

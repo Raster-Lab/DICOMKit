@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — D58: "CBR MPEG-1 LAYER III (MP3)" (PS3.5 2026a 8.2.5 and 8.2.12) checked by walking frame bitrate_index values (ISO/IEC 11172-3, 13818-3); "Bits per sample" of AAC/AC-3/MP3/MP2 not in the coded stream (ISO/IEC 13818-7, 14496-3, ETSI TS 102 366, ISO/IEC 11172-3), stated rather than reported; "optionally one or more complementary channel(s)" (ISO/IEC 13818-3 multichannel extension) not identifiable, kept "not checked"; LATM StreamMuxConfig and MPEG-4_audio_extension_descriptor AudioSpecificConfig (ISO/IEC 14496-3, 13818-1); PS3.5 text verified by script
 // NEMA-verified: 2026a, checked 2026-09-30 — audio constraints extracted by script from PS3.5 2026a 8.2.5 (MPEG2 MP@ML; 8.2.6 MP@HL refers to it), 8.2.7-8.2.11 ("shall follow the constraints detailed in 8.2.12") and 8.2.12 with Table 8.2.12-1 (LPCM/AC-3 MPEG-2 TS only; AAC, MP3, MPEG-1 Layer II in MP4 or MPEG-2 TS); header syntax per ISO/IEC 11172-3, 13818-3, 13818-7, 14496-3, 14496-12/-14 and ETSI TS 102 366 (out of DICOM scope) (D46)
 // NEMA-verified: 2026a, checked 2026-09-30 — E-AC-3 judged by the AC-3 row of PS3.5 2026a Table 8.2.12-1: 8.2.12 "AC-3 is standardized in" ETSI TS 102 366, whose PS3.5 bibliography entry is "Audio Compression (AC-3, Enhanced AC-3) Standard" (D59)
 //
@@ -82,6 +83,44 @@ public struct VideoAudioTrack: Sendable, Hashable {
     public let averageBitRate: Int?
     /// The bit rate an MPEG audio or AC-3 frame header declares, in bit/s.
     public let frameBitRate: Int?
+    /// The bit rates declared by the frame headers read in sequence, for MP3,
+    /// whose PS3.5 8.2.5 / 8.2.12 rule is "CBR MPEG-1 LAYER III"; nil when the
+    /// frames were not walked.
+    public let bitRateScan: BitRateScan?
+
+    /// What a walk over consecutive MPEG audio frame headers found
+    /// (ISO/IEC 11172-3 2.4.2.3, ISO/IEC 13818-3 2.4.2.3: every frame carries
+    /// its own bitrate_index, so a stream is constant-rate exactly when all
+    /// frames carry the same one).
+    public struct BitRateScan: Sendable, Hashable {
+        /// Frames whose headers were read, a leading Xing, Info or VBRI frame
+        /// excluded.
+        public let frameCount: Int
+        /// The distinct bit rates those frames declare, in bit/s, ascending.
+        public let bitRates: [Int]
+        /// "Xing", "Info" or "VBRI" when the first frame is such an encoder
+        /// header frame (a LAME/Xing tag or a Fraunhofer VBRI header; neither is
+        /// part of ISO/IEC 11172-3, which sees an ordinary frame). "Xing" and
+        /// "VBRI" are written for variable-rate streams, "Info" for constant-rate.
+        public let encoderHeader: String?
+        /// True when the walk reached the end of the stream; false when it stopped
+        /// at the frame bound (``AudioHeaderParser/maximumScannedFrames``) or lost
+        /// sync, so later frames were not read.
+        public let coversWholeStream: Bool
+
+        public init(frameCount: Int, bitRates: [Int], encoderHeader: String?, coversWholeStream: Bool) {
+            self.frameCount = frameCount
+            self.bitRates = bitRates
+            self.encoderHeader = encoderHeader
+            self.coversWholeStream = coversWholeStream
+        }
+
+        /// Whether the frames read are constant-rate: one bit rate, and no Xing or
+        /// VBRI header declaring variable rate.
+        public var isConstant: Bool {
+            bitRates.count == 1 && encoderHeader != "Xing" && encoderHeader != "VBRI"
+        }
+    }
 
     public init(
         format: Format?,
@@ -94,7 +133,8 @@ public struct VideoAudioTrack: Sendable, Hashable {
         bitsPerSample: Int? = nil,
         maximumBitRate: Int? = nil,
         averageBitRate: Int? = nil,
-        frameBitRate: Int? = nil
+        frameBitRate: Int? = nil,
+        bitRateScan: BitRateScan? = nil
     ) {
         self.format = format
         self.codecTag = codecTag
@@ -107,7 +147,17 @@ public struct VideoAudioTrack: Sendable, Hashable {
         self.maximumBitRate = maximumBitRate
         self.averageBitRate = averageBitRate
         self.frameBitRate = frameBitRate
+        self.bitRateScan = bitRateScan
     }
+
+    /// Formats whose coded stream carries no PCM sample depth: the bits per sample
+    /// an encoder took in is not recoverable from AAC (ISO/IEC 13818-7, 14496-3),
+    /// AC-3 / E-AC-3 (ETSI TS 102 366), MPEG audio (ISO/IEC 11172-3, 13818-3),
+    /// DTS or Opus. An MP4 AudioSampleEntry's samplesize is then the ISO/IEC
+    /// 14496-12 template value (16), not a measurement, so it is not kept.
+    static let codedWithoutSampleDepth: Set<Format> = [
+        .aac, .ac3, .eac3, .mp3, .mpeg1LayerII, .mpegLayerI, .dts, .opus,
+    ]
 
     /// A track known only to exist — what ``VideoProbeResult`` holds when it is
     /// built from a bare `audioTrackCount`.
@@ -200,6 +250,9 @@ public struct VideoAudioViolation: Sendable, Hashable {
         case bitsPerSample = "bits per sample"
         case channels = "number of channels"
         case constantBitRate = "constant bit rate"
+        /// MP3's "optionally one or more complementary channel(s)" (PS3.5 8.2.5,
+        /// 8.2.12): the ISO/IEC 13818-3 multichannel extension.
+        case complementaryChannels = "complementary channels"
     }
 
     /// Which constraint is violated.
@@ -208,6 +261,19 @@ public struct VideoAudioViolation: Sendable, Hashable {
     public let message: String
 
     public init(constraint: Constraint, message: String) {
+        self.constraint = constraint
+        self.message = message
+    }
+}
+
+/// Why one constraint is not, or cannot be, judged from the bit stream.
+public struct VideoAudioCheckNote: Sendable, Hashable {
+    /// The constraint concerned.
+    public let constraint: VideoAudioViolation.Constraint
+    /// A sentence giving the reason.
+    public let message: String
+
+    public init(constraint: VideoAudioViolation.Constraint, message: String) {
         self.constraint = constraint
         self.message = message
     }
@@ -223,17 +289,23 @@ public struct VideoAudioTrackCheck: Sendable, Hashable {
     public let violations: [VideoAudioViolation]
     /// Constraints that could not be checked because the value is unknown.
     public let notChecked: [VideoAudioViolation.Constraint]
+    /// Explanations: a constraint the coded format cannot show at all (bits per
+    /// sample of compressed audio, neither a violation nor "not checked"), and
+    /// why an entry of ``notChecked`` stays there.
+    public let notes: [VideoAudioCheckNote]
 
     public init(
         trackNumber: Int,
         track: VideoAudioTrack,
         violations: [VideoAudioViolation],
-        notChecked: [VideoAudioViolation.Constraint]
+        notChecked: [VideoAudioViolation.Constraint],
+        notes: [VideoAudioCheckNote] = []
     ) {
         self.trackNumber = trackNumber
         self.track = track
         self.violations = violations
         self.notChecked = notChecked
+        self.notes = notes
     }
 }
 
@@ -390,6 +462,7 @@ extension VideoConformanceValidator {
 
         var violations: [VideoAudioViolation] = []
         var notChecked: [C] = []
+        var notes: [VideoAudioCheckNote] = []
         let name = format.rawValue
 
         // Container (Table 8.2.12-1).
@@ -454,6 +527,16 @@ extension VideoConformanceValidator {
                     message: "\(bits) bits per sample is not permitted for \(name); "
                         + "\(section) allows \(rule.bitsPerSampleText)"))
             }
+        } else if VideoAudioTrack.codedWithoutSampleDepth.contains(format) {
+            // Table 8.2.12-1 states a bits-per-sample value for compressed formats
+            // too, but their coded streams carry no PCM sample depth, so the
+            // value cannot be read from any bit stream: not a violation, and not
+            // "not checked" either, since no further reading would find it.
+            notes.append(VideoAudioCheckNote(
+                constraint: .bitsPerSample,
+                message: "bits per sample (\(rule.bitsPerSampleText)) cannot be read from the "
+                    + "bit stream: \(name) is coded without a PCM sample depth "
+                    + "(\(Self.codingSpecification(format)))"))
         } else {
             notChecked.append(.bitsPerSample)
         }
@@ -477,13 +560,49 @@ extension VideoConformanceValidator {
             }
         }
 
-        // Constant bit rate: a stream would have to be read frame by frame.
+        // MP3's complementary channels: the multichannel extension of ISO/IEC
+        // 13818-3 is carried in the ancillary data of each MPEG-1 compatible
+        // frame (after the Layer III main data, located only by decoding the side
+        // information and the bit reservoir), or in a separate extension stream
+        // the base frames do not point to. Nothing in the frame header marks it,
+        // so it is not identified.
+        if rule.permittedChannelCounts == nil {
+            notChecked.append(.complementaryChannels)
+            notes.append(VideoAudioCheckNote(
+                constraint: .complementaryChannels,
+                message: "complementary channels are not identified: the ISO/IEC 13818-3 "
+                    + "multichannel extension has no frame-header flag and sits in the "
+                    + "Layer III ancillary data or a separate extension stream"))
+        }
+
+        // Constant bit rate (8.2.5, 8.2.12 "CBR MPEG-1 LAYER III"): every frame
+        // header carries its own bitrate_index, walked by the probe.
         if rule.requiresConstantBitRate {
-            notChecked.append(.constantBitRate)
+            if let scan = track.bitRateScan,
+               scan.frameCount > 0 || (scan.encoderHeader != nil && scan.encoderHeader != "Info") {
+                if !scan.isConstant {
+                    let evidence: String
+                    if let header = scan.encoderHeader, header != "Info" {
+                        evidence = "its first frame is a \(header) header, which encoders write "
+                            + "for variable bit rate"
+                    } else {
+                        let rates = scan.bitRates.map(VideoAudioTrack.kilobits)
+                        evidence = "its frames declare \(rates.joined(separator: ", ")) "
+                            + "(\(scan.frameCount) frames read)"
+                    }
+                    violations.append(VideoAudioViolation(
+                        constraint: .constantBitRate,
+                        message: "\(name) is not constant bit rate: \(evidence); "
+                            + "\(section) requires CBR MPEG-1 Layer III"))
+                }
+            } else {
+                notChecked.append(.constantBitRate)
+            }
         }
 
         return VideoAudioTrackCheck(
-            trackNumber: number, track: track, violations: violations, notChecked: notChecked)
+            trackNumber: number, track: track, violations: violations,
+            notChecked: notChecked, notes: notes)
     }
 
     /// The Table 8.2.12-1 row a format is judged by.
@@ -501,6 +620,16 @@ extension VideoConformanceValidator {
     /// fails the format check.
     static func constraintFormat(for format: VideoAudioTrack.Format) -> VideoAudioTrack.Format {
         format == .eac3 ? .ac3 : format
+    }
+
+    /// The specification that codes a compressed format (outside DICOM).
+    static func codingSpecification(_ format: VideoAudioTrack.Format) -> String {
+        switch format {
+        case .aac: return "ISO/IEC 13818-7, ISO/IEC 14496-3"
+        case .ac3, .eac3: return "ETSI TS 102 366"
+        case .mp3, .mpeg1LayerII, .mpegLayerI: return "ISO/IEC 11172-3, ISO/IEC 13818-3"
+        default: return format.rawValue
+        }
     }
 
     /// Whether one frame header's bit rate bounds the whole stream: AC-3 is coded
@@ -575,6 +704,32 @@ enum AudioHeaderParser {
         let bitRate: Int?
         /// 3 = single channel (mono); 2 = dual channel.
         let mode: Int
+        /// bitrate_index, 0 (free format) to 14.
+        var bitRateIndex: Int = 0
+        /// padding_bit.
+        var padding: Int = 0
+        /// True when protection_bit is 0, so a 16-bit CRC follows the header.
+        var hasCRC: Bool = false
+
+        /// The frame length in bytes (ISO/IEC 11172-3 2.4.3.1, ISO/IEC 13818-3
+        /// 2.4.3.1: Layer I slots are 4 bytes, and MPEG-2 LSF Layer III frames hold
+        /// 576 samples); nil in free format, whose length the header does not give.
+        var frameLength: Int? {
+            guard let rate = bitRate else { return nil }
+            switch layer {
+            case 1: return (12 * rate / samplingFrequency + padding) * 4
+            case 3 where version != 1: return 72 * rate / samplingFrequency + padding
+            default: return 144 * rate / samplingFrequency + padding
+            }
+        }
+
+        /// Where a Layer III frame's main data starts: after the header, the CRC
+        /// and the side information (ISO/IEC 11172-3 2.4.1.7; 13818-3 halves it
+        /// for LSF). An encoder header ("Xing"/"Info") is written there.
+        var sideInfoEnd: Int {
+            let sideInfo = version == 1 ? (mode == 3 ? 17 : 32) : (mode == 3 ? 9 : 17)
+            return 4 + (hasCRC ? 2 : 0) + sideInfo
+        }
 
         var channelCount: Int { mode == 3 ? 1 : 2 }
         var format: VideoAudioTrack.Format {
@@ -628,26 +783,27 @@ enum AudioHeaderParser {
         let kbps = table[layer - 1][bitRateIndex]
         return MPEGAudioHeader(
             layer: layer, version: version, samplingFrequency: rate,
-            bitRate: kbps == 0 ? nil : kbps * 1000, mode: Int(b3 >> 6))
+            bitRate: kbps == 0 ? nil : kbps * 1000, mode: Int(b3 >> 6),
+            bitRateIndex: bitRateIndex, padding: Int((b2 >> 1) & 0x01),
+            hasCRC: b1 & 0x01 == 0)
     }
 
     /// The first MPEG audio header in a window, confirmed by a second header at
     /// the next frame when the frame length can be computed.
     static func findMPEGAudioHeader(_ bytes: [UInt8], limit: Int = 4096) -> MPEGAudioHeader? {
+        findMPEGAudioFrame(bytes, limit: limit)?.header
+    }
+
+    /// The first confirmed MPEG audio header in a window, with its offset.
+    static func findMPEGAudioFrame(
+        _ bytes: [UInt8], limit: Int = 4096
+    ) -> (header: MPEGAudioHeader, offset: Int)? {
         let end = min(bytes.count - 4, limit)
         guard end >= 0 else { return nil }
         for offset in 0...end {
             guard let header = mpegAudioHeader(bytes, at: offset) else { continue }
             // Confirm with the next header where one fits in the window.
-            if let rate = header.bitRate {
-                let padding = Int((bytes[offset + 2] >> 1) & 0x01)
-                let length: Int
-                switch header.layer {
-                case 1: length = (12 * rate / header.samplingFrequency + padding) * 4
-                case 3 where header.version != 1:
-                    length = 72 * rate / header.samplingFrequency + padding
-                default: length = 144 * rate / header.samplingFrequency + padding
-                }
+            if let length = header.frameLength {
                 let next = offset + length
                 if next + 4 <= bytes.count {
                     guard let second = mpegAudioHeader(bytes, at: next),
@@ -656,9 +812,86 @@ enum AudioHeaderParser {
                     else { continue }
                 }
             }
-            return header
+            return (header, offset)
         }
         return nil
+    }
+
+    // MARK: MPEG audio bit rate walk (CBR, PS3.5 8.2.5 / 8.2.12)
+
+    /// The most frame headers one walk reads. 2,000 Layer III frames are about
+    /// 42 s at 48 kHz (1,152 samples each); a stream that changes rate only after
+    /// that is reported as constant for the part read
+    /// (``VideoAudioTrack/BitRateScan/coversWholeStream`` is then false). The bound
+    /// keeps a long file from being walked in full on every probe.
+    static let maximumScannedFrames = 2000
+
+    /// The encoder header a first Layer III frame carries, if any: "Xing" or
+    /// "Info" at the end of the side information (LAME/Xing), or "VBRI" 32 bytes
+    /// after the header (Fraunhofer). Both are frames an ISO/IEC 11172-3 decoder
+    /// plays as silence; the tags are de facto, not ISO.
+    static func encoderHeader(_ bytes: ArraySlice<UInt8>, header: MPEGAudioHeader) -> String? {
+        func tag(at offset: Int) -> String? {
+            let start = bytes.startIndex + offset
+            guard offset >= 0, start + 4 <= bytes.endIndex else { return nil }
+            return String(bytes: bytes[start..<(start + 4)], encoding: .ascii)
+        }
+        guard header.layer == 3 else { return nil }
+        if let found = tag(at: header.sideInfoEnd), found == "Xing" || found == "Info" { return found }
+        if tag(at: 36) == "VBRI" { return "VBRI" }
+        return nil
+    }
+
+    /// Folds a sequence of frame headers into a ``VideoAudioTrack/BitRateScan``.
+    ///
+    /// - Parameters:
+    ///   - frames: Each frame's header and bytes from its start (enough to hold an
+    ///     encoder header for the first), in stream order.
+    ///   - coversWholeStream: Whether `frames` reaches the end of the stream.
+    /// - Returns: nil when no frame was read, or one is free format (bitrate_index
+    ///   0), whose rate the header does not state.
+    static func bitRateScan(
+        _ frames: [(header: MPEGAudioHeader, bytes: ArraySlice<UInt8>)],
+        coversWholeStream: Bool
+    ) -> VideoAudioTrack.BitRateScan? {
+        guard let first = frames.first else { return nil }
+        let encoder = encoderHeader(first.bytes, header: first.header)
+        let counted = encoder == nil ? frames[...] : frames.dropFirst()
+        var rates: Set<Int> = []
+        for frame in counted {
+            guard let rate = frame.header.bitRate else { return nil }
+            rates.insert(rate)
+        }
+        guard !counted.isEmpty || encoder != nil else { return nil }
+        return VideoAudioTrack.BitRateScan(
+            frameCount: counted.count, bitRates: rates.sorted(),
+            encoderHeader: encoder, coversWholeStream: coversWholeStream)
+    }
+
+    /// Walks consecutive MPEG audio frames of an elementary stream (for MPEG-TS,
+    /// the PES payloads of one PID) from its first confirmed header, each header
+    /// giving the next frame's offset, up to ``maximumScannedFrames``.
+    static func scanMPEGAudioFrames(_ bytes: [UInt8]) -> VideoAudioTrack.BitRateScan? {
+        guard let start = findMPEGAudioFrame(bytes) else { return nil }
+        var frames: [(header: MPEGAudioHeader, bytes: ArraySlice<UInt8>)] = []
+        var offset = start.offset
+        var reachedEnd = false
+        while frames.count < maximumScannedFrames {
+            guard let header = mpegAudioHeader(bytes, at: offset),
+                  header.layer == start.header.layer,
+                  header.samplingFrequency == start.header.samplingFrequency,
+                  let length = header.frameLength
+            else {
+                // Fewer than four bytes left is the end of the stream; anything
+                // else is lost sync, and the walk stops at what it has read.
+                reachedEnd = offset + 4 > bytes.count
+                break
+            }
+            frames.append((header, bytes[offset..<min(offset + length, bytes.count)]))
+            offset += length
+            if offset >= bytes.count { reachedEnd = true; break }
+        }
+        return bitRateScan(frames, coversWholeStream: reachedEnd)
     }
 
     // MARK: AAC (ISO/IEC 13818-7 ADTS; ISO/IEC 14496-3 1.6.2.1 AudioSpecificConfig)
@@ -704,6 +937,12 @@ enum AudioHeaderParser {
 
     static func audioSpecificConfig(_ data: Data) -> AudioSpecificConfig? {
         var reader = BitstreamReader(data)
+        return audioSpecificConfig(&reader)
+    }
+
+    /// Reads an AudioSpecificConfig at the reader's position, which need not be
+    /// byte-aligned (in LATM it follows StreamMuxConfig's bit fields).
+    static func audioSpecificConfig(_ reader: inout BitstreamReader) -> AudioSpecificConfig? {
         func objectType() -> Int? {
             guard let value = reader.readBits(5) else { return nil }
             if value == 31 { return reader.readBits(6).map { 32 + Int($0) } }
@@ -731,6 +970,100 @@ enum AudioHeaderParser {
         return AudioSpecificConfig(
             audioObjectType: type, samplingFrequency: outputRate > 0 ? outputRate : nil,
             channelConfiguration: configuration)
+    }
+
+    /// A track from an AudioSpecificConfig; channels are nil for a
+    /// channelConfiguration of 0 (layout in a program_config_element, not read).
+    static func track(_ config: AudioSpecificConfig, codecTag: String) -> VideoAudioTrack {
+        let layout = aacChannels(config.channelConfiguration)
+        return VideoAudioTrack(
+            format: config.format, codecTag: codecTag,
+            samplingFrequency: config.samplingFrequency,
+            channelCount: layout?.count, hasLFE: layout?.lfe)
+    }
+
+    // MARK: LATM / LOAS (ISO/IEC 14496-3 1.7; MPEG-TS stream_type 0x11)
+
+    /// The first AudioSpecificConfig carried in a LOAS AudioSyncStream
+    /// (ISO/IEC 14496-3 1.7.2): syncword 0x2B7 (11 bits), audioMuxLengthBytes
+    /// (13), then AudioMuxElement(1), whose useSameStreamMux bit is 0 when a
+    /// StreamMuxConfig (1.7.3) follows.
+    ///
+    /// Only the common case is read: audioMuxVersionA 0 and one program with one
+    /// layer (numProgram 0, numLayer 0), where the first AudioSpecificConfig
+    /// follows numLayer directly (audioMuxVersion 0), or after its LatmGetValue()
+    /// length (audioMuxVersion 1, after taraBufferFullness). Several programs or
+    /// layers in one PID, or audioMuxVersionA 1, return nil: the track then stays
+    /// unidentified and "not checked".
+    static func findLATMConfig(_ bytes: [UInt8]) -> VideoAudioTrack? {
+        var offset = 0
+        while offset + 3 <= bytes.count {
+            guard bytes[offset] == 0x56, bytes[offset + 1] & 0xE0 == 0xE0 else {
+                offset += 1
+                continue
+            }
+            let length = (Int(bytes[offset + 1] & 0x1F) << 8) | Int(bytes[offset + 2])
+            let end = offset + 3 + length
+            // Confirm with the next syncword where it fits.
+            if end + 2 <= bytes.count, !(bytes[end] == 0x56 && bytes[end + 1] & 0xE0 == 0xE0) {
+                offset += 1
+                continue
+            }
+            let frame = Array(bytes[(offset + 3)..<min(end, bytes.count)])
+            var reader = BitstreamReader(bytes: frame)
+            if let useSame = reader.readBit(), !useSame {
+                return streamMuxConfig(&reader).map { track($0, codecTag: "") }
+            }
+            // useSameStreamMux: this frame repeats an earlier configuration.
+            offset = end
+        }
+        return nil
+    }
+
+    /// The first AudioSpecificConfig of a StreamMuxConfig, common case only
+    /// (see ``findLATMConfig(_:)``).
+    private static func streamMuxConfig(_ reader: inout BitstreamReader) -> AudioSpecificConfig? {
+        /// LatmGetValue(): bytesForValue (2), then that many plus one bytes.
+        func latmValue() -> Int? {
+            guard let count = reader.readBits(2) else { return nil }
+            var value = 0
+            for _ in 0...Int(count) {
+                guard let byte = reader.readBits(8) else { return nil }
+                value = value << 8 | Int(byte)
+            }
+            return value
+        }
+        guard let version = reader.readBit() else { return nil }
+        if version {
+            guard let versionA = reader.readBit(), !versionA, latmValue() != nil else { return nil }
+        }
+        // allStreamsSameTimeFraming (1), numSubFrames (6), numProgram (4), numLayer (3).
+        guard reader.skipBits(7), let programs = reader.readBits(4), programs == 0,
+              let layers = reader.readBits(3), layers == 0
+        else { return nil }
+        if version { guard latmValue() != nil else { return nil } }  // ascLen
+        return audioSpecificConfig(&reader)
+    }
+
+    // MARK: Raw MPEG-4 audio (MPEG-TS stream_type 0x1C)
+
+    /// The AudioSpecificConfig of an MPEG-4_audio_extension_descriptor
+    /// (ISO/IEC 13818-1, descriptor_tag 46): ASC_flag (1), reserved (3),
+    /// num_of_loops (4), one audioProfileLevelIndication byte per loop, then,
+    /// when ASC_flag is set, ASC_size (8) and the AudioSpecificConfig. Raw MPEG-4
+    /// audio has no transport header of its own, so this descriptor is the only
+    /// place its configuration can be read; without it the track stays
+    /// unidentified.
+    static func mpeg4AudioExtensionDescriptor(_ payload: [UInt8]) -> VideoAudioTrack? {
+        guard let first = payload.first, first & 0x80 != 0 else { return nil }
+        let sizeIndex = 1 + Int(first & 0x0F)
+        guard sizeIndex < payload.count else { return nil }
+        let size = Int(payload[sizeIndex])
+        let start = sizeIndex + 1
+        guard size > 0, start + size <= payload.count,
+              let config = audioSpecificConfig(Data(payload[start..<(start + size)]))
+        else { return nil }
+        return track(config, codecTag: "")
     }
 
     /// The first ADTS header in a window (ISO/IEC 13818-7 6.2.1).
@@ -865,6 +1198,16 @@ extension VideoAudioTrack {
             samplingFrequency: samplingFrequency, channelCount: channelCount,
             hasLFE: hasLFE, isDualMono: isDualMono, bitsPerSample: bitsPerSample,
             maximumBitRate: maximumBitRate, averageBitRate: averageBitRate,
-            frameBitRate: frameBitRate)
+            frameBitRate: frameBitRate, bitRateScan: bitRateScan)
+    }
+
+    /// A copy carrying the result of a frame-by-frame bit rate walk.
+    func with(bitRateScan scan: BitRateScan?) -> VideoAudioTrack {
+        VideoAudioTrack(
+            format: format, codecTag: codecTag, pid: pid,
+            samplingFrequency: samplingFrequency, channelCount: channelCount,
+            hasLFE: hasLFE, isDualMono: isDualMono, bitsPerSample: bitsPerSample,
+            maximumBitRate: maximumBitRate, averageBitRate: averageBitRate,
+            frameBitRate: frameBitRate, bitRateScan: scan)
     }
 }

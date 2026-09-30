@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — audio notes per PS3.5 2026a 8.2.5/8.2.12 (verified by script): bits per sample of compressed audio stated as not in the bit stream, MP3 complementary channels as not identified, CBR violations of "CBR MPEG-1 LAYER III" (D58)
 // NEMA-verified: 2026a, checked 2026-09-30 — SOP Class names match PS3.6 2026a Table A-1; audio messages per PS3.5 2026a 8.2.5-8.2.12 and Table 8.2.12-1 (per-track violations of the constraints VideoConformanceValidator.audioConstraints extracts; audio kept, never stripped) and PS3.3 Table C.7-13 (003A,0300) Type 2C "Zero or more Items", Channel Source from PS3.16 CID 3000 (D34, D46)
 //
 // VideoConsole.swift
@@ -484,7 +485,9 @@ public enum VideoConsole {
     /// When no track's format could be identified this is exactly
     /// ``audioCarriedLine(trackCount:)``. Otherwise, per track: one warning per
     /// known violation; a note listing the constraints that could not be checked;
-    /// or a note that the track meets the section. Then, unless channels were
+    /// or a note that the track meets the section; then one note per
+    /// ``VideoAudioTrackCheck/notes`` entry (bits per sample of compressed audio,
+    /// which no bit stream carries; MP3 complementary channels, not identified). Then, unless channels were
     /// described, a note that (003A,0300) has no Items. The audio is never
     /// removed or re-encoded, whatever the verdict.
     ///
@@ -517,7 +520,12 @@ public enum VideoConsole {
                 let list = check.notChecked.map(\.rawValue).joined(separator: ", ")
                 lines.append(noteLine("\(label): not checked against \(result.section): \(list)."))
             } else if check.violations.isEmpty {
-                lines.append(noteLine("\(label) meets \(result.section)."))
+                let qualifier = check.notes.isEmpty ? "" : " as far as the bit stream shows"
+                lines.append(noteLine("\(label) meets \(result.section)\(qualifier)."))
+            }
+            // Why a constraint cannot be read, or stays not checked (D58).
+            for note in check.notes {
+                lines.append(noteLine("\(label): \(note.message)."))
             }
         }
         if !channelsDescribed {
