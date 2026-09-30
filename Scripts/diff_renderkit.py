@@ -51,15 +51,12 @@ M = '{http://www.w3.org/1998/Math/MathML}'
 # findings that live in another module (DEFR, with their D-number). Each key is a substring of
 # the finding text; see DICOMRENDERKIT_STANDARD_IMPLEMENTATION.md.
 PENDING_API_APPROVAL = {
-    'FrameRenderRequest carries no Modality LUT': 'P-PIPELINE',
-    'no ICC Profile': 'P-ICC',
+    # P-PIPELINE and P-ICC were approved and implemented on 2026-09-30.
 }
 DEFERRED = {
-    'WindowLUT quantisation': 'D63',
-    'WindowSettings clamps': 'D64',
-    'toStored': 'D65',
-    'full-range window': 'D66',
-    'PixelDataRenderer assembles': 'D67',
+    # D63, D64, D66, D67 and D65's DICOMKit half were closed on 2026-09-30. The
+    # stored-unit conversion stays for DICOMStudio's viewer until that module's pass.
+    'toStored': 'D65 (DICOMStudio half)',
 }
 
 
@@ -191,17 +188,25 @@ def code_window_functions(ws_src):
     return out
 
 
-def width_clamp(ws_src):
-    """The width WindowSettings.init stores for a requested width w."""
-    m = need(ws_src, r'self\.width = (max\(1\.0, width\))', 'WindowSettings.init width')
-    return lambda w: max(1.0, w), m.group(1)
+def width_clamp(ws_src, function='linear'):
+    """The width WindowSettings.init stores for a requested width w (admissibleWidth)."""
+    need(ws_src, r'self\.width = Self\.admissibleWidth\(width, for: function\)', 'WindowSettings.init width')
+    body = dw.func_body(ws_src, r'static func admissibleWidth\(')
+    lin = need(body, r'case \.linear:\s*return width >= 1\.0 \? width : 1\.0', 'LINEAR width rule')
+    other = need(body, r'case \.linearExact, \.sigmoid:\s*return width > 0 && width\.isFinite \? width : 1\.0',
+                 'SIGMOID / LINEAR_EXACT width rule')
+    if function == 'linear':
+        return (lambda w: w if w >= 1.0 else 1.0), lin.group(0)
+    return (lambda w: w if (w > 0 and math.isfinite(w)) else 1.0), other.group(0)
 
 
 def window_lut_quantise(core):
     """WindowLUT.build's final step: normalised y in [0, 1] → display byte."""
     body = core['WindowLUT.swift']
-    m = need(body, r'out\[rawValue\] = UInt8\(max\(0, min\(255, normalized \* 255\.0\)\)\)', 'WindowLUT quantisation')
-    return lambda y: int(max(0, min(255, y * 255.0))), m.group(0)
+    need(body, r'out\[rawValue\] = WindowLUT\.displayByte\(normalized\)', 'WindowLUT quantisation call')
+    tol = float(need(body, r'public static let quantisationTolerance = ([\de.-]+)', 'tolerance').group(1))
+    m = need(body, r'UInt8\(max\(0, min\(255, normalized \* 255\.0 \+ quantisationTolerance\)\)\)', 'displayByte')
+    return lambda y: int(max(0, min(255, y * 255.0 + tol))), m.group(0)
 
 
 # --- checks -------------------------------------------------------------------------------
@@ -253,13 +258,18 @@ def check_width_limits(rep, p3, core):
         problems.append('C.11.2.1.2.1 no longer says w >= 1; re-read')
     if not all('Window Width (0028,1051) shall always be greater than 0' in t for t in others):
         problems.append('C.11.2.1.3.1/.2 no longer say w > 0; re-read')
-    clamp, text = width_clamp(core['WindowSettings.swift'])
-    matched = 1 if clamp(1.0) == 1.0 else 0
-    for w in (0.25, 0.5, 0.999):
-        if clamp(w) != w:
-            problems.append(f'WindowSettings clamps a SIGMOID / LINEAR_EXACT width {w} to {clamp(w)} '
-                            f'({text}); those functions only require w > 0')
-            break
+    lin, lin_text = width_clamp(core['WindowSettings.swift'], 'linear')
+    other, other_text = width_clamp(core['WindowSettings.swift'], 'other')
+    matched = 0
+    if lin(0.5) == 1.0 and lin(1.0) == 1.0 and lin(3.5) == 3.5:
+        matched += 1
+    else:
+        problems.append(f'LINEAR width rule ({lin_text}) is not w >= 1')
+    if all(other(w) == w for w in (0.25, 0.5, 0.999, 2.0)):
+        matched += 1
+    else:
+        problems.append(f'WindowSettings clamps a SIGMOID / LINEAR_EXACT width below 1 ({other_text}); '
+                        f'those functions only require w > 0')
     rep.check('PS3.3 C.11.2.1.2.1 / C.11.2.1.3.1 / C.11.2.1.3.2: Window Width limits per function',
               matched, problems)
 
@@ -304,7 +314,7 @@ def check_modality_before_voi(rep, p3, files, kit):
     m = need(exporter, r'return WindowSettings\(center: \((center - intercept)\) / slope, width: width / abs\(slope\)\)',
              'toStored conversion')
     f = std_pseudocode(p3, 'sect_C.11.2.1.2.1')
-    clamp, _ = width_clamp(dict(dw.read_all(os.path.join(ROOT, 'Sources', 'DICOMCore')))['WindowSettings.swift'])
+    clamp, _ = width_clamp(dict(dw.read_all(os.path.join(ROOT, 'Sources', 'DICOMCore')))['WindowSettings.swift'], 'linear')
     matched, wrong = 0, []
     for slope, intercept in ((1.0, -1024.0), (2.0, 0.0), (0.5, 0.0), (-1.0, 100.0)):
         for c, w in ((40.0, 400.0), (0.0, 100.0), (1000.0, 10.0)):
@@ -312,14 +322,36 @@ def check_modality_before_voi(rep, p3, files, kit):
             bad = [s for s in range(-2000, 2000)
                    if int(255 * f(slope * s + intercept, c, w)) != int(255 * f(float(s), cs, ws))]
             if bad:
-                wrong.append(f'toStored (m={slope}, b={intercept}, c={c}, w={w}): {len(bad)} of 4000 stored values '
-                             f'render differently from the window applied after the rescale')
+                wrong.append(f'toStored (determineWindowSettings, kept for DICOMStudio; m={slope}, b={intercept}, '
+                             f'c={c}, w={w}): {len(bad)} of 4000 stored values render differently from the window '
+                             f'applied after the rescale')
             else:
                 matched += 1
     request = files['FrameRenderBackend.swift']
-    if not re.search(r'let modality\w*\s*:', request):
-        wrong.append('FrameRenderRequest carries no Modality LUT / rescale, so the window cannot be applied after '
-                     'it (C.11.2.1.2.1), nor a VOI LUT Sequence (C.11.2.1.1) or a Presentation LUT (C.11.6)')
+    for field in ('modalityLUT: ModalityLUT?', 'voiLUT: VOILUT?', 'presentationLUT: PresentationLUT?'):
+        if f'public let {field}' in request:
+            matched += 1
+        else:
+            wrong.append(f'FrameRenderRequest has no `{field}` (PS3.4 N.2 chain)')
+    pipe = kit['GrayscaleDisplayPipeline.swift']
+    body = dw.func_body(pipe, r'public func normalizedValue\(')
+    order = [body.find('modalityValue(forStoredValue: stored)'), body.find('switch voiLUT'),
+             body.find('presentationLUT?.apply(to: voi)')]
+    if -1 not in order and order == sorted(order):
+        matched += 1
+    else:
+        wrong.append(f'GrayscaleDisplayPipeline does not apply Modality → VOI → Presentation LUT in order: {order}')
+    if '(C.11.2.1.1)' in body and re.search(r'lut\.lookup\(Self\.tableIndex\(modality\)\) / Double\(lut\.maxOutputValue\)', body):
+        matched += 1
+    else:
+        wrong.append('VOI LUT output is not normalised by 2^n − 1 (C.11.2.1.1)')
+    export = dw.func_body(exporter, r'public static func renderFrameForExport\(')
+    resolve = dw.func_body(exporter, r'public static func determineDisplayPipeline\(')
+    if 'determineDisplayPipeline(' in export and '/ slope' not in resolve \
+            and '.rescale(slope: slope, intercept: intercept' in resolve and 'dataSet.voiLUT()' in resolve:
+        matched += 1
+    else:
+        wrong.append('export does not render monochrome frames through the chain with the window in modality units')
     rep.check('PS3.3 C.11.2.1.2.1: the VOI window applies after the Modality LUT / rescale', matched, wrong,
               extra=[f'conversion: {m.group(0)}'])
 
@@ -331,6 +363,14 @@ def check_full_range_window(rep, p3, kit):
                   r'of input values from x1 to x2', 'full-range sentence')
     f = std_pseudocode(p3, 'sect_C.11.2.1.2.1')
     matched, wrong = 0, []
+    good = {'PixelDataRenderer.swift': r'center: Double\(range\.min \+ range\.max \+ 1\) / 2\.0,\s*width: Double\(range\.max - range\.min \+ 1\)',
+            'ImageExport/DICOMImageExporter.swift': r'center: Double\(range\.min \+ range\.max \+ 1\) / 2\.0,\s*width: Double\(range\.max - range\.min \+ 1\)',
+            'PixelEditing/PixelEditor.swift': r'storedMin \+ descriptor\.storedMax \+ 1\) / 2\.0\s*let storedWidth = Double\(descriptor\.storedMax - descriptor\.storedMin \+ 1\)'}
+    for fname, pat in good.items():
+        if re.search(pat, kit[fname]):
+            matched += 1
+        else:
+            wrong.append(f'{fname}: full-range window is not c = (x1+x2+1)/2, w = x2−x1+1')
     for fname, pat in (('PixelDataRenderer.swift', r'let center = Double\(range\.min \+ range\.max\) / 2\.0\s*'
                                                     r'let width = Double\(range\.max - range\.min\)'),
                        ('ImageExport/DICOMImageExporter.swift', r'let center = Double\(range\.min \+ range\.max\) / 2\.0\s*'
@@ -338,7 +378,6 @@ def check_full_range_window(rep, p3, kit):
         src = kit[fname]
         m = re.search(pat, src)
         if not m:
-            matched += 1       # the rung was rewritten; the check below no longer applies
             continue
         x1, x2 = -1000, 3000
         code = [int(255 * f(x, (x1 + x2) / 2, max(1.0, x2 - x1))) for x in range(x1, x2 + 1)]
@@ -390,7 +429,7 @@ def check_stored_value_chain(rep, p3, p5, core):
               matched, problems)
 
 
-def check_sample_assembly(rep, p5, files, kit, metal):
+def check_sample_assembly(rep, p5, files, kit, metal, core):
     """PS3.5 8.1.1 (a Pixel Cell is Bits Allocated wide) and 8.2 (least significant bit first,
     little-endian words): the kernels and the CPU loops assemble one or two bytes, low byte first."""
     t = section_text(p5, 'sect_8.1.1') + ' ' + section_text(p5, 'sect_8.2')
@@ -414,10 +453,21 @@ def check_sample_assembly(rep, p5, files, kit, metal):
     cpu = kit['PixelDataRenderer.swift']
     if re.search(r'table\[low \| \(high << 8\)\]', cpu):
         matched += 1
-    if not re.search(r'bytesPerSample\s*(<=|>)\s*2|\(1\.\.\.2\)\.contains', cpu):
+    wide = len(re.findall(r'descriptor\.cellValue\(in: ', cpu))
+    if wide >= 5 and 'WindowLUT.canTabulate(descriptor)' in cpu:
+        matched += 1
+    else:
         problems.append('PixelDataRenderer assembles every sample from its first two bytes (Bits Allocated 32 cells '
-                        'rendered from their low 16 bits); WindowLUT/ColorSampleLUT/PaletteDisplayLUT size their '
-                        'tables for 1 or 2 bytes only')
+                        'rendered from their low 16 bits)')
+    helper = dw.func_body(core['PixelDataDescriptor.swift'], r'public func cellValue\(')
+    if re.search(r'for index in 0\.\.<bytesPerSample \{\s*value \|= Int\(bytes\[byteOffset \+ index\]\) << \(8 \* index\)', helper):
+        matched += 1
+    else:
+        problems.append('PixelDataDescriptor.cellValue is not Bits Allocated wide, least significant byte first')
+    if 'descriptor.cellValue(in: bytes, at: offset)' in kit['PresentationState/PresentationStateApplicator.swift']:
+        matched += 1
+    else:
+        problems.append('PixelDataRenderer assembles …: the presentation-state applicator reads two bytes per cell')
     rep.check('PS3.5 8.1.1 / 8.2: sample assembly (cell width, little-endian) in the kernels and the CPU loops',
               matched, problems)
 
@@ -482,13 +532,19 @@ def check_backend_parity(rep, metal, files, kit, core):
     else:
         problems.append(f'DisplayParams order: Swift {disp_swift} vs Metal {disp_metal}')
     cpu = kit['PixelDataRenderer.swift']
+    req = files['FrameRenderBackend.swift']
     pairs = [
-        ('grey table', r'WindowLUT\.grayscale\(descriptor: descriptor, window: window\)', swift,
+        ('grey table (stored-unit window)', r'return WindowLUT\.grayscale\(descriptor: descriptor, window: window\)', req,
          r'WindowLUT\.grayscale\(descriptor: descriptor, window: window\)', cpu),
-        ('pseudo-colour table', r'PaletteDisplayLUT\.make\(\s*window: WindowLUT\.grayscale\(\s*descriptor: '
-         r'request\.pixelData\.descriptor, window: window\),\s*entries: palette\.entries\(\)\)', swift,
+        ('grey table (N.2 chain)', r'displayPipeline\(scanningFrame: false\)\?\.table\(for: descriptor\)', req,
+         r'if let table = pipeline\.table\(for: descriptor\)', cpu),
+        ('the GPU indexes the request\'s grey table', r'guard let lut = request\.greyTable else \{ return nil \}', swift,
+         r'renderMonochromeFrame\(\s*request\.frameIndex, pipeline: pipeline', files['CPUFrameRenderer.swift']),
+        ('pseudo-colour table', r'PaletteDisplayLUT\.make\(window: lut, entries: palette\.entries\(\)\)', swift,
          r'PaletteDisplayLUT\.make\(\s*window: WindowLUT\.grayscale\(\s*descriptor: request\.pixelData\.descriptor, '
          r'window: window\),\s*entries: palette\.entries\(\)\)', files['CPUFrameRenderer.swift']),
+        ('pseudo-colour table (N.2 chain)', r'PaletteDisplayLUT\.make\(window: lut, entries: palette\.entries\(\)\)', swift,
+         r'PaletteDisplayLUT\.make\(window: table, entries: colours\)', cpu),
         ('RGB normalisation', r'let masked = \(rawValue >> bitShift\) & storedBitMask', core['ColorSampleLUT.swift'],
          r'r = \(r >> bitShift\) & storedBitMask', cpu),
         ('RGB scale', r'let scale = 255\.0 / Double\(maxValue\)', core['ColorSampleLUT.swift'],
@@ -715,9 +771,20 @@ def check_icc(rep, p3, files, kit):
         problems.append('C.11.15.1.1 sentence not found; re-read')
     tagged = [n for n, s in list(files.items()) + [('PixelDataRenderer.swift', kit['PixelDataRenderer.swift'])]
               if 'CGColorSpaceCreateDeviceRGB()' in s]
-    if not re.search(r'let iccProfile\s*:', files['FrameRenderBackend.swift']):
+    matched = 0
+    if re.search(r'public let iccProfile\s*:', files['FrameRenderBackend.swift']) and \
+            'CGColorSpace(iccData: iccProfile as CFData)' in files['FrameRenderBackend.swift']:
+        matched += 1
+    else:
         problems.append(f'no ICC Profile in FrameRenderRequest: colour output is tagged Device RGB ({", ".join(tagged)})')
-    rep.check('PS3.3 C.11.15.1.1: ICC Profile applied to colour output', 0 if problems else 1, problems)
+    for fname, pat in (('CPUFrameRenderer.swift', r'image\.copy\(colorSpace: space\)'),
+                       ('Metal/MetalFrameRenderer.swift', r'colorSpace: isGrayscale \? nil : request\.outputColorSpace'),
+                       ('Metal/MetalImageView.swift', r'view\.colorspace = frame\?\.colorSpace')):
+        if re.search(pat, files[fname]):
+            matched += 1
+        else:
+            problems.append(f'{fname}: colour output is not tagged with the ICC Profile')
+    rep.check('PS3.3 C.11.15.1.1: ICC Profile applied to colour output', matched, problems)
 
 
 def check_citations(rep, parts, files, metal):
@@ -756,7 +823,7 @@ def main():
         ('modality', lambda: check_modality_before_voi(rep, parts[3], files, kit)),
         ('full_range', lambda: check_full_range_window(rep, parts[3], kit)),
         ('chain', lambda: check_stored_value_chain(rep, parts[3], parts[5], core)),
-        ('assembly', lambda: check_sample_assembly(rep, parts[5], files, kit, metal)),
+        ('assembly', lambda: check_sample_assembly(rep, parts[5], files, kit, metal, core)),
         ('planar', lambda: check_planar_configuration(rep, parts[3], metal, files, kit)),
         ('parity', lambda: check_backend_parity(rep, metal, files, kit, core)),
         ('photometric_routing', lambda: check_photometric_routing(rep, parts[3], files)),
