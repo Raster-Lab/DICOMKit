@@ -562,41 +562,35 @@ def check_cs_literals(rep, p3, p6, files, tags):
 
 
 def check_deidentification(rep, p15, files, tags):
-    """PS3.15 Table E.1-1: the Basic Profile action of every row ConfidentialityProfile carries."""
-    src = files.get('Anonymization/ConfidentialityProfile.swift', '')
-    std = {}
-    for row in dw.table_rows(p15, 'E.1-1'):
-        if len(row) < 13:
-            continue
-        m = re.fullmatch(r'\(([0-9A-Fa-f]{4}),([0-9A-Fa-f]{4})\)', row[1].strip())
-        if m:
-            std[(m.group(1) + m.group(2)).upper()] = (row[0], row[4].strip(), row[12].strip())
-    # Action -> the E.1-1 letter the engine applies to the Basic Profile
-    letter = {'zero': 'Z', 'remove': 'X', 'replaceDummy': 'D', 'clean': 'C', 'replaceUID': 'U',
-              'zeroOrDummy': 'Z', 'removePreferred': 'X', 'keep': 'K'}
-    body = dw.func_body(src, r'static\s+let\s+table\b')
-    pat = re.compile(r't\[(?:\.(\w+)|Tag\(group:\s*0x([0-9A-Fa-f]{4}),\s*element:\s*0x([0-9A-Fa-f]{4})\))\]\s*=\s*Rule\(\.(\w+)')
-    matched, wrong, unknown = 0, [], []
-    for m in pat.finditer(body):
-        tag = tags.get(m.group(1)) if m.group(1) else (m.group(2) + m.group(3)).upper()
-        action = m.group(4)
-        if tag is None or tag not in std:
-            unknown.append(f'({tag or m.group(1)}) .{action}: not a row of Table E.1-1')
-            continue
-        name, basic, clean_desc = std[tag]
-        allowed = set(basic.replace(' ', '').split('/'))
-        code = letter.get(action, '?')
-        ok = code in allowed or (code == 'C' and 'C' in clean_desc) \
-            or (action == 'zeroOrDummy' and allowed & {'Z', 'D'}) \
-            or (action == 'replaceUID' and 'U' in allowed)
-        if ok:
+    """PS3.15 Table E.1-1: every single-tag row, with its Basic Profile action and every option
+    column, is in the generated ConfidentialityProfileTableE11.swift (D69), and the four pattern
+    rows are applied by group in ConfidentialityEngine."""
+    gen = load('generate_confidentiality_profile')
+    std_rows, patterns = gen.rows(p15)
+    src = files.get('Anonymization/ConfidentialityProfileTableE11.swift', '')
+    code = {}
+    for m in re.finditer(r'0x([0-9A-F]{8}): E11Row\((.*?)\),', src):
+        code[m.group(1)] = dict(re.findall(r'(\w+): "([^"]*)"', m.group(2)))
+    matched, wrong, missing = 0, [], []
+    for tag, name, basic, options in std_rows:
+        want = {'basic': basic, **options}
+        if tag not in code:
+            missing.append(f'{name} ({tag[:4]},{tag[4:]}) {basic}')
+        elif code[tag] != want:
+            wrong.append(f'{name} ({tag[:4]},{tag[4:]}): code {code[tag]}; Table E.1-1 {want}')
+        else:
+            matched += 1
+    extra = [f'({t[:4]},{t[4:]}) is not a row of Table E.1-1' for t in sorted(set(code) - {r[0] for r in std_rows})]
+    engine = files.get('Anonymization/ConfidentialityEngine.swift', '')
+    for pattern, rule in (('(50xx,xxxx)', r'tag\.group & 0xFF00 == 0x5000'),
+                          ('(60xx,3000)', r'tag\.element == 0x3000'), ('(60xx,4000)', r'tag\.element == 0x4000'),
+                          ('(gggg,eeee) where gggg is odd', r'if isPrivate \{ return \.remove \}')):
+        if any(p[0] == pattern and p[2] == 'X' for p in patterns) and re.search(rule, engine):
             matched += 1
         else:
-            wrong.append(f'{name} ({tag[:4]},{tag[4:]}): code .{action} ({code}); Table E.1-1 Basic Profile is {basic}'
-                         + (f', Clean Descriptors {clean_desc}' if clean_desc else ''))
-    wrong, pending = split_pending(wrong)
-    rep.check('PS3.15 Table E.1-1: Basic Profile action of every ConfidentialityProfile row', matched, wrong,
-              extra=unknown, pending=pending)
+            wrong.append(f'pattern row {pattern} (X) is not applied by the engine')
+    rep.check('PS3.15 Table E.1-1: every row (Basic Profile action and option columns) and the pattern rows',
+              matched, wrong + extra, missing)
 
 
 def check_video_constraints(rep, p6, files):

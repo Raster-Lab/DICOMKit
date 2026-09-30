@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — applies PS3.15 2026a Table E.1-1 in full (D69): the pattern rows (curve data 50xx, overlay data and comments 60xx,3000/4000, private groups) are X; Z on SQ is an empty sequence; D is a non-empty value consistent with the VR (sequence kept scrubbed, UID mapped, binary zero bytes) (PS3.15 E.1.1)
 // NEMA-verified: 2026a, checked 2026-09-29 — applies the PS3.15 2026a Table E.1-1 actions; records (0012,0062) YES, (0012,0063) LO 1-n and (0012,0064) SQ of CID 7050 codes per PS3.15 E.1.1 and PS3.3 Table C.7-1; VRs per PS3.6 Table 6-1
 import Foundation
 import DICOMCore
@@ -154,13 +155,28 @@ public struct ConfidentialityEngine {
                 out.remove(tag: tag)
                 if isRoot { changed.append(tag) }
             case .zero:
-                out.setString("", for: tag, vr: element.vr)
+                Self.setZeroLength(tag, vr: element.vr, in: &out)
                 if isRoot { changed.append(tag) }
             case .zeroOrDummy:
                 applyDateOrZero(tag: tag, element: element, in: &out)
                 if isRoot { changed.append(tag) }
             case .replaceDummy:
-                out.setString(dummyValue(for: element.vr), for: tag, vr: element.vr)
+                // A non-zero-length value "consistent with the VR" (PS3.15 E.1.1, D):
+                // a sequence keeps its items, already scrubbed above; a UID is replaced
+                // by its consistently mapped UID; binary VRs get zero bytes.
+                switch element.vr {
+                case .SQ:
+                    break
+                case .UI:
+                    if let uid = dataSet.string(for: tag) {
+                        out.setString(mappedUID(uid), for: tag, vr: .UI)
+                    }
+                case .OB, .OD, .OF, .OL, .OV, .OW, .UN, .US, .SS, .UL, .SL, .FL, .FD, .AT, .SV, .UV:
+                    out[tag] = DataElement.data(tag: tag, vr: element.vr,
+                                                data: Data(repeating: 0, count: Self.binaryDummyLength(element.vr)))
+                default:
+                    out.setString(dummyValue(for: element.vr), for: tag, vr: element.vr)
+                }
                 if isRoot { changed.append(tag) }
             case .clean:
                 // Best-effort: without a term-safe cleaner we cannot prove a free-text
@@ -169,7 +185,7 @@ public struct ConfidentialityEngine {
                 if options.cleanDescriptors {
                     continue
                 }
-                out.setString("", for: tag, vr: element.vr)
+                Self.setZeroLength(tag, vr: element.vr, in: &out)
                 if isRoot { changed.append(tag) }
             case .replaceUID:
                 if let uid = dataSet.string(for: tag) {
@@ -191,7 +207,13 @@ public struct ConfidentialityEngine {
             return a
         }
 
-        // 2. Private tags: remove unless the whole private-retention isn't modelled
+        // 2. The pattern rows of Table E.1-1, all X in the Basic Profile: Curve Data
+        //    (50xx,xxxx), Overlay Data (60xx,3000) and Overlay Comments (60xx,4000) (D69).
+        if tag.group & 0xFF00 == 0x5000 && tag.group % 2 == 0 { return .remove }
+        if tag.group & 0xFF00 == 0x6000 && tag.group % 2 == 0,
+           tag.element == 0x3000 || tag.element == 0x4000 { return .remove }
+
+        // 2b. Private tags: remove unless the whole private-retention isn't modelled
         //    (PS3.15 only retains private tags a creator has declared safe; we have no
         //    safe-private registry, so remove — the conservative, conformant default).
         if isPrivate { return .remove }
@@ -231,7 +253,27 @@ public struct ConfidentialityEngine {
         case .DA: return "19000101"
         case .TM: return "000000"
         case .DT: return "19000101000000"
+        case .AS: return "000D"
+        case .IS, .DS: return "0"
         default:  return "ANONYMIZED"
+        }
+    }
+
+    /// Z: a zero-length value — an empty sequence for SQ (PS3.15 E.1.1).
+    private static func setZeroLength(_ tag: Tag, vr: VR, in dataSet: inout DataSet) {
+        if vr == .SQ {
+            dataSet.setSequence([], for: tag)
+        } else {
+            dataSet.setString("", for: tag, vr: vr)
+        }
+    }
+
+    /// One value's worth of zero bytes for a binary VR (even length).
+    private static func binaryDummyLength(_ vr: VR) -> Int {
+        switch vr {
+        case .FD, .OD, .SV, .UV, .OV: return 8
+        case .UL, .SL, .FL, .OF, .OL, .AT: return 4
+        default: return 2
         }
     }
 
