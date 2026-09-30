@@ -380,7 +380,6 @@ let package = Package(
                 "RealWorldValue/RealWorldValueLUTTests.swift",
                 "RealWorldValue/RealWorldValueRendererTests.swift",
                 "RealWorldValue/SUVCalculatorTests.swift",
-                "PresentationStateTests",
                 // "Video" is NOT excluded: its files are in the sources allowlist
                 // below. An excluded directory wins over the allowlist, which is
                 // how the Video suite silently never ran.
@@ -449,6 +448,23 @@ let package = Package(
                 // the same round-trip contract, each pinned to its Table A.33.x-1.
                 "PseudoColorPresentationStateBuilderTests.swift",
                 "ColorPresentationStateBuilderTests.swift",
+                // D38: the pre-verification PresentationState suites, ported to the
+                // current API and corrected to PS3.3 2026a (they had been dropped by
+                // the sources allowlist since 2026-04-21 and never compiled).
+                "PresentationStateTests/BlendingPresentationStateTests.swift",
+                "PresentationStateTests/ColorMatrixTests.swift",
+                "PresentationStateTests/ColorPresentationStateTests.swift",
+                "PresentationStateTests/ColorTransformTests.swift",
+                "PresentationStateTests/DisplayFeaturesTests.swift",
+                "PresentationStateTests/DisplayShutterTests.swift",
+                "PresentationStateTests/GraphicAnnotationTests.swift",
+                "PresentationStateTests/ICCProfileAdvancedTests.swift",
+                "PresentationStateTests/ICCProfileParserTests.swift",
+                "PresentationStateTests/LUTColorTransformTests.swift",
+                "PresentationStateTests/LUTTransformationTests.swift",
+                "PresentationStateTests/PresentationStateTests.swift",
+                "PresentationStateTests/PseudoColorPresentationStateTests.swift",
+                "PresentationStateTests/SpatialTransformationTests.swift",
                 // DICOM_TAG_AUDIT_FINDINGS.md: parsers rebuilt from numeric PS3.6
                 // tags, so a wrong Tag constant cannot round-trip through itself.
                 "TagAuditRegressionTests.swift",
