@@ -40,9 +40,28 @@ public struct WindowSettings: Sendable, Equatable, Codable {
         function: VOILUTFunction = .linear
     ) {
         self.center = center
-        self.width = max(1.0, width) // Width must be >= 1
+        self.width = Self.admissibleWidth(width, for: function)
         self.explanation = explanation
         self.function = function
+    }
+
+    /// The width a window of this function is applied with.
+    ///
+    /// PS3.3 C.11.2.1.2.1: for LINEAR, "Window Width (0028,1051) shall always be
+    /// greater than or equal to 1", so smaller widths are raised to 1. C.11.2.1.3.1
+    /// (SIGMOID) and C.11.2.1.3.2 (LINEAR_EXACT) only require "greater than 0", so a
+    /// width such as 0.25 is kept (D64). A width the standard forbids for every
+    /// function (zero, negative, NaN) is applied as 1.
+    ///
+    /// NEMA-verified: 2026a, checked 2026-09-30 — the three width rules match PS3.3 2026a
+    /// C.11.2.1.2.1, C.11.2.1.3.1 and C.11.2.1.3.2 (Scripts/diff_renderkit.py, D64).
+    public static func admissibleWidth(_ width: Double, for function: VOILUTFunction) -> Double {
+        switch function {
+        case .linear:
+            return width >= 1.0 ? width : 1.0
+        case .linearExact, .sigmoid:
+            return width > 0 && width.isFinite ? width : 1.0
+        }
     }
     
     /// The minimum input value that maps to minimum output
