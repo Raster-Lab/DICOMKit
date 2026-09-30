@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — DICOMCore and DICOMKit deferred findings closed (2026-09-29/30)
 
-Rows D26, D31–D35, D37, D38, D45–D52, D54 and D55 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`,
+Rows D26, D31–D35, D37, D38, D45–D55, D57 and D59 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`,
 each checked against the 2026a clause named there. Full `swift test` exits 0 as of the D38 closure;
-D45–D52, D54 and D55 were checked with the affected suites only.
+D45–D55, D57 and D59 were checked with the affected suites only.
 
 - **Colon CAD SR** (Table A.35.10-2, D26): WAVEFORM is an allowed value type; TCOORD is not.
 - **RT Tag constants** (PS3.6, D35): `Tag` constants for DVH Volume Units (3004,0054),
@@ -102,6 +102,19 @@ D45–D52, D54 and D55 were checked with the affected suites only.
   value the container does not expose is "not checked". (003A,0300) gets one Item per track
   (MONO/STEREO) when the caller names the CID 3000 source (`VideoWorkflow.Metadata.audioChannelSource`)
   and every track is mono or stereo; `VideoParser` reads the Items back. Additive API only.
+- **VOI LUT output range** (PS3.3 C.11.2.1.1, D53). **Behaviour change:** `GrayscaleLUT.normalized(_:)`
+  now divides by 2^n − 1 (n = third LUT Descriptor value, "The output range is from 0 to 2^n-1"), so a
+  16-bit table whose entries stop at 4095 peaks at 4095/65535 and a flat table gives entry / (2^n − 1)
+  instead of 0. The previous used-range scaling is the opt-in `normalized(_:normalizeToUsedRange: true)`;
+  `ImagePreprocessor.prepareForPrint` passes it, so print output is unchanged.
+- **E-AC-3 audio** (PS3.5 8.2.12, D59): 8.2.12 cites ETSI TS 102 366 for AC-3, which the PS3.5
+  bibliography titles "Audio Compression (AC-3, Enhanced AC-3) Standard", so E-AC-3 is no longer
+  reported as a format 8.2.12 does not permit; it is checked against the AC-3 limits (640 kbps, 48 kHz,
+  16 bits, 2 or 5.1 channels, MPEG-2 TS only). **Behaviour change:** fewer warnings for E-AC-3 within them.
+- **Audio Channel Source** (PS3.16 CID 3000 Extensible, PS3.3 Table C.7-13 DCID 3000; D57):
+  `VideoAudioChannel.Source` is a struct wrapping any `CodedConcept`, with constants for the six CID 3000
+  codes. **Behaviour change:** `VideoParser` keeps an Item with a code outside CID 3000 instead of
+  dropping it, and `VideoBuilder` writes it back. (The type was added on this branch and never released.)
 
 New findings D44–D60 are recorded in the report (P-MGC, the API decision opened with them, is implemented above).
 
