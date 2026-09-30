@@ -540,8 +540,10 @@ the bytes to encapsulation unchanged wherever possible.
   Audio Layer II in MP4, and those plus LPCM and AC-3 in MPEG-2 TS. DICOMKit keeps the
   audio in the bit stream unchanged and checks each track against those constraints
   (`VideoConformanceValidator.validateAudio`, D46): a violation is a **warning**, never a
-  rejection or a re-encode — see the resolved open question below. What the container does
-  not expose is reported as "not checked" (D58).
+  rejection or a re-encode — see the resolved open question below. MP3 frame headers are
+  walked for the CBR rule, and LATM/raw MPEG-4 audio in MPEG-TS is identified (D58); bits per
+  sample of compressed audio is stated as not in the bit stream, and what remains unknown
+  (e.g. MP3 complementary channels) is reported as "not checked".
 
 ### 4.2 Parameter-set access for validation
 
@@ -1049,11 +1051,12 @@ separate series.
   reads each track's format, sampling frequency, channels, bits per sample and bit rate
   (MP4 and MPEG-TS) and checks them against 8.2.5/8.2.12; it **warns, doesn't fail**
   (`VideoConsole.audioCheckLines`), e.g.
-  `warning: audio track 1 (AAC, 44.1 kHz, 2 channels, 16-bit, max 192 kbit/s): sampling frequency 44.1 kHz is not permitted for AAC; PS3.5 8.2.12 allows 48 kHz; the audio is kept unchanged.`
+  `warning: audio track 1 (AAC, 44.1 kHz, 2 channels, max 192 kbit/s): sampling frequency 44.1 kHz is not permitted for AAC; PS3.5 8.2.12 allows 48 kHz; the audio is kept unchanged.`
   When no track's format can be identified the earlier `VideoConsole.audioCarriedLine`
   text is used. (003A,0300) gets Items only when the Channel Source (CID 3000) is named
   through the library (`VideoWorkflow.Metadata.audioChannelSource`; no CLI option, D56);
-  `VideoParser` reads them back.
+  `VideoParser` reads them back, together with the Cine attributes `VideoBuilder` writes
+  (Frame Time Vector, Preferred Playback Sequencing, Image Trigger Delay, Effective Duration; D60).
 - **`ImageType` value** (F5) — `ORIGINAL\PRIMARY` is the safe default for
   camera-captured video. Confirm whether any workflow needs `DERIVED`.
 

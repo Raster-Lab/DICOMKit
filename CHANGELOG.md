@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — DICOMCore and DICOMKit deferred findings closed (2026-09-29/30)
 
-Rows D26, D31–D35, D37, D38, D45–D55, D57 and D59 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`,
+Rows D26, D31–D35, D37, D38, D45–D55 and D57–D60 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`,
 each checked against the 2026a clause named there. Full `swift test` exits 0 as of the D38 closure;
-D45–D55, D57 and D59 were checked with the affected suites only.
+D45–D55 and D57–D60 were checked with the affected suites only.
 
 - **Colon CAD SR** (Table A.35.10-2, D26): WAVEFORM is an allowed value type; TCOORD is not.
 - **RT Tag constants** (PS3.6, D35): `Tag` constants for DVH Volume Units (3004,0054),
@@ -115,8 +115,20 @@ D45–D55, D57 and D59 were checked with the affected suites only.
   `VideoAudioChannel.Source` is a struct wrapping any `CodedConcept`, with constants for the six CID 3000
   codes. **Behaviour change:** `VideoParser` keeps an Item with a code outside CID 3000 instead of
   dropping it, and `VideoBuilder` writes it back. (The type was added on this branch and never released.)
+- **Cine attributes read back** (PS3.3 Table C.7-13, D60): `VideoParser` now reads Frame Time Vector,
+  Preferred Playback Sequencing, Image Trigger Delay and Effective Duration, which `VideoBuilder` writes,
+  so a parse and rewrite no longer drops them. No API change.
+- **MP3 CBR, LATM AAC and remaining audio checks** (PS3.5 8.2.5, 8.2.12; D58): the probe walks every MP3
+  frame header (MP4 sample table or MPEG-TS PES payloads, first 2,000 frames) and reports a stream whose
+  frames differ in bit rate, or that opens with a Xing/VBRI header, as not "CBR MPEG-1 LAYER III".
+  MPEG-TS LATM audio (stream_type 0x11) and raw MPEG-4 audio with an MPEG-4_audio_extension_descriptor
+  (0x1C) are identified from their AudioSpecificConfig. Bits per sample of AAC, AC-3, MP3 and MP2 is
+  stated as not in the coded stream instead of "not checked"; MP3 complementary channels (ISO/IEC 13818-3
+  multichannel extension) remain "not checked", with the reason. **Behaviour change:** an MP4 AAC/AC-3/MP3
+  track no longer reports the sample entry's template samplesize (16) as its bit depth. Additive API:
+  `VideoAudioTrack.bitRateScan`, `VideoAudioCheckNote`, `VideoAudioTrackCheck.notes`.
 
-New findings D44–D60 are recorded in the report (P-MGC, the API decision opened with them, is implemented above).
+New findings D44–D62 are recorded in the report (P-MGC, the API decision opened with them, is implemented above).
 
 ### Fixed — DICOMPrintKit verified against DICOM 2026a (2026-09-29)
 
