@@ -21,8 +21,36 @@ See `DICOMRENDERKIT_STANDARD_IMPLEMENTATION.md`. No public API change.
 - New `Scripts/diff_renderkit.py`: evaluates the VOI functions, identity window, Modality-before-VOI
   order, sample assembly, planar layouts, YBR inverses, palette lookup and the eight PS3.6 Annex B
   palettes against the 2026a DocBook, and checks Metal/CPU parity.
-- Open: P-PIPELINE (Modality LUT, VOI LUT Sequence, Presentation LUT in the request) and P-ICC
-  (ICC Profile) await the owner; D63–D67 (DICOMCore, DICOMKit, DICOMStudio) are recorded.
+
+Approval pass, same day (owner: "complete all D63–D67 next, and P-PIPELINE / P-ICC as per the
+recommendation"). Additive API only.
+
+- **PS3.4 N.2 grayscale chain (P-PIPELINE):** new DICOMKit `GrayscaleDisplayPipeline` (Modality LUT
+  → VOI window or LUT → Presentation LUT), shared by `PresentationStateApplicator`, the exporter and
+  both DICOMRenderKit backends. `FrameRenderRequest` gains `modalityLUT`, `voiLUT`, `presentationLUT`
+  (defaulted; with any of them `window` is in modality units; MONOCHROME1 is INVERSE unless a
+  Presentation LUT is given). 1- and 2-byte cells render through the chain's table on either backend.
+- **Export applies the window after the rescale (D65, PS3.3 C.11.2.1.2.1):**
+  `DICOMImageExporter.determineDisplayPipeline` (Modality LUT Sequence or this frame's rescale; window
+  in modality units, else the VOI LUT Sequence, else the frame's range); `renderFrameForExport` uses
+  it for monochrome frames. Exports of images with a slope other than 1 (and negative slopes, which
+  rendered inverted), a Modality LUT Sequence or only a VOI LUT Sequence change.
+  `determineWindowSettings` is unchanged and documented as stored units (DICOMStudio's viewer, D68).
+- **ICC Profile (P-ICC, C.11.15.1.1):** `FrameRenderRequest.iccProfile`; colour output of both
+  backends and `DisplayFrameTexture.colorSpace` carry the profile's colour space; `MetalImageView`
+  sets it on the view (macOS).
+- **Display byte (D63):** `WindowLUT.displayByte` floors `y · 255` with a 1e-9 tolerance, so the
+  C.11.2.1.2.1 identity window is exact (32 of 256 8-bit values were one level dark); used by
+  `WindowLUT`, `SIMDImageProcessor` and the applicator.
+- **Window Width (D64):** the minimum of 1 applies to LINEAR only; SIGMOID and LINEAR_EXACT keep
+  widths above 0 (`WindowSettings.admissibleWidth`).
+- **Full-range windows (D66):** the auto window (renderer, exporter, print preparer) and the window
+  written after a pixel-edit bake select x1…x2 with centre (x1+x2+1)/2, width x2−x1+1; a flat frame
+  is the unit-width threshold (black, was white); the exporter's fallback is the 16-bit identity.
+- **32-bit Pixel Cells (D67, PS3.5 8.1.1):** read whole by every `PixelDataRenderer` path, the
+  applicator and the print preparer (`PixelDataDescriptor.cellValue(in:at:)`,
+  `storedValue(fromCell:)`); monochrome evaluated per pixel through the chain.
+- Open: D65's DICOMStudio half and D68 (DICOMStudio passing the chain and the ICC Profile).
 
 ### Fixed — DICOMCore and DICOMKit deferred findings closed (2026-09-29/30)
 
