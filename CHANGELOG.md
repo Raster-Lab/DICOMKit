@@ -20,6 +20,19 @@ Rows D26, D31–D35, D37 and D38 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`, each 
   The serializer and parser nest a Content Sequence under any value type, and the Mammography CAD,
   Chest CAD and TID 1500 builders nest children under their template parent (TID 1204, 1501,
   4000–4021, 4100–4107). The extractors still read the sibling layout of earlier versions.
+- **Measurement group children** (PS3.16 TID 1501, 300, 301, 320; P-MGC, closes the rest of D31).
+  **Source-breaking:** `MeasurementGroupContent` gains three cases, so a `switch` over it without
+  `default` no longer compiles until they are handled. `.measurementWithContent(conceptName:value:units:content:)`
+  writes a TID 300 NUM with its TID 301 children (modifiers, Measurement Method, Derivation, Finding
+  Sites with Laterality and Topographical modifier, and TID 320 INFERRED FROM IMAGE / SCOORD with its
+  SELECTED FROM IMAGE / SCOORD3D) in the NUM's Content Sequence; `.spatialCoordinatesOnImage(...)`
+  writes TID 1501 row 10d (SELECTED FROM IMAGE) under the SCOORD;
+  `.qualitativeEvaluationWithModifiers(...)` writes row 11b under the CODE. New types
+  `MeasurementContent`, `MeasurementSource`, `MeasurementFindingSite`, `MeasurementConceptModifier`;
+  `MeasurementGroupData.topographicalModifier` (row 8); `MeasurementGroupContentHelper.coordinates(graphicType:graphicData:sourceImage:)`.
+  `MeasurementGroupContent` is now `Equatable`. `MeasurementReport` reads the group back into
+  `ExtractedMeasurementGroup.contents`, `.laterality` and `.topographicalModifier`. The existing
+  cases are unchanged; `.spatialCoordinates` still writes a SCOORD without row 10d (M).
 - **Hanging Protocol nesting** (Tables C.23.1-1, C.23.2-1, C.23.3-1, D32): Image Set attributes in
   Time Based Image Sets items; Filter Operations, Sorting Operations, Reformatting, 3D Rendering and
   Blending Operation Type in Display Sets items; Synchronized Scrolling and Navigation Indicator

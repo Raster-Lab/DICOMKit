@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-29 — reads the content tree per PS3.16 2026a Tables TID 1500, TID 1204, TID 1600/1601/1602, TID 1501 (rows 2, 3, 3b, 6, 11) and tolerates the pre-2026-09-29 flat placements (images directly under Image Library, Country of Language beside the language item); reads TID 1204 row 2 nested under row 1 per PS3.3 Table C.17-6 (D31), and TID 1501 row 7 is not taken for an evaluation nested or beside the Finding Site; concept codes per Table D-1
+// NEMA-verified: 2026a, checked 2026-09-30 — P-MGC: reads TID 1501 rows 7-8 under the Finding Site, rows 10-12 with their nested rows (10d, 11b) and TID 300 row 1b → TID 301 rows 2-7 and 13 → TID 320 rows 1, 3-4 and 6 under a NUM into `ExtractedMeasurementGroup.contents`; rows, relationships, value types and concept codes compared by script against the PS3.16 2026a DocBook tables TID 1501, 300, 301 and 320
 /// Measurement Report Extraction API
 ///
 /// Provides high-level extraction of TID 1500 Measurement Report data from SR documents.
@@ -191,8 +192,11 @@ public struct MeasurementReport: Sendable, Equatable {
         var trackingUID: String?
         var findingType: CodedConcept?
         var findingSite: CodedConcept?
+        var laterality: CodedConcept?
+        var topographicalModifier: CodedConcept?
         var measurements: [Measurement] = []
         var qualitativeEvaluations: [CodedConcept] = []
+        var contents: [MeasurementGroupContent] = []
         
         for item in container.contentItems {
             // TID 1501 row 2: HAS OBS CONTEXT TEXT (112039, DCM, "Tracking Identifier")
@@ -213,10 +217,20 @@ public struct MeasurementReport: Sendable, Equatable {
                 findingType = codeItem.conceptCode
             }
 
-            // TID 1501 row 6: HAS CONCEPT MOD CODE (363698007, SCT, "Finding Site")
+            // TID 1501 row 6: HAS CONCEPT MOD CODE (363698007, SCT, "Finding Site"), with rows 7
+            // (Laterality) and 8 (Topographical modifier) in its Content Sequence
             else if let codeItem = item.asCode,
                     codeItem.conceptName?.codeValue == "363698007" {
                 findingSite = codeItem.conceptCode
+                let site = Self.findingSite(from: codeItem)
+                laterality = laterality ?? site.laterality
+                topographicalModifier = topographicalModifier ?? site.topographicalModifier
+            }
+
+            // TID 1501 row 7 written beside the Finding Site (the layout before 2026-09-29, D31)
+            else if let codeItem = item.asCode, codeItem.relationshipType == .hasConceptMod,
+                    codeItem.conceptName?.codeValue == "272741003" {
+                laterality = laterality ?? codeItem.conceptCode
             }
 
             // TID 1501 row 10 → TID 300 row 1: NUM measurements
@@ -232,6 +246,11 @@ public struct MeasurementReport: Sendable, Equatable {
                     codeItem.relationshipType != .hasConceptMod {
                 qualitativeEvaluations.append(codeItem.conceptCode)
             }
+
+            // TID 1501 rows 10-12, as the builder's `MeasurementGroupContent`
+            if let content = Self.groupContent(from: item) {
+                contents.append(content)
+            }
         }
         
         guard let trackingID = trackingIdentifier else {
@@ -243,9 +262,142 @@ public struct MeasurementReport: Sendable, Equatable {
             trackingUID: trackingUID,
             findingType: findingType,
             findingSite: findingSite,
+            laterality: laterality,
+            topographicalModifier: topographicalModifier,
             measurements: measurements,
-            qualitativeEvaluations: qualitativeEvaluations
+            qualitativeEvaluations: qualitativeEvaluations,
+            contents: contents
         )
+    }
+
+    // MARK: TID 1501 rows 10-12 and their nested rows (P-MGC)
+
+    /// Reads one item of a Measurement Group as the `MeasurementGroupContent` case that writes
+    /// it, or nil for the group's other rows (1b-9d) and for items no case describes.
+    /// A NUM without children reads as `.measurement` (or `.measurements` when it has several
+    /// values), even if it was built as `.measurementWithContent` with empty content.
+    static func groupContent(from item: AnyContentItem) -> MeasurementGroupContent? {
+        switch item.valueType {
+        case .num:
+            // TID 1501 row 10 → TID 300 row 1 (NUM), row 1b → TID 301 in its Content Sequence
+            guard item.relationshipType == .contains, let num = item.asNumeric else { return nil }
+            if !num.contentItems.isEmpty, num.numericValues.count == 1,
+               let conceptName = num.conceptName, let units = num.measurementUnits {
+                return .measurementWithContent(conceptName: conceptName, value: num.numericValues[0],
+                                               units: units, content: measurementContent(from: num.contentItems))
+            }
+            if num.numericValues.count == 1 {
+                return .measurement(conceptName: num.conceptName, value: num.numericValues[0], units: num.measurementUnits)
+            }
+            return .measurements(conceptName: num.conceptName, values: num.numericValues, units: num.measurementUnits)
+
+        case .code:
+            // TID 1501 row 11 (CODE) with row 11b (HAS CONCEPT MOD CODE) in its Content Sequence.
+            // Rows 3a (276214006, SCT) and 3b (121071, DCM) are CONTAINS CODE too but are not
+            // evaluations.
+            guard item.relationshipType == .contains, let code = item.asCode,
+                  !["276214006", "121071"].contains(code.conceptName?.codeValue ?? "") else { return nil }
+            let modifiers = code.contentItems.compactMap(conceptModifier(from:))
+            if let conceptName = code.conceptName, !modifiers.isEmpty {
+                return .qualitativeEvaluationWithModifiers(conceptName: conceptName, value: code.conceptCode,
+                                                           modifiers: modifiers)
+            }
+            return .qualitativeEvaluation(conceptName: code.conceptName, value: code.conceptCode)
+
+        case .image:
+            // TID 1501 row 10b (CONTAINS IMAGE). INFERRED FROM is the layout before 2026-09-29.
+            // Rows 9c (121200, DCM) and 9d (130401, DCM) are CONTAINS IMAGE with their own concept.
+            guard item.relationshipType == .contains || item.relationshipType == .inferredFrom,
+                  let image = item.asImage,
+                  !["121200", "130401"].contains(image.conceptName?.codeValue ?? "") else { return nil }
+            let reference = image.imageReference
+            return .imageReference(sopClassUID: reference.sopReference.sopClassUID,
+                                   sopInstanceUID: reference.sopReference.sopInstanceUID,
+                                   frameNumbers: reference.frameNumbers)
+
+        case .scoord:
+            // TID 1501 row 10c (SCOORD) with row 10d (SELECTED FROM IMAGE) in its Content Sequence
+            guard item.relationshipType == .contains, let scoord = item.asSpatialCoordinates else { return nil }
+            if let source = selectedFromImage(scoord.contentItems) {
+                return .spatialCoordinatesOnImage(conceptName: scoord.conceptName, graphicType: scoord.graphicType,
+                                                  graphicData: scoord.graphicData, sourceImage: source)
+            }
+            return .spatialCoordinates(conceptName: scoord.conceptName, graphicType: scoord.graphicType,
+                                       graphicData: scoord.graphicData)
+
+        case .scoord3D:
+            // TID 1501 row 10e (SCOORD3D)
+            guard item.relationshipType == .contains, let scoord = item.asSpatialCoordinates3D else { return nil }
+            return .spatialCoordinates3D(conceptName: scoord.conceptName, graphicType: scoord.graphicType,
+                                         graphicData: scoord.graphicData,
+                                         frameOfReferenceUID: scoord.frameOfReferenceUID ?? "")
+
+        case .text:
+            // TID 1501 row 12 (CONTAINS TEXT); rows 1b and 2 are HAS OBS CONTEXT
+            guard item.relationshipType == .contains, let text = item.asText else { return nil }
+            return .text(conceptName: text.conceptName, value: text.textValue)
+
+        default:
+            return nil
+        }
+    }
+
+    /// TID 301 rows 2-7 and 13 (→ TID 320 rows 1, 3-4, 6) from a NUM's Content Sequence.
+    /// Other rows are not read.
+    static func measurementContent(from children: [AnyContentItem]) -> MeasurementContent {
+        var content = MeasurementContent()
+        for child in children {
+            if let code = child.asCode, child.relationshipType == .hasConceptMod {
+                switch code.conceptName?.codeValue {
+                case "370129005" where content.method == nil:                 // row 3
+                    content.method = code.conceptCode
+                case "121401" where content.derivation == nil:                // row 4
+                    content.derivation = code.conceptCode
+                case "363698007":                                             // rows 5-7
+                    content.findingSites.append(findingSite(from: code))
+                case "370129005", "121401":
+                    break
+                default:                                                      // row 2
+                    if let modifier = conceptModifier(from: child) { content.modifiers.append(modifier) }
+                }
+            } else if child.relationshipType == .inferredFrom {                // row 13 → TID 320
+                if let image = child.asImage {                                // row 1
+                    content.sources.append(.image(purpose: image.conceptName, image: image.imageReference))
+                } else if let scoord = child.asSpatialCoordinates,           // rows 3-4
+                          let source = selectedFromImage(scoord.contentItems) {
+                    content.sources.append(.spatialCoordinates(purpose: scoord.conceptName, graphicType: scoord.graphicType,
+                                                               graphicData: scoord.graphicData, sourceImage: source))
+                } else if let scoord = child.asSpatialCoordinates3D {         // row 6
+                    content.sources.append(.spatialCoordinates3D(purpose: scoord.conceptName, graphicType: scoord.graphicType,
+                                                                 graphicData: scoord.graphicData,
+                                                                 frameOfReferenceUID: scoord.frameOfReferenceUID ?? ""))
+                }
+            }
+        }
+        return content
+    }
+
+    /// A Finding Site CODE with its Laterality (272741003, SCT) and Topographical modifier
+    /// (106233006, SCT) children: TID 1501 rows 6-8, TID 301 rows 5-7
+    static func findingSite(from code: CodeContentItem) -> MeasurementFindingSite {
+        let children = code.contentItems.compactMap { $0.asCode }.filter { $0.relationshipType == .hasConceptMod }
+        return MeasurementFindingSite(
+            site: code.conceptCode,
+            laterality: children.first { $0.conceptName?.codeValue == "272741003" }?.conceptCode,
+            topographicalModifier: children.first { $0.conceptName?.codeValue == "106233006" }?.conceptCode
+        )
+    }
+
+    /// A HAS CONCEPT MOD CODE with a concept name: TID 301 row 2, TID 1501 row 11b
+    static func conceptModifier(from item: AnyContentItem) -> MeasurementConceptModifier? {
+        guard item.relationshipType == .hasConceptMod, let code = item.asCode,
+              let conceptName = code.conceptName else { return nil }
+        return MeasurementConceptModifier(conceptName: conceptName, value: code.conceptCode)
+    }
+
+    /// The image of a SELECTED FROM IMAGE child: TID 1501 row 10d, TID 320 row 4
+    static func selectedFromImage(_ children: [AnyContentItem]) -> ImageReference? {
+        children.first { $0.relationshipType == .selectedFrom && $0.valueType == .image }?.asImage?.imageReference
     }
     
     private static func extractQualitativeEvaluations(from container: ContainerContentItem) -> [CodedConcept] {
@@ -287,12 +439,23 @@ public struct ExtractedMeasurementGroup: Sendable, Equatable {
     
     /// Anatomical site of the finding
     public let findingSite: CodedConcept?
+
+    /// Laterality of the finding site: TID 1501 row 7
+    public let laterality: CodedConcept?
+
+    /// Topographical modifier of the finding site: TID 1501 row 8
+    public let topographicalModifier: CodedConcept?
     
     /// Numeric measurements in this group
     public let measurements: [Measurement]
     
     /// Qualitative evaluations (coded concepts)
     public let qualitativeEvaluations: [CodedConcept]
+
+    /// The group's TID 1501 rows 10-12, with the rows nested under them (10d, 11b, and TID 300
+    /// row 1b → TID 301 → TID 320 under a NUM), read as the `MeasurementGroupContent` that
+    /// `MeasurementReportBuilder` writes them from, in document order
+    public let contents: [MeasurementGroupContent]
     
     /// Creates a measurement group
     public init(
@@ -300,15 +463,21 @@ public struct ExtractedMeasurementGroup: Sendable, Equatable {
         trackingUID: String? = nil,
         findingType: CodedConcept? = nil,
         findingSite: CodedConcept? = nil,
+        laterality: CodedConcept? = nil,
+        topographicalModifier: CodedConcept? = nil,
         measurements: [Measurement] = [],
-        qualitativeEvaluations: [CodedConcept] = []
+        qualitativeEvaluations: [CodedConcept] = [],
+        contents: [MeasurementGroupContent] = []
     ) {
         self.trackingIdentifier = trackingIdentifier
         self.trackingUID = trackingUID
         self.findingType = findingType
         self.findingSite = findingSite
+        self.laterality = laterality
+        self.topographicalModifier = topographicalModifier
         self.measurements = measurements
         self.qualitativeEvaluations = qualitativeEvaluations
+        self.contents = contents
     }
 }
 

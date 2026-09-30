@@ -531,6 +531,7 @@ let package = Package(
                 "StructuredReporting/KeyObjectSelectionBuilderTests.swift",
                 "StructuredReporting/MammographyCADSRBuilderTests.swift",
                 "StructuredReporting/MeasurementExtractorTests.swift",
+                "StructuredReporting/MeasurementGroupChildrenTests.swift",
                 "StructuredReporting/MeasurementReportBuilderTests.swift",
                 "StructuredReporting/MeasurementReportExtractorTests.swift",
                 "StructuredReporting/SRDocumentBuilderTests.swift",
