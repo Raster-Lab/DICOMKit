@@ -207,13 +207,26 @@ final class ExportRoundTripTests: XCTestCase {
         XCTAssertEqual(range.min, 0)
         XCTAssertEqual(range.max, 15)
 
-        // No stored window in makeGrayscale8, no explicit -> center = (min+max)/2, width = max-min.
+        // No stored window in makeGrayscale8, no explicit -> the full input range x1…x2 of
+        // PS3.3 C.11.2.1.2.1: center = (x1+x2+1)/2, width = x2-x1+1 (D66).
         XCTAssertNil(file.windowSettings())
         let ws = DICOMImageExporter.determineWindowSettings(
             from: file, pixelData: pd, frameIndex: 0, windowCenter: nil, windowWidth: nil)
-        XCTAssertEqual(ws.center, Double(range.min + range.max) / 2.0, accuracy: 1e-9)
-        XCTAssertEqual(ws.width, Double(range.max - range.min), accuracy: 1e-9)
+        XCTAssertEqual(ws.center, Double(range.min + range.max + 1) / 2.0, accuracy: 1e-9)
+        XCTAssertEqual(ws.width, Double(range.max - range.min + 1), accuracy: 1e-9)
     }
+
+    #if canImport(CoreGraphics)
+    /// D66: the auto window selects exactly x1…x2 — x1 black, x2 white and every value
+    /// between on the ramp, here x · 255 / 15 = 17x (no value below x2 saturates).
+    func testAutoWindowSpansTheFullInputRange() throws {
+        let file = makeGrayscale8(rows: 4, cols: 4, fillPattern: { UInt8($0) }) // values 0..15
+        let pd = try XCTUnwrap(file.pixelData())
+        let image = try XCTUnwrap(PixelDataRenderer(pixelData: pd).renderFrame(0))
+        let bytes = [UInt8](try XCTUnwrap(image.dataProvider?.data as Data?))
+        XCTAssertEqual(bytes, (0..<16).map { UInt8($0 * 17) })
+    }
+    #endif
 
     #if canImport(CoreGraphics) && canImport(ImageIO)
 

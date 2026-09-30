@@ -272,14 +272,16 @@ public enum DICOMImageExporter {
             ?? file.windowSettings(frameIndex: frameIndex) {
             return toStored(center: windowFromFile.center, width: windowFromFile.width)
         }
+        // The frame's full input range x1…x2 (PS3.3 C.11.2.1.2.1: centre
+        // (x1+x2+1)/2, width x2-x1+1), else the mathematical identity for 16-bit
+        // unsigned values (centre 2^15, width 2^16) (D66).
         if let range = pixelData.pixelRange(forFrame: frameIndex) {
-            let center = Double(range.min + range.max) / 2.0
-            let width = Double(range.max - range.min)
-            return WindowSettings(center: center, width: max(1.0, width))
+            return WindowSettings(center: Double(range.min + range.max + 1) / 2.0,
+                                  width: Double(range.max - range.min + 1))
         }
         let assumedBitDepth = 16
-        let maxPixelValue = (1 << assumedBitDepth) - 1
-        return WindowSettings(center: Double(maxPixelValue) / 2.0, width: max(1.0, Double(maxPixelValue)))
+        return WindowSettings(center: Double(1 << (assumedBitDepth - 1)),
+                              width: Double(1 << assumedBitDepth))
     }
 
     // MARK: - Frame rendering

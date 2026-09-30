@@ -305,16 +305,17 @@ final class PixelEditorTests: XCTestCase {
         let (outBytes, _) = try PixelEditor(verbose: false)
             .processData(bytes, operations: [.windowLevel(center: 500, width: 800)])
         let win = try XCTUnwrap(try DICOMFile.read(from: outBytes).windowSettings())
-        // Full range for bitsStored 12: stored center 2047.5 → HU 2047.5 − 1024 ≈ 1023.5; width 4095.
-        XCTAssertEqual(win.center, 1023.5, accuracy: 1.0)
-        XCTAssertEqual(win.width, 4095.0, accuracy: 1.0)
+        // Full range for bitsStored 12 (PS3.3 C.11.2.1.2.1, D66): stored center 2048 → HU 1024; width 4096.
+        XCTAssertEqual(win.center, 1024, accuracy: 1e-9)
+        XCTAssertEqual(win.width, 4096.0, accuracy: 1e-9)
     }
 
     /// Baking on SIGNED data must use the signed stored range [−2^(b−1), 2^(b−1)−1], not the
     /// unsigned [0, 2^b−1]. Otherwise the reset window is twice the range the baked (signed-
     /// clamped) pixels actually occupy and the image renders ~2× too dark.
     func testWindowLevelBakeUsesSignedRange() throws {
-        // signed 16-bit, no rescale. Stored range [−32768, 32767] → center −0.5, width 65535.
+        // signed 16-bit, no rescale. Stored range [−32768, 32767] → the full-range window of
+        // PS3.3 C.11.2.1.2.1, center (x1+x2+1)/2 = 0, width x2−x1+1 = 65536 (D66).
         // Inputs −1280…+1240 straddle the [−1000,+1000] window, so the extremes bake to the
         // signed range extremes (below window → −32768, above window → +32767).
         let bytes = try makeWindowed(signed: true, windowCenter: "0", windowWidth: "2000",
@@ -323,8 +324,8 @@ final class PixelEditorTests: XCTestCase {
             .processData(bytes, operations: [.windowLevel(center: 0, width: 2000)])
         let out = try DICOMFile.read(from: outBytes)
         let win = try XCTUnwrap(out.windowSettings())
-        XCTAssertEqual(win.center, -0.5, accuracy: 0.5, "signed full-range center is (−32768+32767)/2")
-        XCTAssertEqual(win.width, 65535.0, accuracy: 0.5, "signed full-range width spans 2^16−1")
+        XCTAssertEqual(win.center, 0, accuracy: 1e-9, "signed full-range center is (−32768+32767+1)/2")
+        XCTAssertEqual(win.width, 65536.0, accuracy: 1e-9, "signed full-range width is 32767−(−32768)+1")
 
         // Pixels outside the window must bake to the signed range extremes, not clamp from 65535.
         let px = try out.tryPixelData().data

@@ -55,9 +55,11 @@ public struct PixelDataRenderer: Sendable {
                 return nil
             }
             
-            let center = Double(range.min + range.max) / 2.0
-            let width = Double(range.max - range.min)
-            let window = WindowSettings(center: center, width: max(1.0, width))
+            // The full input range x1…x2: PS3.3 C.11.2.1.2.1, "a Window Center of
+            // (x1+x2+1)/2 and a Window Width of (x2-x1+1) selects the range of input
+            // values from x1 to x2" (D66).
+            let window = WindowSettings(center: Double(range.min + range.max + 1) / 2.0,
+                                        width: Double(range.max - range.min + 1))
             
             return renderMonochromeFrame(frameIndex, window: window)
         } else if descriptor.photometricInterpretation.isPaletteColor {

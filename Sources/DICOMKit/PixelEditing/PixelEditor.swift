@@ -436,14 +436,15 @@ public struct PixelEditor {
     /// Replaces the VOI window after a window/level bake, which has already flattened the
     /// chosen window across the full representable stored range (`[0, maxValue]` unsigned,
     /// `[−2^(b−1), 2^(b−1)−1]` signed). A viewer honouring the pre-bake window would re-clip
-    /// the result, so set the stored window to that same full range (stored center
-    /// `(storedMin+storedMax)/2`, width `storedMax−storedMin`, rescaled to output units) —
-    /// exactly the baked contrast. Any per-window explanation no longer applies and is dropped.
+    /// the result, so set the stored window to that same full range — PS3.3 C.11.2.1.2.1's
+    /// window over x1…x2, stored center `(storedMin+storedMax+1)/2`, width
+    /// `storedMax−storedMin+1` (D66), rescaled to output units — exactly the baked
+    /// contrast. Any per-window explanation no longer applies and is dropped.
     private func resetVOIWindowAfterBake(in dataSet: inout DataSet, descriptor: PixelEditDescriptor) {
         let slope = dataSet.rescaleSlope()
         let intercept = dataSet.rescaleIntercept()
-        let storedCenter = Double(descriptor.storedMin + descriptor.storedMax) / 2.0
-        let storedWidth = Swift.max(1.0, Double(descriptor.storedMax - descriptor.storedMin))
+        let storedCenter = Double(descriptor.storedMin + descriptor.storedMax + 1) / 2.0
+        let storedWidth = Double(descriptor.storedMax - descriptor.storedMin + 1)
         let center = slope * storedCenter + intercept
         let width = Swift.max(1.0, abs(slope) * storedWidth)
         dataSet.setString(formatDS(center), for: .windowCenter, vr: .DS)
