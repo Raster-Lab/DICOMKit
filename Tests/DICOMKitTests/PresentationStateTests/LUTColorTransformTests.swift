@@ -67,14 +67,28 @@ final class LUTColorTransformTests: XCTestCase {
         XCTAssertEqual(lut.lookup(1.5), 0.8)
     }
 
-    func test_lut1d_outOfBounds_below() throws {
-        // LUT1D.lookup clamps only when Int(input * (n - 1)) < 0, but Int(_:)
-        // truncates toward zero, so any input in (-1/(n-1), 0) reaches the
-        // interpolation with index 0 and a negative fraction: lookup(-0.5) on
-        // [0.2, 0.8] returns -0.1, outside the table's range. ICC.1 curves clip
-        // their input to 0...1; this is not a PS3.3 requirement, so the library
-        // is left unchanged here and the defect reported as a new finding.
-        throw XCTSkip("New finding (D38 port): LUT1D.lookup extrapolates below the first entry for inputs in (-1/(n-1), 0); lookup(-0.5) on [0.2, 0.8] returns -0.1, not 0.2")
+    func test_lut1d_outOfBounds_below() {
+        // D48: inputs in (-1/(n-1), 0) used to truncate to index 0 and
+        // extrapolate below the first entry (lookup(-0.5) gave -0.1).
+        let lut = LUT1D(values: [0.2, 0.8])
+        XCTAssertEqual(lut.lookup(-0.5), 0.2)
+        XCTAssertEqual(lut.lookup(-0.0001), 0.2)
+        XCTAssertEqual(lut.lookup(-1.5), 0.2)
+        XCTAssertEqual(lut.lookup(0), 0.2)
+        let longer = LUT1D(values: [0.1, 0.4, 0.6, 0.9])
+        XCTAssertEqual(longer.lookup(-0.2), 0.1)
+    }
+
+    func test_lut1d_nonFiniteInputs() {
+        // Int(_:) traps on NaN and infinity; the clip keeps them in the table.
+        let lut = LUT1D(values: [0.2, 0.8])
+        XCTAssertEqual(lut.lookup(.nan), 0.2)
+        XCTAssertEqual(lut.lookup(-.infinity), 0.2)
+        XCTAssertEqual(lut.lookup(.infinity), 0.8)
+        XCTAssertEqual(lut.lookup(1e300), 0.8)
+        XCTAssertEqual(lut.lookup(-1e300), 0.2)
+        XCTAssertEqual(lut.lookup(1), 0.8)
+        XCTAssertEqual(lut.lookup(0.5), 0.5, accuracy: 1e-12)
     }
     
     func test_lut1d_emptyValues() {

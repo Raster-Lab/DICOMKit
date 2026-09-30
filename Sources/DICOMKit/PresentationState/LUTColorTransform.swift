@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (ICC lut8, lut16, mAB and mBA transforms)
+// NEMA-verified: 2026a, checked 2026-09-30 — carries no DICOM-standard data (ICC lut8, lut16, mAB and mBA transforms; LUT1D input clipping is ICC.1 behaviour, not a PS3.3 rule)
 //
 // LUTColorTransform.swift
 // DICOMKit
@@ -201,22 +201,30 @@ public struct LUT1D: Sendable, Hashable {
     
     /// Lookup value in the table with linear interpolation
     ///
+    /// The input is clipped to 0.0...1.0 before the lookup (ICC.1 curves clip their
+    /// input to the domain), so an input below 0 returns the first entry and an input
+    /// above 1 returns the last. A NaN input returns the first entry; ±infinity clips
+    /// like any other out-of-range value.
+    ///
     /// - Parameter input: Input value (0.0-1.0)
     /// - Returns: Interpolated output value (0.0-1.0)
     public func lookup(_ input: Double) -> Double {
         guard !values.isEmpty else { return input }
         guard values.count > 1 else { return values[0] }
         
+        // Clip before converting to an index: Int(_:) truncates toward zero, so an
+        // unclipped input in (-1/(n-1), 0) would reach index 0 with a negative
+        // fraction and extrapolate below the table; Int(_:) also traps on NaN and
+        // infinity.
+        guard !input.isNaN, input > 0 else { return values[0] }
+        guard input < 1 else { return values[values.count - 1] }
+        
         let scaledInput = input * Double(values.count - 1)
         let index = Int(scaledInput)
         let fraction = scaledInput - Double(index)
         
         if index >= values.count - 1 {
-            return values.last ?? input
-        }
-        
-        if index < 0 {
-            return values.first ?? input
+            return values[values.count - 1]
         }
         
         // Linear interpolation
