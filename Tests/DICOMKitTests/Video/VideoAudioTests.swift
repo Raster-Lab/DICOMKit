@@ -557,6 +557,40 @@ final class VideoAudioTests: XCTestCase {
              + "32 kHz, 44.1 kHz or 48 kHz for the main channel"])
     }
 
+    /// D59: PS3.5 2026a 8.2.12 "AC-3 is standardized in" ETSI TS 102 366, which the
+    /// PS3.5 bibliography titles "Audio Compression (AC-3, Enhanced AC-3)
+    /// Standard", so E-AC-3 is judged by the AC-3 row of Table 8.2.12-1.
+    func test_eac3_withinAC3Limits_isPermitted() {
+        let track = VideoAudioTrack(
+            format: .eac3, codecTag: "stream_type 0x87", pid: 0x101, samplingFrequency: 48000,
+            channelCount: 6, hasLFE: true, bitsPerSample: 16, maximumBitRate: 640_000)
+        let result = VideoConformanceValidator.validateAudio(
+            tracks: [track], container: .mpegTS, transferSyntax: .mpeg4AVCHP41)
+        XCTAssertEqual(result.violations.map(\.message), [])
+        XCTAssertTrue(result.hasNoKnownViolations)
+    }
+
+    func test_eac3_beyondAC3Limits_reportsEachViolation() {
+        let track = VideoAudioTrack(
+            format: .eac3, codecTag: "ec-3", samplingFrequency: 44100, channelCount: 8,
+            bitsPerSample: 24, maximumBitRate: 1_024_000)
+        let messages = VideoConformanceValidator.validateAudio(
+            tracks: [track], container: .mp4, transferSyntax: .hevcH265MainProfile).violations.map(\.message)
+        XCTAssertEqual(messages, [
+            "E-AC-3 is permitted only in an MPEG-2 TS container, not MP4 (PS3.5 Table 8.2.12-1)",
+            "bit rate 1024 kbit/s exceeds the PS3.5 8.2.12 maximum of 640 kbit/s for E-AC-3",
+            "sampling frequency 44.1 kHz is not permitted for E-AC-3; PS3.5 8.2.12 allows 48 kHz",
+            "24 bits per sample is not permitted for E-AC-3; PS3.5 8.2.12 allows 16 bits",
+            "8 channels is not permitted for E-AC-3; PS3.5 8.2.12 allows 2 or 5.1 channels",
+        ])
+        // 8.2.5 (MPEG2) permits only MP3, so E-AC-3 still fails the format check there.
+        let mpeg2 = VideoConformanceValidator.validateAudio(
+            tracks: [track], container: .mpegTS, transferSyntax: .mpeg2MainProfile).violations.map(\.message)
+        XCTAssertEqual(mpeg2, [
+            "E-AC-3 is not a permitted audio format; PS3.5 8.2.5 allows only CBR MPEG-1 Layer III (MP3)",
+        ])
+    }
+
     // MARK: - Header Parsers
 
     func test_audioSpecificConfig_readsHEAACExtensionRate() throws {

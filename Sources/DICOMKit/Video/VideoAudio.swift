@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-30 — audio constraints extracted by script from PS3.5 2026a 8.2.5 (MPEG2 MP@ML; 8.2.6 MP@HL refers to it), 8.2.7-8.2.11 ("shall follow the constraints detailed in 8.2.12") and 8.2.12 with Table 8.2.12-1 (LPCM/AC-3 MPEG-2 TS only; AAC, MP3, MPEG-1 Layer II in MP4 or MPEG-2 TS); header syntax per ISO/IEC 11172-3, 13818-3, 13818-7, 14496-3, 14496-12/-14 and ETSI TS 102 366 (out of DICOM scope) (D46)
+// NEMA-verified: 2026a, checked 2026-09-30 — E-AC-3 judged by the AC-3 row of PS3.5 2026a Table 8.2.12-1: 8.2.12 "AC-3 is standardized in" ETSI TS 102 366, whose PS3.5 bibliography entry is "Audio Compression (AC-3, Enhanced AC-3) Standard" (D59)
 //
 // VideoAudio.swift
 // DICOMKit
@@ -42,7 +43,10 @@ public struct VideoAudioTrack: Sendable, Hashable {
         public static let mpeg1LayerII = Format(rawValue: "MPEG-1 Layer II")
         /// MPEG Audio Layer I — not listed by PS3.5.
         public static let mpegLayerI = Format(rawValue: "MPEG Audio Layer I")
-        /// Enhanced AC-3 (ETSI TS 102 366 Annex E) — not listed by PS3.5.
+        /// Enhanced AC-3 (ETSI TS 102 366 Annex E). PS3.5 8.2.12 names "AC-3" and
+        /// cites ETSI TS 102 366, which the PS3.5 bibliography titles "Audio
+        /// Compression (AC-3, Enhanced AC-3) Standard"; ``VideoConformanceValidator``
+        /// therefore checks E-AC-3 against the AC-3 row of Table 8.2.12-1 (D59).
         public static let eac3 = Format(rawValue: "E-AC-3")
         /// DTS — not listed by PS3.5.
         public static let dts = Format(rawValue: "DTS")
@@ -370,7 +374,7 @@ extension VideoConformanceValidator {
             return VideoAudioTrackCheck(
                 trackNumber: number, track: track, violations: [], notChecked: C.allCases)
         }
-        guard let rule = table.first(where: { $0.format == format }) else {
+        guard let rule = table.first(where: { $0.format == Self.constraintFormat(for: format) }) else {
             let permitted = table.map(\.format.rawValue)
             let allowed = permitted.count == 1
                 ? "only CBR MPEG-1 Layer III (MP3)"
@@ -482,10 +486,28 @@ extension VideoConformanceValidator {
             trackNumber: number, track: track, violations: violations, notChecked: notChecked)
     }
 
+    /// The Table 8.2.12-1 row a format is judged by.
+    ///
+    /// E-AC-3 is judged by the AC-3 row (D59). PS3.5 2026a 8.2.12: "AC-3 is
+    /// standardized in [ETSI TS 102 366]", and the PS3.5 2026a bibliography entry
+    /// for that reference reads "ETSI TS 102 366 ETSI Feb. 2005 Audio Compression
+    /// (AC-3, Enhanced AC-3) Standard". The whole specification is cited, Enhanced
+    /// AC-3 (its Annex E) included, and nothing in 8.2.12 excludes it, so E-AC-3
+    /// is permitted when it meets the same limits: "Maximum bit rate: 640kbps
+    /// Sampling frequency: 48kHz Bits per sample: 16 bits Number of channels: 2
+    /// or 5.1 channels" and "If AC-3 is used for Audio components, the container
+    /// format shall be MPEG-2 TS." Violations of those limits are reported under
+    /// the E-AC-3 name. 8.2.5 (MPEG2) permits only MP3, so there E-AC-3 still
+    /// fails the format check.
+    static func constraintFormat(for format: VideoAudioTrack.Format) -> VideoAudioTrack.Format {
+        format == .eac3 ? .ac3 : format
+    }
+
     /// Whether one frame header's bit rate bounds the whole stream: AC-3 is coded
     /// at a constant rate (ETSI TS 102 366 frmsizecod), LPCM's rate follows from
     /// its format, and no MPEG-1/2 Layer II or III bit rate index exceeds the
     /// PS3.5 limits (384 and 320 kbit/s), so any non-free-format frame is within.
+    /// E-AC-3 is not listed: its frame size (frmsiz) may vary from frame to frame.
     private static func frameRateBoundsStream(_ format: VideoAudioTrack.Format) -> Bool {
         format == .ac3 || format == .lpcm || format == .mp3 || format == .mpeg1LayerII
     }
