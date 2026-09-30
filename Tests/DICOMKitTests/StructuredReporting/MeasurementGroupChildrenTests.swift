@@ -195,9 +195,9 @@ struct MeasurementGroupChildrenTests {
         #expect(result.isFullyCompliant, Comment(rawValue: result.violations.map(\.description).joined(separator: "\n")))
 
         // TID 1500 rows 7-9 include TID 1410, 1411 and 1501, whose row 1 is the same
-        // (125007, DCM) CONTAINER; the validator takes the first (TID 1410) for the group, so the
-        // group is also checked against TID 1501 itself, whose row 10 → TID 300 → TID 301 →
-        // TID 320 rows and row 10d/11b are what these cases write.
+        // (125007, DCM) CONTAINER; since D52 the validator checks the group against the one whose
+        // rows describe it (TID 1501 here). The group is also checked against TID 1501 directly,
+        // whose row 10 → TID 300 → TID 301 → TID 320 rows and row 10d/11b are what these cases write.
         let group = TemplateValidator(mode: .strict).validate(try measurementGroup(document), against: .measurementGroup)
         #expect(group.isFullyCompliant, Comment(rawValue: group.violations.map(\.description).joined(separator: "\n")))
 
@@ -217,6 +217,11 @@ struct MeasurementGroupChildrenTests {
         let result = TemplateValidator(mode: .strict).validate(try measurementGroup(document), against: .measurementGroup)
         #expect(result.errors.contains { $0.templateRowID == "10d" },
                 Comment(rawValue: result.violations.map(\.description).joined(separator: "\n")))
+        // D52: validating the whole report against TID 1500 finds it too (the group is checked
+        // against TID 1501 through row 9, not against TID 1410 through row 7)
+        let report = TemplateValidator(mode: .strict).validate(AnyContentItem(document.rootContent), against: .measurementReport)
+        #expect(report.errors.map(\.templateRowID) == ["10d"],
+                Comment(rawValue: report.violations.map(\.description).joined(separator: "\n")))
 
         let fixed = try MeasurementReportBuilder()
             .addMeasurementGroup(trackingIdentifier: "L", trackingUID: "1.2.3") {
@@ -225,6 +230,8 @@ struct MeasurementGroupChildrenTests {
             .build()
         let fixedResult = TemplateValidator(mode: .strict).validate(try measurementGroup(fixed), against: .measurementGroup)
         #expect(fixedResult.isFullyCompliant, Comment(rawValue: fixedResult.violations.map(\.description).joined(separator: "\n")))
+        let fixedReport = TemplateValidator(mode: .strict).validate(AnyContentItem(fixed.rootContent), against: .measurementReport)
+        #expect(fixedReport.isFullyCompliant, Comment(rawValue: fixedReport.violations.map(\.description).joined(separator: "\n")))
     }
 
     // MARK: - Extraction

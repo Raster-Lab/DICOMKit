@@ -4,6 +4,13 @@
 // is Type Extensible, Code Meaning not significant when comparing codes.
 // NEMA-verified: 2026a, checked 2026-09-29 — nested rows are matched against the Content Sequence of
 // any value type, not only CONTAINER, per PS3.3 2026a Table C.17-6 (D31).
+// NEMA-verified: 2026a, checked 2026-09-30 — when an item matches several rows equally well (e.g.
+// TID 1500 rows 7, 8 and 9, which INCLUDE TID 1410, 1411 and 1501, all rooted in the same
+// (125007, DCM) CONTAINER), it is checked against each and assigned to the row whose pattern of
+// target content items describes it: PS3.16 2026a §6.2.2 (each pattern of targets of the same
+// source item begins its own row), §6.2.3 (the included rows replace the INCLUDE row) and §6.2.5
+// (content a template does not describe is an extension). Fewest items left to extension wins,
+// then fewest errors, then fewest warnings, then table order (D52).
 
 /// DICOM SR Template Validation
 ///
@@ -354,16 +361,23 @@ public struct TemplateValidator: Sendable {
             repeatable: false,
             visited: [template.identifier.templateID]
         )
-        validateLevel(contentItems: contentItems, level: level, path: path, depth: depth, violations: &violations)
+        var unaccounted = 0
+        validateLevel(contentItems: contentItems, level: level, path: path, depth: depth,
+                      violations: &violations, unaccounted: &unaccounted)
     }
 
     /// Validates the content items of one nesting level against the rows that apply there.
+    ///
+    /// `unaccounted` is increased by the number of content items (with their descendants) that
+    /// no row describes, at this level and below: content an Extensible template allows as an
+    /// extension (PS3.16 §6.2.5), and the measure of how well a row's pattern fits an item.
     private func validateLevel(
         contentItems: [AnyContentItem],
         level: TemplateMatcher.Level,
         path: String,
         depth: Int,
-        violations: inout [TemplateViolation]
+        violations: inout [TemplateViolation],
+        unaccounted: inout Int
     ) {
         guard depth <= maxDepth else {
             violations.append(TemplateViolation(
@@ -377,13 +391,47 @@ public struct TemplateValidator: Sendable {
 
         let slots = level.slots
         var assigned = Array(repeating: [AnyContentItem](), count: slots.count)
+        // Violations of an item already checked while its row was chosen, parallel to `assigned`
+        var checked = Array(repeating: [[TemplateViolation]?](), count: slots.count)
         var unmatched: [AnyContentItem] = []
         for item in contentItems {
-            if let index = TemplateMatcher.bestSlot(for: item, in: slots) {
-                assigned[index].append(item)
-            } else {
+            let candidates = TemplateMatcher.bestSlots(for: item, in: slots)
+            guard let first = candidates.first else {
                 unmatched.append(item)
+                continue
             }
+            guard candidates.count > 1 else {
+                assigned[first].append(item)
+                checked[first].append(nil)
+                continue
+            }
+            // Several rows match the item equally well (e.g. TID 1500 rows 7-9: the root rows of
+            // TID 1410, 1411 and 1501 are the same Measurement Group CONTAINER). Each describes a
+            // different pattern of target content items (PS3.16 §6.2.2); the item belongs to the
+            // one whose pattern describes it: fewest items left to extension (§6.2.5), then
+            // fewest errors, then fewest warnings, then the first in table order.
+            var best: (index: Int, fit: (Int, Int, Int), violations: [TemplateViolation], unaccounted: Int)?
+            for index in candidates {
+                var trial: [TemplateViolation] = []
+                var trialUnaccounted = 0
+                validateItem(
+                    item,
+                    slot: slots[index],
+                    path: itemPath(path, item, index: assigned[index].count),
+                    depth: depth,
+                    violations: &trial,
+                    unaccounted: &trialUnaccounted
+                )
+                let errors = trial.filter { $0.severity == .error }.count
+                let fit = (trialUnaccounted, errors, trial.count - errors)
+                if best == nil || fit < best!.fit {
+                    best = (index, fit, trial, trialUnaccounted)
+                }
+            }
+            let chosen = best!
+            assigned[chosen.index].append(item)
+            checked[chosen.index].append(chosen.violations)
+            unaccounted += chosen.unaccounted
         }
 
         // An optional INCLUDE is present when any of its rows has content; its M rows then apply.
@@ -417,30 +465,23 @@ public struct TemplateValidator: Sendable {
             }
 
             for (itemIndex, item) in items.enumerated() {
-                let itemPath = "\(path)/\(item.conceptName?.codeMeaning ?? item.valueType.rawValue)[\(itemIndex)]"
-                if !TemplateMatcher.valueSatisfies(item, row.valueConstraint, parameters: slot.parameters) {
-                    violations.append(.invalidValue(rowID: row.rowID, constraint: row.valueConstraint, path: itemPath))
+                if let found = checked[index][itemIndex] {
+                    violations += found
+                } else {
+                    validateItem(
+                        item,
+                        slot: slot,
+                        path: itemPath(path, item, index: itemIndex),
+                        depth: depth,
+                        violations: &violations,
+                        unaccounted: &unaccounted
+                    )
                 }
-                let childLevel = TemplateMatcher.expand(
-                    slot.node.children,
-                    template: slot.template,
-                    parameters: slot.parameters,
-                    relationship: nil,
-                    groups: [],
-                    repeatable: false,
-                    visited: slot.visited
-                )
-                // The rows nested under this one (NL ">") are checked against the item's
-                // Content Sequence, which any value type may carry (PS3.3 Table C.17-6), so
-                // e.g. TID 1204 row 2 is found under the row 1 CODE.
-                validateLevel(
-                    contentItems: item.contentItems,
-                    level: childLevel,
-                    path: itemPath,
-                    depth: depth + 1,
-                    violations: &violations
-                )
             }
+        }
+
+        for item in unmatched {
+            unaccounted += Self.size(of: item)
         }
 
         // Extensible templates allow additional content at any level (PS3.16 §6.1);
@@ -453,6 +494,51 @@ public struct TemplateValidator: Sendable {
                 ))
             }
         }
+    }
+
+    /// Checks one item against the row it is assigned to: its value, then the rows nested
+    /// under that row against the item's Content Sequence.
+    private func validateItem(
+        _ item: AnyContentItem,
+        slot: TemplateMatcher.Slot,
+        path: String,
+        depth: Int,
+        violations: inout [TemplateViolation],
+        unaccounted: inout Int
+    ) {
+        let row = slot.row
+        if !TemplateMatcher.valueSatisfies(item, row.valueConstraint, parameters: slot.parameters) {
+            violations.append(.invalidValue(rowID: row.rowID, constraint: row.valueConstraint, path: path))
+        }
+        let childLevel = TemplateMatcher.expand(
+            slot.node.children,
+            template: slot.template,
+            parameters: slot.parameters,
+            relationship: nil,
+            groups: [],
+            repeatable: false,
+            visited: slot.visited
+        )
+        // The rows nested under this one (NL ">") are checked against the item's
+        // Content Sequence, which any value type may carry (PS3.3 Table C.17-6), so
+        // e.g. TID 1204 row 2 is found under the row 1 CODE.
+        validateLevel(
+            contentItems: item.contentItems,
+            level: childLevel,
+            path: path,
+            depth: depth + 1,
+            violations: &violations,
+            unaccounted: &unaccounted
+        )
+    }
+
+    private func itemPath(_ path: String, _ item: AnyContentItem, index: Int) -> String {
+        "\(path)/\(item.conceptName?.codeMeaning ?? item.valueType.rawValue)[\(index)]"
+    }
+
+    /// The item and all its descendants
+    private static func size(of item: AnyContentItem) -> Int {
+        item.contentItems.reduce(1) { $0 + size(of: $1) }
     }
 }
 
@@ -586,17 +672,28 @@ enum TemplateMatcher {
     /// The slot an item belongs to: the most specific concept match among the slots whose
     /// value type and relationship match, first in table order on a tie.
     static func bestSlot(for item: AnyContentItem, in slots: [Slot]) -> Int? {
-        var best: (index: Int, score: Int)?
+        bestSlots(for: item, in: slots).first
+    }
+
+    /// Every slot with the most specific concept match among the slots whose value type and
+    /// relationship match, in table order. The validator chooses among several by checking
+    /// the item against each (D52).
+    static func bestSlots(for item: AnyContentItem, in slots: [Slot]) -> [Int] {
+        var best: [Int] = []
+        var bestScore = 0
         for (index, slot) in slots.enumerated() where slot.row.valueType == item.valueType {
             if let expected = slot.relationship, let actual = item.relationshipType, expected != actual {
                 continue
             }
             let score = conceptScore(item.conceptName, slot.row.conceptName, parameters: slot.parameters)
-            if score > 0 && score > (best?.score ?? 0) {
-                best = (index, score)
+            if score > bestScore {
+                best = [index]
+                bestScore = score
+            } else if score > 0 && score == bestScore {
+                best.append(index)
             }
         }
-        return best?.index
+        return best
     }
 
     /// 0 = no match, 1 = unconstrained, 2 = context-group member, 3 = the exact code.
