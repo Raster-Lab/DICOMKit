@@ -133,5 +133,154 @@ final class RenderStandardConformanceTests: XCTestCase {
         }
     }
 
+    // MARK: - PS3.5 8.1.1 on the CPU (D67)
+
+    /// C.11.2.1.2.1 LINEAR with the D63 quantisation (the floor of the exact value).
+    private func linearByte(_ x: Double, _ c: Double, _ w: Double) -> UInt8 {
+        if x <= c - 0.5 - (w - 1) / 2 { return 0 }
+        if x > c - 0.5 + (w - 1) / 2 { return 255 }
+        return UInt8(((x - (c - 0.5)) / (w - 1) + 0.5) * 255 + 1e-9)
+    }
+
+    private func cells32(_ values: [UInt32]) -> Data {
+        var data = Data()
+        for value in values { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
+        return data
+    }
+
+    /// A Bits Allocated 32 cell is four bytes: 65,541 is not 5. Rendered whole on the
+    /// CPU, through the service too (the GPU declines it).
+    func testWideCellsRenderWholeOnTheCPU() throws {
+        let values: [UInt32] = [5, 65_541, 70_000, 1_000_000]
+        let pixelData = PixelData(data: cells32(values), descriptor: PixelDataDescriptor(
+            rows: 1, columns: 4, bitsAllocated: 32, bitsStored: 32, highBit: 31,
+            isSigned: false, photometricInterpretation: .monochrome2))
+        let request = FrameRenderRequest(
+            pixelData: pixelData, window: WindowSettings(center: 500_000, width: 1_000_000))
+        let expected = values.map { linearByte(Double($0), 500_000, 1_000_000) }
+        XCTAssertNotEqual(expected[0], expected[1], "the fixture must tell 5 from 65,541")
+        XCTAssertEqual(try bytes(of: try XCTUnwrap(CPUFrameRenderer().renderFrame(request))), expected)
+        XCTAssertEqual(try bytes(of: try XCTUnwrap(FrameRenderService().renderFrame(request))), expected)
+        XCTAssertEqual(try bytes(of: try XCTUnwrap(
+            PixelDataRenderer(pixelData: pixelData).renderMonochromeFrame(0, window: request.window!))), expected)
+    }
+
+    /// 32-bit RGB samples scale over their 32 stored bits.
+    func testWideColourCellsRenderWhole() throws {
+        let pixelData = PixelData(data: cells32([0xFFFF_FFFF, 0x8000_0000, 0]), descriptor: PixelDataDescriptor(
+            rows: 1, columns: 1, bitsAllocated: 32, bitsStored: 32, highBit: 31,
+            isSigned: false, samplesPerPixel: 3, photometricInterpretation: .rgb))
+        let out = try bytes(of: try XCTUnwrap(CPUFrameRenderer().renderFrame(FrameRenderRequest(pixelData: pixelData))))
+        XCTAssertEqual(Array(out[0..<3]), [255, 127, 0])
+    }
+
+    // MARK: - PS3.4 N.2 chain (P-PIPELINE)
+
+    private func signedFrame(_ values: [Int16], photometric: PhotometricInterpretation = .monochrome2) -> PixelData {
+        PixelData(data: signed16(values), descriptor: PixelDataDescriptor(
+            rows: 1, columns: values.count, bitsAllocated: 16, bitsStored: 16, highBit: 15,
+            isSigned: true, photometricInterpretation: photometric))
+    }
+
+    /// Renders on every backend and demands the expected bytes from each.
+    private func assertEveryBackend(_ request: FrameRenderRequest, _ expected: [UInt8],
+                                    _ label: String, file: StaticString = #filePath, line: UInt = #line) throws {
+        for (name, backend) in try backends() {
+            let image = try XCTUnwrap(backend.renderFrame(request), "\(name) declined \(label)", file: file, line: line)
+            XCTAssertEqual(try bytes(of: image), expected, "\(name): \(label)", file: file, line: line)
+        }
+    }
+
+    /// C.11.2.1.2.1: the window applies to the rescaled value. Slope 2, window 0 / 100
+    /// in modality units: each stored s shows as LINEAR(2s).
+    func testWindowAppliesAfterARescaleSlope() throws {
+        let stored: [Int16] = [-100, -26, -25, -24, 0, 24, 25, 26, 100]
+        let request = FrameRenderRequest(
+            pixelData: signedFrame(stored), window: WindowSettings(center: 0, width: 100),
+            modalityLUT: .rescale(slope: 2, intercept: 0, type: nil))
+        try assertEveryBackend(request, stored.map { linearByte(2 * Double($0), 0, 100) }, "slope 2")
+    }
+
+    /// A negative slope reverses the stored order: the highest stored value is the
+    /// lowest modality value, shown darkest.
+    func testNegativeSlopeIsNotInverted() throws {
+        let stored: [Int16] = [-100, 0, 49, 50, 51, 100, 200]
+        let request = FrameRenderRequest(
+            pixelData: signedFrame(stored),
+            modalityLUT: .rescale(slope: -1, intercept: 100, type: nil),
+            voiLUT: .window(center: 100, width: 100, explanation: nil, function: .linear))
+        let expected = stored.map { linearByte(100 - Double($0), 100, 100) }
+        XCTAssertEqual(expected.first, 255)
+        XCTAssertEqual(expected.last, 0)
+        try assertEveryBackend(request, expected, "slope -1")
+    }
+
+    /// C.11.1.1.1 (Modality LUT clamps to its ends), C.11.2.1.1 (VOI LUT output
+    /// 0…2^n−1 normalised by 2^n−1): an 8-bit VOI table whose entry is the byte shown.
+    func testTableModalityAndVOILUTs() throws {
+        let stored: [Int16] = [0, 10, 11, 12, 13, 50]
+        let modality = LUTData(numberOfEntries: 4, firstValueMapped: 10, bitsPerEntry: 16,
+                               data: [0, 1000, 2000, 3000])
+        let voi = LUTData(numberOfEntries: 3001, firstValueMapped: 0, bitsPerEntry: 8,
+                          data: (0...3000).map { $0 * 255 / 3000 })
+        let request = FrameRenderRequest(
+            pixelData: signedFrame(stored), modalityLUT: .lut(modality), voiLUT: .lut(voi))
+        try assertEveryBackend(request, [0, 0, 85, 170, 255, 255], "table LUTs")
+    }
+
+    /// C.7.6.3.1.2: MONOCHROME1 is INVERSE by default; PS3.4 N.2: an explicit
+    /// Presentation LUT replaces the image's polarity.
+    func testMonochrome1DefaultsToInverseAndAnExplicitShapeWins() throws {
+        let stored: [Int16] = [-100, 0, 100]
+        let window = VOILUT.window(center: 0, width: 100, explanation: nil, function: .linear)
+        let grey = stored.map { linearByte(Double($0), 0, 100) }
+        // INVERSE is "maximum value − output value" on the continuous output (C.11.6.1.2),
+        // quantised afterwards: floor((1 − y) · 255), not 255 − floor(y · 255).
+        let inverted: [UInt8] = stored.map { x in
+            let x = Double(x)
+            let y = x <= -50 ? 0 : x > 49 ? 1 : (x + 0.5) / 99 + 0.5
+            return UInt8((1 - y) * 255 + 1e-9)
+        }
+        try assertEveryBackend(
+            FrameRenderRequest(pixelData: signedFrame(stored, photometric: .monochrome1), voiLUT: window),
+            inverted, "MONOCHROME1 default")
+        try assertEveryBackend(
+            FrameRenderRequest(pixelData: signedFrame(stored, photometric: .monochrome1), voiLUT: window,
+                               presentationLUT: .identity),
+            grey, "explicit IDENTITY")
+    }
+
+    /// Without the chain the request behaves as before: `window` in stored units.
+    func testWithoutTheChainTheWindowIsInStoredUnits() throws {
+        let stored: [Int16] = [-100, 0, 100]
+        let request = FrameRenderRequest(pixelData: signedFrame(stored), window: WindowSettings(center: 0, width: 100))
+        XCTAssertFalse(request.usesDisplayPipeline)
+        try assertEveryBackend(request, stored.map { linearByte(Double($0), 0, 100) }, "stored window")
+    }
+
+    // MARK: - PS3.3 C.11.15.1.1 (P-ICC)
+
+    /// Colour output is tagged with the image's ICC Profile; monochrome is not.
+    func testColourOutputCarriesTheICCProfile() throws {
+        let p3 = try XCTUnwrap(CGColorSpace(name: CGColorSpace.displayP3)?.copyICCData() as Data?)
+        let rgb = PixelData(data: Data([255, 0, 0, 0, 0, 255]), descriptor: PixelDataDescriptor(
+            rows: 1, columns: 2, bitsAllocated: 8, bitsStored: 8, highBit: 7, isSigned: false,
+            samplesPerPixel: 3, photometricInterpretation: .rgb))
+        let request = FrameRenderRequest(pixelData: rgb, iccProfile: p3)
+        for (name, backend) in try backends() {
+            let image = try XCTUnwrap(backend.renderFrame(request), name)
+            XCTAssertEqual(image.colorSpace?.copyICCData() as Data?, p3, "\(name): tagged with the profile")
+            XCTAssertEqual(Array(try bytes(of: image)[0..<3]), [255, 0, 0], "\(name): bytes unchanged")
+        }
+        if let metal = MetalFrameRenderer(minimumPixelCount: 0) {
+            let shown = try XCTUnwrap(metal.renderForDisplay(request))
+            XCTAssertEqual(shown.texture.colorSpace?.copyICCData() as Data?, p3)
+        }
+        let grey = FrameRenderRequest(pixelData: signedFrame([0]), window: WindowSettings(center: 0, width: 100),
+                                      iccProfile: p3)
+        XCTAssertNil(grey.outputColorSpace)
+        XCTAssertNil(FrameRenderRequest(pixelData: rgb, iccProfile: Data([1, 2, 3])).outputColorSpace)
+    }
+
     #endif
 }

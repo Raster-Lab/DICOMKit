@@ -8,6 +8,9 @@
 
 import Foundation
 import simd
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 #if canImport(Metal)
 import Metal
@@ -24,6 +27,11 @@ public struct DisplayFrameTexture: @unchecked Sendable {
     /// across RGB.
     public let isGrayscale: Bool
 
+    /// The colour space the texture's RGB values are in: the image's ICC Profile
+    /// (PS3.3 C.11.15.1.1, P-ICC), or `nil` for device values. `MetalImageView` sets
+    /// it on its layer so the system converts to the screen.
+    public let colorSpace: CGColorSpace?
+
     /// Owner of the output buffer the texture views. Retained, never read here.
     ///
     /// Shared with the `CGImage` built over the same memory: the buffer returns to
@@ -31,9 +39,11 @@ public struct DisplayFrameTexture: @unchecked Sendable {
     /// would corrupt what is on screen.
     let backing: OutputBufferBox
 
-    init(texture: MTLTexture, isGrayscale: Bool, retaining backing: OutputBufferBox) {
+    init(texture: MTLTexture, isGrayscale: Bool, colorSpace: CGColorSpace? = nil,
+         retaining backing: OutputBufferBox) {
         self.texture = texture
         self.isGrayscale = isGrayscale
+        self.colorSpace = colorSpace
         self.backing = backing
     }
 
