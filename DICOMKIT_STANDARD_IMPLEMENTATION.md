@@ -1,22 +1,27 @@
 # DICOMKit — DICOM Standard Implementation Report
 
-Generated 2026-09-29, last updated 2026-09-29 (P-item pass). Covers all 157 Swift files in `Sources/DICOMKit/`
-(about 64,000 lines): the file reader and writer, DICOMDIR, the Structured Reporting builders,
+Generated 2026-09-29, last updated 2026-09-30 (deferred findings D31–D69 and the verification gaps). Covers all 162 Swift files in `Sources/DICOMKit/`
+(about 78,600 lines): the file reader and writer, DICOMDIR, the Structured Reporting builders,
 parsers and extractors, presentation states, hanging protocols, segmentation, parametric maps,
 real world value maps, radiotherapy objects, secondary capture, multi-frame conversion, video,
 waveforms, encapsulated documents, de-identification, compression and validation.
 
 **Status: complete.** Every file is bucketed and carries a `NEMA-verified` marker
-(`Scripts/check_nema_markers.py Sources/DICOMKit` exits 0: 157 of 157). Every constant table the
-module carries is diffed by script against the frozen 2026a DocBook (`Scripts/diff_kit.py`: 41
-checks, 0 failing, 1 pending — the DICOMCore row D26). The nine deferred rows for this module from
+(`Scripts/check_nema_markers.py Sources/DICOMKit` exits 0: 162 of 162). Every constant table the
+module carries is diffed by script against the frozen 2026a DocBook (`Scripts/diff_kit.py`: 51
+checks, 0 failing, 0 pending; since 2026-09-30 this includes every row of PS3.15 Table E.1-1 and
+the `nonImageSOPClasses` set). The nine deferred rows for this module from
 the earlier reports (D5, D12, D14–D19, D24) and the nineteen findings of the Presentation State
 audit (NC-1–NC-19) are closed or carried to their owning module. The fourteen public-API decisions
 the first pass left pending (P-HP … P-SRSER) and the seven recorded behaviour findings (P-VOL …
 P-ANON) were approved by the owner on 2026-09-29 ("work as per your recommendation") and are
 implemented, each verified against the clause named. Every behaviour fix has a test; `swift build`
 and the full `swift test` pass. The work is committed on `feature/dicom-tag-modality-audit`,
-locally, for review. What remains open is listed under Deferred findings (D31–D38). D39 and D43, opened by the DICOMPrintKit pass, were closed on 2026-09-29 (Progress log).
+locally, for review. D39 and D43, opened by the DICOMPrintKit pass, were closed on 2026-09-29; every
+DICOMKit and DICOMCore row of Deferred findings (D26, D31–D38, D45–D55, D57–D62, D69) and P-MGC
+were closed on 2026-09-30 (Progress log). Open rows belong to later modules: D28, D29
+(DICOMStudio, dicom-dcmdir), D44 (dicom-ai), D56 (dicom-video, DICOMStudio). Last full `swift
+test` (`d897a09`): XCTest 5,041 (44 skipped, 0 failures), Swift Testing 9,010.
 
 Method: [DICOMCORE_STANDARD_IMPLEMENTATION.md → Verification method](DICOMCORE_STANDARD_IMPLEMENTATION.md#verification-method-reuse-for-every-module),
 used unchanged. Package target: **DICOM 2026a** (`dicomStandardEdition = "2026a"`,
@@ -129,14 +134,18 @@ passes (Verification notes).
 | 2026-09-30 | D46 (new D56–D60) | PS3.5 8.2.5, 8.2.6, 8.2.7–8.2.11 audio sentences and 8.2.12 with Table 8.2.12-1 (section text and table by script); PS3.3 Table C.7-13 and C.7.6.5.1.3 ((003A,0300) 2C "Zero or more Items"; (003A,0301) 1, (003A,0302) 1 Enumerated Values MONO/STEREO, (003A,0208) 1 "Only a single Item", DCID 3000); PS3.6 Table 6-1 (SQ/IS/CS/SQ, VM 1); PS3.16 CID 3000 (6 codes, Extensible) | See the D46 row (`74e7b16`): new `VideoAudio.swift` (`VideoAudioTrack`, `VideoAudioConstraint`, `VideoAudioViolation`, `VideoAudioTrackCheck`, `VideoAudioConformanceResult`, `VideoAudioChannel.channels(describing:source:)`), `VideoProbeResult.audioTracks`, `TransportStreamScanner.audioTracks(_:)`, `VideoConformanceValidator.audioConstraints(for:)`/`validateAudio(...)`, `VideoConsole.audioCheckLines(...)`, `VideoWorkflow.Metadata.audioChannelSource`, `Video.declaresMultiplexedAudio`; additive only | VideoAudioTests 24 new; filter `Video\|MP4ContainerParser\|MPEG2\|H264\|HEVC\|BitstreamReader\|VideoConsoleParity`: XCTest 359 (DICOMKitTests) + 69 (DICOMRoundTripTests, incl. VideoConsoleParityTests 60, VideoCLIEndToEndTests 9), Swift Testing 51, 0 failures |
 | 2026-09-30 | D53, D59, D57 | PS3.3 C.11.2.1.1 ("The output range is from 0 to 2^n-1 where n is the third Value of LUT Descriptor"); PS3.5 8.2.12 ("AC-3 is standardized in" ETSI TS 102 366) and its bibliography entry ("ETSI TS 102 366 ETSI Feb. 2005 Audio Compression (AC-3, Enhanced AC-3) Standard"), Table 8.2.12-1 AC-3 limits; PS3.3 Table C.7-13 ((003A,0208) 1, Code Sequence Macro, DCID 3000); PS3.16 CID 3000 ("Type: Extensible", Version 20040326, DCM 109110–109115), all by script | `c9316f6`: `GrayscaleLUT.normalized(_:normalizeToUsedRange:)` (defaulted parameter; default now the standard range, **behaviour change**), `ImagePreprocessor` opts in; `ce7461a`: E-AC-3 checked against the AC-3 row; `8cde34b`: `VideoAudioChannel.Source` enum → struct (`code`, `codeValue`, `codingSchemeDesignator`, `codeMeaning`, `init(_:)`, `init(dcmCodeValue:codeMeaning:)`, `cid3000`, `isCID3000Member`, `cid3000Member`; `rawValue`/`CaseIterable` gone — never on main or in a tag), parser keeps any code, builder writes any code | GrayscaleLUTTests 12 (2 re-enabled, 1 new), filter `GrayscaleLUT|LUT|ImagePreprocessor|PrintImagePreparer|DICOMPrintKitTests`: XCTest 90, Swift Testing 147, 0 failures; VideoAudioTests +3, VideoCineModuleTests +1 (1 test renamed/rewritten), filter `Video`: XCTest 233 (DICOMKitTests) + 69 (DICOMRoundTripTests, incl. VideoConsoleParityTests 60), Swift Testing 51, 0 failures |
 | 2026-09-30 | D60, D58 (new D61, D62) | PS3.3 Table C.7-13 (Frame Time Vector 1C, Preferred Playback Sequencing 3 with Enumerated Values 0 Looping / 1 Sweeping, Image Trigger Delay 3, Effective Duration 3) and Table C.7-14; PS3.6 Table 6-1 (DS 1-n, US 1, DS 1, DS 1); PS3.5 8.2.5 and 8.2.12 ("CBR MPEG-1 LAYER III (MP3)", "Bits per sample", "one main mono or stereo channel, and optionally one or more complementary channel(s)"), all by script | `4963a51`: `VideoParser` reads the four Cine attributes (no API change); `2143672`: `VideoAudioTrack.bitRateScan` / `VideoAudioTrack.BitRateScan`, `VideoAudioTrackCheck.notes`, `VideoAudioCheckNote`, `VideoAudioViolation.Constraint.complementaryChannels` (branch-only enum), defaulted `init` parameters; **behaviour change:** MP4 AAC/AC-3/MP3/MP2 no longer report the template samplesize as bits per sample, and console output gains per-track notes | VideoCineModuleTests +3, VideoAudioTests +6 (8 updated); filter `Video\|MP4ContainerParser\|MPEG2\|H264\|HEVC\|BitstreamReader\|VideoConsoleParity\|TransportStream`: XCTest 372 (DICOMKitTests) + 69 (DICOMRoundTripTests), Swift Testing 51 + 1, 0 failures |
+| 2026-09-30 | D61, D62 | PS3.5 8.2.5 and 8.2.12 ("one main mono or stereo channel"), Table 8.2.12-1 (640 kbit/s); ISO/IEC 11172-3, 13818-1/-7 and 14496-3 are not NEMA text, so field layouts were checked against FFmpeg (`adts_header.c`, `aacdec_latm.h`, `mpeg4audio.c`, `movenc.c`) and TSDuck (`tsMPEG4AudioExtensionDescriptor.cpp`, `tsDID.h`) | `09df614`: MP3 dual_channel mode is a channel violation under 8.2.5 and 8.2.12 (owner: "as per the standard 2026a"); ADTS/LOAS frames walked (up to 2,000) and the most bits in any one-second window compared with 640 kbit/s — ADTS exact, LATM bounded, only a proven excess is a violation; `VideoAudioTrack.measuredBitRate` (additive); the tag 0x2E descriptor parser, written from memory for D58, verified | VideoAudioTests updated (`test_mp3_dualChannelMode_isNotAMainMonoOrStereoChannel`, `test_ts_adts_bitRateIsMeasuredOverOneSecondWindows`, `test_ts_latm_bitRateBounds`), 0 failures |
+| 2026-09-30 | `nonImageSOPClasses` (verification gap) | PS3.4 Tables B.5-1 and GG.3-1; the PS3.3 IOD module tables (Image Pixel, Floating Point Image Pixel, Double Floating Point Image Pixel), by script | `8e7038b`: the set is generated (`diff_kit.py --emit-non-image-swift`) and checked: 113 of 179 SOP Classes (was 82; 31 missing, none wrong), so `tryPixelData` explains them as non-image | NonImageSOPClassTests (DICOMRoundTripTests), 0 failures |
+| 2026-09-30 | PS3.15 Table E.1-1 coverage (verification gap; new and closed D69) | PS3.15 E.1.1 and Table E.1-1 (651 single-tag rows, 4 pattern rows, every option column), by script | `f8e7d8e`: the earlier note that VR sweeps covered the rows not carried was wrong — 503 rows were kept and 21 took another action (D69, High). Rules generated from the DocBook (`Scripts/generate_confidentiality_profile.py`, `--check` verifies) into `ConfidentialityProfileTableE11.swift`; curve/overlay data and overlay comments removed; Z on SQ empties it; D consistent with the VR. **Behaviour change:** de-identified objects lose more attributes | `testEveryTableE11RowIsAppliedByTheBasicProfile` and updated ConfidentialityProfileTests, 0 failures; `diff_kit.py` Table E.1-1 655 / 655 |
+| 2026-09-30 | Integration | `check_nema_markers.py`: DICOMKit 162 / 162; `diff_kit.py`: 51 checks, 0 wrong or missing, 0 pending | Report, CHANGELOG, DICOMCore status table (`d897a09`) | Full `swift test` exits 0: XCTest 5,041 tests, 44 skipped, 0 failures; Swift Testing 9,010 tests, 0 failures |
 
 ---
 
 ## Priority action list
 
 The P-items were pending public-API decisions after the first pass; the owner approved them all
-on 2026-09-29 and they are implemented (details in the Progress log). The one `pending` the diff
-script still reports is D26, a DICOMCore row.
+on 2026-09-29 and they are implemented (details in the Progress log). The diff script reports
+nothing pending (D26, the last pending row, was closed 2026-09-29).
 
 | # | What | Standard | Impact | Status |
 |---|---|---|---|---|
