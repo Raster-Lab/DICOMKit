@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — container syntax is ISO/IEC 14496-12 (out of scope); audio tracks are permitted in the MP4 container per PS3.5 2026a 8.2.7-8.2.11 and Table 8.2.12-1, described via PS3.3 Table C.7-13 (003A,0300) (P-VIDEO)
+// NEMA-verified: 2026a, checked 2026-09-30 — container syntax is ISO/IEC 14496-12/-14 (out of scope); audio tracks are permitted in the MP4 container per PS3.5 2026a 8.2.7-8.2.11 and Table 8.2.12-1 and are now read (format, sampling frequency, channels, bits per sample, bit rate) for the PS3.5 8.2.5/8.2.12 check, described via PS3.3 Table C.7-13 (003A,0300) (P-VIDEO, D46)
 //
 // MP4ContainerParser.swift
 // DICOMKit
@@ -112,6 +112,9 @@ public enum MP4ContainerParser {
         /// (003A,0300) in the Cine Module (PS3.3 Table C.7-13). A count here is
         /// therefore information for that sequence, not a defect in the input.
         public let audioTrackCount: Int
+        /// The audio tracks, in file order, with the parameters their sample
+        /// entries expose; `audioTracks.count == audioTrackCount`.
+        public let audioTracks: [VideoAudioTrack]
     }
 
     // MARK: - Container Detection
@@ -285,11 +288,12 @@ public enum MP4ContainerParser {
         }
 
         guard let moov = findBox(type: "moov", in: data, range: 0..<data.count) else {
-            return FileInfo(container: container, brands: brands, videoTracks: [], audioTrackCount: 0)
+            return FileInfo(container: container, brands: brands, videoTracks: [],
+                            audioTrackCount: 0, audioTracks: [])
         }
 
         var videoTracks: [TrackInfo] = []
-        var audioTrackCount = 0
+        var audioTracks: [VideoAudioTrack] = []
 
         let moovRange = moov.payloadOffset..<(moov.offset + moov.size)
         for trak in boxes(in: data, range: moovRange) where trak.type == "trak" {
@@ -303,7 +307,7 @@ public enum MP4ContainerParser {
             else { continue }
 
             if handler == "soun" {
-                audioTrackCount += 1
+                audioTracks.append(parseAudioTrack(data, mdiaRange: mdiaRange))
                 continue
             }
             guard handler == "vide" else { continue }
@@ -317,7 +321,8 @@ public enum MP4ContainerParser {
             container: container,
             brands: brands,
             videoTracks: videoTracks,
-            audioTrackCount: audioTrackCount
+            audioTrackCount: audioTracks.count,
+            audioTracks: audioTracks
         )
     }
 
@@ -497,6 +502,26 @@ public enum MP4ContainerParser {
     /// Reference: ISO/IEC 14496-1 Section 7.2.6 (descriptors),
     /// ISO/IEC 14496-14 Section 5.6 (ESDBox)
     public static func parseESDSDecoderSpecificInfo(_ data: Data, box: Box) -> Data? {
+        esDescriptor(data, box: box)?.decoderSpecificInfo
+    }
+
+    /// The DecoderConfigDescriptor fields of an `esds` box.
+    struct ESDescriptorInfo {
+        /// objectTypeIndication (ISO/IEC 14496-1 Table 5, MP4 registration authority).
+        let objectTypeIndication: UInt8
+        /// maxBitrate in bit/s; 0 when not stated.
+        let maxBitrate: UInt32
+        /// avgBitrate in bit/s; 0 for variable bit rate or not stated.
+        let avgBitrate: UInt32
+        /// The DecoderSpecificInfo payload, when present.
+        let decoderSpecificInfo: Data?
+    }
+
+    /// Reads the DecoderConfigDescriptor of an `esds` box.
+    ///
+    /// Reference: ISO/IEC 14496-1 Section 7.2.6 (descriptors),
+    /// ISO/IEC 14496-14 Section 5.6 (ESDBox)
+    static func esDescriptor(_ data: Data, box: Box) -> ESDescriptorInfo? {
         // Payload opens with a version/flags word, then the ES_Descriptor.
         var offset = box.payloadOffset + 4
         let end = box.offset + box.size
@@ -538,30 +563,203 @@ public enum MP4ContainerParser {
         guard let decoderConfig = readDescriptorHeader(), decoderConfig.tag == 0x04 else {
             return nil
         }
-        // objectTypeIndication, streamType/bufferSizeDB, maxBitrate, avgBitrate.
+        // objectTypeIndication (1), streamType/upStream/reserved (1),
+        // bufferSizeDB (3), maxBitrate (4), avgBitrate (4).
+        guard let objectType = readUInt8(data, at: offset),
+              let maxBitrate = readUInt32(data, at: offset + 5),
+              let avgBitrate = readUInt32(data, at: offset + 9)
+        else { return nil }
         offset += 13
 
         // Walk the nested descriptors for DecSpecificInfoTag (0x05). Anything else
         // here is skipped by its own size rather than assumed absent.
+        var specificInfo: Data?
         while offset < end {
-            guard let descriptor = readDescriptorHeader() else { return nil }
-            guard descriptor.tag != 0x05 else {
-                guard descriptor.size > 0, offset + descriptor.size <= end else { return nil }
-                return data.subdata(in: offset..<(offset + descriptor.size))
+            guard let descriptor = readDescriptorHeader() else { break }
+            if descriptor.tag == 0x05 {
+                if descriptor.size > 0, offset + descriptor.size <= end {
+                    specificInfo = data.subdata(in: offset..<(offset + descriptor.size))
+                }
+                break
             }
-            guard descriptor.size > 0 else { return nil }
+            guard descriptor.size > 0 else { break }
             offset += descriptor.size
         }
-        return nil
+        return ESDescriptorInfo(
+            objectTypeIndication: objectType, maxBitrate: maxBitrate,
+            avgBitrate: avgBitrate, decoderSpecificInfo: specificInfo)
     }
 
-    /// Recovers an MPEG-2 sequence header from the start of the first sample.
+    // MARK: - Audio Tracks
+
+    /// Sample entry codes for linear PCM: QuickTime's and ISO/IEC 23003-5's.
+    private static let pcmSampleEntries: [String: Int?] = [
+        "lpcm": nil, "sowt": 16, "twos": 16, "in24": 24, "in32": 32,
+        "fl32": 32, "fl64": 64, "ipcm": nil, "fpcm": nil, "raw ": 8,
+    ]
+
+    /// Reads an audio track's format and parameters from its `mdia` box.
     ///
-    /// The sample tables give the first chunk's file offset; a coded MPEG-2 video
-    /// sample opens at a start code, and the sequence header precedes the first
-    /// picture of a GOP. Scanning a bounded window from there avoids reading the
-    /// whole `mdat` while tolerating a leading pack or GOP header.
-    private static func firstSampleSequenceHeader(_ data: Data, stblRange: Range<Int>) -> Data? {
+    /// The AudioSampleEntry (ISO/IEC 14496-12 12.2.3) gives channelcount,
+    /// samplesize and samplerate; QuickTime's version 2 sound description moves
+    /// them. The codec's own configuration wins where present: the `esds`
+    /// objectTypeIndication and AudioSpecificConfig (ISO/IEC 14496-3 1.6.2.1),
+    /// `dac3` (ETSI TS 102 366 Annex F), and for MPEG-1/2 audio the first frame
+    /// header (ISO/IEC 11172-3 2.4.1.3). Bit rates come from `esds` or `btrt`.
+    private static func parseAudioTrack(_ data: Data, mdiaRange: Range<Int>) -> VideoAudioTrack {
+        guard let minf = findBox(type: "minf", in: data, range: mdiaRange),
+              let stbl = findBox(type: "stbl", in: data,
+                                 range: minf.payloadOffset..<(minf.offset + minf.size)),
+              case let stblRange = stbl.payloadOffset..<(stbl.offset + stbl.size),
+              let stsd = findBox(type: "stsd", in: data, range: stblRange),
+              stsd.payloadOffset + 8 < stsd.offset + stsd.size,
+              let entry = boxes(in: data, range: (stsd.payloadOffset + 8)..<(stsd.offset + stsd.size)).first
+        else { return VideoAudioTrack(format: nil, codecTag: "unknown") }
+
+        let tag = entry.type
+        let base = entry.payloadOffset
+        let end = entry.offset + entry.size
+        func nonZero(_ value: Int?) -> Int? { value.flatMap { $0 > 0 ? $0 : nil } }
+
+        // Sample entry fields. The first reserved word is QuickTime's version.
+        var channels: Int?
+        var sampleSize: Int?
+        var rate: Int?
+        var childStarts: [Int]
+        if readUInt16(data, at: base + 8) == 2 {
+            // QuickTime SoundDescriptionV2: audioSampleRate is a float64 at 32,
+            // numAudioChannels at 40, constBitsPerChannel at 48; 64 bytes in all.
+            if let bits = readUInt64(data, at: base + 32) {
+                let value = Double(bitPattern: bits)
+                if value.isFinite, value > 0, value < 1_000_000 { rate = Int(value.rounded()) }
+            }
+            channels = nonZero(readUInt32(data, at: base + 40).map(Int.init))
+            sampleSize = nonZero(readUInt32(data, at: base + 48).map(Int.init))
+            childStarts = [base + 64]
+        } else {
+            channels = nonZero(readUInt16(data, at: base + 16).map(Int.init))
+            sampleSize = nonZero(readUInt16(data, at: base + 18).map(Int.init))
+            rate = nonZero(readUInt32(data, at: base + 24).map { Int($0 >> 16) })
+            // ISO entries have their boxes at 28; QuickTime version 1 adds 16 bytes.
+            childStarts = [base + 28, base + 44]
+        }
+        var children: [Box] = []
+        for start in childStarts where start <= end {
+            let found = boxes(in: data, range: start..<end)
+            if start == end || (found.last.map { $0.offset + $0.size == end } ?? false) {
+                children = found
+                break
+            }
+        }
+        func child(_ type: String) -> Box? { children.first { $0.type == type } }
+
+        var maxBitRate: Int?
+        var avgBitRate: Int?
+        if let btrt = child("btrt") {
+            maxBitRate = nonZero(readUInt32(data, at: btrt.payloadOffset + 4).map(Int.init))
+            avgBitRate = nonZero(readUInt32(data, at: btrt.payloadOffset + 8).map(Int.init))
+        }
+
+        var codecTrack: VideoAudioTrack?
+        var format: VideoAudioTrack.Format?
+        switch tag {
+        case "mp4a":
+            guard let esds = child("esds"), let info = esDescriptor(data, box: esds) else { break }
+            maxBitRate = nonZero(Int(info.maxBitrate)) ?? maxBitRate
+            avgBitRate = nonZero(Int(info.avgBitrate)) ?? avgBitRate
+            let config = info.decoderSpecificInfo.flatMap(AudioHeaderParser.audioSpecificConfig)
+            switch info.objectTypeIndication {
+            case 0x40:  // Audio ISO/IEC 14496-3
+                if let config {
+                    format = config.format
+                    let layout = AudioHeaderParser.aacChannels(config.channelConfiguration)
+                    codecTrack = VideoAudioTrack(
+                        format: format, codecTag: tag,
+                        samplingFrequency: config.samplingFrequency,
+                        channelCount: layout?.count, hasLFE: layout?.lfe)
+                }
+            case 0x66, 0x67, 0x68:  // Audio ISO/IEC 13818-7 (MPEG-2 AAC Main, LC, SSR)
+                format = .aac
+                if let config {
+                    let layout = AudioHeaderParser.aacChannels(config.channelConfiguration)
+                    codecTrack = VideoAudioTrack(
+                        format: .aac, codecTag: tag,
+                        samplingFrequency: config.samplingFrequency,
+                        channelCount: layout?.count, hasLFE: layout?.lfe)
+                }
+            case 0x69, 0x6B:  // Audio ISO/IEC 13818-3 / 11172-3: the layer is in the frames
+                codecTrack = firstSampleMPEGAudioHeader(data, stblRange: stblRange)?
+                    .track(codecTag: tag)
+                format = codecTrack?.format
+            case 0xA5: format = .ac3
+            case 0xA6: format = .eac3
+            case 0xA9, 0xAA, 0xAB, 0xAC: format = .dts
+            case 0xAD: format = .opus
+            default: break
+            }
+        case ".mp3":
+            codecTrack = firstSampleMPEGAudioHeader(data, stblRange: stblRange)?
+                .track(codecTag: tag)
+            format = codecTrack?.format ?? .mp3
+        case "ac-3":
+            format = .ac3
+            if let dac3 = child("dac3") {
+                codecTrack = AudioHeaderParser.dac3(
+                    bytes(data, dac3.payloadOffset, 3), codecTag: tag)
+            }
+        case "ec-3": format = .eac3
+        case "Opus": format = .opus
+        case "dtsc", "dtsh", "dtsl", "dtse": format = .dts
+        case "mlpa": format = .trueHD
+        case "alac": format = VideoAudioTrack.Format(rawValue: "ALAC")
+        case "samr", "sawb": format = VideoAudioTrack.Format(rawValue: "AMR")
+        default:
+            if let bits = pcmSampleEntries[tag] {
+                format = .lpcm
+                if let bits { sampleSize = bits }
+                if tag == "ipcm", let pcmC = child("pcmC") {
+                    // FullBox header (4), format_flags (1), PCM_sample_size (1).
+                    sampleSize = nonZero(readUInt8(data, at: pcmC.payloadOffset + 5).map(Int.init))
+                        ?? sampleSize
+                }
+            }
+        }
+
+        var maximum = maxBitRate
+        if format == .lpcm, maximum == nil, let rate, let channels, let bits = sampleSize {
+            maximum = rate * channels * bits  // PCM's rate follows from its format
+        }
+        return VideoAudioTrack(
+            format: format,
+            codecTag: tag,
+            samplingFrequency: codecTrack?.samplingFrequency ?? rate,
+            channelCount: codecTrack?.channelCount ?? channels,
+            hasLFE: codecTrack?.hasLFE,
+            isDualMono: codecTrack?.isDualMono ?? false,
+            bitsPerSample: sampleSize,
+            maximumBitRate: codecTrack?.maximumBitRate ?? maximum,
+            averageBitRate: avgBitRate,
+            frameBitRate: codecTrack?.frameBitRate)
+    }
+
+    /// The MPEG audio frame header at the start of the first sample.
+    private static func firstSampleMPEGAudioHeader(
+        _ data: Data, stblRange: Range<Int>
+    ) -> AudioHeaderParser.MPEGAudioHeader? {
+        guard let start = firstChunkOffset(data, stblRange: stblRange) else { return nil }
+        let window = bytes(data, start, min(4096, data.count - start))
+        return AudioHeaderParser.findMPEGAudioHeader(window, limit: 64)
+    }
+
+    /// Up to `count` bytes from a file offset.
+    private static func bytes(_ data: Data, _ offset: Int, _ count: Int) -> [UInt8] {
+        guard offset >= 0, count > 0, offset < data.count else { return [] }
+        let base = data.startIndex + offset
+        return [UInt8](data[base..<(base + min(count, data.count - offset))])
+    }
+
+    /// The file offset of the first chunk, from `stco` or `co64`.
+    private static func firstChunkOffset(_ data: Data, stblRange: Range<Int>) -> Int? {
         // stco holds 32-bit chunk offsets, co64 the 64-bit form; either way the
         // first entry sits past a version/flags word and an entry count.
         var chunkOffset: Int?
@@ -574,6 +772,17 @@ public enum MP4ContainerParser {
             chunkOffset = Int(value)
         }
         guard let start = chunkOffset, start >= 0, start < data.count else { return nil }
+        return start
+    }
+
+    /// Recovers an MPEG-2 sequence header from the start of the first sample.
+    ///
+    /// The sample tables give the first chunk's file offset; a coded MPEG-2 video
+    /// sample opens at a start code, and the sequence header precedes the first
+    /// picture of a GOP. Scanning a bounded window from there avoids reading the
+    /// whole `mdat` while tolerating a leading pack or GOP header.
+    private static func firstSampleSequenceHeader(_ data: Data, stblRange: Range<Int>) -> Data? {
+        guard let start = firstChunkOffset(data, stblRange: stblRange) else { return nil }
 
         // A sequence header plus its extensions is well under a kilobyte; the
         // window only has to cover any pack or GOP header sitting ahead of it.

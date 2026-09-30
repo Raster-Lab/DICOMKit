@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — no DICOM-standard data (container probing); audio track count described per PS3.5 2026a 8.2.5, 8.2.7-8.2.11 and 8.2.12 Table 8.2.12-1 (audio permitted; not counted for MPEG-TS) (D34)
+// NEMA-verified: 2026a, checked 2026-09-30 — no DICOM-standard data (container probing); audio tracks read from MP4 and MPEG-TS for the PS3.5 2026a 8.2.5/8.2.12 (Table 8.2.12-1) check, which VideoConformanceValidator.validateAudio applies (D46)
 //
 // VideoProbe.swift
 // DICOMKit
@@ -21,14 +21,20 @@ public struct VideoProbeResult: Sendable {
     /// How the frame count was obtained, which matters because one source is
     /// exact and the other is a scan.
     public let frameCountSource: FrameCountSource
-    /// The number of audio tracks (`soun` handler) in an MP4 container.
+    /// The number of audio tracks: `soun` tracks in an MP4, audio PIDs in an
+    /// MPEG-TS (read only with `trustInput`, the one way a TS is probed).
     ///
     /// DICOM video may carry audio in the encapsulated bit stream (PS3.5 8.2.5,
     /// 8.2.7-8.2.11, and 8.2.12 Table 8.2.12-1), so a non-zero count is not a
-    /// defect: `convert` keeps the tracks. The formats are not inspected. Always 0
-    /// for an elementary stream (which has no audio) and for MPEG-TS, whose
-    /// streams are not demultiplexed, so audio there is not counted.
+    /// defect: `convert` keeps the tracks. Always 0 for an elementary stream,
+    /// which has no audio. Equal to `audioTracks.count`.
     public let audioTrackCount: Int
+    /// The audio tracks with the parameters their container exposes, for the
+    /// PS3.5 8.2.5 / 8.2.12 check (``VideoConformanceValidator/validateAudio(tracks:container:transferSyntax:)``).
+    ///
+    /// A result built with the `audioTrackCount:` initializer holds that many
+    /// ``VideoAudioTrack/unidentified`` entries.
+    public let audioTracks: [VideoAudioTrack]
     /// The transfer syntax that fits this stream, when one does.
     public let suggestedTransferSyntax: TransferSyntax?
 
@@ -55,11 +61,28 @@ public struct VideoProbeResult: Sendable {
         suggestedTransferSyntax: TransferSyntax?,
         frameRate: Double?
     ) {
+        self.init(
+            container: container, stream: stream, frameCount: frameCount,
+            frameCountSource: frameCountSource,
+            audioTracks: Array(repeating: .unidentified, count: max(0, audioTrackCount)),
+            suggestedTransferSyntax: suggestedTransferSyntax, frameRate: frameRate)
+    }
+
+    public init(
+        container: VideoContainer,
+        stream: VideoStreamInfo,
+        frameCount: Int,
+        frameCountSource: FrameCountSource,
+        audioTracks: [VideoAudioTrack],
+        suggestedTransferSyntax: TransferSyntax?,
+        frameRate: Double?
+    ) {
         self.container = container
         self.stream = stream
         self.frameCount = frameCount
         self.frameCountSource = frameCountSource
-        self.audioTrackCount = audioTrackCount
+        self.audioTrackCount = audioTracks.count
+        self.audioTracks = audioTracks
         self.suggestedTransferSyntax = suggestedTransferSyntax
         self.frameRate = frameRate
     }
@@ -254,7 +277,7 @@ public enum VideoProbe {
             stream: resolved,
             frameCount: track.frameCount,
             frameCountSource: track.frameCount > 0 ? .sampleTable : .unavailable,
-            audioTrackCount: info.audioTrackCount,
+            audioTracks: info.audioTracks,
             suggestedTransferSyntax: VideoConformanceValidator.selectTransferSyntax(for: resolved),
             frameRate: frameRate
         )
@@ -322,6 +345,9 @@ public enum VideoProbe {
         // attributes: an object carrying zeroes is one no reader can display, so
         // "trusted" cannot extend to inventing a frame size. Only the conformance
         // checks are skipped, which is what the caller actually asked for.
+        // Audio PIDs are listed from the PMT; the check of their parameters is
+        // a warning, so it applies even to a stream taken on trust.
+        let audioTracks = TransportStreamScanner.audioTracks(data)
         if let payload = TransportStreamScanner.firstVideoPayload(data),
            let stream = elementaryStreamInfo(payload.data, codec: payload.codec) {
             return VideoProbeResult(
@@ -329,7 +355,7 @@ public enum VideoProbe {
                 stream: stream,
                 frameCount: 0,
                 frameCountSource: .unavailable,
-                audioTrackCount: 0,
+                audioTracks: audioTracks,
                 suggestedTransferSyntax: nil,
                 frameRate: stream.frameRate
             )
@@ -348,7 +374,7 @@ public enum VideoProbe {
             stream: unknownStream,
             frameCount: 0,
             frameCountSource: .unavailable,
-            audioTrackCount: 0,
+            audioTracks: audioTracks,
             suggestedTransferSyntax: nil,
             frameRate: nil
         )

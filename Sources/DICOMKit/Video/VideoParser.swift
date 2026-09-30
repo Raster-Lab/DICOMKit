@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — transfer syntax detection via DICOMCore; UIDs per PS3.6 2026a Table A-1
+// NEMA-verified: 2026a, checked 2026-09-30 — transfer syntax detection via DICOMCore; UIDs per PS3.6 2026a Table A-1; Multiplexed Audio Channels Description Code Sequence (003A,0300) read per PS3.3 2026a Table C.7-13 (Channel Identification Code IS, Channel Mode CS MONO/STEREO, Channel Source Sequence with a PS3.16 CID 3000 code) (D46)
 //
 // VideoParser.swift
 // DICOMKit
@@ -157,7 +157,13 @@ public struct VideoParser {
         let patientBirthDate = dataSet.date(for: .patientBirthDate)
         let patientSex = Self.nonEmpty(dataSet.string(for: .patientSex))
 
-        return Video(
+        // Cine Module: Multiplexed Audio Channels Description Code Sequence
+        // (003A,0300), Type 2C (PS3.3 Table C.7-13).
+        let audioSequence = dataSet[VideoAudioChannel.multiplexedAudioChannelsDescriptionCodeSequence]
+        let multiplexedAudioChannels = (audioSequence?.sequenceItems ?? [])
+            .compactMap(Self.audioChannel)
+
+        var video = Video(
             sopInstanceUID: sopInstanceUID,
             sopClassUID: sopClassUID,
             studyInstanceUID: studyInstanceUID,
@@ -185,6 +191,7 @@ public struct VideoParser {
             actualFrameDuration: actualFrameDuration,
             startTrim: startTrim,
             stopTrim: stopTrim,
+            multiplexedAudioChannels: multiplexedAudioChannels,
             contentDate: contentDate,
             contentTime: contentTime,
             lossyImageCompression: lossyImageCompression,
@@ -208,6 +215,29 @@ public struct VideoParser {
             patientSex: patientSex,
             pixelData: pixelData
         )
+        // The sequence may be present with no Items, or with Items this model
+        // cannot hold; keeping the flag writes it back rather than dropping it.
+        video.containsUndescribedMultiplexedAudio = audioSequence != nil
+        return video
+    }
+
+    /// One Item of (003A,0300), or nil when it lacks a Type 1 attribute or uses a
+    /// value ``VideoAudioChannel`` cannot represent: a Channel Mode other than the
+    /// Enumerated Values MONO and STEREO, or a Channel Source code outside PS3.16
+    /// CID 3000 (Coding Scheme Designator DCM).
+    private static func audioChannel(_ item: SequenceItem) -> VideoAudioChannel? {
+        guard let code = item[VideoAudioChannel.channelIdentificationCodeTag]?
+                .integerStringValue?.value,
+              let modeText = item.string(for: VideoAudioChannel.channelModeTag)?
+                .trimmingCharacters(in: .whitespaces),
+              let mode = VideoAudioChannel.Mode(rawValue: modeText),
+              let sourceItem = item[.channelSourceSequence]?.sequenceItems?.first,
+              sourceItem.string(for: .codingSchemeDesignator)?
+                .trimmingCharacters(in: .whitespaces) == "DCM",
+              let value = sourceItem.string(for: .codeValue)?.trimmingCharacters(in: .whitespaces),
+              let source = VideoAudioChannel.Source(rawValue: value)
+        else { return nil }
+        return VideoAudioChannel(channelIdentificationCode: code, mode: mode, source: source)
     }
 
     /// Maps an empty or whitespace-only string to nil.

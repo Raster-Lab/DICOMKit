@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — workflow orchestration; audio kept in the encapsulated bit stream per PS3.5 2026a 8.2.5-8.2.12 and Table 8.2.12-1, with (003A,0300) written with no Items per PS3.3 Table C.7-13 Type 2C (D34)
+// NEMA-verified: 2026a, checked 2026-09-30 — workflow orchestration; audio kept in the encapsulated bit stream and checked (warnings, never stripped) against PS3.5 2026a 8.2.5/8.2.6 (MPEG2) and 8.2.12 Table 8.2.12-1 (H.264, HEVC); (003A,0300) per PS3.3 Table C.7-13 Type 2C, Items only when every track is MONO/STEREO and the caller names a CID 3000 source (D34, D46)
 //
 // VideoWorkflow.swift
 // DICOMKit
@@ -126,6 +126,11 @@ public enum VideoWorkflow {
         public var modality: String?
         public var manufacturer: String?
         public var institutionName: String?
+        /// The source of the multiplexed audio (PS3.16 CID 3000), which no
+        /// container records. When given, and every audio track is one mono or
+        /// stereo signal, (003A,0300) is written with one Item per track (PS3.3
+        /// Table C.7-13); otherwise the sequence stays empty.
+        public var audioChannelSource: VideoAudioChannel.Source?
 
         public init(
             patientName: String? = nil,
@@ -140,7 +145,8 @@ public enum VideoWorkflow {
             seriesDescription: String? = nil,
             modality: String? = nil,
             manufacturer: String? = nil,
-            institutionName: String? = nil
+            institutionName: String? = nil,
+            audioChannelSource: VideoAudioChannel.Source? = nil
         ) {
             self.patientName = patientName
             self.patientID = patientID
@@ -155,6 +161,7 @@ public enum VideoWorkflow {
             self.modality = modality
             self.manufacturer = manufacturer
             self.institutionName = institutionName
+            self.audioChannelSource = audioChannelSource
         }
     }
 
@@ -290,7 +297,7 @@ public enum VideoWorkflow {
             stream: stream,
             frameCount: probe.frameCount,
             frameCountSource: probe.frameCountSource,
-            audioTrackCount: probe.audioTrackCount,
+            audioTracks: probe.audioTracks,
             suggestedTransferSyntax: transferSyntax,
             frameRate: stream.frameRate
         )
@@ -391,16 +398,46 @@ public enum VideoWorkflow {
         builder.setStudyDateTime(date: today, time: time)
         builder.setAcquisitionDateTime(date: today, time: time)
 
+        // The payload is encapsulated unchanged, so audio in an MP4 or MPEG-TS
+        // stays in Pixel Data. PS3.5 8.2.5-8.2.12 permit that; PS3.3 Table C.7-13
+        // then requires Multiplexed Audio Channels Description Code Sequence
+        // (003A,0300) (Type 2C, "Zero or more Items"). Items are written only when
+        // they can be stated honestly (see ``audioChannels(for:metadata:)``).
+        if let channels = audioChannels(for: plan, metadata: metadata) {
+            builder.setMultiplexedAudioChannels(channels)
+        }
         var video = try builder.build()
-        // The payload is encapsulated unchanged, so an MP4 `soun` track stays in
-        // Pixel Data. PS3.5 8.2.5-8.2.12 permit that; PS3.3 Table C.7-13 then
-        // requires Multiplexed Audio Channels Description Code Sequence (003A,0300)
-        // (Type 2C, "Zero or more Items"). It is written with no Items because
-        // DICOMKit does not yet read the channel layout an Item would describe.
         if plan.probe.audioTrackCount > 0 {
             video.containsUndescribedMultiplexedAudio = true
         }
         return video
+    }
+
+    /// The (003A,0300) Items for a plan's audio, or nil when there is no audio or
+    /// the Items cannot be stated honestly: the caller named no Channel Source
+    /// (PS3.16 CID 3000, which no container records), or some track is not one
+    /// mono or stereo signal (``VideoAudioChannel/channels(describing:source:)``).
+    public static func audioChannels(
+        for plan: ConversionPlan,
+        metadata: Metadata
+    ) -> [VideoAudioChannel]? {
+        guard let source = metadata.audioChannelSource else { return nil }
+        return VideoAudioChannel.channels(describing: plan.probe.audioTracks, source: source)
+    }
+
+    /// The audio notices for a plan: the PS3.5 8.2.5 / 8.2.12 check of every
+    /// audio track against the plan's transfer syntax, as warnings and notes.
+    /// Empty when there is no audio.
+    public static func audioNotices(for plan: ConversionPlan, metadata: Metadata = Metadata()) -> [String] {
+        guard plan.probe.audioTrackCount > 0 else { return [] }
+        let result = VideoConformanceValidator.validateAudio(
+            tracks: plan.probe.audioTracks,
+            container: plan.probe.container,
+            transferSyntax: plan.transferSyntax)
+        return VideoConsole.audioCheckLines(
+            result,
+            channelsDescribed: audioChannels(for: plan, metadata: metadata) != nil,
+            sourceGiven: metadata.audioChannelSource != nil)
     }
 
     /// Splits a `Date` into the DICOM date and time values the builder wants.
@@ -514,12 +551,11 @@ public enum VideoWorkflow {
             notices.append(VideoConsole.verboseBlock(plan.verboseLines))
         }
 
-        // Audio is permitted (PS3.5 8.2.5-8.2.12) and is not removed: the notice
-        // says what DICOMKit leaves unchecked, not that the audio is dropped.
-        if plan.probe.audioTrackCount > 0 {
-            notices.append(VideoConsole.audioCarriedLine(
-                trackCount: plan.probe.audioTrackCount))
-        }
+        // Audio is permitted (PS3.5 8.2.5-8.2.12) and is not removed: the notices
+        // name each known violation of those constraints, and what could not be
+        // checked, as warnings. dicom-video has no strict mode that would turn
+        // them into a rejection, and the pixel data is never altered.
+        notices += audioNotices(for: plan, metadata: metadata)
 
         guard !dryRun else {
             return ConvertOutcome(
@@ -647,10 +683,23 @@ public enum VideoWorkflow {
             )
         }
 
+        // The audio check is reported with the verdict but does not change it:
+        // audio that breaks PS3.5 8.2.5 / 8.2.12 is a warning (see `convert`).
+        // Tracks whose format is unknown are already described by the report.
+        var audioLines: [String] = []
+        if result.audioTracks.contains(where: { $0.format != nil }) {
+            audioLines = audioNotices(for: ConversionPlan(
+                probe: result, transferSyntax: syntax, bitstream: Data()))
+        }
+
         let conformance = VideoConformanceValidator.validate(
             stream: result.stream, transferSyntax: syntax, numberOfFrames: result.frameCount)
         if conformance.isConformant {
             lines.append(VideoConsole.conformanceOKLine)
+            if !audioLines.isEmpty {
+                lines.append("")
+                lines += audioLines
+            }
             return ProbeOutcome(
                 output: lines.joined(separator: "\n"), probe: result, exitCode: .success,
                 diagnostics: diagnostics)
@@ -658,6 +707,10 @@ public enum VideoWorkflow {
 
         lines.append("")
         lines.append(conformance.report)
+        if !audioLines.isEmpty {
+            lines.append("")
+            lines += audioLines
+        }
         return ProbeOutcome(
             output: lines.joined(separator: "\n"),
             probe: result,
@@ -936,6 +989,10 @@ public enum VideoWorkflow {
                             $0.map { "\(name): \($0)" })) }
                         : nil
                 )
+
+                // Audio notices are commentary on a clip that is converted anyway,
+                // so they join the other diagnostics, prefixed with the clip.
+                diagnostics += audioNotices(for: plan, metadata: metadata).map { "\(name): \($0)" }
 
                 guard !dryRun else {
                     converted += 1

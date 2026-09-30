@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — SOP Class names match PS3.6 2026a Table A-1; audio messages per PS3.5 2026a 8.2.5-8.2.12 and Table 8.2.12-1 (audio permitted, kept, not checked) and PS3.3 Table C.7-13 (003A,0300) Type 2C "Zero or more Items" (D34)
+// NEMA-verified: 2026a, checked 2026-09-30 — SOP Class names match PS3.6 2026a Table A-1; audio messages per PS3.5 2026a 8.2.5-8.2.12 and Table 8.2.12-1 (per-track violations of the constraints VideoConformanceValidator.audioConstraints extracts; audio kept, never stripped) and PS3.3 Table C.7-13 (003A,0300) Type 2C "Zero or more Items", Channel Source from PS3.16 CID 3000 (D34, D46)
 //
 // VideoConsole.swift
 // DICOMKit
@@ -277,7 +277,18 @@ public enum VideoConsole {
         // and `convert` keeps it in the bit stream; what DICOMKit cannot yet do
         // is check its format against those constraints.
         if probe.audioTrackCount > 0 {
-            lines.append("Audio tracks:     \(probe.audioTrackCount) \(audioTrackNote)")
+            if probe.audioTracks.allSatisfy({ $0.format == nil }) {
+                lines.append("Audio tracks:     \(probe.audioTrackCount) \(audioTrackNote)")
+            } else {
+                lines.append("Audio tracks:     \(probe.audioTrackCount) (carried in the bit stream)")
+                for (index, track) in probe.audioTracks.enumerated() {
+                    let label = "Audio track \(index + 1):"
+                    let padded = label.count < 18
+                        ? label + String(repeating: " ", count: 18 - label.count)
+                        : label + " "
+                    lines.append(padded + track.summary)
+                }
+            }
         }
         if let syntax = transferSyntax {
             lines.append("Transfer syntax:  \(syntax.uid)")
@@ -446,7 +457,9 @@ public enum VideoConsole {
     public static let audioTrackNote =
         "(carried in the bit stream; not checked against PS3.5 8.2.5/8.2.12)"
 
-    /// The warning emitted when the input has audio tracks.
+    /// The warning emitted when the input has audio tracks whose format could not
+    /// be identified (``audioCheckLines(_:channelsDescribed:sourceGiven:)`` is
+    /// used once any format is known).
     ///
     /// The audio is not removed: `convert` encapsulates the payload unchanged,
     /// which PS3.5 8.2.5-8.2.12 permit. The warning names the library's
@@ -463,6 +476,75 @@ public enum VideoConsole {
             in (003A,0300).
             """)
     }
+
+    /// The notices for the audio tracks of a conversion, after checking them
+    /// against PS3.5 8.2.5 (MPEG2) or 8.2.12 (H.264, HEVC) for its transfer
+    /// syntax.
+    ///
+    /// When no track's format could be identified this is exactly
+    /// ``audioCarriedLine(trackCount:)``. Otherwise, per track: one warning per
+    /// known violation; a note listing the constraints that could not be checked;
+    /// or a note that the track meets the section. Then, unless channels were
+    /// described, a note that (003A,0300) has no Items. The audio is never
+    /// removed or re-encoded, whatever the verdict.
+    ///
+    /// - Parameters:
+    ///   - result: ``VideoConformanceValidator/validateAudio(tracks:container:transferSyntax:)``.
+    ///   - channelsDescribed: Whether (003A,0300) carries Items.
+    ///   - sourceGiven: Whether the caller named a Channel Source, so a missing
+    ///     description is down to the channel layout rather than the source.
+    public static func audioCheckLines(
+        _ result: VideoAudioConformanceResult,
+        channelsDescribed: Bool = false,
+        sourceGiven: Bool = false
+    ) -> [String] {
+        guard !result.tracks.isEmpty else { return [] }
+        if result.tracks.allSatisfy({ $0.track.format == nil }) {
+            return [audioCarriedLine(trackCount: result.tracks.count)]
+        }
+        var lines: [String] = []
+        for check in result.tracks {
+            let label = "audio track \(check.trackNumber) (\(check.track.summary))"
+            guard check.track.format != nil else {
+                lines.append(warningLine(
+                    "\(label): format not identified; not checked against \(result.section)."))
+                continue
+            }
+            for violation in check.violations {
+                lines.append(audioViolationLine(label: label, violation: violation))
+            }
+            if !check.notChecked.isEmpty {
+                let list = check.notChecked.map(\.rawValue).joined(separator: ", ")
+                lines.append(noteLine("\(label): not checked against \(result.section): \(list)."))
+            } else if check.violations.isEmpty {
+                lines.append(noteLine("\(label) meets \(result.section)."))
+            }
+        }
+        if !channelsDescribed {
+            lines.append(sourceGiven ? audioChannelLayoutUndescribedLine : audioChannelsUndescribedLine)
+        }
+        return lines
+    }
+
+    /// One audio violation as a warning: the audio is kept, so it is not an error.
+    public static func audioViolationLine(label: String, violation: VideoAudioViolation) -> String {
+        warningLine("\(label): \(violation.message); the audio is kept unchanged.")
+    }
+
+    /// Why (003A,0300) has no Items even though the audio was identified.
+    public static let audioChannelsUndescribedLine = noteLine("""
+        Multiplexed Audio Channels Description Code Sequence (003A,0300) has no Items: \
+        each Item needs a Channel Source code (PS3.16 CID 3000) that the container does not record.
+        """)
+
+    /// Why (003A,0300) has no Items although a Channel Source was given: some
+    /// track is not one mono or stereo signal, which is all Channel Mode
+    /// (003A,0302) can express (Enumerated Values MONO, STEREO), or its channel
+    /// count is unknown.
+    public static let audioChannelLayoutUndescribedLine = noteLine("""
+        Multiplexed Audio Channels Description Code Sequence (003A,0300) has no Items: \
+        Channel Mode (003A,0302) is MONO or STEREO, and not every audio track is known to be one of those.
+        """)
 
     /// The warning formerly emitted when audio tracks were said to be dropped.
     ///

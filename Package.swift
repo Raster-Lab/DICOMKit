@@ -554,6 +554,8 @@ let package = Package(
                 "VolumeSpacingTests.swift",
                 // PS3.3 Table C.7-13 Cine, C.7.6.1.1.5.1 terms, PS3.5 8.2.5/8.2.12 (P-VIDEO, 2026-09-29).
                 "Video/VideoCineModuleTests.swift",
+                // PS3.5 8.2.5/8.2.12 Table 8.2.12-1 audio check, PS3.3 Table C.7-13 (003A,0300) Items (D46, 2026-09-30).
+                "Video/VideoAudioTests.swift",
                 // PS3.3 C.8.9.1.1.3/C.8.9.1.1.5, PS3.16 CID 85 and DCM 126410-126413 (P-SUV, 2026-09-29).
                 // DICOM 2026a verification (DICOMKIT_STANDARD_IMPLEMENTATION.md): suites
                 // that were never in this allowlist, plus the P-item suites of 2026-09-29.

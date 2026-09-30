@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — video transfer syntax UIDs match PS3.6 2026a Table A-1; Lossy Image Compression Method terms ISO_13818_2/ISO_14496_10/ISO_23008_2 per PS3.3 C.7.6.1.1.5.1; Cine Module fields and audio statements per PS3.3 Table C.7-13 ((003A,0300) Type 2C, "Zero or more Items"), C.7.6.5.1.2-3 and PS3.5 8.2.5/8.2.12; Channel Mode MONO/STEREO and CID 3000 codes (P-VIDEO, D34)
+// NEMA-verified: 2026a, checked 2026-09-30 — video transfer syntax UIDs match PS3.6 2026a Table A-1; Lossy Image Compression Method terms ISO_13818_2/ISO_14496_10/ISO_23008_2 per PS3.3 C.7.6.1.1.5.1; Cine Module fields and audio statements per PS3.3 Table C.7-13 ((003A,0300) Type 2C, "Zero or more Items"; items (003A,0301) IS 1, (003A,0302) CS 1 MONO/STEREO, (003A,0208) SQ 1 one Item, DCID 3000; VRs per PS3.6 Table 6-1), C.7.6.5.1.2-3 and PS3.5 8.2.5/8.2.12; CID 3000 codes per PS3.16 (P-VIDEO, D34, D46)
 //
 // Video.swift
 // DICOMKit
@@ -191,8 +191,20 @@ public struct Video: Sendable {
     /// holds, the sequence is written even with no Items. ``VideoWorkflow`` sets
     /// this when an MP4 input has a `soun` track: the bit stream is encapsulated
     /// unchanged, audio included, but DICOMKit does not yet identify the channel
-    /// numbering, mode or source that an Item would need.
+    /// numbering, mode or source that an Item would need. ``VideoParser`` sets it
+    /// when a parsed object carries the sequence, so the sequence survives a
+    /// round trip even when it has no Items.
     var containsUndescribedMultiplexedAudio = false
+
+    /// Whether the object declares multiplexed audio: Multiplexed Audio Channels
+    /// Description Code Sequence (003A,0300) is present, with or without Items.
+    ///
+    /// PS3.3 C.7.6.5.1.3 Note: "If no audio was recorded, the Multiplexed Audio
+    /// Channels Description Code Sequence (003A,0300) will be present and contain
+    /// no Items", so presence alone does not prove there is audio.
+    public var declaresMultiplexedAudio: Bool {
+        containsUndescribedMultiplexedAudio || !multiplexedAudioChannels.isEmpty
+    }
 
     // MARK: - Content Date/Time
 
