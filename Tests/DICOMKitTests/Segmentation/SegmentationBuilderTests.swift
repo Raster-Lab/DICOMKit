@@ -734,19 +734,26 @@ final class SegmentationLabelmapTests: XCTestCase {
             studyInstanceUID: "1.2.3",
             seriesInstanceUID: "1.2.3.4"
         )
+        // Category and type are Type 1 (PS3.3 Table C.8.20-4): CID 7150 categories, CID 7151
+        // types (Tissue via CID 7191, Liver via CID 7192/7154, Neoplasm via CID 7194/7159)
         try builder
-            .addLabelmapSegment(number: 0, label: "Background")
+            .addLabelmapSegment(number: 0, label: "Background", category: tissue, type: tissue)
             .addLabelmapSegment(
                 number: 1,
                 label: "Liver",
-                category: CodedConcept(codeValue: "123037004", codingSchemeDesignator: "SCT", codeMeaning: "Anatomical Structure"),
+                category: CodedConcept(codeValue: "91723000", codingSchemeDesignator: "SCT", codeMeaning: "Anatomical Structure"),
                 type: CodedConcept(codeValue: "10200004", codingSchemeDesignator: "SCT", codeMeaning: "Liver"),
                 color: (r: 139, g: 69, b: 19),
                 algorithmType: .automatic,
                 algorithmName: "LiverNet")
-            .addLabelmapSegment(number: 2, label: "Tumor", color: (r: 255, g: 0, b: 0))
+            .addLabelmapSegment(number: 2, label: "Tumor", category: abnormal, type: neoplasm,
+                                color: (r: 255, g: 0, b: 0))
         return builder
     }
+
+    private let tissue = CodedConcept(codeValue: "85756007", codingSchemeDesignator: "SCT", codeMeaning: "Tissue")
+    private let abnormal = CodedConcept(codeValue: "49755003", codingSchemeDesignator: "SCT", codeMeaning: "Morphologically Abnormal Structure")
+    private let neoplasm = CodedConcept(codeValue: "108369006", codingSchemeDesignator: "SCT", codeMeaning: "Neoplasm")
 
     // MARK: - Builder
 
@@ -908,7 +915,7 @@ final class SegmentationLabelmapTests: XCTestCase {
             .addLabelmapFrame(slice2, imagePositionPatient: [0, 0, 2.5])
             .build()
 
-        let dataSet = built.toDataSet(pixelData: pixelData)
+        let dataSet = try built.buildDataSet(pixelData: pixelData)
 
         // Type 1 attributes the Segmentation IOD needs for LABELMAP
         XCTAssertEqual(dataSet.string(for: .sopClassUID), "1.2.840.10008.5.1.4.1.1.66.7")
@@ -996,11 +1003,11 @@ final class SegmentationLabelmapTests: XCTestCase {
         let builder = SegmentationBuilder(rows: 1, columns: 3, segmentationType: .labelmap,
                                           studyInstanceUID: "1.2.3", seriesInstanceUID: "1.2.3.4")
         let (built, pixelData) = try builder
-            .addLabelmapSegment(number: 0, label: "Background")
-            .addLabelmapSegment(number: 4097, label: "Lesion")
+            .addLabelmapSegment(number: 0, label: "Background", category: tissue, type: tissue)
+            .addLabelmapSegment(number: 4097, label: "Lesion", category: abnormal, type: neoplasm)
             .addLabelmapFrame([0, 4097, 0])
             .build()
-        let dataSet = built.toDataSet(pixelData: pixelData)
+        let dataSet = try built.buildDataSet(pixelData: pixelData)
         XCTAssertEqual(dataSet[.pixelData]?.vr, .OW)
         XCTAssertEqual(dataSet.uint16(for: .bitsAllocated), 16)
         XCTAssertEqual(dataSet.uint16(for: .highBit), 15)
@@ -1018,10 +1025,10 @@ final class SegmentationLabelmapTests: XCTestCase {
         let (built, pixelData) = try SegmentationBuilder(
             rows: 1, columns: 8, segmentationType: .binary,
             studyInstanceUID: "1.2.3", seriesInstanceUID: "1.2.3.4")
-            .addBinarySegment(number: 1, label: "A", mask: [1, 0, 0, 0, 0, 0, 0, 0])
-            .addBinarySegment(number: 2, label: "B", mask: [0, 0, 0, 0, 0, 0, 0, 1])
+            .addBinarySegment(number: 1, label: "A", mask: [1, 0, 0, 0, 0, 0, 0, 0], category: tissue, type: tissue)
+            .addBinarySegment(number: 2, label: "B", mask: [0, 0, 0, 0, 0, 0, 0, 1], category: abnormal, type: neoplasm)
             .build()
-        let dataSet = built.toDataSet(pixelData: pixelData)
+        let dataSet = try built.buildDataSet(pixelData: pixelData)
         XCTAssertEqual(dataSet.string(for: .sopClassUID), "1.2.840.10008.5.1.4.1.1.66.4")
         XCTAssertEqual(dataSet.uint16(for: .bitsAllocated), 1)
         XCTAssertNil(dataSet[.pixelPaddingValue], "A.51.4: not present unless LABELMAP")

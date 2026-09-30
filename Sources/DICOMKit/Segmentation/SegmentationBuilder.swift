@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — 1-bit frames packed least-significant-bit first per PS3.5 2026a 8.1.1 and D.1; LABELMAP per PS3.3 Table C.8.20-2 (Bits Allocated 8/16, Bits Stored, High Bit, Pixel Representation 0, MONOCHROME2, Segments Overlap NO), C.8.20.2.3.3 (every encoded value described in Segment Sequence), Table A.51-2 (no Segmentation Functional Group for LABELMAP), A.51.4 (Pixel Padding Value), PS3.4 B.5.1.25 (Label Map Segmentation Storage); toDataSet writes the Type 1 attributes of Tables C.8.20-2, C.8.20-4, C.7.6.16-1, C.7.6.17-1; category and type codes per PS3.16 CID 7150/7151; PALETTE COLOR LABELMAP (D37b): Photometric Interpretation per Table C.8.20-2 (PALETTE COLOR only for LABELMAP, no Recommended Display CIELab Value), Palette Color Lookup Table and ICC Profile Modules per Table A.51-1 and A.1.3.2, descriptors/data per Table C.7-22a, C.7.6.3.1.5 (8 or 16 bits per entry in the Segmentation IOD, US with Pixel Representation 0, no segmented data) and C.7.6.3.1.6 (8-bit values replicated into 16 bits), ICC Profile header per C.11.15.1.1 and Color Space per C.11.15.1.2, VRs per PS3.6 Table 6-1
+// NEMA-verified: 2026a, checked 2026-09-30 — 1-bit frames packed least-significant-bit first per PS3.5 2026a 8.1.1 and D.1; LABELMAP per PS3.3 Table C.8.20-2 (Bits Allocated 8/16, Bits Stored, High Bit, Pixel Representation 0, MONOCHROME2, Segments Overlap NO), C.8.20.2.3.3 (every encoded value described in Segment Sequence), Table A.51-2 (no Segmentation Functional Group for LABELMAP), A.51.4 (Pixel Padding Value), PS3.4 B.5.1.25 (Label Map Segmentation Storage); toDataSet writes the Type 1 attributes of Tables C.8.20-2, C.8.20-4, C.7.6.16-1, C.7.6.17-1; category and type codes per PS3.16 CID 7150/7151; Segmented Property Category/Type Code Sequences (0062,0003)/(0062,000F) Type 1 with one Item per Table C.8.20-4, enforced by buildDataSet (D37d); PALETTE COLOR LABELMAP (D37b): Photometric Interpretation per Table C.8.20-2 (PALETTE COLOR only for LABELMAP, no Recommended Display CIELab Value), Palette Color Lookup Table and ICC Profile Modules per Table A.51-1 and A.1.3.2, descriptors/data per Table C.7-22a, C.7.6.3.1.5 (8 or 16 bits per entry in the Segmentation IOD, US with Pixel Representation 0, no segmented data) and C.7.6.3.1.6 (8-bit values replicated into 16 bits), ICC Profile header per C.11.15.1.1 and Color Space per C.11.15.1.2, VRs per PS3.6 Table 6-1
 //
 // SegmentationBuilder.swift
 // DICOMKit
@@ -323,8 +323,10 @@ public final class SegmentationBuilder {
     ///   - number: Segment number (must be unique, starts from 1)
     ///   - label: Human-readable segment label
     ///   - mask: Binary mask data (0 or 1 values, rows × columns elements)
-    ///   - category: Optional segment category (e.g., Tissue, Organ, Lesion)
-    ///   - type: Optional segment type (e.g., Liver, Tumor)
+    ///   - category: Segmented Property Category (CID 7150), e.g. Tissue, Anatomical
+    ///     Structure. Type 1 in the Segment Description Macro (PS3.3 Table C.8.20-4):
+    ///     `Segmentation.buildDataSet(pixelData:)` throws when it is missing
+    ///   - type: Segmented Property Type (CID 7151), e.g. Liver, Tumor. Type 1 likewise
     ///   - color: Optional display color (RGB, each 0-255)
     ///   - algorithmType: Optional algorithm type (automatic, semiautomatic, manual)
     ///   - algorithmName: Optional algorithm name
@@ -401,8 +403,9 @@ public final class SegmentationBuilder {
     ///   - number: Segment number (must be unique, starts from 1)
     ///   - label: Human-readable segment label
     ///   - mask: Fractional mask data (0-255 normalized values, rows × columns elements)
-    ///   - category: Optional segment category
-    ///   - type: Optional segment type
+    ///   - category: Segmented Property Category (CID 7150); Type 1 (Table C.8.20-4),
+    ///     `Segmentation.buildDataSet(pixelData:)` throws when it is missing
+    ///   - type: Segmented Property Type (CID 7151); Type 1 likewise
     ///   - color: Optional display color (RGB, each 0-255)
     ///   - fractionalType: Type of fractional values (probability or occupancy)
     ///   - maxValue: Maximum fractional value (typically 255 for 8-bit or 65535 for 16-bit)
@@ -486,8 +489,9 @@ public final class SegmentationBuilder {
     ///   - number: Segment Number (0062,0004), unique within the instance; 0 is allowed
     ///     (C.8.20.2.4 constrains the numbering to 1, 2, 3… only for BINARY and FRACTIONAL)
     ///   - label: Segment Label (0062,0005)
-    ///   - category: Optional Segmented Property Category Code
-    ///   - type: Optional Segmented Property Type Code
+    ///   - category: Segmented Property Category Code (CID 7150); Type 1 (Table C.8.20-4),
+    ///     `Segmentation.buildDataSet(pixelData:)` throws when it is missing
+    ///   - type: Segmented Property Type Code (CID 7151); Type 1 likewise
     ///   - color: Optional display color (RGB, each 0-255), written as Recommended Display
     ///     CIELab Value
     ///   - algorithmType: Segment Algorithm Type (0062,0008), MANUAL when nil
@@ -1054,6 +1058,8 @@ extension Segmentation {
     ///
     /// Writes what `toDataSet(pixelData:)` describes. Throws ``SegmentationDataSetError``
     /// when:
+    /// - a segment has no Segmented Property Category or Type code: both Code Sequences are
+    ///   Type 1 in the Segment Description Macro (PS3.3 2026a Table C.8.20-4);
     /// - Photometric Interpretation (0028,0004) is not an Enumerated Value for the
     ///   Segmentation Type: MONOCHROME2 for BINARY and FRACTIONAL, MONOCHROME2 or PALETTE
     ///   COLOR for LABELMAP (PS3.3 2026a Table C.8.20-2);
@@ -1075,6 +1081,17 @@ extension Segmentation {
 
     /// The Segmentation IOD rules ``buildDataSet(pixelData:)`` enforces
     private func validateForDataSet() throws {
+        // Table C.8.20-4 (Segment Description Macro): Segmented Property Category Code
+        // Sequence (0062,0003) and Segmented Property Type Code Sequence (0062,000F) are
+        // Type 1 with "Only a single Item" (Baseline CID 7150 / CID 7151)
+        for segment in segments {
+            guard segment.category != nil else {
+                throw SegmentationDataSetError.missingSegmentedPropertyCategory(segmentNumber: segment.segmentNumber)
+            }
+            guard segment.type != nil else {
+                throw SegmentationDataSetError.missingSegmentedPropertyType(segmentNumber: segment.segmentNumber)
+            }
+        }
         // Table C.8.20-2: Photometric Interpretation Enumerated Values by Segmentation Type
         guard segmentationType.allowedPhotometricInterpretations.contains(photometricInterpretation) else {
             throw SegmentationDataSetError.photometricInterpretationNotAllowed(
@@ -1516,6 +1533,12 @@ public enum SegmentationDataSetError: Error, CustomStringConvertible, Equatable 
     case invalidICCProfile(String)
     /// Recommended Display CIELab Value with a PALETTE COLOR LABELMAP (Table C.8.20-2)
     case recommendedDisplayCIELabValueNotAllowed(segmentNumber: Int)
+    /// A segment without Segmented Property Category Code Sequence (0062,0003), Type 1
+    /// (Table C.8.20-4)
+    case missingSegmentedPropertyCategory(segmentNumber: Int)
+    /// A segment without Segmented Property Type Code Sequence (0062,000F), Type 1
+    /// (Table C.8.20-4)
+    case missingSegmentedPropertyType(segmentNumber: Int)
 
     public var description: String {
         switch self {
@@ -1531,6 +1554,10 @@ public enum SegmentationDataSetError: Error, CustomStringConvertible, Equatable 
             return "Invalid ICC Profile: \(reason)"
         case .recommendedDisplayCIELabValueNotAllowed(let number):
             return "Segment \(number): Recommended Display CIELab Value shall not be present in a PALETTE COLOR LABELMAP (PS3.3 Table C.8.20-2)"
+        case .missingSegmentedPropertyCategory(let number):
+            return "Segment \(number): Segmented Property Category Code Sequence (0062,0003) is Type 1 (PS3.3 Table C.8.20-4, CID 7150)"
+        case .missingSegmentedPropertyType(let number):
+            return "Segment \(number): Segmented Property Type Code Sequence (0062,000F) is Type 1 (PS3.3 Table C.8.20-4, CID 7151)"
         }
     }
 }

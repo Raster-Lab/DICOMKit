@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — Segmentation Type (BINARY, FRACTIONAL, LABELMAP), Segments Overlap and Fractional Type terms per PS3.3 2026a Table C.8.20-2 and C.8.20.2.3; Algorithm Type per Table C.8.20-4; Pixel Padding Value for LABELMAP per A.51.4 and C.8.20.2.4; SOP Class UIDs per PS3.6 Table A-1 and PS3.4 B.5.1.25; Palette Color Lookup Table and ICC Profile Modules required with PALETTE COLOR per Table A.51-1, absent otherwise per A.1.3.2 (D37b)
+// NEMA-verified: 2026a, checked 2026-09-30 — Segmentation Type (BINARY, FRACTIONAL, LABELMAP), Segments Overlap and Fractional Type terms per PS3.3 2026a Table C.8.20-2 and C.8.20.2.3; Algorithm Type per Table C.8.20-4; Pixel Padding Value for LABELMAP per A.51.4 and C.8.20.2.4; SOP Class UIDs per PS3.6 Table A-1 and PS3.4 B.5.1.25; Palette Color Lookup Table and ICC Profile Modules required with PALETTE COLOR per Table A.51-1, absent otherwise per A.1.3.2 (D37b); Segmented Property Category/Type Code Sequences Type 1 per Table C.8.20-4 (D37d)
 //
 // Segmentation.swift
 // DICOMKit
@@ -340,10 +340,14 @@ public struct Segment: Sendable, Hashable, Identifiable {
     /// Segmentation Algorithm Name
     public let segmentAlgorithmName: String?
     
-    /// Segment Category (e.g., Tissue, Organ, Lesion)
+    /// Segmented Property Category Code Sequence (0062,0003) Item (CID 7150), e.g. Tissue,
+    /// Anatomical Structure. Type 1 in the Segment Description Macro (PS3.3 2026a Table
+    /// C.8.20-4): optional here so partial or received models can be held, but
+    /// `Segmentation.buildDataSet(pixelData:)` throws when it is `nil`.
     public let category: CodedConcept?
     
-    /// Segment Type (e.g., Liver, Tumor, Background)
+    /// Segmented Property Type Code Sequence (0062,000F) Item (CID 7151), e.g. Liver, Tumor.
+    /// Type 1 (Table C.8.20-4); `Segmentation.buildDataSet(pixelData:)` throws when `nil`.
     public let type: CodedConcept?
     
     /// Anatomic Region Sequence
