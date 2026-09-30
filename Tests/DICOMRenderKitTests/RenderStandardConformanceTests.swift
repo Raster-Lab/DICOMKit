@@ -282,5 +282,20 @@ final class RenderStandardConformanceTests: XCTestCase {
         XCTAssertNil(FrameRenderRequest(pixelData: rgb, iccProfile: Data([1, 2, 3])).outputColorSpace)
     }
 
+    /// The print preparer reads Bits Allocated 32 cells whole too (D67): 65,541 is
+    /// between the frame's extremes, not the value 5 its low two bytes hold.
+    func testPrintPreparerReadsWideCellsWhole() async throws {
+        let pixelData = PixelData(data: cells32([5, 65_541, 1_000_000]), descriptor: PixelDataDescriptor(
+            rows: 1, columns: 3, bitsAllocated: 32, bitsStored: 32, highBit: 31,
+            isSigned: false, photometricInterpretation: .monochrome2))
+        let prepared = try await ImagePreprocessor().prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0,
+            colorMode: .grayscale, outputBitDepth: 8)
+        let out = [UInt8](prepared.pixelData)
+        XCTAssertEqual(out.first, 0)
+        XCTAssertEqual(out.last, 255)
+        XCTAssertTrue((1..<64).contains(out[1]), "65,541 sits about 6.5 % up the range, got \(out[1])")
+    }
+
     #endif
 }
