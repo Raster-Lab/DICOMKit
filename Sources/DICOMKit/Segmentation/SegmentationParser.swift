@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Segmentation Image Module reads per PS3.3 2026a Table C.8.20-2 (Segmentation Type incl. LABELMAP, Segments Overlap, Pixel Padding Value per A.51.4); Dimension Index Values (0020,9157) and In-Stack Position Number (0020,9057) read as UL per PS3.6 Table 6-1; SOP Class per PS3.4 B.5.1.25
+// NEMA-verified: 2026a, checked 2026-09-30 — Segmentation Image Module reads per PS3.3 2026a Table C.8.20-2 (Segmentation Type incl. LABELMAP, Segments Overlap, Pixel Padding Value per A.51.4); Dimension Index Values (0020,9157) and In-Stack Position Number (0020,9057) read as UL per PS3.6 Table 6-1; SOP Class per PS3.4 B.5.1.25; Palette Color Lookup Table (C.7.9) and ICC Profile (C.11.15) Modules read with PALETTE COLOR per Table A.51-1 (D37b)
 //
 // SegmentationParser.swift
 // DICOMKit
@@ -123,6 +123,13 @@ public struct SegmentationParser {
         let samplesPerPixel = dataSet.uint16(for: .samplesPerPixel) ?? 1
         let photometricInterpretation = dataSet.string(for: .photometricInterpretation) ?? "MONOCHROME2"
         let pixelRepresentation = dataSet.uint16(for: .pixelRepresentation) ?? 0
+
+        // Palette Color Lookup Table (C.7.9) and ICC Profile (C.11.15) Modules, required
+        // with PALETTE COLOR (PS3.3 2026a Table A.51-1)
+        let isPaletteColor = photometricInterpretation.trimmingCharacters(in: .whitespaces) == "PALETTE COLOR"
+        let paletteColorLookupTable = isPaletteColor ? dataSet.paletteColorLUT() : nil
+        let iccProfile = isPaletteColor ? dataSet[.iccProfile]?.valueData : nil
+        let colorSpace = isPaletteColor ? dataSet.string(for: .colorSpace) : nil
         
         // Parse Functional Groups
         let sharedFunctionalGroups = parseSharedFunctionalGroups(from: dataSet)
@@ -160,7 +167,10 @@ public struct SegmentationParser {
             photometricInterpretation: photometricInterpretation,
             pixelRepresentation: Int(pixelRepresentation),
             sharedFunctionalGroups: sharedFunctionalGroups,
-            perFrameFunctionalGroups: perFrameFunctionalGroups
+            perFrameFunctionalGroups: perFrameFunctionalGroups,
+            paletteColorLookupTable: paletteColorLookupTable,
+            iccProfile: iccProfile,
+            colorSpace: colorSpace
         )
     }
     

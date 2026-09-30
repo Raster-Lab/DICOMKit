@@ -500,6 +500,8 @@ let package = Package(
                 "Segmentation/SegmentationPixelDataExtractorTests.swift",
                 "Segmentation/SegmentationRendererTests.swift",
                 "Segmentation/SegmentationTests.swift",
+                // PS3.3 Tables C.8.20-2, A.51-1, C.7-22a, C.11.15-1 PALETTE COLOR LABELMAP (D37 b, 2026-09-30).
+                "Segmentation/SegmentationPaletteColorTests.swift",
                 "StructuredReporting/BasicTextSRBuilderTests.swift",
                 "StructuredReporting/CADFindingsExtractorTests.swift",
                 "StructuredReporting/ChestCADSRBuilderTests.swift",

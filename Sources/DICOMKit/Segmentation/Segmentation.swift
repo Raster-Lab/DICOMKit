@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Segmentation Type (BINARY, FRACTIONAL, LABELMAP), Segments Overlap and Fractional Type terms per PS3.3 2026a Table C.8.20-2 and C.8.20.2.3; Algorithm Type per Table C.8.20-4; Pixel Padding Value for LABELMAP per A.51.4 and C.8.20.2.4; SOP Class UIDs per PS3.6 Table A-1 and PS3.4 B.5.1.25
+// NEMA-verified: 2026a, checked 2026-09-30 — Segmentation Type (BINARY, FRACTIONAL, LABELMAP), Segments Overlap and Fractional Type terms per PS3.3 2026a Table C.8.20-2 and C.8.20.2.3; Algorithm Type per Table C.8.20-4; Pixel Padding Value for LABELMAP per A.51.4 and C.8.20.2.4; SOP Class UIDs per PS3.6 Table A-1 and PS3.4 B.5.1.25; Palette Color Lookup Table and ICC Profile Modules required with PALETTE COLOR per Table A.51-1, absent otherwise per A.1.3.2 (D37b)
 //
 // Segmentation.swift
 // DICOMKit
@@ -147,6 +147,25 @@ public struct Segmentation: Sendable {
     
     /// Per-Frame Functional Groups Sequence
     public let perFrameFunctionalGroups: [FunctionalGroup]
+
+    // MARK: - PALETTE COLOR (LABELMAP only)
+
+    /// Palette Color Lookup Table Module (PS3.3 2026a C.7.9, Table C.7-22a), which the
+    /// Segmentation IOD requires "if Photometric Interpretation (0028,0004) has a Value of
+    /// PALETTE COLOR" (Table A.51-1). PALETTE COLOR is allowed only for LABELMAP
+    /// (Table C.8.20-2); the table is indexed by the stored pixel value, i.e. the Segment
+    /// Number. `nil` for MONOCHROME2: a Conditional Module whose condition is not met
+    /// "shall not be present" (A.1.3.2).
+    public let paletteColorLookupTable: PaletteColorLUT?
+
+    /// ICC Profile (0028,2000) of the ICC Profile Module (C.11.15, Table C.11.15-1), which
+    /// the Segmentation IOD requires with PALETTE COLOR (Table A.51-1). The profile must be
+    /// an Input Device ("scnr") RGB profile with a Lab or XYZ PCS (C.11.15.1.1).
+    public let iccProfile: Data?
+
+    /// Color Space (0028,2002), Type 3 in the ICC Profile Module (C.11.15.1.2 Defined
+    /// Terms SRGB, ADOBERGB, ROMMRGB, DISPLAYP3)
+    public let colorSpace: String?
     
     // MARK: - Initialization
     
@@ -185,7 +204,10 @@ public struct Segmentation: Sendable {
         photometricInterpretation: String = "MONOCHROME2",
         pixelRepresentation: Int = 0,
         sharedFunctionalGroups: FunctionalGroup? = nil,
-        perFrameFunctionalGroups: [FunctionalGroup] = []
+        perFrameFunctionalGroups: [FunctionalGroup] = [],
+        paletteColorLookupTable: PaletteColorLUT? = nil,
+        iccProfile: Data? = nil,
+        colorSpace: String? = nil
     ) {
         self.sopInstanceUID = sopInstanceUID
         self.sopClassUID = sopClassUID ?? Segmentation.sopClassUID(for: segmentationType)
@@ -219,6 +241,9 @@ public struct Segmentation: Sendable {
         self.pixelRepresentation = pixelRepresentation
         self.sharedFunctionalGroups = sharedFunctionalGroups
         self.perFrameFunctionalGroups = perFrameFunctionalGroups
+        self.paletteColorLookupTable = paletteColorLookupTable
+        self.iccProfile = iccProfile
+        self.colorSpace = colorSpace
     }
 }
 

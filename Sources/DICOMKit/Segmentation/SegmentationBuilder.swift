@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — 1-bit frames packed least-significant-bit first per PS3.5 2026a 8.1.1 and D.1; LABELMAP per PS3.3 Table C.8.20-2 (Bits Allocated 8/16, Bits Stored, High Bit, Pixel Representation 0, MONOCHROME2, Segments Overlap NO), C.8.20.2.3.3 (every encoded value described in Segment Sequence), Table A.51-2 (no Segmentation Functional Group for LABELMAP), A.51.4 (Pixel Padding Value), PS3.4 B.5.1.25 (Label Map Segmentation Storage); toDataSet writes the Type 1 attributes of Tables C.8.20-2, C.8.20-4, C.7.6.16-1, C.7.6.17-1; category and type codes per PS3.16 CID 7150/7151
+// NEMA-verified: 2026a, checked 2026-09-30 — 1-bit frames packed least-significant-bit first per PS3.5 2026a 8.1.1 and D.1; LABELMAP per PS3.3 Table C.8.20-2 (Bits Allocated 8/16, Bits Stored, High Bit, Pixel Representation 0, MONOCHROME2, Segments Overlap NO), C.8.20.2.3.3 (every encoded value described in Segment Sequence), Table A.51-2 (no Segmentation Functional Group for LABELMAP), A.51.4 (Pixel Padding Value), PS3.4 B.5.1.25 (Label Map Segmentation Storage); toDataSet writes the Type 1 attributes of Tables C.8.20-2, C.8.20-4, C.7.6.16-1, C.7.6.17-1; category and type codes per PS3.16 CID 7150/7151; PALETTE COLOR LABELMAP (D37b): Photometric Interpretation per Table C.8.20-2 (PALETTE COLOR only for LABELMAP, no Recommended Display CIELab Value), Palette Color Lookup Table and ICC Profile Modules per Table A.51-1 and A.1.3.2, descriptors/data per Table C.7-22a, C.7.6.3.1.5 (8 or 16 bits per entry in the Segmentation IOD, US with Pixel Representation 0, no segmented data) and C.7.6.3.1.6 (8-bit values replicated into 16 bits), ICC Profile header per C.11.15.1.1 and Color Space per C.11.15.1.2, VRs per PS3.6 Table 6-1
 //
 // SegmentationBuilder.swift
 // DICOMKit
@@ -88,7 +88,7 @@ import DICOMCore
 /// ```
 /// Every pixel value in a LABELMAP frame must be one of the added Segment Numbers
 /// (PS3.3 C.8.20.2.3.3); `build()` throws otherwise. The result is a Label Map
-/// Segmentation Storage instance (PS3.4 B.5.1.25). `Segmentation.toDataSet(pixelData:)`
+/// Segmentation Storage instance (PS3.4 B.5.1.25). `Segmentation.buildDataSet(pixelData:)`
 /// serialises the result.
 ///
 /// Reference: PS3.3 A.51 - Segmentation IOD
@@ -117,6 +117,7 @@ public final class SegmentationBuilder {
     private var frameOfReferenceUID: String?
     private var pixelPaddingValue: Int?
     private var labelmapBitsAllocated: Int?
+    private var paletteColor: (iccProfile: Data, colorSpace: String?)?
 
     // MARK: - Segments and Pixel Data
 
@@ -131,6 +132,8 @@ public final class SegmentationBuilder {
         /// Frame pixel data for BINARY/FRACTIONAL; empty for LABELMAP, whose frames are
         /// held in `labelmapFrames`
         let pixelData: Data
+        /// The display colour as given, for a PALETTE COLOR LABELMAP's lookup table
+        var color: (r: UInt8, g: UInt8, b: UInt8)? = nil
     }
 
     private struct LabelmapFrame {
@@ -189,7 +192,7 @@ public final class SegmentationBuilder {
     }
     
     /// Sets the Series Number (0020,0011), Type 1 in the Segmentation Series Module
-    /// (PS3.3 Table C.8.20-1); `toDataSet` writes 1 when not set
+    /// (PS3.3 Table C.8.20-1); `buildDataSet` writes 1 when not set
     /// - Parameter number: The series number
     /// - Returns: Updated builder
     @discardableResult
@@ -275,6 +278,38 @@ public final class SegmentationBuilder {
         return self
     }
     
+    /// Encodes a LABELMAP with Photometric Interpretation PALETTE COLOR instead of
+    /// MONOCHROME2 (PS3.3 2026a Table C.8.20-2 allows PALETTE COLOR only for LABELMAP)
+    ///
+    /// `build()` then fills the Palette Color Lookup Table Module (C.7.9), which Table
+    /// A.51-1 requires with PALETTE COLOR, from the segment colours: one 16-bit entry per
+    /// value from 0 to the largest Segment Number (C.7.6.3.1.5 allows 8 or 16 bits per
+    /// entry in the Segmentation IOD), each 8-bit channel scaled to 16 bits by replicating
+    /// it into both bytes (C.7.6.3.1.6). Values no segment describes, and segments added
+    /// without a colour, map to black. Recommended Display CIELab Value is not written,
+    /// since Table C.8.20-2 says it "shall not be present if Segmentation Type is LABELMAP
+    /// and Photometric Interpretation is PALETTE COLOR".
+    ///
+    /// The ICC Profile Module (C.11.15), also required with PALETTE COLOR (Table A.51-1),
+    /// carries `iccProfile`; it must be an Input Device ("scnr") RGB profile with a Lab or
+    /// XYZ PCS (C.11.15.1.1). The default is the fixed sRGB profile of
+    /// ``SRGBICCProfileWriter`` with Color Space SRGB (C.11.15.1.2).
+    ///
+    /// `build()` throws ``SegmentationBuilderError/invalidSegmentationType(expected:got:)``
+    /// when the builder is not LABELMAP.
+    /// - Parameters:
+    ///   - iccProfile: ICC Profile (0028,2000) bytes
+    ///   - colorSpace: Color Space (0028,2002), Type 3; `nil` omits it
+    /// - Returns: Updated builder
+    @discardableResult
+    public func setPaletteColor(
+        iccProfile: Data = SRGBICCProfileWriter.profileData,
+        colorSpace: String? = SRGBICCProfileWriter.colorSpace
+    ) -> Self {
+        paletteColor = (iccProfile, colorSpace)
+        return self
+    }
+
     // MARK: - Binary Segment Addition
     
     /// Adds a binary segment to the segmentation
@@ -493,7 +528,7 @@ public final class SegmentationBuilder {
             trackingID: nil,
             trackingUID: nil
         )
-        segments.append(SegmentData(segment: segment, pixelData: Data()))
+        segments.append(SegmentData(segment: segment, pixelData: Data(), color: color))
         return self
     }
 
@@ -570,6 +605,10 @@ public final class SegmentationBuilder {
         // Validate at least one segment
         guard !segments.isEmpty else {
             throw SegmentationBuilderError.noSegmentsAdded
+        }
+        // PALETTE COLOR is an Enumerated Value only for LABELMAP (Table C.8.20-2)
+        if paletteColor != nil && segmentationType != .labelmap {
+            throw SegmentationBuilderError.invalidSegmentationType(expected: .labelmap, got: segmentationType)
         }
         
         // Generate SOP Instance UID if not provided
@@ -726,6 +765,47 @@ public final class SegmentationBuilder {
             }
         }
         
+        // PALETTE COLOR LABELMAP: the Palette Color Lookup Table indexed by Segment Number
+        // (C.7.9, C.7.6.3.1.5) replaces the per-segment CIELab colour, which Table
+        // C.8.20-2 forbids with PALETTE COLOR.
+        var finalSegments = sortedSegments.map { $0.segment }
+        var paletteColorLookupTable: PaletteColorLUT? = nil
+        if paletteColor != nil {
+            let entryCount = (sortedSegments.map { $0.segment.segmentNumber }.max() ?? 0) + 1
+            var red = [UInt16](repeating: 0, count: entryCount)
+            var green = red
+            var blue = red
+            for segmentData in sortedSegments {
+                guard let color = segmentData.color else { continue }
+                let index = segmentData.segment.segmentNumber
+                // C.7.6.3.1.6: 8-bit intensities scaled to 16 bits by replicating the byte
+                red[index] = UInt16(color.r) * 0x101
+                green[index] = UInt16(color.g) * 0x101
+                blue[index] = UInt16(color.b) * 0x101
+            }
+            let descriptor = PaletteColorLUT.Descriptor(
+                numberOfEntries: entryCount, firstMappedValue: 0, bitsPerEntry: 16)
+            paletteColorLookupTable = PaletteColorLUT(
+                redDescriptor: descriptor, greenDescriptor: descriptor, blueDescriptor: descriptor,
+                redLUT: red, greenLUT: green, blueLUT: blue)
+            finalSegments = finalSegments.map { segment in
+                Segment(
+                    segmentNumber: segment.segmentNumber,
+                    segmentLabel: segment.segmentLabel,
+                    segmentDescription: segment.segmentDescription,
+                    segmentAlgorithmType: segment.segmentAlgorithmType,
+                    segmentAlgorithmName: segment.segmentAlgorithmName,
+                    category: segment.category,
+                    type: segment.type,
+                    anatomicRegion: segment.anatomicRegion,
+                    anatomicRegionModifier: segment.anatomicRegionModifier,
+                    recommendedDisplayCIELabValue: nil,
+                    trackingID: segment.trackingID,
+                    trackingUID: segment.trackingUID
+                )
+            }
+        }
+
         // Build referenced series
         let referencedSeries: [SegmentationReferencedSeries]
         if !sourceImages.isEmpty {
@@ -766,7 +846,7 @@ public final class SegmentationBuilder {
             segmentsOverlap: segmentsOverlap,
             pixelPaddingValue: finalPixelPaddingValue,
             numberOfSegments: sortedSegments.count,
-            segments: sortedSegments.map { $0.segment },
+            segments: finalSegments,
             frameOfReferenceUID: frameOfReferenceUID,
             dimensionOrganizationUID: UIDGenerator.generateUID().value,
             referencedSeries: referencedSeries,
@@ -777,10 +857,13 @@ public final class SegmentationBuilder {
             bitsStored: bitsStored,
             highBit: highBit,
             samplesPerPixel: 1,
-            photometricInterpretation: "MONOCHROME2",
+            photometricInterpretation: paletteColor == nil ? "MONOCHROME2" : "PALETTE COLOR",
             pixelRepresentation: 0,
             sharedFunctionalGroups: nil,
-            perFrameFunctionalGroups: perFrameFunctionalGroups
+            perFrameFunctionalGroups: perFrameFunctionalGroups,
+            paletteColorLookupTable: paletteColorLookupTable,
+            iccProfile: paletteColor?.iccProfile,
+            colorSpace: paletteColor?.colorSpace
         )
         
         return (segmentation: segmentation, pixelData: combinedPixelData)
@@ -952,9 +1035,131 @@ extension Segmentation {
     ///   In-Stack Position Number (0020,9057) in the Frame Content Sequence (0020,9111);
     ///   Segments Overlap NO; Pixel Padding Value when set (A.51.4).
     ///
+    /// - PALETTE COLOR (LABELMAP only): the Palette Color Lookup Table Module (C.7.9) and
+    ///   ICC Profile Module (C.11.15) the model carries; no Recommended Display CIELab
+    ///   Value (Table C.8.20-2). Neither module is written for MONOCHROME2 (A.1.3.2).
+    ///
+    /// This method does not check the model; a model that breaks a Segmentation IOD rule is
+    /// written as it is. ``buildDataSet(pixelData:)`` checks it first and throws.
+    ///
     /// - Parameter pixelData: The frame data returned by `SegmentationBuilder.build()`
     /// - Returns: A DataSet ready for `DICOMFile.create`
+    @available(*, deprecated, message: "Writes a model that breaks the Segmentation IOD rules without saying so (PS3.3 2026a A.51, C.8.20.2); use buildDataSet(pixelData:), which throws SegmentationDataSetError instead")
     public func toDataSet(pixelData: Data) -> DataSet {
+        writeDataSet(pixelData: pixelData)
+    }
+
+    /// Converts the Segmentation and its pixel data to a DICOM DataSet, after checking the
+    /// Segmentation IOD rules the model can break
+    ///
+    /// Writes what `toDataSet(pixelData:)` describes. Throws ``SegmentationDataSetError``
+    /// when:
+    /// - Photometric Interpretation (0028,0004) is not an Enumerated Value for the
+    ///   Segmentation Type: MONOCHROME2 for BINARY and FRACTIONAL, MONOCHROME2 or PALETTE
+    ///   COLOR for LABELMAP (PS3.3 2026a Table C.8.20-2);
+    /// - it is PALETTE COLOR and the Palette Color Lookup Table (C.7.9) or ICC Profile
+    ///   (C.11.15) the IOD then requires is missing (Table A.51-1), the table breaks
+    ///   C.7.6.3.1.5 (identical first and second descriptor values, 8 or 16 bits per entry,
+    ///   one datum per entry) or the profile breaks C.11.15.1.1 ("scnr" class, RGB colour
+    ///   space, Lab or XYZ PCS), or a segment has a Recommended Display CIELab Value
+    ///   (Table C.8.20-2: "shall not be present");
+    /// - it is not PALETTE COLOR and the model carries either module, which "shall not be
+    ///   present" when the condition of a Conditional Module is not met (A.1.3.2).
+    ///
+    /// - Parameter pixelData: The frame data returned by `SegmentationBuilder.build()`
+    /// - Returns: A DataSet ready for `DICOMFile.create`
+    public func buildDataSet(pixelData: Data) throws -> DataSet {
+        try validateForDataSet()
+        return writeDataSet(pixelData: pixelData)
+    }
+
+    /// The Segmentation IOD rules ``buildDataSet(pixelData:)`` enforces
+    private func validateForDataSet() throws {
+        // Table C.8.20-2: Photometric Interpretation Enumerated Values by Segmentation Type
+        guard segmentationType.allowedPhotometricInterpretations.contains(photometricInterpretation) else {
+            throw SegmentationDataSetError.photometricInterpretationNotAllowed(
+                photometricInterpretation, segmentationType: segmentationType)
+        }
+        guard photometricInterpretation == Segmentation.paletteColor else {
+            // A.1.3.2: a Conditional Module whose condition is not met shall not be present
+            if paletteColorLookupTable != nil {
+                throw SegmentationDataSetError.moduleNotAllowed("Palette Color Lookup Table")
+            }
+            if iccProfile != nil {
+                throw SegmentationDataSetError.moduleNotAllowed("ICC Profile")
+            }
+            return
+        }
+        // Table A.51-1: both modules are required if Photometric Interpretation is PALETTE COLOR
+        guard let lut = paletteColorLookupTable else {
+            throw SegmentationDataSetError.missingModule("Palette Color Lookup Table")
+        }
+        guard let profile = iccProfile else {
+            throw SegmentationDataSetError.missingModule("ICC Profile")
+        }
+        try Segmentation.validatePaletteColorLookupTable(lut)
+        try Segmentation.validateICCProfile(profile)
+        // Table C.8.20-2: Recommended Display CIELab Value "Shall not be present if
+        // Segmentation Type (0062,0001) is LABELMAP and Photometric Interpretation
+        // (0028,0004) is PALETTE COLOR"
+        if let segment = segments.first(where: { $0.recommendedDisplayCIELabValue != nil }) {
+            throw SegmentationDataSetError.recommendedDisplayCIELabValueNotAllowed(segmentNumber: segment.segmentNumber)
+        }
+    }
+
+    /// PS3.3 2026a C.7.6.3.1.5: the first and second descriptor values are identical for
+    /// Red, Green and Blue, as is the third; in the Segmentation IOD the third (bits per
+    /// entry) is 8 or 16. Each table holds one datum per entry.
+    static func validatePaletteColorLookupTable(_ lut: PaletteColorLUT) throws {
+        let descriptors = [lut.redDescriptor, lut.greenDescriptor, lut.blueDescriptor]
+        guard Set(descriptors.map(\.numberOfEntries)).count == 1,
+              Set(descriptors.map(\.firstMappedValue)).count == 1,
+              Set(descriptors.map(\.bitsPerEntry)).count == 1 else {
+            throw SegmentationDataSetError.invalidPaletteColorLookupTable(
+                "the Red, Green and Blue descriptors differ (C.7.6.3.1.5)")
+        }
+        let descriptor = lut.redDescriptor
+        guard descriptor.bitsPerEntry == 8 || descriptor.bitsPerEntry == 16 else {
+            throw SegmentationDataSetError.invalidPaletteColorLookupTable(
+                "\(descriptor.bitsPerEntry) bits per entry; the Segmentation IOD allows 8 or 16 (C.7.6.3.1.5)")
+        }
+        guard (1...65536).contains(descriptor.numberOfEntries),
+              (0...0xFFFF).contains(descriptor.firstMappedValue) else {
+            throw SegmentationDataSetError.invalidPaletteColorLookupTable(
+                "\(descriptor.numberOfEntries) entries from \(descriptor.firstMappedValue); Pixel Representation 0 limits both to 16 bits unsigned (C.7.6.3.1.5)")
+        }
+        for (name, table) in [("Red", lut.redLUT), ("Green", lut.greenLUT), ("Blue", lut.blueLUT)]
+        where table.count != descriptor.numberOfEntries {
+            throw SegmentationDataSetError.invalidPaletteColorLookupTable(
+                "\(name) table has \(table.count) entries, the descriptor \(descriptor.numberOfEntries)")
+        }
+    }
+
+    /// PS3.3 2026a C.11.15.1.1: header bytes 12–15 (device class) "scnr", 16–19 (colour
+    /// space) "RGB ", 20–23 (PCS) "Lab " or "XYZ "
+    static func validateICCProfile(_ profile: Data) throws {
+        guard profile.count >= 128 else {
+            throw SegmentationDataSetError.invalidICCProfile("\(profile.count) bytes, shorter than the 128-byte ICC header")
+        }
+        func signature(_ offset: Int) -> String {
+            let start = profile.startIndex + offset
+            return String(decoding: profile[start..<start + 4], as: UTF8.self)
+        }
+        guard signature(12) == "scnr" else {
+            throw SegmentationDataSetError.invalidICCProfile("device class \"\(signature(12))\", not the Input Device class \"scnr\" (C.11.15.1.1)")
+        }
+        guard signature(16) == "RGB " else {
+            throw SegmentationDataSetError.invalidICCProfile("colour space \"\(signature(16))\", not \"RGB\" (C.11.15.1.1)")
+        }
+        guard signature(20) == "Lab " || signature(20) == "XYZ " else {
+            throw SegmentationDataSetError.invalidICCProfile("PCS \"\(signature(20))\", not \"Lab\" or \"XYZ\" (C.11.15.1.1)")
+        }
+    }
+
+    /// Photometric Interpretation PALETTE COLOR (Table C.8.20-2)
+    static let paletteColor = "PALETTE COLOR"
+
+    private func writeDataSet(pixelData: Data) -> DataSet {
         var dataSet = DataSet()
 
         // SOP Common Module
@@ -1013,8 +1218,10 @@ extension Segmentation {
             dataSet.setUInt16(UInt16(clamping: padding), for: .pixelPaddingValue)
         }
 
-        // Segment Sequence (Table C.8.20-4 Segment Description Macro)
-        dataSet.setSequence(segments.map { Segmentation.segmentItem($0) }, for: .segmentSequence)
+        // Segment Sequence (Table C.8.20-4 Segment Description Macro). Recommended Display
+        // CIELab Value is not written with PALETTE COLOR (Table C.8.20-2).
+        let cieLabAllowed = !(segmentationType == .labelmap && photometricInterpretation == Segmentation.paletteColor)
+        dataSet.setSequence(segments.map { Segmentation.segmentItem($0, cieLabAllowed: cieLabAllowed) }, for: .segmentSequence)
 
         // Multi-frame Functional Groups Module (Table C.7.6.16-1)
         let sharedItem = sharedFunctionalGroups.map { Segmentation.functionalGroupItem($0, segmentationType: segmentationType) }
@@ -1089,6 +1296,23 @@ extension Segmentation {
             dataSet.setSequence(seriesItems, for: .referencedSeriesSequence)
         }
 
+        if photometricInterpretation == Segmentation.paletteColor {
+            // Palette Color Lookup Table Module (C.7.9, Table C.7-22a), required with
+            // PALETTE COLOR (Table A.51-1); segmented tables "shall not be present in a
+            // ... Segmentation IOD", so the Red/Green/Blue Data (0028,1201-1203) are written.
+            if let lut = paletteColorLookupTable {
+                Segmentation.writePaletteColorLookupTable(lut, to: &dataSet)
+            }
+            // ICC Profile Module (C.11.15, Table C.11.15-1), required with PALETTE COLOR
+            if let profile = iccProfile {
+                dataSet[.iccProfile] = DataElement(
+                    tag: .iccProfile, vr: .OB, length: UInt32(profile.count), valueData: profile)
+                if let colorSpace = colorSpace {
+                    dataSet.setString(colorSpace, for: .colorSpace, vr: .CS)
+                }
+            }
+        }
+
         // Pixel Data (7FE0,0010): OB for 1- and 8-bit cells, OW for 16-bit
         dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: bitsAllocated > 8 ? .OW : .OB, data: pixelData)
 
@@ -1097,7 +1321,7 @@ extension Segmentation {
 
     /// Segment Description Macro Item (Table C.8.20-4) plus the Segmentation Image Module
     /// additions (Segment Algorithm Name, Recommended Display CIELab Value, Tracking ID/UID)
-    private static func segmentItem(_ segment: Segment) -> SequenceItem {
+    private static func segmentItem(_ segment: Segment, cieLabAllowed: Bool) -> SequenceItem {
         var elements: [DataElement] = [
             DataElement.uint16(tag: .segmentNumber, value: UInt16(clamping: segment.segmentNumber)),
             DataElement.string(tag: .segmentLabel, vr: .LO, value: segment.segmentLabel),
@@ -1124,7 +1348,7 @@ extension Segmentation {
         if let modifier = segment.anatomicRegionModifier {
             elements.append(codeSequence(tag: .anatomicRegionModifierSequence, modifier))
         }
-        if let color = segment.recommendedDisplayCIELabValue {
+        if cieLabAllowed, let color = segment.recommendedDisplayCIELabValue {
             elements.append(DataElement.uint16s(
                 tag: .recommendedDisplayCIELabValue,
                 values: [UInt16(clamping: color.l), UInt16(clamping: color.a), UInt16(clamping: color.b)]
@@ -1137,6 +1361,40 @@ extension Segmentation {
             elements.append(DataElement.string(tag: .trackingUID, vr: .UI, value: trackingUID))
         }
         return SequenceItem(elements: elements)
+    }
+
+    /// Red, Green and Blue Palette Color Lookup Table Descriptor (0028,1101-1103) and Data
+    /// (0028,1201-1203), PS3.3 2026a Table C.7-22a and C.7.6.3.1.5/C.7.6.3.1.6
+    ///
+    /// The descriptor is US: its VR follows Pixel Representation, which is 0 in the
+    /// Segmentation IOD (Table C.8.20-2); 2^16 entries are written as 0. 16-bit entries are
+    /// one little-endian word each; 8-bit entries one byte each ("equivalent to 8 bits
+    /// allocated"), padded to even length. VRs per PS3.6 2026a Table 6-1 (US or SS, OW).
+    private static func writePaletteColorLookupTable(_ lut: PaletteColorLUT, to dataSet: inout DataSet) {
+        let channels: [(Tag, Tag, PaletteColorLUT.Descriptor, [UInt16])] = [
+            (.redPaletteColorLookupTableDescriptor, .redPaletteColorLookupTableData, lut.redDescriptor, lut.redLUT),
+            (.greenPaletteColorLookupTableDescriptor, .greenPaletteColorLookupTableData, lut.greenDescriptor, lut.greenLUT),
+            (.bluePaletteColorLookupTableDescriptor, .bluePaletteColorLookupTableData, lut.blueDescriptor, lut.blueLUT),
+        ]
+        for (descriptorTag, dataTag, descriptor, table) in channels {
+            dataSet[descriptorTag] = DataElement.uint16s(tag: descriptorTag, values: [
+                UInt16(truncatingIfNeeded: descriptor.numberOfEntries),   // 65536 -> 0
+                UInt16(truncatingIfNeeded: descriptor.firstMappedValue),
+                UInt16(truncatingIfNeeded: descriptor.bitsPerEntry),
+            ])
+            var bytes = Data(capacity: table.count * 2)
+            if descriptor.bitsPerEntry == 8 {
+                // PaletteColorLUT holds 8-bit entries in the high byte
+                bytes.append(contentsOf: table.map { UInt8($0 >> 8) })
+                if bytes.count % 2 == 1 { bytes.append(0) }
+            } else {
+                for value in table {
+                    bytes.append(UInt8(value & 0xFF))
+                    bytes.append(UInt8(value >> 8))
+                }
+            }
+            dataSet[dataTag] = DataElement(tag: dataTag, vr: .OW, length: UInt32(bytes.count), valueData: bytes)
+        }
     }
 
     /// Code Sequence Macro Item (Table 8.8-1) wrapped in a single-Item sequence element
@@ -1236,6 +1494,44 @@ extension Segmentation {
         }
 
         return SequenceItem(elements: elements)
+    }
+}
+
+// MARK: - SegmentationDataSetError
+
+/// A Segmentation IOD rule the model breaks, found by ``Segmentation/buildDataSet(pixelData:)``
+///
+/// Reference: PS3.3 2026a A.51 (Segmentation IOD), C.8.20.2 (Segmentation Image Module)
+public enum SegmentationDataSetError: Error, CustomStringConvertible, Equatable {
+    /// Photometric Interpretation is not an Enumerated Value for the Segmentation Type
+    /// (Table C.8.20-2)
+    case photometricInterpretationNotAllowed(String, segmentationType: SegmentationType)
+    /// A module the IOD requires with PALETTE COLOR is missing (Table A.51-1)
+    case missingModule(String)
+    /// A Conditional Module is present although its condition is not met (A.1.3.2)
+    case moduleNotAllowed(String)
+    /// The Palette Color Lookup Table breaks C.7.6.3.1.5
+    case invalidPaletteColorLookupTable(String)
+    /// The ICC Profile breaks C.11.15.1.1
+    case invalidICCProfile(String)
+    /// Recommended Display CIELab Value with a PALETTE COLOR LABELMAP (Table C.8.20-2)
+    case recommendedDisplayCIELabValueNotAllowed(segmentNumber: Int)
+
+    public var description: String {
+        switch self {
+        case .photometricInterpretationNotAllowed(let value, let type):
+            return "Photometric Interpretation \(value) is not allowed for Segmentation Type \(type.rawValue); allowed: \(type.allowedPhotometricInterpretations.joined(separator: ", ")) (PS3.3 Table C.8.20-2)"
+        case .missingModule(let module):
+            return "The \(module) Module is required when Photometric Interpretation is PALETTE COLOR (PS3.3 Table A.51-1)"
+        case .moduleNotAllowed(let module):
+            return "The \(module) Module shall not be present unless Photometric Interpretation is PALETTE COLOR (PS3.3 Table A.51-1, A.1.3.2)"
+        case .invalidPaletteColorLookupTable(let reason):
+            return "Invalid Palette Color Lookup Table: \(reason)"
+        case .invalidICCProfile(let reason):
+            return "Invalid ICC Profile: \(reason)"
+        case .recommendedDisplayCIELabValueNotAllowed(let number):
+            return "Segment \(number): Recommended Display CIELab Value shall not be present in a PALETTE COLOR LABELMAP (PS3.3 Table C.8.20-2)"
+        }
     }
 }
 

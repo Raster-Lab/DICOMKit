@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — CIELab decoding per PS3.3 2026a C.10.7.1.1; LABELMAP rendering reads the Segment Number from the pixel value per C.8.20.2.3.3 and treats Pixel Padding Value as background per C.8.20.2.4
+// NEMA-verified: 2026a, checked 2026-09-30 — CIELab decoding per PS3.3 2026a C.10.7.1.1; LABELMAP rendering reads the Segment Number from the pixel value per C.8.20.2.3.3 and treats Pixel Padding Value as background per C.8.20.2.4; a PALETTE COLOR LABELMAP takes segment colours from its Palette Color Lookup Table (Table C.8.20-2, C.7.6.3.1.5)
 //
 // SegmentationRenderer.swift
 // DICOMKit
@@ -347,6 +347,16 @@ public struct SegmentationRenderer: Sendable {
             // Use segment's recommended display color if available
             if let cielab = segment.recommendedDisplayCIELabValue {
                 colorMap[segmentNumber] = cielabToRGB(cielab)
+                continue
+            }
+
+            // A PALETTE COLOR LABELMAP carries its colours in the Palette Color Lookup
+            // Table, indexed by the stored pixel value = Segment Number (PS3.3 2026a
+            // Table C.8.20-2, C.7.6.3.1.5), and has no CIELab value
+            if segmentation.photometricInterpretation == "PALETTE COLOR",
+               let lut = segmentation.paletteColorLookupTable {
+                let color = lut.lookup(segmentNumber)
+                colorMap[segmentNumber] = (r: color.red, g: color.green, b: color.blue)
                 continue
             }
             
