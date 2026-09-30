@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — DICOMCore and DICOMKit deferred findings closed (2026-09-29/30)
 
-Rows D26, D31–D35, D37, D38, D45, D47–D49 and D51 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`, each
-checked against the 2026a clause named there. Full `swift test` exits 0 as of the D38 closure; D45,
-D47–D49 and D51 were checked with the affected suites only.
+Rows D26, D31–D35, D37, D38, D45, D47–D52, D54 and D55 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`,
+each checked against the 2026a clause named there. Full `swift test` exits 0 as of the D38 closure;
+D45, D47–D52, D54 and D55 were checked with the affected suites only.
 
 - **Colon CAD SR** (Table A.35.10-2, D26): WAVEFORM is an allowed value type; TCOORD is not.
 - **RT Tag constants** (PS3.6, D35): `Tag` constants for DVH Volume Units (3004,0054),
@@ -76,8 +76,24 @@ D47–D49 and D51 were checked with the affected suites only.
 - **`BlendingMode`** (D49): documented as a rendering model. The DICOM attribute Blending Mode
   (0070,1B06), Enumerated Values EQUAL and FOREGROUND, belongs to the Advanced Blending Presentation
   State (Table C.11.34.1-1, A.33.7), which DICOMKit does not read or write. No API change.
+- **TID 1500 Measurement Groups** (PS3.16 §6.2.2, §6.2.3, §6.2.5; D52): TID 1500 rows 7, 8 and 9
+  include TID 1410, 1411 and 1501, which all start with the same (125007, DCM, "Measurement Group")
+  CONTAINER. `TemplateValidator` checked every group against TID 1410, so a TID 1501 SCOORD without
+  its row 10d source image passed. A group is now checked against each and assigned to the template
+  whose rows describe it (fewest items left to extension, then fewest errors). No API change.
+- **CAD templates in the registry** (PS3.16 TID 4000, 4100; D50): Mammography CAD Document Root,
+  Chest CAD Document Root and the 31 templates they include (TID 4001–4018, 4020–4023, 4101–4107,
+  1401, 1402) are generated from the 2026a tables into `TemplateRegistry` (73 templates), with a
+  `TemplateIdentifier` constant and a `TID…` struct each. `MammographyCADSRBuilder` and
+  `ChestCADSRBuilder` output validates against them with no violations.
+  `Scripts/diff_sr_templates.py` checks every generated row against the DocBook (646 rows, 0 differences).
+- **Value sets of several codes** (PS3.16 TID 1000, 4020; D55): a Value Set Constraint of one code per
+  paragraph was read from its first paragraph only; TID 1000 row 1 now accepts Verbal as well as
+  Document, and TID 4020 rows 11–12 accept mm as well as µm.
+- **`ColorLUT.lookup` and `GrayscaleLUT.entry(for:)`** (D54): NaN, ±infinity and inputs beyond `Int`
+  no longer trap. NaN and −infinity give the first entry, +infinity the last, as `LUT1D.lookup` (D48).
 
-New findings D44–D54 are recorded in the report (P-MGC, the API decision opened with them, is implemented above).
+New findings D44–D55 are recorded in the report (P-MGC, the API decision opened with them, is implemented above).
 
 ### Fixed — DICOMPrintKit verified against DICOM 2026a (2026-09-29)
 
