@@ -9,8 +9,8 @@ https://dicom.nema.org/medical/dicom/2026a/source/docbook/part16/part16.xml
 part03.xml (optional) resolves the PS3.3 section titles quoted in "Defaults to"
 value-set text.
 
-Writes Sources/DICOMCore/StructuredReporting/SRCoreTemplates.swift and
-SRMeasurementTemplates.swift. The template set is ROOTS below plus every template
+Writes Sources/DICOMCore/StructuredReporting/SRCoreTemplates.swift,
+SRMeasurementTemplates.swift and SRCADTemplates.swift. The template set is ROOTS below plus every template
 they INCLUDE, transitively. Every row keeps its Concept Name and Value Set
 Constraint text verbatim next to the parsed constraints, so a row can always be
 compared with the standard.
@@ -25,7 +25,7 @@ X = '{http://www.w3.org/XML/1998/namespace}'
 
 # The templates DICOMCore models, before INCLUDE expansion.
 ROOTS = ['300', '1001', '1002', '1204', '1400', '1410', '1411', '1419', '1420',
-         '1500', '1501', '1600', '1601']
+         '1500', '1501', '1600', '1601', '4000', '4100']
 
 # Swift names. Types and TemplateIdentifier constants that existed before the
 # rebuild keep their names; the rest follow the PS3.16 title.
@@ -73,10 +73,53 @@ NAMES = {
              'imageLibraryEntryDescriptorsForProstateMultiparametricMR'),
     '4019': ('TID4019AlgorithmIdentification', 'algorithmIdentification'),
     '4108': ('TID4108TrackingIdentifier', 'trackingIdentifier'),
+    # Added with TID 4000 and TID 4100 (D50, 2026-09-30)
+    '1401': ('TID1401AreaMeasurement', 'areaMeasurement'),
+    '1402': ('TID1402VolumeMeasurement', 'volumeMeasurement'),
+    '4000': ('TID4000MammographyCADDocumentRoot', 'mammographyCADDocumentRoot'),
+    '4001': ('TID4001MammographyCADOverallImpressionRecommendation',
+             'mammographyCADOverallImpressionRecommendation'),
+    '4002': ('TID4002MammographyCADImpressionRecommendationBody',
+             'mammographyCADImpressionRecommendationBody'),
+    '4003': ('TID4003MammographyCADIndividualImpressionRecommendation',
+             'mammographyCADIndividualImpressionRecommendation'),
+    '4004': ('TID4004MammographyCADCompositeFeature', 'mammographyCADCompositeFeature'),
+    '4005': ('TID4005MammographyCADCompositeFeatureBody', 'mammographyCADCompositeFeatureBody'),
+    '4006': ('TID4006MammographyCADSingleImageFinding', 'mammographyCADSingleImageFinding'),
+    '4007': ('TID4007MammographyCADBreastComposition', 'mammographyCADBreastComposition'),
+    '4008': ('TID4008MammographyCADBreastGeometry', 'mammographyCADBreastGeometry'),
+    '4009': ('TID4009MammographyCADIndividualCalcification', 'mammographyCADIndividualCalcification'),
+    '4010': ('TID4010MammographyCADCalcificationCluster', 'mammographyCADCalcificationCluster'),
+    '4011': ('TID4011MammographyCADDensity', 'mammographyCADDensity'),
+    '4012': ('TID4012MammographyCADNonLesion', 'mammographyCADNonLesion'),
+    '4013': ('TID4013MammographyCADSelectedRegion', 'mammographyCADSelectedRegion'),
+    '4014': ('TID4014CADImageQuality', 'cadImageQuality'),
+    '4015': ('TID4015CADDetectionsPerformed', 'cadDetectionsPerformed'),
+    '4016': ('TID4016CADAnalysesPerformed', 'cadAnalysesPerformed'),
+    '4017': ('TID4017CADDetectionPerformed', 'cadDetectionPerformed'),
+    '4018': ('TID4018CADAnalysisPerformed', 'cadAnalysisPerformed'),
+    '4020': ('TID4020CADImageLibraryEntry', 'cadImageLibraryEntry'),
+    '4021': ('TID4021MammographyCADGeometry', 'mammographyCADGeometry'),
+    '4022': ('TID4022CADObservationContext', 'cadObservationContext'),
+    '4023': ('TID4023CADOperatingPoints', 'cadOperatingPoints'),
+    '4100': ('TID4100ChestCADDocumentRoot', 'chestCADDocumentRoot'),
+    '4101': ('TID4101ChestCADFindingsSummary', 'chestCADFindingsSummary'),
+    '4102': ('TID4102ChestCADCompositeFeature', 'chestCADCompositeFeature'),
+    '4103': ('TID4103ChestCADCompositeFeatureBody', 'chestCADCompositeFeatureBody'),
+    '4104': ('TID4104ChestCADSingleImageFinding', 'chestCADSingleImageFinding'),
+    '4105': ('TID4105ChestCADDescriptors', 'chestCADDescriptors'),
+    '4106': ('TID4106ResponseEvaluation', 'responseEvaluation'),
+    '4107': ('TID4107ChestCADGeometry', 'chestCADGeometry'),
 }
 
-MEASUREMENT_FILE_TIDS = {'1400', '1410', '1411', '1419', '1420', '1500', '1501', '1502',
-                         '1600', '1601', '1602', '1603', '1604', '1605', '1606', '1607', '1608'}
+MEASUREMENT_FILE_TIDS = {'1400', '1401', '1402', '1410', '1411', '1419', '1420', '1500', '1501',
+                         '1502', '1600', '1601', '1602', '1603', '1604', '1605', '1606', '1607',
+                         '1608'}
+# TID 4019 and 4108 stay in the core file, where they were before the CAD roots were added.
+CAD_FILE_TIDS = {t for t in NAMES if t.startswith(('40', '41')) and t not in ('4019', '4108')}
+
+# The date each file's rows were last generated and compared with PS3.16 2026a.
+CHECKED = {'Core': '2026-09-30', 'Measurement': '2026-09-30', 'CAD': '2026-09-30'}
 
 RELATIONSHIPS = {
     'CONTAINS': '.contains', 'HAS PROPERTIES': '.hasProperties',
@@ -93,7 +136,7 @@ VALUE_TYPES = {
 }
 REQUIREMENTS = {'M': '.mandatory', 'MC': '.mandatoryConditional', 'U': '.userOption',
                 'UC': '.userOptionConditional'}
-VM = {'1': ('1', '1'), '1-n': ('1', 'nil'), '2-n': ('2', 'nil')}
+VM = {'1': ('1', '1'), '2': ('2', '2'), '1-n': ('1', 'nil'), '2-n': ('2', 'nil')}
 
 CODE = r'\(([^,()]+), ([^,()]+), "(.*?)"\)'
 
@@ -199,8 +242,9 @@ def main():
             return root_vt(re.search(r'TID (\w+)', r[4]).group(1))
         return VALUE_TYPES[r[3]]
 
-    core = [t for t in selected if t not in MEASUREMENT_FILE_TIDS]
+    core = [t for t in selected if t not in MEASUREMENT_FILE_TIDS and t not in CAD_FILE_TIDS]
     meas = [t for t in selected if t in MEASUREMENT_FILE_TIDS]
+    cad = [t for t in selected if t in CAD_FILE_TIDS]
     key = lambda t: int(t)
     here = os.path.dirname(os.path.abspath(__file__))
     out_dir = os.path.join(here, '..', 'Sources', 'DICOMCore', 'StructuredReporting')
@@ -208,6 +252,8 @@ def main():
           tids, edition, root_vt)
     write(os.path.join(out_dir, 'SRMeasurementTemplates.swift'), 'Measurement',
           sorted(meas, key=key), tids, edition, root_vt)
+    write(os.path.join(out_dir, 'SRCADTemplates.swift'), 'CAD',
+          sorted(cad, key=key), tids, edition, root_vt)
     print(f'{edition}: {len(selected)} templates, '
           f'{sum(len(tids[t]["rows"]) for t in selected)} rows', file=sys.stderr)
 
@@ -235,6 +281,9 @@ def concept_constraint(s):
     m = re.fullmatch(r'\$(\w+)', s)
     if m:
         return f'.parameter({swift_str(m.group(1))})'
+    if re.fullmatch(r'The value of Row \w+', s):
+        # TID 4023 rows 8-9: the concept is another item's value; kept verbatim in conceptNameText
+        return '.any'
     raise ValueError(f'unparsed concept name: {s!r}')
 
 
@@ -242,6 +291,14 @@ def value_constraint(s):
     first = s.split('\n')[0] if s else ''
     if not first:
         return '.any'
+    # One code per paragraph, e.g. TID 1000 row 1 "EV (121003, …) | EV (121004, …)" or TID 4020
+    # rows 11-12 "UNITS = EV (um, …) | UNITS = EV (mm, …)": any of them (D50/D55)
+    paras = [p for p in s.split('\n') if p]
+    if len(paras) > 1:
+        codes = [re.fullmatch(r'(UNITS = )?(?:EV )?' + CODE, p) for p in paras]
+        if all(codes) and len({bool(c.group(1)) for c in codes}) == 1:
+            inner = '.oneOfCodes([' + ', '.join(code_literal(*c.group(2, 3, 4)) for c in codes) + '])'
+            return f'.units({inner})' if codes[0].group(1) else inner
     m = re.fullmatch(r'UNITS = (.+)', first)
     if m:
         inner = value_constraint(m.group(1))
@@ -279,7 +336,8 @@ def row_literal(r, tid):
     row_id, nl, rel, vt, concept, vm, req, cond, vs = r
     level = len(nl)
     by_ref = rel.startswith('R-')
-    rel = rel[2:] if by_ref else rel
+    # TID 1401 and 1402 write "R- INFERRED FROM" with a space after the prefix
+    rel = rel[2:].strip() if by_ref else rel
     args = [f'rowID: {swift_str(row_id)}', f'nestingLevel: {level}',
             f'relationshipType: {RELATIONSHIPS[rel] if rel else "nil"}']
     if by_ref:
@@ -329,7 +387,7 @@ def write(path, kind, order, tids, edition, root_vt):
         '///',
         f'/// Templates: TID {tid_list}.',
         '///',
-        '/// NEMA-verified: 2026a, checked 2026-09-25 — every row of every template in this',
+        f'/// NEMA-verified: 2026a, checked {CHECKED[kind]} — every row of every template in this',
         '/// file is generated from its PS3.16 2026a TID table (row ID, nesting level,',
         '/// relationship, value type, concept name, VM, requirement type, condition and',
         '/// value set constraint), with INCLUDE rows and parameter bindings kept. The',

@@ -5,7 +5,7 @@
 ///
 /// Templates: TID 300, 301, 310, 311, 312, 315, 320, 321, 1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1015, 1204, 4019, 4108.
 ///
-/// NEMA-verified: 2026a, checked 2026-09-25 — every row of every template in this
+/// NEMA-verified: 2026a, checked 2026-09-30 — every row of every template in this
 /// file is generated from its PS3.16 2026a TID table (row ID, nesting level,
 /// relationship, value type, concept name, VM, requirement type, condition and
 /// value set constraint), with INCLUDE rows and parameter bindings kept. The
@@ -916,7 +916,7 @@ public struct TID1000Quotation: SRTemplate {
             relationshipType: .hasObsContext,
             valueType: .code,
             conceptName: .exact(CodedConcept(codeValue: "121001", codingSchemeDesignator: "DCM", codeMeaning: "Quotation Mode")),
-            valueConstraint: .exactCode(CodedConcept(codeValue: "121003", codingSchemeDesignator: "DCM", codeMeaning: "Document")),
+            valueConstraint: .oneOfCodes([CodedConcept(codeValue: "121003", codingSchemeDesignator: "DCM", codeMeaning: "Document"), CodedConcept(codeValue: "121004", codingSchemeDesignator: "DCM", codeMeaning: "Verbal")]),
             requirementLevel: .mandatory,
             valueMultiplicity: Cardinality(minimum: 1, maximum: 1),
             cardinality: Cardinality(minimum: 1, maximum: 1),

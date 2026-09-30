@@ -139,10 +139,22 @@ struct RequirementLevelTests {
             (.imageLibraryEntry, 1601, "Image Library Entry"),
             (.mammographyCADDocumentRoot, 4000, "Mammography CAD Document Root"),
             (.algorithmIdentification, 4019, "Algorithm Identification"),
+            (.areaMeasurement, 1401, "Area Measurement"),
+            (.volumeMeasurement, 1402, "Volume Measurement"),
+            (.mammographyCADSingleImageFinding, 4006, "Mammography CAD Single Image Finding"),
+            (.cadImageLibraryEntry, 4020, "CAD Image Library Entry"),
+            (.chestCADDocumentRoot, 4100, "Chest CAD Document Root"),
+            (.chestCADSingleImageFinding, 4104, "Chest CAD Single Image Finding"),
+            (.responseEvaluation, 4106, "Response Evaluation"),
+            (.chestCADGeometry, 4107, "Chest CAD Geometry"),
         ]
         for (identifier, tid, title) in expected {
             #expect(identifier.templateID == String(tid), Comment(rawValue: title))
             #expect(identifier.mappingResource == "DCMR", Comment(rawValue: title))
+            // Registered templates carry the same title (display names are generated from PS3.16)
+            if let template = TemplateRegistry.shared.template(tid: tid) {
+                #expect(template.displayName == title, Comment(rawValue: "TID \(tid)"))
+            }
         }
     }
 }
@@ -330,7 +342,9 @@ struct TemplateRegistryTests {
         let registry = TemplateRegistry.shared
         let templates = registry.registeredTemplates
         
-        #expect(templates.count == 40)
+        #expect(templates.count == 73)
+        #expect(templates.contains(.mammographyCADDocumentRoot))
+        #expect(templates.contains(.chestCADDocumentRoot))
         #expect(templates.contains(.measurement))
         #expect(templates.contains(.imageLibraryEntry))
         #expect(templates.contains(.observationContext))
@@ -393,11 +407,17 @@ struct TemplateDefinitionTests {
         1015: 2, 1204: 2, 1400: 8, 1410: 22, 1411: 23, 1419: 23, 1420: 5, 1500: 18, 1501: 26,
         1502: 7, 1600: 4, 1601: 2, 1602: 17, 1603: 8, 1604: 13, 1605: 2, 1606: 7, 1607: 16,
         1608: 3, 4019: 6, 4108: 2,
+        // TID 4000 and TID 4100 with the templates they include (D50)
+        1401: 8, 1402: 8, 4000: 9, 4001: 3, 4002: 15, 4003: 5, 4004: 7, 4005: 27, 4006: 26,
+        4007: 2, 4008: 4, 4009: 4, 4010: 6, 4011: 6, 4012: 4, 4013: 4, 4014: 4, 4015: 4, 4016: 4,
+        4017: 9, 4018: 9, 4020: 28, 4021: 6, 4022: 3, 4023: 9, 4100: 9, 4101: 4, 4102: 14,
+        4103: 13, 4104: 24, 4105: 20, 4106: 5, 4107: 6,
     ]
 
-    @Test("All 40 templates are registered with the row count of their 2026a table")
+    @Test("All 73 templates are registered with the row count of their 2026a table")
     func testRowCounts() {
-        #expect(TemplateRegistry.builtInTemplates.count == 40)
+        #expect(TemplateRegistry.builtInTemplates.count == 73)
+        #expect(Self.rowCounts.count == 73)
         for (tid, count) in Self.rowCounts {
             let rows = TemplateRegistry.shared.template(tid: tid)?.rows.count
             #expect(rows == count, Comment(rawValue: "TID \(tid)"))
@@ -415,7 +435,7 @@ struct TemplateDefinitionTests {
                 #expect(found, Comment(rawValue: "\(template.identifier) row \(row.rowID ?? "?")"))
             }
         }
-        #expect(includes == 58)
+        #expect(includes == 147)
     }
 
     @Test("Display names are the PS3.16 2026a TID titles")
@@ -496,6 +516,25 @@ struct TemplateDefinitionTests {
         let vertices = rows.first { $0.rowID == "5" }
         #expect(vertices?.valueMultiplicity == Cardinality(minimum: 2))
         #expect(vertices?.requirementLevel == .userOptionConditional)
+    }
+
+    @Test("A value set of one code per paragraph accepts each (TID 1000 row 1, TID 4020 rows 11-12)")
+    func testMultiCodeValueSets() {
+        let document = CodedConcept(codeValue: "121003", codingSchemeDesignator: "DCM", codeMeaning: "Document")
+        let verbal = CodedConcept(codeValue: "121004", codingSchemeDesignator: "DCM", codeMeaning: "Verbal")
+        #expect(TID1000Quotation.rows[0].valueConstraint == .oneOfCodes([document, verbal]))
+        let micrometer = CodedConcept(codeValue: "um", codingSchemeDesignator: "UCUM", codeMeaning: "micrometer")
+        let millimeter = CodedConcept(codeValue: "mm", codingSchemeDesignator: "UCUM", codeMeaning: "millimeter")
+        for rowID in ["11", "12"] {
+            let row = TID4020CADImageLibraryEntry.rows.first { $0.rowID == rowID }
+            #expect(row?.valueConstraint == .units(.oneOfCodes([micrometer, millimeter])))
+        }
+        let mode = CodedConcept(codeValue: "121001", codingSchemeDesignator: "DCM", codeMeaning: "Quotation Mode")
+        for (value, valid) in [(document, true), (verbal, true), (millimeter, false)] {
+            let item = AnyContentItem.code(conceptName: mode, value: value, relationshipType: .hasObsContext)
+            let result = TemplateValidator(mode: .strict).validate([item], against: .quotation)
+            #expect(result.errors.contains { $0.templateRowID == "1" } == !valid, Comment(rawValue: value.codeMeaning))
+        }
     }
 
     @Test("Defined Terms and Baseline groups are distinguished")

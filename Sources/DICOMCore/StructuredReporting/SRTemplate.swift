@@ -14,6 +14,10 @@
 /// PS3.16 §6.1 template table: NL, Rel with Parent (including by-reference "R-"
 /// relationships), VT or INCLUDE with its parameter bindings (§6.1.3, §6.2), Concept
 /// Name, VM, Req Type, Condition and Value Set Constraint.
+///
+/// NEMA-verified: 2026a, checked 2026-09-30 — the TID 1401, 1402, 4000-4018, 4020-4023 and
+/// 4100-4107 constants are text-diffed against the PS3.16 2026a TID section titles, and their
+/// rows (SRMeasurementTemplates, SRCADTemplates) generated from the 2026a TID tables (D50).
 
 import Foundation
 
@@ -147,6 +151,12 @@ extension TemplateIdentifier {
     /// TID 1400 - Linear Measurement
     public static let linearMeasurements = TemplateIdentifier(tid: 1400)
 
+    /// TID 1401 - Area Measurement
+    public static let areaMeasurement = TemplateIdentifier(tid: 1401)
+
+    /// TID 1402 - Volume Measurement
+    public static let volumeMeasurement = TemplateIdentifier(tid: 1402)
+
     /// TID 1410 - Planar ROI Measurements and Qualitative Evaluations
     public static let planarROIMeasurements = TemplateIdentifier(tid: 1410)
 
@@ -201,6 +211,96 @@ extension TemplateIdentifier {
 
     /// TID 4019 - Algorithm Identification
     public static let algorithmIdentification = TemplateIdentifier(tid: 4019)
+
+    /// TID 4001 - Mammography CAD Overall Impression/Recommendation
+    public static let mammographyCADOverallImpressionRecommendation = TemplateIdentifier(tid: 4001)
+
+    /// TID 4002 - Mammography CAD Impression/Recommendation Body
+    public static let mammographyCADImpressionRecommendationBody = TemplateIdentifier(tid: 4002)
+
+    /// TID 4003 - Mammography CAD Individual Impression/Recommendation
+    public static let mammographyCADIndividualImpressionRecommendation = TemplateIdentifier(tid: 4003)
+
+    /// TID 4004 - Mammography CAD Composite Feature
+    public static let mammographyCADCompositeFeature = TemplateIdentifier(tid: 4004)
+
+    /// TID 4005 - Mammography CAD Composite Feature Body
+    public static let mammographyCADCompositeFeatureBody = TemplateIdentifier(tid: 4005)
+
+    /// TID 4006 - Mammography CAD Single Image Finding
+    public static let mammographyCADSingleImageFinding = TemplateIdentifier(tid: 4006)
+
+    /// TID 4007 - Mammography CAD Breast Composition
+    public static let mammographyCADBreastComposition = TemplateIdentifier(tid: 4007)
+
+    /// TID 4008 - Mammography CAD Breast Geometry
+    public static let mammographyCADBreastGeometry = TemplateIdentifier(tid: 4008)
+
+    /// TID 4009 - Mammography CAD Individual Calcification
+    public static let mammographyCADIndividualCalcification = TemplateIdentifier(tid: 4009)
+
+    /// TID 4010 - Mammography CAD Calcification Cluster
+    public static let mammographyCADCalcificationCluster = TemplateIdentifier(tid: 4010)
+
+    /// TID 4011 - Mammography CAD Density
+    public static let mammographyCADDensity = TemplateIdentifier(tid: 4011)
+
+    /// TID 4012 - Mammography CAD Non-lesion
+    public static let mammographyCADNonLesion = TemplateIdentifier(tid: 4012)
+
+    /// TID 4013 - Mammography CAD Selected Region
+    public static let mammographyCADSelectedRegion = TemplateIdentifier(tid: 4013)
+
+    /// TID 4014 - CAD Image Quality
+    public static let cadImageQuality = TemplateIdentifier(tid: 4014)
+
+    /// TID 4015 - CAD Detections Performed
+    public static let cadDetectionsPerformed = TemplateIdentifier(tid: 4015)
+
+    /// TID 4016 - CAD Analyses Performed
+    public static let cadAnalysesPerformed = TemplateIdentifier(tid: 4016)
+
+    /// TID 4017 - CAD Detection Performed
+    public static let cadDetectionPerformed = TemplateIdentifier(tid: 4017)
+
+    /// TID 4018 - CAD Analysis Performed
+    public static let cadAnalysisPerformed = TemplateIdentifier(tid: 4018)
+
+    /// TID 4020 - CAD Image Library Entry
+    public static let cadImageLibraryEntry = TemplateIdentifier(tid: 4020)
+
+    /// TID 4021 - Mammography CAD Geometry
+    public static let mammographyCADGeometry = TemplateIdentifier(tid: 4021)
+
+    /// TID 4022 - CAD Observation Context
+    public static let cadObservationContext = TemplateIdentifier(tid: 4022)
+
+    /// TID 4023 - CAD Operating Points
+    public static let cadOperatingPoints = TemplateIdentifier(tid: 4023)
+
+    /// TID 4100 - Chest CAD Document Root
+    public static let chestCADDocumentRoot = TemplateIdentifier(tid: 4100)
+
+    /// TID 4101 - Chest CAD Findings Summary
+    public static let chestCADFindingsSummary = TemplateIdentifier(tid: 4101)
+
+    /// TID 4102 - Chest CAD Composite Feature
+    public static let chestCADCompositeFeature = TemplateIdentifier(tid: 4102)
+
+    /// TID 4103 - Chest CAD Composite Feature Body
+    public static let chestCADCompositeFeatureBody = TemplateIdentifier(tid: 4103)
+
+    /// TID 4104 - Chest CAD Single Image Finding
+    public static let chestCADSingleImageFinding = TemplateIdentifier(tid: 4104)
+
+    /// TID 4105 - Chest CAD Descriptors
+    public static let chestCADDescriptors = TemplateIdentifier(tid: 4105)
+
+    /// TID 4106 - Response Evaluation
+    public static let responseEvaluation = TemplateIdentifier(tid: 4106)
+
+    /// TID 4107 - Chest CAD Geometry
+    public static let chestCADGeometry = TemplateIdentifier(tid: 4107)
 
     @available(*, unavailable, renamed: "mammographyCADDocumentRoot",
                message: "TID 4000 is 'Mammography CAD Document Root' in PS3.16; there is no 'CAD Analysis' template.")
@@ -713,8 +813,8 @@ public struct TemplateRegistry: Sendable {
         }
     }
 
-    /// The 40 templates DICOMCore generates from PS3.16 (see SRCoreTemplates and
-    /// SRMeasurementTemplates)
+    /// The 73 templates DICOMCore generates from PS3.16 (see SRCoreTemplates,
+    /// SRMeasurementTemplates and SRCADTemplates)
     public static let builtInTemplates: [any SRTemplate.Type] = [
         TID300Measurement.self, TID301MeasurementContent.self,
         TID310MeasurementProperties.self, TID311MeasurementStatisticalProperties.self,
@@ -727,7 +827,8 @@ public struct TemplateRegistry: Sendable {
         TID1008SubjectContextFetus.self, TID1009SubjectContextSpecimen.self,
         TID1010SubjectContextDevice.self, TID1015PersonObserverDescription.self,
         TID1204LanguageOfContent.self,
-        TID1400LinearMeasurements.self, TID1410PlanarROIMeasurements.self,
+        TID1400LinearMeasurements.self, TID1401AreaMeasurement.self,
+        TID1402VolumeMeasurement.self, TID1410PlanarROIMeasurements.self,
         TID1411VolumetricROIMeasurements.self, TID1419ROIMeasurements.self,
         TID1420MultipleROIMeasurements.self,
         TID1500MeasurementReport.self, TID1501MeasurementGroup.self,
@@ -741,6 +842,25 @@ public struct TemplateRegistry: Sendable {
         TID1607ImageLibraryEntryDescriptorsForPET.self,
         TID1608ImageLibraryEntryDescriptorsForProstateMultiparametricMR.self,
         TID4019AlgorithmIdentification.self, TID4108TrackingIdentifier.self,
+        // TID 4000 and TID 4100 with the templates they include (D50)
+        TID4000MammographyCADDocumentRoot.self,
+        TID4001MammographyCADOverallImpressionRecommendation.self,
+        TID4002MammographyCADImpressionRecommendationBody.self,
+        TID4003MammographyCADIndividualImpressionRecommendation.self,
+        TID4004MammographyCADCompositeFeature.self, TID4005MammographyCADCompositeFeatureBody.self,
+        TID4006MammographyCADSingleImageFinding.self, TID4007MammographyCADBreastComposition.self,
+        TID4008MammographyCADBreastGeometry.self, TID4009MammographyCADIndividualCalcification.self,
+        TID4010MammographyCADCalcificationCluster.self, TID4011MammographyCADDensity.self,
+        TID4012MammographyCADNonLesion.self, TID4013MammographyCADSelectedRegion.self,
+        TID4014CADImageQuality.self, TID4015CADDetectionsPerformed.self,
+        TID4016CADAnalysesPerformed.self, TID4017CADDetectionPerformed.self,
+        TID4018CADAnalysisPerformed.self, TID4020CADImageLibraryEntry.self,
+        TID4021MammographyCADGeometry.self, TID4022CADObservationContext.self,
+        TID4023CADOperatingPoints.self, TID4100ChestCADDocumentRoot.self,
+        TID4101ChestCADFindingsSummary.self, TID4102ChestCADCompositeFeature.self,
+        TID4103ChestCADCompositeFeatureBody.self, TID4104ChestCADSingleImageFinding.self,
+        TID4105ChestCADDescriptors.self, TID4106ResponseEvaluation.self,
+        TID4107ChestCADGeometry.self,
     ]
     
     /// Registers a template type

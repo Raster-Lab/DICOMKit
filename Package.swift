@@ -564,6 +564,8 @@ let package = Package(
                 "StructuredReporting/CADSRBuilderValueTypeTests.swift",
                 // PS3.3 Table C.17-6 Content Sequence under every SR value type (D31, 2026-09-29).
                 "StructuredReporting/SRNestedContentItemTests.swift",
+                // PS3.16 TID 4000 / TID 4100 in the template registry (D50, 2026-09-30).
+                "StructuredReporting/CADTemplateValidationTests.swift",
                 "AI/AIInferenceResultTests.swift",
                 "EncapsulatedDocument/EncapsulatedDocumentTests.swift",
                 "SecondaryCapture/SecondaryCaptureTests.swift",
