@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — Color Space terms of PS3.3 2026a C.11.15.1.2 are read (DISPLAYP3 added); the ColorSpace enum is a display model, not (0028,2002) terms; preset palette entries clamped to the full 16-bit range per C.7.6.3.1.6 (D38)
+// NEMA-verified: 2026a, checked 2026-09-30 — Color Space terms of PS3.3 2026a C.11.15.1.2 are read (DISPLAYP3 added); the ColorSpace enum is a display model, not (0028,2002) terms; preset palette entries clamped to the full 16-bit range per C.7.6.3.1.6 (D38); BlendingMode is a rendering model, not Blending Mode (0070,1B06), whose Enumerated Values EQUAL and FOREGROUND are in PS3.3 2026a Table C.11.34.1-1 (A.33.7 only; not in C.11.14 / A.33.4), CS VM 1 per PS3.6 Table 6-1 (D49)
 //
 // ColorManagement.swift
 // DICOMKit
@@ -378,7 +378,7 @@ public struct BlendingDisplaySet: Sendable, Hashable {
     /// Referenced images to blend
     public let referencedImages: [ReferencedImageForBlending]
     
-    /// Blending mode
+    /// Blending mode (a rendering model, not Blending Mode (0070,1B06); see ``BlendingMode``)
     public let blendingMode: BlendingMode
     
     /// Relative opacity (0.0-1.0) for each image in the blend
@@ -421,7 +421,22 @@ public struct ReferencedImageForBlending: Sendable, Hashable {
     }
 }
 
-/// Blending mode for combining images
+/// Blending mode for combining images: a rendering model, not the DICOM attribute
+///
+/// These cases describe how a viewer might combine images on screen. They are not
+/// DICOM terms and are never written to or read from a data set; the raw values
+/// ("ALPHA", "MIP", "MinIP", "AVERAGE", "ADD", "SUBTRACT") are DICOMKit's own labels.
+///
+/// The DICOM attribute of the same name, Blending Mode (0070,1B06), CS, VM 1
+/// (PS3.6 2026a Table 6-1), is a different thing: it appears only in the Blending
+/// Display Sequence (0070,1B04) of the Advanced Blending Presentation State Display
+/// Module (PS3.3 2026a C.11.34, Table C.11.34.1-1), used by the Advanced Blending
+/// Presentation State IOD (A.33.7, SOP Class 1.2.840.10008.5.1.4.1.1.11.8). Its
+/// Enumerated Values are EQUAL and FOREGROUND (blending per PS3.4 N.2.6). The
+/// Blending Softcopy Presentation State IOD (A.33.4) and its Presentation State
+/// Blending Module (C.11.14) have no blending-mode attribute: they carry one Relative
+/// Opacity (0070,0403) for the superimposed image set. DICOMKit does not read or write
+/// (0070,1B06).
 public enum BlendingMode: String, Sendable, Hashable, CaseIterable {
     /// Alpha blending (weighted average)
     case alpha = "ALPHA"
