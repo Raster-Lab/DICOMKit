@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Color Space terms of PS3.3 2026a C.11.15.1.2 are read (DISPLAYP3 added); the ColorSpace enum is a display model, not (0028,2002) terms
+// NEMA-verified: 2026a, checked 2026-09-30 — Color Space terms of PS3.3 2026a C.11.15.1.2 are read (DISPLAYP3 added); the ColorSpace enum is a display model, not (0028,2002) terms; preset palette entries clamped to the full 16-bit range per C.7.6.3.1.6 (D38)
 //
 // ColorManagement.swift
 // DICOMKit
@@ -281,10 +281,13 @@ public enum ColorMapPreset: String, Sendable, CaseIterable {
             let t = Double(i) / Double(numberOfEntries - 1)
             let (r, g, b) = colorForValue(t)
             
-            // Convert 0.0-1.0 to 16-bit values (stored in high byte per DICOM convention)
-            redData.append(UInt16(r * Double(maxValue)))
-            greenData.append(UInt16(g * Double(maxValue)))
-            blueData.append(UInt16(b * Double(maxValue)))
+            // Scale 0.0-1.0 across the full 16-bit entry range (PS3.3 2026a
+            // C.7.6.3.1.6). The piecewise ramps overshoot 1.0 at their segment
+            // ends (hot's green reaches 1.01 at entry 170), and an unclamped
+            // UInt16(_:) of a value above 65535 traps.
+            redData.append(Self.entry(r, maxValue: maxValue))
+            greenData.append(Self.entry(g, maxValue: maxValue))
+            blueData.append(Self.entry(b, maxValue: maxValue))
         }
         
         let descriptor = PaletteColorLUT.Descriptor(
@@ -303,6 +306,11 @@ public enum ColorMapPreset: String, Sendable, CaseIterable {
         )
     }
     
+    /// One 16-bit LUT entry for a normalised intensity, clamped to 0...1.
+    private static func entry(_ value: Double, maxValue: UInt16) -> UInt16 {
+        UInt16(min(max(value, 0.0), 1.0) * Double(maxValue))
+    }
+
     /// Get RGB color for normalized value (0.0-1.0)
     private func colorForValue(_ t: Double) -> (Double, Double, Double) {
         switch self {
@@ -359,7 +367,10 @@ public enum ColorMapPreset: String, Sendable, CaseIterable {
 ///
 /// Defines how multiple images are blended together for multi-modality fusion.
 ///
-/// Reference: PS3.3 Section C.11.13 - Blending Display Module
+/// A display model, not an encoding of the module: PS3.3 2026a C.11.14
+/// (Presentation State Blending Module) carries a single Relative Opacity
+/// (0070,0403) for the superimposed set. (Earlier text cited C.11.13, which is
+/// the Presentation State Mask Module.)
 public struct BlendingDisplaySet: Sendable, Hashable {
     /// Display set number
     public let displaySetNumber: Int

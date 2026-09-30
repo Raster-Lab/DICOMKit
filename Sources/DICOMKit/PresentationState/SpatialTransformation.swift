@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — rotation and flip per PS3.3 2026a Table C.10-6; Displayed Area attributes, Presentation Size Mode terms and the 1C spacing/aspect/magnification conditions per Table C.10-4
+// NEMA-verified: 2026a, checked 2026-09-30 — rotation and flip per PS3.3 2026a Table C.10-6 (any input angle now yields one of the Enumerated Values 0/90/180/270, D38); Displayed Area attributes, Presentation Size Mode terms and the 1C spacing/aspect/magnification conditions per Table C.10-4
 //
 // SpatialTransformation.swift
 // DICOMKit
@@ -30,23 +30,13 @@ public struct SpatialTransformation: Sendable, Hashable {
     ///   - rotation: Rotation angle in degrees (0, 90, 180, or 270)
     ///   - horizontalFlip: Whether to flip horizontally
     public init(rotation: Int = 0, horizontalFlip: Bool = false) {
-        // Normalize rotation to 0-359 degrees
-        let normalizedRotation = rotation % 360
-        
-        // Ensure rotation is one of the valid values
-        switch normalizedRotation {
-        case 0, 90, 180, 270:
-            self.rotation = normalizedRotation
-        case -270:
-            self.rotation = 90
-        case -180:
-            self.rotation = 180
-        case -90:
-            self.rotation = 270
-        default:
-            // Round to nearest 90-degree increment
-            self.rotation = ((normalizedRotation + 45) / 90) * 90
-        }
+        // Image Rotation (0070,0042) has the Enumerated Values 0, 90, 180 and
+        // 270, and negative values are not permitted (PS3.3 2026a Table C.10-6).
+        // Normalise into 0..<360 first, then round to the nearest quarter turn
+        // (ties upward) and wrap once more, so that 315 gives 0 rather than 360
+        // and -135 gives 270 rather than -90.
+        let normalizedRotation = ((rotation % 360) + 360) % 360
+        self.rotation = (((normalizedRotation + 45) / 90) * 90) % 360
         
         self.horizontalFlip = horizontalFlip
     }
