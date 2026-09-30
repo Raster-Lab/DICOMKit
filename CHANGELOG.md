@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — DICOMCore and DICOMKit deferred findings closed (2026-09-29/30)
+
+Rows D26, D31–D35, D37 and D38 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`, each checked against the
+2026a clause named there. Full `swift test` exits 0.
+
+- **Colon CAD SR** (Table A.35.10-2, D26): WAVEFORM is an allowed value type; TCOORD is not.
+- **RT Tag constants** (PS3.6, D35): `Tag` constants for DVH Volume Units (3004,0054),
+  High-Dose Technique Type (300A,00C7) and Treatment Delivery Type (300A,00CE); the RT parsers use them.
+- **SR child content items** (Table C.17-6, D31): every content item type carries `contentItems`
+  (defaulted initialiser parameter; `AnyContentItem.children` now returns them for any value type).
+  The serializer and parser nest a Content Sequence under any value type, and the Mammography CAD,
+  Chest CAD and TID 1500 builders nest children under their template parent (TID 1204, 1501,
+  4000–4021, 4100–4107). The extractors still read the sibling layout of earlier versions.
+- **Hanging Protocol nesting** (Tables C.23.1-1, C.23.2-1, C.23.3-1, D32): Image Set attributes in
+  Time Based Image Sets items; Filter Operations, Sorting Operations, Reformatting, 3D Rendering and
+  Blending Operation Type in Display Sets items; Synchronized Scrolling and Navigation Indicator
+  Sequences; Preferred Playback Sequencing, Recommended Display Frame Rate and Display Environment
+  Spatial Position in Image Boxes items; the Type 2 sequences are written empty. The old properties are
+  deprecated and still write the 2026a layout; the parser reads the old layout.
+- **Volumes** (C.7.6.3.1.2, D33): `DICOMVolume.photometricInterpretation`, `highBit`,
+  `isMonochrome1`; slices that differ in pixel description are refused; `voxel()` honours High Bit.
+- **Video audio** (PS3.5 8.2.5–8.2.12, D34): the probe and convert messages no longer say DICOM video
+  has no audio. Audio was always kept in the bit stream, and the message now says so. An empty
+  Multiplexed Audio Channels Description Code Sequence (003A,0300) is written when the input has
+  audio (Type 2C, Table C.7-13). `VideoConsole.audioDiscardedLine` is deprecated for `audioCarriedLine`.
+- **SR Verifying Observer Sequence** (Table C.17-2, D37): `SRDocument.verifyingObservers`; a VERIFIED
+  document without observers now throws on serialisation.
+- **PALETTE COLOR LABELMAP segmentations** (Tables C.8.20-2, A.51-1, D37):
+  `SegmentationBuilder.setPaletteColor(iccProfile:colorSpace:)` writes the Palette Color Lookup Table
+  and ICC Profile modules. `Segmentation.buildDataSet(pixelData:)` throws; `toDataSet` is deprecated.
+- **Segmented Property codes** (Table C.8.20-4, D37): `buildDataSet` throws for a segment without
+  Segmented Property Category or Type Code Sequence.
+- **`FrameMerger` MONOCHROME1** (A.70.3.1, A.71.3.1, A.8.x.4, C.8.15.2, D37): MONOCHROME1 sources
+  merged into IODs that require MONOCHROME2 are losslessly inverted, with window, VOI LUT, padding and
+  Presentation LUT Shape adjusted so the image looks the same. Compressed MONOCHROME1 frames and a
+  Modality LUT Sequence throw `MergeError.pixelAssembly` instead of producing a non-conformant file.
+- **Presentation state tests** (D38): the 14 test files that had never compiled are ported
+  (345 tests). Two library fixes came from them: `SpatialTransformation(rotation:)` always yields
+  0/90/180/270 (Table C.10-6; 315° gave 360), and `PaletteColorLUT.preset(.hot)` no longer traps.
+
+New findings D44–D51 and one API decision awaiting approval (P-MGC) are recorded in the report.
+
 ### Fixed — DICOMPrintKit verified against DICOM 2026a (2026-09-29)
 
 Audit report: `DICOMPRINTKIT_STANDARD_IMPLEMENTATION.md`. Every value the module uses is diffed
