@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — remaining DICOMKit deferred findings and verification gaps (2026-09-30)
+
+- **De-identification covers all of PS3.15 Table E.1-1 (D69):** the Basic Profile rules are
+  generated from the DocBook (`Scripts/generate_confidentiality_profile.py`) — all 651 single-tag
+  rows with their option columns — instead of 79 hand-picked rows; 503 identifying attributes were
+  previously kept and 21 took another action. Curve Data, Overlay Data and Overlay Comments are
+  removed; Z on a sequence empties it; D values are consistent with the VR. Behaviour change:
+  de-identified objects lose more attributes (e.g. Request Attributes Sequence, admitting
+  diagnoses, allergies), Study / Series Description are removed rather than emptied, and Patient's
+  Birth Date is emptied even under Retain Longitudinal Temporal, as the table specifies.
+- **MP3 dual channel mode is refused (D61):** PS3.5 8.2.5 / 8.2.12 allow "one main mono or
+  stereo channel"; MPEG-1 Part 3's dual_channel mode is neither.
+- **AAC bit rate in MPEG-TS is measured (D62):** ADTS and LOAS frames are walked and the most bits
+  in any one-second window compared with Table 8.2.12-1's 640 kbit/s
+  (`VideoAudioTrack.measuredBitRate`, additive).
+- **`nonImageSOPClasses`** is generated from PS3.4 Tables B.5-1 / GG.3-1 and the PS3.3 IOD module
+  tables: 113 SOP Classes (31 were missing), so `tryPixelData` explains them as non-image.
+- `Scripts/diff_kit.py` checks both tables; the MPEG-4_audio_extension_descriptor parser was
+  checked against TSDuck; the DICOMNetwork report's status header was corrected.
+
 ### Fixed — DICOMRenderKit verified against DICOM 2026a (2026-09-30)
 
 See `DICOMRENDERKIT_STANDARD_IMPLEMENTATION.md`. No public API change.
