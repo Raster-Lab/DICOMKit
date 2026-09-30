@@ -9,8 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — DICOMCore and DICOMKit deferred findings closed (2026-09-29/30)
 
-Rows D26, D31–D35, D37 and D38 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`, each checked against the
-2026a clause named there. Full `swift test` exits 0.
+Rows D26, D31–D35, D37, D38, D45, D47–D49 and D51 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`, each
+checked against the 2026a clause named there. Full `swift test` exits 0 as of the D38 closure; D45,
+D47–D49 and D51 were checked with the affected suites only.
 
 - **Colon CAD SR** (Table A.35.10-2, D26): WAVEFORM is an allowed value type; TCOORD is not.
 - **RT Tag constants** (PS3.6, D35): `Tag` constants for DVH Volume Units (3004,0054),
@@ -59,8 +60,24 @@ Rows D26, D31–D35, D37 and D38 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`, each 
 - **Presentation state tests** (D38): the 14 test files that had never compiled are ported
   (345 tests). Two library fixes came from them: `SpatialTransformation(rotation:)` always yields
   0/90/180/270 (Table C.10-6; 315° gave 360), and `PaletteColorLUT.preset(.hot)` no longer traps.
+- **`LUT1D.lookup` below the table** (D48): inputs in (−1/(n−1), 0) truncated to index 0 and
+  extrapolated below the first entry (`lookup(-0.5)` on [0.2, 0.8] gave −0.1). The input is now
+  clipped to 0…1 first; NaN returns the first entry and ±infinity clips, where `Int(_:)` used to trap.
+- **Grayscale LUT and colour-source palette tests** (D51): `GrayscaleLUTTests` and
+  `ColorSourcePaletteTests`, committed with the print work but never in the test allowlist, now
+  compile and run. Two expectations contradicted PS3.3 C.11.2.1.1 (VOI LUT output range 0…2^n − 1);
+  they now pin the standard and are disabled until D53 is decided.
+- **Video plan audio text** (PS3.5 8.2.5–8.2.12, Table 8.2.12-1, D47): `DICOM_VIDEO_CONVERSION_PLAN.md`
+  no longer says DICOM video has no audio; it says audio is kept in the bit stream unchecked and
+  quotes the current warning.
+- **Segment Tracking ID and Tracking UID** (Table C.8.20-4, D45): `Segmentation.buildDataSet(pixelData:)`
+  throws `SegmentationDataSetError.missingTrackingUID` / `.missingTrackingID` when a segment carries only
+  one of Tracking ID (0062,0020) and Tracking UID (0062,0021); each is Type 1C on the other.
+- **`BlendingMode`** (D49): documented as a rendering model. The DICOM attribute Blending Mode
+  (0070,1B06), Enumerated Values EQUAL and FOREGROUND, belongs to the Advanced Blending Presentation
+  State (Table C.11.34.1-1, A.33.7), which DICOMKit does not read or write. No API change.
 
-New findings D44–D51 and one API decision awaiting approval (P-MGC) are recorded in the report.
+New findings D44–D54 are recorded in the report (P-MGC, the API decision opened with them, is implemented above).
 
 ### Fixed — DICOMPrintKit verified against DICOM 2026a (2026-09-29)
 
