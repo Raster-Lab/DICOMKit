@@ -5,7 +5,7 @@ Generated 2026-09-28, last updated 2026-09-28. Covers all 63 Swift files in `Sou
 Query/Retrieve, Modality Worklist, MPPS, Storage Commitment and Print Management service classes
 (PS3.4), with their encoders over PS3.5.
 
-**Status: complete, pending one owner decision.** All five buckets are done: every constant
+**Status: complete.** All five buckets are done: every constant
 diffed by script (43 checks, all pass; the `MediumType` raw-value change, P-MAMMO, was approved and
 applied on 2026-09-29 with the DICOMPrintKit pass), every behaviour finding fixed with a test, all 63 files marked
 (`Scripts/check_nema_markers.py Sources/DICOMNetwork` exits 0). The three deferred rows for this
