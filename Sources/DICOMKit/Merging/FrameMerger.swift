@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Image Type, Pixel Presentation and Acquisition Contrast literals checked against the PS3.3 2026a module tables; SC multi-frame targets complete per Tables A.8-2…A.8-5 (C.7-1, C.7-3, C.7-5a, C.7-9 Type 2; C.7-14, C.8-24, C.8-25b, C.8-25c Type 1/1C; A.8.x.4 constraints)
+// NEMA-verified: 2026a, checked 2026-09-30 — Image Type, Pixel Presentation and Acquisition Contrast literals checked against the PS3.3 2026a module tables; SC multi-frame targets complete per Tables A.8-2…A.8-5 (C.7-1, C.7-3, C.7-5a, C.7-9 Type 2; C.7-14, C.8-24, C.8-25b, C.8-25c Type 1/1C; A.8.x.4 constraints); MONOCHROME1 sources converted losslessly to MONOCHROME2 for the MONOCHROME2-only targets per A.70.3.1, A.71.3.1, A.8.2.4/A.8.3.4/A.8.4.4, C.8.15.2, C.8.22.3, A.36.2.3.1 (D37c, see Monochrome1Conversion.swift)
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -429,7 +429,7 @@ public struct FrameMerger {
 
         let template = firstFile.1.dataSet
         let sources = frameSources(from: files)
-        let dataSets = sources.map { $0.dataSet }
+        var dataSets = sources.map { $0.dataSet }
 
         // Core consistency (always on): the Image Pixel module must agree.
         try validateImagePixelModule(sources)
@@ -468,6 +468,26 @@ public struct FrameMerger {
                 throw MergeError.pixelAssembly(error.description)
             }
         }
+
+        // MONOCHROME1 sources for a MONOCHROME2-only target: lossless inversion of the
+        // pixel data and updating of the related attributes (PS3.3 2026a A.70.3.1,
+        // A.71.3.1; A.8.2.4 / A.8.3.4 / A.8.4.4, C.8.15.2, C.8.22.3, A.36.2.3.1).
+        let convertMonochrome1 = targetUID.map(Monochrome1Conversion.requiresMonochrome2) == true
+            && payloads.first?.descriptor.photometricInterpretation == .monochrome1
+        if convertMonochrome1 {
+            do {
+                payloads = try payloads.map(Monochrome1Conversion.invert)
+                let converted = payloads[0].descriptor
+                for index in dataSets.indices {
+                    try Monochrome1Conversion.convertAttributes(
+                        &dataSets[index], bitsStored: converted.bitsStored, isSigned: converted.isSigned)
+                }
+            } catch let failure as Monochrome1Conversion.Failure {
+                throw MergeError.pixelAssembly(failure.description)
+            }
+            if verbose { log(MergeConsole.monochrome1ConvertedLine(frames: payloads.count)) }
+        }
+
         let assembled: (element: DataElement, transferSyntaxUID: String)
         do {
             assembled = try MultiframePixelAssembler.assemble(payloads)
@@ -485,6 +505,15 @@ public struct FrameMerger {
         // Use first file as template
         var mergedDataSet = template
         var fileMetaInformation = firstFile.1.fileMetaInformation
+        if convertMonochrome1 {
+            let converted = payloads[0].descriptor
+            do {
+                try Monochrome1Conversion.convertAttributes(
+                    &mergedDataSet, bitsStored: converted.bitsStored, isSigned: converted.isSigned)
+            } catch let failure as Monochrome1Conversion.Failure {
+                throw MergeError.pixelAssembly(failure.description)
+            }
+        }
 
         let numberOfFrames = sources.count
         mergedDataSet.setString("\(numberOfFrames)", for: .numberOfFrames, vr: .IS)
