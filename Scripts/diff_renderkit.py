@@ -365,7 +365,9 @@ def check_full_range_window(rep, p3, kit):
     matched, wrong = 0, []
     good = {'PixelDataRenderer.swift': r'center: Double\(range\.min \+ range\.max \+ 1\) / 2\.0,\s*width: Double\(range\.max - range\.min \+ 1\)',
             'ImageExport/DICOMImageExporter.swift': r'center: Double\(range\.min \+ range\.max \+ 1\) / 2\.0,\s*width: Double\(range\.max - range\.min \+ 1\)',
-            'PixelEditing/PixelEditor.swift': r'storedMin \+ descriptor\.storedMax \+ 1\) / 2\.0\s*let storedWidth = Double\(descriptor\.storedMax - descriptor\.storedMin \+ 1\)'}
+            'PixelEditing/PixelEditor.swift': r'storedMin \+ descriptor\.storedMax \+ 1\) / 2\.0\s*let storedWidth = Double\(descriptor\.storedMax - descriptor\.storedMin \+ 1\)',
+            'ImagePreprocessor.swift': r'WindowSettings\(center: \(minVal \+ maxVal\) / 2\.0, width: maxVal - minVal,\s*function: \.linearExact\)\s*: WindowSettings\(center: minVal \+ 0\.5, width: 1\)',
+            'GrayscaleDisplayPipeline.swift': r'\.window\(center: \(low \+ high\) / 2, width: high - low, explanation: nil, function: \.linearExact\)'}
     for fname, pat in good.items():
         if re.search(pat, kit[fname]):
             matched += 1
