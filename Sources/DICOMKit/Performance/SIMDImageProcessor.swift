@@ -60,7 +60,7 @@ public struct SIMDImageProcessor {
     /// - `SIGMOID` — PS3.3 C.11.2.1.3: `y = (ymax - ymin) / (1 + exp(-4 (x - c) / w)) + ymin`.
     ///
     /// Every branch performs the same floating-point operations, in the same order,
-    /// as `WindowSettings.apply(to:)`, then `normalized * 255` truncated to `UInt8`
+    /// as `WindowSettings.apply(to:)`, then `WindowLUT.displayByte` (× 255, the D63 tolerance, truncated)
     /// — the exact chain `WindowLUT.Parameters.build()` runs for an unsigned
     /// MONOCHROME2 sample. Output is therefore bit-identical to the scalar path.
     public static func applyWindowLevel(
@@ -73,7 +73,7 @@ public struct SIMDImageProcessor {
 
         let n = vDSP_Length(count)
         let center = window.center
-        let width = window.width // already clamped to >= 1 by WindowSettings.init
+        let width = window.width // WindowSettings.admissibleWidth: >= 1 for LINEAR, > 0 otherwise
 
         // Stored values → Double, matching `Double(maskedValue)` in the scalar path.
         var x = [Double](repeating: 0, count: count)
@@ -147,9 +147,10 @@ public struct SIMDImageProcessor {
         }
     }
 
-    /// `UInt8(max(0, min(255, normalized * 255.0)))` — the scalar path's final step —
-    /// vectorised: multiply, clip, truncate toward zero (`vDSP_vfixu8D` truncates,
-    /// as the `UInt8(_:)` initializer does).
+    /// `WindowLUT.displayByte` — the scalar path's final step — vectorised: multiply,
+    /// add `WindowLUT.quantisationTolerance`, clip, truncate toward zero
+    /// (`vDSP_vfixu8D` truncates, as the `UInt8(_:)` initializer does). The same
+    /// operations in the same order, so the bytes are identical (D63).
     private static func scaleClipAndTruncate(
         _ normalized: inout [Double],
         into output: inout [UInt8],
@@ -157,6 +158,8 @@ public struct SIMDImageProcessor {
     ) {
         var scale = 255.0
         vDSP_vsmulD(normalized, 1, &scale, &normalized, 1, n)
+        var tolerance = WindowLUT.quantisationTolerance
+        vDSP_vsaddD(normalized, 1, &tolerance, &normalized, 1, n)
         var lower = 0.0
         var upper = 255.0
         vDSP_vclipD(normalized, 1, &lower, &upper, &normalized, 1, n)

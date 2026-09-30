@@ -99,7 +99,7 @@ public struct PresentationStateApplicator: Sendable {
             let displayValue = applyTransformationPipeline(to: pixelValue, descriptor: descriptor)
 
             // Convert to 8-bit for display
-            let byteValue = UInt8(max(0, min(255, Int(displayValue * 255.0))))
+            let byteValue = WindowLUT.displayByte(displayValue)
             outputBytes[i] = byteValue
         }
 
