@@ -156,6 +156,23 @@ final class LUTColorTransformTests: XCTestCase {
         XCTAssertNotNil(result)
     }
     
+    func test_colorLUT_nonFiniteInputs() {
+        // D54: Int(_:) trapped on NaN and infinity; each channel is clipped to 0...1 first.
+        // A 2-point grid whose output is the grid position of each channel.
+        var data: [Double] = []
+        for r in 0..<2 { for g in 0..<2 { for b in 0..<2 { data += [Double(r), Double(g), Double(b)] } } }
+        let lut = ColorLUT(gridSize: 2, inputChannels: 3, outputChannels: 3, data: data)
+        XCTAssertTrue(lut.lookup(.nan, .nan, .nan) == (0, 0, 0))
+        XCTAssertTrue(lut.lookup(-.infinity, .infinity, .nan) == (0, 1, 0))
+        XCTAssertTrue(lut.lookup(.infinity, -.infinity, .infinity) == (1, 0, 1))
+        XCTAssertTrue(lut.lookup(1e300, -1e300, 2) == (1, 0, 1))
+        XCTAssertTrue(lut.lookup(-0.5, 1.5, 0.25) == (0, 1, 0))
+        XCTAssertTrue(lut.lookup(1, 0, 0.999) == (1, 0, 0))
+        // A zero grid returns the input instead of indexing before the data
+        let empty = ColorLUT(gridSize: 0, inputChannels: 3, outputChannels: 3, data: [0.5, 0.5, 0.5])
+        XCTAssertTrue(empty.lookup(0.1, 0.2, 0.3) == (0.1, 0.2, 0.3))
+    }
+    
     // MARK: - LUTColorTransform Tests
     
     func test_lutTransform_identity() {

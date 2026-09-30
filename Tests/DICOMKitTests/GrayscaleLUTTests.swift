@@ -71,6 +71,29 @@ struct GrayscaleLUTTests {
         #expect(lut.value(for: 5000) == 40, "past the end clamps high")
     }
 
+    @Test("Non-finite and huge inputs clamp to the table's ends instead of trapping (D54)")
+    func testNonFiniteInputs() throws {
+        let lut = try #require(GrayscaleLUT(firstMappedValue: 100, bitsPerEntry: 16, entries: [10, 20, 30, 40]))
+        #expect(lut.entry(for: .nan) == 10)
+        #expect(lut.entry(for: -.infinity) == 10)
+        #expect(lut.entry(for: .infinity) == 40)
+        #expect(lut.entry(for: 1e300) == 40)
+        #expect(lut.entry(for: -1e300) == 10)
+        #expect(lut.value(for: .nan) == 10)
+        #expect(lut.normalized(.infinity) == 1)
+        // Finite inputs keep rounding to the nearest entry and clamping at both ends
+        #expect(lut.entry(for: 99.4) == 10)
+        #expect(lut.entry(for: 100.5) == 20)
+        #expect(lut.entry(for: 102.49) == 30)
+        #expect(lut.entry(for: 102.5) == 40)
+        #expect(lut.entry(for: 103) == 40)
+        #expect(lut.entry(for: 104) == 40)
+        let single = try #require(GrayscaleLUT(firstMappedValue: -5, bitsPerEntry: 8, entries: [7]))
+        #expect(single.entry(for: .nan) == 7)
+        #expect(single.entry(for: .infinity) == 7)
+        #expect(single.entry(for: -5) == 7)
+    }
+
     @Test("A declared entry count of zero means 65536, not an empty table")
     func testZeroMeans65536() throws {
         // PS3.3 C.11.1.1.1 / C.11.2.1.1: 2^16 entries are declared as 0.

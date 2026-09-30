@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a C.11.1.1 and C.11.2.1.1 LUT Descriptor semantics; the 8...16 bits-per-entry tolerance and output normalisation are recorded
+// NEMA-verified: 2026a, checked 2026-09-30 — entry(for:) clamps to the first/last entry per PS3.3 2026a C.11.1.1.1 before the index conversion, so NaN (first entry) and ±infinity (first/last) no longer trap (D54)
 // GrayscaleLUT.swift
 // DICOMKit
 //
@@ -103,10 +104,16 @@ public struct GrayscaleLUT: Sendable, Equatable {
     // MARK: Lookup
 
     /// The entry a (possibly fractional) input value maps to, clamped to the
-    /// table's ends per PS3.3 C.11.1.1.
+    /// table's ends per PS3.3 C.11.1.1.1: below the first mapped value (and
+    /// -infinity) to the first entry, past the end (and +infinity) to the last.
+    /// NaN maps to the first entry.
     public func entry(for input: Double) -> UInt16 {
-        let index = Int((input - Double(firstMappedValue)).rounded())
-        return entries[max(0, min(entries.count - 1, index))]
+        // Clamp before converting to an index: Int(_:) traps on NaN, ±infinity and
+        // magnitudes beyond Int (D54).
+        let offset = (input - Double(firstMappedValue)).rounded()
+        guard !offset.isNaN, offset > 0 else { return entries[0] }
+        guard offset < Double(entries.count - 1) else { return entries[entries.count - 1] }
+        return entries[Int(offset)]
     }
 
     /// A Modality LUT lookup: the raw entry value, in the manufacturer-defined
