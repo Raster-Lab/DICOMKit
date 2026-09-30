@@ -148,3 +148,45 @@ public struct PixelDataDescriptor: Sendable, Equatable {
         self.planarConfiguration = planarConfiguration
     }
 }
+
+// MARK: - Pixel Cells
+
+extension PixelDataDescriptor {
+    /// The Pixel Cell at `byteOffset`, assembled from its Bits Allocated / 8 bytes,
+    /// least significant byte first.
+    ///
+    /// PS3.5 8.1.1: "The size of the Pixel Cell shall be specified by Bits Allocated";
+    /// PS3.5 8.2: the least significant bit of each cell is encoded first, in
+    /// little-endian words. A 32-bit cell is therefore four bytes, not the first two
+    /// (D67). The caller guarantees `byteOffset + bytesPerSample <= bytes.count`.
+    ///
+    /// NEMA-verified: 2026a, checked 2026-09-30 — cell width and byte order per PS3.5
+    /// 2026a 8.1.1 and 8.2 (D67).
+    @inlinable
+    public func cellValue(in bytes: UnsafeRawBufferPointer, at byteOffset: Int) -> Int {
+        var value = 0
+        for index in 0..<bytesPerSample {
+            value |= Int(bytes[byteOffset + index]) << (8 * index)
+        }
+        return value
+    }
+
+    /// The Pixel Sample Value a cell holds: shifted down from High Bit, masked to
+    /// Bits Stored ("Receiving applications may not assume anything about the
+    /// contents of unused bits"), and sign-extended from the High Bit when Pixel
+    /// Representation is 1 ("The sign bit shall be the High Bit") — PS3.5 8.1.1.
+    ///
+    /// The same steps, in the same order, as `WindowLUT` and `PaletteDisplayLUT`
+    /// apply to each table index.
+    @inlinable
+    public func storedValue(fromCell cell: Int) -> Int {
+        var value = (cell >> bitShift) & storedBitMask
+        if isSigned {
+            let signBit = 1 << (bitsStored - 1)
+            if value & signBit != 0 {
+                value -= 1 << bitsStored
+            }
+        }
+        return value
+    }
+}

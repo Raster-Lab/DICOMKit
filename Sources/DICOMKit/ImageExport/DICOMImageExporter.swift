@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — monochrome export applies the PS3.4 2026a N.2 chain (GrayscaleDisplayPipeline): Modality LUT Sequence or this frame's rescale, then the window in modality units (PS3.3 C.11.2.1.2.1) or the VOI LUT Sequence (C.11.2.1.1), then INVERSE for MONOCHROME1 (C.7.6.3.1.2) (D65); full-range and identity fallbacks per C.11.2.1.2.1 (D66)
 // NEMA-verified: 2026a, checked 2026-09-29 — window and rescale per PS3.3 2026a C.11.2.1.2 and C.11.1.1.2
 import Foundation
 import DICOMCore
@@ -248,6 +249,14 @@ public enum DICOMImageExporter {
     /// Transformation / Frame VOI LUT functional groups (else the shared ones),
     /// so a multi-echo MR or a per-frame-windowed PET pages through the viewer
     /// and exports with each frame's own window rather than frame 0's.
+    ///
+    /// **Stored-value units.** The conversion `(c − b) / m`, `w / |m|` reproduces
+    /// PS3.3 C.11.2.1.2.1 (the window applied after the rescale) only for a slope of 1,
+    /// and a negative slope inverts the ramp; a Modality LUT Sequence is not applied at
+    /// all. Kept for callers that render with a stored-unit window (DICOMStudio's
+    /// viewer, until that module's pass). Export uses
+    /// ``determineDisplayPipeline(from:pixelData:frameIndex:windowCenter:windowWidth:)``,
+    /// which applies the chain as the standard orders it (D65).
     public static func determineWindowSettings(
         from file: DICOMFile, pixelData: PixelData, frameIndex: Int,
         windowCenter: Double?, windowWidth: Double?
@@ -284,6 +293,53 @@ public enum DICOMImageExporter {
                               width: Double(1 << assumedBitDepth))
     }
 
+    /// Resolves the PS3.4 N.2 grayscale chain for a frame, the way the standard
+    /// orders it (D65, P-PIPELINE):
+    ///
+    /// - **Modality LUT** (C.11.1): the Modality LUT Sequence when present, else this
+    ///   frame's Rescale Slope / Intercept (identity when 1 / 0).
+    /// - **VOI** (C.11.2), in modality units: explicit centre/width (LINEAR); else the
+    ///   file's first window for this frame (with its VOI LUT Function); else the
+    ///   file's first VOI LUT Sequence table; else a window over the frame's own
+    ///   modality range (``GrayscaleDisplayPipeline/fullRangeWindow(modalityLUT:storedRange:)``).
+    /// - **Presentation LUT**: INVERSE for MONOCHROME1 (C.7.6.3.1.2), else IDENTITY.
+    ///
+    /// For a slope of 1 and integral windows this renders the same bytes the stored-unit
+    /// window of ``determineWindowSettings(from:pixelData:frameIndex:windowCenter:windowWidth:)``
+    /// does; for any other slope, a Modality LUT Sequence or a VOI LUT Sequence, it is the
+    /// standard's picture and that one is not.
+    public static func determineDisplayPipeline(
+        from file: DICOMFile, pixelData: PixelData, frameIndex: Int,
+        windowCenter: Double?, windowWidth: Double?
+    ) -> GrayscaleDisplayPipeline {
+        let dataSet = file.dataSet
+        let modality: ModalityLUT?
+        if let table = dataSet.modalityLUTData() {
+            modality = .lut(table)
+        } else {
+            let slope = file.rescaleSlope(frameIndex: frameIndex)
+            let intercept = file.rescaleIntercept(frameIndex: frameIndex)
+            modality = (slope == 1 && intercept == 0)
+                ? nil : .rescale(slope: slope, intercept: intercept, type: nil)
+        }
+
+        let voi: VOILUT
+        if let center = windowCenter, let width = windowWidth {
+            voi = .window(center: center, width: width, explanation: nil, function: .linear)
+        } else if let window = file.allWindowSettings(frameIndex: frameIndex).first
+                    ?? file.windowSettings(frameIndex: frameIndex) {
+            voi = VOILUT(window)
+        } else if let table = dataSet.voiLUT() {
+            voi = .lut(LUTData(table))
+        } else if let range = pixelData.pixelRange(forFrame: frameIndex) {
+            voi = GrayscaleDisplayPipeline.fullRangeWindow(modalityLUT: modality, storedRange: range)
+        } else {
+            voi = .window(center: Double(1 << 15), width: Double(1 << 16), explanation: nil, function: .linear)
+        }
+        return .standard(for: pixelData.descriptor.photometricInterpretation,
+                         modalityLUT: modality, voiLUT: voi)
+    }
+
     // MARK: - Frame rendering
 
     #if canImport(CoreGraphics)
@@ -313,6 +369,19 @@ public enum DICOMImageExporter {
         // window. For images without a stored window the policy degrades to the same
         // pixel-range auto-window the renderer used before, so windowless sources are
         // unaffected. `applyWindow` only gates whether explicit center/width override.
+        // Monochrome frames go through the Modality → VOI → Presentation chain with
+        // the window in modality units (PS3.3 C.11.2.1.2.1, D65).
+        if pixelData.descriptor.photometricInterpretation.isMonochrome {
+            let pipeline = determineDisplayPipeline(
+                from: file, pixelData: pixelData, frameIndex: frameIndex,
+                windowCenter: applyWindow ? windowCenter : nil,
+                windowWidth: applyWindow ? windowWidth : nil)
+            guard let image = PixelDataRenderer(pixelData: pixelData)
+                .renderMonochromeFrame(frameIndex, pipeline: pipeline) else {
+                throw ExportError.renderFailed
+            }
+            return image
+        }
         let window = determineWindowSettings(
             from: file, pixelData: pixelData, frameIndex: frameIndex,
             windowCenter: applyWindow ? windowCenter : nil,

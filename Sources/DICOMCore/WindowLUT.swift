@@ -62,6 +62,13 @@ extension WindowLUT {
         WindowLUTCache.shared.lut(for: Parameters(descriptor: descriptor, window: window))
     }
 
+    /// Whether a descriptor's cells can index a table: one or two bytes per cell
+    /// (256 or 65,536 entries). Wider cells (Bits Allocated 32) are evaluated per
+    /// pixel instead (D67).
+    public static func canTabulate(_ descriptor: PixelDataDescriptor) -> Bool {
+        (1...2).contains(descriptor.bytesPerSample)
+    }
+
     /// Builds the table unconditionally, bypassing the cache.
     public static func makeGrayscale(
         descriptor: PixelDataDescriptor,

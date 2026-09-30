@@ -226,6 +226,35 @@ final class ExportRoundTripTests: XCTestCase {
         let bytes = [UInt8](try XCTUnwrap(image.dataProvider?.data as Data?))
         XCTAssertEqual(bytes, (0..<16).map { UInt8($0 * 17) })
     }
+
+    /// D65: export applies the file's window after its rescale (PS3.3 C.11.2.1.2.1),
+    /// whatever the slope — including a negative one, which the stored-unit conversion
+    /// rendered inverted.
+    func testExportAppliesTheWindowAfterTheRescale() throws {
+        func linearByte(_ x: Double, _ c: Double, _ w: Double) -> UInt8 {
+            if x <= c - 0.5 - (w - 1) / 2 { return 0 }
+            if x > c - 0.5 + (w - 1) / 2 { return 255 }
+            return UInt8(((x - (c - 0.5)) / (w - 1) + 0.5) * 255 + 1e-9)
+        }
+        let stored: [Int16] = [-100, -26, -25, -24, 0, 24, 25, 26, 100]
+        for (slope, intercept, center) in [(2.0, 0.0, 0.0), (-1.0, 100.0, 100.0)] {
+            let base = makeGrayscale16(rows: 1, cols: UInt16(stored.count),
+                                       fillPattern: { UInt16(bitPattern: stored[$0]) }, signed: true)
+            var ds = base.dataSet
+            ds.setString(String(slope), for: .rescaleSlope, vr: .DS)
+            ds.setString(String(intercept), for: .rescaleIntercept, vr: .DS)
+            ds.setString(String(center), for: .windowCenter, vr: .DS)
+            ds.setString("100", for: .windowWidth, vr: .DS)
+            let file = DICOMFile(fileMetaInformation: base.fileMetaInformation, dataSet: ds)
+            let pd = try XCTUnwrap(file.pixelData())
+            let image = try DICOMImageExporter.renderFrameForExport(
+                file: file, pixelData: pd, frameIndex: 0,
+                applyWindow: false, windowCenter: nil, windowWidth: nil)
+            let bytes = [UInt8](try XCTUnwrap(image.dataProvider?.data as Data?))
+            XCTAssertEqual(bytes, stored.map { linearByte(slope * Double($0) + intercept, center, 100) },
+                           "slope \(slope)")
+        }
+    }
     #endif
 
     #if canImport(CoreGraphics) && canImport(ImageIO)

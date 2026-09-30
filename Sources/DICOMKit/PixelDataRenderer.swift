@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — Pixel Cells read Bits Allocated wide on every path (PS3.5 2026a 8.1.1, D67); monochrome frames render through GrayscaleDisplayPipeline or its table (PS3.4 N.2, P-PIPELINE); the auto window is the C.11.2.1.2.1 full-range window (D66)
 // NEMA-verified: 2026a, checked 2026-09-29 — YBR_FULL/YBR_FULL_422 (full-range), YBR_PARTIAL_420/422 (partial-range, Y−16) inverse equations and the packed 4:2:2 layout follow PS3.3 2026a C.7.6.3.1.2; YBR_ICT/YBR_RCT are JPEG 2000 codestream transforms already inverted by the decoder and are not re-converted (P-RENDER)
 import Foundation
 import DICOMCore
@@ -76,15 +77,39 @@ public struct PixelDataRenderer: Sendable {
     /// - Returns: CGImage if rendering succeeds, nil otherwise
     public func renderMonochromeFrame(_ frameIndex: Int = 0, window: WindowSettings) -> CGImage? {
         let descriptor = pixelData.descriptor
-        
+
         guard descriptor.photometricInterpretation.isMonochrome else {
             return nil
         }
-        
+
+        // Cells wider than two bytes (Bits Allocated 32) cannot index a table; the same
+        // chain — window, then MONOCHROME1 inversion — is evaluated per pixel (D67).
+        guard WindowLUT.canTabulate(descriptor) || descriptor.bytesPerSample < 1 else {
+            return renderMonochromeFrame(
+                frameIndex,
+                pipeline: .standard(for: descriptor.photometricInterpretation, voiLUT: VOILUT(window)))
+        }
+
+        return renderMonochromeFrame(
+            frameIndex, displayTable: WindowLUT.grayscale(descriptor: descriptor, window: window))
+    }
+
+    /// Renders a monochrome frame through a raw-cell → display-byte table (256 or
+    /// 65,536 entries), such as a `WindowLUT` or `GrayscaleDisplayPipeline.table(for:)`.
+    ///
+    /// - Returns: `nil` for a non-monochrome frame, a missing frame, or cells wider
+    ///   than the table covers.
+    public func renderMonochromeFrame(_ frameIndex: Int = 0, displayTable lut: WindowLUT) -> CGImage? {
+        let descriptor = pixelData.descriptor
+
+        guard descriptor.photometricInterpretation.isMonochrome else {
+            return nil
+        }
+
         guard let frameData = pixelData.frameData(at: frameIndex) else {
             return nil
         }
-        
+
         let width = descriptor.columns
         let height = descriptor.rows
         let totalPixels = width * height
@@ -102,7 +127,8 @@ public struct PixelDataRenderer: Sendable {
         // but the raw sample, so it is evaluated once per possible sample value rather
         // than once per pixel. `WindowLUT` builds the table with the same
         // `WindowSettings.apply` this loop used to call, so the output is byte-identical.
-        let lut = WindowLUT.grayscale(descriptor: descriptor, window: window)
+        let expectedEntries = bytesPerSample == 1 ? 256 : 65_536
+        guard bytesPerSample <= 2, lut.count >= expectedEntries else { return nil }
 
         // Samples that would read past the end of the frame are left at 0, matching
         // the bounds check the scalar loop broke out on.
@@ -130,6 +156,60 @@ public struct PixelDataRenderer: Sendable {
         return createGrayscaleCGImage(from: outputBytes, width: width, height: height)
     }
     
+    /// Renders a monochrome frame through the PS3.4 N.2 grayscale chain — Modality
+    /// LUT, VOI, Presentation LUT (P-PIPELINE) — optionally recoloured through a
+    /// reader's pseudo-colour entries indexed by the display byte.
+    ///
+    /// Cells of one or two bytes go through the chain's table; wider cells (Bits
+    /// Allocated 32) are read whole (PS3.5 8.1.1) and evaluated per pixel (D67). The
+    /// two give the same bytes for the same stored value.
+    public func renderMonochromeFrame(
+        _ frameIndex: Int = 0,
+        pipeline: GrayscaleDisplayPipeline,
+        pseudoColor entries: [(red: UInt8, green: UInt8, blue: UInt8)]? = nil
+    ) -> CGImage? {
+        let descriptor = pixelData.descriptor
+        guard descriptor.photometricInterpretation.isMonochrome, descriptor.bytesPerSample >= 1 else {
+            return nil
+        }
+        let colours = (entries?.isEmpty ?? true) ? nil : entries
+
+        if let table = pipeline.table(for: descriptor) {
+            if let colours {
+                return renderMonochromeFrame(
+                    frameIndex, displayLUT: PaletteDisplayLUT.make(window: table, entries: colours))
+            }
+            return renderMonochromeFrame(frameIndex, displayTable: table)
+        }
+
+        guard let frameData = pixelData.frameData(at: frameIndex) else { return nil }
+        let width = descriptor.columns
+        let height = descriptor.rows
+        let totalPixels = width * height
+        let bytesPerSample = descriptor.bytesPerSample
+        var grey = [UInt8](repeating: 0, count: totalPixels)
+        frameData.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+            for i in 0..<totalPixels {
+                let offset = i * bytesPerSample
+                guard offset + bytesPerSample <= bytes.count else { break }
+                let stored = descriptor.storedValue(fromCell: descriptor.cellValue(in: bytes, at: offset))
+                grey[i] = pipeline.displayByte(forStoredValue: stored, descriptor: descriptor)
+            }
+        }
+        guard let colours else {
+            return createGrayscaleCGImage(from: grey, width: width, height: height)
+        }
+        let last = colours.count - 1
+        var rgba = [UInt8](repeating: 255, count: totalPixels * 4)
+        for i in 0..<totalPixels {
+            let entry = colours[min(last, Int(grey[i]))]
+            rgba[i * 4] = entry.red
+            rgba[i * 4 + 1] = entry.green
+            rgba[i * 4 + 2] = entry.blue
+        }
+        return createRGBACGImage(from: rgba, width: width, height: height)
+    }
+
     /// Renders a color frame to a CGImage
     ///
     /// Handles RGB and YBR color images with 3 samples per pixel.
@@ -208,6 +288,15 @@ public struct PixelDataRenderer: Sendable {
                         g = Int(frameData[baseOffset + 1])
                         b = Int(frameData[baseOffset + 2])
                     }
+                } else if bytesPerSample > 2 {
+                    // Whole cells, Bits Allocated wide (PS3.5 8.1.1, D67).
+                    if baseOffset + 3 * bytesPerSample <= frameData.count {
+                        (r, g, b) = frameData.withUnsafeBytes { bytes in
+                            (descriptor.cellValue(in: bytes, at: baseOffset),
+                             descriptor.cellValue(in: bytes, at: baseOffset + bytesPerSample),
+                             descriptor.cellValue(in: bytes, at: baseOffset + 2 * bytesPerSample))
+                        }
+                    }
                 } else {
                     if baseOffset + 5 < frameData.count {
                         r = Int(frameData[baseOffset]) | (Int(frameData[baseOffset + 1]) << 8)
@@ -227,6 +316,14 @@ public struct PixelDataRenderer: Sendable {
                         r = Int(frameData[rOffset])
                         g = Int(frameData[gOffset])
                         b = Int(frameData[bOffset])
+                    }
+                } else if bytesPerSample > 2 {
+                    if bOffset + bytesPerSample <= frameData.count {
+                        (r, g, b) = frameData.withUnsafeBytes { bytes in
+                            (descriptor.cellValue(in: bytes, at: rOffset),
+                             descriptor.cellValue(in: bytes, at: gOffset),
+                             descriptor.cellValue(in: bytes, at: bOffset))
+                        }
                     }
                 } else {
                     if bOffset + 1 < frameData.count {
@@ -339,6 +436,8 @@ public struct PixelDataRenderer: Sendable {
             let rawValue: Int
             if bytesPerSample == 1 {
                 rawValue = Int(frameData[offset])
+            } else if bytesPerSample > 2 {
+                rawValue = frameData.withUnsafeBytes { descriptor.cellValue(in: $0, at: offset) }
             } else {
                 let low = Int(frameData[offset])
                 let high = Int(frameData[offset + 1])

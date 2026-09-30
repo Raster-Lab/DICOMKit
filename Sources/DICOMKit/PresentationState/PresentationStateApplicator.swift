@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — the value chain is GrayscaleDisplayPipeline (PS3.4 2026a N.2); cells are read Bits Allocated wide (PS3.5 8.1.1, D67) and quantised by WindowLUT.displayByte (D63)
 // NEMA-verified: 2026a, checked 2026-09-29 — PS3.4 2026a N.2 pipeline: shutters mask outside every shape before the C.10.6 rotate-then-flip transform; the no-VOI range follows C.11.6.1
 //
 // PresentationStateApplicator.swift
@@ -65,42 +66,21 @@ public struct PresentationStateApplicator: Sendable {
         // Create output buffer
         var outputBytes = [UInt8](repeating: 0, count: totalPixels)
         
-        // Extract pixel values and apply the complete transformation pipeline
+        // The PS3.4 N.2 chain of this presentation state, shared with the exporter and
+        // the renderers (GrayscaleDisplayPipeline). Cells are read Bits Allocated wide
+        // (PS3.5 8.1.1, D67), then shifted, masked and sign-extended.
+        let pipeline = GrayscaleDisplayPipeline(
+            modalityLUT: presentationState.modalityLUT,
+            voiLUT: presentationState.voiLUT,
+            presentationLUT: presentationState.presentationLUT)
         let bytesPerSample = descriptor.bytesPerSample
-        let bitShift = descriptor.bitShift
-        let storedBitMask = descriptor.storedBitMask
-        let isSigned = descriptor.isSigned
-        
-        for i in 0..<totalPixels {
-            let offset = i * bytesPerSample
-            guard offset + bytesPerSample <= frameData.count else {
-                break
+        frameData.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+            for i in 0..<totalPixels {
+                let offset = i * bytesPerSample
+                guard offset + bytesPerSample <= bytes.count else { break }
+                let stored = descriptor.storedValue(fromCell: descriptor.cellValue(in: bytes, at: offset))
+                outputBytes[i] = pipeline.displayByte(forStoredValue: stored, descriptor: descriptor)
             }
-            
-            // Extract stored pixel value
-            var pixelValue: Int
-            if bytesPerSample == 1 {
-                pixelValue = Int(frameData[offset])
-            } else {
-                let bytes = frameData[offset..<offset+bytesPerSample]
-                let rawValue = bytes.withUnsafeBytes { $0.load(as: UInt16.self) }
-                pixelValue = Int((rawValue >> bitShift) & UInt16(storedBitMask))
-            }
-            
-            // Handle signed pixel values
-            if isSigned {
-                let signBit = 1 << (descriptor.bitsStored - 1)
-                if pixelValue >= signBit {
-                    pixelValue -= (1 << descriptor.bitsStored)
-                }
-            }
-            
-            // Apply transformation pipeline
-            let displayValue = applyTransformationPipeline(to: pixelValue, descriptor: descriptor)
-
-            // Convert to 8-bit for display
-            let byteValue = WindowLUT.displayByte(displayValue)
-            outputBytes[i] = byteValue
         }
 
         // Shutters are defined in the image's own row/column coordinates
@@ -127,55 +107,6 @@ public struct PresentationStateApplicator: Sendable {
             width: finalWidth,
             height: finalHeight
         )
-    }
-    
-    // MARK: - Transformation Pipeline
-    
-    /// Applies the complete transformation pipeline to a pixel value
-    ///
-    /// Pipeline: Stored Pixel → Modality LUT → VOI LUT → Presentation LUT → Display
-    ///
-    /// - Parameters:
-    ///   - storedPixelValue: The stored pixel value from the DICOM file
-    ///   - descriptor: The image's pixel description, which bounds the stored range
-    /// - Returns: Normalized display value (0.0-1.0)
-    private func applyTransformationPipeline(to storedPixelValue: Int, descriptor: PixelDataDescriptor) -> Double {
-        // Step 1: Apply Modality LUT (stored pixels → modality values, e.g., Hounsfield Units)
-        var modalityValue = Double(storedPixelValue)
-        if let modalityLUT = presentationState.modalityLUT {
-            modalityValue = modalityLUT.apply(to: storedPixelValue)
-        }
-
-        // Step 2: Apply VOI LUT (modality values → values of interest, window/level)
-        var voiValue = modalityValue
-        switch presentationState.voiLUT {
-        case .window?:
-            voiValue = presentationState.voiLUT!.apply(to: modalityValue)
-        case .lut(let lut)?:
-            // A table's output is 0...2^bits-1 (C.11.2.1.1); the pipeline continues in 0...1
-            voiValue = lut.lookup(Int(modalityValue.rounded())) / Double(lut.maxOutputValue)
-        case nil:
-            // C.11.6.1: with no VOI, the full output range of the Modality LUT is
-            // the input range of the next stage.
-            let low = descriptor.isSigned ? -(1 << (descriptor.bitsStored - 1)) : 0
-            let high = low + (1 << descriptor.bitsStored) - 1
-            var (lowValue, highValue) = (Double(low), Double(high))
-            if let modalityLUT = presentationState.modalityLUT {
-                lowValue = modalityLUT.apply(to: low)
-                highValue = modalityLUT.apply(to: high)
-            }
-            let range = highValue - lowValue
-            voiValue = range > 0 ? (modalityValue - lowValue) / range : 0
-        }
-        
-        // Step 3: Apply Presentation LUT (values of interest → P-Values, polarity)
-        var presentationValue = voiValue
-        if let presentationLUT = presentationState.presentationLUT {
-            presentationValue = presentationLUT.apply(to: voiValue)
-        }
-        
-        // Clamp to valid range
-        return max(0.0, min(1.0, presentationValue))
     }
     
     // MARK: - Spatial Transformation
