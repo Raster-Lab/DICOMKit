@@ -673,6 +673,72 @@ def check_photometric_terms(rep, p3, files):
     rep.check('PS3.3 C.7.6.3.1.2: Photometric Interpretation string literals are defined terms', matched, wrong)
 
 
+# --- non-image SOP classes (PS3.4 Tables B.5-1 and GG.3-1, PS3.3 IOD module tables) ---
+
+PIXEL_MODULES = {'C.7.6.3': 'Image Pixel Module', 'C.7.6.24': 'Floating Point Image Pixel Module',
+                 'C.7.6.25': 'Double Floating Point Image Pixel Module'}
+
+
+def storage_sop_classes(p4):
+    """{uid: (name, IOD section id)} for every SOP Class PS3.4 links to a PS3.3 IOD: Table
+    B.5-1 (Storage) and Table GG.3-1 (Non-Patient Object Storage)."""
+    out = {}
+    for label in ('B.5-1', 'GG.3-1'):
+        for row in dw.table_rows(p4, label):
+            uids = [c for c in row if re.fullmatch(r'1\.2\.840\.10008\.[\d.]+', c)]
+            iods = [c for c in row if c.startswith('PS3.3 sect_A')]
+            if uids and iods:
+                out.setdefault(uids[0], (row[0], iods[0].replace('PS3.3 ', '').strip()))
+    return out
+
+
+def non_image_sop_classes(p3, p4):
+    """{uid: name} of the SOP Classes whose IOD module tables name none of the modules that
+    carry pixel data (PS3.3 C.7.6.3, C.7.6.24, C.7.6.25)."""
+    for ref, title in PIXEL_MODULES.items():
+        if dw.section_title(p3, f'sect_{ref}') != title:
+            sys.exit(f'PS3.3 {ref} is no longer the {title}; re-read')
+    sections = {sec.get(X + 'id'): sec for sec in p3.root.iter(D + 'section')}
+    out = {}
+    for uid, (name, sid) in storage_sop_classes(p4).items():
+        sec = sections.get(sid)
+        if sec is None:
+            sys.exit(f'{name}: IOD {sid} not found in PS3.3')
+        refs = set()
+        for t in sec.iter(D + 'table'):
+            rows = list(p3.rows(t, header=True))
+            if rows and any('Module' in c for c in rows[0]):
+                for r in rows[1:]:
+                    for c in r:
+                        refs.update(re.findall(r'\b(C\.\d+(?:\.\d+)*)\b', c))
+        if not refs:
+            sys.exit(f'{name}: no module table found under {sid}')
+        if not refs & set(PIXEL_MODULES):
+            out[uid] = name
+    return out
+
+
+def check_non_image_sop_classes(rep, p3, p4, files):
+    """DICOMFile.nonImageSOPClasses must be exactly the SOP Classes without a pixel module."""
+    src = files.get('DICOMFile+PixelData.swift', '')
+    m = re.search(r'nonImageSOPClasses: Set<String> = \[(.*?)\n    \]', src, re.S)
+    code = set(re.findall(r'"(1\.2\.840\.10008[\d.]+)"', m.group(1))) if m else set()
+    std = non_image_sop_classes(p3, p4)
+    storage = storage_sop_classes(p4)
+    wrong = [f'{u} ({storage[u][0] if u in storage else "not a PS3.4 B.5-1 / GG.3-1 SOP Class"}) '
+             f'is not a non-image SOP Class' for u in sorted(code - set(std))]
+    missing = [f'{u} {std[u]}' for u in sorted(set(std) - code)]
+    rep.check(f'PS3.4 Tables B.5-1 / GG.3-1 + PS3.3 IOD modules: nonImageSOPClasses is every SOP Class '
+              f'without a pixel module ({len(std)} of {len(storage)})', len(code & set(std)), wrong, missing)
+
+
+def emit_non_image_swift(p3, p4):
+    """The Swift literal for DICOMFile.nonImageSOPClasses, generated from the text."""
+    for uid, name in sorted(non_image_sop_classes(p3, p4).items(),
+                            key=lambda kv: [int(x) for x in kv[0].split('.')]):
+        print(f'        "{uid}",' + ' ' * max(1, 36 - len(uid)) + f'// {name}')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--nema', required=True, help='directory with partNN_<edition>.xml files')
@@ -681,6 +747,8 @@ def main():
     ap.add_argument('--core', default=os.path.join(os.path.dirname(HERE), 'Sources', 'DICOMCore'))
     ap.add_argument('--verbose', action='store_true')
     ap.add_argument('--only', help='run only checks whose function name contains this text')
+    ap.add_argument('--emit-non-image-swift', action='store_true',
+                    help='print the generated DICOMFile.nonImageSOPClasses literal and exit')
     args = ap.parse_args()
 
     parts = {}
@@ -691,6 +759,9 @@ def main():
         if args.edition not in sub:
             sys.exit(f'{path}: subtitle {sub!r} does not name {args.edition}')
         print(f'using {path}: {sub}')
+    if args.emit_non_image_swift:
+        emit_non_image_swift(parts[3], parts[4])
+        return
     rep = dw.Report(args.verbose)
     files = dw.read_all(args.sources)
     tags, local_tags = tag_constants(args.core, files)
@@ -711,6 +782,7 @@ def main():
         ('video', lambda: check_video_constraints(rep, parts[6], files)),
         ('waveform', lambda: check_waveform_sample_interpretation(rep, parts[3], files)),
         ('photometric', lambda: check_photometric_terms(rep, parts[3], files)),
+        ('non_image_sop_classes', lambda: check_non_image_sop_classes(rep, parts[3], parts[4], files)),
     ]
     for name, fn in checks:
         if args.only and args.only not in name:
