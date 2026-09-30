@@ -517,6 +517,8 @@ let package = Package(
                 "StructuredReporting/SRDocumentParserTests.swift",
                 // PS3.3 Tables C.17-1, C.17-2, 8.8-1a and C.18.10-1 round trip (P-SRSER, 2026-09-29).
                 "StructuredReporting/SRDocumentModuleRoundTripTests.swift",
+                // PS3.3 Table C.17-2 Verifying Observer Sequence, PS3.5 7.4.2 (D37 a, 2026-09-29).
+                "StructuredReporting/VerifyingObserverSequenceTests.swift",
                 // PS3.3 C.18.10 TABLE content item round trip (P8, 2026-09-25).
                 "StructuredReporting/TableContentItemRoundTripTests.swift",
                 "Waveform/WaveformTests.swift",

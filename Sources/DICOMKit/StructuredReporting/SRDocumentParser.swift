@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — SR Document Series / General Module attributes per PS3.3 2026a Tables C.17-1 and C.17-2; Code Sequence Macro reading (one of Code Value / Long Code Value / URN Code Value, Coding Scheme Designator 1C) per Table 8.8-1a; TABLE cells per Table C.18.10-1; SCOORD3D (3006,0024) per Table C.18.9-1; content module tags per PS3.6 Table 6-1; the NUM qualifier gap is recorded; Content Sequence (0040,A730) read under every value type per Table C.17-6 (D31)
+// NEMA-verified: 2026a, checked 2026-09-30 — SR Document Series / General Module attributes per PS3.3 2026a Tables C.17-1 and C.17-2 (incl. Verifying Observer Sequence (0040,A073) Items); Code Sequence Macro reading (one of Code Value / Long Code Value / URN Code Value, Coding Scheme Designator 1C) per Table 8.8-1a; TABLE cells per Table C.18.10-1; SCOORD3D (3006,0024) per Table C.18.9-1; content module tags per PS3.6 Table 6-1; the NUM qualifier gap is recorded; Content Sequence (0040,A730) read under every value type per Table C.17-6 (D31)
 /// DICOM Structured Reporting Document Parser
 ///
 /// Parses DICOM SR data sets into the content item tree model.
@@ -129,6 +129,9 @@ public struct SRDocumentParser: Sendable {
         let completionFlag = dataSet.string(for: .completionFlag).flatMap { CompletionFlag(rawValue: $0) }
         let verificationFlag = dataSet.string(for: .verificationFlag).flatMap { VerificationFlag(rawValue: $0) }
         let preliminaryFlag = dataSet.string(for: .preliminaryFlag).flatMap { PreliminaryFlag(rawValue: $0) }
+
+        // Verifying Observer Sequence (0040,A073), Type 1C (PS3.3 Table C.17-2)
+        let verifyingObservers = parseVerifyingObservers(from: dataSet)
         
         // Parse document title from Concept Name Code Sequence
         let documentTitle = try? parseCodedConcept(from: dataSet, tag: .conceptNameCodeSequence)
@@ -154,9 +157,31 @@ public struct SRDocumentParser: Sendable {
             completionFlag: completionFlag,
             verificationFlag: verificationFlag,
             preliminaryFlag: preliminaryFlag,
+            verifyingObservers: verifyingObservers,
             documentTitle: documentTitle,
             rootContent: rootContent
         )
+    }
+
+    /// Reads the Verifying Observer Sequence (0040,A073) Items (PS3.3 2026a Table C.17-2)
+    ///
+    /// Verifying Observer Name (0040,A075), Verifying Organization (0040,A027) and
+    /// Verification DateTime (0040,A030) are Type 1; an Item that lacks one is read with an
+    /// empty value rather than dropped, so the document is reported as it was received
+    /// (and `SRDocumentSerializer` refuses to write it back unchanged). The Verifying
+    /// Observer Identification Code Sequence (0040,A088) is Type 2 with zero or one Item.
+    private func parseVerifyingObservers(from dataSet: DataSet) -> [VerifyingObserver] {
+        guard let items = dataSet.sequence(for: .verifyingObserverSequence) else {
+            return []
+        }
+        return items.map { item in
+            VerifyingObserver(
+                name: item.string(for: .verifyingObserverName) ?? "",
+                identificationCode: (try? parseCodedConceptFromItem(item, tag: .verifyingObserverIdentificationCodeSequence)) ?? nil,
+                organization: item.string(for: .verifyingOrganization) ?? "",
+                verificationDateTime: item.string(for: .verificationDateTime) ?? ""
+            )
+        }
     }
     
     // MARK: - Content Parsing

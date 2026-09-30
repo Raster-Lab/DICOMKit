@@ -553,6 +553,9 @@ struct SRDocumentSerializerTests {
             .withVerificationFlag(.verified)
             .withPreliminaryFlag(.final)
             .build()
+            // VERIFIED requires the Verifying Observer Sequence (PS3.3 Table C.17-2, Type 1C)
+            .withVerifyingObservers([VerifyingObserver(
+                name: "Smith^Jane", organization: "Radiology", verificationDateTime: "20260929101500")])
         
         let dataSet = try document.toDataSet()
         
@@ -680,6 +683,9 @@ struct SRDocumentSerializerTests {
             .withVerificationFlag(.verified)
             .addText(conceptName: CodedConcept.finding, value: "Normal appearance")
             .build()
+            // VERIFIED requires the Verifying Observer Sequence (PS3.3 Table C.17-2, Type 1C)
+            .withVerifyingObservers([VerifyingObserver(
+                name: "Smith^Jane", organization: "Radiology", verificationDateTime: "20260929101500")])
         
         // Serialize to DataSet
         let dataSet = try originalDocument.toDataSet()

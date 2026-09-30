@@ -2,7 +2,7 @@
 ///
 /// Tags specific to DICOM Structured Reporting (SR) documents
 /// Reference: DICOM PS3.3 - Structured Reporting
-/// NEMA-verified: 2026a, checked 2026-09-25 — every Tag constant in this file was text-diffed by script against PS3.6 2026a Tables 6-1, 7-1 and 8-1 (tag present, name, VR, VM, keyword, retired status). See DICOMCORE_STANDARD_IMPLEMENTATION.md, Bucket C2.
+/// NEMA-verified: 2026a, checked 2026-09-30 — every Tag constant in this file was text-diffed by script against PS3.6 2026a Tables 6-1, 7-1 and 8-1 (tag present, name, VR, VM, keyword, retired status); re-run 2026-09-30 after adding Verifying Observer Identification Code Sequence (0040,A088): 75 constants, all match Table 6-1 (keyword, VR, VM, not retired). See DICOMCORE_STANDARD_IMPLEMENTATION.md, Bucket C2.
 extension Tag {
     // MARK: - SR Document General Module
     
@@ -33,7 +33,12 @@ extension Tag {
     /// Verifying Observer Name (0040,A075)
     /// VR: PN, VM: 1
     public static let verifyingObserverName = Tag(group: 0x0040, element: 0xA075)
-    
+
+    /// Verifying Observer Identification Code Sequence (0040,A088)
+    /// VR: SQ, VM: 1
+    /// PS3.6 2026a Table 6-1 (keyword VerifyingObserverIdentificationCodeSequence)
+    public static let verifyingObserverIdentificationCodeSequence = Tag(group: 0x0040, element: 0xA088)
+
     /// Verifying Organization (0040,A027)
     /// VR: LO, VM: 1
     public static let verifyingOrganization = Tag(group: 0x0040, element: 0xA027)

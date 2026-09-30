@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — SR Document Series Module per PS3.3 2026a Table C.17-1 (Modality SR, Table C.17.6-1 KO; Referenced PPS Sequence Type 2), SR Document General Module per Table C.17-2 (Type 1 Instance Number, Completion/Verification Flag, Content Date/Time; Performed Procedure Code Sequence Type 2), Code Sequence Macro per Table 8.8-1a (exactly one of Code Value / Long Code Value / URN Code Value), TABLE cells per Table C.18.10-1 (IS or SV integer cells), SCOORD3D (3006,0024) per Table C.18.9-1; Content Sequence (0040,A730) nested in every value type per Table C.17-6 (D31)
+// NEMA-verified: 2026a, checked 2026-09-30 — SR Document Series Module per PS3.3 2026a Table C.17-1 (Modality SR, Table C.17.6-1 KO; Referenced PPS Sequence Type 2), SR Document General Module per Table C.17-2 (Type 1 Instance Number, Completion/Verification Flag, Content Date/Time; Verifying Observer Sequence Type 1C when VERIFIED, absent otherwise per PS3.5 7.4.2, Item attributes A075/A027/A030 Type 1 and A088 Type 2; Performed Procedure Code Sequence Type 2), Code Sequence Macro per Table 8.8-1a (exactly one of Code Value / Long Code Value / URN Code Value), TABLE cells per Table C.18.10-1 (IS or SV integer cells), SCOORD3D (3006,0024) per Table C.18.9-1; Content Sequence (0040,A730) nested in every value type per Table C.17-6 (D31)
 /// DICOM Structured Reporting Document Serializer
 ///
 /// Converts SRDocument objects to DICOM DataSet format for storage.
@@ -223,6 +223,8 @@ public struct SRDocumentSerializer: Sendable {
                 "Verification Flag VERIFIED requires Completion Flag COMPLETE (PS3.3 Table C.17-2); got \(completionFlag.rawValue)"
             )
         }
+        let verifyingObserverItems = try verifyingObserverSequenceItems(
+            document.verifyingObservers, verificationFlag: verificationFlag)
 
         dataSet[.completionFlag] = DataElement.string(
             tag: .completionFlag,
@@ -234,6 +236,12 @@ public struct SRDocumentSerializer: Sendable {
             vr: .CS,
             value: verificationFlag.rawValue
         )
+        if let verifyingObserverItems {
+            dataSet[.verifyingObserverSequence] = createSequenceElement(
+                tag: .verifyingObserverSequence,
+                items: verifyingObserverItems
+            )
+        }
 
         // Content Date (0008,0023) and Content Time (0008,0033), Type 1: "the date/time
         // the document content creation started". When the document carries neither, the
@@ -264,6 +272,53 @@ public struct SRDocumentSerializer: Sendable {
                 vr: .CS,
                 value: preliminaryFlag.rawValue
             )
+        }
+    }
+
+    /// Verifying Observer Sequence (0040,A073) Items, or nil when the sequence is not written
+    ///
+    /// PS3.3 2026a Table C.17-2: the sequence is Type 1C, "Required if Verification Flag
+    /// (0040,A493) is VERIFIED", and "One or more Items shall be included". Each Item holds
+    /// Verifying Observer Name (0040,A075) Type 1, Verifying Observer Identification Code
+    /// Sequence (0040,A088) Type 2 ("Zero or one Item"), Verifying Organization (0040,A027)
+    /// Type 1 and Verification DateTime (0040,A030) Type 1. PS3.5 2026a 7.4.2: when the
+    /// condition is not met a Type 1C element "shall not be included" unless the table says
+    /// it may be present otherwise, which C.17-2 does not.
+    private func verifyingObserverSequenceItems(
+        _ observers: [VerifyingObserver],
+        verificationFlag: VerificationFlag
+    ) throws -> [SequenceItem]? {
+        guard verificationFlag == .verified else {
+            if !observers.isEmpty {
+                throw SerializationError.inconsistentAttributes(
+                    "Verifying Observer Sequence (0040,A073) is Type 1C, required only if Verification Flag is VERIFIED; got \(verificationFlag.rawValue) with \(observers.count) observer(s) (PS3.3 Table C.17-2, PS3.5 7.4.2)"
+                )
+            }
+            return nil
+        }
+        guard !observers.isEmpty else {
+            throw SerializationError.missingRequiredAttribute(
+                "Verifying Observer Sequence (0040,A073): one or more Items required when Verification Flag is VERIFIED (PS3.3 Table C.17-2)"
+            )
+        }
+        return try observers.map { observer in
+            // Type 1 attributes must have a value (PS3.5 7.4.1)
+            for (value, name) in [
+                (observer.name, "Verifying Observer Name (0040,A075)"),
+                (observer.organization, "Verifying Organization (0040,A027)"),
+                (observer.verificationDateTime, "Verification DateTime (0040,A030)"),
+            ] where value.trimmingCharacters(in: .whitespaces).isEmpty {
+                throw SerializationError.missingRequiredAttribute("\(name) is Type 1 in the Verifying Observer Sequence (PS3.3 Table C.17-2)")
+            }
+            return SequenceItem(elements: [
+                DataElement.string(tag: .verifyingObserverName, vr: .PN, value: observer.name),
+                createSequenceElement(
+                    tag: .verifyingObserverIdentificationCodeSequence,
+                    items: observer.identificationCode.map { [createCodeSequenceItem(code: $0)] } ?? []
+                ),
+                DataElement.string(tag: .verifyingOrganization, vr: .LO, value: observer.organization),
+                DataElement.string(tag: .verificationDateTime, vr: .DT, value: observer.verificationDateTime),
+            ])
         }
     }
 

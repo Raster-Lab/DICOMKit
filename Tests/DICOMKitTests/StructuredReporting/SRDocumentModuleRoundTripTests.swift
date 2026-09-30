@@ -111,7 +111,10 @@ final class SRDocumentModuleRoundTripTests: XCTestCase {
     func testGeneralModuleRoundTripsProvidedValues() throws {
         let (dataSet, parsed) = try roundTrip(document(
             instanceNumber: "3", contentDate: "20260929", contentTime: "101500",
-            completionFlag: .complete, verificationFlag: .verified))
+            completionFlag: .complete, verificationFlag: .verified)
+            // VERIFIED requires the Verifying Observer Sequence (Type 1C, Table C.17-2; D37)
+            .withVerifyingObservers([VerifyingObserver(
+                name: "Smith^Jane", organization: "Radiology", verificationDateTime: "20260929101500")]))
         XCTAssertEqual(dataSet.string(for: .completionFlag), "COMPLETE")
         XCTAssertEqual(dataSet.string(for: .verificationFlag), "VERIFIED")
         XCTAssertEqual(parsed.instanceNumber, "3")

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Completion, Verification and Preliminary Flag terms match PS3.3 2026a Table C.17-2; the tree walk descends into the Content Sequence of every value type (Table C.17-6, D31)
+// NEMA-verified: 2026a, checked 2026-09-30 — Completion, Verification and Preliminary Flag terms match PS3.3 2026a Table C.17-2; Verifying Observer Sequence (0040,A073) Item attributes and types (A075 Type 1, A088 Type 2, A027 Type 1, A030 Type 1) match Table C.17-2, tags and VRs PS3.6 Table 6-1; the tree walk descends into the Content Sequence of every value type (Table C.17-6, D31)
 /// DICOM Structured Reporting Document
 ///
 /// Represents a parsed DICOM SR document with its content tree.
@@ -85,6 +85,12 @@ public struct SRDocument: Sendable, Equatable {
     
     /// Preliminary Flag (0040,A496)
     public let preliminaryFlag: PreliminaryFlag?
+
+    /// Verifying Observer Sequence (0040,A073), Type 1C: "Required if Verification Flag
+    /// (0040,A493) is VERIFIED", with "One or more Items" (PS3.3 2026a Table C.17-2).
+    /// Under PS3.5 2026a 7.4.2 a Type 1C element "shall not be included" when its
+    /// condition is not met, so it is empty unless the document is VERIFIED.
+    public let verifyingObservers: [VerifyingObserver]
     
     // MARK: - Content Tree
     
@@ -125,6 +131,8 @@ public struct SRDocument: Sendable, Equatable {
     ///   - completionFlag: Optional completion flag
     ///   - verificationFlag: Optional verification flag
     ///   - preliminaryFlag: Optional preliminary flag
+    ///   - verifyingObservers: Verifying Observer Sequence Items; required (one or more)
+    ///     when `verificationFlag` is `.verified` (PS3.3 Table C.17-2)
     ///   - documentTitle: Optional document title
     ///   - rootContent: The root container content item
     public init(
@@ -145,6 +153,7 @@ public struct SRDocument: Sendable, Equatable {
         completionFlag: CompletionFlag? = nil,
         verificationFlag: VerificationFlag? = nil,
         preliminaryFlag: PreliminaryFlag? = nil,
+        verifyingObservers: [VerifyingObserver] = [],
         documentTitle: CodedConcept? = nil,
         rootContent: ContainerContentItem
     ) {
@@ -165,10 +174,31 @@ public struct SRDocument: Sendable, Equatable {
         self.completionFlag = completionFlag
         self.verificationFlag = verificationFlag
         self.preliminaryFlag = preliminaryFlag
+        self.verifyingObservers = verifyingObservers
         self.documentTitle = documentTitle
         self.rootContent = rootContent
     }
     
+    /// A copy of this document with the given Verifying Observer Sequence Items
+    ///
+    /// The SR builders produce the content and flags; a document marked VERIFIED also needs
+    /// the observers who verified it (PS3.3 2026a Table C.17-2, Type 1C) before
+    /// `SRDocumentSerializer` will write it.
+    /// - Parameter observers: The Verifying Observer Sequence Items
+    /// - Returns: The same document with `verifyingObservers` replaced
+    public func withVerifyingObservers(_ observers: [VerifyingObserver]) -> SRDocument {
+        SRDocument(
+            sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID,
+            patientID: patientID, patientName: patientName,
+            studyInstanceUID: studyInstanceUID, studyDate: studyDate, studyTime: studyTime,
+            accessionNumber: accessionNumber,
+            seriesInstanceUID: seriesInstanceUID, seriesNumber: seriesNumber, modality: modality,
+            contentDate: contentDate, contentTime: contentTime, instanceNumber: instanceNumber,
+            completionFlag: completionFlag, verificationFlag: verificationFlag,
+            preliminaryFlag: preliminaryFlag, verifyingObservers: observers,
+            documentTitle: documentTitle, rootContent: rootContent)
+    }
+
     // MARK: - Content Tree Helpers
     
     /// Collects all content items from the tree (depth-first), including the children of
@@ -266,6 +296,47 @@ public enum VerificationFlag: String, Sendable, Equatable, Hashable {
     
     /// Document content is not verified
     case unverified = "UNVERIFIED"
+}
+
+/// One Item of the Verifying Observer Sequence (0040,A073)
+///
+/// "The person or persons authorized to verify documents of this type and accept
+/// responsibility for the content of this document" (PS3.3 2026a Table C.17-2).
+///
+/// Reference: PS3.3 2026a Table C.17-2 (SR Document General Module)
+public struct VerifyingObserver: Sendable, Equatable, Hashable {
+    /// Verifying Observer Name (0040,A075), Type 1, VR PN
+    public let name: String
+
+    /// Verifying Observer Identification Code Sequence (0040,A088), Type 2: "Zero or one
+    /// Item shall be included" (Code Sequence Macro, Table 8.8-1; no Baseline CID). `nil`
+    /// is written as the sequence with zero Items.
+    public let identificationCode: CodedConcept?
+
+    /// Verifying Organization (0040,A027), Type 1, VR LO: the organization to which the
+    /// Verifying Observer Name is accountable
+    public let organization: String
+
+    /// Verification DateTime (0040,A030), Type 1, VR DT ("YYYYMMDDHHMMSS.FFFFFF&ZZXX")
+    public let verificationDateTime: String
+
+    /// Creates a Verifying Observer Sequence Item
+    /// - Parameters:
+    ///   - name: Verifying Observer Name (0040,A075), Type 1
+    ///   - identificationCode: Verifying Observer Identification Code Sequence (0040,A088) Item, Type 2
+    ///   - organization: Verifying Organization (0040,A027), Type 1
+    ///   - verificationDateTime: Verification DateTime (0040,A030), Type 1, a DT value
+    public init(
+        name: String,
+        identificationCode: CodedConcept? = nil,
+        organization: String,
+        verificationDateTime: String
+    ) {
+        self.name = name
+        self.identificationCode = identificationCode
+        self.organization = organization
+        self.verificationDateTime = verificationDateTime
+    }
 }
 
 /// Preliminary flag for SR documents
