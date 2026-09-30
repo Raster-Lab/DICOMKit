@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — Cine Module Frame Time Vector (0018,1065) DS 1-n Type 1C, Preferred Playback Sequencing (0018,1244) US 1 Type 3 Enumerated Values 0/1, Image Trigger Delay (0018,1067) DS 1 Type 3, Effective Duration (0018,0072) DS 1 Type 3 per PS3.3 2026a Table C.7-13 and PS3.6 2026a Table 6-1 (verified by script); Frame Increment Pointer (0028,0009) per Table C.7-14 is implied by which of Frame Time / Frame Time Vector is present (D60)
 // NEMA-verified: 2026a, checked 2026-09-30 — Channel Source (003A,0208) keeps any code: PS3.3 2026a Table C.7-13 includes Table 8.8-1 with "DCID 3000" and PS3.16 2026a CID 3000 Audio Channel Source is "Type: Extensible" (DCM 109110-109115 verified by script) (D57)
 // NEMA-verified: 2026a, checked 2026-09-30 — transfer syntax detection via DICOMCore; UIDs per PS3.6 2026a Table A-1; Multiplexed Audio Channels Description Code Sequence (003A,0300) read per PS3.3 2026a Table C.7-13 (Channel Identification Code IS, Channel Mode CS MONO/STEREO, Channel Source Sequence with a PS3.16 CID 3000 code) (D46)
 //
@@ -98,6 +99,15 @@ public struct VideoParser {
         let recommendedDisplayFrameRate = dataSet[.recommendedDisplayFrameRate]?.integerStringValue?.value
         let frameDelay = dataSet[.frameDelay]?.decimalStringValue?.value
         let actualFrameDuration = dataSet[.actualFrameDuration]?.integerStringValue?.value
+        // Frame Time Vector (0018,1065) DS 1-n, Preferred Playback Sequencing
+        // (0018,1244) US 1 (Enumerated Values 0 Looping, 1 Sweeping), Image Trigger
+        // Delay (0018,1067) DS 1, Effective Duration (0018,0072) DS 1 — PS3.3 2026a
+        // Table C.7-13, VR/VM per PS3.6 2026a Table 6-1. Values outside the
+        // Enumerated Values are kept as read, not dropped, so a rewrite is faithful.
+        let frameTimeVector = dataSet[.frameTimeVector]?.decimalStringValues?.map(\.value)
+        let preferredPlaybackSequencing = dataSet[.preferredPlaybackSequencing]?.uint16Value.map(Int.init)
+        let imageTriggerDelay = dataSet[Video.imageTriggerDelayTag]?.decimalStringValue?.value
+        let effectiveDuration = dataSet[Video.effectiveDurationTag]?.decimalStringValue?.value
 
         // Parse trim points
         let startTrim = dataSet[.startTrim]?.integerStringValue?.value
@@ -192,6 +202,10 @@ public struct VideoParser {
             actualFrameDuration: actualFrameDuration,
             startTrim: startTrim,
             stopTrim: stopTrim,
+            frameTimeVector: frameTimeVector.flatMap { $0.isEmpty ? nil : $0 },
+            preferredPlaybackSequencing: preferredPlaybackSequencing,
+            imageTriggerDelay: imageTriggerDelay,
+            effectiveDuration: effectiveDuration,
             multiplexedAudioChannels: multiplexedAudioChannels,
             contentDate: contentDate,
             contentTime: contentTime,

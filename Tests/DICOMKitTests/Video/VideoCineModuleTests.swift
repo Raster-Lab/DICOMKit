@@ -76,6 +76,84 @@ final class VideoCineModuleTests: XCTestCase {
         XCTAssertEqual(Video.imageTriggerDelayTag, Tag(group: 0x0018, element: 0x1067))
     }
 
+    // MARK: - Parser round trip (D60)
+
+    /// Every Cine and Multi-frame attribute the builder writes is read back by
+    /// `VideoParser`, both from the DataSet and from the written file bytes.
+    func test_parser_readsEveryCineAttribute_builderWrites() throws {
+        let vector = [0, 33.3, 33.4, 33.3]
+        let video = try makeBuilder()
+            .setFrameTimeVector(vector)
+            .setPreferredPlaybackSequencing(1)
+            .setImageTriggerDelay(3.25)
+            .setEffectiveDuration(12.5)
+            .setCineRate(30)
+            .setRecommendedDisplayFrameRate(25)
+            .setFrameDelay(1.5)
+            .setActualFrameDuration(33)
+            .setStartTrim(1)
+            .setStopTrim(4)
+            .setPixelData(Data(repeating: 0xAB, count: 64))
+            .build()
+        let dataSet = video.toDataSet()
+        let file = DICOMFile.create(
+            dataSet: dataSet, sopClassUID: video.sopClassUID,
+            sopInstanceUID: video.sopInstanceUID,
+            transferSyntaxUID: TransferSyntax.mpeg4AVCHP41.uid)
+        let fromFile = try DICOMFile.read(from: try file.write()).dataSet
+        for source in [dataSet, fromFile] {
+            let parsed = try VideoParser.parse(from: source)
+            XCTAssertEqual(parsed.frameTimeVector, vector)
+            XCTAssertNil(parsed.frameTime)
+            XCTAssertEqual(parsed.preferredPlaybackSequencing, 1)
+            XCTAssertEqual(parsed.imageTriggerDelay, 3.25)
+            XCTAssertEqual(parsed.effectiveDuration, 12.5)
+            XCTAssertEqual(parsed.cineRate, 30)
+            XCTAssertEqual(parsed.recommendedDisplayFrameRate, 25)
+            XCTAssertEqual(parsed.frameDelay, 1.5)
+            XCTAssertEqual(parsed.actualFrameDuration, 33)
+            XCTAssertEqual(parsed.startTrim, 1)
+            XCTAssertEqual(parsed.stopTrim, 4)
+            XCTAssertEqual(parsed.numberOfFrames, 4)
+            // Rewriting keeps the Frame Increment Pointer on the vector.
+            let rewritten = parsed.toDataSet()
+            XCTAssertEqual(rewritten[.frameIncrementPointer]?.attributeTagValue, .frameTimeVector)
+            XCTAssertNil(rewritten[.frameTime])
+        }
+    }
+
+    /// Parse and rewrite yields the same tag set, and the same Cine and
+    /// Multi-frame values, as the builder wrote — nothing is dropped.
+    func test_parseAndRewrite_keepsTheBuilderTagSet() throws {
+        for builder in [
+            makeBuilder().setFrameTimeVector([0, 40, 40, 40]).setPreferredPlaybackSequencing(0)
+                .setImageTriggerDelay(7).setEffectiveDuration(0.12),
+            makeBuilder().setFrameTime(33.366667).setPreferredPlaybackSequencing(1)
+                .setImageTriggerDelay(0.5).setEffectiveDuration(2),
+        ] {
+            let written = try builder.setPixelData(Data([1, 2, 3, 4])).buildDataSet()
+            let rewritten = try VideoParser.parse(from: written).toDataSet()
+            XCTAssertEqual(Set(rewritten.tags), Set(written.tags))
+            for tag in [Tag.numberOfFrames, .frameTime, .frameTimeVector,
+                        Video.imageTriggerDelayTag, Video.effectiveDurationTag] {
+                XCTAssertEqual(rewritten.strings(for: tag), written.strings(for: tag), "\(tag)")
+            }
+            XCTAssertEqual(rewritten[.frameIncrementPointer]?.attributeTagValue,
+                           written[.frameIncrementPointer]?.attributeTagValue)
+            XCTAssertEqual(rewritten[.preferredPlaybackSequencing]?.uint16Value,
+                           written[.preferredPlaybackSequencing]?.uint16Value)
+        }
+    }
+
+    func test_parser_leavesAbsentType3CineAttributesNil() throws {
+        let parsed = try VideoParser.parse(from: makeBuilder().buildDataSet())
+        XCTAssertNil(parsed.frameTimeVector)
+        XCTAssertNil(parsed.preferredPlaybackSequencing)
+        XCTAssertNil(parsed.imageTriggerDelay)
+        XCTAssertNil(parsed.effectiveDuration)
+        XCTAssertNotNil(parsed.frameTime)
+    }
+
     // MARK: - Multiplexed audio (Type 2C, Table C.7-13, C.7.6.5.1.3)
 
     func test_multiplexedAudioChannels_writtenWithStandardTerms() throws {
