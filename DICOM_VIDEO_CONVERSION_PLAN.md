@@ -538,9 +538,10 @@ the bytes to encapsulation unchanged wherever possible.
   stream" to CBR MP3; 8.2.7–8.2.11 (H.264, HEVC) send "any audio components included
   in the data container" to 8.2.12, whose Table 8.2.12-1 allows AAC, MP3 and MPEG-1
   Audio Layer II in MP4, and those plus LPCM and AC-3 in MPEG-2 TS. DICOMKit keeps the
-  audio in the bit stream unchanged and does **not** check it against those
-  constraints; it **warns** instead — see the resolved open question below. The
-  unchecked limits are tracked as D46 in `DICOMKIT_STANDARD_IMPLEMENTATION.md`.
+  audio in the bit stream unchanged and checks each track against those constraints
+  (`VideoConformanceValidator.validateAudio`, D46): a violation is a **warning**, never a
+  rejection or a re-encode — see the resolved open question below. What the container does
+  not expose is reported as "not checked" (D58).
 
 ### 4.2 Parameter-set access for validation
 
@@ -1044,12 +1045,15 @@ separate series.
 - **Audio tracks** — *resolved*: audio is permitted in DICOM video (PS3.5 2026a
   8.2.5–8.2.12; Table 8.2.12-1 lists the formats allowed in MP4 and MPEG-2 TS), so
   it is kept in the bit stream, not stripped. The earlier premise that DICOM video
-  IODs have no audio was wrong, and `convert` never removed it. DICOMKit does not
-  check the audio's codec, sample rate or channels against 8.2.5/8.2.12, so it
-  **warns, doesn't fail** (`VideoConsole.audioCarriedLine`):
-  `warning: input has 1 audio track, kept in the bit stream; DICOMKit does not check it against PS3.5 8.2.5/8.2.12 or describe its channels in (003A,0300).`
-  The remaining limits (codec and sample-rate checks, channel Items in (003A,0300),
-  MPEG-TS audio counting, `VideoParser` not reading (003A,0300)) are D46.
+  IODs have no audio was wrong, and `convert` never removed it. Since D46 the probe
+  reads each track's format, sampling frequency, channels, bits per sample and bit rate
+  (MP4 and MPEG-TS) and checks them against 8.2.5/8.2.12; it **warns, doesn't fail**
+  (`VideoConsole.audioCheckLines`), e.g.
+  `warning: audio track 1 (AAC, 44.1 kHz, 2 channels, 16-bit, max 192 kbit/s): sampling frequency 44.1 kHz is not permitted for AAC; PS3.5 8.2.12 allows 48 kHz; the audio is kept unchanged.`
+  When no track's format can be identified the earlier `VideoConsole.audioCarriedLine`
+  text is used. (003A,0300) gets Items only when the Channel Source (CID 3000) is named
+  through the library (`VideoWorkflow.Metadata.audioChannelSource`; no CLI option, D56);
+  `VideoParser` reads them back.
 - **`ImageType` value** (F5) — `ORIGINAL\PRIMARY` is the safe default for
   camera-captured video. Confirm whether any workflow needs `DERIVED`.
 

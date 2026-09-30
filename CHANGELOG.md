@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — DICOMCore and DICOMKit deferred findings closed (2026-09-29/30)
 
-Rows D26, D31–D35, D37, D38, D45, D47–D52, D54 and D55 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`,
+Rows D26, D31–D35, D37, D38, D45–D52, D54 and D55 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`,
 each checked against the 2026a clause named there. Full `swift test` exits 0 as of the D38 closure;
-D45, D47–D52, D54 and D55 were checked with the affected suites only.
+D45–D52, D54 and D55 were checked with the affected suites only.
 
 - **Colon CAD SR** (Table A.35.10-2, D26): WAVEFORM is an allowed value type; TCOORD is not.
 - **RT Tag constants** (PS3.6, D35): `Tag` constants for DVH Volume Units (3004,0054),
@@ -92,8 +92,18 @@ D45, D47–D52, D54 and D55 were checked with the affected suites only.
   Document, and TID 4020 rows 11–12 accept mm as well as µm.
 - **`ColorLUT.lookup` and `GrayscaleLUT.entry(for:)`** (D54): NaN, ±infinity and inputs beyond `Int`
   no longer trap. NaN and −infinity give the first entry, +infinity the last, as `LUT1D.lookup` (D48).
+- **Video audio checked** (PS3.5 8.2.5, 8.2.12 and Table 8.2.12-1; PS3.3 Table C.7-13; D46): the
+  probe reads each audio track's format, sampling frequency, channels, bits per sample and bit rate
+  from an MP4 (sample entry, `esds`, `dac3`, `btrt`, first MPEG audio frame) or an MPEG-TS (PMT,
+  first frame), so TS audio is now counted (`VideoProbeResult.audioTracks`). `VideoConformanceValidator.validateAudio`
+  checks them: MPEG2 allows only CBR MP3; H.264/HEVC allow LPCM and AC-3 (MPEG-2 TS only), AAC, MP3
+  and MPEG-1 Layer II with their bit rate, sampling frequency, bit depth and channel limits. Each
+  violation is a `convert`/`probe`/`batch` warning; the audio is never stripped or re-encoded, and a
+  value the container does not expose is "not checked". (003A,0300) gets one Item per track
+  (MONO/STEREO) when the caller names the CID 3000 source (`VideoWorkflow.Metadata.audioChannelSource`)
+  and every track is mono or stereo; `VideoParser` reads the Items back. Additive API only.
 
-New findings D44–D55 are recorded in the report (P-MGC, the API decision opened with them, is implemented above).
+New findings D44–D60 are recorded in the report (P-MGC, the API decision opened with them, is implemented above).
 
 ### Fixed — DICOMPrintKit verified against DICOM 2026a (2026-09-29)
 
