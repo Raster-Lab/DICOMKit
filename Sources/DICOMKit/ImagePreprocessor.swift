@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — the print VOI LUT path opts in to GrayscaleLUT used-range scaling explicitly (FR-004 tolerance; PS3.3 2026a C.11.2.1.1 default is 0...2^n-1) so print output is unchanged (D53)
 // NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a C.7.6.3.1.2 YBR conversions and C.13 image box citations checked; PrintColorMode is the DICOMCore type (D24 closed)
 /// Image Preprocessing for DICOM Print Management
 ///
@@ -248,7 +249,11 @@ public actor ImagePreprocessor {
         // otherwise a window — provided, or auto-stretched over the frame.
         var normalizedPixels: [Double]
         if let voiLUT {
-            normalizedPixels = pixelValues.map { voiLUT.normalized($0) }
+            // Print keeps the FR-004 used-range tolerance (12-bit tables
+            // declared as 16 bits per entry fill the film); the standard
+            // 0...2^n - 1 output range of PS3.3 C.11.2.1.1 is the default
+            // elsewhere (D53).
+            normalizedPixels = pixelValues.map { voiLUT.normalized($0, normalizeToUsedRange: true) }
         } else {
             let window: WindowSettings
             if let providedWindow = windowSettings {

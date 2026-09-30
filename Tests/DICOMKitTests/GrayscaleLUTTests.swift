@@ -9,9 +9,9 @@
 //
 // Expectations checked against PS3.3 2026a C.11.1.1.1 and C.11.2.1.1 (D51,
 // 2026-09-30). The VOI output range is 0...2^n - 1 with n the third LUT
-// Descriptor value (C.11.2.1.1); GrayscaleLUT.normalized divides by the
-// entries' actual span instead, so the two tests that pin the standard's range
-// are disabled until the owner decides D53.
+// Descriptor value (C.11.2.1.1); since D53 (2026-09-30) GrayscaleLUT.normalized
+// uses it by default and divides by the entries' actual span only when asked
+// (normalizeToUsedRange: true, the print tolerance).
 
 import Testing
 @testable import DICOMKit
@@ -80,7 +80,8 @@ struct GrayscaleLUTTests {
         #expect(lut.entry(for: 1e300) == 40)
         #expect(lut.entry(for: -1e300) == 10)
         #expect(lut.value(for: .nan) == 10)
-        #expect(lut.normalized(.infinity) == 1)
+        #expect(abs(lut.normalized(.infinity) - 40.0 / 65535.0) < 1e-12)
+        #expect(lut.normalized(.infinity, normalizeToUsedRange: true) == 1)
         // Finite inputs keep rounding to the nearest entry and clamping at both ends
         #expect(lut.entry(for: 99.4) == 10)
         #expect(lut.entry(for: 100.5) == 20)
@@ -156,8 +157,7 @@ struct GrayscaleLUTTests {
         #expect(lut.normalized(99) == 1, "past the end clamps to the last entry")
     }
 
-    @Test("VOI output is normalized over 0...2^n - 1, not the entries' span",
-          .disabled("D53: GrayscaleLUT.normalized divides by the entries' actual span (a deliberate FR-004 tolerance for 12-in-16-bit tables); PS3.3 2026a C.11.2.1.1 fixes the output range at 0...2^n - 1"))
+    @Test("VOI output is normalized over 0...2^n - 1, not the entries' span")
     func testNormalizationUsesDeclaredRange() throws {
         // A table declared as 16 bits per entry whose entries stop at 4095:
         // PS3.3 C.11.2.1.1 gives it the output range 0...65535, so its last
@@ -171,14 +171,34 @@ struct GrayscaleLUTTests {
         #expect(abs(lut.normalized(1) - 2048.0 / 65535.0) < 1e-9)
     }
 
-    @Test("A flat table normalizes to its entry over 0...2^n - 1",
-          .disabled("D53: GrayscaleLUT.normalized returns 0 for a flat table (no span to divide by); PS3.3 2026a C.11.2.1.1 gives entry / (2^n - 1)"))
+    @Test("A flat table normalizes to its entry over 0...2^n - 1")
     func testFlatTable() throws {
         let lut = try #require(GrayscaleLUT.parse(
             item: lutItem(entries: 2, first: 0, bits: 16, data: wordData([9, 9])),
             signedPixels: false))
         #expect(abs(lut.normalized(0) - 9.0 / 65535.0) < 1e-12)
         #expect(abs(lut.normalized(1) - 9.0 / 65535.0) < 1e-12)
+    }
+
+    @Test("normalizeToUsedRange reproduces the pre-D53 used-range scaling")
+    func testUsedRangeOptIn() throws {
+        // The print tolerance (FR-004): divide over the entries' actual span.
+        // These are the values normalized(_:) returned before D53.
+        let lut = try #require(GrayscaleLUT.parse(
+            item: lutItem(entries: 3, first: 0, bits: 16,
+                          data: wordData([0, 2048, 4095])),
+            signedPixels: false))
+        #expect(lut.normalized(0, normalizeToUsedRange: true) == 0)
+        #expect(lut.normalized(2, normalizeToUsedRange: true) == 1)
+        #expect(abs(lut.normalized(1, normalizeToUsedRange: true) - 2048.0 / 4095.0) < 1e-12)
+        let offset = try #require(GrayscaleLUT(
+            firstMappedValue: 0, bitsPerEntry: 8, entries: [10, 20, 30]))
+        #expect(offset.normalized(0, normalizeToUsedRange: true) == 0)
+        #expect(offset.normalized(1, normalizeToUsedRange: true) == 0.5)
+        #expect(abs(offset.normalized(1) - 20.0 / 255.0) < 1e-12, "the default is the standard 0...2^n - 1 range")
+        let flat = try #require(GrayscaleLUT(
+            firstMappedValue: 0, bitsPerEntry: 16, entries: [9, 9]))
+        #expect(flat.normalized(0, normalizeToUsedRange: true) == 0, "a flat table has no span to divide by")
     }
 
     // MARK: Reading from a data set
