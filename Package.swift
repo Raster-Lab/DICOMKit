@@ -566,7 +566,13 @@ let package = Package(
                 "EncapsulatedDocument/EncapsulatedDocumentTests.swift",
                 "SecondaryCapture/SecondaryCaptureTests.swift",
                 "Validation/IODRequirementValidatorTests.swift",
-                "RealWorldValue/SUVStandardConformanceTests.swift"
+                "RealWorldValue/SUVStandardConformanceTests.swift",
+                // D51: committed with the print work (ac61700, 3c904a3) but never
+                // added to this allowlist, so they had never compiled.
+                // PS3.3 C.11.1.1 / C.11.2.1.1 LUT Descriptor decoding (SRS FR-004).
+                "GrayscaleLUTTests.swift",
+                // Pseudo-colour palettes over RGB / YBR / PALETTE COLOR sources.
+                "ColorSourcePaletteTests.swift"
             ]
         ),
         .testTarget(
