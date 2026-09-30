@@ -3,6 +3,8 @@
 //
 // A rendered frame that has not been flattened into a CGImage, plus the geometry
 // that decides where it lands on screen.
+//
+// NEMA-verified: 2026a, checked 2026-09-30 — rotation before horizontal flip matches PS3.3 2026a C.10.6 (both transforms, by script); the desaturate weights 0.299/0.587/0.114 are the YBR_FULL Y row of C.7.6.3.1.2; zoom, pan, crop mask and the viewer inversion are display geometry with no DICOM attribute.
 
 import Foundation
 import simd

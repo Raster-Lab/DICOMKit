@@ -5,6 +5,8 @@
 // tested against. It is a thin adapter over `PixelDataRenderer`, which is *not*
 // being replaced: it remains what `dicom-export`, `dicom-convert`, the print film
 // burn and headless CI use, none of which the GPU will ever serve.
+//
+// NEMA-verified: 2026a, checked 2026-09-30 — delegates to DICOMKit PixelDataRenderer; its VOI chain (WindowSettings.apply = PS3.3 2026a C.11.2.1.2.1/C.11.2.1.3.1/C.11.2.1.3.2 evaluated by Scripts/diff_renderkit.py, MONOCHROME1 after the VOI per C.7.6.3.1.2) and the pseudo-colour fold match; the Rec. 709 luma of the reader ramp is ITU-R BT.709, not DICOM. The no-window auto rung is D66 (DICOMKit).
 
 import Foundation
 import DICOMCore

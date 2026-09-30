@@ -3,6 +3,8 @@
 //
 // The one interface the CPU and Metal renderers both satisfy, and the request
 // type that describes a frame render without committing to how it happens.
+//
+// NEMA-verified: 2026a, checked 2026-09-30 — routing by Photometric Interpretation (MONOCHROME1/2 → monochrome, PALETTE COLOR → palette, others → colour) matches PS3.3 2026a C.7.6.3.1.2; `window` is in stored-value units — the Modality LUT (C.11.2.1.2.1), VOI LUT Sequence (C.11.2.1.1), Presentation LUT (C.11.6) and ICC Profile (C.11.15.1.1) cannot be carried yet (P-PIPELINE, P-ICC, owner decision). Scripts/diff_renderkit.py.
 
 import Foundation
 import DICOMCore
@@ -35,6 +37,12 @@ public struct FrameRenderRequest: Sendable {
     /// layer renders the window it is handed and makes no policy of its own. That
     /// separation is what keeps the CLI and the app agreeing on what an image
     /// looks like.
+    ///
+    /// In **stored-value** units: both backends apply it to the stored sample, and
+    /// no Modality LUT or rescale is applied here. PS3.3 C.11.2.1.2.1 defines the
+    /// window over the rescaled values; a window converted to stored units by
+    /// `(c − b) / m`, `w / |m|` renders the same only for a slope of 1 (D65,
+    /// P-PIPELINE in DICOMRENDERKIT_STANDARD_IMPLEMENTATION.md).
     public let window: WindowSettings?
 
     /// Palette tables for PALETTE COLOR frames. Ignored otherwise.
