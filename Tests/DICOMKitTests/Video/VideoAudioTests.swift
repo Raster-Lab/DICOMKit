@@ -778,8 +778,12 @@ final class VideoAudioTests: XCTestCase {
         XCTAssertEqual(track.channelCount, 2)
         let result = try XCTUnwrap(check(track, .mpegTS))
         XCTAssertEqual(result.violations, [])
-        // LATM states no bit rate; bits per sample is not in any AAC stream.
-        XCTAssertEqual(result.notChecked, [.maximumBitRate])
+        // LATM states no bit rate: it is measured from the two elements, which are
+        // the whole stream and far below 640 kbit/s (D62); bits per sample is not in
+        // any AAC stream.
+        XCTAssertEqual(track.measuredBitRate?.frameCount, 2)
+        XCTAssertEqual(track.measuredBitRate?.coversWholeStream, true)
+        XCTAssertEqual(result.notChecked, [])
         XCTAssertEqual(result.notes.map(\.constraint), [.bitsPerSample])
 
         // A configuration first seen after a useSameStreamMux frame is still found.
@@ -847,6 +851,92 @@ final class VideoAudioTests: XCTestCase {
         XCTAssertEqual(layer2.bitRate, 384_000)
         XCTAssertEqual(layer2.samplingFrequency, 48000)
         XCTAssertEqual(layer2.channelCount, 1)
+    }
+
+    // MARK: - D62: AAC bit rate in MPEG-TS (PS3.5 8.2.12, Table 8.2.12-1)
+
+    /// An ADTS frame (ISO/IEC 13818-7 6.2.1): AAC LC, 48 kHz, 2 channels, no CRC,
+    /// one raw data block (1,024 samples), `length` bytes in all.
+    private func adtsFrame(length: Int) -> Data {
+        var frame = Data([0xFF, 0xF1, 0x4C, 0x80 | UInt8((length >> 11) & 0x03),
+                          UInt8((length >> 3) & 0xFF), UInt8((length & 0x07) << 5) | 0x1F, 0xFC])
+        frame.append(Data(repeating: 0, count: length - 7))
+        return frame
+    }
+
+    private func aacTS(_ payload: Data, streamType: UInt8 = 0x0F) -> Data {
+        transportStream([h264Video(), TSStream(streamType: streamType, pid: 0x0101, streamID: 0xC0,
+                                               descriptors: Data(), payload: payload)])
+    }
+
+    /// 48 frames of 1,024 samples at 48 kHz: any one-second window holds 47 of them.
+    func test_ts_adts_bitRateIsMeasuredOverOneSecondWindows() throws {
+        let within = try XCTUnwrap(TransportStreamScanner.audioTracks(
+            aacTS(Array(repeating: adtsFrame(length: 1000), count: 48).reduce(Data(), +))).first)
+        XCTAssertEqual(within.measuredBitRate, VideoAudioTrack.MeasuredBitRate(
+            lowerBound: 47 * 8000, upperBound: 47 * 8000, frameCount: 48, coversWholeStream: true))
+        XCTAssertEqual(check(within, .mpegTS)?.violations, [])
+        XCTAssertFalse(check(within, .mpegTS)?.notChecked.contains(.maximumBitRate) ?? true)
+
+        let over = try XCTUnwrap(TransportStreamScanner.audioTracks(
+            aacTS(Array(repeating: adtsFrame(length: 2000), count: 48).reduce(Data(), +))).first)
+        XCTAssertEqual(check(over, .mpegTS)?.violations.map(\.message), [
+            "bit rate 752 kbit/s (the most carried in any one second of the 48 frames read) exceeds "
+                + "the PS3.5 8.2.12 maximum of 640 kbit/s for AAC",
+        ])
+
+        // A cut-off last frame: the frames read fit, but not every frame was read.
+        let cut = Array(repeating: adtsFrame(length: 1000), count: 48).reduce(Data(), +) + adtsFrame(length: 1000).prefix(500)
+        let partial = try XCTUnwrap(TransportStreamScanner.audioTracks(aacTS(cut)).first)
+        XCTAssertEqual(partial.measuredBitRate?.coversWholeStream, false)
+        let result = try XCTUnwrap(check(partial, .mpegTS))
+        XCTAssertTrue(result.notChecked.contains(.maximumBitRate))
+        XCTAssertTrue(result.notes.contains { $0.constraint == .maximumBitRate })
+    }
+
+    /// LOAS elements are bounded: whole element above, payload below. Only a lower
+    /// bound over 640 kbit/s is a violation; an upper bound within it (all frames
+    /// read) is a pass; anything between is "not checked" with the bounds.
+    func test_ts_latm_bitRateBounds() throws {
+        func stream(elementLength: Int) -> Data {
+            let repeatElement = loas([0x80] + [UInt8](repeating: 0, count: elementLength - 1))
+            return loas(latmConfigElement()) + Array(repeating: repeatElement, count: 48).reduce(Data(), +)
+        }
+        let over = try XCTUnwrap(TransportStreamScanner.audioTracks(aacTS(stream(elementLength: 2000), streamType: 0x11)).first)
+        XCTAssertEqual(check(over, .mpegTS)?.violations.map(\.constraint), [.maximumBitRate])
+
+        let between = try XCTUnwrap(TransportStreamScanner.audioTracks(aacTS(stream(elementLength: 1705), streamType: 0x11)).first)
+        let measured = try XCTUnwrap(between.measuredBitRate)
+        XCTAssertLessThanOrEqual(measured.lowerBound, 640_000)
+        XCTAssertGreaterThan(measured.upperBound, 640_000)
+        let result = try XCTUnwrap(check(between, .mpegTS))
+        XCTAssertEqual(result.violations, [])
+        XCTAssertTrue(result.notChecked.contains(.maximumBitRate))
+        XCTAssertTrue(result.notes.contains { $0.message.hasPrefix("maximum bit rate not established: the transport overhead") })
+    }
+
+    // MARK: - D61: MP3 dual channel mode (PS3.5 8.2.5, 8.2.12)
+
+    /// "one main mono or stereo channel": MPEG-1 Part 3's dual_channel mode is two
+    /// independent mono programmes — neither — so it is a channel violation for MP3
+    /// in both sections; single_channel and stereo are not.
+    func test_mp3_dualChannelMode_isNotAMainMonoOrStereoChannel() {
+        func track(dual: Bool, channels: Int) -> VideoAudioTrack {
+            VideoAudioTrack(format: .mp3, codecTag: "x", samplingFrequency: 48000,
+                            channelCount: channels, isDualMono: dual, frameBitRate: 128_000)
+        }
+        for (container, syntax) in [(VideoContainer.mp4, TransferSyntax.mpeg4AVCHP41),
+                                    (.mpegTS, .mpeg2MainProfile)] {
+            let dual = VideoConformanceValidator.validateAudio(
+                tracks: [track(dual: true, channels: 2)], container: container, transferSyntax: syntax)
+            XCTAssertEqual(dual.violations.map(\.constraint), [.channels], "\(syntax)")
+            XCTAssertTrue(dual.violations.first?.message.hasPrefix("dual channel mode") ?? false)
+            for channels in [1, 2] {
+                let ok = VideoConformanceValidator.validateAudio(
+                    tracks: [track(dual: false, channels: channels)], container: container, transferSyntax: syntax)
+                XCTAssertFalse(ok.violations.contains { $0.constraint == .channels }, "\(channels) channel(s)")
+            }
+        }
     }
 
     // MARK: - (003A,0300) Items (PS3.3 Table C.7-13)

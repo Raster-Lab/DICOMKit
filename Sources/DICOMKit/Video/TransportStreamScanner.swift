@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — ADTS and LATM PIDs are read up to 2,000 frames for the Table 8.2.12-1 bit rate (PS3.5 2026a 8.2.12, D62); the MPEG-4_audio_extension_descriptor (tag 0x2E) syntax matches TSDuck's tsMPEG4AudioExtensionDescriptor.cpp and tsDID.h (ISO/IEC 13818-1 is not NEMA text)
 // NEMA-verified: 2026a, checked 2026-09-30 — MP3 frame headers walked for "CBR MPEG-1 LAYER III" (PS3.5 2026a 8.2.5, 8.2.12, verified by script); LATM/LOAS (stream_type 0x11) and raw MPEG-4 audio (0x1C) identified from the AudioSpecificConfig (ISO/IEC 14496-3, ISO/IEC 13818-1; out of DICOM scope) (D58)
 // NEMA-verified: 2026a, checked 2026-09-30 — transport stream syntax is ISO/IEC 13818-1 (out of scope); audio PIDs are identified for the PS3.5 2026a 8.2.5/8.2.12 check (Table 8.2.12-1 permits LPCM, AC-3, AAC, MP3 and MPEG-1 Layer II in MPEG-2 TS) (D46)
 //
@@ -194,6 +195,11 @@ public enum TransportStreamScanner {
     /// budget, ends the walk of a long stream; a short one is read whole.
     private static let mp3ScanBudget = AudioHeaderParser.maximumScannedFrames * 1441 + 4
 
+    /// How many bytes of an AAC PID to read for the bit rate walk (D62): enough for
+    /// ``AudioHeaderParser/maximumScannedFrames`` of the largest ADTS frame or LOAS
+    /// element (13-bit lengths, 8,191 bytes plus a 3-byte LOAS header).
+    private static let aacScanBudget = AudioHeaderParser.maximumScannedFrames * 8194
+
     /// The audio streams a transport stream's PMTs list, with the parameters
     /// read from each stream's first frame where the format makes that simple.
     ///
@@ -233,11 +239,23 @@ public enum TransportStreamScanner {
                         .map { [UInt8]($0) } ?? []
                     parsed = parsed?.with(bitRateScan: AudioHeaderParser.scanMPEGAudioFrames(stream))
                 }
-            case .latm: parsed = AudioHeaderParser.findLATMConfig(bytes)
+            case .latm:
+                parsed = AudioHeaderParser.findLATMConfig(bytes)
+                if parsed != nil {
+                    let (stream, complete) = aacStream(data, layout: layout, pid: entry.pid)
+                    parsed = parsed?.with(measuredBitRate:
+                        AudioHeaderParser.scanLATMBitRate(stream, complete: complete))
+                }
             case .mpeg4Raw:
                 parsed = entry.descriptors.lazy.filter { $0.tag == 0x2E }
                     .compactMap { AudioHeaderParser.mpeg4AudioExtensionDescriptor($0.payload) }.first
-            case .adts: parsed = AudioHeaderParser.findADTSHeader(bytes)
+            case .adts:
+                parsed = AudioHeaderParser.findADTSHeader(bytes)
+                if parsed != nil {
+                    let (stream, complete) = aacStream(data, layout: layout, pid: entry.pid)
+                    parsed = parsed?.with(measuredBitRate:
+                        AudioHeaderParser.scanADTSBitRate(stream, complete: complete))
+                }
             case .ac3: parsed = AudioHeaderParser.findAC3Header(bytes)
             case .hdmvLPCM: parsed = AudioHeaderParser.hdmvLPCM(bytes)
             case .smpte302: parsed = AudioHeaderParser.smpte302(bytes)
@@ -248,6 +266,13 @@ public enum TransportStreamScanner {
             tracks.append((parsed ?? fallback).with(codecTag: tag, pid: entry.pid))
         }
         return tracks
+    }
+
+    /// An AAC PID's elementary stream for the bit rate walk, and whether it was read
+    /// whole (the budget was not reached).
+    private static func aacStream(_ data: Data, layout: Layout, pid: Int) -> ([UInt8], Bool) {
+        let stream = payload(data, layout: layout, pid: pid, budget: aacScanBudget).map { [UInt8]($0) } ?? []
+        return (stream, stream.count < aacScanBudget)
     }
 
     /// How an audio stream is identified and read.

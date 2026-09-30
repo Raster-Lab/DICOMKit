@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-09-30 — MP3 dual channel mode is refused as neither the mono nor the stereo main channel of PS3.5 2026a 8.2.5 / 8.2.12, read in the MPEG-1 Part 3 modes those sections name (D61); AAC in MPEG-TS is measured against the 640 kbit/s of Table 8.2.12-1 over one-second windows from its ADTS / LOAS frames (D62; ADTS, LATM and AudioSpecificConfig field layouts checked against FFmpeg adts_header.c, aacdec_latm.h, mpeg4audio.c — ISO/IEC 13818-7 / 14496-3 are not NEMA text)
 // NEMA-verified: 2026a, checked 2026-09-30 — D58: "CBR MPEG-1 LAYER III (MP3)" (PS3.5 2026a 8.2.5 and 8.2.12) checked by walking frame bitrate_index values (ISO/IEC 11172-3, 13818-3); "Bits per sample" of AAC/AC-3/MP3/MP2 not in the coded stream (ISO/IEC 13818-7, 14496-3, ETSI TS 102 366, ISO/IEC 11172-3), stated rather than reported; "optionally one or more complementary channel(s)" (ISO/IEC 13818-3 multichannel extension) not identifiable, kept "not checked"; LATM StreamMuxConfig and MPEG-4_audio_extension_descriptor AudioSpecificConfig (ISO/IEC 14496-3, 13818-1); PS3.5 text verified by script
 // NEMA-verified: 2026a, checked 2026-09-30 — audio constraints extracted by script from PS3.5 2026a 8.2.5 (MPEG2 MP@ML; 8.2.6 MP@HL refers to it), 8.2.7-8.2.11 ("shall follow the constraints detailed in 8.2.12") and 8.2.12 with Table 8.2.12-1 (LPCM/AC-3 MPEG-2 TS only; AAC, MP3, MPEG-1 Layer II in MP4 or MPEG-2 TS); header syntax per ISO/IEC 11172-3, 13818-3, 13818-7, 14496-3, 14496-12/-14 and ETSI TS 102 366 (out of DICOM scope) (D46)
 // NEMA-verified: 2026a, checked 2026-09-30 — E-AC-3 judged by the AC-3 row of PS3.5 2026a Table 8.2.12-1: 8.2.12 "AC-3 is standardized in" ETSI TS 102 366, whose PS3.5 bibliography entry is "Audio Compression (AC-3, Enhanced AC-3) Standard" (D59)
@@ -87,6 +88,41 @@ public struct VideoAudioTrack: Sendable, Hashable {
     /// whose PS3.5 8.2.5 / 8.2.12 rule is "CBR MPEG-1 LAYER III"; nil when the
     /// frames were not walked.
     public let bitRateScan: BitRateScan?
+    /// The bit rate measured by walking every AAC frame of an MPEG-TS stream (ADTS or
+    /// LATM/LOAS), which states none (D62); nil when the frames were not walked.
+    public let measuredBitRate: MeasuredBitRate?
+
+    /// The most bits an AAC stream carries in any one-second window of its
+    /// presentation time, in bit/s — the measure an MP4 `esds` maxBitrate states
+    /// ("maximum rate in bits/second over any window of one second", as FFmpeg's
+    /// `movenc.c` writes it), measured here from the frames.
+    ///
+    /// ADTS frames give their length and sample count exactly (`aac_frame_length`,
+    /// `number_of_raw_data_blocks_in_frame`), so the two bounds are equal and count
+    /// the whole frame, header included (FFmpeg `adts_header.c` computes a frame's
+    /// rate the same way). A LOAS AudioMuxElement is counted whole for the upper
+    /// bound; the lower bound leaves out the most its useSameStreamMux bit,
+    /// PayloadLengthInfo and byte alignment can take, and elements carrying a
+    /// StreamMuxConfig entirely.
+    public struct MeasuredBitRate: Sendable, Hashable {
+        /// bit/s, counting only what is certainly audio payload.
+        public let lowerBound: Int
+        /// bit/s, counting the whole transport frames.
+        public let upperBound: Int
+        /// Frames measured.
+        public let frameCount: Int
+        /// True when every frame of the stream was measured; false when the walk
+        /// stopped at ``AudioHeaderParser/maximumScannedFrames``, the read budget, a
+        /// lost sync, or LATM elements that came before the first configuration.
+        public let coversWholeStream: Bool
+
+        public init(lowerBound: Int, upperBound: Int, frameCount: Int, coversWholeStream: Bool) {
+            self.lowerBound = lowerBound
+            self.upperBound = upperBound
+            self.frameCount = frameCount
+            self.coversWholeStream = coversWholeStream
+        }
+    }
 
     /// What a walk over consecutive MPEG audio frame headers found
     /// (ISO/IEC 11172-3 2.4.2.3, ISO/IEC 13818-3 2.4.2.3: every frame carries
@@ -134,7 +170,8 @@ public struct VideoAudioTrack: Sendable, Hashable {
         maximumBitRate: Int? = nil,
         averageBitRate: Int? = nil,
         frameBitRate: Int? = nil,
-        bitRateScan: BitRateScan? = nil
+        bitRateScan: BitRateScan? = nil,
+        measuredBitRate: MeasuredBitRate? = nil
     ) {
         self.format = format
         self.codecTag = codecTag
@@ -148,6 +185,7 @@ public struct VideoAudioTrack: Sendable, Hashable {
         self.averageBitRate = averageBitRate
         self.frameBitRate = frameBitRate
         self.bitRateScan = bitRateScan
+        self.measuredBitRate = measuredBitRate
     }
 
     /// Formats whose coded stream carries no PCM sample depth: the bits per sample
@@ -488,15 +526,36 @@ extension VideoConformanceValidator {
         if let limit = rule.maximumBitRate {
             let observed = [track.maximumBitRate, track.averageBitRate, track.frameBitRate]
                 .compactMap { $0 }.max()
+            let measured = track.measuredBitRate
             if let observed, observed > limit {
                 violations.append(VideoAudioViolation(
                     constraint: .maximumBitRate,
                     message: "bit rate \(VideoAudioTrack.kilobits(observed)) exceeds the "
                         + "\(section) maximum of \(VideoAudioTrack.kilobits(limit)) for \(name)"))
+            } else if let measured, measured.lowerBound > limit {
+                // Even what is certainly payload exceeds the limit in some second (D62).
+                violations.append(VideoAudioViolation(
+                    constraint: .maximumBitRate,
+                    message: "bit rate \(VideoAudioTrack.kilobits(measured.lowerBound)) (the most "
+                        + "carried in any one second of the \(measured.frameCount) frames read) exceeds "
+                        + "the \(section) maximum of \(VideoAudioTrack.kilobits(limit)) for \(name)"))
+            } else if let measured, measured.coversWholeStream, measured.upperBound <= limit {
+                // Every frame measured, and even the whole transport frames fit (D62).
             } else if track.maximumBitRate == nil
                         && !(track.frameBitRate != nil && Self.frameRateBoundsStream(format)) {
                 // An average within the limit says nothing about the peak.
                 notChecked.append(.maximumBitRate)
+                if let measured {
+                    let reason = measured.coversWholeStream
+                        ? "the transport overhead leaves it between "
+                            + "\(VideoAudioTrack.kilobits(measured.lowerBound)) and "
+                            + "\(VideoAudioTrack.kilobits(measured.upperBound))"
+                        : "only \(measured.frameCount) frames were measured (at most "
+                            + "\(VideoAudioTrack.kilobits(measured.upperBound)) in any second of them)"
+                    notes.append(VideoAudioCheckNote(
+                        constraint: .maximumBitRate,
+                        message: "maximum bit rate not established: \(reason)"))
+                }
             }
         }
 
@@ -558,6 +617,20 @@ extension VideoConformanceValidator {
             } else {
                 notChecked.append(.channels)
             }
+        }
+
+        // MP3's main channel is "one main mono or stereo channel" (PS3.5 8.2.5,
+        // 8.2.12), in the terms of the MPEG-1 Part 3 those sections name: its mode is
+        // single_channel (mono) or stereo / joint_stereo. dual_channel — two
+        // independent mono programmes — is a mode of its own, neither mono nor a
+        // stereo pair, so it is not permitted (D61; the (003A,0300) Items refuse it
+        // for the same reason).
+        if rule.permittedChannelCounts == nil, track.isDualMono {
+            violations.append(VideoAudioViolation(
+                constraint: .channels,
+                message: "dual channel mode (two independent mono programmes, ISO/IEC 11172-3) "
+                    + "is neither a mono nor a stereo main channel; \(section) allows "
+                    + "\(rule.channelsText) for \(name)"))
         }
 
         // MP3's complementary channels: the multichannel extension of ISO/IEC
@@ -923,6 +996,12 @@ enum AudioHeaderParser {
         let audioObjectType: Int
         let samplingFrequency: Int?
         let channelConfiguration: Int
+        /// The core coder's sampling frequency (before SBR), which times its frames.
+        var coreSamplingFrequency: Int? = nil
+        /// Samples per core frame from GASpecificConfig's frameLengthFlag: 1024 or 960
+        /// for object types 1–4 and 17, 512 or 480 for 23 and 39 (the layout FFmpeg's
+        /// `mpeg4audio.c` reads); nil for other object types.
+        var frameLength: Int? = nil
 
         var format: VideoAudioTrack.Format {
             if AudioHeaderParser.aacObjectTypes.contains(audioObjectType) { return .aac }
@@ -959,17 +1038,28 @@ enum AudioHeaderParser {
               let channels = reader.readBits(4) else { return nil }
         var outputRate = rate
         var configuration = Int(channels)
+        var coreType = type
         if type == 5 || type == 29 {
             // Explicit SBR/PS signalling: the extension rate is the output rate.
             guard let extensionRate = frequency(), let core = objectType() else { return nil }
             outputRate = extensionRate
+            coreType = core
+            if core == 22 { _ = reader.readBits(4) }  // extensionChannelConfiguration (ER BSAC)
             // Parametric Stereo decodes a mono core to stereo.
             if type == 29, configuration == 1 { configuration = 2 }
             type = AudioHeaderParser.aacObjectTypes.contains(core) ? type : core
         }
+        // GASpecificConfig begins with frameLengthFlag.
+        var frameLength: Int?
+        switch coreType {
+        case 1, 2, 3, 4, 17: frameLength = reader.readBit().map { $0 ? 960 : 1024 }
+        case 23, 39: frameLength = reader.readBit().map { $0 ? 480 : 512 }
+        default: frameLength = nil
+        }
         return AudioSpecificConfig(
             audioObjectType: type, samplingFrequency: outputRate > 0 ? outputRate : nil,
-            channelConfiguration: configuration)
+            channelConfiguration: configuration,
+            coreSamplingFrequency: rate > 0 ? rate : nil, frameLength: frameLength)
     }
 
     /// A track from an AudioSpecificConfig; channels are nil for a
@@ -1012,7 +1102,7 @@ enum AudioHeaderParser {
             let frame = Array(bytes[(offset + 3)..<min(end, bytes.count)])
             var reader = BitstreamReader(bytes: frame)
             if let useSame = reader.readBit(), !useSame {
-                return streamMuxConfig(&reader).map { track($0, codecTag: "") }
+                return streamMuxConfig(&reader).map { track($0.config, codecTag: "") }
             }
             // useSameStreamMux: this frame repeats an earlier configuration.
             offset = end
@@ -1022,7 +1112,9 @@ enum AudioHeaderParser {
 
     /// The first AudioSpecificConfig of a StreamMuxConfig, common case only
     /// (see ``findLATMConfig(_:)``).
-    private static func streamMuxConfig(_ reader: inout BitstreamReader) -> AudioSpecificConfig? {
+    private static func streamMuxConfig(
+        _ reader: inout BitstreamReader
+    ) -> (config: AudioSpecificConfig, numSubFrames: Int)? {
         /// LatmGetValue(): bytesForValue (2), then that many plus one bytes.
         func latmValue() -> Int? {
             guard let count = reader.readBits(2) else { return nil }
@@ -1038,11 +1130,12 @@ enum AudioHeaderParser {
             guard let versionA = reader.readBit(), !versionA, latmValue() != nil else { return nil }
         }
         // allStreamsSameTimeFraming (1), numSubFrames (6), numProgram (4), numLayer (3).
-        guard reader.skipBits(7), let programs = reader.readBits(4), programs == 0,
+        guard reader.skipBits(1), let subFrames = reader.readBits(6),
+              let programs = reader.readBits(4), programs == 0,
               let layers = reader.readBits(3), layers == 0
         else { return nil }
         if version { guard latmValue() != nil else { return nil } }  // ascLen
-        return audioSpecificConfig(&reader)
+        return audioSpecificConfig(&reader).map { ($0, Int(subFrames)) }
     }
 
     // MARK: Raw MPEG-4 audio (MPEG-TS stream_type 0x1C)
@@ -1090,6 +1183,127 @@ enum AudioHeaderParser {
                 channelCount: channels?.count, hasLFE: channels?.lfe)
         }
         return nil
+    }
+
+    // MARK: AAC bit rate over time (D62)
+
+    /// One frame's bits (lower and upper bound) and presentation duration.
+    struct TimedFrame: Equatable {
+        let lowerBits: Int
+        let upperBits: Int
+        let duration: Double
+    }
+
+    /// The most bits any one-second window of presentation time carries, counting
+    /// each frame in the window its start falls in; for a stream shorter than a
+    /// second, all its bits.
+    static func maximumOneSecondBits(_ frames: [TimedFrame], upper: Bool) -> Int {
+        var starts: [Double] = []
+        var time = 0.0
+        for frame in frames {
+            starts.append(time)
+            time += frame.duration
+        }
+        var best = 0, sum = 0, end = 0
+        for start in frames.indices {
+            while end < frames.count, starts[end] < starts[start] + 1.0 - 1e-9 {
+                sum += upper ? frames[end].upperBits : frames[end].lowerBits
+                end += 1
+            }
+            best = max(best, sum)
+            sum -= upper ? frames[start].upperBits : frames[start].lowerBits
+        }
+        return best
+    }
+
+    static func measured(_ frames: [TimedFrame], wholeStream: Bool) -> VideoAudioTrack.MeasuredBitRate? {
+        guard !frames.isEmpty else { return nil }
+        return VideoAudioTrack.MeasuredBitRate(
+            lowerBound: maximumOneSecondBits(frames, upper: false),
+            upperBound: maximumOneSecondBits(frames, upper: true),
+            frameCount: frames.count, coversWholeStream: wholeStream)
+    }
+
+    /// Walks the ADTS frames of an elementary stream (ISO/IEC 13818-7 6.2.1; field
+    /// layout as FFmpeg `adts_header.c` reads it): each frame is `aac_frame_length`
+    /// bytes carrying (`number_of_raw_data_blocks_in_frame` + 1) × 1024 samples at the
+    /// header's sampling frequency. Up to ``maximumScannedFrames``.
+    ///
+    /// - Parameter complete: whether `bytes` is the PID's whole elementary stream.
+    static func scanADTSBitRate(_ bytes: [UInt8], complete: Bool) -> VideoAudioTrack.MeasuredBitRate? {
+        func header(at offset: Int) -> (length: Int, duration: Double)? {
+            guard offset + 7 <= bytes.count, bytes[offset] == 0xFF, bytes[offset + 1] & 0xF6 == 0xF0 else {
+                return nil
+            }
+            let rateIndex = Int((bytes[offset + 2] >> 2) & 0x0F)
+            guard rateIndex < aacSamplingFrequencies.count else { return nil }
+            let length = (Int(bytes[offset + 3] & 0x03) << 11)
+                | (Int(bytes[offset + 4]) << 3) | Int(bytes[offset + 5] >> 5)
+            guard length >= 7 else { return nil }
+            let blocks = Int(bytes[offset + 6] & 0x03) + 1
+            return (length, Double(1024 * blocks) / Double(aacSamplingFrequencies[rateIndex]))
+        }
+        // The first frame whose successor (where it fits) is also a frame.
+        var offset = 0
+        while offset + 7 <= bytes.count {
+            if let first = header(at: offset),
+               offset + first.length + 2 > bytes.count || header(at: offset + first.length) != nil {
+                break
+            }
+            offset += 1
+        }
+        var frames: [TimedFrame] = []
+        var reachedEnd = false
+        while frames.count < maximumScannedFrames {
+            if offset == bytes.count { reachedEnd = true; break }
+            guard let frame = header(at: offset), offset + frame.length <= bytes.count else { break }
+            frames.append(TimedFrame(lowerBits: frame.length * 8, upperBits: frame.length * 8,
+                                     duration: frame.duration))
+            offset += frame.length
+        }
+        return measured(frames, wholeStream: complete && reachedEnd)
+    }
+
+    /// Walks the LOAS AudioSyncStream of an elementary stream (ISO/IEC 14496-3
+    /// 1.7.2: syncword 0x2B7, audioMuxLengthBytes, AudioMuxElement). Each element
+    /// carries numSubFrames + 1 frames of the configured frame length at the core
+    /// sampling frequency (from its StreamMuxConfig, common case only — see
+    /// ``findLATMConfig(_:)``). Up to ``maximumScannedFrames`` elements.
+    static func scanLATMBitRate(_ bytes: [UInt8], complete: Bool) -> VideoAudioTrack.MeasuredBitRate? {
+        func isSync(_ offset: Int) -> Bool {
+            offset + 3 <= bytes.count && bytes[offset] == 0x56 && bytes[offset + 1] & 0xE0 == 0xE0
+        }
+        var offset = 0
+        while offset + 3 <= bytes.count, !isSync(offset) { offset += 1 }
+        var duration: Double?
+        var frames: [TimedFrame] = []
+        var skippedBeforeConfig = false
+        var reachedEnd = false
+        while frames.count < maximumScannedFrames {
+            if offset == bytes.count { reachedEnd = true; break }
+            guard isSync(offset) else { break }
+            let length = (Int(bytes[offset + 1] & 0x1F) << 8) | Int(bytes[offset + 2])
+            let end = offset + 3 + length
+            guard length > 0, end <= bytes.count else { break }
+            var reader = BitstreamReader(bytes: Array(bytes[(offset + 3)..<end]))
+            guard let useSame = reader.readBit() else { break }
+            if !useSame {
+                guard let mux = streamMuxConfig(&reader),
+                      let rate = mux.config.coreSamplingFrequency,
+                      let frameLength = mux.config.frameLength else { return nil }
+                duration = Double((mux.numSubFrames + 1) * frameLength) / Double(rate)
+            }
+            if let duration {
+                // Payload ≥ element − 1 bit (useSameStreamMux) − PayloadLengthInfo
+                // (at most length / 255 + 1 bytes) − byte alignment (< 1 byte).
+                let lower = useSame ? max(0, length - 2 - length / 255) * 8 : 0
+                frames.append(TimedFrame(lowerBits: lower, upperBits: length * 8, duration: duration))
+            } else {
+                skippedBeforeConfig = true
+            }
+            offset = end
+        }
+        return measured(frames, wholeStream: complete && reachedEnd && !skippedBeforeConfig)
     }
 
     // MARK: AC-3 (ETSI TS 102 366 4.3 syncinfo/bsi; Annex F dac3)
@@ -1198,7 +1412,7 @@ extension VideoAudioTrack {
             samplingFrequency: samplingFrequency, channelCount: channelCount,
             hasLFE: hasLFE, isDualMono: isDualMono, bitsPerSample: bitsPerSample,
             maximumBitRate: maximumBitRate, averageBitRate: averageBitRate,
-            frameBitRate: frameBitRate, bitRateScan: bitRateScan)
+            frameBitRate: frameBitRate, bitRateScan: bitRateScan, measuredBitRate: measuredBitRate)
     }
 
     /// A copy carrying the result of a frame-by-frame bit rate walk.
@@ -1208,6 +1422,16 @@ extension VideoAudioTrack {
             samplingFrequency: samplingFrequency, channelCount: channelCount,
             hasLFE: hasLFE, isDualMono: isDualMono, bitsPerSample: bitsPerSample,
             maximumBitRate: maximumBitRate, averageBitRate: averageBitRate,
-            frameBitRate: frameBitRate, bitRateScan: scan)
+            frameBitRate: frameBitRate, bitRateScan: scan, measuredBitRate: measuredBitRate)
+    }
+
+    /// A copy carrying an AAC frame walk's measured bit rate (D62).
+    func with(measuredBitRate measured: MeasuredBitRate?) -> VideoAudioTrack {
+        VideoAudioTrack(
+            format: format, codecTag: codecTag, pid: pid,
+            samplingFrequency: samplingFrequency, channelCount: channelCount,
+            hasLFE: hasLFE, isDualMono: isDualMono, bitsPerSample: bitsPerSample,
+            maximumBitRate: maximumBitRate, averageBitRate: averageBitRate,
+            frameBitRate: frameBitRate, bitRateScan: bitRateScan, measuredBitRate: measured)
     }
 }
