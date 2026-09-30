@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — DICOMRenderKit verified against DICOM 2026a (2026-09-30)
+
+See `DICOMRENDERKIT_STANDARD_IMPLEMENTATION.md`. No public API change.
+
+- **Pixel Cell width** (PS3.5 8.1.1): the Metal backend no longer renders a Bits Allocated 32
+  sample from its low two bytes; such frames are declined and rendered by the CPU backend. (The
+  CPU backend still has the same limitation; recorded as D67.)
+- `FrameRenderRequest.window` is documented as stored-value units (PS3.3 C.11.2.1.2.1 applies the
+  window after the Modality LUT; see P-PIPELINE, D65).
+- `RenderStandardConformanceTests` pins the C.11.2.1.2.1 LINEAR worked example, MONOCHROME1 after
+  the VOI (C.7.6.3.1.2) and Planar Configuration 1 (C.7.6.3.1.3) on both backends.
+- New `Scripts/diff_renderkit.py`: evaluates the VOI functions, identity window, Modality-before-VOI
+  order, sample assembly, planar layouts, YBR inverses, palette lookup and the eight PS3.6 Annex B
+  palettes against the 2026a DocBook, and checks Metal/CPU parity.
+- Open: P-PIPELINE (Modality LUT, VOI LUT Sequence, Presentation LUT in the request) and P-ICC
+  (ICC Profile) await the owner; D63–D67 (DICOMCore, DICOMKit, DICOMStudio) are recorded.
+
 ### Fixed — DICOMCore and DICOMKit deferred findings closed (2026-09-29/30)
 
 Rows D26, D31–D35, D37, D38, D45–D55 and D57–D60 of `DICOMKIT_STANDARD_IMPLEMENTATION.md`,
