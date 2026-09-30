@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — 1-bit frames packed least-significant-bit first per PS3.5 2026a 8.1.1 and D.1; LABELMAP per PS3.3 Table C.8.20-2 (Bits Allocated 8/16, Bits Stored, High Bit, Pixel Representation 0, MONOCHROME2, Segments Overlap NO), C.8.20.2.3.3 (every encoded value described in Segment Sequence), Table A.51-2 (no Segmentation Functional Group for LABELMAP), A.51.4 (Pixel Padding Value), PS3.4 B.5.1.25 (Label Map Segmentation Storage); toDataSet writes the Type 1 attributes of Tables C.8.20-2, C.8.20-4, C.7.6.16-1, C.7.6.17-1; category and type codes per PS3.16 CID 7150/7151; Segmented Property Category/Type Code Sequences (0062,0003)/(0062,000F) Type 1 with one Item per Table C.8.20-4, enforced by buildDataSet (D37d); PALETTE COLOR LABELMAP (D37b): Photometric Interpretation per Table C.8.20-2 (PALETTE COLOR only for LABELMAP, no Recommended Display CIELab Value), Palette Color Lookup Table and ICC Profile Modules per Table A.51-1 and A.1.3.2, descriptors/data per Table C.7-22a, C.7.6.3.1.5 (8 or 16 bits per entry in the Segmentation IOD, US with Pixel Representation 0, no segmented data) and C.7.6.3.1.6 (8-bit values replicated into 16 bits), ICC Profile header per C.11.15.1.1 and Color Space per C.11.15.1.2, VRs per PS3.6 Table 6-1
+// NEMA-verified: 2026a, checked 2026-09-30 — 1-bit frames packed least-significant-bit first per PS3.5 2026a 8.1.1 and D.1; LABELMAP per PS3.3 Table C.8.20-2 (Bits Allocated 8/16, Bits Stored, High Bit, Pixel Representation 0, MONOCHROME2, Segments Overlap NO), C.8.20.2.3.3 (every encoded value described in Segment Sequence), Table A.51-2 (no Segmentation Functional Group for LABELMAP), A.51.4 (Pixel Padding Value), PS3.4 B.5.1.25 (Label Map Segmentation Storage); toDataSet writes the Type 1 attributes of Tables C.8.20-2, C.8.20-4, C.7.6.16-1, C.7.6.17-1; category and type codes per PS3.16 CID 7150/7151; Segmented Property Category/Type Code Sequences (0062,0003)/(0062,000F) Type 1 with one Item per Table C.8.20-4, enforced by buildDataSet (D37d); Tracking ID (0062,0020) UT and Tracking UID (0062,0021) UI, each Type 1C on the other per Table C.8.20-4, enforced by buildDataSet (D45); PALETTE COLOR LABELMAP (D37b): Photometric Interpretation per Table C.8.20-2 (PALETTE COLOR only for LABELMAP, no Recommended Display CIELab Value), Palette Color Lookup Table and ICC Profile Modules per Table A.51-1 and A.1.3.2, descriptors/data per Table C.7-22a, C.7.6.3.1.5 (8 or 16 bits per entry in the Segmentation IOD, US with Pixel Representation 0, no segmented data) and C.7.6.3.1.6 (8-bit values replicated into 16 bits), ICC Profile header per C.11.15.1.1 and Color Space per C.11.15.1.2, VRs per PS3.6 Table 6-1
 //
 // SegmentationBuilder.swift
 // DICOMKit
@@ -1060,6 +1060,9 @@ extension Segmentation {
     /// when:
     /// - a segment has no Segmented Property Category or Type code: both Code Sequences are
     ///   Type 1 in the Segment Description Macro (PS3.3 2026a Table C.8.20-4);
+    /// - a segment has only one of Tracking ID (0062,0020) and Tracking UID (0062,0021):
+    ///   each is Type 1C, "Required if" the other "is present" (Table C.8.20-4). A value
+    ///   that is empty or all spaces does not count as present;
     /// - Photometric Interpretation (0028,0004) is not an Enumerated Value for the
     ///   Segmentation Type: MONOCHROME2 for BINARY and FRACTIONAL, MONOCHROME2 or PALETTE
     ///   COLOR for LABELMAP (PS3.3 2026a Table C.8.20-2);
@@ -1079,6 +1082,12 @@ extension Segmentation {
         return writeDataSet(pixelData: pixelData)
     }
 
+    /// Whether an optional string carries a value other than spaces (PS3.5 6.2 padding)
+    private static func hasValue(_ value: String?) -> Bool {
+        guard let value else { return false }
+        return !value.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     /// The Segmentation IOD rules ``buildDataSet(pixelData:)`` enforces
     private func validateForDataSet() throws {
         // Table C.8.20-4 (Segment Description Macro): Segmented Property Category Code
@@ -1090,6 +1099,18 @@ extension Segmentation {
             }
             guard segment.type != nil else {
                 throw SegmentationDataSetError.missingSegmentedPropertyType(segmentNumber: segment.segmentNumber)
+            }
+            // Table C.8.20-4: Tracking ID (0062,0020) 1C "Required if Tracking UID
+            // (0062,0021) is present", and Tracking UID 1C "Required if Tracking ID
+            // (0062,0020) is present". The writer emits whichever is non-nil, so either
+            // both carry a value or neither is set.
+            let hasTrackingID = Segmentation.hasValue(segment.trackingID)
+            let hasTrackingUID = Segmentation.hasValue(segment.trackingUID)
+            if segment.trackingID != nil, !hasTrackingUID {
+                throw SegmentationDataSetError.missingTrackingUID(segmentNumber: segment.segmentNumber)
+            }
+            if segment.trackingUID != nil, !hasTrackingID {
+                throw SegmentationDataSetError.missingTrackingID(segmentNumber: segment.segmentNumber)
             }
         }
         // Table C.8.20-2: Photometric Interpretation Enumerated Values by Segmentation Type
@@ -1539,6 +1560,12 @@ public enum SegmentationDataSetError: Error, CustomStringConvertible, Equatable 
     /// A segment without Segmented Property Type Code Sequence (0062,000F), Type 1
     /// (Table C.8.20-4)
     case missingSegmentedPropertyType(segmentNumber: Int)
+    /// A segment with Tracking ID (0062,0020) but no Tracking UID (0062,0021); Tracking UID
+    /// is Type 1C, "Required if Tracking ID (0062,0020) is present" (Table C.8.20-4)
+    case missingTrackingUID(segmentNumber: Int)
+    /// A segment with Tracking UID (0062,0021) but no Tracking ID (0062,0020); Tracking ID
+    /// is Type 1C, "Required if Tracking UID (0062,0021) is present" (Table C.8.20-4)
+    case missingTrackingID(segmentNumber: Int)
 
     public var description: String {
         switch self {
@@ -1558,6 +1585,10 @@ public enum SegmentationDataSetError: Error, CustomStringConvertible, Equatable 
             return "Segment \(number): Segmented Property Category Code Sequence (0062,0003) is Type 1 (PS3.3 Table C.8.20-4, CID 7150)"
         case .missingSegmentedPropertyType(let number):
             return "Segment \(number): Segmented Property Type Code Sequence (0062,000F) is Type 1 (PS3.3 Table C.8.20-4, CID 7151)"
+        case .missingTrackingUID(let number):
+            return "Segment \(number): Tracking UID (0062,0021) is required when Tracking ID (0062,0020) is present (PS3.3 Table C.8.20-4)"
+        case .missingTrackingID(let number):
+            return "Segment \(number): Tracking ID (0062,0020) is required when Tracking UID (0062,0021) is present (PS3.3 Table C.8.20-4)"
         }
     }
 }

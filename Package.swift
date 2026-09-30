@@ -520,6 +520,8 @@ let package = Package(
                 "Segmentation/SegmentationPaletteColorTests.swift",
                 // PS3.3 Table C.8.20-4 Segmented Property Category/Type Code Sequences Type 1 (D37 d, 2026-09-30).
                 "Segmentation/SegmentedPropertyCodeTests.swift",
+                // PS3.3 Table C.8.20-4 Tracking ID / Tracking UID each Type 1C on the other (D45, 2026-09-30).
+                "Segmentation/SegmentTrackingTests.swift",
                 "StructuredReporting/BasicTextSRBuilderTests.swift",
                 "StructuredReporting/CADFindingsExtractorTests.swift",
                 "StructuredReporting/ChestCADSRBuilderTests.swift",
