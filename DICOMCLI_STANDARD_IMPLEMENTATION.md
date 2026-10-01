@@ -67,6 +67,7 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | 2026-10-01 | G3 close | `swift build` (all products) and every CLI test bundle (all `dicom_*Tests` targets plus QueryRetrieveCLIStandardTests, MWLMPPSCLIEndToEndTests, SplitMergeWorkshopCLIParityTests, VideoConsoleParityTests); `diff_cli.py` G1, G2, G3 rerun with the UID-in-text check: 0 FAIL | — | build exit 0; XCTest 356 executed, 0 failures; Swift Testing 81 passed |
 | 2026-10-01 | G4 report | renders SR only; PS3.3 C.17.3 value types (16) and relationship types (7), Table 8.8-1 coded entries, C.17.2 flags, Content Template Sequence, PS3.6 A-1 SR SOP Class names (20/20); an Extensible SR fixture using every value and relationship type rendered in text/JSON/Markdown/HTML and diffed by script: 75 labels matched, 0 wrong. matched 4, wrong 3, missing 4 (all fixed), plumbing 14 | `89c3ed93`: 10 value types printed `[Content]` and children of non-CONTAINER items were dropped — fixed in every format; CODE as (value, scheme, "meaning"); units by Code Meaning; completion/verification/preliminary flags and root template shown; JSON adds `value_type`, flag keys, `content_template` (no key changed); HTML escaped; **behaviour change**: a non-SR input is refused naming its SOP Class (was an empty report, exit 0); P-REPORT-TEMPLATE, P-REPORT-SUMMARY; D194–D196 | dicom_reportTests 10/10 |
 | 2026-10-01 | G4 measure | PS3.3 10.7.1, C.7.6.2.1.1 Pixel Spacing, Tables C.8-2/C.8-71 Imager Pixel Spacing, Nominal Scanned Pixel Spacing, C.7.6.16.2.1 Pixel Measures, C.8.5.5 US Regions, Table C.18.6-1 ROI pixel inclusion, C.11.1 Modality LUT and Rescale Type; PS3.16 unit CIDs; 22 tag literals and 22 citations match. matched 10, wrong 7 (fixed), missing 2 (1 fixed; SUV not offered), plumbing 7. Correction: 2026a 10.7.1.3 has no "UI shall indicate" rule for detector-plane spacing; the wording is in Tables C.8-2/C.8-71 | `0fbc334f`: spacing from Pixel Spacing / Pixel Measures / US region / Imager Pixel Spacing (labelled detector plane) / Nominal Scanned, else pixels with a warning (was mm at an assumed 1 mm/pixel); angles in mm space; ROI by pixel centre; Bits Stored mask; Modality LUT applied (was ignored); HU only when Rescale Type is HU or absent on CT; `--frame` range-checked; output adds `spacing_source` and JSON `unit_ucum`; P-MEASURE-FRAME, P-MEASURE-UNIT; D197 | dicom_measureTests 17/17 |
+| 2026-10-01 | G4 ai, script | ai: PS3.16 TID 1500, TID 4019, TID 1001, Table D-1 (coded concepts 35 matched, 0 wrong), CID 7203 / (121322, DCM), PS3.10 7.1; 46 options: matched 5, wrong 1, missing 1, plumbing 39. script: scripts name `dicom-*` tools and options, no DICOM keywords/tags/UIDs (plumbing 9/9) | `1ff3934e` ai: `--format dicom-sr` wrote unregistered titles 129007/129008, (121072, DCM) as "Confidence" (it is "Impressions"), (121191, DCM) misused, a 0–1 value labelled percent, no template and no File Meta — now a TID 1500 Measurement Report from `MeasurementReportBuilder`, validated strictly, confidence as (111012, DCM, "Certainty of Finding") in percent 0–100; `--algorithm-version` added (TID 4019 row 2 mandatory); SR and `enhance` outputs are PS3.10 files; `enhance` writes a DERIVED image with Source Image Sequence; `c233ec05` script: marker; D198–D203 (D202: ScriptEngine templates call `dicom-anon --profile basic/strict`) | dicom_aiTests 11/11 (6 new) |
 | 2026-10-01 | Scaffold | `Scripts/diff_cli.py`: surface extractor (1,042 options), generic DICOMKit literal checks re-run per tool, transfer-syntax-name and documented-default checks; this report | — | — |
 
 ---
@@ -266,6 +267,12 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | D195 | DICOMKit | Sources/DICOMKit/StructuredReporting/SRDocumentParser.swift:499 | Numeric Value Qualifier Code Sequence (0040,A301) is never read (`qualifier: nil`), although `NumericValueQualifier(code:)` exists | PS3.3 2026a Table C.18.1-1; PS3.16 CID 42 | Medium | ⏳ Open |
 | D196 | DICOMKit | Sources/DICOMKit/StructuredReporting/SRDocumentSerializer.swift:898 | Referenced Waveform Channels (0040,A0B0), Type 1C, is not written for WAVEFORM items ("can be added if needed"), so channel references are lost on round-trip | PS3.3 2026a Table C.18.5-1, C.18.5.1.1 | Low | ⏳ Open |
 | D197 | DICOMKit | Sources/DICOMKit/DataSet+PixelData.swift:476 (also DICOMFile+PixelData.swift:465) | `rescale(_:)` takes no frame index and calls `rescaleSlope()`/`rescaleIntercept()` without one, so a Per-frame Pixel Value Transformation Sequence (0028,9145) is ignored for every frame but the first; dicom-measure works around it with `rescaleSlope(frameIndex:)` | PS3.3 2026a Table C.7.6.16-10, Table C.8-126 | Low | ⏳ Open |
+| D198 | DICOMKit | Sources/DICOMKit/StructuredReporting/SRDocumentSerializer.swift:91, :113 | `SRDocumentSerializer` writes only Patient's Name / Patient ID and Study Instance UID / Study Date / Study Time / Accession Number (when set); the Type 2 Patient's Birth Date, Patient's Sex, Referring Physician's Name, Study ID and Manufacturer (0008,0070) are never written and `SRDocument` has no fields for them (`MeasurementReportBuilder.withPatientBirthDate/withPatientSex/withReferringPhysicianName` are dropped by `build()`) | PS3.3 2026a Tables C.7-1, C.7-3, C.7-8, A.35.3-1 | Medium | ⏳ Open |
+| D199 | DICOMKit | Sources/DICOMKit/StructuredReporting/MeasurementReportBuilder.swift:494 (root at :583) | `MeasurementReportBuilder` has no API for TID 4019 Algorithm Identification (TID 1500 rows 6b, 10b, 12b; TID 1501 row 9b) or for the TID 1001 observation context (row 3 → TID 1002/1004 device observer), and builds the root CONTAINER without a template identifier, so the Content Template Sequence (DCMR, 1500) that PS3.3 Table C.18.8-1 requires is never written; dicom-ai adds row 6b and the root template after `build()` | PS3.16 2026a TID 1500, TID 1501, TID 4019, TID 1001; PS3.3 2026a Table C.18.8-1 | Medium | ⏳ Open |
+| D200 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:587 | the `query` template passes `--study-date-from 20240101 --study-date-to 20241231`, options dicom-query does not have; a Study Date range is one PS3.4 range value, `--study-date 20240101-20241231` | PS3.4 2026a C.2.2.2.5 (Range Matching) | Low | ⏳ Open |
+| D201 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:555, :558, :584, :587 | `pipeline` / `query` templates pass `--host ${PACS_HOST}`; dicom-query and dicom-retrieve take host[:port] as a positional argument, and dicom-retrieve has no `--patient-id` (it retrieves by `--study-uid` etc.), so the generated scripts fail | — (template plumbing) | Low | ⏳ Open |
+| D202 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:564, :619, :623 | `pipeline` / `anonymize` templates use `dicom-anon --profile basic` (the legacy profile dicom-anon documents as not PS3.15) and `--profile strict` (no such profile); the PS3.15 Basic Application Level Confidentiality Profile is `--profile ps315` | PS3.15 2026a E.1 | Medium | ⏳ Open |
+| D203 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:567, :600 | `dicom-archive create … --input` — dicom-archive has no `create` subcommand (`init`, `import`) | — (template plumbing) | Low | ⏳ Open |
 
 ### Rows handed to DICOMStudio
 
@@ -2859,6 +2866,107 @@ Counts: matched 10, wrong 7 (all fixed), missing 2 (1 fixed, 1 not offered), ext
 - main.swift: `// NEMA-verified: 2026a, checked 2026-10-01 — option help and output keys diffed against PS3.3 2026a 10.7.1.3 (spacing Value order), Table C.18.6-1 (column,row; 0,0 = TLHC of the TLHC pixel), 10.3 (first Frame is Frame number 1; --frame stays a 0-based index, P-MEASURE-FRAME), C.11.1.1.2 (output units); spacing_source values are PS3.6 2026a Table 6-1 keywords (5); unit_ucum values per PS3.16 2026a CID 7460/7461/7181/7183`
 
 **Checks:** `swift build --product dicom-measure` ok; `swift test --filter dicom_measureTests` 17/17 pass; `diff_cli.py --tool dicom-measure` 0 wrong (Table 6-1 tag literals 22 matched, citations 22 matched); `check_nema_markers.py Sources/dicom-measure` 2/2. diff_cli extractor: no change needed (it lists all 24 options; duplicate names across subcommands are keyed `distance --p1` etc. in the contract).
+
+### dicom-ai (G4)
+
+Commands: dicom-ai, classify, segment, detect, enhance, batch, registry (add, list, remove, search, info, clear) · 6 Swift files · 46 options (45 + new `--algorithm-version`). Segmentation (D44, 3fe88bd) was not redone; this pass covers every other object the tool writes.
+
+**Compared (by script / TemplateValidator):** `diff_cli.py --tool dicom-ai` baseline: coded concepts matched 31, wrong 4 → after fix matched 35, wrong 0; doc citations matched 92, wrong 0. PS3.16 2026a TID 1500 (18 rows), TID 1501 (26 rows), TID 4019 (6 rows), TID 1001/1002/1004, TID 300, TID 1600/1601 dumped with `nema_docbook.py`; Table D-1 rows for 111001, 111003, 111012, 112039, 112040, 121071, 121072, 121112, 121191, 125007, 126000, 126010; CID 7021 (4), CID 7551→7552/7553, CID 7202 (9), CID 7203 (34); certainty units from TID 4006 row 6 / TID 4104 row 12 / TID 4127 row 8 (`UNITS = EV (%, UCUM, "Percent") Value = 0 - 100`); PS3.3 Tables A.35.3-1, C.18.8-1 (Content Template Sequence 1C), C.12-10, C.7-9, C.7.6.1.1.2; PS3.6 Table A-1 (88.33, 66.4, 11.1). The SR output is validated in the tests by `TemplateValidator(mode: .strict)` against TID 1500 (a mutation that drops Algorithm Version is caught).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default (std) | Default (code) | Verdict |
+|---|---|---|---|---|---|---|---|
+| `<input>` | source image | PS3.10 7.1 | PS3.10 file | path; `--force` for no preamble | — | — | plumbing |
+| `-m, --model` | model path; file name = Algorithm Name (111001, DCM) and Segment Algorithm Name (0062,0009) | PS3.16 TID 4019 row 1 (TEXT, M); PS3.3 Table C.8.20-4 (1C, AUTOMATIC) | text | file name | — | — | match (segment wrote fixed "AI Model" → fixed) |
+| `-o, --output` | output path | — | — | path | — | — | plumbing |
+| `-f, --format` | dicom-sr → Comprehensive SR Storage 1.2.840.10008.5.1.4.1.1.88.33, TID 1500; dicom-seg → Segmentation Storage 1.2.840.10008.5.1.4.1.1.66.4 | PS3.6 Table A-1; PS3.3 A.35.3-1; PS3.16 TID 1500 | json, text, csv (plumbing); dicom-sr; dicom-seg | same | — | json | **wrong → fixed** (dicom-sr: title 129007/129008 DCM not in Table D-1; confidence (121072, DCM) = "Impressions" (retired); image (121191, DCM) = "Referenced Segment"; 0-1 confidence written as %; no template; no File Meta) |
+| `--confidence` | threshold, not written | — | — | 0.0-1.0 | — | 0.5 | plumbing |
+| `--force`, `--verbose`, `--profile`, `--profile-output` | — | — | — | — | — | — | plumbing |
+| `--frame` | Referenced Frame Number (1-based) of the analysed frame in the SR IMAGE/SCOORD source and Source Image Sequence | PS3.3 Table 10-3; Table C.12-10 | 1..n | index+1, multi-frame only | — | 0 | match (not referenced before → fixed) |
+| `--algorithm-version` | Algorithm Version (111003, DCM) | PS3.16 TID 4019 row 2 (TEXT, M) | text | text | — | model CoreML versionString, else "unknown" | **missing → added** (new option) |
+| `classify --top-k`, `detect --max-detections` | number of TID 1501 Measurement Groups | TID 1500 row 9 (1-n) | — | Int | — | 5 / 10 | plumbing |
+| `segment --labels` | Segment Label (0062,0005) | PS3.3 Table C.8.20-4 (1) | text | JSON array | — | Class_n | match (D44) |
+| `segment --segment-category` | Segmented Property Category Code Sequence (0062,0003) | Table C.8.20-4; CID 7150 | 8 rows | keyword or SCHEME:VALUE[:MEANING] | — | tissue | match (D44) |
+| `segment --segment-type` | Segmented Property Type Code Sequence (0062,000F) | Table C.8.20-4; CID 7151 | CIDs via 7151 | 21 keywords or code | — | tissue | match (D44) |
+| `detect --iou-threshold` | NMS | — | — | Double | — | 0.5 | plumbing |
+| batch (8 options), registry add/list/remove/search/info/clear (21 options) | local files and model registry (registry `--version` is not written to DICOM) | — | — | — | — | — | plumbing |
+
+**Output contract**
+
+| Output | 2026a reference | What it carries now | Verdict |
+|---|---|---|---|
+| dicom-sr file | PS3.10 7.1; PS3.3 A.35.3-1 | PS3.10 file (preamble, File Meta: Media Storage SOP Class 1.2.840.10008.5.1.4.1.1.88.33) | wrong (raw data set) → fixed |
+| SR root | TID 1500 row 1, CID 7021; Table C.18.8-1 | CONTAINER (126000, DCM, "Imaging Measurement Report"); Content Template Sequence DCMR / 1500 | wrong → fixed |
+| SR Image Library | TID 1500 row 5 → TID 1600 rows 1, 2, 4 → TID 1601 row 1 | source IMAGE (frame number for multi-frame) | missing → fixed |
+| SR Imaging Measurements | TID 1500 rows 6, 6b → TID 4019 rows 1-2 | (126010, DCM); HAS CONCEPT MOD TEXT (111001, DCM, "Algorithm Name"), TEXT (111003, DCM, "Algorithm Version"); written also with no findings (row 6 MC) | wrong (111001 was a root CONTAINS TEXT; no version) → fixed |
+| SR per finding | TID 1501 rows 1, 2, 3, 10 → TID 300 row 1 → TID 301 row 13 → TID 320 rows 1 / 3-4; row 12 | Measurement Group (125007), Tracking Identifier (112039), Tracking Unique Identifier (112040), NUM (111012, DCM, "Certainty of Finding") UNITS (%, UCUM, "Percent") 0-100 INFERRED FROM IMAGE (classify) or SCOORD POLYLINE closed bbox SELECTED FROM IMAGE (detect), $ImagePurpose (121112, DCM, "Source of Measurement") (CID 7552); TEXT (121071, DCM, "Finding") = label | wrong → fixed |
+| SR Type 2 attributes | Tables C.7-1, C.7-3, C.7-8 | Patient's Birth Date/Sex, Referring Physician's Name, Study ID, Accession Number copied; Manufacturer "DICOMKit" | missing → fixed (in dicom-ai; engine gap D198) |
+| TID 1001 observation context | TID 1500 row 3 (M) → TID 1001 rows MC "if not inherited" | not written (all rows inherited/defaulted) | match (builder has no API: D199) |
+| dicom-seg file | PS3.3 A.51 | unchanged from D44 except Segment Algorithm Name = model file name | match |
+| enhance file | PS3.10 7.1; PS3.3 C.7.6.1.1.2; Table C.12-10; CID 7202 | PS3.10 file of the source SOP Class keeping all source attributes; new SOP Instance/Series UIDs; Image Type DERIVED\SECONDARY\<value 3+>; Image Pixel attributes of the result; Smallest/Largest Image Pixel Value removed; 1 frame; Derivation Description; Source Image Sequence with (121322, DCM, "Source image for image processing operation") | wrong (raw data set with 12 copied attributes, Image Type kept ORIGINAL, no source reference) → fixed |
+| GSPS (library function, no subcommand calls it) | PS3.3 A.33.1, C.10.5 | built by GrayscalePresentationStateBuilder: Presentation Creation Date/Time, Displayed Area, Graphic Layer, POLYLINE graphic + text object (Bounding Box Annotation Units (0070,0003)) | wrong (text object used Graphic Annotation Units (0070,0005); no Displayed Area / creation date) → fixed |
+| JSON keys `file`, `predictions`, `label`, `confidence`, `detections`, `bbox`, `mask_size`, `num_classes`, `error`; CSV headers; text/markdown reports; "DICOM SR saved to …" etc. | — | tool vocabulary, not PS3.6/PS3.18 keywords | plumbing |
+| exit codes | — | 0 success; 1 error (ArgumentParser); 64 usage | plumbing |
+
+**Counts:** matched 5, wrong 1, missing 1, extra 0, plumbing 39 (46 options). Output rows: 8 wrong/missing → fixed, 2 match, 2 plumbing.
+
+**Changes:** `AIDICOMOutputGenerator.swift` (SR via `MeasurementReportBuilder` + `withAlgorithmIdentification`; `partTenFile`; enhance; GSPS via builder), `main.swift` (`--algorithm-version`, `--frame` passed to SR, model file name to SEG, PS3.10 writes), `AIEngine.swift` (`modelVersion` from CoreML metadata), README, CHANGELOG. Commit **1ff3934e**.
+
+**Tests:** `swift test --filter dicom_aiTests`: 11 tests, 0 failures (6 new in `Tests/dicom-aiTests/AIOutputObjectsTests.swift`: TID 1500 strict validation for classify, detect, empty result; codes/units/values; Content Template Sequence; PS3.10 round trip; enhance derived image; GSPS; option). `swift build --product dicom-ai` ok; `check_nema_markers.py Sources/dicom-ai`: 6/6; `diff_cli.py --tool dicom-ai`: 0 checks failing.
+
+**Deferred findings**
+
+| D199 | DICOMKit | Sources/DICOMKit/StructuredReporting/MeasurementReportBuilder.swift:494 (root at :583) | `MeasurementReportBuilder` has no API for TID 4019 Algorithm Identification (TID 1500 rows 6b, 10b, 12b; TID 1501 row 9b) or for the TID 1001 observation context (row 3 → TID 1002/1004 device observer), and builds the root CONTAINER without a template identifier, so the Content Template Sequence (DCMR, 1500) that PS3.3 Table C.18.8-1 requires is never written; dicom-ai adds row 6b and the root template after `build()` | PS3.16 2026a TID 1500, TID 1501, TID 4019, TID 1001; PS3.3 2026a Table C.18.8-1 | Medium | ⏳ Open |
+| D198 | DICOMKit | Sources/DICOMKit/StructuredReporting/SRDocumentSerializer.swift:91, :113 | `SRDocumentSerializer` writes only Patient's Name / Patient ID and Study Instance UID / Study Date / Study Time / Accession Number (when set); the Type 2 Patient's Birth Date, Patient's Sex, Referring Physician's Name, Study ID and Manufacturer (0008,0070) are never written and `SRDocument` has no fields for them (`MeasurementReportBuilder.withPatientBirthDate/withPatientSex/withReferringPhysicianName` are dropped by `build()`) | PS3.3 2026a Tables C.7-1, C.7-3, C.7-8, A.35.3-1 | Medium | ⏳ Open |
+
+**P-items:** none (`--algorithm-version` is additive; internal `createEnhancedDICOMFile` / SR function signatures changed with defaults, not public API).
+
+**Notes:** the GSPS generator and the text/Markdown report functions are not reachable from any subcommand; `Tests/DICOMToolsTests/DICOMAITests.swift` (compiled by no target) still calls the old signatures, which compile through the new defaults.
+
+**Markers:** AIDICOMOutputGenerator.swift (2 lines: D44 + "classify/detect --format dicom-sr: … replaced by a TID 1500 Measurement Report from MeasurementReportBuilder, validated by TemplateValidator against PS3.16 2026a TID 1500/1501/300/301/320/1600/4019 …"); main.swift ("… --algorithm-version is Algorithm Version (111003, DCM), PS3.16 2026a TID 4019 row 2 (M) …; the 46 options are otherwise plumbing"); AIEngine.swift ("carries no DICOM-standard data beyond reading the Image Pixel Module … Tables C.7-11a, C.7-11b and C.7-11c …"); ModelRegistry.swift, PerformanceMetrics.swift ("carries no DICOM-standard data (…)"); SegmentPropertyCodes.swift unchanged (D44).
+
+### dicom-script (G4)
+
+Commands: dicom-script, run, validate, template · 1 Swift file · 9 options. The script engine (parser, executor, validator, templates) lives in `Sources/DICOMKit/Scripting/ScriptEngine.swift` (marked C1 on 2026-09-29).
+
+**Compared:** `diff_cli.py --tool dicom-script`: all 12 checks ok (0 UIDs, 0 codes, 0 tags, 0 citations). The script language has no DICOM keyword, (gggg,eeee) tag or UID syntax: a script is variables, `if exists … endif`, pipelines and command lines of `dicom-*` tools; DICOM values reach the standard only through the called tool's own options (verified in those tools' passes). The 5 templates were checked against the option surfaces of the tools they call (`diff_cli.py --list-surface`): dicom-validate `--level` (1-5), dicom-convert `--format png`, dicom-study `summary --format json`, dicom-query `--level PATIENT|STUDY` (case-insensitive; PS3.4 Q/R Level values) match; 4 template faults are in DICOMKit (below).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default (std) | Default (code) | Verdict |
+|---|---|---|---|---|---|---|---|
+| `run <script-path>` | — | — | — | path | — | — | plumbing |
+| `run --variables` | — | — | — | KEY=VALUE … | — | [] | plumbing |
+| `run --parallel` | — | — | — | flag | — | false | plumbing |
+| `run -v, --verbose` | — | — | — | flag | — | false | plumbing |
+| `run --dry-run` | — | — | — | flag | — | false | plumbing |
+| `run --log` | — | — | — | path | — | — | plumbing |
+| `validate <script-path>` | — | — | — | path | — | — | plumbing |
+| `validate -v, --verbose` | — | — | — | flag | — | false | plumbing |
+| `template <template-name>` | — | — | — | workflow, pipeline, query, archive, anonymize | — | — | plumbing |
+
+**Output contract**
+
+| Output | Reference | Verdict |
+|---|---|---|
+| executed tool output, validation lines (`ScriptConsole`), template text | — | plumbing |
+| exit codes 0 / 1 (validation issues, script errors) | — | plumbing |
+
+**Counts:** matched 0, wrong 0, missing 0, extra 0, plumbing 9.
+
+**Changes:** marker only. Commit **c233ec05**. Build `swift build --product dicom-script` ok; `check_nema_markers.py Sources/dicom-script`: 1/1. No tests added (no behaviour change; no `dicom_scriptTests` target needed).
+
+**Deferred findings**
+
+| D200 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:587 | the `query` template passes `--study-date-from 20240101 --study-date-to 20241231`, options dicom-query does not have; a Study Date range is one PS3.4 range value, `--study-date 20240101-20241231` | PS3.4 2026a C.2.2.2.5 (Range Matching) | Low | ⏳ Open |
+| D201 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:555, :558, :584, :587 | `pipeline` / `query` templates pass `--host ${PACS_HOST}`; dicom-query and dicom-retrieve take host[:port] as a positional argument, and dicom-retrieve has no `--patient-id` (it retrieves by `--study-uid` etc.), so the generated scripts fail | — (template plumbing) | Low | ⏳ Open |
+| D202 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:564, :619, :623 | `pipeline` / `anonymize` templates use `dicom-anon --profile basic` (the legacy profile dicom-anon documents as not PS3.15) and `--profile strict` (no such profile); the PS3.15 Basic Application Level Confidentiality Profile is `--profile ps315` | PS3.15 2026a E.1 | Medium | ⏳ Open |
+| D203 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:567, :600 | `dicom-archive create … --input` — dicom-archive has no `create` subcommand (`init`, `import`) | — (template plumbing) | Low | ⏳ Open |
+
+**P-items:** none.
+
+**Marker (main.swift):** `// NEMA-verified: 2026a, checked 2026-10-01 — carries no DICOM-standard data (runs, validates and prints templates of the shell-like script language in DICOMKit/Scripting; scripts name dicom-* tools and their options, not DICOM keywords, tags or UIDs)`
 
 
 ## dicom-report (G4) — renders SR documents to text/HTML/JSON/Markdown (PDF not implemented)
