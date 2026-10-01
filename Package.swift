@@ -927,6 +927,8 @@ let package = Package(
             dependencies: [
                 "DICOMCore",
                 "DICOMNetwork",
+                // --format dicom-json: PS3.18 F.2 encoder (P-QUERY-JSON)
+                "DICOMWeb",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-query",

@@ -2,7 +2,8 @@ import Foundation
 import ArgumentParser
 import DICOMCore
 import DICOMNetwork
-// NEMA-verified: 2026a, checked 2026-10-01 — --level values diffed against PS3.4 2026a Tables C.6.1-1 / C.6.2-1 (PATIENT, STUDY, SERIES, IMAGE: 4 of 4 sent on the wire via QueryLevel; "instance" kept as a CLI alias of image); the match keys each option maps to checked against Tables C.6-1, C.6-3, C.6-4, C.6-5 (9 options, all listed at their level); wildcard and date-range help against C.2.2.2.4 / C.2.2.2.5; --modality terms via DICOMCore.Modality (C.7.3.1.1.1); --format json/csv keys are the tool's own "(GGGG,EEEE)" tag strings, not PS3.18 F.2 (documented in README)
+import DICOMWeb
+// NEMA-verified: 2026a, checked 2026-10-01 — --level values diffed against PS3.4 2026a Tables C.6.1-1 / C.6.2-1 (PATIENT, STUDY, SERIES, IMAGE: 4 of 4 sent on the wire via QueryLevel; "instance" kept as a CLI alias of image); the match keys each option maps to checked against Tables C.6-1, C.6-3, C.6-4, C.6-5 (9 options, all listed at their level); wildcard and date-range help against C.2.2.2.4 / C.2.2.2.5; --modality terms via DICOMCore.Modality (C.7.3.1.1.1); --format json/csv keys are the tool's own "(GGGG,EEEE)" tag strings (documented in README); --format dicom-json is the PS3.18 2026a F.2 DICOM JSON Model via DICOMWeb.DICOMJSONEncoder (P-QUERY-JSON); --csv-keywords headers are PS3.6 Table 6-1 keywords and the table labels PS3.6 names (P-QUERY-COLUMNS)
 
 @main
 struct DICOMQuery: AsyncParsableCommand {
@@ -22,6 +23,7 @@ struct DICOMQuery: AsyncParsableCommand {
               dicom-query server --port 11112 --aet MY_SCU --patient-name "SMITH^JOHN"
               dicom-query server:11112 --aet MY_SCU --study-date 20240101-20240131
               dicom-query server:11112 --aet MY_SCU --modality CT --format json
+              dicom-query server:11112 --aet MY_SCU --modality CT --format dicom-json
               dicom-query 192.168.1.100:11112 --aet MY_SCU --level series --study-uid 1.2.3
               dicom-query server:11112 --aet MY_SCU --level image --study-uid 1.2.3 --series-uid 1.2.3.4
             """,
@@ -73,8 +75,11 @@ struct DICOMQuery: AsyncParsableCommand {
     @Option(name: .long, help: "Referring physician name")
     var referringPhysician: String?
     
-    @Option(name: .shortAndLong, help: "Output format: table, json, csv, compact (default: table)")
+    @Option(name: .shortAndLong, help: "Output format: table, json, csv, compact, dicom-json (default: table). json is the tool's {\"(GGGG,EEEE)\": \"value\"} summary; dicom-json is the PS3.18 F.2 DICOM JSON Model (\"00100010\": {\"vr\": \"PN\", \"Value\": [...]})")
     var format: OutputFormat = .table
+
+    @Flag(name: .long, help: "CSV header row names each column by its PS3.6 keyword (e.g. PatientName) instead of (GGGG,EEEE)")
+    var csvKeywords: Bool = false
     
     @Option(name: .long, help: "Connection timeout in seconds (default: 60)")
     var timeout: Int = 60
@@ -150,12 +155,21 @@ struct DICOMQuery: AsyncParsableCommand {
         )
 
         // Format and output results via the shared formatter (DICOMNetwork).
-        let formatter = DICOMQueryResultFormatter(format: format.asShared, level: level.queryLevel)
+        let formatter = Self.formatter(format: format, level: level.queryLevel, csvKeywords: csvKeywords)
         let output = formatter.format(results: results)
         print(output, terminator: "")
         #else
         throw ValidationError("Network functionality is not available on this platform")
         #endif
+    }
+
+    /// The shared formatter; `dicom-json` is encoded by DICOMWeb's PS3.18 F.2
+    /// encoder (pretty-printed, attributes in ascending tag order per F.2.2).
+    static func formatter(format: OutputFormat, level: QueryLevel, csvKeywords: Bool) -> DICOMQueryResultFormatter {
+        DICOMQueryResultFormatter(
+            format: format.asShared, level: level,
+            csvHeader: csvKeywords ? .keyword : .tag,
+            dicomJSONEncoder: { try DICOMJSONEncoder(configuration: .init(prettyPrinted: true)).encodeMultiple($0) })
     }
 
     /// Applied, non-empty match filters in the canonical order shared with the app's
@@ -275,11 +289,13 @@ enum QueryLevelOption: String, ExpressibleByArgument, CaseIterable {
     }
 }
 
-enum OutputFormat: String, ExpressibleByArgument {
+enum OutputFormat: String, ExpressibleByArgument, CaseIterable {
     case table
     case json
     case csv
     case compact
+    /// PS3.18 F.2 DICOM JSON Model
+    case dicomJSON = "dicom-json"
 
     /// Maps to the shared package formatter's format.
     var asShared: QueryOutputFormat { QueryOutputFormat(rawValue: rawValue) ?? .table }
