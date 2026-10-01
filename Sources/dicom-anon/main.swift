@@ -68,7 +68,7 @@ struct DICOMAnon: ParsableCommand {
 
     @Flag(name: .long, help: """
         PS3.15 Retain Longitudinal Temporal Information With Modified Dates Option: dates \
-        shifted by --shift-dates, which it requires (--profile ps315)
+        shifted by --shift-dates, which it requires; times kept (--profile ps315)
         """)
     var retainModifiedDates: Bool = false
 
@@ -85,8 +85,9 @@ struct DICOMAnon: ParsableCommand {
     var retainUids: Bool = false
 
     @Flag(name: .long, help: """
-        PS3.15 Clean Descriptors Option (--profile ps315). The descriptor attributes are \
-        KEPT AS THEY ARE, not cleaned: review their free text before release
+        PS3.15 Clean Descriptors Option (--profile ps315): descriptor attributes are kept \
+        with the names, identifiers and dates the profile removes elsewhere taken out of \
+        their text (E.3.5); review free text before release
         """)
     var cleanDescriptors: Bool = false
 

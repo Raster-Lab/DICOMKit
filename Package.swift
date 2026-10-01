@@ -637,6 +637,9 @@ let package = Package(
                 "ModalityLUTPrecedenceTests.swift",
                 // PS3.15 Annex E Basic Application Level Confidentiality Profile engine.
                 "ConfidentialityProfileTests.swift",
+                // PS3.15 2026a E.2, E.3.5, E.3.6: Clean Descriptors, Modified Dates, (0028,0303);
+                // legacy keyword parsing and --keep (D157, D158, D161, D163, D164).
+                "ConfidentialityOptionsTests.swift",
                 // dicom-dump / dicom-info / dicom-tags / dicom-diff engines (HexDumper,
                 // MetadataPresenter, TagEditor, DICOMComparer) pinned to 2026a (D144-D153).
                 "ToolEngineStandardTests.swift",

@@ -164,10 +164,9 @@ enum AnonCLI {
 
     /// A tag given to --remove / --replace / --keep: `gggg,eeee`, `(gggg,eeee)`,
     /// `ggggeeee`, or a PS3.6 Table 6-1 keyword (e.g. `PatientAge`).
+    /// The shared parser knows every keyword since D163, so this is a plain pass-through.
     static func parseTag(_ string: String) -> Tag? {
-        if let tag = Anonymizer.parseFlexibleTag(string) { return tag }
-        let keyword = string.trimmingCharacters(in: .whitespaces)
-        return DataElementDictionary.lookup(keyword: keyword)?.tag
+        Anonymizer.parseFlexibleTag(string)
     }
 
     /// Applies --remove / --replace after the PS3.15 pass (the engine takes no custom

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — C (Table E.1-1a) cleans text per E.3.5 instead of keeping it verbatim (D158); Modified Dates shifts DA and the DT date part by whole days, keeps TM, and gives the 3 non-date rows their Basic action (E.3.6, D157); (0028,0303) REMOVED / UNMODIFIED / MODIFIED per E.2 / E.3.6 and PS3.3 Table C.7-1 (D161); 113100 is the first Item of (0012,0064) and (0012,0063) names every Item, including 113101 from pixel cleaning (D160)
 // NEMA-verified: 2026a, checked 2026-09-30 — applies PS3.15 2026a Table E.1-1 in full (D69): the pattern rows (curve data 50xx, overlay data and comments 60xx,3000/4000, private groups) are X; Z on SQ is an empty sequence; D is a non-empty value consistent with the VR (sequence kept scrubbed, UID mapped, binary zero bytes) (PS3.15 E.1.1)
 // NEMA-verified: 2026a, checked 2026-09-29 — applies the PS3.15 2026a Table E.1-1 actions; records (0012,0062) YES, (0012,0063) LO 1-n and (0012,0064) SQ of CID 7050 codes per PS3.15 E.1.1 and PS3.3 Table C.7-1; VRs per PS3.6 Table 6-1
 import Foundation
@@ -42,6 +43,11 @@ public struct ConfidentialityEngine {
         .init(group: 0x0008, element: 0x0016), // SOP Class UID
     ]
 
+    /// The values the profile removes or replaces in the data set being de-identified,
+    /// found before any change; the Clean ("C") action removes them from the text it keeps
+    /// (PS3.15 2026a E.3.5, D158).
+    private var identifyingValues: DescriptorCleaner = DescriptorCleaner(values: [])
+
     public init(options: ConfidentialityProfile.Options = .basic,
                 uidMap: [String: String] = [:]) {
         self.options = options
@@ -77,6 +83,7 @@ public struct ConfidentialityEngine {
         _ dataSet: DataSet
     ) -> (DataSet, [Tag], [String]) {
         let residual = Self.residualPixelPHIWarnings(in: dataSet)
+        identifyingValues = DescriptorCleaner(values: removedValues(in: dataSet))
         var changed: [Tag] = []
         var result = apply(to: dataSet, changed: &changed, isRoot: true)
         recordMethod(in: &result, pixelsMayCarryPHI: !residual.isEmpty)
@@ -158,7 +165,10 @@ public struct ConfidentialityEngine {
                 Self.setZeroLength(tag, vr: element.vr, in: &out)
                 if isRoot { changed.append(tag) }
             case .zeroOrDummy:
-                applyDateOrZero(tag: tag, element: element, in: &out)
+                if modifyDate(tag: tag, element: element, in: &out, changed: &changed, isRoot: isRoot) {
+                    continue
+                }
+                Self.setZeroLength(tag, vr: element.vr, in: &out)
                 if isRoot { changed.append(tag) }
             case .replaceDummy:
                 // A non-zero-length value "consistent with the VR" (PS3.15 E.1.1, D):
@@ -179,10 +189,25 @@ public struct ConfidentialityEngine {
                 }
                 if isRoot { changed.append(tag) }
             case .clean:
-                // Best-effort: without a term-safe cleaner we cannot prove a free-text
-                // value is identifier-free, so fail safe by zeroing unless the caller
-                // explicitly asked to retain descriptors.
-                if options.cleanDescriptors {
+                // C: keep the value with the identifying information removed (PS3.15
+                // 2026a Table E.1-1a; E.3.5 for descriptors). Text is cleaned by
+                // ``DescriptorCleaner``; a sequence keeps its Items, already processed
+                // above, with the text in them cleaned the same way; any other VR cannot
+                // be cleaned and is made zero-length (D158).
+                if element.vr == .SQ {
+                    let items = out.sequence(for: tag) ?? []
+                    let cleaned = items.map(cleanText(in:))
+                    if !Self.sameItems(cleaned, items) {
+                        out.setSequence(cleaned, for: tag)
+                        if isRoot { changed.append(tag) }
+                    }
+                    continue
+                }
+                if Self.cleanableVRs.contains(element.vr) {
+                    if let cleaned = cleanedText(of: out[tag] ?? element) {
+                        out[tag] = cleaned
+                        if isRoot { changed.append(tag) }
+                    }
                     continue
                 }
                 Self.setZeroLength(tag, vr: element.vr, in: &out)
@@ -236,15 +261,119 @@ public struct ConfidentialityEngine {
 
     // MARK: - Value helpers
 
-    private mutating func applyDateOrZero(tag: Tag, element: DataElement, in dataSet: inout DataSet) {
-        // With Retain Longitudinal Temporal + an offset, shift; else zero.
-        if options.retainLongitudinalTemporal, let days = options.dateOffsetDays,
-           element.vr == .DA, let original = dataSet.string(for: tag),
-           let shifted = Self.shiftDICOMDate(original, byDays: days) {
-            dataSet.setString(shifted, for: tag, vr: element.vr)
-        } else {
-            dataSet.setString("", for: tag, vr: element.vr)
+    /// Retain Longitudinal Temporal Information With Modified Dates (PS3.15 2026a E.3.6,
+    /// D157): the dates and times of the rows with a Modified Dates entry are modified by
+    /// one whole-day offset, which keeps every interval between them. DA values and the
+    /// date part of DT values are shifted (a DT's time and UTC offset are kept); a TM is
+    /// the time of day of a shifted date, so it is kept as it is. A row of another VR
+    /// (Timezone Offset From UTC, the OB timestamps) cannot be shifted and gets its Basic
+    /// Profile action. A value that cannot be parsed is made zero-length.
+    ///
+    /// Returns false when the option is not in force for this row (the caller applies Z).
+    private mutating func modifyDate(tag: Tag, element: DataElement, in dataSet: inout DataSet,
+                                     changed: inout [Tag], isRoot: Bool) -> Bool {
+        guard options.retainLongitudinalTemporal, let days = options.dateOffsetDays,
+              let row = ConfidentialityProfile.tableE11[UInt32(tag.group) << 16 | UInt32(tag.element)],
+              row.modifiedDates != nil else { return false }
+        let original = dataSet.string(for: tag)
+        switch element.vr {
+        case .TM:
+            return true  // kept: the time of day of a date shifted by whole days
+        case .DA, .DT:
+            let values = (original ?? "").components(separatedBy: "\\")
+            let shifted = values.map { value -> String? in
+                let v = value.trimmingCharacters(in: .whitespaces)
+                if v.isEmpty { return "" }
+                return element.vr == .DA ? Self.shiftDICOMDate(v, byDays: days)
+                                         : Self.shiftDICOMDateTime(v, byDays: days)
+            }
+            if shifted.contains(where: { $0 == nil }) {
+                Self.setZeroLength(tag, vr: element.vr, in: &dataSet)
+            } else {
+                dataSet.setString(shifted.map { $0! }.joined(separator: "\\"), for: tag, vr: element.vr)
+            }
+        default:
+            switch ConfidentialityProfile.basicAction(row.basic) {
+            case .remove, .removePreferred:
+                dataSet.remove(tag: tag)
+            case .replaceDummy:
+                if Self.binaryVRs.contains(element.vr) {
+                    dataSet[tag] = DataElement.data(tag: tag, vr: element.vr,
+                                                    data: Data(repeating: 0, count: Self.binaryDummyLength(element.vr)))
+                } else {
+                    dataSet.setString(dummyValue(for: element.vr), for: tag, vr: element.vr)
+                }
+            default:
+                Self.setZeroLength(tag, vr: element.vr, in: &dataSet)
+            }
         }
+        if isRoot { changed.append(tag) }
+        return true
+    }
+
+    /// The element with its text cleaned, or nil when cleaning changes nothing.
+    private func cleanedText(of element: DataElement) -> DataElement? {
+        guard Self.cleanableVRs.contains(element.vr), let text = element.stringValue else { return nil }
+        let values = Self.singleValuedVRs.contains(element.vr) ? [text] : text.components(separatedBy: "\\")
+        let cleaned = values.map { identifyingValues.clean($0) }
+        guard cleaned != values else { return nil }
+        return DataElement.string(tag: element.tag, vr: element.vr, value: cleaned.joined(separator: "\\"))
+    }
+
+    /// An Item with the text of every element cleaned, at any depth.
+    private func cleanText(in item: SequenceItem) -> SequenceItem {
+        SequenceItem(elements: item.allElements.map { element -> DataElement in
+            if let items = element.sequenceItems {
+                var holder = DataSet()
+                holder.setSequence(items.map(cleanText(in:)), for: element.tag)
+                return holder[element.tag] ?? element
+            }
+            return cleanedText(of: element) ?? element
+        })
+    }
+
+    private static func sameItems(_ a: [SequenceItem], _ b: [SequenceItem]) -> Bool {
+        guard a.count == b.count else { return false }
+        for (x, y) in zip(a, b) {
+            let ex = x.allElements, ey = y.allElements
+            guard ex.count == ey.count else { return false }
+            for (p, q) in zip(ex, ey) {
+                guard p.tag == q.tag, p.vr == q.vr else { return false }
+                if let ip = p.sequenceItems, let iq = q.sequenceItems {
+                    if !sameItems(ip, iq) { return false }
+                } else if p.valueData != q.valueData {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    /// VRs a Clean action can rewrite as text (PS3.5 Table 6.2-1 character VRs that may
+    /// carry free text or names).
+    static let cleanableVRs: Set<VR> = [.AE, .CS, .LO, .LT, .PN, .SH, .ST, .UC, .UT]
+    /// Character VRs that are never multi-valued (PS3.5 Table 6.2-1).
+    static let singleValuedVRs: Set<VR> = [.LT, .ST, .UT, .UR]
+    static let binaryVRs: Set<VR> = [.OB, .OD, .OF, .OL, .OV, .OW, .UN, .US, .SS, .UL, .SL, .FL, .FD, .AT, .SV, .UV]
+
+    /// The original values of every attribute the profile removes or replaces (X, Z, D,
+    /// U and their combinations, and the PN / private sweeps), at any nesting depth.
+    private func removedValues(in dataSet: DataSet) -> [(String, VR)] {
+        var out: [(String, VR)] = []
+        for tag in dataSet.tags {
+            guard let element = dataSet[tag], tag != .pixelData, tag.group != 0x0002 else { continue }
+            if let items = element.sequenceItems {
+                for item in items { out += removedValues(in: DataSet(elements: item.allElements)) }
+                continue
+            }
+            guard let action = resolveAction(for: tag, vr: element.vr, isPrivate: tag.group & 1 == 1),
+                  action != .keep, action != .clean,
+                  Self.cleanableVRs.contains(element.vr) || [.DA, .DT, .AS, .UI].contains(element.vr),
+                  let value = dataSet.string(for: tag) else { continue }
+            let values = Self.singleValuedVRs.contains(element.vr) ? [value] : value.components(separatedBy: "\\")
+            out += values.map { ($0, element.vr) }
+        }
+        return out
     }
 
     private func dummyValue(for vr: VR) -> String {
@@ -285,14 +414,32 @@ public struct ConfidentialityEngine {
     }
 
     static func shiftDICOMDate(_ dicom: String, byDays days: Int) -> String? {
+        let utc = TimeZone(identifier: "UTC")!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc  // whole days in UTC: no daylight-saving hour can move the date
         let f = DateFormatter()
+        f.calendar = calendar
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyyMMdd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        guard let date = f.date(from: dicom.trimmingCharacters(in: .whitespaces)),
-              let shifted = Calendar.current.date(byAdding: .day, value: days, to: date) else {
+        f.timeZone = utc
+        let trimmed = dicom.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count == 8, trimmed.allSatisfy(\.isASCII), trimmed.allSatisfy(\.isNumber),
+              let date = f.date(from: trimmed),
+              let shifted = calendar.date(byAdding: .day, value: days, to: date) else {
             return nil
         }
         return f.string(from: shifted)
+    }
+
+    /// Shifts the date part (YYYYMMDD) of a DT value by whole days, keeping the time and
+    /// any UTC offset suffix (PS3.5 Table 6.2-1 DT). A DT with less than a full date
+    /// (YYYY or YYYYMM) cannot be shifted by days: nil.
+    static func shiftDICOMDateTime(_ dicom: String, byDays days: Int) -> String? {
+        let trimmed = dicom.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 8, let date = shiftDICOMDate(String(trimmed.prefix(8)), byDays: days) else {
+            return nil
+        }
+        return date + trimmed.dropFirst(8)
     }
 
     // MARK: - Method recording (PS3.15 E.1.1 / PS3.3 C.7.1.1)
@@ -320,26 +467,45 @@ public struct ConfidentialityEngine {
         // (0012,0064) De-identification Method Code Sequence: one Item per CID 7050
         // code for the profile and each option applied (Table C.7-1: "Multiple Items
         // are used … to describe options of a defined profile"). Items another pass
-        // already recorded (e.g. 113101 from the pixel redactor) are kept.
+        // already recorded (e.g. 113101 from the pixel redactor) are kept, after the
+        // profile's own Item (D160).
         let codes = options.methodCodes
-        var items = dataSet.sequence(for: Self.deidentificationMethodCodeSequence) ?? []
-        let recorded = Set(items.compactMap {
-            $0.string(for: .codeValue)?.trimmingCharacters(in: .whitespaces)
-        })
-        for code in codes where !recorded.contains(code.codeValue) {
+        let existing = dataSet.sequence(for: Self.deidentificationMethodCodeSequence) ?? []
+        let profileCode = ConfidentialityProfile.DeidentificationMethodCode.basicApplicationConfidentialityProfile
+        func code(of item: SequenceItem) -> String? {
+            item.string(for: .codeValue)?.trimmingCharacters(in: .whitespaces)
+        }
+        var items = [profileCode.sequenceItem]
+        items += existing.filter { code(of: $0) != profileCode.codeValue }
+        var recorded = Set(items.compactMap(code(of:)))
+        for code in codes.dropFirst() where !recorded.contains(code.codeValue) {
             items.append(code.sequenceItem)
+            recorded.insert(code.codeValue)
         }
         dataSet.setSequence(items, for: Self.deidentificationMethodCodeSequence)
 
-        // (0012,0063) De-identification Method — LO, VM 1-n: one value per profile /
-        // option (each Code Meaning is within the 64-character LO limit), so the
-        // human-readable record mirrors the coded one value for value.
+        // (0012,0063) De-identification Method — LO, VM 1-n: one value per Item of
+        // (0012,0064), in the same order (each Code Meaning is within the 64-character LO
+        // limit), so an option recorded by another pass, such as Clean Pixel Data, is
+        // named here too (D160).
         var method = ["PS3.15 Basic Application Level Confidentiality Profile"]
-        method += codes.dropFirst().map(\.meaning)
+        method += items.dropFirst().compactMap { $0.string(for: .codeMeaning)?.trimmingCharacters(in: .whitespaces) }
         // Make the metadata-only scope explicit in the record itself, so a reader of the
         // file (not just of our console output) can see the pixels were never cleaned.
         if pixelsMayCarryPHI { method.append("DATASET ONLY - pixel data not de-identified") }
         dataSet.setStrings(method, for: Self.deidentificationMethod, vr: .LO)
+
+        // (0028,0303) Longitudinal Temporal Information Modified, CS (PS3.3 Table C.7-1
+        // Enumerated Values UNMODIFIED / MODIFIED / REMOVED): PS3.15 2026a E.2 "REMOVED"
+        // if no Retain Longitudinal Temporal Information Option is applied; E.3.6
+        // "UNMODIFIED" with Full Dates, "MODIFIED" with Modified Dates (D161).
+        let temporal: String
+        if !options.retainLongitudinalTemporal {
+            temporal = "REMOVED"
+        } else {
+            temporal = options.dateOffsetDays == nil ? "UNMODIFIED" : "MODIFIED"
+        }
+        dataSet.setString(temporal, for: Self.longitudinalTemporalInformationModified, vr: .CS)
 
         // Burned In Annotation (0028,0301): we do not inspect pixels, so we cannot
         // assert NO. Leave any existing value; if absent, do not fabricate one.
@@ -352,4 +518,90 @@ public struct ConfidentialityEngine {
     static let deidentificationMethod = Tag(group: 0x0012, element: 0x0063)
     /// (0012,0064) De-identification Method Code Sequence, SQ.
     static let deidentificationMethodCodeSequence = Tag(group: 0x0012, element: 0x0064)
+    /// (0028,0303) Longitudinal Temporal Information Modified, CS.
+    static let longitudinalTemporalInformationModified = Tag(group: 0x0028, element: 0x0303)
+}
+
+// MARK: - Clean ("C") action
+
+/// Removes identifying information from a text value the profile keeps (PS3.15 2026a
+/// Table E.1-1a "C"; E.3.5 Clean Descriptors Option: "any information that is embedded in
+/// text or string Attributes corresponding to the Attribute information specified to be
+/// removed by the Profile and any other Options specified shall also be removed").
+///
+/// The manner of cleaning (to be stated in a Conformance Statement, E.3.5):
+/// 1. every value the profile removes or replaces in the same data set — each person
+///    name component and the whole name, identifiers, addresses, institution and device
+///    names, ages, UIDs, and dates (as YYYYMMDD, YYYY-MM-DD, YYYY.MM.DD, DD/MM/YYYY,
+///    MM/DD/YYYY, DD.MM.YYYY) — is removed wherever it occurs as a whole word, ignoring
+///    case;
+/// 2. a capitalised word following a personal title (Dr, Mr, Mrs, Ms, Miss, Prof, case as
+///    written) is removed with the title, since a person's name is information the profile removes even when it is
+///    not elsewhere in the data set;
+/// 3. the remaining text has its runs of spaces collapsed and is trimmed.
+/// Values shorter than two characters are not used (they would remove ordinary letters).
+struct DescriptorCleaner {
+    private let patterns: [NSRegularExpression]
+
+    init(values: [(String, VR)]) {
+        var tokens = Set<String>()
+        for (raw, vr) in values {
+            let value = raw.trimmingCharacters(in: CharacterSet(charactersIn: " \u{0}"))
+            guard !value.isEmpty else { continue }
+            switch vr {
+            case .PN:
+                let components = value
+                    .components(separatedBy: CharacterSet(charactersIn: "^="))
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                tokens.formUnion(components)
+                if components.count >= 2 {
+                    tokens.insert(components.joined(separator: " "))
+                    tokens.insert(components.reversed().joined(separator: " "))
+                }
+            case .DA, .DT:
+                let digits = String(value.prefix(8))
+                tokens.insert(value)
+                if digits.count == 8, digits.allSatisfy(\.isNumber) {
+                    let y = digits.prefix(4), m = digits.dropFirst(4).prefix(2), d = digits.suffix(2)
+                    tokens.formUnion([digits, "\(y)-\(m)-\(d)", "\(y).\(m).\(d)",
+                                      "\(d)/\(m)/\(y)", "\(m)/\(d)/\(y)", "\(d).\(m).\(y)"])
+                }
+            case .AS:
+                tokens.insert(value)
+                if let n = Int(value.prefix(3)) { tokens.insert("\(n)\(value.suffix(1))") }
+            default:
+                tokens.insert(value)
+            }
+        }
+        var patterns: [NSRegularExpression] = []
+        let boundary = "[\\p{L}\\p{N}]"
+        // Longest first, so a whole name goes before its components.
+        for token in tokens.filter({ $0.count >= 2 }).sorted(by: { $0.count > $1.count }) {
+            let escaped = NSRegularExpression.escapedPattern(for: token)
+            if let re = try? NSRegularExpression(
+                pattern: "(?<!\(boundary))\(escaped)(?!\(boundary))", options: [.caseInsensitive]) {
+                patterns.append(re)
+            }
+        }
+        // Case-sensitive, and the name must be capitalised: "MR" and "MS" are modalities
+        // and diagnoses, not titles.
+        if let titles = try? NSRegularExpression(
+            pattern: "(?<!\(boundary))(?:Dr|Mr|Mrs|Ms|Miss|Prof)\\.?\\s+\\p{Lu}[\\p{L}'\\-]*") {
+            patterns.append(titles)
+        }
+        self.patterns = patterns
+    }
+
+    /// `text` with the identifying information removed.
+    func clean(_ text: String) -> String {
+        var out = text
+        for re in patterns {
+            out = re.stringByReplacingMatches(
+                in: out, range: NSRange(out.startIndex..., in: out), withTemplate: "")
+        }
+        guard out != text else { return text }
+        return out.replacingOccurrences(of: " {2,}", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+    }
 }

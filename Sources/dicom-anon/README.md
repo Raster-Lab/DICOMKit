@@ -126,7 +126,7 @@ Options (PS3.15 E.3) and the PS3.16 CID 7050 code each one records in (0012,0064
 |---|---|---|
 | (always) | Basic Application Level Confidentiality Profile | 113100 |
 | `--clean-pixel-data` (all profiles) | Clean Pixel Data Option; sets Burned In Annotation (0028,0301) to NO | 113101 |
-| `--clean-descriptors` | Clean Descriptors Option (the descriptors are kept as they are, **not** cleaned — review them) | 113105 |
+| `--clean-descriptors` | Clean Descriptors Option: descriptors are kept with every name component, identifier, address, age, UID and date the profile removes elsewhere (and a capitalised word after Dr/Mr/Mrs/Ms/Miss/Prof) taken out of their text (PS3.15 E.3.5) — review free text before release | 113105 |
 | `--retain-full-dates`, or the deprecated `--retain-dates` | Retain Longitudinal Temporal Information With Full Dates Option | 113106 |
 | `--retain-modified-dates --shift-dates N`, or the deprecated `--retain-dates --shift-dates N` | Retain Longitudinal Temporal Information With Modified Dates Option | 113107 |
 | `--retain-characteristics` | Retain Patient Characteristics Option | 113108 |
@@ -233,7 +233,11 @@ dicom-anon research.dcm --output anon_research.dcm \
 ## PS3.15 Annex E (2026a)
 
 `--profile ps315` implements the Basic Application Level Confidentiality Profile and the Options
-in the table above. Not yet recorded: Longitudinal Temporal Information Modified (0028,0303).
+in the table above. Longitudinal Temporal Information Modified (0028,0303) is recorded as REMOVED
+without a Retain Longitudinal Temporal Information Option (PS3.15 E.2), UNMODIFIED with Full Dates
+and MODIFIED with Modified Dates (E.3.6). With Modified Dates, DA values and the date part of DT
+values are shifted by `--shift-dates` days and TM values are kept (a whole-day shift keeps every
+interval).
 
 ## Exit Codes
 

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, de-identification, batch b4 (2026-10-01, DICOM 2026a)
+
+- **Clean Descriptors Option cleans** (D158; PS3.15 2026a E.3.5, Table E.1-1a "C"): a C attribute was kept
+  verbatim while 113105 was recorded. `ConfidentialityEngine` now removes from each kept text value every
+  value the profile removes or replaces elsewhere in the data set (name components and whole names,
+  identifiers, addresses, institution and device names, ages, UIDs, dates in YYYYMMDD and common display
+  forms), whole-word and case-insensitive, and a capitalised word after Dr / Mr / Mrs / Ms / Miss / Prof;
+  a C attribute of a non-text VR is made zero-length. dicom-anon `--clean-descriptors` help and README say so.
+- **Retain Longitudinal Temporal Information With Modified Dates modifies DT too** (D157; PS3.15 2026a E.3.6):
+  DA values and the date part of DT values are shifted by the whole-day offset (time and UTC offset kept); TM
+  values are kept (the time of day of a shifted date); Timezone Offset From UTC and the two OB timestamps get
+  their Basic Profile action. DT values and 3 other rows used to be zeroed. Date shifting uses a UTC Gregorian
+  calendar, so a daylight-saving change cannot move a date.
+- **Longitudinal Temporal Information Modified (0028,0303) is recorded** (D161; PS3.15 2026a E.2, E.3.6; PS3.3
+  Table C.7-1): REMOVED without a Retain Longitudinal Temporal Information Option, UNMODIFIED with Full Dates,
+  MODIFIED with Modified Dates.
+- **De-identification method record after pixel cleaning** (D160; PS3.15 2026a E.1.1; PS3.3 Table C.7-1): the
+  113100 Basic Profile Item is first in (0012,0064), before a 113101 Item recorded by `PixelRedactor`, and
+  (0012,0063) has one value per Item, so "Clean Pixel Data Option" is named there too.
+- **`Anonymizer.parseFlexibleTag` takes every PS3.6 keyword** (D163; PS3.6 2026a Table 6-1), exactly, instead
+  of 11 hard-coded ones (its lowercased lookup could never match). dicom-anon drops its own dictionary fallback.
+- **`--keep` exempts a tag from the legacy date shift and UID regeneration** (D164): `--keep StudyDate
+  --shift-dates N` no longer shifts Study Date.
+
 ### Fixed — deferred rows, UID batch (2026-10-01, DICOM 2026a)
 
 - **`UIDManager.regenerateData` remaps UIDs inside sequences and only the UIDs PS3.15 replaces** (D135, D138;

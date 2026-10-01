@@ -322,7 +322,11 @@ final class ConfidentialityProfileTests: XCTestCase {
                        for: Tag(group: 0x0012, element: 0x0064))
         var engine = ConfidentialityEngine()
         let (out, _) = engine.deidentify(ds)
-        XCTAssertEqual(methodCodes(in: out).map { $0.0 }, ["113101", "113100"])
+        // The profile's Item comes first; the earlier pass's 113101 follows and is named
+        // in (0012,0063) too (D160).
+        XCTAssertEqual(methodCodes(in: out).map { $0.0 }, ["113100", "113101"])
+        XCTAssertEqual(out[Tag(group: 0x0012, element: 0x0063)]?.stringValues,
+                       ["PS3.15 Basic Application Level Confidentiality Profile", "Clean Pixel Data Option"])
     }
 
     // MARK: - Coverage sanity
