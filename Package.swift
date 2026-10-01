@@ -417,6 +417,13 @@ let package = Package(
             dependencies: ["dicom-split", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-splitTests"
         ),
+        // dicom-anon: --profile ps315 and the PS3.15 2026a Annex E Option flags, the
+        // Table E.1-1a action labels and the recorded (0012,0062)/(0012,0064) attributes.
+        .testTarget(
+            name: "dicom-anonTests",
+            dependencies: ["dicom-anon", "DICOMKit", "DICOMCore", "DICOMDictionary"],
+            path: "Tests/dicom-anonTests"
+        ),
         .testTarget(
             name: "dicom-mergeTests",
             dependencies: ["dicom-merge", "DICOMKit", "DICOMCore", "DICOMDictionary"],

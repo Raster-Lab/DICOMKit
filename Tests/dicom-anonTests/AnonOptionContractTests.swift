@@ -1,0 +1,225 @@
+import XCTest
+import Foundation
+import DICOMCore
+import DICOMDictionary
+import DICOMKit
+@testable import dicom_anon
+
+/// `dicom-anon` option surface against DICOM 2026a. Option names are the PS3.15 2026a
+/// E.3 Option names, codes and meanings are PS3.16 2026a CID 7050 rows, and the action
+/// codes are PS3.15 2026a Table E.1-1a, all dumped from the DocBook by script.
+final class AnonOptionContractTests: XCTestCase {
+
+    private var help: String {
+        DICOMAnon.helpMessage(columns: 10_000).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    // MARK: - Help names the PS3.15 2026a Options
+
+    func testOptionFlagsNameThePS315Options() {
+        for name in [
+            "Retain Longitudinal Temporal Information With Full Dates Option",
+            "Retain Longitudinal Temporal Information With Modified Dates Option",
+            "Retain Patient Characteristics Option",
+            "Retain Device Identity Option",
+            "Retain Institution Identity Option",
+            "Retain UIDs Option",
+            "Clean Descriptors Option",
+            "Clean Pixel Data",
+        ] {
+            XCTAssertTrue(help.contains(name), "help lacks the PS3.15 E.3 Option name '\(name)'")
+        }
+    }
+
+    /// The legacy profiles are documented as not being the PS3.15 Basic Profile
+    /// (`--profile basic` matches 11 of the 647 data-set rows of Table E.1-1).
+    func testLegacyProfilesAreDocumentedAsNotPS315() {
+        XCTAssertTrue(help.contains("NOT the PS3.15 Basic Profile"))
+        XCTAssertTrue(help.contains("ps315 (PS3.15 Basic Application Level Confidentiality Profile, Table E.1-1)"))
+        XCTAssertNotNil(AnonCLI.legacyProfileNotice("basic"))
+        XCTAssertNotNil(AnonCLI.legacyProfileNotice("clinical-trial"))
+        XCTAssertNil(AnonCLI.legacyProfileNotice("ps315"))
+    }
+
+    // MARK: - Option validation
+
+    func testOptionFlagsAreRejectedOnLegacyProfiles() {
+        var flags = AnonCLI.PS315Flags()
+        flags.retainUids = true
+        XCTAssertThrowsError(try AnonCLI.validate(profile: "basic", flags: flags, shiftDates: nil,
+                                                  regenerateUids: false, keep: []))
+        XCTAssertNoThrow(try AnonCLI.validate(profile: "ps315", flags: flags, shiftDates: nil,
+                                              regenerateUids: false, keep: []))
+        XCTAssertNoThrow(try AnonCLI.validate(profile: "basic", flags: AnonCLI.PS315Flags(), shiftDates: 10,
+                                              regenerateUids: true, keep: ["Modality"]))
+    }
+
+    /// PS3.15 E.3.6: "Two mutually exclusive Options"; dates are modified by shifting.
+    func testLongitudinalTemporalOptionsAreMutuallyExclusive() {
+        var full = AnonCLI.PS315Flags(); full.retainFullDates = true
+        var modified = AnonCLI.PS315Flags(); modified.retainModifiedDates = true
+        var both = full; both.retainModifiedDates = true
+        XCTAssertThrowsError(try AnonCLI.validate(profile: "ps315", flags: both, shiftDates: 5, regenerateUids: false, keep: []))
+        XCTAssertThrowsError(try AnonCLI.validate(profile: "ps315", flags: full, shiftDates: 5, regenerateUids: false, keep: []))
+        XCTAssertThrowsError(try AnonCLI.validate(profile: "ps315", flags: modified, shiftDates: nil, regenerateUids: false, keep: []))
+        // --shift-dates was silently ignored without a retention Option; now refused.
+        XCTAssertThrowsError(try AnonCLI.validate(profile: "ps315", flags: AnonCLI.PS315Flags(), shiftDates: 5, regenerateUids: false, keep: []))
+        XCTAssertNoThrow(try AnonCLI.validate(profile: "ps315", flags: modified, shiftDates: 5, regenerateUids: false, keep: []))
+        XCTAssertNoThrow(try AnonCLI.validate(profile: "ps315", flags: full, shiftDates: nil, regenerateUids: false, keep: []))
+    }
+
+    func testKeepAndRetainUIDConflictsAreRefusedOnPS315() {
+        var uids = AnonCLI.PS315Flags(); uids.retainUids = true
+        XCTAssertThrowsError(try AnonCLI.validate(profile: "ps315", flags: uids, shiftDates: nil, regenerateUids: true, keep: []))
+        XCTAssertThrowsError(try AnonCLI.validate(profile: "ps315", flags: AnonCLI.PS315Flags(), shiftDates: nil,
+                                                  regenerateUids: false, keep: ["StudyDate"]))
+    }
+
+    /// Each flag selects the CID 7050 code of its Option (PS3.16 2026a CID 7050 rows).
+    func testFlagsRecordTheirCID7050Codes() {
+        func codes(_ f: (inout AnonCLI.PS315Flags) -> Void, shift: Int? = nil) -> [String] {
+            var flags = AnonCLI.PS315Flags(); f(&flags)
+            return AnonCLI.options(flags: flags, shiftDates: shift).methodCodes.map { "\($0.codeValue) \($0.meaning)" }
+        }
+        XCTAssertEqual(codes({ _ in }), ["113100 Basic Application Confidentiality Profile"])
+        XCTAssertEqual(codes({ $0.retainFullDates = true }),
+                       ["113100 Basic Application Confidentiality Profile",
+                        "113106 Retain Longitudinal Temporal Information Full Dates Option"])
+        XCTAssertEqual(codes({ $0.retainModifiedDates = true }, shift: -30),
+                       ["113100 Basic Application Confidentiality Profile",
+                        "113107 Retain Longitudinal Temporal Information Modified Dates Option"])
+        XCTAssertEqual(codes({ $0.retainCharacteristics = true }).last, "113108 Retain Patient Characteristics Option")
+        XCTAssertEqual(codes({ $0.retainDevice = true }).last, "113109 Retain Device Identity Option")
+        XCTAssertEqual(codes({ $0.retainUids = true }).last, "113110 Retain UIDs Option")
+        XCTAssertEqual(codes({ $0.retainInstitution = true }).last, "113112 Retain Institution Identity Option")
+        XCTAssertEqual(codes({ $0.cleanDescriptors = true }).last, "113105 Clean Descriptors Option")
+    }
+
+    // MARK: - Tag parsing
+
+    func testRemoveAndReplaceAcceptPS6Keywords() {
+        XCTAssertEqual(AnonCLI.parseTag("PatientAge"), Tag(group: 0x0010, element: 0x1010))
+        XCTAssertEqual(AnonCLI.parseTag("InstitutionName"), Tag(group: 0x0008, element: 0x0080))
+        XCTAssertEqual(AnonCLI.parseTag("0010,0010"), .patientName)
+        XCTAssertEqual(AnonCLI.parseTag("(0008,0060)"), .modality)
+        XCTAssertNil(AnonCLI.parseTag("NoSuchKeyword"))
+    }
+
+    // MARK: - Output: action labels and recorded attributes
+
+    private func fixture() -> DataSet {
+        var ds = DataSet()
+        ds.setString("1.2.840.10008.5.1.4.1.1.7", for: .sopClassUID, vr: .UI)
+        ds.setString("1.2.3.4.5.6.7.8.9", for: .sopInstanceUID, vr: .UI)
+        ds.setString("1.2.3.4.5.100", for: .studyInstanceUID, vr: .UI)
+        ds.setString("1.2.3.4.5.200", for: .seriesInstanceUID, vr: .UI)
+        ds.setString("OT", for: .modality, vr: .CS)
+        ds.setString("Doe^John", for: .patientName, vr: .PN)
+        ds.setString("MRN-1", for: .patientID, vr: .LO)
+        ds.setString("20240315", for: .studyDate, vr: .DA)
+        ds.setString("General Hospital", for: .institutionName, vr: .LO)
+        ds.setString("NO", for: .burnedInAnnotation, vr: .CS)
+        ds.setString("CREATOR", for: Tag(group: 0x0009, element: 0x0010), vr: .LO)
+        ds.setString("secret", for: Tag(group: 0x0009, element: 0x1001), vr: .LO)
+        return ds
+    }
+
+    /// Table E.1-1 Basic Profile: Patient's Name Z, Patient ID Z, Study Date Z,
+    /// SOP Instance UID U, Institution Name X/Z/D (removed), private attributes X.
+    func testActionsAreLabelledWithTableE11aCodesAndPS6Names() {
+        let source = fixture()
+        let file = DICOMFile.create(dataSet: source, sopClassUID: "1.2.840.10008.5.1.4.1.1.7")
+        let (out, _, _) = Anonymizer(profile: .basic).deidentify(file: file, options: .basic)
+        let actions = AnonCLI.attributeActions(before: source, after: out.dataSet, options: .basic)
+        let byTag = Dictionary(uniqueKeysWithValues: actions.map { ($0.tag, $0) })
+        XCTAssertEqual(byTag[.patientName], .init(tag: .patientName, code: "Z", name: "Patient's Name"))
+        XCTAssertEqual(byTag[.patientID]?.code, "Z")
+        XCTAssertEqual(byTag[.studyDate]?.code, "Z")
+        XCTAssertEqual(byTag[.sopInstanceUID], .init(tag: .sopInstanceUID, code: "U", name: "SOP Instance UID"))
+        XCTAssertEqual(byTag[.institutionName]?.code, "X")
+        XCTAssertEqual(byTag[Tag(group: 0x0009, element: 0x1001)]?.code, "X")
+        XCTAssertEqual(byTag[Tag(group: 0x0009, element: 0x1001)]?.name, "Private Data Element")
+        XCTAssertEqual(byTag[Tag(group: 0x0012, element: 0x0062)],
+                       .init(tag: Tag(group: 0x0012, element: 0x0062), code: "recorded", name: "Patient Identity Removed"))
+        XCTAssertNil(byTag[.modality], "unchanged attributes are not listed")
+        let lines = AnonCLI.actionLines(path: "f.dcm", actions: actions)
+        XCTAssertTrue(lines.contains("  Z        (0010,0010) Patient's Name\n"))
+        XCTAssertTrue(lines.contains("PS3.15 Table E.1-1a"))
+    }
+
+    /// Modified Dates: the Table E.1-1 column is C; a shifted date is labelled C.
+    func testShiftedDateIsLabelledClean() {
+        let source = fixture()
+        var flags = AnonCLI.PS315Flags(); flags.retainModifiedDates = true
+        let options = AnonCLI.options(flags: flags, shiftDates: 10)
+        let (out, _, _) = Anonymizer(profile: .basic).deidentify(
+            file: DICOMFile.create(dataSet: source, sopClassUID: "1.2.840.10008.5.1.4.1.1.7"), options: options)
+        XCTAssertEqual(out.dataSet.string(for: .studyDate), "20240325")
+        let actions = AnonCLI.attributeActions(before: source, after: out.dataSet, options: options)
+        XCTAssertEqual(actions.first { $0.tag == .studyDate }?.code, "C")
+    }
+
+    func testAuditLogListsCodesAndNamesWithoutValues() {
+        let actions = [AnonCLI.AttributeAction(tag: .patientName, code: "Z", name: "Patient's Name")]
+        let text = AnonCLI.auditLogText(profileDescription: ["Basic Application Confidentiality Profile"],
+                                        files: [("a.dcm", actions)], generated: Date(timeIntervalSince1970: 0))
+        XCTAssertTrue(text.contains("Method: Basic Application Confidentiality Profile\n"))
+        XCTAssertTrue(text.contains("] a.dcm - Z - (0010,0010) Patient's Name\n"))
+        XCTAssertFalse(text.contains("Doe"))
+    }
+
+    // MARK: - End to end
+
+    private func run(_ args: [String]) throws {
+        var command = try XCTUnwrap(DICOMAnon.parseAsRoot(args) as? DICOMAnon)
+        try command.run()
+    }
+
+    /// --profile ps315 writes (0012,0062) YES and the CID 7050 codes, and now applies
+    /// --remove / --replace (they were silently ignored on this path).
+    func testPS315WritesMethodAttributesAndAppliesRemoveReplace() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("anon-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let input = dir.appendingPathComponent("in.dcm"), output = dir.appendingPathComponent("out.dcm")
+        let log = dir.appendingPathComponent("audit.log")
+        try DICOMFile.create(dataSet: fixture(), sopClassUID: "1.2.840.10008.5.1.4.1.1.7").write().write(to: input)
+
+        try run([input.path, "-o", output.path, "--profile", "ps315", "--retain-uids",
+                 "--remove", "Modality", "--replace", "PatientID=SUBJ01", "--audit-log", log.path])
+        let ds = try DICOMFile.read(from: Data(contentsOf: output)).dataSet
+        XCTAssertEqual(ds.string(for: Tag(group: 0x0012, element: 0x0062)), "YES")
+        let codes = (ds.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []).compactMap {
+            $0.string(for: .codeValue)?.trimmingCharacters(in: .whitespaces)
+        }
+        XCTAssertEqual(codes, ["113100", "113110"])
+        XCTAssertNil(ds[.modality])
+        XCTAssertEqual(ds.string(for: .patientID)?.trimmingCharacters(in: .whitespaces), "SUBJ01")
+        XCTAssertEqual(ds.string(for: .sopInstanceUID)?.trimmingCharacters(in: CharacterSet(charactersIn: " \0")),
+                       "1.2.3.4.5.6.7.8.9", "Retain UIDs Option keeps UIDs")
+        let audit = try String(contentsOf: log, encoding: .utf8)
+        XCTAssertTrue(audit.contains(" - Z - (0010,0010) Patient's Name\n"))
+        XCTAssertTrue(audit.contains("Method: Basic Application Confidentiality Profile; Retain UIDs Option\n"))
+    }
+}
+
+extension AnonOptionContractTests {
+    /// PS3.10 7.1 / Table E.1-1 (0002,0003) U: the meta header carries the replaced UID.
+    func testMediaStorageSOPInstanceUIDFollowsReplacedSOPInstanceUID() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("anon-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let input = dir.appendingPathComponent("in.dcm"), output = dir.appendingPathComponent("out.dcm")
+        var ds = DataSet()
+        ds.setString("1.2.3.4.5.6.7.8.9", for: .sopInstanceUID, vr: .UI)
+        ds.setString("OT", for: .modality, vr: .CS)
+        try DICOMFile.create(dataSet: ds, sopClassUID: "1.2.840.10008.5.1.4.1.1.7").write().write(to: input)
+        var command = try XCTUnwrap(DICOMAnon.parseAsRoot([input.path, "-o", output.path, "--profile", "ps315"]) as? DICOMAnon)
+        try command.run()
+        let file = try DICOMFile.read(from: Data(contentsOf: output))
+        let trim = CharacterSet(charactersIn: " \0")
+        let sop = try XCTUnwrap(file.dataSet.string(for: .sopInstanceUID)?.trimmingCharacters(in: trim))
+        XCTAssertNotEqual(sop, "1.2.3.4.5.6.7.8.9")
+        XCTAssertEqual(file.fileMetaInformation.string(for: .mediaStorageSOPInstanceUID)?.trimmingCharacters(in: trim), sop)
+    }
+}

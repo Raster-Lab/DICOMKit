@@ -5,10 +5,14 @@ A command-line tool for anonymizing DICOM files to protect patient privacy.
 ## Features
 
 - **Multiple Anonymization Profiles**:
-  - **Basic Profile**: Removes patient name, ID, birth date, address, phone numbers, and institution information
-  - **Clinical Trial Profile**: Basic profile plus date shifting for all study dates
-  - **Research Profile**: Minimal anonymization retaining clinical data while removing direct identifiers
-  - **Custom Profile**: User-defined tag removal and replacement
+  - **`ps315`**: the PS3.15 Basic Application Level Confidentiality Profile (every row of
+    PS3.15 Table E.1-1) with the Options selected by the `--retain-*` / `--clean-*` flags;
+    records Patient Identity Removed (0012,0062), De-identification Method (0012,0063) and
+    De-identification Method Code Sequence (0012,0064)
+  - **`basic`, `clinical-trial`, `research`** (legacy, the default is `basic`): fixed attribute
+    lists, **not** the PS3.15 Basic Profile and not any PS3.15 Profile + Options set; they record
+    no (0012,0062)
+  - **Custom**: User-defined tag removal and replacement
 
 - **Anonymization Actions**:
   - Remove tags entirely
@@ -106,16 +110,48 @@ dicom-anon file.dcm --output anon.dcm --profile basic --force
 
 ## Anonymization Profiles
 
-### Basic Profile
+### `ps315` — PS3.15 Basic Application Level Confidentiality Profile
 
+Applies the Basic Profile action (D, Z, X, K, C, U) of every row of PS3.15 Table E.1-1, removes
+private attributes, curve data and overlay data/comments, and replaces UIDs consistently. The
+Options (PS3.15 E.3) and the PS3.16 CID 7050 code each one records in (0012,0064):
+
+| Flag | PS3.15 E.3 Option | CID 7050 |
+|---|---|---|
+| (always) | Basic Application Level Confidentiality Profile | 113100 |
+| `--clean-pixel-data` (all profiles) | Clean Pixel Data Option; sets Burned In Annotation (0028,0301) to NO | 113101 |
+| `--clean-descriptors` | Clean Descriptors Option (the descriptors are kept as they are, **not** cleaned — review them) | 113105 |
+| `--retain-full-dates`, or `--retain-dates` | Retain Longitudinal Temporal Information With Full Dates Option | 113106 |
+| `--retain-modified-dates --shift-dates N`, or `--retain-dates --shift-dates N` | Retain Longitudinal Temporal Information With Modified Dates Option | 113107 |
+| `--retain-characteristics` | Retain Patient Characteristics Option | 113108 |
+| `--retain-device` | Retain Device Identity Option | 113109 |
+| `--retain-uids` | Retain UIDs Option | 113110 |
+| `--retain-institution` | Retain Institution Identity Option | 113112 |
+
+Not offered: Clean Recognizable Visual Features (113102), Clean Graphics (113103), Clean
+Structured Content (113104), Retain Safe Private (113111). The two Retain Longitudinal Temporal
+Information Options are mutually exclusive (E.3.6). The Option flags act only on `--profile
+ps315` (they are refused with the legacy profiles), as do `--allow-burned-in-phi`; `--keep` is
+refused with `ps315`. `--remove` and `--replace` are applied after the Profile.
+
+`--dry-run` and `--verbose` list each changed attribute with its PS3.6 name and the PS3.15
+Table E.1-1a code; `--audit-log` writes the same list (without values).
+
+```bash
+dicom-anon file.dcm --output anon.dcm --profile ps315 --retain-modified-dates --shift-dates -100
+```
+
+### Basic Profile (legacy `basic`)
+
+Not the PS3.15 Basic Profile: of the 647 data-set rows of PS3.15 Table E.1-1 it handles 11.
 Removes or replaces:
 - Patient Name → "ANONYMOUS"
 - Patient ID → Hashed value
-- Patient Birth Date → Removed
-- Patient Address, Phone → Removed
-- Referring/Performing Physician Names → Removed
+- Patient Birth Date, Patient Birth Time → Removed
+- Other Patient IDs, Other Patient Names, Patient Comments → Removed
+- Referring Physician's Name, Performing Physician's Name, Operators' Name → Removed
 - Institution Name/Address → Removed
-- Device Serial Number → Removed
+- Station Name, Device Serial Number → Removed
 
 ### Clinical Trial Profile
 
@@ -130,8 +166,7 @@ Minimal anonymization:
 - Patient Name → "ANONYMOUS"
 - Patient ID → Hashed value
 - Patient Birth Date → Removed
-- Patient Address, Phone → Removed
-- Retains all clinical and study metadata
+- Retains everything else
 
 ## Examples
 
@@ -174,11 +209,11 @@ dicom-anon research.dcm --output anon_research.dcm \
 
 ## Security Considerations
 
-1. **PHI Removal**: The tool removes Protected Health Information (PHI) according to HIPAA guidelines and DICOM Supplement 142 (Attribute Confidentiality Profiles)
+1. **PHI Removal**: With `--profile ps315` the tool applies PS3.15 Annex E (which incorporates Supplement 142); the legacy profiles remove only their fixed attribute lists
 
 2. **Private Tags**: Private tags are scanned for potential PHI and warnings are generated
 
-3. **Burned-in Text**: The tool cannot detect or remove burned-in annotations in pixel data. Use caution with images containing burned-in patient information.
+3. **Burned-in Text**: Without `--clean-pixel-data` burned-in annotations in pixel data are not removed. With `--profile ps315`, a file whose Burned In Annotation (0028,0301) is YES or that has overlay planes is refused unless `--clean-pixel-data` or `--allow-burned-in-phi` is given.
 
 4. **Audit Trail**: Always use `--audit-log` for compliance and tracking
 
@@ -187,12 +222,10 @@ dicom-anon research.dcm --output anon_research.dcm \
    dicom-info anon.dcm --detailed
    ```
 
-## DICOM Supplement 142 Compliance
+## PS3.15 Annex E (2026a)
 
-This tool follows DICOM Supplement 142 - Attribute Confidentiality Profiles for:
-- Basic Application Level Confidentiality Profile
-- Clean Pixel Data Option
-- Retain Longitudinal Temporal Information with Modified Dates Option
+`--profile ps315` implements the Basic Application Level Confidentiality Profile and the Options
+in the table above. Not yet recorded: Longitudinal Temporal Information Modified (0028,0303).
 
 ## Exit Codes
 
@@ -207,8 +240,8 @@ This tool follows DICOM Supplement 142 - Attribute Confidentiality Profiles for:
 
 ## Limitations
 
-1. Cannot detect or remove burned-in text in pixel data
-2. Does not modify private tags automatically (generates warnings)
+1. Burned-in text is removed only with `--clean-pixel-data` (region chosen automatically or by `--redact-region`)
+2. Legacy profiles do not remove private tags (they generate warnings); `ps315` removes them
 3. Sequence anonymization follows main dataset rules
 4. Compressed transfer syntaxes are preserved without modification
 

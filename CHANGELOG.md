@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-anon verified against DICOM 2026a (2026-10-01)
+
+- **dicom-anon** `--profile ps315` (PS3.15 Basic Application Level Confidentiality Profile) now applies
+  `--remove` / `--replace` (they were silently ignored on that path), writes a per-attribute `--audit-log`
+  (the log held only its header), and writes Media Storage SOP Instance UID (0002,0003) equal to the replaced
+  SOP Instance UID (0008,0018) (PS3.10 7.1; the original UID stayed in the meta header, all profiles).
+  `--dry-run` / `--verbose` list each changed attribute with its PS3.6 name and PS3.15 Table E.1-1a code.
+  New `--retain-full-dates` and `--retain-modified-dates` name the two Retain Longitudinal Temporal
+  Information Options (E.3.6); conflicting or ignored combinations are refused (exit 1): the Option flags
+  with a legacy profile, `--shift-dates` on ps315 without a dates Option, Full with Modified Dates,
+  `--regenerate-uids` with `--retain-uids`, `--keep` on ps315. `--remove` / `--replace` / `--keep` accept
+  any PS3.6 keyword (only 11 were recognised). Help, README and a stderr note state that the legacy
+  `basic`, `clinical-trial` and `research` profiles are not PS3.15 (basic matches 11 of 647 Table E.1-1
+  data-set rows) and that `--clean-descriptors` keeps descriptors uncleaned. New test target `dicom-anonTests`.
+
 ### Fixed — dicom-dump, dicom-info, dicom-tags verified against DICOM 2026a (2026-10-01)
 
 - **dicom-tags** `--set` now writes the PS3.6 dictionary VR and refuses, before anything is
