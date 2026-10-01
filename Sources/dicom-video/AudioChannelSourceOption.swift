@@ -1,15 +1,17 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — the 6 keywords are the 6 rows of PS3.16 2026a CID 3000 (Audio Channel Source, Type: Extensible) with their exact Code Value / Coding Scheme Designator / Code Meaning, generated from the DocBook by script; the value is written as the single Item of Channel Source Sequence (003A,0208), Type 1, in each Multiplexed Audio Channels Description Code Sequence (003A,0300) Item (PS3.3 2026a Table C.7-13, Cine Module); Code Meaning is Type 1 in the Code Sequence Macro (PS3.3 Table 8.8-1), so a bare SCHEME:VALUE is accepted only for a listed code
+// NEMA-verified: 2026a, checked 2026-10-01 — the 6 keywords are the 6 rows of PS3.16 2026a CID 3000 (Audio Channel Source, Type: Extensible) with their exact Code Value / Coding Scheme Designator / Code Meaning, generated from the DocBook by script; one value per audio track (repeatable, P-AUDIO-SOURCE-PER-TRACK), or one for all; each is written as the single Item of Channel Source Sequence (003A,0208), Type 1, in each Multiplexed Audio Channels Description Code Sequence (003A,0300) Item (PS3.3 2026a Table C.7-13, Cine Module); Code Meaning is Type 1 in the Code Sequence Macro (PS3.3 Table 8.8-1), so a bare SCHEME:VALUE is accepted only for a listed code
 
 import Foundation
 import DICOMKit
 import DICOMCore
 
-/// The `--audio-channel-source` value of `convert` and `batch` (D56).
+/// The `--audio-channel-source` values of `convert` and `batch` (D56).
 ///
 /// No container records what the multiplexed audio is, so the caller names it.
-/// The engine (`VideoWorkflow.Metadata.audioChannelSource`) then writes one
-/// (003A,0300) Item per audio track with this code as its Channel Source
-/// Sequence (003A,0208); without it the sequence stays empty, as before.
+/// The engine then writes one (003A,0300) Item per audio track with the code as
+/// its Channel Source Sequence (003A,0208): one value is the source of every
+/// track (`VideoWorkflow.Metadata.audioChannelSource`); repeated values are one
+/// per track in container order (`audioChannelSources`, P-AUDIO-SOURCE-PER-TRACK).
+/// Without it the sequence stays empty, as before.
 enum AudioChannelSourceOption {
     static let optionName = "--audio-channel-source"
 
@@ -28,11 +30,13 @@ enum AudioChannelSourceOption {
 
     static var help: String {
         """
-        Source of the multiplexed audio (PS3.16 CID 3000), applied to every audio track: \
-        a keyword or SCHEME:VALUE[:MEANING] (the CID is Extensible; MEANING is required for \
-        a code that is not listed). It is written as the Channel Source Sequence (003A,0208) of \
-        each Multiplexed Audio Channels Description Code Sequence (003A,0300) Item (PS3.3 \
-        Table C.7-13); without it that sequence has no Items. Keywords: \(keywordList)
+        Source of the multiplexed audio (PS3.16 CID 3000): a keyword or SCHEME:VALUE[:MEANING] \
+        (the CID is Extensible; MEANING is required for a code that is not listed). Given once, it \
+        applies to every audio track; repeated, it gives one source per audio track in container \
+        order, and a count that does not match the tracks exits 1. It is written as the Channel \
+        Source Sequence (003A,0208) of each Multiplexed Audio Channels Description Code Sequence \
+        (003A,0300) Item (PS3.3 Table C.7-13: one Item per channel, each with its own source); \
+        without it that sequence has no Items. Keywords: \(keywordList)
         """
     }
 

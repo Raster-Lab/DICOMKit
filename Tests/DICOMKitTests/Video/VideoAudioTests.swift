@@ -1100,4 +1100,82 @@ final class VideoAudioTests: XCTestCase {
         XCTAssertEqual(result.audioTrackCount, 2)
         XCTAssertEqual(result.audioTracks, [.unidentified, .unidentified])
     }
+
+    // MARK: - Per-track Channel Source (P-AUDIO-SOURCE-PER-TRACK, PS3.3 2026a Table C.7-13)
+
+    private func plan(tracks: [VideoAudioTrack]) -> VideoWorkflow.ConversionPlan {
+        let stream = VideoStreamInfo(
+            codec: .h264, width: 1920, height: 1080, profileIDC: 100, levelTimesTen: 41,
+            chromaFormat: .yuv420, bitDepthLuma: 8, bitDepthChroma: 8, frameRate: 30, isProgressive: true)
+        let probe = VideoProbeResult(
+            container: .mp4, stream: stream, frameCount: 1, frameCountSource: .sampleTable,
+            audioTracks: tracks, suggestedTransferSyntax: nil, frameRate: 30)
+        return VideoWorkflow.ConversionPlan(probe: probe, transferSyntax: .mpeg4AVCHP41, bitstream: Data())
+    }
+
+    /// One (003A,0300) Item per channel, each with its own (003A,0208).
+    func test_channels_takeOneSourcePerTrack() {
+        let stereo = VideoAudioTrack(format: .aac, codecTag: "x", channelCount: 2)
+        let mono = VideoAudioTrack(format: .mp3, codecTag: "x", channelCount: 1)
+        XCTAssertEqual(VideoAudioChannel.channels(describing: [stereo, mono], sources: [.voice, .dopplerAudio]), [
+            VideoAudioChannel(channelIdentificationCode: 1, mode: .stereo, source: .voice),
+            VideoAudioChannel(channelIdentificationCode: 2, mode: .mono, source: .dopplerAudio),
+        ])
+        XCTAssertNil(VideoAudioChannel.channels(describing: [stereo, mono], sources: [.voice]))
+        XCTAssertNil(VideoAudioChannel.channels(describing: [stereo], sources: [.voice, .voice]))
+    }
+
+    func test_workflow_perTrackSources_withAndWithoutDefault() throws {
+        let stereo = VideoAudioTrack(format: .aac, codecTag: "x", channelCount: 2)
+        let mono = VideoAudioTrack(format: .mp3, codecTag: "x", channelCount: 1)
+        let twoTracks = plan(tracks: [stereo, mono])
+
+        let both = VideoWorkflow.Metadata(audioChannelSources: [.phonocardiogram, .operatorsNarrative])
+        XCTAssertEqual(VideoWorkflow.audioChannels(for: twoTracks, metadata: both)?.map(\.source),
+                       [.phonocardiogram, .operatorsNarrative])
+        XCTAssertNoThrow(try VideoWorkflow.validateAudioChannelSources(for: twoTracks, metadata: both))
+
+        // The single value stays the default for the tracks the list does not reach.
+        let partial = VideoWorkflow.Metadata(audioChannelSource: .voice, audioChannelSources: [.dopplerAudio])
+        XCTAssertEqual(VideoWorkflow.audioChannels(for: twoTracks, metadata: partial)?.map(\.source),
+                       [.dopplerAudio, .voice])
+        XCTAssertNoThrow(try VideoWorkflow.validateAudioChannelSources(for: twoTracks, metadata: partial))
+
+        // Fewer with no default, or more than there are tracks: refused, exit 1.
+        let short = VideoWorkflow.Metadata(audioChannelSources: [.dopplerAudio])
+        XCTAssertNil(VideoWorkflow.audioChannels(for: twoTracks, metadata: short))
+        let tooMany = VideoWorkflow.Metadata(audioChannelSources: [.voice, .voice, .voice])
+        XCTAssertNil(VideoWorkflow.audioChannels(for: twoTracks, metadata: tooMany))
+        for metadata in [short, tooMany] {
+            XCTAssertThrowsError(try VideoWorkflow.validateAudioChannelSources(for: twoTracks, metadata: metadata)) {
+                guard case let .inputError(message)? = $0 as? VideoWorkflow.Failure else { return XCTFail("\($0)") }
+                XCTAssertTrue(message.contains("(003A,0208)"), message)
+                XCTAssertEqual(($0 as? VideoWorkflow.Failure)?.exitCode, .inputError)
+            }
+        }
+        XCTAssertThrowsError(try VideoWorkflow.validateAudioChannelSources(
+            for: plan(tracks: []), metadata: VideoWorkflow.Metadata(audioChannelSources: [.voice, .voice])))
+
+        // Unchanged: the single source alone describes every track.
+        let single = VideoWorkflow.Metadata(audioChannelSource: .voice)
+        XCTAssertEqual(VideoWorkflow.audioChannels(for: twoTracks, metadata: single)?.map(\.source), [.voice, .voice])
+        XCTAssertNoThrow(try VideoWorkflow.validateAudioChannelSources(for: plan(tracks: []), metadata: single))
+    }
+
+    /// convert refuses a per-track list that does not fit the input (one AAC track).
+    func test_convert_refusesTooManyPerTrackSources() throws {
+        let input = mp4(audioEntry: aacEntry(rate: 48000, dsi: Self.ascLC48Stereo))
+        XCTAssertThrowsError(try VideoWorkflow.convert(
+            bitstream: input, type: .endoscopic, typeWasExplicit: true,
+            metadata: VideoWorkflow.Metadata(audioChannelSources: [.voice, .dopplerAudio]))) {
+            XCTAssertEqual(($0 as? VideoWorkflow.Failure)?.exitCode, .inputError, "\($0)")
+        }
+        let outcome = try VideoWorkflow.convert(
+            bitstream: input, type: .endoscopic, typeWasExplicit: true,
+            metadata: VideoWorkflow.Metadata(audioChannelSources: [.dopplerAudio]))
+        let items = try XCTUnwrap(outcome.video?.toDataSet()[Tag(group: 0x003A, element: 0x0300)]?.sequenceItems)
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(try VideoParser.parse(from: try XCTUnwrap(outcome.video).toDataSet()).multiplexedAudioChannels,
+                       [VideoAudioChannel(channelIdentificationCode: 1, mode: .stereo, source: .dopplerAudio)])
+    }
 }

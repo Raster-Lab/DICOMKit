@@ -741,7 +741,18 @@ extension VideoAudioChannel {
         describing tracks: [VideoAudioTrack],
         source: Source
     ) -> [VideoAudioChannel]? {
-        guard !tracks.isEmpty, tracks.count <= 9 else { return nil }
+        channels(describing: tracks, sources: Array(repeating: source, count: tracks.count))
+    }
+
+    /// The (003A,0300) Items with one Channel Source per track, in container order
+    /// (P-AUDIO-SOURCE-PER-TRACK): PS3.3 2026a Table C.7-13 gives every Item its own
+    /// Channel Source Sequence (003A,0208). Nil when `sources` does not hold exactly
+    /// one source per track, or for the reasons of ``channels(describing:source:)``.
+    public static func channels(
+        describing tracks: [VideoAudioTrack],
+        sources: [Source]
+    ) -> [VideoAudioChannel]? {
+        guard !tracks.isEmpty, tracks.count <= 9, sources.count == tracks.count else { return nil }
         var channels: [VideoAudioChannel] = []
         for (index, track) in tracks.enumerated() {
             guard !track.isDualMono, let count = track.channelCount else { return nil }
@@ -752,7 +763,7 @@ extension VideoAudioChannel {
             default: return nil
             }
             channels.append(VideoAudioChannel(
-                channelIdentificationCode: index + 1, mode: mode, source: source))
+                channelIdentificationCode: index + 1, mode: mode, source: sources[index]))
         }
         return channels
     }

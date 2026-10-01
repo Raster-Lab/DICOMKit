@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — input/output contract of all 42 option/flag/argument declarations (4 subcommands) by script: --transfer-syntax accepts the 16 MPEG2/MPEG-4 AVC/HEVC UIDs of PS3.6 2026a Table A-1 plus the 2 unregistered Fragmentable HEVC UIDs (warned, OptionConformance.swift); --type selects the 3 Video IODs of PS3.3 A.32.5-A.32.7 (Modality ES/GM/XC, SOP Class names per Table A-1); --modality/--patient-sex/--patient-birth-date values the IOD forbids are warned (A.32.x.4.1, Table C.7-1, DA); help text is VideoConsole.Help (16 names vs PS3.6 Table 6-1); --audio-channel-source per PS3.16 CID 3000 (AudioChannelSourceOption.swift, 6 rows) into Table C.7-13 (003A,0300)
+// NEMA-verified: 2026a, checked 2026-10-01 — input/output contract of all 42 option/flag/argument declarations (4 subcommands) by script: --transfer-syntax accepts the 16 MPEG2/MPEG-4 AVC/HEVC UIDs of PS3.6 2026a Table A-1 while the 2 unregistered Fragmentable HEVC UIDs DICOMCore accepts are refused with exit 1 (OptionConformance.swift, P-VIDEO-TS-REGISTERED); --type selects the 3 Video IODs of PS3.3 A.32.5-A.32.7 (Modality ES/GM/XC, SOP Class names per Table A-1); --modality/--patient-sex/--patient-birth-date values the IOD forbids are refused with exit 1 (A.32.x.4.1, Table C.7-1, DA; P-VIDEO-MODALITY-ENUMERATED, P-VIDEO-SEX-ENUMERATED); help text is VideoConsole.Help (16 names vs PS3.6 Table 6-1); --audio-channel-source per PS3.16 CID 3000 (AudioChannelSourceOption.swift, 6 rows) into Table C.7-13 (003A,0300), repeatable once per audio track (P-AUDIO-SOURCE-PER-TRACK)
 
 import Foundation
 import ArgumentParser
@@ -95,10 +95,10 @@ struct MetadataOptions: ParsableArguments {
     @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.patientID))
     var patientID: String?
 
-    @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.patientBirthDate))
+    @Option(name: .long, help: .init(stringLiteral: VideoOptionConformance.patientBirthDateHelp))
     var patientBirthDate: String?
 
-    @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.patientSex))
+    @Option(name: .long, help: .init(stringLiteral: VideoOptionConformance.patientSexHelp))
     var patientSex: String?
 
     @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.studyUID))
@@ -119,7 +119,7 @@ struct MetadataOptions: ParsableArguments {
     @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.seriesDescription))
     var seriesDescription: String?
 
-    @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.modality))
+    @Option(name: .long, help: .init(stringLiteral: VideoOptionConformance.modalityHelp))
     var modality: String?
 
     @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
@@ -132,11 +132,12 @@ struct MetadataOptions: ParsableArguments {
     var institutionName: String?
 
     /// PS3.16 CID 3000 keyword or SCHEME:VALUE[:MEANING]; see
-    /// `AudioChannelSourceOption` (D56). One value for every audio track, which
-    /// is what `VideoWorkflow.Metadata.audioChannelSource` takes.
+    /// `AudioChannelSourceOption` (D56). Once: the source of every audio track
+    /// (`VideoWorkflow.Metadata.audioChannelSource`); repeated: one per audio
+    /// track in container order (`audioChannelSources`, P-AUDIO-SOURCE-PER-TRACK).
     @Option(name: .customLong("audio-channel-source"),
             help: .init(stringLiteral: AudioChannelSourceOption.help))
-    var audioChannelSource: String?
+    var audioChannelSource: [String] = []
 
     /// The shared metadata value the engine takes, with `--modality` and
     /// `--audio-channel-source` validated.
@@ -149,8 +150,11 @@ struct MetadataOptions: ParsableArguments {
         if let resolved = try ModalityOptionValidator.resolve(modality, strict: strictModality) {
             metadata.modality = resolved
         }
-        if let audioChannelSource {
-            metadata.audioChannelSource = try AudioChannelSourceOption.parse(audioChannelSource)
+        let sources = try audioChannelSource.map(AudioChannelSourceOption.parse)
+        if sources.count == 1 {
+            metadata.audioChannelSource = sources[0]
+        } else if sources.count > 1 {
+            metadata.audioChannelSources = sources
         }
         return metadata
     }
@@ -197,7 +201,7 @@ extension DICOMVideo {
         @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.type))
         var type: VideoConsole.TypeArgument?
 
-        @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.transferSyntax))
+        @Option(name: .long, help: .init(stringLiteral: VideoOptionConformance.transferSyntaxHelp))
         var transferSyntax: String?
 
         @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.frameRate))
@@ -234,10 +238,13 @@ extension DICOMVideo {
             // default is announced by the engine rather than applied silently.
             let resolvedType = type ?? .endoscopic
             let sharedMetadata = try metadata.validatedShared()
-            // Values the engine accepts but the IOD does not (OptionConformance.swift).
-            for line in VideoOptionConformance.warnings(
-                type: resolvedType, metadata: sharedMetadata, transferSyntax: transferSyntax) {
-                printError(line)
+            // Values the engine accepts but the IOD does not are refused
+            // (OptionConformance.swift; exit 1, nothing written).
+            let refusals = VideoOptionConformance.violations(
+                type: resolvedType, metadata: sharedMetadata, transferSyntax: transferSyntax)
+            if !refusals.isEmpty {
+                refusals.forEach(printError)
+                throw ExitCode(1)
             }
 
             let outcome: VideoWorkflow.ConvertOutcome
@@ -451,7 +458,7 @@ extension DICOMVideo {
         @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.type))
         var type: VideoConsole.TypeArgument?
 
-        @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.transferSyntax))
+        @Option(name: .long, help: .init(stringLiteral: VideoOptionConformance.transferSyntaxHelp))
         var transferSyntax: String?
 
         @Flag(name: .long, help: .init(stringLiteral: VideoConsole.Help.recursive))
@@ -489,10 +496,12 @@ extension DICOMVideo {
             } catch let failure as VideoWorkflow.Failure {
                 throw fail(failure)
             }
-            for line in VideoOptionConformance.warnings(
+            let refusals = VideoOptionConformance.violations(
                 type: type ?? .endoscopic, metadata: sharedMetadata,
-                transferSyntax: transferSyntax) {
-                printError(line)
+                transferSyntax: transferSyntax)
+            if !refusals.isEmpty {
+                refusals.forEach(printError)
+                throw ExitCode(1)
             }
 
             let files = try VideoWorkflow.discoverInputs(in: inputURL, recursive: recursive)

@@ -550,6 +550,17 @@ public enum VideoConsole {
     /// track is not one mono or stereo signal, which is all Channel Mode
     /// (003A,0302) can express (Enumerated Values MONO, STEREO), or its channel
     /// count is unknown.
+    /// The refusal when per-track Channel Sources do not fit the audio tracks
+    /// (``VideoWorkflow/validateAudioChannelSources(for:metadata:)``).
+    public static func audioChannelSourceCountLine(given: Int, tracks: Int) -> String {
+        errorLine("""
+            --audio-channel-source given \(given) times, but the input has \(tracks) audio \
+            track\(tracks == 1 ? "" : "s"): give it once (for every track) or once per track, in order \
+            (PS3.3 Table C.7-13: one Multiplexed Audio Channels Description Code Sequence (003A,0300) \
+            Item per channel, each with its own Channel Source Sequence (003A,0208)).
+            """)
+    }
+
     public static let audioChannelLayoutUndescribedLine = noteLine("""
         Multiplexed Audio Channels Description Code Sequence (003A,0300) has no Items: \
         Channel Mode (003A,0302) is MONO or STEREO, and not every audio track is known to be one of those.

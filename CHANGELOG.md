@@ -36,6 +36,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Pixel Representation range (PS3.3 2026a C.7.6.3.1) and an `--apply-window` `--window-width` below 1
   (C.11.2.1.2) now exit 1 and write nothing. Before, the fill value was clamped with a warning, a width in (0,1)
   was raised to 1, and a width of 0 or less went to the engine unchecked.
+- **`dicom-video convert`/`batch` refuse values the Video IODs do not allow**:
+  - P-VIDEO-MODALITY-ENUMERATED: a `--modality` other than ES, GM or XC for the chosen `--type` (PS3.3 2026a
+    A.32.5.4.1 / A.32.6.4.1 / A.32.7.4.1).
+  - P-VIDEO-SEX-ENUMERATED: a `--patient-sex` outside M/F/O (Table C.7-1), and a `--patient-birth-date` that is
+    not DA (PS3.5 Table 6.2-1).
+  - P-VIDEO-TS-REGISTERED: `--transfer-syntax` 1.2.840.10008.1.2.4.107.1 or .108.1, which are not registered in
+    PS3.6 Table A-1.
+
+  These now exit 1 before anything is written. Before, they were written with a warning. The CLI `--help`
+  states the refusal; the shared `VideoConsole.Help` strings are unchanged.
+- **`dicom-video --audio-channel-source` is repeatable** (P-AUDIO-SOURCE-PER-TRACK). Given once, it is the
+  source of every audio track, as before. Given several times, the values apply one per audio track, in
+  container order (PS3.3 2026a Table C.7-13: one (003A,0300) Item per channel, each with its own Channel Source
+  Sequence (003A,0208)). A count that does not match the tracks exits 1. DICOMKit additions:
+  `VideoWorkflow.Metadata.audioChannelSources`, where a track without an entry takes `audioChannelSource`;
+  `VideoWorkflow.validateAudioChannelSources(for:metadata:)`, which `convert` and `runBatch` call;
+  `VideoAudioChannel.channels(describing:sources:)`; and `VideoConsole.audioChannelSourceCountLine(given:tracks:)`.
+  Nothing was deprecated.
 
 ### Changed — CLI P-items, derived batch (approved 2026-10-01, DICOM 2026a)
 

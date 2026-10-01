@@ -11,6 +11,7 @@
 //
 
 import XCTest
+import ArgumentParser
 import DICOMKit
 import DICOMCore
 @testable import dicom_video
@@ -99,6 +100,18 @@ final class AudioChannelSourceOptionTests: XCTestCase {
         XCTAssertThrowsError(try bad.validatedShared())
     }
 
+    /// P-AUDIO-SOURCE-PER-TRACK: repeated values are one source per audio track.
+    func test_repeatedOption_reachesMetadataAudioChannelSources() throws {
+        let once = try MetadataOptions.parse(["--audio-channel-source", "voice"])
+        XCTAssertNil(try once.validatedShared().audioChannelSources, "one value: the default for every track")
+        let twice = try MetadataOptions.parse(["--audio-channel-source", "voice", "--audio-channel-source", "DCM:109113"])
+        let metadata = try twice.validatedShared()
+        XCTAssertNil(metadata.audioChannelSource)
+        XCTAssertEqual(metadata.audioChannelSources, [.voice, .dopplerAudio])
+        let bad = try MetadataOptions.parse(["--audio-channel-source", "voice", "--audio-channel-source", "narration"])
+        XCTAssertThrowsError(try bad.validatedShared())
+    }
+
     func test_batchOptions_acceptTheOption() throws {
         let batch = try DICOMVideo.Batch.parse(["clips", "--output-dir", "out", "--audio-channel-source", "DCM:109113"])
         XCTAssertEqual(try batch.metadata.validatedShared().audioChannelSource, .dopplerAudio)
@@ -131,6 +144,20 @@ final class AudioChannelSourceOptionTests: XCTestCase {
         XCTAssertEqual(parsed.multiplexedAudioChannels, [
             VideoAudioChannel(channelIdentificationCode: 1, mode: .stereo, source: .operatorsNarrative),
         ])
+    }
+
+    /// More values than audio tracks: exit 1 and nothing written.
+    func test_convert_moreValuesThanTracks_exitsOne() throws {
+        let (input, output) = try temporaryPaths()
+        try mp4(audioEntry: aacEntry(rate: 48000, dsi: Self.ascLC48Stereo)).write(to: input)
+        var convert = try DICOMVideo.Convert.parse([
+            input.path, "--output", output.path, "--type", "endoscopic",
+            "--audio-channel-source", "voice", "--audio-channel-source", "doppler-audio",
+        ])
+        XCTAssertThrowsError(try convert.run()) {
+            XCTAssertEqual(($0 as? ExitCode)?.rawValue, 1, "\($0)")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
     }
 
     func test_convert_withoutOption_leavesTheSequenceEmpty() throws {

@@ -52,14 +52,19 @@ Useful flags:
 - `--trust-input` — encapsulate an MPEG-TS payload without validating it.
   Requires an explicit `--transfer-syntax`, since nothing was read.
 - `--modality`, `--patient-sex`, `--patient-birth-date` — a value the IOD does
-  not allow is written as given but warned about on stderr: Modality (0008,0060)
-  shall be `ES`, `GM` or `XC` for `--type endoscopic`, `microscopic` or
-  `photographic` (PS3.3 A.32.5.4.1, A.32.6.4.1, A.32.7.4.1); Patient's Sex is
-  `M`, `F` or `O` (PS3.3 Table C.7-1); a birth date that is not `YYYYMMDD` is
-  written empty. `--transfer-syntax 1.2.840.10008.1.2.4.107.1` / `.108.1`
-  ("Fragmentable HEVC") is warned too: PS3.6 Table A-1 does not register them.
+  not allow is refused: the command exits 1 and writes nothing. Modality
+  (0008,0060) shall be `ES`, `GM` or `XC` for `--type endoscopic`, `microscopic`
+  or `photographic` (PS3.3 A.32.5.4.1, A.32.6.4.1, A.32.7.4.1); Patient's Sex is
+  `M`, `F` or `O` (PS3.3 Table C.7-1); a birth date must be DA (`YYYYMMDD`,
+  PS3.5 Table 6.2-1). `--transfer-syntax 1.2.840.10008.1.2.4.107.1` / `.108.1`
+  ("Fragmentable HEVC") is refused too: PS3.6 Table A-1 does not register them.
+  (Until 2026-10-01 these were written with a warning.)
 - `--audio-channel-source <keyword|SCHEME:VALUE[:MEANING]>` — the PS3.16 CID 3000
   source of the multiplexed audio, written in (003A,0300) (PS3.3 Table C.7-13).
+  Given once, it applies to every audio track. Repeat it to give one source per
+  audio track, in container order: each (003A,0300) Item has its own Channel
+  Source Sequence (003A,0208). A count that matches neither 1 nor the number of
+  tracks exits 1.
 - `-v, --verbose` — explain each step: the container recognised, why that
   transfer syntax was chosen, where the frame count came from, the UIDs minted
   and how many bytes of the output are payload rather than DICOM overhead.
