@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — 10 options: --fill-value clamped to the Bits Stored / Pixel Representation range (PS3.3 2026a C.7.6.3.1), --window-center/--window-width in Modality LUT output units (C.11.2.1.2, Rescale Slope/Intercept C.11.1), output marked as a Derived Image (C.7.6.1.1.2, Table C.12-10; see DerivedImage.swift); --output/--verbose/<input> are plumbing
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -10,9 +11,17 @@ struct DICOMPixedit: ParsableCommand {
         commandName: "dicom-pixedit",
         abstract: "Edit pixel data in DICOM files",
         discussion: """
-            Provides pixel data manipulation tools for DICOM images including
-            masking burned-in annotations, cropping regions, adjusting window/level,
-            and converting photometric interpretation.
+            Provides pixel data manipulation tools for DICOM images: masking
+            rectangular regions (e.g. burned-in annotation), cropping, baking a
+            window into the stored values, and inverting stored values.
+
+            The output is a Derived Image (PS3.3 C.7.6.1.1.2): it gets a new SOP
+            Instance UID, Image Type (0008,0008) Value 1 DERIVED, a Derivation
+            Description (0008,2111) and a Source Image Sequence (0008,2112) item
+            referencing the input. Burned In Annotation (0028,0301) and Lossy
+            Image Compression (0028,2110) are left as they are. Operations run in
+            the order mask, crop, window, invert; regions are in the input's
+            pixel coordinates (0-based column, row).
             
             Examples:
               # Mask a region (e.g., burned-in text)
@@ -39,25 +48,25 @@ struct DICOMPixedit: ParsableCommand {
     @Option(name: .long, help: "Output DICOM file path")
     var output: String
     
-    @Option(name: .long, help: "Mask region (x,y,width,height) - sets pixels to fill value")
+    @Option(name: .long, help: "Mask region x,y,width,height (0-based column, row) - sets every sample in it to --fill-value")
     var maskRegion: String?
     
-    @Option(name: .long, help: "Fill value for masked regions (default: 0)")
+    @Option(name: .long, help: "Stored value for masked samples (default: 0); clamped to the range of Bits Stored (0028,0101) and Pixel Representation (0028,0103)")
     var fillValue: Int?
     
-    @Option(name: .long, help: "Crop region (x,y,width,height)")
+    @Option(name: .long, help: "Crop region x,y,width,height (0-based column, row); Rows/Columns and Image Position (Patient) are updated")
     var crop: String?
     
-    @Option(name: .long, help: "Window center for window/level application")
+    @Option(name: .long, help: "Window Center (0028,1050) for --apply-window, in Modality LUT output units (e.g. HU for CT; PS3.3 C.11.2.1.2)")
     var windowCenter: Double?
     
-    @Option(name: .long, help: "Window width for window/level application")
+    @Option(name: .long, help: "Window Width (0028,1051) for --apply-window, in Modality LUT output units")
     var windowWidth: Double?
     
-    @Flag(name: .long, help: "Apply window/level permanently to pixel data")
+    @Flag(name: .long, help: "Bake the window (PS3.3 C.11.2.1.2 linear function) into the stored pixel values")
     var applyWindow: Bool = false
     
-    @Flag(name: .long, help: "Invert pixel values")
+    @Flag(name: .long, help: "Invert stored pixel values across the Bits Stored range")
     var invert: Bool = false
     
     @Flag(name: .shortAndLong, help: "Show verbose output")
@@ -71,30 +80,49 @@ struct DICOMPixedit: ParsableCommand {
         
         // Build operations list. PixelEditor + PixelOperation + PixelEditError now
         // live in the DICOMKit library; verbose output is routed to stderr here.
+        let inputData = try Data(contentsOf: URL(fileURLWithPath: input))
+        let source = try DICOMFile.read(from: inputData)
         var operations: [PixelOperation] = []
+        var described: [PixelOperation] = []   // as given (window in output units)
 
         let editor = PixelEditor(verbose: verbose, log: { fprintln($0) })
         
         if let maskRegionStr = maskRegion {
             let region = try editor.parseRegion(maskRegionStr)
-            let fill = fillValue ?? 0
+            let (fill, warning) = DerivedImage.clampFill(
+                fillValue ?? 0, to: DerivedImage.storedRange(of: source.dataSet))
+            if let warning { fprintln(warning) }
             operations.append(.mask(x: region.x, y: region.y, width: region.width, height: region.height, fillValue: fill))
+            described.append(operations[operations.count - 1])
         }
         
         if let cropStr = crop {
             let region = try editor.parseRegion(cropStr)
             operations.append(.crop(x: region.x, y: region.y, width: region.width, height: region.height))
+            described.append(operations[operations.count - 1])
         }
         
         if applyWindow {
-            guard let center = windowCenter, let width = windowWidth else {
+            guard let center = windowCenter, let requestedWidth = windowWidth else {
                 throw ValidationError("--apply-window requires both --window-center and --window-width")
             }
-            operations.append(.windowLevel(center: center, width: width))
+            var width = requestedWidth
+            if width > 0, width < 1 {
+                // PS3.3 C.11.2.1.2: Window Width (0028,1051) shall always be greater than or
+                // equal to 1. The engine already treats any width <= 1 as the threshold case.
+                fprintln("warning: --window-width \(width) is below 1 (PS3.3 C.11.2.1.2); using 1")
+                width = 1
+            }
+            let stored = DerivedImage.storedWindow(
+                center: center, width: width,
+                slope: source.dataSet.rescaleSlope(), intercept: source.dataSet.rescaleIntercept())
+            operations.append(.windowLevel(center: stored.center, width: stored.width))
+            described.append(.windowLevel(center: center, width: width))
         }
         
         if invert {
             operations.append(.invert)
+            described.append(.invert)
         }
         
         guard !operations.isEmpty else {
@@ -107,7 +135,14 @@ struct DICOMPixedit: ParsableCommand {
             }
         }
 
-        try editor.processFile(inputPath: input, outputPath: output, operations: operations)
+        let (edited, _) = try editor.processData(inputData, operations: operations)
+        let derived = DerivedImage.markDerived(
+            edited: try DICOMFile.read(from: edited), source: source,
+            operations: operations, described: described, newUID: UIDGenerator.generateUID().value)
+        try derived.write().write(to: URL(fileURLWithPath: output))
+        if verbose {
+            fprintln(PixelEditConsole.writtenLine(path: URL(fileURLWithPath: output).path))
+        }
 
         if verbose {
             fprintln(PixelEditConsole.doneLine())

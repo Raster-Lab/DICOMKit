@@ -436,6 +436,11 @@ let package = Package(
             dependencies: ["dicom-image", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-imageTests"
         ),
+        .testTarget(
+            name: "dicom-pixeditTests",
+            dependencies: ["dicom-pixedit", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-pixeditTests"
+        ),
         // dicom-gateway: the DICOM side of the HL7 v2 / FHIR mappings (PN, DA, TM, Patient's
         // Sex, UIDs) pinned to PS3.3 / PS3.5 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(

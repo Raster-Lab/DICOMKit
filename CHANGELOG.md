@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Secondary Capture Image Storage", the attribute tags, and list the Table A.8-1 modules; the README no
   longer says DPI maps to Pixel Spacing (it is Nominal Scanned Pixel Spacing (0018,2010)). New test target
   `dicom-imageTests`.
+- **dicom-pixedit** output is now a Derived Image (PS3.3 C.7.6.1.1.2): new SOP Instance UID (and
+  (0002,0003)), Image Type Value 1 DERIVED, Derivation Description (0008,2111) and a Source Image Sequence
+  (0008,2112) item referencing the input (Purpose of Reference DCM 121322, CID 7202); Implementation Class
+  UID / Version Name name DICOMKit; stale Smallest/Largest (Image) Pixel Value attributes are removed; a crop
+  moves Image Position (Patient) (C.7.6.2.1.1). `--window-center` / `--window-width` are taken in Modality
+  LUT output units (e.g. HU; C.11.2.1.2) — they were applied to stored values, so a CT window ignored
+  Rescale Intercept; a width below 1 warns and uses 1. `--fill-value` outside the Bits Stored / Pixel
+  Representation range is clamped with a warning (values above Bits Stored were written). New test target
+  `dicom-pixeditTests`.
 
 ### Fixed — dicom-anon verified against DICOM 2026a (2026-10-01)
 
