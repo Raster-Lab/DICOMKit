@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-dcmdir, dicom-uid, dicom-validate verified against DICOM 2026a (2026-10-01)
+
+- **dicom-dcmdir** `validate` checks the File-set ID (0-16 characters, PS3.10 8.1) and every Referenced
+  File ID (0004,1500) (1-8 components of 1-8 characters, PS3.10 8.2; A-Z, 0-9, _ only, 8.5; each File
+  referenced by at most one record, PS3.3 Table F.3-3) and exits 1 on a violation; every failure names
+  its clause (PS3.10 8.x, PS3.3 Tables F.3-2, F.3-3, F.4-1, PS3.5 9.1). `--check-files` now looks each
+  File ID up on disk (PS3.10 8.6) instead of only rejecting empty paths. Read/validation errors print
+  the error text instead of "The operation couldn't be completed". `create` derives the default
+  File-set ID from the directory name upper-cased with other characters as `_`, cut to 16 (was the raw
+  name, e.g. lowercase), warns on an explicit `--file-set-id` outside 8.1/8.5, and warns when the
+  indexed file names are not valid File IDs. README: SPACE is not allowed in a File-set ID, File ID
+  example without `.dcm`, the 2026a File-set Consistency Flag text. New `dicom-dcmdirTests`.
+
 ### Fixed — dicom-study, dicom-archive, dicom-export verified against DICOM 2026a (2026-10-01)
 
 - **dicom-study** help names what `organize --pattern descriptive` is built from (Patient's Name,

@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-10-01 — the --profile help and error text name only identifiers from PS3.11 2026a Tables A.1-1, B.1-1, C.1-1, D.1-1, E.1-1, G.1-1, H.1-1 to N.1-1 (64 identifiers extracted by script; STD-GEN-DVD and STD-GEN-USB are family headings, not identifiers, D29); the accepted values are those of DICOMCore.DICOMDIRProfile
+// NEMA-verified: 2026a, checked 2026-10-01 — create derives the default File-set ID per PS3.10 2026a 8.1/8.5 and warns on File IDs outside 8.2/8.5; validate reports each failure with its PS3.10 8.1, 8.2, 8.5, 8.6 / PS3.3 Table F.3-2, F.3-3, F.4-1 clause and --check-files tests every Referenced File ID (0004,1500) on disk (8.6); dump record labels are the 35 Directory Record Type terms of PS3.3 Table F.4-1 (DICOMCore.DirectoryRecordType)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -53,7 +54,7 @@ extension DICOMDCMDIR {
         @Option(name: .shortAndLong, help: "Output DICOMDIR path (default: DICOMDIR in input directory)")
         var output: String?
         
-        @Option(name: .long, help: "File-set ID (default: derived from directory name)")
+        @Option(name: .long, help: "File-set ID (0004,1130): up to 16 characters A-Z, 0-9, _ (PS3.10 8.1, 8.5); default: the directory name upper-cased, other characters as _, cut to 16")
         var fileSetID: String?
         
         @Option(name: .long, help: "PS3.11 Application Profile identifier, e.g. STD-GEN-CD (default), STD-GEN-DVD-JPEG, STD-GEN-DVD-J2K, STD-GEN-USB-JPEG, STD-GEN-USB-J2K, STD-GEN-BD-JPEG (STD-GEN-DVD / STD-GEN-USB are accepted as aliases of the -JPEG profiles)")
@@ -95,8 +96,11 @@ extension DICOMDCMDIR {
             let fsID: String
             if let id = fileSetID {
                 fsID = id
+                for problem in FileSetRules.fileSetIDViolations(id) {
+                    FileHandle.standardError.write(Data("Warning: \(problem)\n".utf8))
+                }
             } else {
-                fsID = inputURL.lastPathComponent
+                fsID = FileSetRules.defaultFileSetID(fromDirectoryName: inputURL.lastPathComponent)
             }
             
             // Parse profile
@@ -138,6 +142,16 @@ extension DICOMDCMDIR {
 
             // Print the shared summary block.
             print(DICOMDIRWorkflow.renderCreateSummary(result, outputPath: outputPath), terminator: "")
+
+            // File IDs are the file paths relative to the input directory; PS3.10 8.2/8.5
+            // limit them to 8 components of 8 characters from A-Z, 0-9, _.
+            let badIDs = result.directory.allRecords().compactMap(\.referencedFileID)
+                .filter { !FileSetRules.fileIDViolations($0).isEmpty }
+            if let first = badIDs.first {
+                FileHandle.standardError.write(Data(("Warning: \(badIDs.count) File ID(s) do not conform to PS3.10 8.2/8.5 "
+                    + "(at most 8 components of 1-8 characters A-Z, 0-9, _), e.g. \(first.joined(separator: "\\")); "
+                    + "rename the files before writing them to media\n").utf8))
+            }
         }
     }
 }
@@ -154,7 +168,7 @@ extension DICOMDCMDIR {
         @Argument(help: "Path to DICOMDIR file")
         var dicomdirPath: String
         
-        @Flag(name: .long, help: "Check if referenced files exist")
+        @Flag(name: .long, help: "Check that every Referenced File ID (0004,1500) names a file in the File-set (PS3.10 8.6)")
         var checkFiles: Bool = false
         
         @Flag(name: .long, help: "Detailed validation output")
@@ -179,15 +193,25 @@ extension DICOMDCMDIR {
             do {
                 directory = try DICOMDIRReader.read(from: fileURL)
             } catch {
-                print("❌ Failed to read DICOMDIR: \(error.localizedDescription)")
+                print("❌ Failed to read DICOMDIR: \(FileSetRules.describe(error))")
                 throw ExitCode(1)
             }
             
-            // Validate structure
+            // Validate structure (PS3.3 Table F.4-1 hierarchy, duplicate SOP Instances)
             do {
                 try directory.validate(checkFileExistence: checkFiles)
             } catch {
-                print("❌ Validation failed: \(error.localizedDescription)")
+                print("❌ Validation failed: \(FileSetRules.describe(error))")
+                throw ExitCode(1)
+            }
+
+            // File-set ID and File ID rules (PS3.10 8.1, 8.2, 8.5, 8.6; PS3.3 Table F.3-3)
+            let findings = FileSetRules.findings(
+                for: directory, mediaFolder: fileURL.deletingLastPathComponent(), checkFiles: checkFiles)
+            if !findings.isEmpty {
+                for finding in findings { print("❌ \(finding)") }
+                print("")
+                print("❌ Validation failed: \(findings.count) rule violation(s)")
                 throw ExitCode(1)
             }
 
@@ -232,7 +256,7 @@ extension DICOMDCMDIR {
             do {
                 directory = try DICOMDIRReader.read(from: fileURL)
             } catch {
-                print("Error reading DICOMDIR: \(error.localizedDescription)")
+                print("Error reading DICOMDIR: \(FileSetRules.describe(error))")
                 throw ExitCode(1)
             }
             

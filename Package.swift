@@ -413,6 +413,13 @@ let package = Package(
             dependencies: ["dicom-gateway", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-gatewayTests"
         ),
+        // dicom-dcmdir / dicom-uid / dicom-validate: File ID rules (PS3.10 8.x), UID roots and
+        // UUID derived UIDs (PS3.5 9.1, B.2), --iod keywords (PS3.6 Table A-1), 2026a.
+        .testTarget(
+            name: "dicom-dcmdirTests",
+            dependencies: ["dicom-dcmdir", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-dcmdirTests"
+        ),
         // dicom-json / dicom-xml: option defaults pinned to PS3.18 2026a Annex F and PS3.19 2026a
         // Table A.1.5-2 (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(

@@ -65,7 +65,7 @@ dicom-dcmdir dump DICOMDIR --format text --verbose
 ### Create Command
 
 - `--output, -o <path>`: Output DICOMDIR path (default: DICOMDIR in input directory)
-- `--file-set-id <id>`: File-set identifier (default: derived from directory name)
+- `--file-set-id <id>`: File-set ID (0004,1130), up to 16 characters A-Z, 0-9, _ (PS3.10 8.1, 8.5); a value outside these rules is written with a warning (default: the directory name upper-cased, other characters replaced by `_`, cut to 16)
 - `--profile <profile>`: Application profile (STD-GEN-CD, STD-GEN-DVD, STD-GEN-USB)
 - `--recursive`: Recursively scan subdirectories (default: true)
 - `--strict`: Include only valid DICOM files
@@ -73,7 +73,9 @@ dicom-dcmdir dump DICOMDIR --format text --verbose
 
 ### Validate Command
 
-- `--check-files`: Verify that referenced files exist
+- `--check-files`: Verify that every Referenced File ID (0004,1500) names a file in the File-set (PS3.10 8.6)
+
+`validate` also checks the File-set ID (PS3.10 8.1, 8.5) and every Referenced File ID (at most 8 components of 1 to 8 characters A-Z, 0-9, _; PS3.10 8.2, 8.5; each File referenced by at most one record, PS3.3 Table F.3-3) and names the clause each failure breaks. `create` warns when the file names it indexes are not valid File IDs: the File IDs are the paths relative to the input directory, so name the files accordingly (e.g. `DIR00001/IMG00001`).
 - `--detailed`: Show detailed validation output including record statistics
 
 ### Dump Command
@@ -138,26 +140,23 @@ Each record contains DICOM attributes relevant to that level of the hierarchy.
 
 ### File-set ID
 
-The File-set ID is an identifier for the file-set on the media. It should be:
-- Up to 16 characters
-- Composed of uppercase letters (A-Z), digits (0-9), underscores, and spaces
-- Unique for the media
+The File-set ID (0004,1130) is a short human-readable label for the File-set (PS3.10 8.1, PS3.3 Table F.3-2):
+- 0 to 16 characters
+- Uppercase letters (A-Z), digits (0-9) and underscore only; SPACE is not allowed (PS3.10 8.5)
+- Not necessarily unique; the File-set UID identifies the File-set
 
 ### Referenced File Paths
 
-File paths in DICOMDIR are stored as path components (array of strings) relative to the DICOMDIR location. For example:
-- `["PATIENT1", "STUDY1", "SERIES1", "IMG00001.dcm"]`
-- Represents: `PATIENT1/STUDY1/SERIES1/IMG00001.dcm`
+File IDs in DICOMDIR are stored in Referenced File ID (0004,1500) as components relative to the DICOMDIR location: 1 to 8 components, each 1 to 8 characters from A-Z, 0-9 and _ (PS3.10 8.2, 8.5). For example:
+- `["PATIENT1", "STUDY1", "SERIES1", "IMG00001"]`
+- Represents: `PATIENT1/STUDY1/SERIES1/IMG00001`
 
 ### Consistency Flag
 
-The consistency flag indicates whether the DICOMDIR is in a consistent state:
-- **Consistent (0x0000)**: DICOMDIR is complete and valid
-- **Inconsistent (0xFFFF)**: DICOMDIR is being updated or corrupted
+File-set Consistency Flag (0004,1212) is written as 0000H. PS3.3 2026a Table F.3-3: "The Value FFFFH shall never be present."
 
 ## Limitations
 
-- **Update command** is not yet implemented (use create to rebuild)
 - **Extract command** is not yet implemented
 - Only supports standard directory record types (PATIENT, STUDY, SERIES, IMAGE)
 - Icon images are not currently supported
@@ -170,6 +169,7 @@ The consistency flag indicates whether the DICOMDIR is in a consistent state:
 
 ## References
 
-- DICOM PS3.3 F.5 - Media Storage Directory SOP Class
-- DICOM PS3.10 - Media Storage and File Format
+- DICOM PS3.3 Annex F - Basic Directory IOD (Table F.4-1 record types, F.5 directory records)
+- DICOM PS3.4 Annex I - Media Storage Service Class (Media Storage Directory Storage, 1.2.840.10008.1.3.10)
+- DICOM PS3.10 Section 8 - DICOM File Service (File-set, File IDs, character set, DICOMDIR)
 - DICOM PS3.11 - Media Storage Application Profiles
