@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `regenerate` replaces (top-level UI values that are not Table A-1 UIDs; sequence items are not
   remapped). README synced. New `dicom-uidTests`.
 
+- **dicom-validate** `--iod` also takes the PS3.6 Table A-1 keyword (any case) or SOP Class UID, e.g.
+  `ComputedRadiographyImageStorage`, `UltrasoundImageStorage`, `GrayscaleSoftcopyPresentationStateStorage`,
+  `KeyObjectSelectionDocumentStorage` (these used to report "IOD validation not implemented"), and `US`.
+  `--level` help says what level 2 checks (VR against PS3.6, DA / TM / UI forms of PS3.5 Table 6.2-1 and
+  9.1; no VM or length checks) instead of "Tags/VR/VM". README: Table A-1 IOD names, Pseudo-Color and
+  Key Object Selection listed, no VM / deprecated-tag claims. New `dicom-validateTests`.
+
 ### Fixed — dicom-study, dicom-archive, dicom-export verified against DICOM 2026a (2026-10-01)
 
 - **dicom-study** help names what `organize --pattern descriptive` is built from (Patient's Name,

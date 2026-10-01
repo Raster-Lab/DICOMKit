@@ -425,6 +425,11 @@ let package = Package(
             dependencies: ["dicom-uid", "DICOMKit", "DICOMCore", "DICOMDictionary"],
             path: "Tests/dicom-uidTests"
         ),
+        .testTarget(
+            name: "dicom-validateTests",
+            dependencies: ["dicom-validate", "DICOMKit", "DICOMCore", "DICOMDictionary"],
+            path: "Tests/dicom-validateTests"
+        ),
         // dicom-json / dicom-xml: option defaults pinned to PS3.18 2026a Annex F and PS3.19 2026a
         // Table A.1.5-2 (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(
