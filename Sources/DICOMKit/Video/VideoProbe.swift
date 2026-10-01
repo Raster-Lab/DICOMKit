@@ -52,6 +52,17 @@ public struct VideoProbeResult: Sendable {
     /// the container's, since the container's is derived from durations.
     public let frameRate: Double?
 
+    /// The MPEG-2 Program Stream / PES wrapping the elementary stream was read from
+    /// (PS3.5 2026a 8.2.5 / 8.2.6), when ``container`` is ``VideoContainer/elementaryStream``
+    /// because of one; nil otherwise.
+    public let mpeg2SystemsLayer: MPEG2SystemsLayer?
+
+    /// The container as it should be named: the MPEG-2 systems layer when there is one,
+    /// else ``VideoContainer/displayName``.
+    public var containerDisplayName: String {
+        mpeg2SystemsLayer?.displayName ?? container.displayName
+    }
+
     public init(
         container: VideoContainer,
         stream: VideoStreamInfo,
@@ -75,8 +86,10 @@ public struct VideoProbeResult: Sendable {
         frameCountSource: FrameCountSource,
         audioTracks: [VideoAudioTrack],
         suggestedTransferSyntax: TransferSyntax?,
-        frameRate: Double?
+        frameRate: Double?,
+        mpeg2SystemsLayer: MPEG2SystemsLayer? = nil
     ) {
+        self.mpeg2SystemsLayer = mpeg2SystemsLayer
         self.container = container
         self.stream = stream
         self.frameCount = frameCount
@@ -216,6 +229,24 @@ public enum VideoProbe {
             guard trustInput else { throw VideoProbeError.transportStreamNotValidatable }
             return try probeTrustedTransportStream(data)
         case .elementaryStream:
+            // MPEG-PS / MPEG-PES (PS3.5 2026a 8.2.5, 8.2.6): probe the video PES payloads;
+            // the payload encapsulated is still the systems stream as given.
+            if let layer = MP4ContainerParser.mpeg2SystemsLayer(data) {
+                guard let elementary = MP4ContainerParser.mpeg2VideoElementaryStream(data) else {
+                    throw VideoProbeError.noVideoTrack
+                }
+                let inner = try probeElementaryStream(elementary)
+                let audio = MP4ContainerParser.mpeg2AudioStreamIDs(data)
+                return VideoProbeResult(
+                    container: .elementaryStream,
+                    stream: inner.stream,
+                    frameCount: inner.frameCount,
+                    frameCountSource: inner.frameCountSource,
+                    audioTracks: Array(repeating: .unidentified, count: audio.count),
+                    suggestedTransferSyntax: inner.suggestedTransferSyntax,
+                    frameRate: inner.frameRate,
+                    mpeg2SystemsLayer: layer)
+            }
             return try probeElementaryStream(data)
         case .unknown:
             throw VideoProbeError.unrecognizedFormat
@@ -446,7 +477,8 @@ public enum VideoProbe {
             bitDepthChroma: stream.bitDepthChroma,
             frameRate: frameRate,
             isProgressive: stream.isProgressive,
-            sampleAspectRatio: stream.sampleAspectRatio
+            sampleAspectRatio: stream.sampleAspectRatio,
+            mpeg2AspectRatioInformation: stream.mpeg2AspectRatioInformation
         )
     }
 }

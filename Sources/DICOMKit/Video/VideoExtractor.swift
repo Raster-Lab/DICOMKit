@@ -56,11 +56,24 @@ public struct ExtractedVideo: Sendable {
     /// The number of fragments the payload was split across.
     public let fragmentCount: Int
 
+    /// The container as it should be named: an MPEG-2 Program Stream / PES by its
+    /// PS3.5 8.2.5 name, else ``VideoContainer/displayName``.
+    public var containerDisplayName: String {
+        guard container == .elementaryStream, let layer = MP4ContainerParser.mpeg2SystemsLayer(bitstream) else {
+            return container.displayName
+        }
+        return layer.displayName
+    }
+
     /// The file extension that suits this payload.
     ///
     /// The payload retains the container it was encapsulated with, so the
     /// extension follows the bytes rather than the codec.
     public var suggestedFileExtension: String {
+        // MPEG-PS / MPEG-PES (PS3.5 2026a 8.2.5, 8.2.6)
+        if container == .elementaryStream, MP4ContainerParser.mpeg2SystemsLayer(bitstream) != nil {
+            return "mpg"
+        }
         switch container {
         case .mp4: return "mp4"
         case .quickTime: return "mov"

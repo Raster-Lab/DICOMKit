@@ -230,7 +230,7 @@ public enum VideoWorkflow {
         // for H.264/HEVC (PS3.5 8.2.7-8.2.11), any for MPEG-2 (8.2.5, 8.2.6).
         guard probe.container.isPermittedByDICOM(for: probe.stream.codec) else {
             let violation = VideoConformanceViolation.containerNotPermitted(
-                observed: probe.container.displayName)
+                observed: probe.containerDisplayName)
             throw reject(.conformance(VideoConsole.violationReport(violation)))
         }
 
@@ -313,7 +313,8 @@ public enum VideoWorkflow {
             frameCountSource: probe.frameCountSource,
             audioTracks: probe.audioTracks,
             suggestedTransferSyntax: transferSyntax,
-            frameRate: stream.frameRate
+            frameRate: stream.frameRate,
+            mpeg2SystemsLayer: probe.mpeg2SystemsLayer
         )
         return ConversionPlan(
             probe: resolved, transferSyntax: transferSyntax, bitstream: bitstream,
@@ -347,7 +348,8 @@ public enum VideoWorkflow {
             bitDepthChroma: stream.bitDepthChroma,
             frameRate: frameRate,
             isProgressive: stream.isProgressive,
-            sampleAspectRatio: stream.sampleAspectRatio
+            sampleAspectRatio: stream.sampleAspectRatio,
+            mpeg2AspectRatioInformation: stream.mpeg2AspectRatioInformation
         )
     }
 

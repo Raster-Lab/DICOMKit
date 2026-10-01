@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   New `supportedEXIFFields`, `unsupportedEXIFFields(_:)`, `exifDateTime(fromDA:tm:)`; `dicom-export single` warns
   for an `--exif-fields` keyword it cannot embed. **Behaviour change**: Series Description's UserComment is now
   `SeriesDescription=<value>`.
+- **MPEG2 Main Profile / High Level geometry** (D226; PS3.5 2026a 8.2.6): `VideoConformanceValidator.validate`
+  refuses .101 / .107 unless Rows/Columns are 720/1280 or 1080/1920 and `aspect_ratio_information` is 0011 (16:9)
+  (new violations `mpeg2HighLevelGeometryNotPermitted`, `mpeg2AspectRatioNotPermitted`;
+  `VideoStreamInfo.mpeg2AspectRatioInformation`). `selectTransferSyntax` no longer offers .101 to MP@H-14 or to
+  another geometry. **Behaviour change**: a 720x576 Main Level stream is no longer accepted under .101.
+- **MPEG-2 Program Stream and PES input** (D227; PS3.5 2026a 8.2.5 / 8.2.6 list MPEG-PS and MPEG-PES among the
+  MPEG-2 containers): new `MPEG2SystemsLayer`, `MP4ContainerParser.mpeg2SystemsLayer(_:)`,
+  `mpeg2VideoElementaryStream(_:)`, `mpeg2AudioStreamIDs(_:)`; `VideoProbe` reads the video PES payloads (sequence
+  header, frame count, audio stream count) and `VideoProbeResult.mpeg2SystemsLayer` / `containerDisplayName` name
+  the container; the systems stream is encapsulated unchanged. A PES input was "not a recognized video container".
+  `VideoContainer` keeps its cases (PS / PES report `.elementaryStream`); `ExtractedVideo` suggests `.mpg`.
 
 ### Fixed — deferred rows, codec batch b6a (2026-10-01, DICOM 2026a)
 

@@ -25,7 +25,9 @@ public enum VideoContainer: Sendable, Hashable {
     case quickTime
     /// MPEG-2 Transport Stream.
     case mpegTS
-    /// A raw Annex B / MPEG-2 elementary stream with no container at all.
+    /// A raw Annex B / MPEG-2 elementary stream with no container at all. An MPEG-2
+    /// Program Stream or Packetized Elementary Stream (PS3.5 2026a 8.2.5 / 8.2.6) is also
+    /// reported as this case; ``MP4ContainerParser/mpeg2SystemsLayer(_:)`` tells them apart.
     case elementaryStream
     /// Something this toolkit does not recognize.
     case unknown
@@ -173,7 +175,8 @@ public enum MP4ContainerParser {
             return .mpegTS
         }
 
-        if NALUnit.hasAnnexBStartCode(data) || hasMPEG2StartCode(data) {
+        // MPEG-2 Program Stream / PES (PS3.5 2026a 8.2.5, 8.2.6), then a bare elementary stream.
+        if mpeg2SystemsLayer(data) != nil || NALUnit.hasAnnexBStartCode(data) || hasMPEG2StartCode(data) {
             return .elementaryStream
         }
 

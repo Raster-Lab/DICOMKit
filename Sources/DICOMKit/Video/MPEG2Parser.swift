@@ -266,7 +266,8 @@ extension MPEG2Parser.SequenceHeader {
             bitDepthChroma: 8,
             frameRate: frameRate,
             isProgressive: isProgressive,
-            sampleAspectRatio: nil
+            sampleAspectRatio: nil,
+            mpeg2AspectRatioInformation: aspectRatioInformation
         )
     }
 }

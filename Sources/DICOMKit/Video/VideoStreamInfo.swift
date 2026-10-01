@@ -85,6 +85,10 @@ public struct VideoStreamInfo: Sendable, Hashable {
     /// (PS3.5 8.2.7). Anything else has to be rejected.
     public let sampleAspectRatio: (width: Int, height: Int)?
 
+    /// MPEG-2 `aspect_ratio_information` (ITU-T H.262 Table 6-3) from the sequence header;
+    /// nil for other codecs. PS3.5 2026a 8.2.6 requires 0011 (16:9) for MP@HL.
+    public let mpeg2AspectRatioInformation: Int?
+
     /// Whether the sample aspect ratio is square, i.e. SAR 1:1.
     public var hasSquarePixels: Bool {
         guard let ratio = sampleAspectRatio else { return true }
@@ -128,8 +132,10 @@ public struct VideoStreamInfo: Sendable, Hashable {
         bitDepthChroma: Int,
         frameRate: Double?,
         isProgressive: Bool,
-        sampleAspectRatio: (width: Int, height: Int)? = nil
+        sampleAspectRatio: (width: Int, height: Int)? = nil,
+        mpeg2AspectRatioInformation: Int? = nil
     ) {
+        self.mpeg2AspectRatioInformation = mpeg2AspectRatioInformation
         self.codec = codec
         self.width = width
         self.height = height

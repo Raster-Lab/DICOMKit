@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — profile, level and BD flag of every video transfer syntax diffed by Scripts/diff_kit.py against the PS3.6 2026a Table A-1 names; BD formats per PS3.5 Table 8-4; MPEG-2 level ceiling compared as a level_identification (smaller is higher: MP@ML rejects High / High 1440); container rejection cites PS3.5 8.2.7-8.2.11 (H.264/HEVC only, D177)
+// NEMA-verified: 2026a, checked 2026-10-01 — profile, level and BD flag of every video transfer syntax diffed by Scripts/diff_kit.py against the PS3.6 2026a Table A-1 names; BD formats per PS3.5 Table 8-4; MPEG-2 level ceiling compared as a level_identification (smaller is higher: MP@ML rejects High / High 1440); container rejection cites PS3.5 8.2.7-8.2.11 (H.264/HEVC only, D177); MPEG2 MP@HL Rows/Columns 720x1280 or 1080x1920 and aspect_ratio_information 0011 per PS3.5 2026a 8.2.6, MP@H-14 not offered .101 (D226)
 //
 // VideoConformanceValidator.swift
 // DICOMKit
@@ -50,6 +50,15 @@ public enum VideoConformanceViolation: Sendable, Hashable {
 
     /// The frame count is not positive.
     case invalidFrameCount(observed: Int)
+
+    /// MPEG2 Main Profile / High Level geometry outside PS3.5 2026a 8.2.6: "Rows (0028,0010)
+    /// shall be either 720 or 1080", "Columns (0028,0011) shall be 1280 if Rows is 720, or
+    /// shall be 1920 if Rows is 1080".
+    case mpeg2HighLevelGeometryNotPermitted(rows: Int, columns: Int)
+
+    /// MPEG2 Main Profile / High Level `aspect_ratio_information` other than 0011 (16:9),
+    /// PS3.5 2026a 8.2.6: "The value of MPEG2 aspect_ratio_information shall be 0011".
+    case mpeg2AspectRatioNotPermitted(observed: Int)
 
     /// The resolution and frame rate combination is not in the BD-compatible
     /// table of PS3.5 Table 8-4.
@@ -110,6 +119,18 @@ public enum VideoConformanceViolation: Sendable, Hashable {
                 \(width)x\(height) at \(String(format: "%.3f", frameRate)) fps \
                 (\(scan)) is not in the BD-compatible table of PS3.5 Table 8-4
                 """
+        case let .mpeg2HighLevelGeometryNotPermitted(rows, columns):
+            return """
+                \(columns)x\(rows) is not permitted for MPEG2 Main Profile / High Level: Rows \
+                shall be 720 or 1080, Columns 1280 if Rows is 720 or 1920 if Rows is 1080 \
+                (PS3.5 8.2.6)
+                """
+        case let .mpeg2AspectRatioNotPermitted(observed):
+            let bits = String(observed, radix: 2)
+            return """
+                MPEG2 aspect_ratio_information is \(String(repeating: "0", count: max(0, 4 - bits.count)) + bits); \
+                MPEG2 Main Profile / High Level requires 0011, a 16:9 display aspect ratio (PS3.5 8.2.6)
+                """
         case let .containerNotPermitted(observed):
             return """
                 \(observed) is not a permitted container; an H.264 or HEVC video \
@@ -146,6 +167,11 @@ public enum VideoConformanceViolation: Sendable, Hashable {
                 """
         case .containerNotPermitted:
             return "ffmpeg -i input -c copy output.mp4"
+        case .mpeg2HighLevelGeometryNotPermitted, .mpeg2AspectRatioNotPermitted:
+            return """
+                ffmpeg -i input -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1" \
+                -aspect 16:9 -c:v mpeg2video -profile:v main -level:v high fixed.mpg
+                """
         case .codecNotSupported, .codecMismatch, .dimensionMismatch, .invalidFrameCount:
             return nil
         }
@@ -424,6 +450,21 @@ public enum VideoConformanceValidator {
             ))
         }
 
+        // MPEG2 MP@HL (PS3.5 2026a 8.2.6): Rows 720 with Columns 1280, or Rows 1080 with
+        // Columns 1920, and aspect_ratio_information 0011 (16:9). A Main Level stream offered
+        // under .101 passes the level ceiling (a decoder of a higher level decodes it) but
+        // not this geometry rule.
+        if stream.codec == .mpeg2, constraints.maximumLevelTimesTen == 4 {
+            let rows = declaredRows ?? stream.height
+            let columns = declaredColumns ?? stream.width
+            if !((rows == 720 && columns == 1280) || (rows == 1080 && columns == 1920)) {
+                violations.append(.mpeg2HighLevelGeometryNotPermitted(rows: rows, columns: columns))
+            }
+            if let aspect = stream.mpeg2AspectRatioInformation, aspect != 0b0011 {
+                violations.append(.mpeg2AspectRatioNotPermitted(observed: aspect))
+            }
+        }
+
         // Frame count must be positive.
         if let frames = numberOfFrames, frames < 1 {
             violations.append(.invalidFrameCount(observed: frames))
@@ -468,7 +509,12 @@ public enum VideoConformanceValidator {
             guard stream.profileIDC == 4 else { return nil }
             // Main Level (8) is the tighter of the two; High Level (4) covers HD.
             if stream.levelTimesTen >= 8 { return .mpeg2MainProfile }
-            if stream.levelTimesTen >= 4 { return .mpeg2MainProfileHighLevel }
+            // High Level (4) only; MP@H-14 (6) "is not supported by this Transfer Syntax"
+            // (PS3.5 2026a 8.2.6), and neither is a geometry other than 1280x720 / 1920x1080.
+            if stream.levelTimesTen == 4,
+               (stream.height == 720 && stream.width == 1280) || (stream.height == 1080 && stream.width == 1920) {
+                return .mpeg2MainProfileHighLevel
+            }
             return nil
 
         case .h264:

@@ -1,6 +1,6 @@
 // NEMA-verified: 2026a, checked 2026-09-30 — audio notes per PS3.5 2026a 8.2.5/8.2.12 (verified by script): bits per sample of compressed audio stated as not in the bit stream, MP3 complementary channels as not identified, CBR violations of "CBR MPEG-1 LAYER III" (D58)
 // NEMA-verified: 2026a, checked 2026-09-30 — SOP Class names match PS3.6 2026a Table A-1; audio messages per PS3.5 2026a 8.2.5-8.2.12 and Table 8.2.12-1 (per-track violations of the constraints VideoConformanceValidator.audioConstraints extracts; audio kept, never stripped) and PS3.3 Table C.7-13 (003A,0300) Type 2C "Zero or more Items", Channel Source from PS3.16 CID 3000 (D34, D46)
-// NEMA-verified: 2026a, checked 2026-10-01 — VideoConsole.Help: 16 attribute names diffed by script against PS3.6 2026a Tables 6-1/7-1 (15 matched; "Patient's Name" fixed); modality help per PS3.3 2026a A.32.5.4.1/A.32.6.4.1/A.32.7.4.1 (ES/GM/XC); input help per PS3.5 8.2.7-8.2.11 container rule; help strings only, no public member changed
+// NEMA-verified: 2026a, checked 2026-10-01 — VideoConsole.Help: 16 attribute names diffed by script against PS3.6 2026a Tables 6-1/7-1 (15 matched; "Patient's Name" fixed); modality help per PS3.3 2026a A.32.5.4.1/A.32.6.4.1/A.32.7.4.1 (ES/GM/XC); input help per PS3.5 8.2.7-8.2.11 container rule and the 8.2.5/8.2.6 MPEG-2 containers incl. MPEG-PS / MPEG-PES (D227); help strings only, no public member changed
 //
 // VideoConsole.swift
 // DICOMKit
@@ -211,7 +211,7 @@ public enum VideoConsole {
     /// Help text of the options, single-sourced so the CLI's `@Option(help:)`,
     /// the Workshop's form help, and the invalid-value lines agree.
     public enum Help {
-        public static let input = "Input video file in an MP4 or MPEG-2 Transport Stream container (PS3.5 8.2.7-8.2.11); MOV and raw elementary streams are probed but not converted"
+        public static let input = "Input video file: H.264/HEVC in an MP4 or MPEG-2 Transport Stream container (PS3.5 8.2.7-8.2.11); MPEG-2 video in MP4, an MPEG-2 Program Stream, PES or elementary stream (8.2.5, 8.2.6: container not constrained); MOV is probed but not converted"
         public static let output = "Output DICOM file path"
         public static let type = "Video type: endoscopic, microscopic or photographic"
         public static let transferSyntax = "Transfer Syntax UID (auto-detected by default): an MPEG2, MPEG-4 AVC/H.264 or HEVC/H.265 UID of PS3.6 Table A-1"
@@ -259,7 +259,7 @@ public enum VideoConsole {
         transferSyntax: TransferSyntax?
     ) -> String {
         var lines: [String] = []
-        lines.append("Container:        \(probe.container.displayName)")
+        lines.append("Container:        \(probe.containerDisplayName)")
         lines.append("Codec:            \(probe.stream.codec.displayName)")
         if probe.stream.codec != .unknown {
             lines.append("Profile:          \(probe.stream.profileName)")
@@ -600,7 +600,7 @@ public enum VideoConsole {
     public static func extractSummary(_ extracted: ExtractedVideo) -> String {
         """
         Codec:            \(extracted.codec.displayName)
-        Container:        \(extracted.container.displayName)
+        Container:        \(extracted.containerDisplayName)
         Transfer syntax:  \(extracted.transferSyntax.uid)
         """
     }
