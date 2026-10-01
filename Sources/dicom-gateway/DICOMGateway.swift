@@ -509,7 +509,7 @@ struct ListenCommand: AsyncParsableCommand {
             throw GatewayError.invalidProtocol("Only HL7 protocol is currently supported for listening")
         }
         if forward != nil {
-            FileHandle.standardError.write(Data("Warning: --forward is not implemented: no PS3.8 association is opened and no C-STORE (PS3.4 Annex B) is sent; the listener only reports what it would forward (D103).\n".utf8))
+            FileHandle.standardError.write(Data("Warning: --forward is not implemented: no PS3.8 association is opened and no C-STORE (PS3.4 Annex B) is sent; no data set is built from the messages, since listen takes no --template (PS3.3 2026a Table A.8-1); each message is reported as not forwarded (D103, D214).\n".utf8))
         }
         
         let types = messageTypes.isEmpty ? [] : messageTypes.split(separator: ",").map(String.init)

@@ -65,4 +65,19 @@ final class TemplateRequirementTests: XCTestCase {
             XCTAssertTrue(flat.contains("PS3.3 Table A.8-1"), flat)
         }
     }
+
+    /// D214: `listen --forward` builds no template-less data set and says why, with the
+    /// P-GATEWAY-SC reason (PS3.3 2026a Table A.8-1); forwarding itself is not implemented (D103).
+    func testListenerForwardIsSkippedWithTheTemplateReason() throws {
+        let note = try GatewayOutputRules.listenerForwardSkipMessage(
+            messageType: "ORM", destination: "pacs://archive.example:11112")
+        XCTAssertTrue(note.hasPrefix("Not forwarded to archive.example:11112: ORM message not converted"), note)
+        XCTAssertTrue(note.contains(GatewayOutputRules.noImageReason), note)
+        XCTAssertTrue(note.contains("PS3.3 2026a Table A.8-1"), note)
+        XCTAssertTrue(note.contains("not implemented (D103)"), note)
+        XCTAssertTrue(GatewayOutputRules.missingTemplateMessage(command: "hl7-to-dicom")
+            .contains(GatewayOutputRules.noImageReason))
+        XCTAssertThrowsError(try GatewayOutputRules.listenerForwardSkipMessage(
+            messageType: "ORM", destination: "archive.example"))
+    }
 }

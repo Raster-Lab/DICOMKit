@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — PS3.3 2026a Table A.8-1 (Secondary Capture Image IOD: Image Pixel C.7.6.3 M, SC Image C.8.6.2 M; 30 module rows dumped); image Storage SOP Classes = DICOMDictionary.StorageSOPClass (PS3.4 2026a Table B.5-1/B.6-1) whose PS3.6 Table A-1 name ends in "Image Storage" or "Image Storage (Retired)"; P-GATEWAY-SC option (a), closes D104
+// NEMA-verified: 2026a, checked 2026-10-01 — PS3.3 2026a Table A.8-1 (Secondary Capture Image IOD: Image Pixel C.7.6.3 M, SC Image C.8.6.2 M; 30 module rows dumped); image Storage SOP Classes = DICOMDictionary.StorageSOPClass (PS3.4 2026a Table B.5-1/B.6-1) whose PS3.6 Table A-1 name ends in "Image Storage" or "Image Storage (Retired)"; P-GATEWAY-SC option (a), closes D104; listen --forward builds no template-less data set and reports the same reason (D214)
 import Foundation
 import DICOMKit
 import DICOMCore
@@ -14,12 +14,30 @@ import DICOMDictionary
 /// Pixel Data.
 enum GatewayOutputRules {
 
+    /// Why a data set built from HL7/FHIR without a template is not written or sent.
+    static let noImageReason = "the output would claim Secondary Capture "
+        + "Image Storage (1.2.840.10008.5.1.4.1.1.7) with no image, but the Secondary Capture Image IOD "
+        + "requires the Image Pixel and SC Image Modules (PS3.3 2026a Table A.8-1)"
+
     /// The refusal when `--template` is absent.
     static func missingTemplateMessage(command: String) -> String {
-        "\(command) needs --template <file.dcm>: without it the output would claim Secondary Capture "
-            + "Image Storage (1.2.840.10008.5.1.4.1.1.7) with no image, but the Secondary Capture Image IOD "
-            + "requires the Image Pixel and SC Image Modules (PS3.3 2026a Table A.8-1). Give a template "
+        "\(command) needs --template <file.dcm>: without it \(noImageReason). Give a template "
             + "whose SOP Class the HL7/FHIR data should populate"
+    }
+
+    /// D214: `listen --forward` takes no `--template`, so it builds no data set from the HL7
+    /// message (the template-less one would be the non-conforming Secondary Capture that
+    /// P-GATEWAY-SC refuses) and forwards nothing — C-STORE forwarding is not implemented
+    /// (D103). Throws when `destination` is not `scheme://host:port`.
+    static func listenerForwardSkipMessage(messageType: String, destination: String) throws -> String {
+        guard let url = URL(string: destination) else {
+            throw GatewayError.invalidInput("Invalid destination URL: \(destination)")
+        }
+        guard let host = url.host, let port = url.port else {
+            throw GatewayError.invalidInput("Invalid PACS destination format")
+        }
+        return "Not forwarded to \(host):\(port): \(messageType) message not converted, because listen "
+            + "takes no --template and without one \(noImageReason); C-STORE forwarding is not implemented (D103)"
     }
 
     /// Throws (exit 1) when `--template` is absent.

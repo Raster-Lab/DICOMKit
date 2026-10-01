@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **dicom-3d nearest-neighbour edge sample** (D207): `VolumeData.interpolatedVoxelAt(.nearest)` returned nil in the
   last half voxel of the accepted range [0, n) because `round` carried the index to n; it now clamps to the last
   voxel centre (PS3.3 2026a C.7.6.2.1.1), as the linear branch already did.
+- **dicom-gateway `listen --forward` builds no template-less data set** (D214): the listener's forward path no longer
+  converts each HL7 message into the Secondary Capture data set that `hl7-to-dicom` refuses without `--template`
+  (P-GATEWAY-SC, PS3.3 2026a Table A.8-1); it writes one stderr line per message, "Not forwarded to host:port: …",
+  with the same reason, since `listen` takes no `--template` and C-STORE forwarding is not implemented (D103).
 
 ### Changed — CLI P-items, net batch (approved 2026-10-01, DICOM 2026a)
 
