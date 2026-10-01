@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-print and dicom-printscp verified against DICOM 2026a (2026-10-01)
+
+- **dicom-print:** `send --medium` offers `mammo-clear-film` and `mammo-blue-film` (MAMMO CLEAR
+  FILM / MAMMO BLUE FILM, the two Medium Type (2000,0030) Defined Terms of PS3.3 2026a Table C.13-1
+  it lacked). Every film-session / film-box option's help names its attribute and the term each
+  token sends (`14x17 = 14INX17IN`, `medium = MED`, `bin-1 = BIN_1`, `lin-od = LIN OD`, …; the film
+  size help listed 9 of the 12 Film Size IDs), and the standard term itself is now accepted as an
+  alias in any case (`--film-size 14INX17IN`, `--priority MED`, `--medium "CLEAR FILM"`,
+  `--film-destination BIN_1`, `--presentation-lut "LIN OD"`). `--layout` help lists all six Image
+  Display Format forms of Table C.13-3 and says a grid `RxC` is sent as `STANDARD\C,R`;
+  `--bit-depth` cites Table C.13-5 (was C.13-3); `--color` names the two Print Management Meta SOP
+  Classes; `status` / `job` help names the N-GET attributes. Verbose and `list-printers` labels use
+  the attribute names (Film Size ID, Print Priority, Medium Type, Called AE Title, …). README: the
+  `--bit-depth` row said 8, 12 or 16 (16 is clamped), and the exit-code table listed 65/66/74, which
+  the tool never returns. Tokens, defaults and the values sent are otherwise unchanged. New test
+  target `dicom-printTests`.
+
 ### Fixed — dicom-mwl and dicom-mpps verified against DICOM 2026a (2026-10-01)
 
 - **dicom-mwl:** `--sps-status` help and the discussion listed the Performed Procedure Step
