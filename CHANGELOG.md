@@ -41,6 +41,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ArchivePatient.issuerOfPatientID` (index key `issuerOfPatientID`, query JSON `IssuerOfPatientID`, shown in
   list tree and query text); files with an empty or absent Patient ID (Type 2) are also keyed on Patient's Name,
   so different unidentified patients are no longer merged into one "UNKNOWN" patient. Older indexes load.
+- **GSPS / Pseudo-Color PS: no error for a missing Content Creator's Name** (D140): (0070,0084) is Type 3 in the
+  Content Creator Macro (PS3.3 2026a Table 10.9.3-1, included by Table 10-12), not Type 2.
+- **IOD message prefixes are PS3.6 Table A-1 names** (D141): "Computed Radiography Image Storage", "Ultrasound
+  Image Storage", "Grayscale Softcopy Presentation State Storage", "Pseudo-Color Softcopy Presentation State
+  Storage", "Key Object Selection Document Storage" and the SR SOP Class name (e.g. "Basic Text SR Storage")
+  instead of "CR Image Storage", "US Image Storage", "GSPS", "Pseudo-Color PS", "Key Object Selection Document",
+  "Structured Report".
+- **SR / KOS root Concept Name Code Sequence is Type 1C** (D143): reported as "Missing Type 1C … (required for the
+  Root Content Item) [PS3.3 … (Table C.17-5); PS3.5 7.4.2]" instead of Type 1.
+- **Level 2 checks lengths, repertoires and VM** (D142): every character-string Value is checked against PS3.5
+  2026a Table 6.2-1 (maximum or fixed length — LO 64 chars, SH 16, CS 16 bytes, DS 16, IS 12, UI 64, AS 4, …;
+  character repertoire; AS / DS / IS forms, IS within -2^31…2^31-1), PN against PS3.5 6.2.1 (≤ 3 component groups,
+  ≤ 4 "^" per group, 64 chars per group), and the number of Values against the PS3.6 Table 6-1 VM column; each is
+  an error. A lowercase Code String is now an error (outside the CS repertoire) instead of a "should be uppercase"
+  warning. DA / TM / UI are judged per Value (a multi-valued DA no longer fails) and each problem is reported once
+  (no second "Invalid Study Date format" line).
 
 ### Fixed — deferred rows, network batch (2026-10-01, DICOM 2026a)
 

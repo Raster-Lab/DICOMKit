@@ -6,7 +6,7 @@ Validate DICOM files against standards and best practices.
 
 - **Multiple Validation Levels**
   - Level 1: File format compliance
-  - Level 2: VR against the PS3.6 dictionary; DA, TM and UI value forms (PS3.5 Table 6.2-1, 9.1)
+  - Level 2: VR and VM against the PS3.6 dictionary; value lengths, character repertoires and DA, TM, UI, AS, DS, IS value forms (PS3.5 Table 6.2-1, 6.2.1, 9.1)
   - Level 3: IOD-specific rules
   - Level 4: Best practices and recommendations
 
@@ -47,7 +47,7 @@ dicom-validate file.dcm
 # Level 1: Format only
 dicom-validate file.dcm --level 1
 
-# Level 2: Format + VR and DA/TM/UI value forms
+# Level 2: Format + VR, VM, lengths, repertoires and value forms
 dicom-validate file.dcm --level 2
 
 # Level 3: Format + Tags + IOD rules (default)
@@ -154,9 +154,12 @@ Warnings (1):
 - UID format (PS3.5 9.1)
 - Date format (YYYYMMDD, PS3.5 Table 6.2-1 DA)
 - Time format (HHMMSS.FFFFFF, PS3.5 Table 6.2-1 TM)
-- Person Name: at most three component groups
-- Code String: uppercase
-- Not checked: VM, and the maximum lengths and character repertoires of Table 6.2-1 for the other VRs
+- Person Name: at most three component groups, at most four "^" per group, 64 chars per group (PS3.5 6.2.1, Table 6.2-1)
+- Maximum (or fixed) Value length per VR: AE 16, AS 4, CS 16, DA 8, DS 16, DT 26, IS 12, LO 64, LT 10240, SH 16, ST 1024, TM 14, UI 64 (PS3.5 Table 6.2-1); an error
+- Character repertoire per VR (e.g. CS: uppercase, "0"-"9", SPACE, "_"; DS: "0"-"9", "+", "-", "E", "e", ".", SPACE; no control characters except ESC in LO/SH/PN/UC); an error
+- AS nnnD/W/M/Y, DS decimal number, IS integer in -2^31...2^31-1 (PS3.5 Table 6.2-1)
+- VM against the PS3.6 Table 6-1 VM column (PS3.5 6.4), when the element is encoded with a dictionary VR; an error
+- Every check runs per Value, so multi-valued DA/TM/UI are judged value by value; each DA/TM/UI problem is reported once
 
 ### Level 3: IOD-Specific
 - Type 1 and Type 2 attributes of the IOD's mandatory modules (PS3.3 IOD and module tables)

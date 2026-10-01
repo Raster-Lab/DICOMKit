@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — printed Type / PS3.3 module-table / PS3.5 7.4.1-7.4.4 citations run on 10 fixtures and diffed against PS3.3 2026a (81 distinct messages: 79 match, 2 wrong in the engine, deferred); --iod takes PS3.6 Table A-1 keywords and UIDs (IODOption.swift); --level help states what level 2 checks (PS3.5 Table 6.2-1 DA, TM, UI forms; no length or VM checks, deferred)
+// NEMA-verified: 2026a, checked 2026-10-01 — printed Type / PS3.3 module-table / PS3.5 7.4.1-7.4.4 citations run on 10 fixtures and diffed against PS3.3 2026a (81 distinct messages; the 2 engine mismatches, D140 and D143, fixed in DICOMKit); --iod takes PS3.6 Table A-1 keywords and UIDs (IODOption.swift); --level help states what level 2 checks (PS3.6 Table 6-1 VR and VM; PS3.5 Table 6.2-1 lengths, repertoires and DA/TM/UI/AS/DS/IS forms; PS3.5 6.2.1 PN component groups)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -34,7 +34,7 @@ struct DICOMValidate: AsyncParsableCommand {
     @Argument(help: "Path to DICOM file or directory")
     var inputPath: String
     
-    @Option(name: .long, help: "Validation level (1-5): 1=File Meta Information (PS3.10 Table 7.1-1), 2=VR against PS3.6 and DA/TM/UI value forms (PS3.5 Table 6.2-1, 9.1; lengths and VM are not checked), 3=IOD Type 1/1C/2/2C (PS3.3), 4=Best practices, 5=J2K codestream")
+    @Option(name: .long, help: "Validation level (1-5): 1=File Meta Information (PS3.10 Table 7.1-1), 2=VR and VM against PS3.6 Table 6-1, value length, character repertoire and DA/TM/UI/AS/DS/IS value forms (PS3.5 Table 6.2-1, 6.2.1, 9.1), 3=IOD Type 1/1C/2/2C (PS3.3), 4=Best practices, 5=J2K codestream")
     var level: Int = 3
     
     @Option(name: .long, help: "IOD to validate against: SOP Class keyword or UID of PS3.6 Table A-1 (e.g. CTImageStorage, MRImageStorage, ComputedRadiographyImageStorage, UltrasoundImageStorage, SecondaryCaptureImageStorage, GrayscaleSoftcopyPresentationStateStorage, PseudoColorSoftcopyPresentationStateStorage, an SR or Key Object Selection keyword); short names CT, MR, CR, US, SC, GSPS, SR, KOS also accepted; default: from SOP Class UID (0008,0016)")

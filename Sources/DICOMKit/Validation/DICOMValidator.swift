@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.10 2026a Table 7.1-1 Type 1 File Meta elements; PS3.5 Table 6.2-1 DA and TM formats; ISO_IR 192; per-IOD Type 1/2 tables from PS3.3 Tables A.2-1, A.3-1, A.4-1, A.6-1, A.8-1, A.33.1-1, A.33.3-1, A.35.1-1..A.35.4-1 and the module tables C.7-1, C.7-3, C.7-5a, C.7-6, C.7-8, C.7-9, C.7-10, C.7-11b/c, C.8-1, C.8-3, C.8-4, C.8-18, C.8-24, C.10-4, C.11.9-1 (PR), C.11.10-1, 10-12, C.11.11-1b, C.11.6-1, C.11.15-1, C.12-1, C.17-1 (SR), C.17-2, C.17-5, C.18.8-1, C.17.6-1 (KO), C.17.6-2; Type semantics PS3.5 7.4.1-7.4.4
+// NEMA-verified: 2026a, checked 2026-10-01 — PS3.10 2026a Table 7.1-1 Type 1 File Meta elements; PS3.5 Table 6.2-1 maximum lengths and character repertoires of the 16 character-string VRs (AE AS CS DA DS DT IS LO LT PN SH ST TM UC UI UT) and the DA, TM, UI, AS, DS, IS forms, PS3.5 6.2.1 PN component groups, PS3.6 Table 6-1 VM column (level 2, errors); ISO_IR 192; per-IOD Type 1/2 tables from PS3.3 Tables A.2-1, A.3-1, A.4-1, A.6-1, A.8-1, A.33.1-1, A.33.3-1, A.35.1-1..A.35.4-1 and the module tables C.7-1, C.7-3, C.7-5a, C.7-6, C.7-8, C.7-9, C.7-10, C.7-11b/c, C.8-1, C.8-3, C.8-4, C.8-18, C.8-24, C.10-4, C.11.9-1 (PR), C.11.10-1, 10-12 (Content Creator's Name Type 3 via Table 10.9.3-1), C.11.11-1b, C.11.6-1, C.11.15-1, C.12-1, C.17-1 (SR), C.17-2, C.17-5 (root Concept Name Code Sequence 1C), C.18.8-1, C.17.6-1 (KO), C.17.6-2; IOD message prefixes are PS3.6 Table A-1 SOP Class names; Type semantics PS3.5 7.4.1-7.4.4
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -174,62 +174,143 @@ public struct DICOMValidator {
         // A zero-length value is legal for any Type 2 attribute: PS3.5 5 defines
         // it as "present with zero length" when the value is unknown. Only a
         // non-empty value can be malformed, so empty values skip format checks.
+        // Every check runs per Value (PS3.5 6.4: backslash-delimited), so a multi-valued
+        // DA / TM / UI is judged value by value.
+        let name = entry.name
+        let values = VRValueRules.values(of: element)
+
         switch element.vr {
         case .UI:
-            if let value = element.stringValue, !value.isEmpty {
-                if !isValidUID(value) {
-                    errors.append(ValidationIssue(
-                        level: .error,
-                        message: "Invalid UID format for \(entry.name)",
-                        tag: element.tag
-                    ))
-                }
+            for value in values where !value.isEmpty && !isValidUID(value) {
+                errors.append(ValidationIssue(
+                    level: .error,
+                    message: "Invalid UID format for \(name)",
+                    tag: element.tag
+                ))
             }
         case .DA:
-            if let value = element.stringValue, !value.isEmpty {
-                if !isValidDate(value) {
-                    errors.append(ValidationIssue(
-                        level: .error,
-                        message: "Invalid date format for \(entry.name) (expected YYYYMMDD)",
-                        tag: element.tag
-                    ))
-                }
+            for value in values where !value.isEmpty && !isValidDate(value) {
+                errors.append(ValidationIssue(
+                    level: .error,
+                    message: "Invalid date format for \(name) (expected YYYYMMDD)",
+                    tag: element.tag
+                ))
             }
         case .TM:
-            if let value = element.stringValue, !value.isEmpty {
-                if !isValidTime(value) {
-                    errors.append(ValidationIssue(
-                        level: .error,
-                        message: "Invalid time format for \(entry.name) (expected HHMMSS.FFFFFF)",
-                        tag: element.tag
-                    ))
-                }
+            for value in values where !value.isEmpty && !isValidTime(value) {
+                errors.append(ValidationIssue(
+                    level: .error,
+                    message: "Invalid time format for \(name) (expected HHMMSS.FFFFFF)",
+                    tag: element.tag
+                ))
             }
         case .PN:
-            if let value = element.stringValue {
-                if value.components(separatedBy: "=").count > 3 {
-                    warnings.append(ValidationIssue(
-                        level: .warning,
-                        message: "Person Name has more than 3 components",
+            // PS3.5 6.2.1: at most three component groups ("=" delimiters), each with at most
+            // four component delimiters ("^"); 64 characters per component group (Table 6.2-1).
+            for value in values {
+                let groups = value.components(separatedBy: "=")
+                if groups.count > 3 {
+                    errors.append(ValidationIssue(
+                        level: .error,
+                        message: "\(name) (PN) has \(groups.count) component groups; at most 3 are allowed [PS3.5 6.2.1]",
                         tag: element.tag
                     ))
                 }
-            }
-        case .CS:
-            if let value = element.stringValue {
-                if value.rangeOfCharacter(from: CharacterSet.lowercaseLetters) != nil {
-                    warnings.append(ValidationIssue(
-                        level: .warning,
-                        message: "Code String should be uppercase",
-                        tag: element.tag
-                    ))
+                for group in groups {
+                    if group.filter({ $0 == "^" }).count > 4 {
+                        errors.append(ValidationIssue(
+                            level: .error,
+                            message: "\(name) (PN) has a component group with more than 4 component delimiters \"^\" [PS3.5 6.2.1]",
+                            tag: element.tag
+                        ))
+                    }
+                    if group.count > 64 {
+                        errors.append(ValidationIssue(
+                            level: .error,
+                            message: "\(name) (PN) has a component group of \(group.count) chars; at most 64 chars per component group [PS3.5 Table 6.2-1]",
+                            tag: element.tag
+                        ))
+                    }
                 }
             }
         default:
             break
         }
+
+        // PS3.5 Table 6.2-1 maximum length and character repertoire.
+        if let rule = VRValueRules.rule(for: element.vr) {
+            for (index, value) in values.enumerated() where !value.isEmpty {
+                let length = rule.countsBytes ? value.utf8.count : value.count
+                let position = values.count > 1 ? "Value \(index + 1) of " : ""
+                if let fixed = rule.fixedLength, length != fixed {
+                    errors.append(ValidationIssue(
+                        level: .error,
+                        message: "\(position)\(name) (\(element.vr.rawValue)) is \(length) bytes; \(element.vr.rawValue) is \(fixed) bytes fixed [PS3.5 Table 6.2-1]",
+                        tag: element.tag
+                    ))
+                } else if let max = rule.maxLength, length > max {
+                    errors.append(ValidationIssue(
+                        level: .error,
+                        message: "\(position)\(name) (\(element.vr.rawValue)) is \(length) \(rule.countsBytes ? "bytes" : "chars"); \(element.vr.rawValue) allows at most \(max) \(rule.countsBytes ? "bytes" : "chars") [PS3.5 Table 6.2-1]",
+                        tag: element.tag
+                    ))
+                }
+                if let bad = value.unicodeScalars.first(where: { !rule.allows($0) }) {
+                    let shown = bad.value < 0x20 || bad.value == 0x7F
+                        ? String(format: "0x%02X", bad.value) : "'\(Character(bad))'"
+                    errors.append(ValidationIssue(
+                        level: .error,
+                        message: "\(position)\(name) (\(element.vr.rawValue)) contains \(shown), outside the \(element.vr.rawValue) character repertoire (\(rule.repertoire)) [PS3.5 Table 6.2-1]",
+                        tag: element.tag
+                    ))
+                }
+            }
+        }
+
+        // PS3.5 Table 6.2-1 value forms of AS, DS and IS.
+        for (index, value) in values.enumerated() where !value.isEmpty {
+            let position = values.count > 1 ? "Value \(index + 1) of " : ""
+            switch element.vr {
+            case .AS:
+                let chars = Array(value)
+                if chars.count == 4, !(chars[0...2].allSatisfy { $0.isASCII && $0.isNumber } && "DWMY".contains(chars[3])) {
+                    errors.append(ValidationIssue(
+                        level: .error,
+                        message: "\(position)\(name) (AS) '\(value)' is not nnnD, nnnW, nnnM or nnnY [PS3.5 Table 6.2-1]",
+                        tag: element.tag))
+                }
+            case .DS:
+                let trimmed = value.trimmingCharacters(in: .whitespaces)
+                if Double(trimmed) == nil || trimmed.contains(" ") {
+                    errors.append(ValidationIssue(
+                        level: .error,
+                        message: "\(position)\(name) (DS) '\(value)' is not a decimal number [PS3.5 Table 6.2-1]",
+                        tag: element.tag))
+                }
+            case .IS:
+                let trimmed = value.trimmingCharacters(in: .whitespaces)
+                if Int32(trimmed.hasPrefix("+") ? String(trimmed.dropFirst()) : trimmed) == nil {
+                    errors.append(ValidationIssue(
+                        level: .error,
+                        message: "\(position)\(name) (IS) '\(value)' is not an integer in -2^31...2^31-1 [PS3.5 Table 6.2-1]",
+                        tag: element.tag))
+                }
+            default:
+                break
+            }
+        }
+
+        // PS3.6 Table 6-1 VM, when the element is encoded with a VR the dictionary gives.
+        if entry.vr.contains(element.vr), let vm = VRValueRules.ValueMultiplicity(entry.vm),
+           let count = VRValueRules.valueCount(of: element), count > 0, !vm.allows(count) {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "\(name) has \(count) value\(count == 1 ? "" : "s"); PS3.6 Table 6-1 gives VM \(entry.vm) [PS3.5 6.4]",
+                tag: element.tag
+            ))
+        }
     }
-    
+
     private func validateUIDs(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
         let uidTags: [(Tag, String)] = [
             (.sopClassUID, "SOP Class UID"),
@@ -238,7 +319,7 @@ public struct DICOMValidator {
             (.seriesInstanceUID, "Series Instance UID")
         ]
         
-        for (tag, name) in uidTags {
+        for (tag, name) in uidTags where dataSet[tag]?.vr != .UI {   // UI values: validateValueFormat
             if let uid = dataSet.string(for: tag) {
                 if !isValidUID(uid) {
                     errors.append(ValidationIssue(
@@ -258,7 +339,7 @@ public struct DICOMValidator {
             (.acquisitionDate, "Acquisition Date")
         ]
         
-        for (tag, name) in dateTags {
+        for (tag, name) in dateTags where dataSet[tag]?.vr != .DA {   // DA values: validateValueFormat
             if let date = dataSet.string(for: tag), !date.isEmpty {
                 if !isValidDate(date) {
                     errors.append(ValidationIssue(
@@ -276,7 +357,7 @@ public struct DICOMValidator {
             (.acquisitionTime, "Acquisition Time")
         ]
         
-        for (tag, name) in timeTags {
+        for (tag, name) in timeTags where dataSet[tag]?.vr != .TM {   // TM values: validateValueFormat
             if let time = dataSet.string(for: tag), !time.isEmpty {
                 if !isValidTime(time) {
                     errors.append(ValidationIssue(
@@ -597,6 +678,163 @@ public struct DICOMValidator {
     }
 }
 
+/// PS3.5 2026a Table 6.2-1 length and character-repertoire rules of the character-string VRs,
+/// and the PS3.6 Table 6-1 VM column, used by level-2 validation.
+enum VRValueRules {
+
+    struct Rule {
+        /// Maximum length of one Value; `nil` when only bounded by the 32-bit length.
+        let maxLength: Int?
+        /// Fixed length of one Value (AS: 4, DA: 8).
+        let fixedLength: Int?
+        /// `true` for "bytes", `false` for "chars" in Table 6.2-1.
+        let countsBytes: Bool
+        /// The repertoire, as Table 6.2-1 words it, for messages.
+        let repertoire: String
+        let allows: (Unicode.Scalar) -> Bool
+    }
+
+    private static func isControl(_ c: Unicode.Scalar) -> Bool { c.value < 0x20 || c.value == 0x7F }
+    private static func digit(_ c: Unicode.Scalar) -> Bool { c.value >= 0x30 && c.value <= 0x39 }
+
+    /// LO, SH, PN, UC: no BACKSLASH (it delimits Values) and no Control Characters except ESC.
+    private static func stringRepertoire(_ c: Unicode.Scalar) -> Bool {
+        c.value == 0x1B || !isControl(c)
+    }
+    /// LT, ST, UT: no Control Characters except TAB, LF, FF, CR and ESC.
+    private static func textRepertoire(_ c: Unicode.Scalar) -> Bool {
+        [0x09, 0x0A, 0x0C, 0x0D, 0x1B].contains(c.value) || !isControl(c)
+    }
+
+    /// The Table 6.2-1 rule of `vr`; `nil` for VRs not checked here (binary VRs, UR).
+    static func rule(for vr: VR) -> Rule? {
+        switch vr {
+        case .AE: return Rule(maxLength: 16, fixedLength: nil, countsBytes: true,
+                              repertoire: "Default Character Repertoire excluding BACKSLASH and control characters",
+                              allows: { $0.value >= 0x20 && $0.value <= 0x7E && $0 != "\\" })
+        case .AS: return Rule(maxLength: nil, fixedLength: 4, countsBytes: true,
+                              repertoire: "\"0\"-\"9\", \"D\", \"W\", \"M\", \"Y\"",
+                              allows: { digit($0) || "DWMY".unicodeScalars.contains($0) })
+        case .CS: return Rule(maxLength: 16, fixedLength: nil, countsBytes: true,
+                              repertoire: "uppercase characters, \"0\"-\"9\", SPACE and \"_\"",
+                              allows: { ($0.value >= 0x41 && $0.value <= 0x5A) || digit($0) || $0 == " " || $0 == "_" })
+        case .DA: return Rule(maxLength: nil, fixedLength: 8, countsBytes: true,
+                              repertoire: "\"0\"-\"9\"", allows: digit)
+        case .DS: return Rule(maxLength: 16, fixedLength: nil, countsBytes: true,
+                              repertoire: "\"0\"-\"9\", \"+\", \"-\", \"E\", \"e\", \".\" and SPACE",
+                              allows: { digit($0) || "+-Ee. ".unicodeScalars.contains($0) })
+        case .DT: return Rule(maxLength: 26, fixedLength: nil, countsBytes: true,
+                              repertoire: "\"0\"-\"9\", \"+\", \"-\", \".\" and SPACE",
+                              allows: { digit($0) || "+-. ".unicodeScalars.contains($0) })
+        case .IS: return Rule(maxLength: 12, fixedLength: nil, countsBytes: true,
+                              repertoire: "\"0\"-\"9\", \"+\", \"-\" and SPACE",
+                              allows: { digit($0) || "+- ".unicodeScalars.contains($0) })
+        case .LO: return Rule(maxLength: 64, fixedLength: nil, countsBytes: false,
+                              repertoire: "no control characters except ESC", allows: stringRepertoire)
+        case .LT: return Rule(maxLength: 10240, fixedLength: nil, countsBytes: false,
+                              repertoire: "no control characters except TAB, LF, FF, CR, ESC", allows: textRepertoire)
+        case .PN: return Rule(maxLength: nil, fixedLength: nil, countsBytes: false,
+                              repertoire: "no control characters except ESC", allows: stringRepertoire)
+        case .SH: return Rule(maxLength: 16, fixedLength: nil, countsBytes: false,
+                              repertoire: "no control characters except ESC", allows: stringRepertoire)
+        case .ST: return Rule(maxLength: 1024, fixedLength: nil, countsBytes: false,
+                              repertoire: "no control characters except TAB, LF, FF, CR, ESC", allows: textRepertoire)
+        case .TM: return Rule(maxLength: 14, fixedLength: nil, countsBytes: true,
+                              repertoire: "\"0\"-\"9\", \".\" and SPACE",
+                              allows: { digit($0) || $0 == "." || $0 == " " })
+        case .UC: return Rule(maxLength: nil, fixedLength: nil, countsBytes: false,
+                              repertoire: "no control characters except ESC", allows: stringRepertoire)
+        case .UI: return Rule(maxLength: 64, fixedLength: nil, countsBytes: true,
+                              repertoire: "\"0\"-\"9\" and \".\"", allows: { digit($0) || $0 == "." })
+        case .UT: return Rule(maxLength: nil, fixedLength: nil, countsBytes: false,
+                              repertoire: "no control characters except TAB, LF, FF, CR, ESC", allows: textRepertoire)
+        default: return nil
+        }
+    }
+
+    /// VRs whose Value Field holds one Value even when it contains a BACKSLASH (Table 6.2-1:
+    /// "shall not be multi-valued").
+    static let singleValued: Set<VR> = [.LT, .ST, .UT, .UR]
+
+    /// The Values of a character-string element: the Value Field without its trailing padding
+    /// (SPACE, or NULL for UI; PS3.5 6.2), split at BACKSLASH (PS3.5 6.4). DA / TM / DT / UI
+    /// Values lose their trailing SPACE too ("may be padded with trailing spaces").
+    static func values(of element: DataElement) -> [String] {
+        guard element.vr.characterRepertoire != nil, element.sequenceItems == nil else { return [] }
+        let data = element.valueData
+        guard !data.isEmpty else { return [] }
+        let raw = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+        var trimmed = Substring(raw)
+        while let last = trimmed.last, last == " " || last == "\0" { trimmed = trimmed.dropLast() }
+        guard !trimmed.isEmpty else { return [] }
+        let parts = singleValued.contains(element.vr) ? [String(trimmed)]
+            : trimmed.components(separatedBy: "\\")
+        switch element.vr {
+        case .DA, .TM, .DT, .UI, .AE, .CS, .PN, .UC:
+            // Trailing (and for AE / CS leading) spaces are not significant.
+            return parts.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \0")) }
+        default:
+            return parts
+        }
+    }
+
+    /// The number of Values (PS3.5 6.4): backslash-delimited Values of a character string, or
+    /// Value Length / element size of a fixed-size binary VR; `nil` for VRs whose VM is 1 by
+    /// definition (OB, OW, SQ, …) or when the length is not a whole number of elements.
+    static func valueCount(of element: DataElement) -> Int? {
+        let size: Int
+        switch element.vr {
+        case .US, .SS: size = 2
+        case .UL, .SL, .FL, .AT: size = 4
+        case .FD, .SV, .UV: size = 8
+        default:
+            if element.vr.characterRepertoire != nil && element.sequenceItems == nil {
+                return values(of: element).count
+            }
+            return nil
+        }
+        let length = element.valueData.count
+        guard length % size == 0 else { return nil }
+        return length / size
+    }
+
+    /// A PS3.6 Table 6-1 VM: "1", "1-3", "1-n", "2-2n", "3-3n", "1-n or 1".
+    struct ValueMultiplicity {
+        let minimum: Int
+        let maximum: Int?      // nil = n
+        let step: Int          // "2-2n": multiples of 2
+
+        init?(_ text: String) {
+            let vm = text.components(separatedBy: " or ").first?.trimmingCharacters(in: .whitespaces) ?? ""
+            guard !vm.isEmpty else { return nil }
+            let parts = vm.split(separator: "-").map(String.init)
+            guard let lo = Int(parts[0]) else { return nil }
+            if parts.count == 1 {
+                minimum = lo; maximum = lo; step = 1
+            } else if parts.count == 2 {
+                let hi = parts[1]
+                if let n = Int(hi) {
+                    minimum = lo; maximum = n; step = 1
+                } else if hi == "n" {
+                    minimum = lo; maximum = nil; step = 1
+                } else if hi.hasSuffix("n"), let k = Int(hi.dropLast()) {
+                    minimum = lo; maximum = nil; step = k
+                } else {
+                    return nil
+                }
+            } else {
+                return nil
+            }
+        }
+
+        func allows(_ count: Int) -> Bool {
+            if count < minimum { return false }
+            if let maximum, count > maximum { return false }
+            return count % step == 0
+        }
+    }
+}
+
 /// Validation issue
 public struct ValidationIssue {
     public enum Level: String, Codable {
@@ -815,14 +1053,15 @@ public enum IODRequirementTables {
     ]
 
     /// C.11.10 Presentation State Identification Module, Table C.11.10-1, including
-    /// the Content Identification Macro, Table 10-12.
+    /// the Content Identification Macro, Table 10-12. Content Creator's Name (0070,0084)
+    /// is Type 3 (Content Creator Macro, Table 10.9.3-1, included by Table 10-12), so it is
+    /// not listed.
     static let presentationStateIdentification: [IODAttributeRequirement] = [
         .init(.presentationCreationDate, .type1, "Presentation Creation Date", "C.11.10 Presentation State Identification (Table C.11.10-1)"),
         .init(.presentationCreationTime, .type1, "Presentation Creation Time", "C.11.10 Presentation State Identification (Table C.11.10-1)"),
         .init(.instanceNumber,           .type1, "Instance Number",            "C.11.10 Presentation State Identification (Table 10-12)"),
         .init(.contentLabel,             .type1, "Content Label",              "C.11.10 Presentation State Identification (Table 10-12)"),
         .init(.contentDescription,       .type2, "Content Description",        "C.11.10 Presentation State Identification (Table 10-12)"),
-        .init(.contentCreatorName,       .type2, "Content Creator's Name",     "C.11.10 Presentation State Identification (Table 10-12)"),
     ]
 
     /// C.11.11 Presentation State Relationship Module, Table C.11.11-1 including the
@@ -887,11 +1126,12 @@ public enum IODRequirementTables {
     ]
 
     /// C.17.3 SR Document Content Module, Table C.17-4: the Document Content Macro
-    /// (Table C.17-5) with Value Type CONTAINER, whose Concept Name Code Sequence is
-    /// required for the Root Content Item, and the Container Macro (Table C.18.8-1).
+    /// (Table C.17-5) with Value Type CONTAINER and the Container Macro (Table C.18.8-1).
+    /// Concept Name Code Sequence is Type 1C in Table C.17-5 ("Required if Value Type
+    /// (0040,A040) is CONTAINER and a heading is present, or this is the Root Content
+    /// Item"); ``StructuredReportValidator`` checks it with that condition.
     static let srDocumentContent: [IODAttributeRequirement] = [
         .init(.valueType,               .type1, "Value Type",                 "C.17.3 SR Document Content (Table C.17-5)"),
-        .init(.conceptNameCodeSequence, .type1, "Concept Name Code Sequence", "C.17.3 SR Document Content (Table C.17-5, Root Content Item)"),
         .init(.continuityOfContent,     .type1, "Continuity of Content",      "C.17.3 SR Document Content (Table C.18.8-1)"),
     ]
 
@@ -1148,7 +1388,7 @@ struct MRImageStorageValidator: IODValidator {
 /// CR Image Storage validator — Table A.2-1.
 struct CRImageStorageValidator: IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let iod = "CR Image Storage"
+        let iod = "Computed Radiography Image Storage"   // PS3.6 Table A-1
         checkRequirements(IODRequirementTables.crImage, in: dataSet, iod: iod, errors: &errors)
         ImageIODConditionals.checkImagePixelConditionals(dataSet: dataSet, iod: iod, errors: &errors)
         ImageIODConditionals.checkPatientOrientation(dataSet: dataSet, iod: iod, imagePlaneOptional: false, errors: &errors)
@@ -1167,7 +1407,7 @@ struct CRImageStorageValidator: IODValidator {
 /// Ultrasound Image Storage validator — Table A.6-1.
 struct USImageStorageValidator: IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let iod = "US Image Storage"
+        let iod = "Ultrasound Image Storage"             // PS3.6 Table A-1
         checkRequirements(IODRequirementTables.usImage, in: dataSet, iod: iod, errors: &errors)
         ImageIODConditionals.checkImagePixelConditionals(dataSet: dataSet, iod: iod, errors: &errors)
         ImageIODConditionals.checkPatientOrientation(dataSet: dataSet, iod: iod, imagePlaneOptional: false, errors: &errors)
@@ -1271,7 +1511,7 @@ enum ImageIODConditionals {
 /// Grayscale Softcopy Presentation State validator — Table A.33.1-1.
 struct GrayscaleSoftcopyPresentationStateValidator: IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let iod = "GSPS"
+        let iod = "Grayscale Softcopy Presentation State Storage"   // PS3.6 Table A-1
         checkRequirements(IODRequirementTables.grayscaleSoftcopyPresentationState, in: dataSet, iod: iod, errors: &errors)
         PresentationStateConditionals.checkCommon(dataSet: dataSet, iod: iod, validator: self, errors: &errors)
 
@@ -1293,7 +1533,7 @@ struct GrayscaleSoftcopyPresentationStateValidator: IODValidator {
 /// Table (C.7.9, M) and ICC Profile (C.11.15, M).
 struct PseudoColorSoftcopyPresentationStateValidator: IODValidator {
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let iod = "Pseudo-Color PS"
+        let iod = "Pseudo-Color Softcopy Presentation State Storage"   // PS3.6 Table A-1
         checkRequirements(IODRequirementTables.pseudoColorSoftcopyPresentationState, in: dataSet, iod: iod, errors: &errors)
         PresentationStateConditionals.checkCommon(dataSet: dataSet, iod: iod, validator: self, errors: &errors)
     }
@@ -1325,8 +1565,20 @@ struct StructuredReportValidator: IODValidator {
     static let keyObjectSelectionDocumentUID = "1.2.840.10008.5.1.4.1.1.88.59"
 
     func validate(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let isKOS = dataSet.string(for: .sopClassUID)?.trimmingCharacters(in: .whitespaces) == Self.keyObjectSelectionDocumentUID
-        let iod = isKOS ? "Key Object Selection Document" : "Structured Report"
+        let sopClassUID = dataSet.string(for: .sopClassUID)?.trimmingCharacters(in: .whitespaces) ?? ""
+        let isKOS = sopClassUID == Self.keyObjectSelectionDocumentUID
+        // Message prefix: the SOP Class name of PS3.6 2026a Table A-1 ("Key Object Selection
+        // Document Storage", "Basic Text SR Storage", ...); PS3.3 A.35's title when the data set
+        // carries no SR SOP Class.
+        let iod: String
+        if isKOS {
+            iod = "Key Object Selection Document Storage"
+        } else if SRDocumentType.isSRDocument(sopClassUID: sopClassUID),
+                  let name = UIDDictionary.lookup(uid: sopClassUID)?.name {
+            iod = name
+        } else {
+            iod = "Structured Report Document"
+        }
 
         if isKOS {
             checkRequirements(IODRequirementTables.keyObjectSelectionDocument, in: dataSet, iod: iod, errors: &errors)
@@ -1350,6 +1602,24 @@ struct StructuredReportValidator: IODValidator {
                     tag: .verifyingObserverSequence
                 ))
             }
+        }
+
+        // Table C.17-5: Concept Name Code Sequence is Type 1C, required for the Root Content
+        // Item, whose attributes are the top level of the data set (C.17.3).
+        let rootConceptName = "Concept Name Code Sequence"
+        let rootModule = "C.17.3 SR Document Content (Table C.17-5)"
+        if let element = dataSet[.conceptNameCodeSequence] {
+            if Self.isEmpty(element) {
+                errors.append(ValidationIssue(
+                    level: .error,
+                    message: "\(iod): Type 1C attribute \(rootConceptName) is empty (required for the Root Content Item) [PS3.3 \(rootModule); PS3.5 7.4.2]",
+                    tag: .conceptNameCodeSequence))
+            }
+        } else {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "\(iod): Missing Type 1C attribute \(rootConceptName) (required for the Root Content Item) [PS3.3 \(rootModule); PS3.5 7.4.2]",
+                tag: .conceptNameCodeSequence))
         }
 
         // C.17.3.1: "The root Content Item is of type CONTAINER".
