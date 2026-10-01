@@ -56,14 +56,25 @@ struct ReportTemplate {
         contentStyle: .detailed
     )
 
-    /// Resolve a template by name
+    /// The styling presets `--style` accepts, in help order.
+    static let all: [ReportTemplate] = [.default, .cardiology, .radiology, .oncology]
+
+    /// The preset with this name (case-insensitive), or nil.
+    static func named(_ name: String) -> ReportTemplate? {
+        let key = name.trimmingCharacters(in: .whitespaces).lowercased()
+        return all.first { $0.name == key }
+    }
+
+    /// Resolve a template by name; an unknown name falls back to `default`. The CLI refuses
+    /// unknown names before this is reached (`DICOMReport.resolveStyle`).
     static func resolve(name: String) -> ReportTemplate {
-        switch name.lowercased() {
-        case "cardiology": return .cardiology
-        case "radiology": return .radiology
-        case "oncology": return .oncology
-        default: return .default
-        }
+        named(name) ?? .default
+    }
+
+    /// The sections rendered for these options: `--no-include-summary` drops the summary
+    /// sections (Impressions, Recommendations); the content tree is still rendered in full.
+    func renderedSections(includeSummary: Bool) -> [ReportSection] {
+        includeSummary ? sections : sections.filter { !$0.isSummary }
     }
 }
 
@@ -81,6 +92,9 @@ enum ReportSection: String {
     case measurements = "measurements"
     case impressions = "impressions"
     case recommendations = "recommendations"
+
+    /// Summary sections, controlled by `--include-summary` / `--no-include-summary`.
+    var isSummary: Bool { self == .impressions || self == .recommendations }
 
     var displayName: String {
         switch self {
@@ -414,7 +428,7 @@ struct ReportGenerator {
         output += "=" + String(repeating: "=", count: 78) + "\n\n"
 
         // Render sections in template-defined order
-        for section in resolvedTemplate.sections {
+        for section in resolvedTemplate.renderedSections(includeSummary: options.includeSummary) {
             output += renderTextSection(section)
         }
 
@@ -837,7 +851,7 @@ struct ReportGenerator {
         """
 
         // Render sections in template-defined order
-        for section in resolvedTemplate.sections {
+        for section in resolvedTemplate.renderedSections(includeSummary: options.includeSummary) {
             html += renderHTMLSection(section)
         }
 
@@ -1043,6 +1057,7 @@ struct ReportGenerator {
                 "display_name": resolvedTemplate.displayName,
                 "sections": resolvedTemplate.sections.map { $0.rawValue }
             ],
+            "include_summary": options.includeSummary,
             "language": language.rawValue,
             "completion_flag": document.completionFlag?.rawValue ?? "",
             "verification_flag": document.verificationFlag?.rawValue ?? "",
@@ -1132,7 +1147,7 @@ struct ReportGenerator {
         }
 
         // Render sections in template-defined order
-        for section in resolvedTemplate.sections {
+        for section in resolvedTemplate.renderedSections(includeSummary: options.includeSummary) {
             md += renderMarkdownSection(section)
         }
 

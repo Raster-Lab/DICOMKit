@@ -191,12 +191,13 @@ Output structure:
 | `--format` / `-f` | Output format (text, html, json, markdown, pdf) | text |
 | `--embed-images` | Embed images from referenced instances | false |
 | `--image-dir` | Directory containing referenced image files | - |
-| `--template` | Report template (default, cardiology, radiology, oncology) | default |
+| `--style` | Styling preset: default, cardiology, radiology, oncology (section order, colours). Not a PS3.16 SR template; an unknown value is refused (exit 1) | default |
+| `--template` | **Deprecated** alias of `--style` (prints a note; giving both is refused) | — |
 | `--title` | Custom report title (overrides SR title) | - |
 | `--logo` | Path to hospital logo for branding | - |
 | `--footer` | Custom footer text | - |
 | `--include-measurements` | Include measurement tables | true |
-| `--include-summary` | Include finding summaries | true |
+| `--include-summary` / `--no-include-summary` | Include the summary sections (Impressions, Recommendations) in text, HTML and Markdown; the content tree is always rendered. JSON reports the setting as `include_summary` | true |
 | `--language` | Section-heading language (en, es, fr, de) | en |
 | `--force` | Force parsing files without DICM prefix | false |
 | `--verbose` | Verbose output for debugging | false |
@@ -313,7 +314,7 @@ Memory usage scales linearly with SR content size.
 
 - **PDF Generation**: Not yet implemented. Use HTML or Markdown and convert with external tools.
 - **Image Embedding**: Placeholder only. Images not yet embedded in HTML/PDF.
-- **Templates**: Template system partially implemented. All templates use the same base format.
+- **Styles**: `--style` presets change section order and colours. SR templates (PS3.16 TIDs) are not chosen by an option: the root template is read from the document's Content Template Sequence (0040,A504) and shown.
 
 ### Planned Features (Future Releases)
 

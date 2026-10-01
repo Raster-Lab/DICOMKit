@@ -250,3 +250,86 @@ final class SRRenderingTests: XCTestCase {
         XCTAssertTrue(md.contains("| Distance | 7.25 | mm |"), md)
     }
 }
+
+/// P-REPORT-TEMPLATE and P-REPORT-SUMMARY: `--style` is a styling preset (unknown values are
+/// refused; `--template` is a deprecated alias) and `--include-summary` gates the summary sections.
+final class ReportStyleAndSummaryTests: XCTestCase {
+
+    func testStyleResolvesKnownPresetsCaseInsensitively() throws {
+        XCTAssertEqual(try DICOMReport.resolveStyle(style: nil, template: nil).style.name, "default")
+        XCTAssertEqual(try DICOMReport.resolveStyle(style: "Radiology", template: nil).style.name, "radiology")
+        XCTAssertTrue(try DICOMReport.resolveStyle(style: "oncology", template: nil).notes.isEmpty)
+        XCTAssertEqual(ReportTemplate.all.map(\.name), ["default", "cardiology", "radiology", "oncology"])
+    }
+
+    func testTemplateIsADeprecatedAliasWithANote() throws {
+        let resolution = try DICOMReport.resolveStyle(style: nil, template: "cardiology")
+        XCTAssertEqual(resolution.style.name, "cardiology")
+        XCTAssertEqual(resolution.notes.count, 1)
+        XCTAssertTrue(resolution.notes[0].contains("--template is deprecated; use --style"))
+    }
+
+    func testBothGivenIsRefused() {
+        XCTAssertThrowsError(try DICOMReport.resolveStyle(style: "default", template: "default")) { error in
+            XCTAssertTrue("\(error)".contains("both given"), "\(error)")
+        }
+    }
+
+    func testUnknownStyleIsRefusedListingTheValidStyles() {
+        XCTAssertThrowsError(try DICOMReport.resolveStyle(style: "neuro", template: nil)) { error in
+            let text = "\(error)"
+            XCTAssertTrue(text.contains("Valid styles: default, cardiology, radiology, oncology."), text)
+            XCTAssertFalse(text.contains("PS3.16"), text)
+        }
+    }
+
+    func testTIDLikeValueExplainsPS316Templates() {
+        for value in ["1500", "TID 1500", "tid1500", "TID-2000"] {
+            XCTAssertThrowsError(try DICOMReport.resolveStyle(style: nil, template: value)) { error in
+                let text = "\(error)"
+                XCTAssertTrue(text.contains("SR templates are PS3.16 Template IDs (TIDs)"), text)
+                XCTAssertTrue(text.contains("Content Template Sequence (0040,A504)"), text)
+                XCTAssertTrue(text.contains("styling preset"), text)
+            }
+        }
+        XCTAssertFalse(ReportStyleError.looksLikeTID("radiology"))
+        XCTAssertFalse(ReportStyleError.looksLikeTID("TID"))
+    }
+
+    /// An SR whose tree has an Impressions and a Recommendation item.
+    private static func summaryDocument() -> SRDocument {
+        let impression = AnyContentItem(TextContentItem(
+            conceptName: CodedConcept(codeValue: "121073", codingSchemeDesignator: "DCM", codeMeaning: "Impression"),
+            textValue: "No acute finding", relationshipType: .contains))
+        let recommendation = AnyContentItem(TextContentItem(
+            conceptName: CodedConcept(codeValue: "121075", codingSchemeDesignator: "DCM", codeMeaning: "Recommendation"),
+            textValue: "Follow up in 6 months", relationshipType: .contains))
+        let root = ContainerContentItem(
+            conceptName: CodedConcept(codeValue: "18748-4", codingSchemeDesignator: "LN", codeMeaning: "Diagnostic Imaging Report"),
+            contentItems: [impression, recommendation])
+        return SRDocument(sopClassUID: SRDocumentType.comprehensiveSR.sopClassUID, sopInstanceUID: "1.2.3.9",
+                          documentTitle: root.conceptName, rootContent: root)
+    }
+
+    private func render(_ format: ReportFormat, includeSummary: Bool) throws -> String {
+        let options = ReportOptions(format: format, template: "cardiology", embedImages: false, imageDirectory: nil,
+                                    customTitle: nil, logoPath: nil, footerText: nil,
+                                    includeMeasurements: true, includeSummary: includeSummary)
+        return String(decoding: try ReportGenerator(document: Self.summaryDocument(), options: options).generate(),
+                      as: UTF8.self)
+    }
+
+    func testIncludeSummaryGatesImpressionsAndRecommendations() throws {
+        let on = try render(.text, includeSummary: true)
+        XCTAssertTrue(on.contains("IMPRESSIONS"), on)
+        XCTAssertTrue(on.contains("RECOMMENDATIONS"), on)
+        let off = try render(.text, includeSummary: false)
+        XCTAssertFalse(off.contains("IMPRESSIONS"), off)
+        XCTAssertFalse(off.contains("RECOMMENDATIONS"), off)
+        XCTAssertTrue(off.contains("No acute finding"), off)   // the content tree is still rendered
+        XCTAssertFalse(try render(.markdown, includeSummary: false).contains("## Impressions"))
+        XCTAssertTrue(try render(.markdown, includeSummary: true).contains("## Impressions"))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(try render(.json, includeSummary: false).utf8)) as? [String: Any])
+        XCTAssertEqual(json["include_summary"] as? Bool, false)
+    }
+}

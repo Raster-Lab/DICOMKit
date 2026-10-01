@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — CLI P-items, derived batch (approved 2026-10-01, DICOM 2026a)
+
+- **`dicom-report --style`** names the styling preset (default, cardiology, radiology, oncology);
+  `--template` is a **deprecated** alias (stderr note; giving both is refused). An unknown value is
+  now refused with exit 1 listing the valid styles (was a silent fallback to `default`); a value that
+  looks like a template number (`1500`, `TID 1500`) is told that SR templates are PS3.16 2026a TIDs,
+  read from the document's Content Template Sequence (0040,A504) (P-REPORT-TEMPLATE).
+- **`dicom-report --include-summary` / `--no-include-summary`** now controls the summary sections
+  (Impressions, Recommendations) in text, HTML and Markdown (it was parsed but never read); the content
+  tree is always rendered. JSON adds `include_summary` (P-REPORT-SUMMARY).
+
 ### Changed — CLI P-items, file batch (approved 2026-10-01, DICOM 2026a)
 
 - **`dicom-json --no-sort-keys`** and **`dicom-xml --no-keywords`** are deprecated (P-JSON-NO-SORT-KEYS,
