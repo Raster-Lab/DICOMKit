@@ -387,6 +387,11 @@ let package = Package(
             path: "Tests/dicom-queryTests"
         ),
         .testTarget(
+            name: "dicom-sendTests",
+            dependencies: ["dicom-send", "DICOMNetwork", "DICOMCore"],
+            path: "Tests/dicom-sendTests"
+        ),
+        .testTarget(
             name: "DICOMKitTests",
             // DICOMDictionary: the presentation-state builders' VRs are asserted
             // against the standard dictionary rather than a hand-copied table.

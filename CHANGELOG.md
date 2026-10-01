@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of the family headings STD-GEN-DVD / STD-GEN-USB (D29); the error lists every identifier
   `DICOMDIRProfile.allStandard` accepts. Accepted values are unchanged (the old spellings remain
   aliases).
+- **dicom-send** counts a C-STORE response in the Failure class of PS3.4 2026a Table B.2-1 (A7xx
+  Refused: Out of resources, A9xx Error: Data Set does not match SOP Class, Cxxx Error: Cannot
+  understand, 0122 Refused: SOP Class not supported) as a failed file: it is printed with its
+  status, retried under `--retry`, and makes the exit code 1. Previously every response the SCP
+  returned was tallied and printed as a success. A Warning-class response (B000, B006, B007: stored
+  with a deviation) stays a success and is now printed under the file line and tallied as "Stored
+  with warning". `--priority` help names the PS3.7 Table 9.3-1 values (LOW 0002H, MEDIUM 0000H,
+  HIGH 0001H).
 - **dicom-query** `--level` accepts `image`, the Query/Retrieve Level (0008,0052) value of PS3.4
   2026a Tables C.6.1-1 / C.6.2-1 (IMAGE); `instance` remains accepted as an alias and the value
   sent on the wire was and is IMAGE. Help, validation messages and the hierarchical-query warning
