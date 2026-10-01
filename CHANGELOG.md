@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — JPEG XL JPEG Recompression source check per PS3.5 Table 8.2.15-1 (2026-10-01)
+
+- **DICOMKit** `ConversionDiagnostics`: a source for .4.111 must be MONOCHROME2 with 1 sample or YBR_FULL_422 / XYB / RGB with 3 samples (PS3.5 2026a Table 8.2.15-1); PALETTE COLOR and YBR_FULL sources were accepted before and are now refused with the table named. The file now carries its NEMA-verified marker (it arrived from main after the DICOMKit audit).
+
 ### Fixed — deferred rows, batch r3 (2026-10-01, DICOM 2026a)
 
 - **MPEG2 frame rates** (D238; PS3.5 2026a 8.2.5 Table 8-1, 8.2.6 Table 8-2, Note 4, Table 8-3):
