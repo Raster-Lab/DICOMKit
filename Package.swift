@@ -407,6 +407,14 @@ let package = Package(
                            .product(name: "ArgumentParser", package: "swift-argument-parser")],
             path: "Tests/dicom-3dTests"
         ),
+        // dicom-viewer: VOI LUT function, MONOCHROME1, overlay planes and frame numbering
+        // pinned to PS3.3 2026a.
+        .testTarget(
+            name: "dicom-viewerTests",
+            dependencies: ["dicom-viewer", "DICOMKit", "DICOMCore",
+                           .product(name: "ArgumentParser", package: "swift-argument-parser")],
+            path: "Tests/dicom-viewerTests"
+        ),
         // dicom-query / dicom-send: option values and C-STORE status handling
         // pinned to PS3.4 / PS3.7 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(

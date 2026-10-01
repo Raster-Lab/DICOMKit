@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-viewer grayscale display verified against DICOM 2026a (2026-10-01)
+
+- **`dicom-viewer`** applies the window with the VOI LUT Function of the file (PS3.3 Table C.11-2b,
+  C.11.2.1.3: SIGMOID and LINEAR_EXACT were ignored) and with LINEAR when it is absent (C.11.2.1.2.1;
+  the LINEAR_EXACT formula was used for every window); the auto window is computed on rescaled values
+  (it used stored values, so CT images with an intercept were mis-windowed); rescale is read per frame;
+  MONOCHROME1 images show the minimum as white (C.7.6.3.1.2; they were shown inverted).
+- **New options `--voi-lut-function`** (LINEAR, LINEAR_EXACT, SIGMOID) and **`--frame-number`** (1-based
+  DICOM Frame Number; `--frame` stays the 0-based index). `--window-width` must be >= 1 for LINEAR and
+  > 0 for LINEAR_EXACT / SIGMOID; a frame past Number of Frames is reported as such.
+- **`--show-overlay`** draws the overlay planes (60xx) at their 1-based Overlay Origin (Table C.9-2);
+  it only printed a status line. Thumbnail and volume grids apply the window, inversion and overlays too,
+  and label frames with Frame Numbers from 1 (they started at 0).
+- **`--show-info`** labels are the PS3.6 names (Patient's Name, Patient ID, Patient's Sex, Study
+  Description, Study Date, Rows x Columns, Number of Frames, Window Center, Window Width); "W/L" printed
+  the centre first and truncated decimals.
+
 ### Fixed — dicom-3d volume geometry, plane names and DICOM MPR output verified against DICOM 2026a (2026-10-01)
 
 - **`dicom-3d` volume loading** read Pixel Spacing (0028,0030) in the wrong order: value 1 is the
