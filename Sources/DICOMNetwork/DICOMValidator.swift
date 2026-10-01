@@ -430,8 +430,8 @@ public struct DICOMValidator: Sendable {
         "1.2.840.10008.1.2.4.104.1",
         "1.2.840.10008.1.2.4.105.1",
         "1.2.840.10008.1.2.4.106.1",
-        "1.2.840.10008.1.2.4.107.1",
-        "1.2.840.10008.1.2.4.108.1",
+        // HEVC .107 and .108 are fragmentable in their own right and have no
+        // ".1" twins (PS3.5 8.2.10 - 8.2.11, PS3.6 Table A-1).
     ]
     
     // MARK: - Initialization

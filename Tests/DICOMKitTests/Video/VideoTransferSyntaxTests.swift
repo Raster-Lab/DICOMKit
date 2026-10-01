@@ -9,14 +9,15 @@ import XCTest
 @testable import DICOMKit
 @testable import DICOMCore
 
-/// Covers all 20 registered video transfer syntaxes.
+/// Covers all 16 registered video transfer syntaxes.
 ///
 /// The repository previously defined only 6, omitting the H.264 Level 4.2 UIDs that
 /// IHE Endoscopy Image Archiving Table 3.10.4.1.3.1-2 requires of an endoscopy
-/// archive, plus all 8 fragmentable variants.
+/// archive, plus the 7 fragmentable variants. HEVC has no ".1" variants: .107
+/// and .108 are each a Fragmentable Encapsulated Transfer Syntax already.
 ///
-/// Reference: PS3.6 Annex A - UID registry
-/// Reference: PS3.5 Sections A.4.5 - A.4.7
+/// Reference: PS3.6 Annex A - UID registry (DICOM 2026d)
+/// Reference: PS3.5 Sections 8.2.5 - 8.2.11, A.4.5 - A.4.7
 final class VideoTransferSyntaxTests: XCTestCase {
 
     /// Every video transfer syntax UID in the registry, with its expected codec.
@@ -35,16 +36,14 @@ final class VideoTransferSyntaxTests: XCTestCase {
         ("1.2.840.10008.1.2.4.105.1", .h264,  true),
         ("1.2.840.10008.1.2.4.106",   .h264,  false),
         ("1.2.840.10008.1.2.4.106.1", .h264,  true),
-        ("1.2.840.10008.1.2.4.107",   .h265,  false),
-        ("1.2.840.10008.1.2.4.107.1", .h265,  true),
-        ("1.2.840.10008.1.2.4.108",   .h265,  false),
-        ("1.2.840.10008.1.2.4.108.1", .h265,  true),
+        ("1.2.840.10008.1.2.4.107",   .h265,  true),
+        ("1.2.840.10008.1.2.4.108",   .h265,  true),
     ]
 
-    func test_allTwentyVideoSyntaxes_areDefined() {
-        // 18 UIDs here: the registry's 20 rows count the two MPEG2 base UIDs plus
-        // their fragmentable twins, which is exactly this list.
-        XCTAssertEqual(Self.allVideoSyntaxes.count, 18)
+    func test_allSixteenVideoSyntaxes_areDefined() {
+        // PS3.6 Table A-1 lists 16 video UIDs: seven MPEG-2/H.264 base UIDs and
+        // their seven ".1" twins, plus the two HEVC UIDs.
+        XCTAssertEqual(Self.allVideoSyntaxes.count, 16)
 
         for entry in Self.allVideoSyntaxes {
             let ts = TransferSyntax.from(uid: entry.uid)
@@ -93,6 +92,15 @@ final class VideoTransferSyntaxTests: XCTestCase {
             XCTAssertEqual(ts.allowsMultipleFragments, entry.fragmentable,
                            "\(entry.uid) fragmentability")
         }
+    }
+
+    func test_hevcHasNoFragmentableTwins() {
+        // ".107.1" and ".108.1" are not registered UIDs; writing them would make
+        // an object no other implementation recognises.
+        XCTAssertNil(TransferSyntax.from(uid: "1.2.840.10008.1.2.4.107.1"))
+        XCTAssertNil(TransferSyntax.from(uid: "1.2.840.10008.1.2.4.108.1"))
+        XCTAssertFalse(TransferSyntax.allKnown.contains { $0.uid.hasPrefix("1.2.840.10008.1.2.4.107.") })
+        XCTAssertFalse(TransferSyntax.allKnown.contains { $0.uid.hasPrefix("1.2.840.10008.1.2.4.108.") })
     }
 
     func test_allowsMultipleFragments_isFalseForNonVideoSyntaxes() {

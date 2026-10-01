@@ -272,8 +272,16 @@ public enum VideoConsole {
             lines.append("Frame rate:       not declared")
         }
         lines.append("Frames:           \(probe.frameCount) (\(probe.frameCountSource.rawValue))")
-        if probe.audioTrackCount > 0 {
-            lines.append("Audio tracks:     \(probe.audioTrackCount) (discarded; DICOM video has no audio)")
+        if probe.audioTracks.count == 1 {
+            lines.append("Audio:            \(probe.audioTracks[0].summary)")
+        } else {
+            for (index, audio) in probe.audioTracks.enumerated() {
+                lines.append("Audio \(index + 1):".padding(toLength: 18, withPad: " ", startingAt: 0)
+                             + audio.summary)
+            }
+        }
+        if probe.rotationDegrees != 0 {
+            lines.append("Rotation:         \(probe.rotationDegrees)° (container display matrix)")
         }
         if let syntax = transferSyntax {
             lines.append("Transfer syntax:  \(syntax.uid)")
@@ -431,11 +439,31 @@ public enum VideoConsole {
         "\(name): series \(seriesNumber), instance \(instanceNumber), \(transferSyntaxUID)"
     }
 
-    /// The warning emitted when audio tracks are dropped.
-    public static func audioDiscardedLine(trackCount: Int) -> String {
+    /// The note emitted when audio is carried into the object.
+    ///
+    /// The payload is encapsulated unchanged, so its audio travels with it.
+    /// PS3.5 8.2.5 and 8.2.12 permit that, and the tracks have already passed
+    /// their rules by the time this is printed.
+    public static func audioCarriedLine(_ tracks: [AudioStreamInfo]) -> String {
+        let count = tracks.count
+        let summaries = tracks.map(\.summary).joined(separator: "; ")
+        return noteLine("""
+            carrying \(count) audio track\(count == 1 ? "" : "s") (\(summaries)) \
+            inside the encapsulated bit stream, as PS3.5 8.2.5 and 8.2.12 permit.
+            """)
+    }
+
+    /// The warning emitted when the container asks players to rotate the video.
+    ///
+    /// DICOM has no attribute for display rotation, so viewers show the coded
+    /// picture as stored. A warning rather than a rejection: the pixel data is
+    /// intact, and baking the rotation in means re-encoding, which is the
+    /// user's decision.
+    public static func rotationWarningLine(_ degrees: Int) -> String {
         warningLine("""
-            input has \(trackCount) audio track\(trackCount == 1 ? "" : "s"); \
-            DICOM video has no audio, discarding.
+            the container asks players to rotate this video by \(degrees)°, which DICOM \
+            cannot record; DICOM viewers will show it unrotated. To bake the rotation in, \
+            re-encode it (ffmpeg applies the rotation automatically when re-encoding).
             """)
     }
 

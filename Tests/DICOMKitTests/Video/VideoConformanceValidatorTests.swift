@@ -523,7 +523,8 @@ final class VideoConformanceValidatorTests: XCTestCase {
     }
 
     func test_selectTransferSyntax_prefersNonFragmentableForms() {
-        let streams = [h264Stream(), hevcStream(), mpeg2Stream()]
+        // HEVC is left out: .107 and .108 are fragmentable in their own right.
+        let streams = [h264Stream(), mpeg2Stream()]
         for stream in streams {
             let selected = VideoConformanceValidator.selectTransferSyntax(for: stream)
             XCTAssertEqual(selected?.allowsMultipleFragments, false,

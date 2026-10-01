@@ -413,10 +413,11 @@ extension TransferSyntax {
     
     /// HEVC/H.265 Main Profile / Level 5.1 (1.2.840.10008.1.2.4.107)
     ///
-    /// H.265/HEVC video compression at Main Profile, Level 5.1.
-    /// Supports up to 3840x2160 at 30fps (4K UHD video).
+    /// H.265/HEVC video compression at Main Profile, Level 5.1, Main tier: 8-bit
+    /// 4:2:0 up to 4K at 60 frames per second. A Fragmentable Encapsulated Transfer
+    /// Syntax in its own right; there is no ".1" variant.
     ///
-    /// Reference: PS3.5 Section A.4.7
+    /// Reference: PS3.5 Sections 8.2.10 and A.4.7
     public static let hevcH265MainProfile = TransferSyntax(
         uid: "1.2.840.10008.1.2.4.107",
         isExplicitVR: true,
@@ -426,10 +427,11 @@ extension TransferSyntax {
     
     /// HEVC/H.265 Main 10 Profile / Level 5.1 (1.2.840.10008.1.2.4.108)
     ///
-    /// H.265/HEVC video compression at Main 10 Profile, Level 5.1.
-    /// Supports 10-bit depth for HDR video, up to 3840x2160 at 30fps.
+    /// H.265/HEVC video compression at Main 10 Profile, Level 5.1, Main tier:
+    /// 10-bit 4:2:0 up to 4K at 60 frames per second. A Fragmentable Encapsulated
+    /// Transfer Syntax in its own right; there is no ".1" variant.
     ///
-    /// Reference: PS3.5 Section A.4.7
+    /// Reference: PS3.5 Sections 8.2.11 and A.4.7
     public static let hevcH265Main10Profile = TransferSyntax(
         uid: "1.2.840.10008.1.2.4.108",
         isExplicitVR: true,
@@ -540,22 +542,6 @@ extension TransferSyntax {
         byteOrder: .littleEndian,
         isEncapsulated: true
     )
-
-    /// Fragmentable HEVC/H.265 Main Profile / Level 5.1 (1.2.840.10008.1.2.4.107.1)
-    public static let hevcH265MainProfileFragmentable = TransferSyntax(
-        uid: "1.2.840.10008.1.2.4.107.1",
-        isExplicitVR: true,
-        byteOrder: .littleEndian,
-        isEncapsulated: true
-    )
-
-    /// Fragmentable HEVC/H.265 Main 10 Profile / Level 5.1 (1.2.840.10008.1.2.4.108.1)
-    public static let hevcH265Main10ProfileFragmentable = TransferSyntax(
-        uid: "1.2.840.10008.1.2.4.108.1",
-        isExplicitVR: true,
-        byteOrder: .littleEndian,
-        isEncapsulated: true
-    )
     
     /// Creates a TransferSyntax from a UID string
     ///
@@ -656,10 +642,6 @@ extension TransferSyntax {
             return .mpeg4AVCHP42For3DVideoFragmentable
         case mpeg4AVCStereoHP42Fragmentable.uid:
             return .mpeg4AVCStereoHP42Fragmentable
-        case hevcH265MainProfileFragmentable.uid:
-            return .hevcH265MainProfileFragmentable
-        case hevcH265Main10ProfileFragmentable.uid:
-            return .hevcH265Main10ProfileFragmentable
         default:
             return nil
         }
@@ -863,16 +845,18 @@ extension TransferSyntax {
     /// Whether this video transfer syntax permits the bit stream to span multiple
     /// fragments.
     ///
-    /// The "….1" variants are the fragmentable forms. For every other video transfer
-    /// syntax, PS3.5 requires that "one Fragment shall contain the whole bit stream",
-    /// so exactly one fragment must be written.
+    /// The MPEG-2 and H.264 "….1" variants are the fragmentable forms of their
+    /// non-fragmentable twins, which require that "one Fragment shall contain the
+    /// whole bit stream". The two HEVC transfer syntaxes have no twin: PS3.5 defines
+    /// each as a Fragmentable Encapsulated Transfer Syntax in its own right ("the
+    /// encapsulated Pixel Data Stream may be segmented into multiple Fragments").
     ///
     /// Non-video transfer syntaxes return `false`; fragmentation of, say, a JPEG
     /// codestream is governed by different rules and is not what this property models.
     ///
-    /// Reference: PS3.5 Sections A.4.5 - A.4.7
+    /// Reference: PS3.5 Sections 8.2.5 - 8.2.11, A.4.5 - A.4.7
     public var allowsMultipleFragments: Bool {
-        return isVideo && uid.hasSuffix(".1")
+        return isVideo && (uid.hasSuffix(".1") || isH265)
     }
     
     /// Whether this transfer syntax uses MPEG2 compression
@@ -911,9 +895,7 @@ extension TransferSyntax {
     public var isH265: Bool {
         switch uid {
         case TransferSyntax.hevcH265MainProfile.uid,
-             TransferSyntax.hevcH265Main10Profile.uid,
-             TransferSyntax.hevcH265MainProfileFragmentable.uid,
-             TransferSyntax.hevcH265Main10ProfileFragmentable.uid:
+             TransferSyntax.hevcH265Main10Profile.uid:
             return true
         default:
             return false
@@ -987,7 +969,6 @@ extension TransferSyntax {
         .mpeg4AVCHP41Fragmentable, .mpeg4AVCHP41BDFragmentable,
         .mpeg4AVCHP42For2DVideoFragmentable, .mpeg4AVCHP42For3DVideoFragmentable,
         .mpeg4AVCStereoHP42Fragmentable,
-        .hevcH265MainProfileFragmentable, .hevcH265Main10ProfileFragmentable,
         // JPIP
         .jpipReferenced, .jpipReferencedDeflate,
         // JP3D (experimental / private)
@@ -1040,10 +1021,6 @@ extension TransferSyntax {
             return "Fragmentable MPEG-4 AVC/H.264 HP @ Level 4.2 For 3D Video"
         case TransferSyntax.mpeg4AVCStereoHP42Fragmentable.uid:
             return "Fragmentable MPEG-4 AVC/H.264 Stereo HP @ Level 4.2"
-        case TransferSyntax.hevcH265MainProfileFragmentable.uid:
-            return "Fragmentable HEVC/H.265 Main Profile @ Level 5.1"
-        case TransferSyntax.hevcH265Main10ProfileFragmentable.uid:
-            return "Fragmentable HEVC/H.265 Main 10 Profile @ Level 5.1"
         case TransferSyntax.jpipReferenced.uid:                return "JPIP Referenced"
         case TransferSyntax.jpipReferencedDeflate.uid:         return "JPIP Referenced Deflate"
         case TransferSyntax.jp3dLossless.uid:                  return "JP3D Lossless (experimental)"

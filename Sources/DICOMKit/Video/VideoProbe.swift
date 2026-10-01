@@ -20,8 +20,16 @@ public struct VideoProbeResult: Sendable {
     /// How the frame count was obtained, which matters because one source is
     /// exact and the other is a scan.
     public let frameCountSource: FrameCountSource
-    /// The number of audio tracks, which DICOM video IODs cannot carry.
+    /// The number of audio tracks.
+    ///
+    /// Audio travels inside the encapsulated container, so it is carried into
+    /// the DICOM object along with the video; PS3.5 8.2.5 and 8.2.12 constrain it.
     public let audioTrackCount: Int
+    /// What each audio track says about itself, in container order.
+    public let audioTracks: [AudioStreamInfo]
+    /// The display rotation the container asks a player to apply, in degrees
+    /// clockwise. DICOM cannot record it, so non-zero values are warned about.
+    public let rotationDegrees: Int
     /// The transfer syntax that fits this stream, when one does.
     public let suggestedTransferSyntax: TransferSyntax?
 
@@ -46,13 +54,17 @@ public struct VideoProbeResult: Sendable {
         frameCountSource: FrameCountSource,
         audioTrackCount: Int,
         suggestedTransferSyntax: TransferSyntax?,
-        frameRate: Double?
+        frameRate: Double?,
+        audioTracks: [AudioStreamInfo] = [],
+        rotationDegrees: Int = 0
     ) {
         self.container = container
         self.stream = stream
         self.frameCount = frameCount
         self.frameCountSource = frameCountSource
-        self.audioTrackCount = audioTrackCount
+        self.audioTrackCount = max(audioTrackCount, audioTracks.count)
+        self.audioTracks = audioTracks
+        self.rotationDegrees = rotationDegrees
         self.suggestedTransferSyntax = suggestedTransferSyntax
         self.frameRate = frameRate
     }
@@ -71,8 +83,9 @@ public enum VideoProbeError: Error, Sendable, Equatable {
     case unsupportedCodec(String)
     /// Parameter sets were missing or unreadable, so nothing can be validated.
     case parameterSetsUnreadable
-    /// A transport stream was given without `--trust-input`, and TS demuxing is
-    /// not implemented, so it cannot be validated.
+    /// A transport stream whose video PID could not be demultiplexed - no
+    /// PAT/PMT, a scrambled PID, or no readable parameter sets - so it cannot be
+    /// validated.
     case transportStreamNotValidatable
     /// The input is multi-frame but not video, and belongs to a different tool.
     case notVideo(detected: String)
@@ -107,9 +120,9 @@ public enum VideoProbeError: Error, Sendable, Equatable {
                 """
         case .transportStreamNotValidatable:
             return """
-                error: MPEG-2 Transport Stream input cannot be validated in this release
-                       (TS demuxing is deferred). Either convert to MP4:
-                         ffmpeg -i input.ts -c copy output.mp4
+                error: the MPEG-2 Transport Stream's video could not be demultiplexed                 (no PAT/PMT, a scrambled PID, or unreadable parameter sets), so it cannot                 be validated.
+                       Either remux it:
+                         ffmpeg -i input.ts -map 0:v:0 -map '0:a?' -c copy output.ts
                        or re-run with --trust-input to encapsulate the TS unvalidated.
                 """
         case let .notVideo(detected):
@@ -183,6 +196,7 @@ public enum VideoProbe {
         case .mp4, .quickTime:
             return try probeISOBMFF(data, container: container)
         case .mpegTS:
+            if let result = probeTransportStream(data) { return result }
             guard trustInput else { throw VideoProbeError.transportStreamNotValidatable }
             return try probeTrustedTransportStream(data)
         case .elementaryStream:
@@ -221,9 +235,14 @@ public enum VideoProbe {
         case .h264:
             // avcC stores each parameter set as a complete NAL unit, header byte
             // included, so the header has to be validated and stripped first.
+            // An MVC-only sample entry carries just the subset SPS.
             guard let sps = track.parameterSets.compactMap({ H264Parser.parseSPS(nalUnit: $0) }).first
+                ?? H264Parser.firstSubsetSPS(in: track.parameterSets)
             else { throw VideoProbeError.parameterSetsUnreadable }
-            stream = sps.streamInfo
+            stream = refineH264(
+                sps.streamInfo,
+                nalUnits: track.subsetParameterSets + track.parameterSets + track.leadingNALUnits
+            )
         case .h265:
             // hvcC keeps the two-byte NAL header on each stored unit.
             guard let sps = track.parameterSets.compactMap({ HEVCParser.parseSPS(nalUnit: $0) }).first
@@ -240,7 +259,7 @@ public enum VideoProbe {
         // Prefer the bit stream's own frame rate; fall back to the container's,
         // which is derived from sample durations.
         let frameRate = stream.frameRate ?? track.frameRate
-        let resolved = withFrameRate(stream, frameRate: frameRate)
+        let resolved = stream.with(frameRate: frameRate)
 
         return VideoProbeResult(
             container: container,
@@ -248,8 +267,11 @@ public enum VideoProbe {
             frameCount: track.frameCount,
             frameCountSource: track.frameCount > 0 ? .sampleTable : .unavailable,
             audioTrackCount: info.audioTrackCount,
-            suggestedTransferSyntax: VideoConformanceValidator.selectTransferSyntax(for: resolved),
-            frameRate: frameRate
+            suggestedTransferSyntax: VideoConformanceValidator.selectTransferSyntax(
+                for: resolved, payloadByteCount: data.count),
+            frameRate: frameRate,
+            audioTracks: info.audioTracks,
+            rotationDegrees: track.rotationDegrees
         )
     }
 
@@ -259,7 +281,7 @@ public enum VideoProbe {
         // Try each codec's parameter set in turn. Detection is by content, since
         // an extension is a claim rather than evidence.
         if let sps = H264Parser.parseFirstSPS(annexB: data) {
-            let stream = sps.streamInfo
+            let stream = refineH264(sps.streamInfo, nalUnits: NALUnit.splitAnnexB(data))
             let count = H264Parser.countFrames(annexB: data)
             return VideoProbeResult(
                 container: .elementaryStream,
@@ -304,6 +326,53 @@ public enum VideoProbe {
     }
 
     // MARK: - Transport Streams
+
+    /// Probes a transport stream by demultiplexing it: parameter sets and
+    /// picture count from the whole video PID, the frame rate from the stream
+    /// or, failing that, the PES timestamps, and the audio from its PIDs.
+    ///
+    /// - Returns: The result, or nil when the video cannot be demultiplexed.
+    private static func probeTransportStream(_ data: Data) -> VideoProbeResult? {
+        guard let demuxed = TransportStreamScanner.demux(data) else { return nil }
+        let video = demuxed.videoElementaryStream
+
+        var stream: VideoStreamInfo
+        let frameCount: Int
+        switch demuxed.codec {
+        case .h264:
+            guard let sps = H264Parser.parseFirstSPS(annexB: video) else { return nil }
+            var units = NALUnit.splitAnnexB(video)
+            if let mvc = demuxed.mvcSubBitstream { units += NALUnit.splitAnnexB(mvc) }
+            stream = refineH264(sps.streamInfo, nalUnits: units)
+            frameCount = H264Parser.countFrames(annexB: video)
+        case .h265:
+            guard let sps = HEVCParser.parseFirstSPS(annexB: video) else { return nil }
+            stream = sps.streamInfo
+            frameCount = HEVCParser.countFrames(annexB: video)
+        case .mpeg2:
+            guard let header = MPEG2Parser.parseSequenceHeader(video) else { return nil }
+            stream = header.streamInfo
+            frameCount = MPEG2Parser.countFrames(video)
+        case .unknown:
+            return nil
+        }
+
+        let frameRate = stream.frameRate
+            ?? TransportStreamScanner.frameRate(fromTimestamps: demuxed.presentationTimestamps)
+        stream = stream.with(frameRate: frameRate)
+
+        return VideoProbeResult(
+            container: .mpegTS,
+            stream: stream,
+            frameCount: frameCount,
+            frameCountSource: frameCount > 0 ? .accessUnitScan : .unavailable,
+            audioTrackCount: demuxed.audio.count,
+            suggestedTransferSyntax: VideoConformanceValidator.selectTransferSyntax(
+                for: stream, payloadByteCount: data.count),
+            frameRate: frameRate,
+            audioTracks: demuxed.audio
+        )
+    }
 
     /// Accepts a transport stream on the caller's assertion, without validating it.
     ///
@@ -367,24 +436,16 @@ public enum VideoProbe {
         }
     }
 
-    /// Returns a copy of a stream summary carrying a different frame rate.
-    private static func withFrameRate(
-        _ stream: VideoStreamInfo,
-        frameRate: Double?
-    ) -> VideoStreamInfo {
-        guard stream.frameRate != frameRate else { return stream }
-        return VideoStreamInfo(
-            codec: stream.codec,
-            width: stream.width,
-            height: stream.height,
-            profileIDC: stream.profileIDC,
-            levelTimesTen: stream.levelTimesTen,
-            chromaFormat: stream.chromaFormat,
-            bitDepthLuma: stream.bitDepthLuma,
-            bitDepthChroma: stream.bitDepthChroma,
-            frameRate: frameRate,
-            isProgressive: stream.isProgressive,
-            sampleAspectRatio: stream.sampleAspectRatio
-        )
+    /// Adds what only the NAL units beyond the base SPS reveal about an H.264
+    /// stream: an MVC subset SPS makes it Stereo High (profile and level taken
+    /// from the dependent view's description), and a frame packing SEI makes it
+    /// frame-packed 3D.
+    static func refineH264(_ stream: VideoStreamInfo, nalUnits: [Data]) -> VideoStreamInfo {
+        var refined = stream.with(hasFramePacking: H264Parser.containsFramePackingSEI(nalUnits))
+        if let subset = H264Parser.firstSubsetSPS(in: nalUnits),
+           subset.profileIDC == H264Parser.stereoHighProfileIDC {
+            refined = refined.with(profileIDC: subset.profileIDC, levelTimesTen: subset.levelIDC)
+        }
+        return refined
     }
 }

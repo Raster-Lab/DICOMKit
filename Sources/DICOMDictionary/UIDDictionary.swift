@@ -235,20 +235,6 @@ public struct UIDDictionary {
             keyword: "MPEG4HP42STEREOF",
             type: .transferSyntax
         )
-
-        dict["1.2.840.10008.1.2.4.107.1"] = UIDEntry(
-            uid: "1.2.840.10008.1.2.4.107.1",
-            name: "Fragmentable HEVC/H.265 Main Profile / Level 5.1",
-            keyword: "HEVCMP51F",
-            type: .transferSyntax
-        )
-
-        dict["1.2.840.10008.1.2.4.108.1"] = UIDEntry(
-            uid: "1.2.840.10008.1.2.4.108.1",
-            name: "Fragmentable HEVC/H.265 Main 10 Profile / Level 5.1",
-            keyword: "HEVCM10P51F",
-            type: .transferSyntax
-        )
         
         // Common SOP Class UIDs
         dict["1.2.840.10008.5.1.4.1.1.2"] = UIDEntry(
