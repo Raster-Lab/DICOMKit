@@ -120,7 +120,7 @@ All queries are Study Root, Query/Retrieve Level STUDY (PS3.4 2026a Table C.6-5)
 
 - `--save-state <path>`: Save query/retrieval state to file
 - `--validate`: Validate retrieved files after download
-- `--parallel <n>`: Maximum concurrent retrievals (default: 1)
+- `--parallel <n>`: Accepted for compatibility; `query` retrieves the selected studies one after another (see dicom-retrieve `--uid-list --parallel` for concurrent study retrieval)
 - `--timeout <seconds>`: Connection timeout in seconds (default: 60; also accepted by `resume`)
 - `--verbose`: Show verbose output including detailed progress
 - `--aet <title>`: Local Application Entity Title (calling AE)
@@ -284,7 +284,7 @@ The tool provides detailed error messages for common issues:
 
 For large retrievals, consider:
 
-- Using `--parallel` to increase concurrent retrievals (use cautiously)
+- Using `dicom-retrieve --uid-list --parallel` for concurrent study retrieval (use cautiously)
 - Saving state files for checkpoint/resume capability
 - Using `--hierarchical` for better organization of retrieved files
 - Monitoring with `--verbose` to track progress
