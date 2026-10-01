@@ -72,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keywords and `SeriesInstanceUID` in each `seriesDifferences` item (former keys kept, deprecated). Implemented in
   DICOMKit `Statistics` / `StudyComparison` / `SeriesDifference` encoding (decoding unchanged) and
   `StudyReport.renderSummary`.
+- **`dicom-archive`** JSON carries the PS3.6 2026a Table 6-1 keywords (P-ARCHIVE-1): every study in
+  `archive_index.json` (and `list --format json`) gets `ModalitiesInStudy` (0008,0061), the distinct series
+  Modality values, next to the deprecated study-level `modality` (first instance's Modality); `query --format json`
+  adds `ModalitiesInStudy`, `NumberOfStudyRelatedSeries`, `NumberOfStudyRelatedInstances` (PS3.4 Table C.6-5) next
+  to the deprecated `modality`, `seriesCount`, `imageCount`. Indexes written before still load (the key is
+  computed, not read). New DICOMKit API: `ArchiveStudy.modalitiesInStudy`.
 
 ### Fixed — dicom-viewer grayscale display verified against DICOM 2026a (2026-10-01)
 

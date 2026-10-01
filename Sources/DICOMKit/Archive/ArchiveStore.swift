@@ -49,6 +49,12 @@ public struct ArchiveSeries: Codable, Sendable {
     public var instances: [ArchiveInstance]
 }
 
+/// One study of the archive index.
+///
+/// `modality` is the Modality of the first instance imported (deprecated as a study-level key,
+/// P-ARCHIVE-1). The study level carries Modalities in Study (0008,0061, CS 1-n; PS3.4 2026a
+/// Tables C.6-2 / C.6-5): ``modalitiesInStudy``, written to JSON as `ModalitiesInStudy` next to
+/// `modality`. Decoding reads only the stored keys, so indexes written before 2026-10-01 load.
 public struct ArchiveStudy: Codable, Sendable {
     public let studyInstanceUID: String
     public let studyDate: String?
@@ -56,6 +62,32 @@ public struct ArchiveStudy: Codable, Sendable {
     public let modality: String?
     public let accessionNumber: String?
     public var series: [ArchiveSeries]
+
+    /// Modalities in Study (0008,0061): the distinct Modality values of the study's series, in
+    /// series order, empty values left out.
+    public var modalitiesInStudy: [String] {
+        var seen: [String] = []
+        for m in series.map(\.modality) where !m.isEmpty && !seen.contains(m) { seen.append(m) }
+        return seen
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case studyInstanceUID, studyDate, studyDescription, modality, accessionNumber, series
+    }
+
+    enum KeywordKeys: String, CodingKey { case ModalitiesInStudy }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(studyInstanceUID, forKey: .studyInstanceUID)
+        try c.encodeIfPresent(studyDate, forKey: .studyDate)
+        try c.encodeIfPresent(studyDescription, forKey: .studyDescription)
+        try c.encodeIfPresent(modality, forKey: .modality)
+        try c.encodeIfPresent(accessionNumber, forKey: .accessionNumber)
+        try c.encode(series, forKey: .series)
+        var k = encoder.container(keyedBy: KeywordKeys.self)
+        try k.encode(modalitiesInStudy, forKey: .ModalitiesInStudy)
+    }
 }
 
 public struct ArchivePatient: Codable, Sendable {
@@ -507,6 +539,10 @@ public enum ArchiveStore {
     }
 
     private static func queryJSON(_ results: [(patient: ArchivePatient, study: ArchiveStudy)]) -> String {
+        // P-ARCHIVE-1 (approved 2026-10-01): the PS3.6 2026a Table 6-1 keywords ModalitiesInStudy
+        // (0008,0061), NumberOfStudyRelatedSeries (0020,1206) and NumberOfStudyRelatedInstances
+        // (0020,1208) (PS3.4 Table C.6-5) are written next to the former `modality`, `seriesCount`
+        // and `imageCount`, which keep their values and are deprecated.
         struct QueryResult: Codable {
             let patientName: String
             let patientID: String
@@ -516,9 +552,13 @@ public enum ArchiveStore {
             let modality: String?
             let seriesCount: Int
             let imageCount: Int
+            let ModalitiesInStudy: [String]
+            let NumberOfStudyRelatedSeries: Int
+            let NumberOfStudyRelatedInstances: Int
         }
         let items = results.map { r in
-            QueryResult(
+            let instances = r.study.series.reduce(0) { $0 + $1.instances.count }
+            return QueryResult(
                 patientName: r.patient.patientName,
                 patientID: r.patient.patientID,
                 studyInstanceUID: r.study.studyInstanceUID,
@@ -526,7 +566,10 @@ public enum ArchiveStore {
                 studyDescription: r.study.studyDescription,
                 modality: r.study.modality,
                 seriesCount: r.study.series.count,
-                imageCount: r.study.series.reduce(0) { $0 + $1.instances.count })
+                imageCount: instances,
+                ModalitiesInStudy: r.study.modalitiesInStudy,
+                NumberOfStudyRelatedSeries: r.study.series.count,
+                NumberOfStudyRelatedInstances: instances)
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

@@ -139,7 +139,8 @@ The `archive_index.json` file contains:
     - **studyInstanceUID**: Study Instance UID
     - **studyDate**: Study date (YYYYMMDD)
     - **studyDescription**: Study description
-    - **modality**: Modality (0008,0060) of the first instance imported into the study (not Modalities in Study (0008,0061))
+    - **modality**: Modality (0008,0060) of the first instance imported into the study (not Modalities in Study (0008,0061)). **Deprecated** study-level key: read `ModalitiesInStudy`
+    - **ModalitiesInStudy**: Modalities in Study (0008,0061), PS3.6 2026a Table 6-1 keyword: the distinct series Modality values (written from 2026-10-01; indexes without it still load)
     - **series**: Array of series records
       - **seriesInstanceUID**: Series Instance UID
       - **modality**: Series modality
@@ -196,7 +197,7 @@ Files are deduplicated by SOP Instance UID. If a file with the same SOP Instance
 - `--study-uid <uid>`: Filter by Study Instance UID (0020,000D) (one UID, exact)
 - `--modality <modality>`: Filter by Modality (0008,0060) of any series in the study
 - `--study-date <date>`: Filter by Study Date (0008,0020) (YYYYMMDD, exact)
-- `--format, -f <format>`: Output format: table (default), json, text
+- `--format, -f <format>`: Output format: table (default), json, text. JSON items carry the PS3.6 2026a Table 6-1 keywords `ModalitiesInStudy`, `NumberOfStudyRelatedSeries`, `NumberOfStudyRelatedInstances` (PS3.4 Table C.6-5); the former keys `modality`, `seriesCount`, `imageCount` keep their values and are **deprecated**
 
 ### List Command
 

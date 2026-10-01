@@ -156,7 +156,7 @@ extension DICOMArchive {
         @Option(name: .long, help: "Filter by Study Date (0008,0020), YYYYMMDD; exact match (no PS3.4 C.2.2.2.5 range)")
         var studyDate: String?
 
-        @Option(name: .shortAndLong, help: "Output format: table, json, text")
+        @Option(name: .shortAndLong, help: "Output format: table, json, text. JSON adds ModalitiesInStudy, NumberOfStudyRelatedSeries, NumberOfStudyRelatedInstances (PS3.6 keywords); modality, seriesCount, imageCount are deprecated")
         var format: String = "table"
 
         mutating func run() throws {
