@@ -60,6 +60,8 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | 2026-10-01 | G2 diff, split, merge | PS3.3 C.7.6.6, C.7.6.16, C.7.6.16.1.2, C.7.6.17; PS3.6 Tables A-1 and 6-1; PS3.5 7.1. diff matched 2, wrong 1, missing 1, plumbing 6; split matched 11, wrong 1, plumbing 6; merge matched 8, plumbing 6 | `2c5428c` diff: `--ignore-tag` accepts (gggg,eeee) and ggggeeee, `--tolerance` help says per byte; `00ba2a3` (restored by `2ef9d28`, `f663f84` after a concurrent commit reverted it) split: `--frames` documented as 0-based (README called it "the DICOM convention"), A-1/6-1 names; `2ef9d28` merge: `--format` help names the A-1 SOP Class, README corrected (Enhanced output exists; inconsistent inputs exit 1); P-DIFF-1, P-SPLIT-1; D151–D154 | 4/4 per tool; round-trip tests and SplitMergeWorkshopCLIParityTests pass against rebuilt release binaries |
 | 2026-10-01 | dicom-server repair | D94–D102 against PS3.4 Tables C.4-2, C.6-1..C.6-5, C.2.2.2; PS3.7 9.1.3; PS3.8 D.1; PS3.10 7.1; PS3.5 Table 6.2-1 | `7bad09d`: product, target and `dicom-serverTests` re-enabled; received instances written as PS3.10 files with the negotiated Transfer Syntax; unknown Move Destination → A801 (additive `start --move-destination AE=host:port`); C-GET awaits each C-STORE-RSP, honours C-CANCEL, requires SCP role; missing Q/R Level → A900; the 12 Required/Unique keys of C.6-1..C.6-5 matched and returned; P-DATA fragmented to the peer's Maximum Length; AE titles validated; D155, D156 opened for DICOMNetwork. Still open in the tool (not standard rows): C-MOVE ignores C-CANCEL mid-transfer, storage accepts only uncompressed syntaxes, in-memory index | dicom_serverTests 72/72 incl. an in-process loopback C-ECHO/STORE/FIND/GET/MOVE test; manual DCMTK storescu/findscu/getscu/movescu at PDU 4096 |
 | 2026-10-01 | G2 close | `swift build` (all products; owner's uncommitted DICOMStudio edits present and building), release rebuild of dicom-split/dicom-merge, and every CLI test bundle: the 24 per-tool targets (except j2k, G3) plus QueryRetrieveCLIStandardTests, MWLMPPSCLIEndToEndTests, SplitMergeWorkshopCLIParityTests | — | build exit 0; XCTest 247 executed, 0 failures; Swift Testing 2 passed |
+| 2026-10-01 | G3 anon | PS3.15 Annex E (Table E.1-1, 647 rows, one element each on a fixture, diffed per profile by script), E.3.x option names, PS3.16 CID 7050; matched 10, wrong 6 (fixed), missing 6 (2 added, 4 deferred), plumbing 8 | `06717c9`: `ps315` no longer ignores `--remove`/`--replace`/`--keep` and writes a real audit log; `--shift-dates` honoured; PS3.15 option flags honoured on every profile; `--remove`/`--replace` take any PS3.6 keyword; output File Meta (0002,0003) = new SOP Instance UID; `--retain-full-dates`, `--retain-modified-dates` added; `--dry-run`/`--verbose` list each action with its PS3.6 name and E.1-1a code; **behaviour change**: combinations that were silently ignored now exit 1; help/README/stderr say `basic` is not the PS3.15 Basic Profile; P-ANON-PROFILE, P-ANON-RETAIN-DATES; D157–D164 (engine; D158, D162 High) | dicom_anonTests 12/12 |
+| 2026-10-01 | G3 image, pixedit | image: SC Image IOD PS3.3 Table A.8-1, 9 mandatory modules, Table C.8-24 Conversion Type, run on 6 fixtures and diffed by script (every Type 1/2 attribute present); matched 8, wrong 1, missing 3, plumbing 5. pixedit: C.7.6.1.1.2 Image Type, C.7.6.1 Derivation / Source Image Sequence, C.11.2 window in rescaled units, C.7.6.2 Image Position; matched 3, wrong 4, plumbing 3 | `1c9aaba8` image: (0002,0003) now equals (0008,0018), non-ASCII names get Specific Character Set ISO_IR 192, `--conversion-type` (8 terms, default WSD), VR warnings, README DPI → Nominal Scanned Pixel Spacing; `698de5df` pixedit: output is a Derived Image (new SOP Instance UID, DERIVED, Derivation Description, Source Image Sequence), window read in rescaled units (CT 40/400 now HU), crop moves Image Position (Patient), `--fill-value` clamped to Bits Stored; P-IMAGE-VR, P-PIXEDIT-RANGE; deferred engine rows (CLI works around them, Studio still affected) | 11 new tests pass |
 | 2026-10-01 | Scaffold | `Scripts/diff_cli.py`: surface extractor (1,042 options), generic DICOMKit literal checks re-run per tool, transfer-syntax-name and documented-default checks; this report | — | — |
 
 ---
@@ -94,6 +96,10 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | P-UID-TYPE | `dicom-uid lookup` prints tool wording for the UID type ("Well-Known UID", …); proposal: print the PS3.6 Table A-1 UID Type text, which changes the JSON `type` value | PEND | PS3.6 2026a Table A-1 |
 | P-DIFF-1 | `dicom-diff` exits 1 both when files differ and when a file cannot be read; proposal: exit 2 for errors | PEND | — |
 | P-SPLIT-1 | `dicom-split --frames` takes 0-based indices; frames are numbered from 1 (PS3.3 C.7.6.16.1.2). Proposal: 1-based, with the Studio Workshop following (same decision as P-EXPORT-1) | PEND | PS3.3 2026a C.7.6.16.1.2 |
+| P-ANON-PROFILE | `dicom-anon --profile basic` (the default) is not the PS3.15 Basic Profile: on a fixture with one element per Table E.1-1 row (647 rows), `ps315` matches 647, `basic` 11, `clinical-trial` 15, `research` 1, and none of the three old lists is a standard profile plus options. Proposal: make `ps315` the default, make `basic` an alias of it, keep the old lists as `legacy-basic` / `legacy-clinical-trial` / `legacy-research` | PEND | PS3.15 2026a Table E.1-1 |
+| P-ANON-RETAIN-DATES | `--retain-dates` is ambiguous between the two E.3.6 options; `--retain-full-dates` / `--retain-modified-dates` were added. Proposal: deprecate `--retain-dates` | PEND | PS3.15 2026a E.3.6 |
+| P-IMAGE-VR | `dicom-image` now warns on invalid UIDs, over-length LO/PN and out-of-range IS values but still writes them. Proposal: reject them | PEND | PS3.5 2026a Table 6.2-1, Section 9 |
+| P-PIXEDIT-RANGE | `dicom-pixedit` now clamps an out-of-range `--fill-value` to the Bits Stored range and raises a window width below 1, with a warning. Proposal: reject instead | PEND | PS3.3 2026a C.7.6.3.1, C.11.2.1.2 |
 | P-AUDIO-SOURCE-PER-TRACK | `VideoWorkflow.Metadata.audioChannelSource` (DICOMKit, `VideoWorkflow.swift:133`, `audioChannels(for:metadata:)`) is one Source applied to every audio track, so `--audio-channel-source` is single-valued. Proposal: add `audioChannelSources: [VideoAudioChannel.Source]?` to `Metadata` (one per track) and let the CLI option repeat | PEND | PS3.3 2026a Table C.7-13 (one (003A,0300) Item per channel, each with its own (003A,0208)) |
 
 ---
@@ -201,6 +207,25 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | D154 | DICOMStudio | Sources/DICOMStudio/Components/CLIWorkshopHelpers.swift:2520 | Workshop help for dicom-split `--frames` ("Frame selection (ranges/list)") does not say the values are 0-based indices | PS3.3 2026a C.7.6.16.1.2 | low | ⏳ Open |
 | D155 | DICOMNetwork | `StorageSCP.swift:47` `StorageSCPConfiguration.defaultImplementationClassUID`; `StorageService.swift` `StorageConfiguration.defaultImplementationClassUID` ("1.2.826.0.1.3680043.9.7433.1.1") | Default SCP/SCU Implementation Class UIDs are not under DICOMKit's UID root | PS3.7 D.3.3.2; PS3.5 9 | Low | ⏳ Open (DICOMNetwork) |
 | D156 | DICOMNetwork | `StorageService.swift` `DICOMStorageService.store(...)` | No way to set Move Originator AE Title / Message ID (0000,1030/1031) on the C-STORE-RQ, so a C-MOVE SCP built on it cannot identify the originating C-MOVE in its sub-operations | PS3.7 9.1.1.1.6 / 9.1.1.1.7 | Low | ⏳ Open (DICOMNetwork) |
+| D157 | DICOMKit | Sources/DICOMKit/Anonymization/ConfidentialityEngine.swift:239 | Modified Dates Option shifts only DA; DT (60 rows), TM (52) and 3 other C cells are zeroed while 113107 is recorded; E.3.6 requires dates and times modified preserving temporal relationships | PS3.15 2026a E.3.6 | Medium | ⏳ Open |
+| D158 | DICOMKit | Sources/DICOMKit/Anonymization/ConfidentialityEngine.swift:181 | Clean Descriptors Option keeps every C attribute verbatim (140 rows on the fixture, e.g. Study Comments "… John Doe") yet records 113105 Clean Descriptors Option; C requires values "known not to contain identifying information" | PS3.15 2026a E.3.5, Table E.1-1a (C) | High | ⏳ Open |
+| D159 | DICOMKit | Sources/DICOMKit/Anonymization/ConfidentialityProfile.swift:49 | `Options` has no Retain Safe Private, Clean Structured Content, Clean Graphics, Clean Recognizable Visual Features; the generated cleanStructuredContent/cleanGraphics columns are unused by `action(for:options:)`; the CLI cannot offer these four Options | PS3.15 2026a E.3.2, E.3.3, E.3.4, E.3.10; CID 7050 113102-113104, 113111 | Low | ⏳ Open |
+| D160 | DICOMKit | Sources/DICOMKit/Anonymization/ConfidentialityEngine.swift:337 | After pixel cleaning (113101 recorded by PixelRedactor), (0012,0063) omits "Clean Pixel Data Option" and the 113100 item follows 113101 in (0012,0064) | PS3.15 2026a E.1.1; PS3.3 2026a Table C.7-1 | Low | ⏳ Open |
+| D161 | DICOMKit | Sources/DICOMKit/Anonymization/ConfidentialityEngine.swift:310 | `recordMethod` never writes Longitudinal Temporal Information Modified (0028,0303): REMOVED without a dates Option, UNMODIFIED with Full Dates, MODIFIED with Modified Dates | PS3.15 2026a E.2, E.3.6 | Medium | ⏳ Open |
+| D162 | DICOMKit | Sources/DICOMKit/Anonymization/Anonymizer.swift:416 | `deidentify` (and `anonymize`, :222) keep the source File Meta: Media Storage SOP Instance UID (0002,0003) keeps the original UID while (0008,0018) is replaced (U); dicom-anon now syncs it at write, other callers (Studio) do not | PS3.10 2026a 7.1; PS3.15 2026a Table E.1-1 (0002,0003) U | High | ⏳ Open |
+| D163 | DICOMKit | Sources/DICOMKit/Anonymization/Anonymizer.swift:458 | `parseFlexibleTag` knows 11 hard-coded keywords and its lowercased lookup can never match (keys are PascalCase); dicom-anon now falls back to DataElementDictionary, the Studio Workshop executor does not | PS3.6 2026a Table 6-1 | Low | ⏳ Open |
+| D164 | DICOMKit | Sources/DICOMKit/Anonymization/Anonymizer.swift:305 | Legacy `shiftAllDates`/`regenerateAllUIDs` (:321) ignore `preserveTags`: `--keep StudyDate --shift-dates N` still shifts it | (legacy behaviour, no PS3.15 clause) | Low | ⏳ Open |
+| D165 | DICOMKit | Sources/DICOMKit/SecondaryCapture/ImageConverter.swift:139 | `DICOMFile.create(dataSet:transferSyntaxUID:)` is called without `sopInstanceUID`, so (0002,0003) gets a second UID ≠ (0008,0018) (DICOMStudio path too; the CLI now rewrites it) | PS3.10 2026a Table 7.1-1 | High | ⏳ Open |
+| D166 | DICOMKit | Sources/DICOMKit/SecondaryCapture/ImageConverter.swift:157-181 | text written as UTF-8 without Specific Character Set (0008,0005) "ISO_IR 192" when a value is not ASCII (CLI adds it) | PS3.3 2026a Table C.12-1 (1C), Table C.12-5 | Medium | ⏳ Open |
+| D167 | DICOMKit | Sources/DICOMKit/SecondaryCapture/ImageConverter.swift:184-187 | converter identity (DICOMKit / "dicom-image CLI" / "1.1.6") written to General Equipment, which describes the equipment that created the original image; belongs in SC Equipment Secondary Capture Device Manufacturer / Model Name / Software Versions (0018,1016/1018/1019); "dicom-image CLI" also when DICOMStudio converts | PS3.3 2026a C.8.6.1 (scenario table), Table C.8-24 | Low | ⏳ Open |
+| D168 | DICOMKit | Sources/DICOMKit/SecondaryCapture/ImageConverter.swift:166 | EXIF UserComment/ImageDescription written to Study Description (LO) without the 64-character limit or `\` check | PS3.5 2026a Table 6.2-1 (LO) | Low | ⏳ Open |
+| D169 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:81-214 | `processData` returns the edit with the source SOP Instance UID, Image Type, Implementation Class UID and stale Smallest/Largest Pixel Value, no Derivation Description / Source Image Sequence; DICOMStudio uses it as is (the CLI fixes this in DerivedImage.swift) | PS3.3 2026a C.7.6.1.1.2, Table C.12-10; PS3.10 Table 7.1-1 | Medium | ⏳ Open |
+| D170 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:296-332 | `applyWindowLevel` applies center/width to stored values; Window Center/Width are Modality LUT output units (CLI translates; DICOMStudio does not) | PS3.3 2026a C.11.2.1.2 | Medium | ⏳ Open |
+| D171 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:259-294 | `applyCrop` leaves Image Position (Patient) (top level and Plane Position Sequence in functional groups) and Overlay Rows/Columns/Origin unchanged (CLI updates top-level IPP only) | PS3.3 2026a C.7.6.2.1.1, C.9.2 | Medium | ⏳ Open |
+| D172 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:486-509 | `setPixelValue` clamps to the Bits Allocated range, not Bits Stored / Pixel Representation, so `.mask` can write values above High Bit | PS3.3 2026a C.7.6.3.1 | Low | ⏳ Open |
+| D173 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:107-128 | decoding a lossy-compressed input writes native pixels without setting Lossy Image Compression "01" (and Method) when the input lacks them | PS3.3 2026a C.7.6.1.1.5 | Low | ⏳ Open |
+| D174 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:296-345 | window/invert transform PALETTE COLOR indices and leave Pixel Padding Value (0028,0120) untransformed | PS3.3 2026a C.7.6.3.1.5, C.7.5.1.1.2 | Low | ⏳ Open |
+| D175 | DICOMKit | `Sources/DICOMKit/DICOMFile+Write.swift:230` `DICOMFile.create(dataSet:sopClassUID:sopInstanceUID:transferSyntaxUID:)` | Root cause of D112, D137, D162, D165 (and the CLI workarounds in dicom-anon, dicom-image, dicom-json): when `sopInstanceUID` is nil the File Meta gets a freshly generated UID, and `sopClassUID` defaults to Secondary Capture, instead of copying (0008,0018) / (0008,0016) from the data set, so (0002,0003)/(0002,0002) disagree with the data set for every caller that omits them. PS3.10 Table 7.1-1 requires them to equal the SOP Instance / Class UID. Proposed fix (behaviour, no signature change for the instance UID): default to the data set's (0008,0018) when present; for the class UID, the default can only be fixed by making the parameter optional — a P-item for DICOMKit | PS3.10 2026a Table 7.1-1 | High | ⏳ Open (DICOMKit; found 2026-10-01 by correlating four CLI findings) |
 
 ### Rows handed to DICOMStudio
 
@@ -2161,7 +2186,257 @@ Test target `dicom-mergeTests` (`Tests/dicom-mergeTests/MergeOptionTermsTests.sw
 
 ## G3 Encoding and pixel
 
-Not started.
+### dicom-anon
+
+Commands: dicom-anon · files: main.swift, AnonCLISupport.swift (new) · commit `06717c9`
+
+**What was compared (by script):** PS3.15 2026a Table E.1-1 (651 rows; header dumped: Basic Prof. + 10 Option columns), Table E.1-1a (11 action codes), sections E.1.1, E.2, E.3.1–E.3.11 (12 Option names, dumped via section titles + text); PS3.16 2026a CID 7050 (13 rows); PS3.6 Table 6-1 (VRs for the fixture, names). Fixture: one element per data-set row of Table E.1-1 (647 of 651; the 4 command/meta/DICOMDIR rows cannot live in a data set), VR from PS3.6, plus a private block; each profile run through the built tool and every row's outcome (X/Z/K/D/U) diffed against the 2026a action code (`scratch/anon/fixture.py`, `scratch/anon/diffe11.py`).
+
+| Profile | Table E.1-1 rows matched (of 647) |
+|---|---|
+| `ps315` | 647 (642 literal; 5 SQ rows with D kept with scrubbed items, which satisfies D) |
+| `ps315 --retain-full-dates` (Full Dates column) | 647 |
+| `ps315 --retain-modified-dates --shift-dates 10` (Modified Dates column C) | 647 counted as C, but only the 54 DA rows are shifted; 60 DT, 52 TM, 3 other C cells zeroed (D157) |
+| `basic` (legacy, default) | 11 |
+| `clinical-trial` (legacy) | 15 |
+| `research` (legacy) | 1 |
+
+`--profile basic` is therefore not the PS3.15 Basic Profile, and no legacy value equals a PS3.15 Profile+Options set (each is a strict subset: 14, 22 and 3 attributes); there is no standard alias to record. CID 7050: engine codes and meanings 13/13 match, PixelRedactor 113101 "Clean Pixel Data Option" matches.
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default (std) | Default (code) | Verdict |
+|---|---|---|---|---|---|---|---|
+| `<input-path>` | input file / directory | PS3.10 7.1 | — | `String` | — | — | plumbing |
+| `-o, --output` | output file / directory | PS3.10 7.1 | (0002,0003) = (0008,0018) | `String?` | — | — | plumbing; fixed: meta (0002,0003) kept the original SOP Instance UID (all profiles) |
+| `--profile` | Attribute Confidentiality Profile | PS3.15 E.1, E.2, Table E.1-1 | Basic Application Level Confidentiality Profile + E.3 Options | `ps315`; legacy `basic`, `clinical-trial`/`clinicaltrial`, `research` | Basic Profile | `basic` (legacy, 11/647) | **wrong** — documented in help/README + stderr note; rename/default = P-ANON-PROFILE |
+| `--retain-dates` | Retain Longitudinal Temporal Information With Full Dates / With Modified Dates Option | PS3.15 E.3.6; CID 7050 113106/113107 | two mutually exclusive Options | Full; Modified with `--shift-dates`; ps315 only | off | off | match (help names the Options; ambiguity = P-ANON-RETAIN-DATES) |
+| `--retain-full-dates` | … With Full Dates Option | PS3.15 E.3.6; 113106 | — | flag | off | off | missing → **added** |
+| `--retain-modified-dates` | … With Modified Dates Option | PS3.15 E.3.6; 113107 | — | flag, needs `--shift-dates` | off | off | missing → **added** |
+| `--retain-characteristics` | Retain Patient Characteristics Option | PS3.15 E.3.7; 113108 | — | flag, ps315 only | off | off | match (refused on legacy profiles; was silently ignored) |
+| `--retain-device` | Retain Device Identity Option | PS3.15 E.3.8; 113109 | — | flag, ps315 only | off | off | match (idem) |
+| `--retain-institution` | Retain Institution Identity Option | PS3.15 E.3.11; 113112 | — | flag, ps315 only | off | off | match (idem) |
+| `--retain-uids` | Retain UIDs Option | PS3.15 E.3.9; 113110 | — | flag, ps315 only | off (U) | off (U) | match |
+| `--clean-descriptors` | Clean Descriptors Option | PS3.15 E.3.5; 113105 | C = clean | flag, ps315 only; engine keeps verbatim | off | off | match (surface; help now says "kept as they are, not cleaned"); engine D158 |
+| `--clean-pixel-data` | Clean Pixel Data Option | PS3.15 E.3.1; 113101; (0028,0301) NO | — | flag, all profiles | off | off | match |
+| `--redact-region` | Clean Pixel Data region | PS3.15 E.3.1 | — | `x,y,w,h` repeatable | — | — | plumbing |
+| `--redact-fill` | blank sample value | PS3.15 E.3.1 | — | `Int` | — | 0 | plumbing |
+| `--shift-dates` | date modification (Modified Dates) | PS3.15 E.3.6 | needs the Modified Dates Option | `Int` days | — | — | **wrong → fixed**: on ps315 without a dates Option it was silently ignored; now refused |
+| `--regenerate-uids` | U action | PS3.15 Table E.1-1 U | U by default | legacy: 3 UIDs; ps315: always U unless `--retain-uids` | U | off (legacy) | match (documented; legacy default = P-ANON-PROFILE); refused with `--retain-uids` |
+| `--remove` | X action | Table E.1-1a X; PS3.6 Table 6-1 keywords | — | hex forms + any PS3.6 keyword | — | — | **wrong → fixed**: ignored on ps315; only 11 keywords recognised |
+| `--replace` | replace value | PS3.6 Table 6-1 | — | `TAG=VALUE`, `KEYWORD=VALUE` | — | — | **wrong → fixed** (idem; README example `InstitutionName=` failed) |
+| `--keep` | K action | Table E.1-1a K | — | legacy only | — | — | **wrong → fixed**: ignored on ps315, now refused there |
+| `--recursive` | directory walk | — | — | flag | — | off | plumbing |
+| `--dry-run` | preview | — | — | flag | — | off | match (now lists actions) |
+| `--backup` | copy input | — | — | flag | — | off | plumbing |
+| `--audit-log` | de-identification record | PS3.15 E.1.1 | — | path | — | — | **wrong → fixed**: ps315 log held only its header; now one line per attribute (code + PS3.6 name, no values) |
+| `--force` | no DICM prefix | PS3.10 7.1 | — | flag | — | off | plumbing |
+| `--allow-burned-in-phi` | write with residual pixel PHI | PS3.15 E.1.1, E.3.1 | (0012,0062) NO | flag, ps315 only | — | off | match (help: stale "never redacts pixels" fixed) |
+| `--verbose` | verbosity | — | — | flag | — | off | plumbing |
+| `(Retain Safe Private Option)` | | PS3.15 E.3.10; 113111 | | not offered | | | missing (engine: D159) |
+| `(Clean Structured Content Option)` | | PS3.15 E.3.4; 113104 | | not offered | | | missing (D159) |
+| `(Clean Graphics Option)` | | PS3.15 E.3.3; 113103 | | not offered | | | missing (D159) |
+| `(Clean Recognizable Visual Features Option)` | | PS3.15 E.3.2; 113102 | | not offered | | | missing (D159) |
+
+Counts (26 options + 4 absent concepts): matched 10, wrong 6 (all fixed; `--profile` documented + P-item), missing 6 (2 added, 4 deferred), extra 0, plumbing 8.
+
+**Output contract**
+
+| Field | DICOM source | Encoding (standard) | Encoding (code) | Verdict |
+|---|---|---|---|---|
+| (0012,0062) Patient Identity Removed | PS3.15 E.1.1; PS3.3 Table C.7-1 | CS `YES` | `YES`; `NO` when Burned In Annotation YES / overlays remain | match |
+| (0012,0063) De-identification Method | PS3.15 E.1.1 | LO 1-n text | "PS3.15 Basic Application Level Confidentiality Profile" + CID 7050 meanings of Options | match (omits Clean Pixel Data text: D160) |
+| (0012,0064) De-identification Method Code Sequence | PS3.16 CID 7050 | DCM 113100–113112 | 13/13 codes + meanings match by script; 113100 + one per Option | match |
+| (0028,0303) Longitudinal Temporal Information Modified | PS3.15 E.2, E.3.6 | REMOVED / UNMODIFIED / MODIFIED | never written | **missing** (engine: D161) |
+| (0028,0301) Burned In Annotation | PS3.15 E.3.1 | `NO` | `NO` only when pixels were blanked; 113101 added | match |
+| (0002,0003) Media Storage SOP Instance UID | PS3.10 7.1; Table E.1-1 U | = (0008,0018) | original UID kept | **wrong → fixed** in CLI write step (engine: D162) |
+| Per-attribute action lines (`--dry-run`/`--verbose`) | PS3.15 Table E.1-1a; PS3.6 Table 6-1 | D/Z/X/C/U + name | none (only "(gggg,eeee)" list) | missing → **added**: `  Z        (0010,0010) Patient's Name`; `recorded` for 0012,0062-0064 / 0028,0301-0303 |
+| `--audit-log` lines (ps315) | as above | — | `[ts] path - Z - (0010,0010) Patient's Name`, `Method:` line of CID 7050 meanings | missing → **added** |
+| Summary block (shared `AnonConsole.summary`) | — | — | Total/Successful/Failed/"(DRY RUN - no files modified)"/Modified tags | plumbing (shared console, unchanged) |
+| stderr note for legacy profiles | PS3.15 E.2 | — | "is a legacy attribute list, not the PS3.15 Basic Application Level Confidentiality Profile" | added |
+| exit codes | — | — | 0 ok; 1 any failure or refused option (CLI's own ValidationError, not ArgumentParser's 64) | plumbing |
+| extractor "JSON" `basic`/`clinicaltrial`/`ps315`/`research` | — | — | these are `--profile` values, not JSON keys | n/a |
+
+**Findings fixed (commit 06717c9):** ps315 ignored `--remove`/`--replace`/`--keep`; ps315 audit log empty; `--shift-dates` silently ignored on ps315 without a dates Option; Option flags silently ignored on legacy profiles; keyword parsing limited to 11 keywords; (0002,0003) kept the original UID; no per-attribute action/E.1-1a output; help/README claimed `basic` handles address/phone (it does not) and implied PS3.15 conformance; stale "never redacts pixels". Added `--retain-full-dates`, `--retain-modified-dates`.
+
+**P-items**
+- **P-ANON-PROFILE**: make `--profile` default `ps315`; make `basic` an alias of `ps315` (the PS3.15 Basic Profile); keep the legacy lists as `legacy-basic`, `legacy-clinical-trial`, `legacy-research` (old spellings deprecated with a warning for one release). Recommended.
+- **P-ANON-RETAIN-DATES**: deprecate `--retain-dates` (its Option depends on `--shift-dates`) in favour of `--retain-full-dates` / `--retain-modified-dates`.
+
+**Deferred findings**
+
+| D161 | DICOMKit | Sources/DICOMKit/Anonymization/ConfidentialityEngine.swift:310 | `recordMethod` never writes Longitudinal Temporal Information Modified (0028,0303): REMOVED without a dates Option, UNMODIFIED with Full Dates, MODIFIED with Modified Dates | PS3.15 2026a E.2, E.3.6 | Medium | ⏳ Open |
+| D158 | DICOMKit | Sources/DICOMKit/Anonymization/ConfidentialityEngine.swift:181 | Clean Descriptors Option keeps every C attribute verbatim (140 rows on the fixture, e.g. Study Comments "… John Doe") yet records 113105 Clean Descriptors Option; C requires values "known not to contain identifying information" | PS3.15 2026a E.3.5, Table E.1-1a (C) | High | ⏳ Open |
+| D157 | DICOMKit | Sources/DICOMKit/Anonymization/ConfidentialityEngine.swift:239 | Modified Dates Option shifts only DA; DT (60 rows), TM (52) and 3 other C cells are zeroed while 113107 is recorded; E.3.6 requires dates and times modified preserving temporal relationships | PS3.15 2026a E.3.6 | Medium | ⏳ Open |
+| D159 | DICOMKit | Sources/DICOMKit/Anonymization/ConfidentialityProfile.swift:49 | `Options` has no Retain Safe Private, Clean Structured Content, Clean Graphics, Clean Recognizable Visual Features; the generated cleanStructuredContent/cleanGraphics columns are unused by `action(for:options:)`; the CLI cannot offer these four Options | PS3.15 2026a E.3.2, E.3.3, E.3.4, E.3.10; CID 7050 113102-113104, 113111 | Low | ⏳ Open |
+| D162 | DICOMKit | Sources/DICOMKit/Anonymization/Anonymizer.swift:416 | `deidentify` (and `anonymize`, :222) keep the source File Meta: Media Storage SOP Instance UID (0002,0003) keeps the original UID while (0008,0018) is replaced (U); dicom-anon now syncs it at write, other callers (Studio) do not | PS3.10 2026a 7.1; PS3.15 2026a Table E.1-1 (0002,0003) U | High | ⏳ Open |
+| D160 | DICOMKit | Sources/DICOMKit/Anonymization/ConfidentialityEngine.swift:337 | After pixel cleaning (113101 recorded by PixelRedactor), (0012,0063) omits "Clean Pixel Data Option" and the 113100 item follows 113101 in (0012,0064) | PS3.15 2026a E.1.1; PS3.3 2026a Table C.7-1 | Low | ⏳ Open |
+| D163 | DICOMKit | Sources/DICOMKit/Anonymization/Anonymizer.swift:458 | `parseFlexibleTag` knows 11 hard-coded keywords and its lowercased lookup can never match (keys are PascalCase); dicom-anon now falls back to DataElementDictionary, the Studio Workshop executor does not | PS3.6 2026a Table 6-1 | Low | ⏳ Open |
+| D164 | DICOMKit | Sources/DICOMKit/Anonymization/Anonymizer.swift:305 | Legacy `shiftAllDates`/`regenerateAllUIDs` (:321) ignore `preserveTags`: `--keep StudyDate --shift-dates N` still shifts it | (legacy behaviour, no PS3.15 clause) | Low | ⏳ Open |
+
+**Markers**
+- main.swift: `// NEMA-verified: 2026a, checked 2026-10-01 — --profile and the Option flags against PS3.15 2026a E.1-E.3 and the 12 Option columns of Table E.1-1 (8 Options offered, 4 not offered by the engine); on a fixture of the 647 data-set rows of Table E.1-1, --profile ps315 matches 647 (5 SQ D rows kept with scrubbed items) and the legacy basic 11, clinical-trial 15, research 1 (documented as not PS3.15); recorded codes match PS3.16 2026a CID 7050 (13 rows); (0002,0003) follows (0008,0018) per PS3.10 2026a 7.1`
+- AnonCLISupport.swift: `// NEMA-verified: 2026a, checked 2026-10-01 — option names diffed against the 12 Options of PS3.15 2026a E.3 and the Table E.1-1 Option columns (7 offered here: …; Clean Pixel Data in main.swift); action labels are the 6 PS3.15 2026a Table E.1-1a single codes (K not listed: unchanged); names from PS3.6 2026a Table 6-1 via DataElementDictionary`
+
+**Tests:** `swift build --product dicom-anon` ok; `swift test --filter dicom_anonTests` 12/12 pass (new target `dicom-anonTests`, Package.swift hunk committed via a temporary index); `check_nema_markers.py Sources/dicom-anon` 2/2; `diff_cli.py --tool dicom-anon` 0 FAIL (26 options).
+
+**diff_cli.py note:** nothing to add to the extractor; the "JSON basic/clinicaltrial/ps315/research" rows it emits are `--profile` switch values, not JSON keys.
+
+### dicom-image (G3) — verified 2026-10-01
+
+Converts JPEG/PNG/TIFF/BMP/GIF to the **Secondary Capture Image IOD** (PS3.3 A.8.1, SOP Class "Secondary Capture
+Image Storage" 1.2.840.10008.5.1.4.1.1.7 per PS3.4 Table B.5-1 / PS3.6 Table A-1), single-frame, Explicit VR Little
+Endian; it does not render DICOM to images and does not use the multi-frame SC IODs (A.8.2–A.8.5; `--split-pages`
+writes one single-frame instance per TIFF page). Engine: `DICOMKit/SecondaryCapture/ImageConverter.swift` (DICOMKit
+pass 2026-09-29). Evidence: `<scratch>/g3img/iod_attrs.py` (expands Table A.8-1 M modules through their Include
+macros: Tables C.7-1, C.7-3, C.7-5a, C.8-24, C.7.10.1-1, C.7-9, C.7-11a > C.7-11c, C.8-25 > 10-10, C.12-1 > 10.41-1),
+`<scratch>/g3img/check_sc.py` (runs on tool output for RGB, gray, RGBA, 16-bit gray PNG, EXIF JPEG, GIF; every Type 1/2
+and applicable 1C/2C present, Type 1 non-empty, Image Pixel 8/8/7/0, Pixel Data length), `diff_kit.attribute_terms`
+for Conversion Type (8 terms) and Modality (97 terms), PS3.3 Table C.12-5 (ISO_IR 192), PS3.5 Table 6.2-1 (UI, LO, PN,
+IS), PS3.10 Table 7.1-1. `diff_cli.py --tool dicom-image`: 0 wrong (13 citations matched).
+
+**Before the fix** the output had Media Storage SOP Instance UID (0002,0003) ≠ SOP Instance UID (0008,0018) in every
+file, and no Specific Character Set for a non-ASCII Patient's Name (UTF-8 bytes written); all Type 1/2 attributes were
+otherwise present (27 grayscale / 28 colour).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed (standard) | Code accepts | Default std / code | Verdict |
+|---|---|---|---|---|---|---|
+| `<input>` | raster image or directory | — | — | path; .jpg .jpeg .png .tif .tiff .bmp .gif | — | plumbing |
+| `-o, --output` | output path | PS3.10 7.1 | — | path | — / `<name>.dcm`, `<dir>/dicom`, `<name>_frames` | plumbing |
+| `--patient-name` | Patient's Name (0010,0010) | Table C.7-1 Type 2; PS3.5 Table 6.2-1 PN | PN, ≤64 chars per component group, no `\` | any (required by tool); now warns on >64/`\` | — / required | match |
+| `--patient-id` | Patient ID (0010,0020) | Table C.7-1 Type 2; LO | LO ≤64, no `\` | any (required); now warns | — / required | match |
+| `--study-description` | Study Description (0008,1030) | Table C.7-3 Type 3; LO | LO ≤64 | any; warns | absent / EXIF description or absent | match |
+| `--series-description` | Series Description (0008,103E) | Table C.7-5a Type 3; LO | LO ≤64 | any; warns | absent | match |
+| `--study-uid` | Study Instance UID (0020,000D) | Table C.7-3 Type 1; PS3.5 9.1, Table 6.2-1 UI | UID syntax, ≤64 bytes | any, written unchecked → now warns (DICOMUniqueIdentifier.parse) | — / generated | missing → fixed (warning; P-IMAGE-VR) |
+| `--series-uid` | Series Instance UID (0020,000E) | Table C.7-5a Type 1; PS3.5 9.1 | UID syntax | as above | — / generated | missing → fixed (warning) |
+| `--series-number` | Series Number (0020,0011) | Table C.7-5a Type 2; IS | −2^31..2^31−1 | Int; now warns outside IS range | empty / empty | match |
+| `--instance-number` | Instance Number (0020,0013) | Table C.7-9 Type 2; IS | IS range | Int; warns | — / 1 (+1 per file/page) | match |
+| `--modality` | Modality (0008,0060) | Table C.7-5a Type 1; C.7.3.1.1.1 Defined Terms (97) | Defined Terms (extensible) | shared ModalityOptionValidator (DICOMCore, verified); unknown warns | — / OT | match |
+| `--strict-modality` | reject non-Defined-Term | C.7.3.1.1.1 | — | flag | off | plumbing |
+| `--conversion-type` (new) | Conversion Type (0008,0064) | Table C.8-24 Type 1 | DV, DI, DF, WSD, SD, SI, DRW, SYN | the 8 terms, case-insensitive; others exit 64 | — / WSD | missing → fixed (option added; was always WSD) |
+| `--use-exif` | Acquisition Date/Time (0008,0022/0032); Nominal Scanned Pixel Spacing (0018,2010) | Table C.7.10.1-1 (General Acquisition, M); Table C.8-25 | — | DateTimeOriginal, DPI, UserComment/ImageDescription | off | wrong → fixed (README said DPI → Pixel Spacing; code writes (0018,2010), correct) |
+| `--split-pages` | one SC instance per TIFF page | A.8.1 (single-frame) | — | flag | off | match |
+| `--recursive` | — | — | — | flag | off | plumbing |
+| `--verbose` | — | — | — | flag | off | plumbing |
+
+matched 8, wrong 1, missing 3, extra 0, plumbing 5
+
+**Output contract**
+
+| Output | Standard | Verdict |
+|---|---|---|
+| SOP Class UID 1.2.840.10008.5.1.4.1.1.7, Transfer Syntax 1.2.840.10008.1.2.1 | PS3.4 Table B.5-1; PS3.6 Table A-1 | match |
+| Type 1/2 attributes of the 9 M modules of Table A.8-1 (27 gray / 28 RGB incl. Planar Configuration 1C, Patient Orientation 2C empty) | PS3.3 2026a Tables C.7-1 … C.12-1 | match |
+| Image Pixel: Samples per Pixel 1/3, MONOCHROME2/RGB, 8/8/7/0, Planar Configuration 0, Pixel Data OB | C.7.6.3.1; Table C.7-11c | match (16-bit sources are reduced to 8 bits; alpha composited on white) |
+| Media Storage SOP Instance UID (0002,0003) | PS3.10 Table 7.1-1 | wrong → fixed (CLI `SCOutput.finalize`; engine D165) |
+| Specific Character Set (0008,0005) | Table C.12-1 Type 1C; Table C.12-5 "ISO_IR 192" | missing → fixed (written when a text value is not ASCII; engine D166) |
+| Conversion Type (0008,0064) | Table C.8-24 | match (WSD default; `--conversion-type`) |
+| Nominal Scanned Pixel Spacing (0018,2010) from DPI, `row\column` | Table C.8-25; 10.7.1.3 | match |
+| General Equipment Manufacturer "DICOMKit", Model "dicom-image CLI", Software Versions | C.8.6.1 scenario table (General Equipment = equipment that created the image) | deferred (D167) |
+| stdout `Converted: <path>`, batch/TIFF summaries; exit 0 / 1 (I/O) / 64 (usage, bad `--conversion-type`) | — | plumbing |
+
+**Changes** (commit `1c9aaba8`): `Sources/dicom-image/SCOutput.swift` (new: `conversionType`, `valueWarnings`,
+`finalize`), `main.swift` (`--conversion-type`, warnings, `finalize` on all three write paths, help with tags and the
+PS3.4 SOP Class name), `README.md` (EXIF mapping corrected, options, Table A.8-1 module list). Test target
+`dicom-imageTests` (`Tests/dicom-imageTests/SCOutputTests.swift`, 5 tests: Table C.8-24 terms; PS3.5 6.2-1 warnings;
+finalize UID + ISO_IR 192; ASCII left alone; converted PNG carries every Type 1/2 attribute of Table A.8-1).
+
+**P-items**
+- P-IMAGE-VR: `--study-uid`/`--series-uid` breaking PS3.5 9.1, LO/PN values over 64 characters or with `\`, and
+  `--series-number`/`--instance-number` outside the IS range only warn; proposal: reject them (exit 64). Not
+  implemented (accepted-value change).
+
+**Deferred findings**
+
+| ID | Module | file:line | Problem | Standard | Severity | Status |
+|---|---|---|---|---|---|---|
+| D165 | DICOMKit | Sources/DICOMKit/SecondaryCapture/ImageConverter.swift:139 | `DICOMFile.create(dataSet:transferSyntaxUID:)` is called without `sopInstanceUID`, so (0002,0003) gets a second UID ≠ (0008,0018) (DICOMStudio path too; the CLI now rewrites it) | PS3.10 2026a Table 7.1-1 | High | ⏳ Open |
+| D166 | DICOMKit | Sources/DICOMKit/SecondaryCapture/ImageConverter.swift:157-181 | text written as UTF-8 without Specific Character Set (0008,0005) "ISO_IR 192" when a value is not ASCII (CLI adds it) | PS3.3 2026a Table C.12-1 (1C), Table C.12-5 | Medium | ⏳ Open |
+| D167 | DICOMKit | Sources/DICOMKit/SecondaryCapture/ImageConverter.swift:184-187 | converter identity (DICOMKit / "dicom-image CLI" / "1.1.6") written to General Equipment, which describes the equipment that created the original image; belongs in SC Equipment Secondary Capture Device Manufacturer / Model Name / Software Versions (0018,1016/1018/1019); "dicom-image CLI" also when DICOMStudio converts | PS3.3 2026a C.8.6.1 (scenario table), Table C.8-24 | Low | ⏳ Open |
+| D168 | DICOMKit | Sources/DICOMKit/SecondaryCapture/ImageConverter.swift:166 | EXIF UserComment/ImageDescription written to Study Description (LO) without the 64-character limit or `\` check | PS3.5 2026a Table 6.2-1 (LO) | Low | ⏳ Open |
+
+**Marker**: `// NEMA-verified: 2026a, checked 2026-10-01 — output diffed against PS3.3 2026a Table A.8-1 (Secondary Capture Image IOD): all Type 1/2 attributes of the 9 M modules present (27 grayscale, 28 colour incl. Planar Configuration 1C; Tables C.7-1, C.7-3, C.7-5a, C.8-24, C.7.10.1-1, C.7-9, C.7-11a/c, C.8-25, C.12-1); 16 options: --modality via ModalityOptionValidator (C.7.3.1.1.1, 97 terms), --conversion-type Table C.8-24 (8 terms), SOP Class name/UID per PS3.4 Table B.5-1 and PS3.6 Table A-1, help names per PS3.6 Table 6-1 (see SCOutput.swift)` (main.swift); SCOutput.swift: `… Conversion Type Defined Terms … (Table C.8-24, 8 of 8); Specific Character Set "ISO_IR 192" (Table C.12-5 …); (0002,0003) = SOP Instance UID (PS3.10 Table 7.1-1); value limits of PS3.5 Table 6.2-1 …`
+
+**Tests**: `dicom-imageTests` 5/5 pass; `swift build --product dicom-image` ok; `diff_cli.py --tool dicom-image` 0 wrong; `check_nema_markers.py Sources/dicom-image` 2/2 marked.
+
+### dicom-pixedit (G3) — verified 2026-10-01
+
+Edits stored pixel values of an image: mask a rectangle, crop, bake a window, invert. Engine:
+`DICOMKit/PixelEditing/PixelEditor.swift` (DICOMKit pass 2026-09-29: C.11.2.1.2 formula). Evidence, by script from
+the 2026a DocBook: PS3.3 C.7.6.1.1.2 (Image Type; "the Derived Image shall have a SOP Instance UID different than all
+the source images"), Table C.7-9 (Image Type, Burned In Annotation, Recognizable Visual Features, Lossy Image
+Compression all Type 3), Table C.12-10 General Reference Module (Derivation Description, Derivation Code Sequence
+CID 7203, Source Image Sequence with Table 10-3 and CID 7202), C.12.4.1.1/.2, C.7.6.1.1.5, C.7.6.2.1.1 Equation
+C.7.6.2.1-1, C.11.2.1.2 (VOI input = Modality LUT output; Window Width ≥ 1), PS3.16 CID 7202 (9 rows) and CID 7203
+(34 rows: none for mask/crop/window/invert), PS3.10 Table 7.1-1. Run on a 12-bit CT fixture (`<scratch>/g3img/mkct.py`,
+`show.py`). `diff_cli.py --tool dicom-pixedit`: 0 wrong (6 citations matched).
+
+**Before the fix** the output kept the source SOP Instance UID, Image Type ORIGINAL, no Derivation Description /
+Source Image Sequence, the source's Implementation Class UID and stale Smallest/Largest Image Pixel Value; a crop left
+Image Position (Patient) at the old corner; `--window-center 40 --window-width 400` on a CT (Rescale Intercept −1024)
+was applied to stored values (i.e. −984 HU); `--fill-value 9000` on Bits Stored 12 wrote 9000.
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed (standard) | Code accepts | Default std / code | Verdict |
+|---|---|---|---|---|---|---|
+| `<input>` | PS3.10 file with Pixel Data | PS3.10 7.1 | — | path; encapsulated inputs decoded | — | plumbing |
+| `--output` | output PS3.10 file | PS3.10 7.1 | — | path (required) | — | plumbing |
+| `--mask-region` | rectangle of pixels (0-based column, row) | C.7.6.2.1.1 indices i, j from 0 | — | `x,y,w,h`, x,y ≥ 0, w,h > 0 | — | match (Burned In Annotation left unchanged; documented) |
+| `--fill-value` | stored sample value | C.7.6.3.1 (Bits Stored, Pixel Representation) | 0..2^BS−1 / −2^(BS−1)..2^(BS−1)−1 | Int; was clamped to Bits Allocated only → now clamped to the stored range with a warning | — / 0 | wrong → fixed |
+| `--crop` | sub-matrix; Rows/Columns, Image Position (Patient) | Table C.7-11c; C.7.6.2.1.1 Eq. C.7.6.2.1-1 | — | `x,y,w,h` | — | wrong → fixed (IPP moved: S + X·Δi·x + Y·Δj·y, Δi = Pixel Spacing Value 2) |
+| `--window-center` | Window Center (0028,1050) | C.11.2.1.2 (Modality LUT output units) | any | Double; was applied to stored values → now translated through Rescale Slope/Intercept | — | wrong → fixed |
+| `--window-width` | Window Width (0028,1051) | C.11.2.1.2 (≥ 1) | ≥ 1 | Double; ≤ 0 refused by engine; 0 < w < 1 now warns and uses 1; translated as above | — | wrong → fixed |
+| `--apply-window` | linear VOI function baked into stored values | C.11.2.1.2 | — | flag; requires both window options | off | match |
+| `--invert` | invert stored values across the Bits Stored range | C.7.6.3.1 | — | flag | off | match |
+| `-v, --verbose` | — | — | — | flag | off | plumbing |
+
+matched 3, wrong 4, missing 0, extra 0, plumbing 3
+
+**Output contract**
+
+| Output | Standard | Verdict |
+|---|---|---|
+| SOP Instance UID (0008,0018) and (0002,0003) | C.7.6.1.1.2 (new UID when pixel data differ); PS3.10 Table 7.1-1 | wrong → fixed (new UID) |
+| Image Type (0008,0008) Value 1 | C.7.6.1.1.2: DERIVED | missing → fixed (Value 1 DERIVED, others kept; DERIVED\SECONDARY if absent) |
+| Derivation Description (0008,2111) | Table C.12-10; ST ≤ 1024 (PS3.5 Table 6.2-1) | missing → fixed (appended, capped at 1024) |
+| Derivation Code Sequence (0008,9215) | Table C.12-10, CID 7203 | match (not written: CID 7203 has no code for these operations) |
+| Source Image Sequence (0008,2112) | Table C.12-10; Table 10-3; CID 7202 DCM 121322 "Source image for image processing operation" | missing → fixed (item appended) |
+| Implementation Class UID / Version Name (0002,0012/0013) | PS3.10 Table 7.1-1 ("implementation that last wrote the file") | wrong → fixed (DICOMKit values) |
+| Smallest/Largest Image Pixel Value, … in Series (0028,0106–0109) | Table C.7-11a | wrong → fixed (removed; stale after the edit) |
+| Window Center/Width after bake/invert | C.11.2.1.2 | match (engine) |
+| Lossy Image Compression (0028,2110), Burned In Annotation (0028,0301) | C.7.6.1.1.5 (never reset); Table C.7-9 | match (left as they are) |
+| Transfer Syntax after an encapsulated input | PS3.5 A.2 Explicit VR Little Endian | match |
+| stderr `Input:`/`Output:`/`Operations:`/`Written:`/`Done.`, warnings; exit 0 / 1 / 64 | — | plumbing |
+
+**Changes** (commit `698de5df`): `Sources/dicom-pixedit/DerivedImage.swift` (new: `storedRange`, `clampFill`,
+`storedWindow`, `description`, `markDerived`, `croppedPosition`), `main.swift` (reads the source once, clamps the fill
+value, translates the window, runs `processData`, marks the result derived, help), `README.md` (options, output
+section). Test target `dicom-pixeditTests` (`Tests/dicom-pixeditTests/DerivedImageTests.swift`, 6 tests: derived
+attributes and new UID; Image Type when absent + ST cap; crop IPP; HU window on CT incl. pixel value 369; fill
+clamp; successive derivations).
+
+**P-items**
+- P-PIXEDIT-RANGE: `--fill-value` outside the stored range is clamped and `--window-width` in (0,1) is raised to 1,
+  both with a warning; proposal: reject them (exit 64). Not implemented (accepted-value change).
+
+**Deferred findings**
+
+| ID | Module | file:line | Problem | Standard | Severity | Status |
+|---|---|---|---|---|---|---|
+| D169 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:81-214 | `processData` returns the edit with the source SOP Instance UID, Image Type, Implementation Class UID and stale Smallest/Largest Pixel Value, no Derivation Description / Source Image Sequence; DICOMStudio uses it as is (the CLI fixes this in DerivedImage.swift) | PS3.3 2026a C.7.6.1.1.2, Table C.12-10; PS3.10 Table 7.1-1 | Medium | ⏳ Open |
+| D170 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:296-332 | `applyWindowLevel` applies center/width to stored values; Window Center/Width are Modality LUT output units (CLI translates; DICOMStudio does not) | PS3.3 2026a C.11.2.1.2 | Medium | ⏳ Open |
+| D171 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:259-294 | `applyCrop` leaves Image Position (Patient) (top level and Plane Position Sequence in functional groups) and Overlay Rows/Columns/Origin unchanged (CLI updates top-level IPP only) | PS3.3 2026a C.7.6.2.1.1, C.9.2 | Medium | ⏳ Open |
+| D172 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:486-509 | `setPixelValue` clamps to the Bits Allocated range, not Bits Stored / Pixel Representation, so `.mask` can write values above High Bit | PS3.3 2026a C.7.6.3.1 | Low | ⏳ Open |
+| D173 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:107-128 | decoding a lossy-compressed input writes native pixels without setting Lossy Image Compression "01" (and Method) when the input lacks them | PS3.3 2026a C.7.6.1.1.5 | Low | ⏳ Open |
+| D174 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:296-345 | window/invert transform PALETTE COLOR indices and leave Pixel Padding Value (0028,0120) untransformed | PS3.3 2026a C.7.6.3.1.5, C.7.5.1.1.2 | Low | ⏳ Open |
+
+**Marker**: main.swift `// NEMA-verified: 2026a, checked 2026-10-01 — 10 options: --fill-value clamped to the Bits Stored / Pixel Representation range (PS3.3 2026a C.7.6.3.1), --window-center/--window-width in Modality LUT output units (C.11.2.1.2, Rescale Slope/Intercept C.11.1), output marked as a Derived Image (C.7.6.1.1.2, Table C.12-10; see DerivedImage.swift); --output/--verbose/<input> are plumbing`; DerivedImage.swift `// NEMA-verified: 2026a, checked 2026-10-01 — derived-image rules of PS3.3 2026a C.7.6.1.1.2 (…), C.12.4 General Reference Module Table C.12-10 (…CID 7202 DCM 121322; CID 7203 has no code…), C.7.6.2.1.1 Equation C.7.6.2.1-1, C.11.2.1.2 (width >= 1), PS3.5 Table 6.2-1 (ST 1024, DS 16), PS3.10 Table 7.1-1 (0002,0003), (0002,0012), (0002,0013)`
+
+**Tests**: `dicom-pixeditTests` 6/6 pass; `swift build --product dicom-pixedit` ok; `diff_cli.py --tool dicom-pixedit` 0 wrong; `check_nema_markers.py Sources/dicom-pixedit` 2/2 marked.
+
 
 ## G4 Derived objects
 
@@ -2173,5 +2448,6 @@ Not started.
 
 - `Tests/DICOMToolsTests/` (DICOMQRTests, DICOMRetrieveTests, DICOMDcmdirTests, DICOMAITests, …) is compiled by no target: `DICOMToolsTests` is commented out in Package.swift, so those tests have never run. New per-tool test targets (`dicom-queryTests`, `dicom-sendTests`, `dicom-aiTests`, `dicom-videoTests`) are being added as tools are verified; migrating the orphaned files is a follow-up.
 - PS3.19 2026a A.1.6 schema does not declare `xml:space`, which Table A.1.5-1 requires on PersonName components; DICOMKit output validates with xmllint only after stripping it. This is a defect in the standard's schema, not in DICOMKit (found 2026-10-01, dicom-xml).
+- Four engine findings (D112, D137, D162, D165) share one cause in `DICOMFile.create` (D175). Fixing D175 in DICOMKit closes them for DICOMStudio as well; the CLI tools already pass the UIDs explicitly.
 - Nothing in this report is from memory; every row cites the table it was diffed against, or is labelled
   "not checked".
