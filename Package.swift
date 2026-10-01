@@ -768,6 +768,7 @@ let package = Package(
                 // DICOM 2026a verification (DICOMKIT_STANDARD_IMPLEMENTATION.md): suites
                 // that were never in this allowlist, plus the P-item suites of 2026-09-29.
                 "DICOMWritingTests.swift",
+                "FileMetaMediaStorageUIDTests.swift",
                 "DICOMDIRReaderRecordTypeTests.swift",
                 "CompressionManagerXYBTests.swift",
                 "StructuredReporting/SpatialCoordinatesClosedPolylineTests.swift",

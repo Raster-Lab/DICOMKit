@@ -48,8 +48,15 @@ final class SCOutputTests: XCTestCase {
         ds.setString("1.2.840.10008.5.1.4.1.1.7", for: .sopClassUID, vr: .UI)
         ds.setString("1.2.3.4.5", for: .sopInstanceUID, vr: .UI)
         ds.setString("Müller^Jörg", for: .patientName, vr: .PN)
-        // DICOMFile.create mints its own (0002,0003) when none is passed — as ImageConverter does.
-        let data = try DICOMFile.create(dataSet: ds, transferSyntaxUID: "1.2.840.10008.1.2.1").write()
+        // Since D175 (2026-10-01) DICOMFile.create takes (0002,0003) from (0008,0018) when none is
+        // passed — as ImageConverter does — so the engine output already agrees.
+        let created = DICOMFile.create(dataSet: ds, transferSyntaxUID: "1.2.840.10008.1.2.1")
+        XCTAssertEqual(created.fileMetaInformation.string(for: .mediaStorageSOPInstanceUID), "1.2.3.4.5")
+        // finalize still re-aligns a File Meta carried over with a different UID.
+        var staleMeta = created.fileMetaInformation
+        staleMeta.setString("1.2.3.4.999", for: .mediaStorageSOPInstanceUID, vr: .UI)
+        staleMeta.remove(tag: .fileMetaInformationGroupLength)
+        let data = try DICOMFile(fileMetaInformation: staleMeta, dataSet: ds).write()
         let before = try DICOMFile.read(from: data)
         XCTAssertNotEqual(before.fileMetaInformation.string(for: .mediaStorageSOPInstanceUID), "1.2.3.4.5")
 

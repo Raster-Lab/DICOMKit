@@ -219,7 +219,10 @@ public class Anonymizer {
         let phiWarnings = scanForPHILeaks(in: newDataSet)
         warnings.append(contentsOf: phiWarnings)
         
+        // PS3.10 2026a Table 7.1-1 / PS3.15 2026a Table E.1-1 (0002,0003) U: the File Meta
+        // Media Storage UIDs follow the (possibly regenerated) (0008,0016) / (0008,0018) (D162).
         let newFile = DICOMFile(fileMetaInformation: file.fileMetaInformation, dataSet: newDataSet)
+            .synchronizingMediaStorageUIDs()
         let result = AnonymizationResult(
             filePath: filePath,
             success: true,
@@ -413,7 +416,10 @@ public class Anonymizer {
         // so burned-in annotation / overlay planes must reach the caller as warnings
         // rather than being silently certified as de-identified.
         let (scrubbed, changed, warnings) = engine.deidentifyReportingResidualPHI(file.dataSet)
+        // PS3.10 2026a Table 7.1-1 / PS3.15 2026a Table E.1-1 (0002,0003) U: the File Meta
+        // Media Storage UIDs follow the regenerated (0008,0016) / (0008,0018) (D162).
         let newFile = DICOMFile(fileMetaInformation: file.fileMetaInformation, dataSet: scrubbed)
+            .synchronizingMediaStorageUIDs()
         let result = AnonymizationResult(
             filePath: "", success: true, changedTags: changed, warnings: warnings)
         return (newFile, result, engine.uidMap)

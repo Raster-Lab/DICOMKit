@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — File Meta Media Storage UIDs follow the data set (2026-10-01, DICOM 2026a)
+
+- **`DICOMFile.create` takes (0002,0002) / (0002,0003) from the data set** (D175; fixes D112, D137, D165):
+  PS3.10 2026a Table 7.1-1 says Media Storage SOP Class / Instance UID identify the SOP Class / Instance of the
+  data set in the file. `create` now uses the data set's SOP Class UID (0008,0016) and SOP Instance UID
+  (0008,0018) when present (they win over a differing argument); otherwise the argument; otherwise Secondary
+  Capture Image Storage / a generated UID, which is then also written into the data set (not for a DICOMDIR,
+  whose Basic Directory IOD has no SOP Common Module, PS3.3 Table F.3-1). `sopClassUID:` is now `String?`
+  (default nil); existing call sites compile unchanged. Before, an omitted `sopInstanceUID:` minted a second UID
+  and an omitted `sopClassUID:` wrote Secondary Capture whatever the data set was: dicom-json / dicom-xml
+  `--reverse` (`DataExchangeWorkflow.decode`), dicom-uid `regenerate` (`UIDManager.regenerateData`), dicom-image /
+  DICOMStudio (`ImageConverter.secondaryCaptureData`) and dicom-pdf wrote File Meta that disagreed with the data set.
+- **De-identified files carry the new SOP Instance UID in (0002,0003)** (D162): `Anonymizer.anonymize` and
+  `Anonymizer.deidentify` re-align the carried-over File Meta with the data set through the new public
+  `DICOMFile.synchronizingMediaStorageUIDs()` (PS3.15 2026a Table E.1-1 (0002,0003) U; PS3.10 Table 7.1-1), so
+  DICOMStudio and every other caller get what dicom-anon already wrote.
+
 ### Fixed — deferred rows, misc batch (2026-10-01, DICOM 2026a)
 
 - **DICOMPrintKit status labels** (D90): `PrintConsoleFormatter.printerStatusText` / `jobStatusText` (dicom-print
