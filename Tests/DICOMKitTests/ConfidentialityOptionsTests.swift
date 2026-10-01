@@ -5,8 +5,9 @@ import DICOMDictionary
 @testable import DICOMKit
 
 /// PS3.15 2026a Annex E options and recording rows closed 2026-10-01: Clean Descriptors
-/// (E.3.5, D158), Modified Dates (E.3.6, D157), (0028,0303) (E.2 / E.3.6, D161), and the
-/// legacy Anonymizer's keyword parsing (D163) and --keep (D164).
+/// (E.3.5, D158), Modified Dates (E.3.6, D157), (0028,0303) (E.2 / E.3.6, D161), Retain
+/// Safe Private (E.3.10) and Clean Graphics (E.3.3) (D159), and the legacy Anonymizer's
+/// keyword parsing (D163) and --keep (D164).
 final class ConfidentialityOptionsTests: XCTestCase {
 
     private let studyDescription = Tag(group: 0x0008, element: 0x1030)
@@ -106,6 +107,93 @@ final class ConfidentialityOptionsTests: XCTestCase {
         XCTAssertEqual(value(.basic).1, .CS)
         XCTAssertEqual(value(.init(retainLongitudinalTemporal: true)).0, "UNMODIFIED")
         XCTAssertEqual(value(.init(retainLongitudinalTemporal: true, dateOffsetDays: 5)).0, "MODIFIED")
+    }
+
+    // MARK: - D159 Retain Safe Private, Clean Graphics
+
+    /// Table E.3.10-1 rows (dumped by Scripts/generate_confidentiality_profile.py):
+    /// (0019,xx23) GEMS_ACQU_01 DS "Table Speed [mm/rotation]"; (7053,xx00) Philips PET
+    /// Private Group DS "SUV Factor"; 479 rows in all.
+    func testSafePrivateTableIsE3101() {
+        XCTAssertEqual(ConfidentialityProfile.safePrivateAttributes.count, 479)
+        XCTAssertEqual(ConfidentialityProfile.safePrivateAttributes["GEMS_ACQU_01|0019|23"], "DS")
+        XCTAssertEqual(ConfidentialityProfile.safePrivateAttributes["Philips PET Private Group|7053|00"], "DS")
+    }
+
+    private func privateDataSet() -> DataSet {
+        var ds = DataSet()
+        ds.setString("DOE^JOHN", for: .patientName, vr: .PN)
+        // Block 10 of group 0019: GE acquisition (Table Speed is listed safe).
+        ds.setString("GEMS_ACQU_01", for: Tag(group: 0x0019, element: 0x0010), vr: .LO)
+        ds.setString("12.5", for: Tag(group: 0x0019, element: 0x1023), vr: .DS)
+        ds.setString("DOE JOHN", for: Tag(group: 0x0019, element: 0x1030), vr: .LO)  // not listed
+        // Block 10 of group 0029: declared in (0008,0300) as MIXED, element 01 safe, 02 Z.
+        ds.setString("ACME 1.0", for: Tag(group: 0x0029, element: 0x0010), vr: .LO)
+        ds.setString("SAFE VALUE", for: Tag(group: 0x0029, element: 0x1001), vr: .LO)
+        ds.setString("OPERATOR", for: Tag(group: 0x0029, element: 0x1002), vr: .LO)
+        ds.setString("OTHER", for: Tag(group: 0x0029, element: 0x1003), vr: .LO)
+        // Block 10 of group 0031: nothing safe, so its creator goes too.
+        ds.setString("UNKNOWN", for: Tag(group: 0x0031, element: 0x0010), vr: .LO)
+        ds.setString("SECRET", for: Tag(group: 0x0031, element: 0x1001), vr: .LO)
+        var action = DataSet()
+        action[Tag(group: 0x0008, element: 0x0306)] = .uint16s(tag: Tag(group: 0x0008, element: 0x0306), values: [0x02])
+        action.setString("Z", for: Tag(group: 0x0008, element: 0x0307), vr: .CS)
+        var declaration = DataSet()
+        declaration[Tag(group: 0x0008, element: 0x0301)] = .uint16s(tag: Tag(group: 0x0008, element: 0x0301), values: [0x0029])
+        declaration.setString("ACME 1.0", for: Tag(group: 0x0008, element: 0x0302), vr: .LO)
+        declaration.setString("MIXED", for: Tag(group: 0x0008, element: 0x0303), vr: .CS)
+        declaration[Tag(group: 0x0008, element: 0x0304)] = .uint16s(tag: Tag(group: 0x0008, element: 0x0304), values: [0x01])
+        declaration.setSequence([SequenceItem(elements: action.tags.compactMap { action[$0] })],
+                                for: Tag(group: 0x0008, element: 0x0305))
+        ds.setSequence([SequenceItem(elements: declaration.tags.compactMap { declaration[$0] })],
+                       for: Tag(group: 0x0008, element: 0x0300))
+        return ds
+    }
+
+    /// PS3.15 E.3.10: safe Private Attributes are kept with their Private Creator; others go.
+    func testRetainSafePrivate() {
+        var engine = ConfidentialityEngine(options: .init(retainSafePrivate: true))
+        let (out, _) = engine.deidentify(privateDataSet())
+        XCTAssertEqual(out.string(for: Tag(group: 0x0019, element: 0x0010)), "GEMS_ACQU_01")
+        XCTAssertEqual(out.string(for: Tag(group: 0x0019, element: 0x1023)), "12.5", "Table E.3.10-1")
+        XCTAssertNil(out[Tag(group: 0x0019, element: 0x1030)], "not listed: removed")
+        XCTAssertEqual(out.string(for: Tag(group: 0x0029, element: 0x1001)), "SAFE VALUE", "(0008,0304)")
+        XCTAssertEqual(out.string(for: Tag(group: 0x0029, element: 0x1002)), "", "(0008,0307) Z")
+        XCTAssertNil(out[Tag(group: 0x0029, element: 0x1003)])
+        XCTAssertNil(out[Tag(group: 0x0031, element: 0x0010)], "a creator with nothing kept goes")
+        XCTAssertNil(out[Tag(group: 0x0031, element: 0x1001)])
+        let codes = (out.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []).compactMap { $0.string(for: .codeValue) }
+        XCTAssertEqual(codes, ["113100", "113111"])
+
+        var basic = ConfidentialityEngine()
+        let removed = basic.deidentify(privateDataSet()).0
+        XCTAssertTrue(removed.tags.allSatisfy { $0.group & 1 == 0 }, "without the Option every private attribute goes")
+    }
+
+    /// PS3.15 E.3.3: Graphic Annotation Sequence kept, its text cleaned (not a dummy).
+    func testCleanGraphics() throws {
+        var text = DataSet()
+        text.setString("Patient DOE JOHN, MRN12345", for: Tag(group: 0x0070, element: 0x0006), vr: .ST)
+        var annotation = DataSet()
+        annotation.setString("LAYER1", for: Tag(group: 0x0070, element: 0x0002), vr: .CS)
+        annotation.setSequence([SequenceItem(elements: text.tags.compactMap { text[$0] })],
+                               for: Tag(group: 0x0070, element: 0x0008))
+        var ds = dataSet()
+        ds.setSequence([SequenceItem(elements: annotation.tags.compactMap { annotation[$0] })],
+                       for: Tag(group: 0x0070, element: 0x0001))
+
+        var engine = ConfidentialityEngine(options: .init(cleanGraphics: true))
+        let (out, _) = engine.deidentify(ds)
+        let item = try XCTUnwrap(out.sequence(for: Tag(group: 0x0070, element: 0x0001))?.first)
+        let textItem = try XCTUnwrap(DataSet(elements: item.allElements).sequence(for: Tag(group: 0x0070, element: 0x0008))?.first)
+        XCTAssertEqual(textItem.string(for: Tag(group: 0x0070, element: 0x0006)), "Patient ,")
+        let codes = (out.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []).compactMap { $0.string(for: .codeValue) }
+        XCTAssertEqual(codes, ["113100", "113103"])
+
+        var basic = ConfidentialityEngine()
+        let dummy = try XCTUnwrap(basic.deidentify(ds).0.sequence(for: Tag(group: 0x0070, element: 0x0001))?.first)
+        let dummyText = try XCTUnwrap(DataSet(elements: dummy.allElements).sequence(for: Tag(group: 0x0070, element: 0x0008))?.first)
+        XCTAssertEqual(dummyText.string(for: Tag(group: 0x0070, element: 0x0006)), "ANONYMIZED", "Basic Profile D")
     }
 
     // MARK: - D163, D164 legacy Anonymizer

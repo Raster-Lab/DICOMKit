@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — Options add Retain Safe Private (E.3.10, Table E.3.10-1 generated: ConfidentialityProfileSafePrivate.swift, 479 rows) and Clean Graphics (E.3.3, the Table E.1-1 Clean Graph. column), recorded as CID 7050 113111 / 113103 (D159); Clean Structured Content and Clean Recognizable Visual Features are not offered
 // NEMA-verified: 2026a, checked 2026-09-30 — the rule table is every single-tag row of PS3.15 2026a Table E.1-1 (651, generated: ConfidentialityProfileTableE11.swift); action(for:options:) applies the Basic Profile column and the Retain UIDs / Device / Institution / Patient Characteristics / Longitudinal Full and Modified Dates / Clean Descriptors columns (D69; was 79 hand-picked rows)
 // NEMA-verified: 2026a, checked 2026-09-29 — the Basic Profile action of every row diffed by Scripts/diff_kit.py against PS3.15 2026a Table E.1-1 (62 rows; Device UID U and the order numbers Z corrected); DeidentificationMethodCode values and meanings from PS3.16 2026a CID 7050 (113100-113112), option mapping from PS3.15 E.3
 import Foundation
@@ -54,6 +55,13 @@ public enum ConfidentialityProfile {
         public var retainUIDs: Bool                    // UIDs kept unchanged (else regenerated)
         public var cleanDescriptors: Bool              // scrub free-text rather than remove
         public var dateOffsetDays: Int?                // if set with retainLongitudinalTemporal, shift instead of remove
+        /// Retain Safe Private Option (PS3.15 2026a E.3.10): Private Attributes listed in
+        /// Table E.3.10-1 for their Private Creator, or declared safe in Private Data Element
+        /// Characteristics Sequence (0008,0300), are kept with their Private Creators (D159).
+        public var retainSafePrivate: Bool
+        /// Clean Graphics Option (PS3.15 2026a E.3.3): Graphic Annotation Sequence (0070,0001)
+        /// is kept with the identifying information taken out of its text (D159).
+        public var cleanGraphics: Bool
 
         public init(
             retainLongitudinalTemporal: Bool = false,
@@ -62,7 +70,9 @@ public enum ConfidentialityProfile {
             retainInstitutionIdentity: Bool = false,
             retainUIDs: Bool = false,
             cleanDescriptors: Bool = false,
-            dateOffsetDays: Int? = nil
+            dateOffsetDays: Int? = nil,
+            retainSafePrivate: Bool = false,
+            cleanGraphics: Bool = false
         ) {
             self.retainLongitudinalTemporal = retainLongitudinalTemporal
             self.retainPatientCharacteristics = retainPatientCharacteristics
@@ -71,6 +81,8 @@ public enum ConfidentialityProfile {
             self.retainUIDs = retainUIDs
             self.cleanDescriptors = cleanDescriptors
             self.dateOffsetDays = dateOffsetDays
+            self.retainSafePrivate = retainSafePrivate
+            self.cleanGraphics = cleanGraphics
         }
 
         /// The strict Basic Application Level Confidentiality Profile: every option off.
@@ -81,6 +93,7 @@ public enum ConfidentialityProfile {
         /// (0012,0064): the profile code first, then one code per option applied.
         public var methodCodes: [DeidentificationMethodCode] {
             var codes: [DeidentificationMethodCode] = [.basicApplicationConfidentialityProfile]
+            if cleanGraphics { codes.append(.cleanGraphicsOption) }
             if cleanDescriptors { codes.append(.cleanDescriptorsOption) }
             if retainLongitudinalTemporal {
                 // E.3: "Retain Longitudinal Temporal Information with Full Dates" keeps
@@ -93,6 +106,7 @@ public enum ConfidentialityProfile {
             if retainPatientCharacteristics { codes.append(.retainPatientCharacteristicsOption) }
             if retainDeviceIdentity { codes.append(.retainDeviceIdentityOption) }
             if retainUIDs { codes.append(.retainUIDsOption) }
+            if retainSafePrivate { codes.append(.retainSafePrivateOption) }
             if retainInstitutionIdentity { codes.append(.retainInstitutionIdentityOption) }
             return codes
         }
@@ -215,7 +229,7 @@ public enum ConfidentialityProfile {
     /// Resolves the effective action for a tag under the given options: the row's option
     /// columns for every option in force (Retain UIDs, Device Identity, Institution
     /// Identity, Patient Characteristics, Longitudinal Temporal Information with Full or
-    /// Modified Dates, Clean Descriptors), else its Basic Profile action.
+    /// Modified Dates, Clean Descriptors, Clean Graphics), else its Basic Profile action.
     /// Returns nil when the tag is not a row of Table E.1-1 (the engine's group, private,
     /// PN and UI rules handle those).
     ///
@@ -235,6 +249,7 @@ public enum ConfidentialityProfile {
             if options.dateOffsetDays == nil, row.fullDates == "K" { return .keep }
         }
         if options.cleanDescriptors, row.cleanDescriptors == "C" { return .clean }
+        if options.cleanGraphics, row.cleanGraphics == "C" { return .clean }
         return basicAction(row.basic)
     }
 

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — option names diffed against the 12 Options of PS3.15 2026a E.3 and the Table E.1-1 Option columns (7 offered here: Retain UIDs, Device Identity, Institution Identity, Patient Characteristics, Longitudinal Temporal Information With Full Dates / With Modified Dates (E.3.6, mutually exclusive), Clean Descriptors; Clean Pixel Data in main.swift); action labels are the 6 PS3.15 2026a Table E.1-1a single codes (K not listed: unchanged); names from PS3.6 2026a Table 6-1 via DataElementDictionary
+// NEMA-verified: 2026a, checked 2026-10-01 — option names diffed against the 12 Options of PS3.15 2026a E.3 and the Table E.1-1 Option columns (9 offered here: Retain UIDs, Device Identity, Institution Identity, Patient Characteristics, Longitudinal Temporal Information With Full Dates / With Modified Dates (E.3.6, mutually exclusive), Clean Descriptors, Retain Safe Private (E.3.10), Clean Graphics (E.3.3); Clean Pixel Data in main.swift; Clean Structured Content and Clean Recognizable Visual Features not offered); action labels are the 6 PS3.15 2026a Table E.1-1a single codes (K not listed: unchanged); names from PS3.6 2026a Table 6-1 via DataElementDictionary
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -18,6 +18,8 @@ enum AnonCLI {
         var retainInstitution = false
         var retainUids = false
         var cleanDescriptors = false
+        var retainSafePrivate = false
+        var cleanGraphics = false
 
         /// Every flag that is set, by its command-line spelling.
         var setFlags: [String] {
@@ -25,7 +27,8 @@ enum AnonCLI {
              ("--retain-modified-dates", retainModifiedDates),
              ("--retain-characteristics", retainCharacteristics), ("--retain-device", retainDevice),
              ("--retain-institution", retainInstitution), ("--retain-uids", retainUids),
-             ("--clean-descriptors", cleanDescriptors)].filter(\.1).map(\.0)
+             ("--clean-descriptors", cleanDescriptors), ("--retain-safe-private", retainSafePrivate),
+             ("--clean-graphics", cleanGraphics)].filter(\.1).map(\.0)
         }
     }
 
@@ -133,7 +136,9 @@ enum AnonCLI {
             retainInstitutionIdentity: flags.retainInstitution,
             retainUIDs: flags.retainUids,
             cleanDescriptors: flags.cleanDescriptors,
-            dateOffsetDays: shiftDates)
+            dateOffsetDays: shiftDates,
+            retainSafePrivate: flags.retainSafePrivate,
+            cleanGraphics: flags.cleanGraphics)
     }
 
     /// Stderr notice for a `--profile` value: the deprecated legacy lists (which are

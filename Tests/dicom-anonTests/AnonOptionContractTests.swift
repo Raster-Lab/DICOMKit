@@ -97,6 +97,11 @@ final class AnonOptionContractTests: XCTestCase {
         XCTAssertEqual(codes({ $0.retainUids = true }).last, "113110 Retain UIDs Option")
         XCTAssertEqual(codes({ $0.retainInstitution = true }).last, "113112 Retain Institution Identity Option")
         XCTAssertEqual(codes({ $0.cleanDescriptors = true }).last, "113105 Clean Descriptors Option")
+        // PS3.15 2026a E.3.10 and E.3.3 (D159).
+        XCTAssertEqual(codes({ $0.retainSafePrivate = true }).last, "113111 Retain Safe Private Option")
+        XCTAssertEqual(codes({ $0.cleanGraphics = true }).last, "113103 Clean Graphics Option")
+        XCTAssertEqual(AnonCLI.PS315Flags(retainSafePrivate: true, cleanGraphics: true).setFlags,
+                       ["--retain-safe-private", "--clean-graphics"])
     }
 
     // MARK: - Tag parsing

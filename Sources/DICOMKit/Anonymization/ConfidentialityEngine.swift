@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — C (Table E.1-1a) cleans text per E.3.5 instead of keeping it verbatim (D158); Modified Dates shifts DA and the DT date part by whole days, keeps TM, and gives the 3 non-date rows their Basic action (E.3.6, D157); (0028,0303) REMOVED / UNMODIFIED / MODIFIED per E.2 / E.3.6 and PS3.3 Table C.7-1 (D161); 113100 is the first Item of (0012,0064) and (0012,0063) names every Item, including 113101 from pixel cleaning (D160)
+// NEMA-verified: 2026a, checked 2026-10-01 — C (Table E.1-1a) cleans text per E.3.5 instead of keeping it verbatim (D158); Modified Dates shifts DA and the DT date part by whole days, keeps TM, and gives the 3 non-date rows their Basic action (E.3.6, D157); (0028,0303) REMOVED / UNMODIFIED / MODIFIED per E.2 / E.3.6 and PS3.3 Table C.7-1 (D161); 113100 is the first Item of (0012,0064) and (0012,0063) names every Item, including 113101 from pixel cleaning (D160); Retain Safe Private keeps the Table E.3.10-1 attributes and (0008,0300) SAFE / Nonidentifying elements with their Private Creators and applies (0008,0307) D/Z/X/U (E.3.10), Clean Graphics cleans the text of a C sequence (E.3.3) (D159)
 // NEMA-verified: 2026a, checked 2026-09-30 — applies PS3.15 2026a Table E.1-1 in full (D69): the pattern rows (curve data 50xx, overlay data and comments 60xx,3000/4000, private groups) are X; Z on SQ is an empty sequence; D is a non-empty value consistent with the VR (sequence kept scrubbed, UID mapped, binary zero bytes) (PS3.15 E.1.1)
 // NEMA-verified: 2026a, checked 2026-09-29 — applies the PS3.15 2026a Table E.1-1 actions; records (0012,0062) YES, (0012,0063) LO 1-n and (0012,0064) SQ of CID 7050 codes per PS3.15 E.1.1 and PS3.3 Table C.7-1; VRs per PS3.6 Table 6-1
 import Foundation
@@ -48,6 +48,10 @@ public struct ConfidentialityEngine {
     /// (PS3.15 2026a E.3.5, D158).
     private var identifyingValues: DescriptorCleaner = DescriptorCleaner(values: [])
 
+    /// Private Data Element Characteristics Sequence (0008,0300) of the data set being
+    /// de-identified, read before any change (Retain Safe Private Option, E.3.10).
+    private var privateDeclarations: [String: PrivateBlockDeclaration] = [:]
+
     public init(options: ConfidentialityProfile.Options = .basic,
                 uidMap: [String: String] = [:]) {
         self.options = options
@@ -83,6 +87,7 @@ public struct ConfidentialityEngine {
         _ dataSet: DataSet
     ) -> (DataSet, [Tag], [String]) {
         let residual = Self.residualPixelPHIWarnings(in: dataSet)
+        privateDeclarations = options.retainSafePrivate ? Self.privateBlockDeclarations(in: dataSet) : [:]
         identifyingValues = DescriptorCleaner(values: removedValues(in: dataSet))
         var changed: [Tag] = []
         var result = apply(to: dataSet, changed: &changed, isRoot: true)
@@ -130,8 +135,12 @@ public struct ConfidentialityEngine {
 
     // MARK: - Recursive application
 
-    private mutating func apply(to dataSet: DataSet, changed: inout [Tag], isRoot: Bool) -> DataSet {
+    private mutating func apply(to dataSet: DataSet, changed: inout [Tag], isRoot: Bool,
+                                cleaning: Bool = false) -> DataSet {
         var out = dataSet
+        // Retain Safe Private Option: the private blocks of this Data Set (Items do not
+        // inherit the reservations of the enclosing Data Set, PS3.5 7.8.1) (D159).
+        let privateActions = options.retainSafePrivate ? safePrivateActions(in: dataSet) : [:]
 
         for tag in dataSet.tags {
             guard let element = dataSet[tag] else { continue }
@@ -139,12 +148,16 @@ public struct ConfidentialityEngine {
             // Never touch Pixel Data or the group-length/meta plumbing.
             if tag == .pixelData || tag.group == 0x0002 { continue }
 
+            let effective = effectiveAction(for: tag, element: element, cleaning: cleaning,
+                                            privateActions: privateActions)
+
             // Recurse into sequences first (nested identifiers), keeping the element.
             if let items = element.sequenceItems {
+                let innerCleaning = cleaning || effective == .clean
                 let scrubbedItems = items.map { item -> SequenceItem in
                     var itemSet = DataSet(elements: item.allElements)
                     var inner: [Tag] = []
-                    itemSet = apply(to: itemSet, changed: &inner, isRoot: false)
+                    itemSet = apply(to: itemSet, changed: &inner, isRoot: false, cleaning: innerCleaning)
                     return SequenceItem(elements: itemSet.tags.compactMap { itemSet[$0] })
                 }
                 out.setSequence(scrubbedItems, for: tag)
@@ -152,7 +165,6 @@ public struct ConfidentialityEngine {
                 // the table (e.g. Referring Physician ID Sequence → X).
             }
 
-            let effective = resolveAction(for: tag, vr: element.vr, isPrivate: tag.isOddGroup)  // PS3.5 7.8.1: groups 0001-0007/FFFF go too
             guard let action = effective else { continue }
 
             switch action {
@@ -221,6 +233,29 @@ public struct ConfidentialityEngine {
         }
 
         return out
+    }
+
+    /// The action `apply` takes for an element: ``resolveAction(for:vr:isPrivate:)``, then
+    /// the Retain Safe Private decisions and the cleaning of descriptors inside a cleaned
+    /// Sequence.
+    private func effectiveAction(for tag: Tag, element: DataElement, cleaning: Bool,
+                                 privateActions: [Tag: ConfidentialityProfile.Action]) -> ConfidentialityProfile.Action? {
+        var effective = resolveAction(for: tag, vr: element.vr, isPrivate: tag.isOddGroup)  // PS3.5 7.8.1: groups 0001-0007/FFFF go too
+        // Retain Safe Private (PS3.15 E.3.10): a safe Private Attribute and the Private
+        // Creator it needs are kept; one with a Deidentification Action (0008,0307) gets
+        // that action; a private Sequence is kept with its Items processed; the rest go.
+        if options.retainSafePrivate, tag.isPrivate {
+            effective = privateActions[tag] ?? .remove
+        }
+        // Inside a Sequence that is cleaned (C), a descriptor (a row with a Clean
+        // Descriptors "C") is cleaned rather than replaced, so Clean Graphics keeps the
+        // text of a Graphic Annotation with the identifying information taken out
+        // (PS3.15 E.3.3) (D159).
+        if cleaning, let current = effective, current != .keep,
+           ConfidentialityProfile.tableE11[UInt32(tag.group) << 16 | UInt32(tag.element)]?.cleanDescriptors == "C" {
+            effective = .clean
+        }
+        return effective
     }
 
     /// Combines the explicit table, VR sweeps and the private-tag rule.
@@ -349,6 +384,91 @@ public struct ConfidentialityEngine {
         return true
     }
 
+    // MARK: - Retain Safe Private Option (PS3.15 2026a E.3.10, D159)
+
+    /// A private block's declaration in Private Data Element Characteristics Sequence
+    /// (0008,0300) (PS3.3 2026a Table C.12-1).
+    struct PrivateBlockDeclaration {
+        /// Block Identifying Information Status (0008,0303): SAFE, UNSAFE or MIXED.
+        var status: String
+        /// Nonidentifying Private Elements (0008,0304): elements (00-FF) within the block.
+        var nonidentifying: Set<UInt16>
+        /// Deidentification Action (0008,0307) per element of Identifying Private Elements (0008,0306).
+        var actions: [UInt16: String]
+    }
+
+    /// The (0008,0300) declarations, keyed "<group hex>|<Private Creator>".
+    static func privateBlockDeclarations(in dataSet: DataSet) -> [String: PrivateBlockDeclaration] {
+        var out: [String: PrivateBlockDeclaration] = [:]
+        for item in dataSet.sequence(for: Tag(group: 0x0008, element: 0x0300)) ?? [] {
+            let ds = DataSet(elements: item.allElements)
+            guard let group = ds.uint16(for: Tag(group: 0x0008, element: 0x0301)),
+                  let creator = ds.string(for: Tag(group: 0x0008, element: 0x0302))?
+                    .trimmingCharacters(in: .whitespaces) else { continue }
+            var declaration = PrivateBlockDeclaration(
+                status: ds.string(for: Tag(group: 0x0008, element: 0x0303))?
+                    .trimmingCharacters(in: .whitespaces).uppercased() ?? "",
+                nonidentifying: Set(ds[Tag(group: 0x0008, element: 0x0304)]?.uint16Values ?? []),
+                actions: [:])
+            for actionItem in ds.sequence(for: Tag(group: 0x0008, element: 0x0305)) ?? [] {
+                let a = DataSet(elements: actionItem.allElements)
+                guard let code = a.string(for: Tag(group: 0x0008, element: 0x0307))?
+                        .trimmingCharacters(in: .whitespaces).uppercased() else { continue }
+                for element in a[Tag(group: 0x0008, element: 0x0306)]?.uint16Values ?? [] {
+                    declaration.actions[element] = code
+                }
+            }
+            out[String(format: "%04X|", group) + creator] = declaration
+        }
+        return out
+    }
+
+    /// The action for each Private Data Element and Private Creator of one Data Set under
+    /// the Retain Safe Private Option. Safe: listed in Table E.3.10-1 for its Private
+    /// Creator, or declared SAFE / Nonidentifying in (0008,0300). A Deidentification
+    /// Action (0008,0307) D, Z, X or U is applied as given. A private Sequence that is not
+    /// known safe is kept and its Items processed ("parsed in its entirety"). A Private
+    /// Creator is kept when its block keeps an element (E.3.10: "together with the Private
+    /// Creator IDs that are required"). Absent from the result: removed.
+    private func safePrivateActions(in dataSet: DataSet) -> [Tag: ConfidentialityProfile.Action] {
+        var creators: [Tag: String] = [:]
+        for tag in dataSet.tags where tag.isPrivate && (0x0010...0x00FF).contains(tag.element) {
+            creators[tag] = dataSet.string(for: tag)?.trimmingCharacters(in: CharacterSet(charactersIn: " \u{0}"))
+        }
+        var actions: [Tag: ConfidentialityProfile.Action] = [:]
+        var keptCreators = Set<Tag>()
+        for tag in dataSet.tags where tag.isPrivate && tag.element >= 0x1000 {
+            let creatorTag = Tag(group: tag.group, element: tag.element >> 8)
+            guard let creator = creators[creatorTag], let element = dataSet[tag] else { continue }
+            let low = tag.element & 0x00FF
+            let key = String(format: "%04X|%02X", tag.group, low)
+            let declaration = privateDeclarations[String(format: "%04X|", tag.group) + creator]
+            let action: ConfidentialityProfile.Action?
+            if ConfidentialityProfile.safePrivateAttributes["\(creator)|\(key)"] != nil
+                || declaration?.status == "SAFE"
+                || declaration?.nonidentifying.contains(low) == true {
+                action = .keep
+            } else if let code = declaration?.actions[low] {
+                switch code {
+                case "D": action = .replaceDummy
+                case "Z": action = .zero
+                case "U": action = element.vr == .UI ? .replaceUID : .replaceDummy
+                default: action = nil  // X
+                }
+            } else if element.vr == .SQ || element.sequenceItems != nil {
+                action = .keep
+            } else {
+                action = nil
+            }
+            if let action {
+                actions[tag] = action
+                keptCreators.insert(creatorTag)
+            }
+        }
+        for creator in keptCreators { actions[creator] = .keep }
+        return actions
+    }
+
     /// VRs a Clean action can rewrite as text (PS3.5 Table 6.2-1 character VRs that may
     /// carry free text or names).
     static let cleanableVRs: Set<VR> = [.AE, .CS, .LO, .LT, .PN, .SH, .ST, .UC, .UT]
@@ -358,15 +478,21 @@ public struct ConfidentialityEngine {
 
     /// The original values of every attribute the profile removes or replaces (X, Z, D,
     /// U and their combinations, and the PN / private sweeps), at any nesting depth.
-    private func removedValues(in dataSet: DataSet) -> [(String, VR)] {
+    private func removedValues(in dataSet: DataSet, cleaning: Bool = false) -> [(String, VR)] {
         var out: [(String, VR)] = []
+        let privateActions = options.retainSafePrivate ? safePrivateActions(in: dataSet) : [:]
         for tag in dataSet.tags {
             guard let element = dataSet[tag], tag != .pixelData, tag.group != 0x0002 else { continue }
+            let effective = effectiveAction(for: tag, element: element, cleaning: cleaning,
+                                            privateActions: privateActions)
             if let items = element.sequenceItems {
-                for item in items { out += removedValues(in: DataSet(elements: item.allElements)) }
+                for item in items {
+                    out += removedValues(in: DataSet(elements: item.allElements),
+                                         cleaning: cleaning || effective == .clean)
+                }
                 continue
             }
-            guard let action = resolveAction(for: tag, vr: element.vr, isPrivate: tag.group & 1 == 1),
+            guard let action = effective,
                   action != .keep, action != .clean,
                   Self.cleanableVRs.contains(element.vr) || [.DA, .DT, .AS, .UI].contains(element.vr),
                   let value = dataSet.string(for: tag) else { continue }

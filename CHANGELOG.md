@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — PS3.15 Retain Safe Private and Clean Graphics Options, batch b4 (2026-10-01, DICOM 2026a)
+
+- **`ConfidentialityProfile.Options.retainSafePrivate` (Retain Safe Private Option, 113111)** (D159; PS3.15 2026a
+  E.3.10, Table E.3.10-1): Private Attributes listed in Table E.3.10-1 for their Private Creator (479 rows,
+  generated into `ConfidentialityProfileSafePrivate.swift` by `Scripts/generate_confidentiality_profile.py`,
+  `--check` re-verifies it), or declared SAFE / Nonidentifying (0008,0304) in Private Data Element
+  Characteristics Sequence (0008,0300), are kept with the Private Creators they need; a Deidentification Action
+  (0008,0307) D / Z / X / U is applied as declared; a private Sequence not known safe is kept with its Items
+  processed; all other Private Attributes are removed. dicom-anon `--retain-safe-private`.
+- **`ConfidentialityProfile.Options.cleanGraphics` (Clean Graphics Option, 113103)** (D159; PS3.15 2026a E.3.3,
+  Table E.1-1 Clean Graph. column): Graphic Annotation Sequence (0070,0001) is kept and the text inside it is
+  cleaned as Clean Descriptors cleans (a descriptor row inside a cleaned Sequence is cleaned, not replaced by a
+  dummy); overlays are still removed. dicom-anon `--clean-graphics`.
+- Not offered (D159 carried): Clean Structured Content (113104, needs the concept-name actions of PS3.15 Table
+  E.3.4-1 applied to SR Content Items) and Clean Recognizable Visual Features (113102, needs pixel data distorted
+  so a person cannot be recognized, possibly by an operator).
+
 ### Fixed — deferred rows, de-identification, batch b4 (2026-10-01, DICOM 2026a)
 
 - **Clean Descriptors Option cleans** (D158; PS3.15 2026a E.3.5, Table E.1-1a "C"): a C attribute was kept

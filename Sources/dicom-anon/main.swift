@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — --profile and the Option flags against PS3.15 2026a E.1-E.3 and the 12 Option columns of Table E.1-1 (8 Options offered, 4 not offered by the engine); on a fixture of the 647 data-set rows of Table E.1-1, --profile ps315 matches 647 (5 SQ D rows kept with scrubbed items) (the default; basic is its alias, P-ANON-PROFILE) and the deprecated legacy-basic 11, legacy-clinical-trial 15, legacy-research 1 (documented as not PS3.15); --retain-dates deprecated (P-ANON-RETAIN-DATES, E.3.6); recorded codes match PS3.16 2026a CID 7050 (13 rows); (0002,0003) follows (0008,0018) per PS3.10 2026a 7.1
+// NEMA-verified: 2026a, checked 2026-10-01 — --profile and the Option flags against PS3.15 2026a E.1-E.3 and the 12 Option columns of Table E.1-1 (10 Options offered — Retain Safe Private and Clean Graphics added 2026-10-01, D159 — 2 not offered: Clean Structured Content, Clean Recognizable Visual Features); on a fixture of the 647 data-set rows of Table E.1-1, --profile ps315 matches 647 (5 SQ D rows kept with scrubbed items) (the default; basic is its alias, P-ANON-PROFILE) and the deprecated legacy-basic 11, legacy-clinical-trial 15, legacy-research 1 (documented as not PS3.15); --retain-dates deprecated (P-ANON-RETAIN-DATES, E.3.6); recorded codes match PS3.16 2026a CID 7050 (13 rows); (0002,0003) follows (0008,0018) per PS3.10 2026a 7.1
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -90,6 +90,21 @@ struct DICOMAnon: ParsableCommand {
         their text (E.3.5); review free text before release
         """)
     var cleanDescriptors: Bool = false
+
+    @Flag(name: .long, help: """
+        PS3.15 Retain Safe Private Option (--profile ps315): keep the private attributes \
+        PS3.15 Table E.3.10-1 lists for their Private Creator, or that the file declares safe \
+        in Private Data Element Characteristics Sequence (0008,0300); other private attributes \
+        are removed (E.3.10)
+        """)
+    var retainSafePrivate: Bool = false
+
+    @Flag(name: .long, help: """
+        PS3.15 Clean Graphics Option (--profile ps315): keep Graphic Annotation Sequence \
+        (0070,0001) with the names, identifiers and dates the profile removes taken out of \
+        its text (E.3.3); overlays are still removed
+        """)
+    var cleanGraphics: Bool = false
 
     @Flag(name: .long, help: """
         PS3.15: Clean Pixel Data — blank burned-in identifiers out of the image itself. \
@@ -259,7 +274,8 @@ struct DICOMAnon: ParsableCommand {
             retainDates: retainDates, retainFullDates: retainFullDates,
             retainModifiedDates: retainModifiedDates, retainCharacteristics: retainCharacteristics,
             retainDevice: retainDevice, retainInstitution: retainInstitution,
-            retainUids: retainUids, cleanDescriptors: cleanDescriptors)
+            retainUids: retainUids, cleanDescriptors: cleanDescriptors,
+            retainSafePrivate: retainSafePrivate, cleanGraphics: cleanGraphics)
     }
 
     private var ps315Options: ConfidentialityProfile.Options {

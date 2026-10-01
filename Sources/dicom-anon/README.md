@@ -133,9 +133,12 @@ Options (PS3.15 E.3) and the PS3.16 CID 7050 code each one records in (0012,0064
 | `--retain-device` | Retain Device Identity Option | 113109 |
 | `--retain-uids` | Retain UIDs Option | 113110 |
 | `--retain-institution` | Retain Institution Identity Option | 113112 |
+| `--retain-safe-private` | Retain Safe Private Option: keeps the private attributes PS3.15 Table E.3.10-1 lists for their Private Creator, or that the file declares safe in Private Data Element Characteristics Sequence (0008,0300), with their Private Creators; applies a declared Deidentification Action (0008,0307); removes the rest (E.3.10) | 113111 |
+| `--clean-graphics` | Clean Graphics Option: keeps Graphic Annotation Sequence (0070,0001) with the identifying information taken out of its text, as `--clean-descriptors` does; overlays are still removed (E.3.3) | 113103 |
 
-Not offered: Clean Recognizable Visual Features (113102), Clean Graphics (113103), Clean
-Structured Content (113104), Retain Safe Private (113111). The two Retain Longitudinal Temporal
+Not offered: Clean Recognizable Visual Features (113102; needs the pixel data of a set of
+instances distorted, possibly by an operator) and Clean Structured Content (113104; needs the
+concept-by-concept actions of PS3.15 Table E.3.4-1 applied to SR Content Items). The two Retain Longitudinal Temporal
 Information Options are mutually exclusive (E.3.6). The Option flags act only on `--profile
 ps315` (they are refused with the legacy profiles), as do `--allow-burned-in-phi`; `--keep` is
 refused with `ps315`. `--remove` and `--replace` are applied after the Profile.
