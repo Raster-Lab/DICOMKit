@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-29 — writes every Type 1/2 attribute of the Encapsulated Document IOD modules (PS3.3 2026a Tables C.7-1, C.7-3, C.24-1, C.7-8, C.8-24, C.24-2, C.12-1) with the VRs of PS3.6 Table 6-1; Source Instance Sequence 1C and Burned In Annotation per Table C.24-2 (private SOP Class, EXPERIMENTAL); the source Photometric Interpretation (PS3.3 C.7.6.3.1.2) round-trips through the sidecar instead of being forced to MONOCHROME2 (D33)
+// NEMA-verified: 2026a, checked 2026-10-01 — decode-volume slices: Image Position (Patient) = origin + i·spacing·(row × column cosine) per PS3.3 2026a C.7.6.2.1.1 Equation C.7.6.2.1-1, Image Orientation (Patient) / Pixel Spacing per Table C.7-10, one Frame of Reference UID per series (C.7.4.1.1.1), Rescale from the source, source SOP Class kept (D204); sidecar origin and spacing from the bridge's sorted order along the slice normal (D205)
 import Foundation
 import DICOMCore
 import J2KCore
@@ -314,6 +315,11 @@ public enum JP3DVolumeDocument: Sendable {
         // Use bridge to reconstruct slices from decoded volume
         let sliceSpacing = meta["sliceSpacing"] as? Double
         let origin = meta["origin"] as? [Double] ?? [0, 0, 0]
+        // Sidecars written before 2026-10-01 carry no orientation: those volumes were stacked
+        // along z, i.e. the axial orientation (1,0,0,0,1,0)
+        let orientation = (meta["imageOrientationPatient"] as? [Double]).flatMap { $0.count == 6 ? $0 : nil }
+        let pixelSpacing = (meta["pixelSpacing"] as? [Double]).flatMap { $0.count == 2 ? $0 : nil }
+            ?? [meta["spacingY"] as? Double ?? 1.0, meta["spacingX"] as? Double ?? 1.0]
         // Sidecars written before the field existed carry no interpretation; the
         // encoder then always wrote MONOCHROME2.
         let photometric = (meta["photometricInterpretation"] as? String)
@@ -326,8 +332,43 @@ public enum JP3DVolumeDocument: Sendable {
             photometricInterpretation: photometric,
             template: template,
             sliceSpacing: sliceSpacing ?? 1.0,
-            origin: origin
+            origin: origin,
+            orientation: orientation,
+            pixelSpacing: pixelSpacing
         )
+    }
+
+    /// The Storage SOP Class of the decoded slices when the sidecar does not record the
+    /// source's (sidecars written before 2026-10-01): by Modality, CT Image Storage, MR Image
+    /// Storage or Positron Emission Tomography Image Storage, else Secondary Capture Image
+    /// Storage (PS3.4 2026a Table B.5-1). Until then CT Image Storage was used for any source.
+    static func fallbackSOPClassUID(modality: String?) -> String {
+        switch modality?.trimmingCharacters(in: .whitespaces).uppercased() {
+        case "CT": return "1.2.840.10008.5.1.4.1.1.2"
+        case "MR": return "1.2.840.10008.5.1.4.1.1.4"
+        case "PT": return "1.2.840.10008.5.1.4.1.1.128"
+        default: return "1.2.840.10008.5.1.4.1.1.7"
+        }
+    }
+
+    /// Image Position (Patient) of slice `index`: the first slice's position moved `index`
+    /// slice spacings along the normal of Image Orientation (Patient) (row cosine × column
+    /// cosine, PS3.3 2026a C.7.6.2.1.1)
+    static func slicePosition(origin: [Double], orientation: [Double], spacing: Double, index: Int) -> [Double] {
+        let o = origin.count >= 3 ? Array(origin.prefix(3)) : [0, 0, 0]
+        let r = Array(orientation[0..<3]), c = Array(orientation[3..<6])
+        var n = [r[1] * c[2] - r[2] * c[1], r[2] * c[0] - r[0] * c[2], r[0] * c[1] - r[1] * c[0]]
+        let length = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).squareRoot()
+        n = length > 1e-6 ? n.map { $0 / length } : [0, 0, 1]
+        return (0..<3).map { o[$0] + Double(index) * spacing * n[$0] }
+    }
+
+    /// A DS value: the shortest decimal form, at most 16 characters (PS3.5 Table 6.2-1)
+    static func decimalString(_ value: Double) -> String {
+        let rounded = (value * 1e6).rounded() / 1e6
+        var text = rounded == rounded.rounded() ? String(format: "%.0f", rounded) : String(rounded)
+        if text == "-0" { text = "0" }
+        return text.count <= 16 ? text : String(format: "%.10g", rounded)
     }
 
     // MARK: - Private helpers
@@ -383,19 +424,37 @@ public enum JP3DVolumeDocument: Sendable {
         case .lossyHTJ2K(let psnr): meta["compressionMode"] = "lossyHTJ2K"; meta["psnr"] = psnr
         }
 
-        // Slice spacing
-        if series.count > 1,
-           let sp = computeSliceSpacing(series) {
+        // Geometry in the voxel order JP3DVolumeBridge.makeVolume stacks the slices: sorted
+        // along the slice normal of Image Orientation (Patient) (PS3.3 2026a C.7.6.2.1.1).
+        // Until 2026-10-01 (D205) the origin came from the unsorted series[0] and the spacing
+        // from the z coordinates of the first and last input files.
+        let sorted = (try? JP3DVolumeBridge.sortedForVolume(series)) ?? series
+        let first = sorted[0].dataSet
+
+        // Slice spacing: distance between adjacent slices along the normal
+        if sorted.count > 1,
+           let sp = try? JP3DVolumeBridge.uniformSliceSpacing(sorted) {
             meta["sliceSpacing"] = sp
         }
 
-        // First slice origin
-        if let pos = series[0].dataSet.string(for: .imagePositionPatient) {
-            let parts = pos.split(separator: "\\").compactMap { Double(String($0).trimmingCharacters(in: .whitespaces)) }
-            if parts.count == 3 {
-                meta["origin"] = parts
-            }
+        // Image Position (Patient) of the first slice in that order
+        if let parts = JP3DVolumeBridge.decimals(first, .imagePositionPatient), parts.count == 3 {
+            meta["origin"] = parts
         }
+
+        // Image Orientation (Patient) (Table C.7-10, Type 1), Pixel Spacing (Type 1), Frame of
+        // Reference UID (C.7.4.1.1.1) and the Modality LUT rescale (C.11.1) for decode-volume
+        if let iop = JP3DVolumeBridge.decimals(first, .imageOrientationPatient), iop.count == 6 {
+            meta["imageOrientationPatient"] = iop
+        }
+        if let ps = JP3DVolumeBridge.decimals(first, .pixelSpacing), ps.count == 2 {
+            meta["pixelSpacing"] = ps
+        }
+        if let uid = first.string(for: .frameOfReferenceUID) { meta["frameOfReferenceUID"] = uid }
+        if let slope = first.string(for: .rescaleSlope) { meta["rescaleSlope"] = slope.trimmingCharacters(in: .whitespaces) }
+        if let intercept = first.string(for: .rescaleIntercept) { meta["rescaleIntercept"] = intercept.trimmingCharacters(in: .whitespaces) }
+        if let type = first.string(for: .rescaleType) { meta["rescaleType"] = type.trimmingCharacters(in: .whitespaces) }
+        if let sopClass = first.string(for: .sopClassUID) { meta["sopClassUID"] = sopClass }
 
         // Preserve key patient/study tags for round-trip fidelity
         if let uid = ds.string(for: .studyInstanceUID) { meta["studyInstanceUID"] = uid }
@@ -407,22 +466,6 @@ public enum JP3DVolumeDocument: Sendable {
         if let thick = ds.string(for: .sliceThickness) { meta["sliceThickness"] = thick }
 
         return meta
-    }
-
-    private static func computeSliceSpacing(_ series: [DICOMFile]) -> Double? {
-        guard series.count > 1 else { return nil }
-        var positions: [Double] = []
-        for file in series {
-            if let pos = file.dataSet.string(for: .imagePositionPatient) {
-                let parts = pos.split(separator: "\\").compactMap { Double($0) }
-                if parts.count == 3 { positions.append(parts[2]); continue }
-            }
-            if let loc = file.dataSet.string(for: .sliceLocation).flatMap(Double.init) {
-                positions.append(loc)
-            }
-        }
-        guard positions.count >= 2 else { return nil }
-        return (positions.last! - positions.first!) / Double(positions.count - 1)
     }
 
     private static func buildTemplate(from meta: [String: Any], fileDataSet: DataSet) -> DICOMFile {
@@ -442,6 +485,17 @@ public enum JP3DVolumeDocument: Sendable {
         if let mod = meta["modality"] as? String {
             ds.setString(mod, for: .modality, vr: .CS)
         }
+        if let sopClass = meta["sopClassUID"] as? String {
+            ds.setString(sopClass, for: .sopClassUID, vr: .UI)
+        }
+        if let uid = meta["frameOfReferenceUID"] as? String {
+            ds.setString(uid, for: .frameOfReferenceUID, vr: .UI)
+        }
+        if let slope = meta["rescaleSlope"] as? String, let intercept = meta["rescaleIntercept"] as? String {
+            ds.setString(intercept, for: .rescaleIntercept, vr: .DS)
+            ds.setString(slope, for: .rescaleSlope, vr: .DS)
+            if let type = meta["rescaleType"] as? String { ds.setString(type, for: .rescaleType, vr: .LO) }
+        }
         let fmi = DataSet()
         return DICOMFile(fileMetaInformation: fmi, dataSet: ds)
     }
@@ -452,8 +506,15 @@ public enum JP3DVolumeDocument: Sendable {
         photometricInterpretation: PhotometricInterpretation,
         template: DICOMFile,
         sliceSpacing: Double,
-        origin: [Double]
+        origin: [Double],
+        orientation: [Double]?,
+        pixelSpacing: [Double]
     ) throws -> [DICOMFile] {
+        let iop = orientation ?? [1, 0, 0, 0, 1, 0]
+        let frameOfReferenceUID = template.dataSet.string(for: .frameOfReferenceUID)
+            ?? UIDGenerator.generateUID().value
+        let sopClassUID = template.dataSet.string(for: .sopClassUID)
+            ?? fallbackSOPClassUID(modality: template.dataSet.string(for: .modality))
         let bytesPerFrame = descriptor.bytesPerFrame
         let seriesUID = template.dataSet.string(for: .seriesInstanceUID) ?? UIDGenerator.generateUID().value
         let studyUID = template.dataSet.string(for: .studyInstanceUID) ?? UIDGenerator.generateUID().value
@@ -477,24 +538,33 @@ public enum JP3DVolumeDocument: Sendable {
             ds.setString(photometricInterpretation.rawValue, for: .photometricInterpretation, vr: .CS)
 
             // Identity
+            ds.setString(sopClassUID, for: .sopClassUID, vr: .UI)
             ds.setString(UIDGenerator.generateUID().value, for: .sopInstanceUID, vr: .UI)
             ds.setString(studyUID, for: .studyInstanceUID, vr: .UI)
             ds.setString(seriesUID, for: .seriesInstanceUID, vr: .UI)
             ds.setInt(i + 1, for: .instanceNumber, vr: .IS)
 
-            // Spatial position
-            let z = (origin.count >= 3 ? origin[2] : 0.0) + Double(i) * sliceSpacing
-            let x = origin.count >= 1 ? origin[0] : 0.0
-            let y = origin.count >= 2 ? origin[1] : 0.0
-            ds.setString("\(x)\\\(y)\\\(z)", for: .imagePositionPatient, vr: .DS)
-            ds.setString(String(z), for: .sliceLocation, vr: .DS)
+            // Image Plane Module (PS3.3 2026a Table C.7-10): Image Position (Patient) moved
+            // along the slice normal (C.7.6.2.1.1), Image Orientation (Patient) and Pixel
+            // Spacing (Type 1); Slice Location (Type 3, "relative to an unspecified
+            // implementation specific reference point", C.7.6.2.1.2) is the position along
+            // the normal. Frame of Reference UID (Table C.7-6, C.7.4.1.1.1): one per series.
+            // Until 2026-10-01 (D204) only z moved and the other attributes were not written.
+            let position = slicePosition(origin: origin, orientation: iop, spacing: sliceSpacing, index: i)
+            ds.setString(position.map(decimalString).joined(separator: "\\"), for: .imagePositionPatient, vr: .DS)
+            ds.setString(iop.map(decimalString).joined(separator: "\\"), for: .imageOrientationPatient, vr: .DS)
+            ds.setString(pixelSpacing.map(decimalString).joined(separator: "\\"), for: .pixelSpacing, vr: .DS)
+            ds.setString(frameOfReferenceUID, for: .frameOfReferenceUID, vr: .UI)
+            let normal = JP3DVolumeBridge.sliceNormal(of: ds) ?? [0, 0, 1]
+            let location = position[0] * normal[0] + position[1] * normal[1] + position[2] * normal[2]
+            ds.setString(decimalString(location), for: .sliceLocation, vr: .DS)
 
             // Pixel data (uncompressed)
             ds[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: frameData)
 
             let sliceFile = DICOMFile.create(
                 dataSet: ds,
-                sopClassUID: template.dataSet.string(for: .sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.2",
+                sopClassUID: sopClassUID,
                 sopInstanceUID: ds.string(for: .sopInstanceUID) ?? UIDGenerator.generateUID().value,
                 transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid
             )

@@ -606,6 +606,8 @@ let package = Package(
                 "DeflatedDataSetTests.swift",
                 "ExtendedOffsetTableParsingTests.swift",
                 "JP3DVolumeDocumentTests.swift",
+                // PS3.3 C.7.6.2.1.1, Table C.7-10 decode-volume slice geometry (D204, D205, 2026-10-01).
+                "JP3DSliceGeometryTests.swift",
                 "JPIPTests.swift",
                 "DICOMConverterTests.swift",
                 "ConversionDiagnosticsTests.swift",
