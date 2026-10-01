@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — 42 option/flag/argument declarations extracted by script: no UID, codec or transfer-syntax literal in this file (help text is VideoConsole.Help); --audio-channel-source (convert, batch) takes a PS3.16 2026a CID 3000 value (AudioChannelSourceOption.swift, 6 rows) into VideoWorkflow.Metadata.audioChannelSource, which the engine writes as Channel Source Sequence (003A,0208) in each Multiplexed Audio Channels Description Code Sequence (003A,0300) Item of PS3.3 2026a Table C.7-13 (Cine Module); no other DICOM-standard data in this file
+// NEMA-verified: 2026a, checked 2026-10-01 — input/output contract of all 42 option/flag/argument declarations (4 subcommands) by script: --transfer-syntax accepts the 16 MPEG2/MPEG-4 AVC/HEVC UIDs of PS3.6 2026a Table A-1 plus the 2 unregistered Fragmentable HEVC UIDs (warned, OptionConformance.swift); --type selects the 3 Video IODs of PS3.3 A.32.5-A.32.7 (Modality ES/GM/XC, SOP Class names per Table A-1); --modality/--patient-sex/--patient-birth-date values the IOD forbids are warned (A.32.x.4.1, Table C.7-1, DA); help text is VideoConsole.Help (16 names vs PS3.6 Table 6-1); --audio-channel-source per PS3.16 CID 3000 (AudioChannelSourceOption.swift, 6 rows) into Table C.7-13 (003A,0300)
 
 import Foundation
 import ArgumentParser
@@ -233,6 +233,12 @@ extension DICOMVideo {
             // A wrong --type yields a valid but mislabelled object, so the
             // default is announced by the engine rather than applied silently.
             let resolvedType = type ?? .endoscopic
+            let sharedMetadata = try metadata.validatedShared()
+            // Values the engine accepts but the IOD does not (OptionConformance.swift).
+            for line in VideoOptionConformance.warnings(
+                type: resolvedType, metadata: sharedMetadata, transferSyntax: transferSyntax) {
+                printError(line)
+            }
 
             let outcome: VideoWorkflow.ConvertOutcome
             do {
@@ -245,7 +251,7 @@ extension DICOMVideo {
                     frameRateOverride: frameRate,
                     dryRun: dryRun,
                     verbose: verbose,
-                    metadata: try metadata.validatedShared(),
+                    metadata: sharedMetadata,
                     seriesNumber: seriesNumber,
                     instanceNumber: instanceNumber
                 )
@@ -476,11 +482,17 @@ extension DICOMVideo {
 
             // An explicit --series-uid contradicts per-file, which mints a new
             // UID per clip. Rejecting beats silently ignoring the flag.
+            let sharedMetadata = try metadata.validatedShared()
             do {
                 try VideoWorkflow.validateBatchOptions(
-                    seriesMode: seriesMode, metadata: try metadata.validatedShared())
+                    seriesMode: seriesMode, metadata: sharedMetadata)
             } catch let failure as VideoWorkflow.Failure {
                 throw fail(failure)
+            }
+            for line in VideoOptionConformance.warnings(
+                type: type ?? .endoscopic, metadata: sharedMetadata,
+                transferSyntax: transferSyntax) {
+                printError(line)
             }
 
             let files = try VideoWorkflow.discoverInputs(in: inputURL, recursive: recursive)
@@ -506,7 +518,7 @@ extension DICOMVideo {
                 dryRun: dryRun,
                 verbose: verbose,
                 recursive: recursive,
-                metadata: try metadata.validatedShared(),
+                metadata: sharedMetadata,
                 readFile: { FileManager.default.contents(atPath: $0.path) },
                 writeFile: { item in
                     let destination = outputURL.appendingPathComponent(item.outputName)

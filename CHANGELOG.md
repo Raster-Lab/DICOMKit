@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-video option contract verified against DICOM 2026a (2026-10-01)
+
+- **dicom-video** `convert` / `batch` warn on stderr (the object is still written) when an option value
+  yields a non-conformant object: `--modality` other than the IOD's ES / GM / XC (PS3.3 A.32.5.4.1,
+  A.32.6.4.1, A.32.7.4.1), `--patient-sex` outside M / F / O (Table C.7-1), a `--patient-birth-date` that is
+  not DA (it is written empty), and `--transfer-syntax 1.2.840.10008.1.2.4.107.1` / `.108.1`, which PS3.6
+  Table A-1 does not register. `VideoConsole.Help` (strings only): "Patient's Name", the modality each
+  `--type` requires, the transfer syntaxes accepted, and that MOV and raw elementary streams are probed but
+  not converted. README lists the warnings, `--audio-channel-source` and the A.32.6/A.32.7 IODs.
+  `OptionConformanceTests` (8 tests) in `dicom-videoTests`.
+
 ### Fixed — dicom-image and dicom-pixedit verified against DICOM 2026a (2026-10-01)
 
 - **dicom-image** writes Media Storage SOP Instance UID (0002,0003) equal to SOP Instance UID (0008,0018)

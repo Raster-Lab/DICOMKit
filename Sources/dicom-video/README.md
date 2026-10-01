@@ -51,6 +51,15 @@ Useful flags:
 - `--frame-rate <fps>` — override the probed rate, then validate against it.
 - `--trust-input` — encapsulate an MPEG-TS payload without validating it.
   Requires an explicit `--transfer-syntax`, since nothing was read.
+- `--modality`, `--patient-sex`, `--patient-birth-date` — a value the IOD does
+  not allow is written as given but warned about on stderr: Modality (0008,0060)
+  shall be `ES`, `GM` or `XC` for `--type endoscopic`, `microscopic` or
+  `photographic` (PS3.3 A.32.5.4.1, A.32.6.4.1, A.32.7.4.1); Patient's Sex is
+  `M`, `F` or `O` (PS3.3 Table C.7-1); a birth date that is not `YYYYMMDD` is
+  written empty. `--transfer-syntax 1.2.840.10008.1.2.4.107.1` / `.108.1`
+  ("Fragmentable HEVC") is warned too: PS3.6 Table A-1 does not register them.
+- `--audio-channel-source <keyword|SCHEME:VALUE[:MEANING]>` — the PS3.16 CID 3000
+  source of the multiplexed audio, written in (003A,0300) (PS3.3 Table C.7-13).
 - `-v, --verbose` — explain each step: the container recognised, why that
   transfer syntax was chosen, where the frame count came from, the UIDs minted
   and how many bytes of the output are payload rather than DICOM overhead.
@@ -140,7 +149,9 @@ expected value and a remedy:
 - **Bit depth** must be 8 or 10, and must match the transfer syntax.
 - **Pixels must be square.** DICOM cannot express anamorphic video, because
   Pixel Aspect Ratio (0028,0034) must be absent (PS3.5 §8.2.7).
-- **Container** must be MP4 or MPEG-TS (PS3.5 §8.2.7). A `.mov` is not MP4.
+- **Container** must be MP4 or MPEG-TS (PS3.5 §8.2.7–8.2.11). A `.mov` is not MP4.
+  For MPEG2 (§8.2.5, §8.2.6) the standard leaves the container unconstrained, but
+  this tool still requires MP4 or MPEG-TS.
 - **BD-compatible** (`…4.103`) additionally requires a resolution and frame-rate
   combination from PS3.5 Table 8-4.
 
@@ -160,7 +171,9 @@ player, driven by the viewer's cine transport.
 
 ## References
 
-- PS3.5 §8.2.5–8.2.11 — video encoding constraints, Table 8-4
+- PS3.5 §8.2.5–8.2.11 — video encoding constraints, Tables 8-1 to 8-8; §8.2.12 — audio
 - PS3.5 §A.4 — encapsulation of encoded pixel data
-- PS3.3 §A.32.5 — Video Endoscopic Image IOD
+- PS3.6 Table A-1 — the 16 MPEG2 / MPEG-4 AVC/H.264 / HEVC/H.265 transfer syntaxes
+- PS3.3 §A.32.5, §A.32.6, §A.32.7 — Video Endoscopic, Microscopic and Photographic Image IODs
+- PS3.3 Table C.7-13 — Cine Module (Frame Time, Cine Rate, Recommended Display Frame Rate)
 - IHE Endoscopy Image Archiving (EIA) Rev. 1.1 §3.10.4.1.1.1 — series grouping

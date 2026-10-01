@@ -1,5 +1,6 @@
 // NEMA-verified: 2026a, checked 2026-09-30 — audio notes per PS3.5 2026a 8.2.5/8.2.12 (verified by script): bits per sample of compressed audio stated as not in the bit stream, MP3 complementary channels as not identified, CBR violations of "CBR MPEG-1 LAYER III" (D58)
 // NEMA-verified: 2026a, checked 2026-09-30 — SOP Class names match PS3.6 2026a Table A-1; audio messages per PS3.5 2026a 8.2.5-8.2.12 and Table 8.2.12-1 (per-track violations of the constraints VideoConformanceValidator.audioConstraints extracts; audio kept, never stripped) and PS3.3 Table C.7-13 (003A,0300) Type 2C "Zero or more Items", Channel Source from PS3.16 CID 3000 (D34, D46)
+// NEMA-verified: 2026a, checked 2026-10-01 — VideoConsole.Help: 16 attribute names diffed by script against PS3.6 2026a Tables 6-1/7-1 (15 matched; "Patient's Name" fixed); modality help per PS3.3 2026a A.32.5.4.1/A.32.6.4.1/A.32.7.4.1 (ES/GM/XC); input help per PS3.5 8.2.7-8.2.11 container rule; help strings only, no public member changed
 //
 // VideoConsole.swift
 // DICOMKit
@@ -210,10 +211,10 @@ public enum VideoConsole {
     /// Help text of the options, single-sourced so the CLI's `@Option(help:)`,
     /// the Workshop's form help, and the invalid-value lines agree.
     public enum Help {
-        public static let input = "Input video file (MP4, MOV, TS, or a raw elementary stream)"
+        public static let input = "Input video file in an MP4 or MPEG-2 Transport Stream container (PS3.5 8.2.7-8.2.11); MOV and raw elementary streams are probed but not converted"
         public static let output = "Output DICOM file path"
         public static let type = "Video type: endoscopic, microscopic or photographic"
-        public static let transferSyntax = "Transfer Syntax UID (auto-detected by default)"
+        public static let transferSyntax = "Transfer Syntax UID (auto-detected by default): an MPEG2, MPEG-4 AVC/H.264 or HEVC/H.265 UID of PS3.6 Table A-1"
         public static let frameRate = "Override the probed frame rate (validated)"
         public static let instanceNumber = "Instance Number (default: 1)"
         public static let seriesNumber = "Series Number (default: 1)"
@@ -232,7 +233,7 @@ public enum VideoConsole {
         public static let continueOnError = "Skip failures and convert the rest"
         public static let batchForce = "Overwrite existing output files"
         public static let verbose = "Show the reasoning behind each step"
-        public static let patientName = "Patient Name, in DICOM caret form (e.g. Doe^Jane)"
+        public static let patientName = "Patient's Name, in DICOM caret form (e.g. Doe^Jane)"
         public static let patientID = "Patient ID"
         public static let patientBirthDate = "Patient's Birth Date (YYYYMMDD)"
         public static let patientSex = "Patient's Sex (M, F or O)"
@@ -242,7 +243,7 @@ public enum VideoConsole {
         public static let studyID = "Study ID"
         public static let referringPhysician = "Referring Physician's Name"
         public static let seriesDescription = "Series Description"
-        public static let modality = "Modality (overrides the video type's default)"
+        public static let modality = "Modality (overrides the video type's default; PS3.3 A.32.5-A.32.7 require ES endoscopic, GM microscopic, XC photographic)"
         public static let manufacturer = "Manufacturer"
         public static let institutionName = "Institution Name"
     }
