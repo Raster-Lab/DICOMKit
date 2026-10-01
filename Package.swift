@@ -413,6 +413,16 @@ let package = Package(
             dependencies: ["dicom-diff", "DICOMCore"],
             path: "Tests/dicom-diffTests"
         ),
+        .testTarget(
+            name: "dicom-splitTests",
+            dependencies: ["dicom-split", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-splitTests"
+        ),
+        .testTarget(
+            name: "dicom-mergeTests",
+            dependencies: ["dicom-merge", "DICOMKit", "DICOMCore", "DICOMDictionary"],
+            path: "Tests/dicom-mergeTests"
+        ),
         // dicom-gateway: the DICOM side of the HL7 v2 / FHIR mappings (PN, DA, TM, Patient's
         // Sex, UIDs) pinned to PS3.3 / PS3.5 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(
