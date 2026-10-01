@@ -64,6 +64,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   text. The JSON `type` key keeps the former wording and is deprecated (P-UID-TYPE). New DICOMKit API:
   `UIDManager.tableA1UIDType(of:)` / `tableA1UIDType(_:uid:)`, `UIDManager.dicomUIDsAsCodingSchemeUID`, and
   `UIDConsole.lookupEntryJSON(uid:name:type:uidType:)` / `listingJSON(entries:)` overloads with `uidType`.
+- **`dicom-study`** output carries the PS3.6 2026a Table 6-1 keywords (P-STUDY-1): `summary --format csv` appends
+  the columns `StudyInstanceUID,NumberOfStudyRelatedSeries,NumberOfStudyRelatedInstances` (the former `StudyUID`,
+  `SeriesCount`, `InstanceCount` stay in place, deprecated); `stats --format json` adds `StudyInstanceUID`,
+  `NumberOfStudyRelatedSeries`, `NumberOfStudyRelatedInstances`, `ModalitiesInStudy` next to the deprecated
+  `studyUID`, `seriesCount`, `totalInstances`; `compare --format json` adds `study1` / `study2` objects with those
+  keywords and `SeriesInstanceUID` in each `seriesDifferences` item (former keys kept, deprecated). Implemented in
+  DICOMKit `Statistics` / `StudyComparison` / `SeriesDifference` encoding (decoding unchanged) and
+  `StudyReport.renderSummary`.
 
 ### Fixed — dicom-viewer grayscale display verified against DICOM 2026a (2026-10-01)
 

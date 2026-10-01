@@ -86,6 +86,13 @@ public struct InstanceMetadata: Codable, Sendable {
     }
 }
 
+/// `dicom-study stats` result.
+///
+/// JSON (P-STUDY-1, approved 2026-10-01): besides the original keys the encoding carries the
+/// PS3.6 2026a Table 6-1 keywords `StudyInstanceUID` (0020,000D), `NumberOfStudyRelatedSeries`
+/// (0020,1206), `NumberOfStudyRelatedInstances` (0020,1208) and `ModalitiesInStudy` (0008,0061).
+/// The original keys `studyUID`, `seriesCount`, `totalInstances` keep their values and are
+/// deprecated. Decoding reads the original keys.
 public struct Statistics: Codable, Sendable {
     public let studyUID: String
     public let seriesCount: Int
@@ -94,8 +101,40 @@ public struct Statistics: Codable, Sendable {
     public let averageSizePerInstance: Int64
     public let modalityCounts: [String: Int]
     public let instancesPerSeries: [Int]
+
+    enum CodingKeys: String, CodingKey {
+        case studyUID, seriesCount, totalInstances, totalSizeBytes, averageSizePerInstance
+        case modalityCounts, instancesPerSeries
+    }
+
+    /// PS3.6 Table 6-1 keyword keys written next to the original ones.
+    enum KeywordKeys: String, CodingKey {
+        case StudyInstanceUID, NumberOfStudyRelatedSeries, NumberOfStudyRelatedInstances, ModalitiesInStudy
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(studyUID, forKey: .studyUID)
+        try c.encode(seriesCount, forKey: .seriesCount)
+        try c.encode(totalInstances, forKey: .totalInstances)
+        try c.encode(totalSizeBytes, forKey: .totalSizeBytes)
+        try c.encode(averageSizePerInstance, forKey: .averageSizePerInstance)
+        try c.encode(modalityCounts, forKey: .modalityCounts)
+        try c.encode(instancesPerSeries, forKey: .instancesPerSeries)
+        var k = encoder.container(keyedBy: KeywordKeys.self)
+        try k.encode(studyUID, forKey: .StudyInstanceUID)
+        try k.encode(seriesCount, forKey: .NumberOfStudyRelatedSeries)
+        try k.encode(totalInstances, forKey: .NumberOfStudyRelatedInstances)
+        try k.encode(modalityCounts.keys.sorted(), forKey: .ModalitiesInStudy)
+    }
 }
 
+/// `dicom-study compare` result.
+///
+/// JSON (P-STUDY-1): besides the original keys the encoding carries `study1` and `study2`
+/// objects keyed by the PS3.6 2026a Table 6-1 keywords `StudyInstanceUID`,
+/// `NumberOfStudyRelatedSeries`, `NumberOfStudyRelatedInstances`. The original `study1UID`,
+/// `study1SeriesCount`, `study1InstanceCount` (and `study2…`) keys are deprecated.
 public struct StudyComparison: Codable, Sendable {
     public let study1UID: String
     public let study2UID: String
@@ -107,12 +146,60 @@ public struct StudyComparison: Codable, Sendable {
     public let onlyInStudy1Count: Int
     public let onlyInStudy2Count: Int
     public let seriesDifferences: [SeriesDifference]
+
+    enum CodingKeys: String, CodingKey {
+        case study1UID, study2UID, study1SeriesCount, study2SeriesCount, study1InstanceCount, study2InstanceCount
+        case commonSeriesCount, onlyInStudy1Count, onlyInStudy2Count, seriesDifferences
+    }
+
+    enum StudyKeys: String, CodingKey { case study1, study2 }
+
+    enum KeywordKeys: String, CodingKey {
+        case StudyInstanceUID, NumberOfStudyRelatedSeries, NumberOfStudyRelatedInstances
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(study1UID, forKey: .study1UID)
+        try c.encode(study2UID, forKey: .study2UID)
+        try c.encode(study1SeriesCount, forKey: .study1SeriesCount)
+        try c.encode(study2SeriesCount, forKey: .study2SeriesCount)
+        try c.encode(study1InstanceCount, forKey: .study1InstanceCount)
+        try c.encode(study2InstanceCount, forKey: .study2InstanceCount)
+        try c.encode(commonSeriesCount, forKey: .commonSeriesCount)
+        try c.encode(onlyInStudy1Count, forKey: .onlyInStudy1Count)
+        try c.encode(onlyInStudy2Count, forKey: .onlyInStudy2Count)
+        try c.encode(seriesDifferences, forKey: .seriesDifferences)
+        var studies = encoder.container(keyedBy: StudyKeys.self)
+        var s1 = studies.nestedContainer(keyedBy: KeywordKeys.self, forKey: .study1)
+        try s1.encode(study1UID, forKey: .StudyInstanceUID)
+        try s1.encode(study1SeriesCount, forKey: .NumberOfStudyRelatedSeries)
+        try s1.encode(study1InstanceCount, forKey: .NumberOfStudyRelatedInstances)
+        var s2 = studies.nestedContainer(keyedBy: KeywordKeys.self, forKey: .study2)
+        try s2.encode(study2UID, forKey: .StudyInstanceUID)
+        try s2.encode(study2SeriesCount, forKey: .NumberOfStudyRelatedSeries)
+        try s2.encode(study2InstanceCount, forKey: .NumberOfStudyRelatedInstances)
+    }
 }
 
+/// One series whose instance count differs between the two studies. JSON (P-STUDY-1) adds the
+/// PS3.6 keyword `SeriesInstanceUID` next to the deprecated `seriesUID`.
 public struct SeriesDifference: Codable, Sendable {
     public let seriesUID: String
     public let instanceCountStudy1: Int
     public let instanceCountStudy2: Int
+
+    enum CodingKeys: String, CodingKey { case seriesUID, instanceCountStudy1, instanceCountStudy2 }
+    enum KeywordKeys: String, CodingKey { case SeriesInstanceUID }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(seriesUID, forKey: .seriesUID)
+        try c.encode(instanceCountStudy1, forKey: .instanceCountStudy1)
+        try c.encode(instanceCountStudy2, forKey: .instanceCountStudy2)
+        var k = encoder.container(keyedBy: KeywordKeys.self)
+        try k.encode(seriesUID, forKey: .SeriesInstanceUID)
+    }
 }
 
 // MARK: - Scanner
@@ -225,9 +312,12 @@ public enum StudyReport {
             let data = try enc.encode(studies)
             out += (String(data: data, encoding: .utf8) ?? "") + "\n"
         case "csv":
-            out += "StudyUID,StudyDate,PatientName,PatientID,SeriesCount,InstanceCount\n"
+            // P-STUDY-1: the PS3.6 Table 6-1 keyword columns StudyInstanceUID,
+            // NumberOfStudyRelatedSeries, NumberOfStudyRelatedInstances are appended; the
+            // original StudyUID, SeriesCount, InstanceCount columns keep their place (deprecated).
+            out += "StudyUID,StudyDate,PatientName,PatientID,SeriesCount,InstanceCount,StudyInstanceUID,NumberOfStudyRelatedSeries,NumberOfStudyRelatedInstances\n"
             for st in studies {
-                out += "\(st.studyInstanceUID),\(st.studyDate ?? ""),\(st.patientName ?? ""),\(st.patientID ?? ""),\(st.series.count),\(st.totalInstances)\n"
+                out += "\(st.studyInstanceUID),\(st.studyDate ?? ""),\(st.patientName ?? ""),\(st.patientID ?? ""),\(st.series.count),\(st.totalInstances),\(st.studyInstanceUID),\(st.series.count),\(st.totalInstances)\n"
             }
         case "table":
             for st in studies {

@@ -63,7 +63,9 @@ dicom-study summary study_dir/ --verbose
 **Output Formats:**
 - `table`: Human-readable tabular format
 - `json`: Machine-readable JSON
-- `csv`: CSV format for spreadsheet import
+- `csv`: CSV format for spreadsheet import. Columns: `StudyUID,StudyDate,PatientName,PatientID,SeriesCount,InstanceCount,StudyInstanceUID,NumberOfStudyRelatedSeries,NumberOfStudyRelatedInstances`.
+  The last three are the PS3.6 2026a Table 6-1 keywords; `StudyUID`, `SeriesCount` and `InstanceCount` carry the same
+  values and are **deprecated** (kept in place for existing spreadsheets; removed in the next major version).
 
 ### Check Command
 
@@ -110,7 +112,9 @@ dicom-study stats study_dir/ --format json
 ```
 
 **Statistics Include:**
-- Series and instance counts
+- Series and instance counts (JSON keys `StudyInstanceUID`, `NumberOfStudyRelatedSeries`,
+  `NumberOfStudyRelatedInstances`, `ModalitiesInStudy` per PS3.6 2026a Table 6-1; the former keys `studyUID`,
+  `seriesCount`, `totalInstances` are still written and are **deprecated**)
 - Total and average file sizes
 - Modality distribution
 - Instance count distribution (detailed mode)
@@ -128,6 +132,11 @@ dicom-study compare study1/ study2/ --format json
 
 # Verbose comparison
 dicom-study compare study1/ study2/ --verbose
+
+# JSON: `study1` / `study2` objects carry StudyInstanceUID, NumberOfStudyRelatedSeries and
+# NumberOfStudyRelatedInstances (PS3.6 2026a Table 6-1), seriesDifferences items carry SeriesInstanceUID;
+# the former study1UID / study1SeriesCount / study1InstanceCount (and study2...) and seriesUID keys are
+# still written and are deprecated
 ```
 
 **Comparison Metrics:**

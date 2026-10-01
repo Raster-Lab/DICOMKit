@@ -82,7 +82,7 @@ extension DICOMStudy {
         @Argument(help: "Study directory or DICOM file")
         var path: String
         
-        @Option(name: .shortAndLong, help: "Output format: 'table', 'json', or 'csv' (default: table)")
+        @Option(name: .shortAndLong, help: "Output format: 'table', 'json', or 'csv' (default: table). CSV adds the PS3.6 keyword columns StudyInstanceUID, NumberOfStudyRelatedSeries, NumberOfStudyRelatedInstances; StudyUID, SeriesCount, InstanceCount are deprecated")
         var format: String = "table"
         
         @Flag(name: .shortAndLong, help: "Show verbose output with all metadata")
@@ -154,7 +154,7 @@ extension DICOMStudy {
         @Flag(name: .long, help: "Show detailed statistics")
         var detailed: Bool = false
         
-        @Option(name: .shortAndLong, help: "Output format: 'text' or 'json' (default: text)")
+        @Option(name: .shortAndLong, help: "Output format: 'text' or 'json' (default: text). JSON adds PS3.6 keyword keys (StudyInstanceUID, NumberOfStudyRelatedSeries, NumberOfStudyRelatedInstances); the former keys are deprecated")
         var format: String = "text"
         
         mutating func run() throws {
@@ -183,7 +183,7 @@ extension DICOMStudy {
         @Argument(help: "Second study directory")
         var path2: String
         
-        @Option(name: .shortAndLong, help: "Output format: 'text' or 'json' (default: text)")
+        @Option(name: .shortAndLong, help: "Output format: 'text' or 'json' (default: text). JSON adds PS3.6 keyword keys (StudyInstanceUID, NumberOfStudyRelatedSeries, NumberOfStudyRelatedInstances); the former keys are deprecated")
         var format: String = "text"
         
         @Flag(name: .shortAndLong, help: "Show verbose comparison")
