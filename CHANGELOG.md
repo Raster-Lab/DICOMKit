@@ -72,6 +72,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names the Query/Retrieve Level (STUDY / SERIES / IMAGE), the Study Root MOVE/GET SOP Classes, Move
   Destination (0000,0600) and the PS3.8 ports; `--hierarchical` help says what it does (C-GET,
   study/series). Option names, values and defaults are unchanged.
+- **dicom-qr** exits 1 when any selected study fails to retrieve (`query` and `resume` printed the
+  summary and exited 0); failures are worded per PS3.4 2026a Tables C.4-2 / C.4-3 and PS3.7 as in
+  dicom-retrieve; `resume --timeout <s>` is new (was fixed at 60 s); help names the Study-level
+  match keys with their tags, the range forms of PS3.4 C.2.2.2.5, the SOP Classes and Move
+  Destination. Option names, values and defaults are unchanged.
 - **dicom-send** counts a C-STORE response in the Failure class of PS3.4 2026a Table B.2-1 (A7xx
   Refused: Out of resources, A9xx Error: Data Set does not match SOP Class, Cxxx Error: Cannot
   understand, 0122 Refused: SOP Class not supported) as a failed file: it is printed with its

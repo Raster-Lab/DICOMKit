@@ -3,6 +3,7 @@ import ArgumentParser
 import DICOMKit
 import DICOMCore
 import DICOMNetwork
+// NEMA-verified: 2026a, checked 2026-10-01 — the 7 match keys compared with PS3.4 2026a Table C.6-5 (Study Root, Study level: 4 R keys, 1 U key, 2 O keys — Modalities in Study (0008,0061) carries --modality), wildcard / range matching with C.2.2.2.4 / C.2.2.2.5, Query/Retrieve Level STUDY with Table C.6.1-1, methods with Table C.6.2.3-1 (Study Root MOVE/GET), Move Destination (0000,0600) with PS3.7 Table 9.3-9, final-status handling with Tables C.4-2 / C.4-3 via RetrieveStatusText, ports 104 / 11112 with PS3.8 9.1.2; the Part 10 wrapper writes the 6 Type 1 rows of PS3.10 2026a Table 7.1-1; modes, state file, --output, --timeout, --parallel, --validate, --verbose are plumbing
 
 @main
 struct DICOMQR: AsyncParsableCommand {
@@ -73,7 +74,7 @@ extension DICOMQR {
         @Argument(help: "PACS server hostname or IP address, optionally with port (host:port)")
         var host: String
         
-        @Option(name: .long, help: "PACS server port (default: 11112)")
+        @Option(name: .long, help: "PACS server port (default: 11112, the registered DICOM port; 104 is the well-known port — PS3.8 9.1.2)")
         var port: UInt16?
         
         @Option(name: .long, help: "Local Application Entity Title (calling AE)")
@@ -82,26 +83,26 @@ extension DICOMQR {
         @Option(name: .long, help: "Remote Application Entity Title (default: ANY-SCP)")
         var calledAet: String = "ANY-SCP"
         
-        @Option(name: .long, help: "Move destination AE title (required for C-MOVE)")
+        @Option(name: .long, help: "Move Destination (0000,0600): AE Title of the Storage SCP that receives the C-STORE sub-operations (required for C-MOVE)")
         var moveDest: String?
         
-        @Option(name: .long, help: "Retrieval method: c-move or c-get (default: c-move)")
+        @Option(name: .long, help: "Retrieval method: c-move (Study Root Query/Retrieve Information Model - MOVE) or c-get (Study Root Query/Retrieve Information Model - GET) (default: c-move)")
         var method: String = "c-move"
         
         // Query parameters
-        @Option(name: .long, help: "Patient name (wildcards * and ? supported)")
+        @Option(name: .long, help: "Patient's Name (0010,0010) — wildcards * and ? per PS3.4 C.2.2.2.4 (case handling of PN matching is the SCP's)")
         var patientName: String?
         
-        @Option(name: .long, help: "Patient ID")
+        @Option(name: .long, help: "Patient ID (0010,0020)")
         var patientId: String?
         
-        @Option(name: .long, help: "Study date or range (YYYYMMDD or YYYYMMDD-YYYYMMDD)")
+        @Option(name: .long, help: "Study Date (0008,0020): YYYYMMDD, or a range YYYYMMDD-YYYYMMDD, -YYYYMMDD or YYYYMMDD- (PS3.4 C.2.2.2.5)")
         var studyDate: String?
         
-        @Option(name: .long, help: "Study Instance UID")
+        @Option(name: .long, help: "Study Instance UID (0020,000D)")
         var studyUid: String?
         
-        @Option(name: .long, help: "Accession Number")
+        @Option(name: .long, help: "Accession Number (0008,0050)")
         var accessionNumber: String?
         
         @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("filter")))
@@ -110,14 +111,14 @@ extension DICOMQR {
         @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
         var strictModality: Bool = false
         
-        @Option(name: .long, help: "Study description (wildcards supported)")
+        @Option(name: .long, help: "Study Description (0008,1030) — wildcards * and ? per PS3.4 C.2.2.2.4")
         var studyDescription: String?
         
         // Output options
         @Option(name: .shortAndLong, help: "Output directory for retrieved files")
         var output: String = "."
         
-        @Flag(name: .long, help: "Organize files hierarchically (Patient/Study/Series)")
+        @Flag(name: .long, help: "Organize C-GET output hierarchically (<output>/<Study Instance UID>/); C-MOVE output is stored by the move destination")
         var hierarchical: Bool = false
         
         // Mode options
@@ -337,6 +338,13 @@ extension DICOMQR {
                 print(NetworkConsole.qrValidatingHeader(), terminator: "")
                 try validateRetrievedFiles(in: output)
             }
+
+            // A study whose final C-MOVE/C-GET response was not Success with no
+            // failed sub-operations (PS3.4 C.4.2.2.1 / C.4.3.2.1), or that could
+            // not be requested at all, must not leave the exit code at 0.
+            if failureCount > 0 {
+                throw DICOMQRError.retrievalIncomplete(succeeded: successCount, failed: failureCount)
+            }
             #else
             print("Error: Network operations not supported on this platform")
             throw ExitCode(1)
@@ -513,6 +521,9 @@ extension DICOMQR {
         @Option(name: .shortAndLong, help: "Path to saved state file")
         var state: String
         
+        @Option(name: .long, help: "Connection timeout in seconds (default: 60)")
+        var timeout: Int = 60
+        
         @Flag(name: .long, help: "Show verbose output")
         var verbose: Bool = false
         
@@ -533,7 +544,7 @@ extension DICOMQR {
                 callingAE: retrievalState.callingAE,
                 calledAE: retrievalState.calledAE,
                 moveDestination: retrievalState.moveDestination,
-                timeout: 60,
+                timeout: TimeInterval(timeout),
                 outputPath: retrievalState.outputPath,
                 hierarchical: retrievalState.hierarchical,
                 verbose: verbose,
@@ -571,6 +582,11 @@ extension DICOMQR {
             print("  Total: \(retrievalState.studies.count)")
             print("  Success: \(successCount)")
             print("  Failed: \(failureCount)")
+
+            // Same exit-code rule as `query`: any failed study exits non-zero.
+            if failureCount > 0 {
+                throw DICOMQRError.retrievalIncomplete(succeeded: successCount, failed: failureCount)
+            }
             #else
             print("Error: Network operations not supported on this platform")
             throw ExitCode(1)
@@ -614,19 +630,24 @@ typealias RetrievalMethod = QRRetrievalMethod
 
 enum DICOMQRError: Error, CustomStringConvertible, LocalizedError {
     case missingMoveDestination
-    /// The SCP's final response was not a full success (PS3.4 C.4.2.1.4.2 / C.4.3.1.4.2)
+    /// The SCP's final response was not a full success (PS3.4 C.4.2.2.1 / C.4.3.2.1)
     case retrievalFailed(summary: String, failedSOPInstanceUIDs: [String])
+    /// One or more studies of the run failed; reported after the summary so the
+    /// process exits non-zero.
+    case retrievalIncomplete(succeeded: Int, failed: Int)
     
     var description: String {
         switch self {
         case .missingMoveDestination:
             return "Move destination AE title is required for C-MOVE retrieval"
         case .retrievalFailed(let summary, let failed):
-            var text = "Retrieval failed with \(summary)"
+            var text = "Retrieval failed: \(summary)"
             if !failed.isEmpty {
-                text += "; failed SOP Instance UIDs: " + failed.joined(separator: ", ")
+                text += "; Failed SOP Instance UID List (0008,0058): " + failed.joined(separator: ", ")
             }
             return text
+        case .retrievalIncomplete(let succeeded, let failed):
+            return "Retrieval incomplete: \(succeeded) study(ies) succeeded, \(failed) failed"
         }
     }
 
@@ -699,10 +720,10 @@ struct RetrieveExecutor {
                 moveDestination: moveDestination,
                 timeout: timeout
             )
-            // PS3.4 C.4.2.1.4.2: a failure/warning status or any failed
+            // PS3.4 C.4.2.2.1: a failure/warning status or any failed
             // sub-operation is not success; surface counts and the Failed SOP
             // Instance UID List instead of ignoring the result.
-            try Self.checkRetrieveResult(result)
+            try Self.checkRetrieveResult(result, service: .cMove)
         case .cGet:
             let stream = try await DICOMRetrieveService.getStudy(
                 host: host,
@@ -732,23 +753,26 @@ struct RetrieveExecutor {
                     throw err
                 }
             }
-            // PS3.4 C.4.3.1.4.2: check the final status and sub-operation counts.
+            // PS3.4 C.4.3.2.1: check the final status and sub-operation counts.
             if let result = finalResult {
-                try Self.checkRetrieveResult(result)
+                try Self.checkRetrieveResult(result, service: .cGet)
             }
         }
     }
 
     /// Throws `DICOMQRError.retrievalFailed` unless the result is a full success
-    /// (status 0x0000 and no failed sub-operations, PS3.4 C.4.2.1.4.2). A warning
-    /// status (0xB000) is therefore a failure for the exit code; the counts and
-    /// the Failed SOP Instance UID List are printed to stderr first.
-    static func checkRetrieveResult(_ result: RetrieveResult) throws {
+    /// (status 0x0000 and no failed sub-operations, PS3.4 C.4.2.2.1 / C.4.3.2.1).
+    /// A warning status (0xB000) is therefore a failure for the exit code. The
+    /// status is worded per PS3.4 2026a Table C.4-2 (C-MOVE) / C.4-3 (C-GET) and
+    /// the counters per PS3.7 Tables 9.3-10 / 9.3-7; the Failed SOP Instance UID
+    /// List (0008,0058) is printed to stderr first.
+    static func checkRetrieveResult(_ result: RetrieveResult, service: RetrieveStatusText.Service) throws {
         if result.isSuccess { return }
-        let summary = "status \(result.status): \(result.progress.completed) completed, "
-            + "\(result.progress.failed) failed, \(result.progress.warning) warning(s)"
+        let summary = "\(service.rawValue) final response "
+            + RetrieveStatusText.describe(result.status, service: service)
+            + " (" + RetrieveStatusText.subOperationCounts(result.progress) + ")"
         if !result.failedSOPInstanceUIDs.isEmpty {
-            FileHandle.standardError.write(("  Failed SOP Instance UIDs:\n"
+            FileHandle.standardError.write(("  Failed SOP Instance UID List (0008,0058):\n"
                 + result.failedSOPInstanceUIDs.map { "    \($0)\n" }.joined()).data(using: .utf8) ?? Data())
         }
         throw DICOMQRError.retrievalFailed(summary: summary, failedSOPInstanceUIDs: result.failedSOPInstanceUIDs)
