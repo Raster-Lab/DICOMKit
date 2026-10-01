@@ -146,6 +146,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Syntax names beside the accepted UIDs are the PS3.6 Table A-1 names; help and README name the
   Query/Retrieve Levels PATIENT/STUDY/SERIES/IMAGE (PS3.4 Tables C.6.1-1 / C.6.2-1).
 
+### Fixed — dicom-server builds again and closes D94–D102 (2026-10-01)
+
+- **dicom-server** is back in `Package.swift` (product, target and a new `dicom-serverTests`
+  target; the old `DICOMServerTests.swift` moved there) and compiles against the current
+  DICOMNetwork / DICOMKit API (D99). Received instances are stored as PS3.10 files — preamble,
+  "DICM", File Meta Information from `DICOMFile.create` with the negotiated Transfer Syntax UID,
+  Source/Sending/Receiving AE Titles — and decoded with that transfer syntax (D102). An unknown
+  Move Destination is refused with A801 instead of being sent to localhost:104; new repeatable
+  `start --move-destination AE=host:port` (D96). C-GET awaits each C-STORE-RSP, counts
+  Completed/Warning/Failed from its status, honours C-CANCEL, needs the SCP role from SCP/SCU
+  Role Selection and returns every Storage SOP Class of PS3.4 Table B.5-1; final C-MOVE/C-GET
+  statuses follow C.4.2.3.1 / C.4.3.3.1 (0000, B000, A702, FE00) with the Failed SOP Instance UID
+  List (D97). A missing Query/Retrieve Level is refused with A900 and Offending Element
+  (0008,0052) (D101). C-FIND matches and returns all Required/Unique keys of PS3.4 Tables
+  C.6-1..C.6-5, returns only requested keys plus Query/Retrieve Level and Retrieve AE Title, and
+  applies the C.2.2.2 rules (wildcards only for the listed VRs and case-sensitive except PN, List
+  of UID Matching, DA/TM Range Matching); FF01 when optional keys are unsupported (D98, D100).
+  Outgoing P-DATA is fragmented to the peer's Maximum Length and the A-ASSOCIATE-AC carries the
+  server's own (PS3.8 D.1, D95). `--aet`, `--allowed-ae`, `--blocked-ae` are validated as VR AE
+  and the Implementation Class UID is DICOMKit's (1.2.826.0.1.3680043.10.511.3.0.5.0) (D94).
+
 ### Fixed — dicom-print and dicom-printscp verified against DICOM 2026a (2026-10-01)
 
 - **dicom-print:** `send --medium` offers `mammo-clear-film` and `mammo-blue-film` (MAMMO CLEAR

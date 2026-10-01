@@ -211,11 +211,10 @@ let package = Package(
             name: "dicom-gateway",
             targets: ["dicom-gateway"]
         ),
-        // Phase 1 scope: exclude dicom-server because it has unrelated compile issues.
-        // .executable(
-        //     name: "dicom-server",
-        //     targets: ["dicom-server"]
-        // ),
+        .executable(
+            name: "dicom-server",
+            targets: ["dicom-server"]
+        ),
         .library(
             name: "DICOMRenderKit",
             targets: ["DICOMRenderKit"]
@@ -476,6 +475,13 @@ let package = Package(
             name: "dicom-exportTests",
             dependencies: ["dicom-export", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-exportTests"
+        ),
+        // dicom-server: storage (PS3.10 7.1), C-FIND matching (PS3.4 C.2.2.2, C.6), retrieve
+        // statuses (C.4-2/C.4-3), association rules (PS3.8 D.1, PS3.7 D.3.3.4), loopback SCU tests.
+        .testTarget(
+            name: "dicom-serverTests",
+            dependencies: ["dicom-server", "DICOMNetwork", "DICOMKit", "DICOMCore", "DICOMDictionary"],
+            path: "Tests/dicom-serverTests"
         ),
         .testTarget(
             name: "dicom-printTests",
@@ -796,7 +802,6 @@ let package = Package(
                 "DICOMRetrieveTests.swift",
                 "DICOMScriptTests.swift",
                 "DICOMSendTests.swift",
-                "DICOMServerTests.swift",
                 "DICOMSplitTests.swift",
                 "DICOMStudyTests.swift",
                 "DICOMTagsTests.swift",
@@ -1262,19 +1267,18 @@ let package = Package(
             path: "Sources/dicom-gateway",
             exclude: ["README.md"]
         ),
-        // Phase 1 scope: exclude dicom-server because it has unrelated compile issues.
-        // .executableTarget(
-        //     name: "dicom-server",
-        //     dependencies: [
-        //         "DICOMKit",
-        //         "DICOMCore",
-        //         "DICOMNetwork",
-        //         "DICOMDictionary",
-        //         .product(name: "ArgumentParser", package: "swift-argument-parser")
-        //     ],
-        //     path: "Sources/dicom-server",
-        //     exclude: ["README.md"]
-        // ),
+        .executableTarget(
+            name: "dicom-server",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMNetwork",
+                "DICOMDictionary",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-server",
+            exclude: ["README.md", "DATABASE_SCHEMA.md", "DEPLOYMENT_GUIDE.md"]
+        ),
         .target(
             name: "DICOMStudio",
             dependencies: [

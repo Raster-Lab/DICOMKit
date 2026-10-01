@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — options: 24 options of start/status/stop/stats compared (contract rows in DICOMCLI_STANDARD_IMPLEMENTATION.md); the Query/Retrieve Level names in the help are PS3.4 2026a Tables C.6.1-1 / C.6.2-1 (PATIENT, STUDY, SERIES, IMAGE; 'Instance' corrected); default port 11112 is the registered port of PS3.8 2026a 9.1.1 (104 is the well-known one); the C-ECHO status printed by `status` is rendered by DICOMNetwork.DIMSEStatus. The target is excluded from Package.swift and does not compile (D-DICOM-SERVER-1), so nothing here is exercised by a test
+// NEMA-verified: 2026a, checked 2026-10-01 — options: 25 options of start/status/stop/stats compared (contract rows in DICOMCLI_STANDARD_IMPLEMENTATION.md; --move-destination added); --aet / --allowed-ae / --blocked-ae / --move-destination are validated as VR AE (PS3.5 2026a Table 6.2-1, D94); the Query/Retrieve Level names in the help are PS3.4 2026a Tables C.6.1-1 / C.6.2-1 (PATIENT, STUDY, SERIES, IMAGE); default port 11112 is the registered port of PS3.8 2026a 9.1.1 (104 is the well-known one); the C-ECHO status printed by `status` is rendered by DICOMNetwork.DIMSEStatus; the target builds and is tested by dicom-serverTests (D99)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -91,6 +91,10 @@ struct StartCommand: AsyncParsableCommand {
     
     @Option(name: .long, help: "Blocked calling AE titles (comma-separated)")
     var blockedAE: String?
+
+    @Option(name: .long, parsing: .singleValue,
+            help: "C-MOVE destination as AE=host:port (repeatable); an unknown Move Destination is refused with A801")
+    var moveDestination: [String] = []
     
     @Flag(name: .shortAndLong, help: "Verbose logging")
     var verbose: Bool = false
@@ -101,7 +105,7 @@ struct StartCommand: AsyncParsableCommand {
     mutating func run() async throws {
         // Load configuration from file if provided
         if let configPath = config {
-            let serverConfig = try ServerConfiguration.load(from: configPath)
+            let serverConfig = try ServerConfiguration.load(from: configPath).validated()
             try await startWithConfig(serverConfig)
             return
         }
@@ -128,7 +132,14 @@ struct StartCommand: AsyncParsableCommand {
             throw ServerError.invalidConfiguration("Unsupported database type: \(database)")
         }
         
-        return ServerConfiguration(
+        var destinations: [String: DestinationAE] = [:]
+        for spec in moveDestination {
+            let (ae, destination) = try ServerConfiguration.parseDestination(spec)
+            destinations[ae] = destination
+        }
+        
+        // AE titles are checked as VR AE (PS3.5 Table 6.2-1)
+        return try ServerConfiguration(
             aeTitle: aeTitle,
             port: port,
             dataDirectory: dataDir,
@@ -138,8 +149,9 @@ struct StartCommand: AsyncParsableCommand {
             allowedCallingAETitles: allowedAEs.map { Set($0) },
             blockedCallingAETitles: blockedAEs.map { Set($0) },
             enableTLS: tls,
-            verbose: verbose
-        )
+            verbose: verbose,
+            knownDestinations: destinations
+        ).validated()
     }
     
     private func startWithConfig(_ config: ServerConfiguration) async throws {
@@ -227,15 +239,15 @@ struct StatusCommand: AsyncParsableCommand {
         
         // Perform C-ECHO to check if server is running
         #if canImport(Network)
-        let client = DICOMClient(
-            callingAETitle: AETitle(callingAE),
-            calledAETitle: AETitle(calledAE),
-            host: host,
-            port: port
-        )
-        
         do {
-            let result = try await client.echo()
+            let result = try await DICOMVerificationService.echo(
+                host: host,
+                port: port,
+                callingAE: callingAE,
+                calledAE: calledAE,
+                timeout: 10.0
+            )
+            guard result.success else { throw ExitCode.failure }
             print("✓ Server is running and responsive")
             if verbose {
                 print("  Status: \(result.status)")
@@ -320,7 +332,7 @@ struct StatsCommand: AsyncParsableCommand {
         // In a full implementation, we would query the server for statistics
         // via a custom DICOM service or REST API
         
-        let result = try await EchoService.echo(
+        let result = try await DICOMVerificationService.echo(
             host: host,
             port: port,
             callingAE: callingAe,
@@ -345,12 +357,4 @@ struct StatsCommand: AsyncParsableCommand {
         throw ExitCode.failure
         #endif
     }
-}
-
-// MARK: - Main Entry Point
-
-if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
-    DICOMServer.main()
-} else {
-    fatalError("This tool requires macOS 10.15, iOS 13, tvOS 13, watchOS 6, or later")
 }
