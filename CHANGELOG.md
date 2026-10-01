@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-3d volume geometry, plane names and DICOM MPR output verified against DICOM 2026a (2026-10-01)
+
+- **`dicom-3d` volume loading** read Pixel Spacing (0028,0030) in the wrong order: value 1 is the
+  spacing between rows and value 2 the spacing between columns (PS3.3 Table C.7-10), so non-square pixels
+  were stretched in every output. Voxel positions now follow Equation C.7.6.2.1-1 along the slice normal
+  (the slice offset was added to z only), slice spacing is the mean distance along the normal, one slice
+  uses Spacing Between Slices before Slice Thickness, Rescale Slope/Intercept are read per slice, slices
+  with different Frame of Reference UIDs (C.7.4.1.1.1), orientations or matrix sizes are rejected, and
+  Enhanced multi-frame input is placed by its Plane Position / Plane Orientation / Pixel Measures
+  functional groups (a classic multi-frame image is rejected instead of read as one slice).
+- **`axial`, `sagittal`, `coronal`** (mpr `--planes`, mip/minip/average `--direction`) are the patient
+  planes of PS3.3 C.7.6.2.1.1 for any acquisition orientation (they were the volume's index planes);
+  sagittal and coronal images have the head at the top. minip and average now reject an unknown direction
+  (it silently became axial).
+- **`mpr --format dcm`** writes a derived DICOM series (it wrote PNG files): Image Type DERIVED\SECONDARY
+  (MR Value 3 MPR), Derivation Code Sequence (113072, DCM, "Multiplanar reformatting") (CID 7203),
+  Derivation Description, Source Image Sequence with Purpose of Reference 121322, new Series/SOP Instance
+  UIDs, and the plane's Image Position/Orientation (Patient), Pixel Spacing and Slice Thickness.
+  `mpr --thickness` now averages slabs and `mip/minip --thickness` limits the projection to a centred
+  slab (both were ignored); `oblique` prints a warning instead of being skipped silently; a single
+  `--planes` output directory no longer writes its files into the parent directory.
+- **`--window-center/--window-width`** use the LINEAR VOI LUT function of PS3.3 C.11.2.1.2.1 (width must
+  be >= 1 and both must be given); MONOCHROME1 volumes are shown inverted (C.7.6.3.1.2).
+- **`export`**: the NIfTI sform is the RAS form of the DICOM LPS affine (it ignored orientation and the
+  LPS→RAS sign change) and scl_slope/scl_inter are 1/0 because voxels are already rescaled (they were
+  applied twice); MetaImage TransformMatrix and AnatomicalOrientation come from Image Orientation (Patient).
+- **`encode-volume`** orders the slices along the normal before encoding; **`inspect`** labels are the
+  PS3.6 names (Patient's Name, Study Instance UID, Series Description).
+
 ### Fixed — dicom-ai SR, enhance and GSPS output verified against DICOM 2026a (2026-10-01)
 
 - **`dicom-ai classify|detect --format dicom-sr`** writes a PS3.16 TID 1500 Measurement Report built by

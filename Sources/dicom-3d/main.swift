@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — 54 options of 11 subcommands: plane names (axial/sagittal/coronal) per the LPS axes of PS3.3 2026a C.7.6.2.1.1; --window-center/--window-width are the C.11.2.1.2.1 LINEAR window (width >= 1, Table C.11-2b); --format dcm writes a derived series (C.7.6.1.1.2, CID 7203 113072); inspect labels are PS3.6 2026a Table 6-1 names (Patient's Name, Patient ID, Modality, Study Instance UID, Series Description, SOP Instance UID); the JP3D SOP Class 1.2.826.0.1.3680043.10.511.10 is private (not in PS3.6 Table A-1); encode-volume orders slices along the normal before encoding
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -50,6 +51,36 @@ struct DICOM3D: ParsableCommand {
     )
 }
 
+// MARK: - Shared option checks
+
+/// PS3.3 2026a C.11.2.1.2.1: for the LINEAR function (used when VOI LUT Function is
+/// absent) "Window Width (0028,1051) shall always be greater than or equal to 1".
+func validateWindow(center: Double?, width: Double?) throws {
+    if let width, !(width >= 1) {
+        throw ValidationError("--window-width must be >= 1 (PS3.3 C.11.2.1.2.1); got \(width)")
+    }
+    if (center == nil) != (width == nil) {
+        throw ValidationError("--window-center and --window-width must be given together")
+    }
+}
+
+/// MONOCHROME1: "The minimum sample value is intended to be displayed as white"
+/// (PS3.3 2026a C.7.6.3.1.2).
+func isMonochrome1(_ volume: VolumeData) -> Bool {
+    volume.photometricInterpretation.uppercased() == "MONOCHROME1"
+}
+
+/// Projection directions (a computed value: main.swift globals are not initialised under XCTest).
+func projectionDirections() -> [String] { PatientPlane.allCases.map(\.rawValue) }
+
+func projectionType(_ name: String) -> ProjectionType {
+    switch name.lowercased() {
+    case "sagittal": return .sagittal
+    case "coronal": return .coronal
+    default: return .axial
+    }
+}
+
 // MARK: - MPR Command
 
 struct MPRCommand: ParsableCommand {
@@ -64,22 +95,22 @@ struct MPRCommand: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output directory or file path")
     var output: String
     
-    @Option(name: .long, help: "Planes to generate: axial, sagittal, coronal, or oblique")
+    @Option(name: .long, help: "Planes to generate: axial, sagittal, coronal (patient planes, PS3.3 C.7.6.2.1.1), or oblique (not generated)")
     var planes: String = "axial,sagittal,coronal"
     
-    @Option(name: .long, help: "Output format: png, dcm")
+    @Option(name: .long, help: "Output format: png, dcm (derived DICOM series, Image Type DERIVED\\SECONDARY)")
     var format: OutputFormat = .png
     
-    @Option(name: .long, help: "Slice thickness in mm")
+    @Option(name: .long, help: "Slice thickness in mm (planes averaged into slabs of this thickness)")
     var thickness: Double?
     
     @Option(name: .long, help: "Interpolation method: nearest, linear, cubic")
     var interpolation: InterpolationMethod = .linear
     
-    @Option(name: .long, help: "Window center for display")
+    @Option(name: .long, help: "Window Center for display (Modality LUT output units, e.g. HU)")
     var windowCenter: Double?
     
-    @Option(name: .long, help: "Window width for display")
+    @Option(name: .long, help: "Window Width for display (>= 1, LINEAR function, PS3.3 C.11.2.1.2.1)")
     var windowWidth: Double?
     
     @Flag(name: .long, help: "Verbose output")
@@ -103,6 +134,10 @@ struct MPRCommand: ParsableCommand {
                 throw ValidationError("Invalid plane: \(plane). Must be one of: \(validPlanes.joined(separator: ", "))")
             }
         }
+        if let thickness, !(thickness > 0) {
+            throw ValidationError("--thickness must be > 0 mm")
+        }
+        try validateWindow(center: windowCenter, width: windowWidth)
     }
     
     mutating func run() throws {
@@ -123,9 +158,11 @@ struct MPRCommand: ParsableCommand {
         let generator = MPRGenerator(volume: volume, interpolation: interpolation, verbose: verbose)
         let requestedPlanes = planes.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
         
-        // Create output directory if needed
+        // Output: a single .png file when one plane yields one image, otherwise a
+        // directory (one sub-directory per plane when several planes are requested).
         let outputURL = URL(fileURLWithPath: output)
-        if requestedPlanes.count > 1 || !output.hasSuffix(".png") {
+        let singleFile = format == .png && output.lowercased().hasSuffix(".png")
+        if !singleFile {
             try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true, attributes: nil)
         }
         
@@ -143,6 +180,8 @@ struct MPRCommand: ParsableCommand {
             case "coronal":
                 planeType = .coronal
             default:
+                FileHandle.standardError.write(Data(
+                    "warning: plane '\(planeName)' is not generated (an oblique plane needs a normal and a point, which this command has no option for)\n".utf8))
                 continue
             }
             
@@ -152,22 +191,30 @@ struct MPRCommand: ParsableCommand {
                 print("Generated \(slices.count) \(planeName) slices")
             }
             
-            // Save slices
-            let outputDir = requestedPlanes.count > 1 ? outputURL.appendingPathComponent(planeName) : outputURL
-            if requestedPlanes.count > 1 {
+            let outputDir = (requestedPlanes.count > 1 && !singleFile) ? outputURL.appendingPathComponent(planeName) : outputURL
+            if outputDir != outputURL {
                 try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true, attributes: nil)
             }
-            
-            for (index, slice) in slices.enumerated() {
-                let fileName: String
-                if requestedPlanes.count > 1 || slices.count > 1 {
-                    fileName = "\(planeName)_\(String(format: "%04d", index)).png"
-                } else {
-                    fileName = outputURL.lastPathComponent
+
+            switch format {
+            case .dcm:
+                let files = try DerivedSeries.makeInstances(slices: slices, plane: PatientPlane(planeType), volume: volume)
+                for (index, file) in files.enumerated() {
+                    let url = outputDir.appendingPathComponent("\(planeName)_\(String(format: "%04d", index)).dcm")
+                    try file.write().write(to: url)
                 }
-                
-                let sliceURL = requestedPlanes.count > 1 ? outputDir.appendingPathComponent(fileName) : outputDir.deletingLastPathComponent().appendingPathComponent(fileName)
-                try slice.savePNG(to: sliceURL, windowCenter: windowCenter, windowWidth: windowWidth)
+            case .png:
+                for (index, slice) in slices.enumerated() {
+                    let sliceURL: URL
+                    if singleFile && slices.count == 1 && requestedPlanes.count == 1 {
+                        sliceURL = outputURL
+                    } else {
+                        let directory = singleFile ? outputURL.deletingLastPathComponent() : outputDir
+                        sliceURL = directory.appendingPathComponent("\(planeName)_\(String(format: "%04d", index)).png")
+                    }
+                    try slice.savePNG(to: sliceURL, windowCenter: windowCenter, windowWidth: windowWidth,
+                                      monochrome1: isMonochrome1(volume))
+                }
             }
         }
         
@@ -191,16 +238,16 @@ struct MIPCommand: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output file path")
     var output: String
     
-    @Option(name: .long, help: "Projection direction: axial, sagittal, coronal")
+    @Option(name: .long, help: "Projection direction: axial, sagittal, coronal (patient planes, PS3.3 C.7.6.2.1.1)")
     var direction: String = "axial"
     
     @Option(name: .long, help: "Slab thickness in mm (0 = full volume)")
     var thickness: Double = 0
     
-    @Option(name: .long, help: "Window center for display")
+    @Option(name: .long, help: "Window Center for display (Modality LUT output units, e.g. HU)")
     var windowCenter: Double?
     
-    @Option(name: .long, help: "Window width for display")
+    @Option(name: .long, help: "Window Width for display (>= 1, LINEAR function, PS3.3 C.11.2.1.2.1)")
     var windowWidth: Double?
     
     @Flag(name: .long, help: "Verbose output")
@@ -211,10 +258,10 @@ struct MIPCommand: ParsableCommand {
             throw ValidationError("At least one input file is required")
         }
         
-        let validDirections = ["axial", "sagittal", "coronal"]
-        guard validDirections.contains(direction.lowercased()) else {
-            throw ValidationError("Invalid direction: \(direction). Must be one of: \(validDirections.joined(separator: ", "))")
+        guard projectionDirections().contains(direction.lowercased()) else {
+            throw ValidationError("Invalid direction: \(direction). Must be one of: \(projectionDirections().joined(separator: ", "))")
         }
+        try validateWindow(center: windowCenter, width: windowWidth)
     }
     
     mutating func run() throws {
@@ -252,7 +299,8 @@ struct MIPCommand: ParsableCommand {
         
         // Save output
         let outputURL = URL(fileURLWithPath: output)
-        try result.savePNG(to: outputURL, windowCenter: windowCenter, windowWidth: windowWidth)
+        try result.savePNG(to: outputURL, windowCenter: windowCenter, windowWidth: windowWidth,
+                           monochrome1: isMonochrome1(volume))
         
         if verbose {
             print("MIP saved to: \(output)")
@@ -274,16 +322,16 @@ struct MinIPCommand: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output file path")
     var output: String
     
-    @Option(name: .long, help: "Projection direction: axial, sagittal, coronal")
+    @Option(name: .long, help: "Projection direction: axial, sagittal, coronal (patient planes, PS3.3 C.7.6.2.1.1)")
     var direction: String = "axial"
     
     @Option(name: .long, help: "Slab thickness in mm (0 = full volume)")
     var thickness: Double = 0
     
-    @Option(name: .long, help: "Window center for display")
+    @Option(name: .long, help: "Window Center for display (Modality LUT output units, e.g. HU)")
     var windowCenter: Double?
     
-    @Option(name: .long, help: "Window width for display")
+    @Option(name: .long, help: "Window Width for display (>= 1, LINEAR function, PS3.3 C.11.2.1.2.1)")
     var windowWidth: Double?
     
     @Flag(name: .long, help: "Verbose output")
@@ -293,6 +341,10 @@ struct MinIPCommand: ParsableCommand {
         guard !inputPaths.isEmpty else {
             throw ValidationError("At least one input file is required")
         }
+        guard projectionDirections().contains(direction.lowercased()) else {
+            throw ValidationError("Invalid direction: \(direction). Must be one of: \(projectionDirections().joined(separator: ", "))")
+        }
+        try validateWindow(center: windowCenter, width: windowWidth)
     }
     
     mutating func run() throws {
@@ -323,7 +375,8 @@ struct MinIPCommand: ParsableCommand {
         )
         
         let outputURL = URL(fileURLWithPath: output)
-        try result.savePNG(to: outputURL, windowCenter: windowCenter, windowWidth: windowWidth)
+        try result.savePNG(to: outputURL, windowCenter: windowCenter, windowWidth: windowWidth,
+                           monochrome1: isMonochrome1(volume))
         
         if verbose {
             print("MinIP saved to: \(output)")
@@ -345,13 +398,13 @@ struct AverageCommand: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output file path")
     var output: String
     
-    @Option(name: .long, help: "Projection direction: axial, sagittal, coronal")
+    @Option(name: .long, help: "Projection direction: axial, sagittal, coronal (patient planes, PS3.3 C.7.6.2.1.1)")
     var direction: String = "axial"
     
-    @Option(name: .long, help: "Window center for display")
+    @Option(name: .long, help: "Window Center for display (Modality LUT output units, e.g. HU)")
     var windowCenter: Double?
     
-    @Option(name: .long, help: "Window width for display")
+    @Option(name: .long, help: "Window Width for display (>= 1, LINEAR function, PS3.3 C.11.2.1.2.1)")
     var windowWidth: Double?
     
     @Flag(name: .long, help: "Verbose output")
@@ -361,6 +414,10 @@ struct AverageCommand: ParsableCommand {
         guard !inputPaths.isEmpty else {
             throw ValidationError("At least one input file is required")
         }
+        guard projectionDirections().contains(direction.lowercased()) else {
+            throw ValidationError("Invalid direction: \(direction). Must be one of: \(projectionDirections().joined(separator: ", "))")
+        }
+        try validateWindow(center: windowCenter, width: windowWidth)
     }
     
     mutating func run() throws {
@@ -388,7 +445,8 @@ struct AverageCommand: ParsableCommand {
         let result = try renderer.averageIntensityProjection(direction: projection)
         
         let outputURL = URL(fileURLWithPath: output)
-        try result.savePNG(to: outputURL, windowCenter: windowCenter, windowWidth: windowWidth)
+        try result.savePNG(to: outputURL, windowCenter: windowCenter, windowWidth: windowWidth,
+                           monochrome1: isMonochrome1(volume))
         
         if verbose {
             print("Average projection saved to: \(output)")
@@ -690,6 +748,10 @@ struct EncodeVolumeCommand: ParsableCommand {
             }
         }
 
+        // Order the planes along the normal of Image Orientation (Patient) (PS3.3
+        // C.7.6.2.1.1), not by file name, so the first slice is the volume origin.
+        series = VolumeLoader.sortedByPosition(series)
+
         let compressionMode: JP3DCodec.CompressionMode
         switch mode.lowercased() {
         case "lossless":         compressionMode = .lossless
@@ -864,11 +926,12 @@ struct InspectCommand: ParsableCommand {
         let compression = meta["compressionMode"] as? String ?? "unknown"
         let psnrVal    = meta["psnr"]         as? Double
 
-        let patient  = (meta["patientName"]   as? String).map { "  Patient:          \($0)\n" } ?? ""
-        let patientID = (meta["patientID"]    as? String).map { "  Patient ID:        \($0)\n" } ?? ""
-        let modality = (meta["modality"]      as? String).map { "  Modality:          \($0)\n" } ?? ""
-        let study    = (meta["studyInstanceUID"] as? String).map { "  Study UID:         \($0)\n" } ?? ""
-        let series   = (meta["seriesDescription"] as? String).map { "  Series:            \($0)\n" } ?? ""
+        // Labels are the PS3.6 2026a Table 6-1 attribute names.
+        let patient  = (meta["patientName"]   as? String).map { "  Patient's Name:     \($0)\n" } ?? ""
+        let patientID = (meta["patientID"]    as? String).map { "  Patient ID:         \($0)\n" } ?? ""
+        let modality = (meta["modality"]      as? String).map { "  Modality:           \($0)\n" } ?? ""
+        let study    = (meta["studyInstanceUID"] as? String).map { "  Study Instance UID: \($0)\n" } ?? ""
+        let series   = (meta["seriesDescription"] as? String).map { "  Series Description: \($0)\n" } ?? ""
         let sopInst  = file.dataSet.string(for: .sopInstanceUID) ?? "—"
 
         let psnrLine = psnrVal.map { "  Target PSNR:       \(String(format: "%.1f", $0)) dB\n" } ?? ""
@@ -877,7 +940,7 @@ struct InspectCommand: ParsableCommand {
 
         print("""
             JP3D Volume Document
-            \(patient)\(patientID)\(modality)\(study)\(series)  SOP Instance UID:  \(sopInst)
+            \(patient)\(patientID)\(modality)\(study)\(series)  SOP Instance UID:   \(sopInst)
               Dimensions:        \(rows) × \(columns) × \(frames) (rows × cols × slices)
               Voxel spacing:     \(String(format: "%.4g × %.4g × %.4g", spacingX, spacingY, spacingZ)) mm
               Bits allocated:    \(bitsAlloc)  stored: \(bitsStored)  signed: \(signed)

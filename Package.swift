@@ -399,6 +399,14 @@ let package = Package(
             dependencies: ["dicom-jpip", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-jpipTests"
         ),
+        // dicom-3d: volume geometry, plane names and derived MPR series pinned to PS3.3 /
+        // PS3.16 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
+        .testTarget(
+            name: "dicom-3dTests",
+            dependencies: ["dicom-3d", "DICOMKit", "DICOMCore",
+                           .product(name: "ArgumentParser", package: "swift-argument-parser")],
+            path: "Tests/dicom-3dTests"
+        ),
         // dicom-query / dicom-send: option values and C-STORE status handling
         // pinned to PS3.4 / PS3.7 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(
