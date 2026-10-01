@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table A.33.1-1 modules: Modality LUT (C.11.1), LUT sequences (C.11.6, C.11.8), Display Shutter and Presentation State Shutter (Tables C.7-17a, C.11.12-1), Displayed Area 1C attributes (Table C.10-4), conditional Graphic Filled (Table C.10-5), CIELab layer colour (C.10.7.1.1), Type 2 Content Creator Name (Table 10-12); Compound Graphic Sequence and Text/Line/Fill Style Sequence Macros written with their 1C conditions per Tables C.10-5, C.10-5a/5b/5c (D39, 2026-09-29); Unformatted Text Value control characters per Table C.10-5
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table A.33.1-1 modules: Modality LUT (C.11.1), LUT sequences (C.11.6, C.11.8), Display Shutter and Presentation State Shutter (Tables C.7-17a, C.11.12-1), Displayed Area 1C attributes (Table C.10-4), conditional Graphic Filled (Table C.10-5), CIELab layer colour (C.10.7.1.1), Content Creator's Name Type 3 (Table 10.9.3-1 via Table 10-12, written zero length when unknown; wording D222, 2026-10-01); Compound Graphic Sequence and Text/Line/Fill Style Sequence Macros written with their 1C conditions per Tables C.10-5, C.10-5a/5b/5c (D39, 2026-09-29); Unformatted Text Value control characters per Table C.10-5
 // GrayscalePresentationStateBuilder.swift
 // DICOMKit
 //
@@ -129,7 +129,8 @@ public struct GrayscalePresentationStateBuilder: Sendable {
         if let creationTime = state.presentationCreationTime {
             dataSet.setString(creationTime.dicomString, for: .presentationCreationTime, vr: .TM)
         }
-        // Type 2 (PS3.3 Table 10-12): present, empty when unknown.
+        // Content Creator's Name is Type 3 (PS3.3 2026a Table 10.9.3-1, included by Table 10-12);
+        // written zero length when unknown, which PS3.5 2026a 7.4.5 permits for Type 3.
         dataSet.setString(state.presentationCreatorsName?.dicomString ?? "", for: .contentCreatorName, vr: .PN)
 
         // MARK: Presentation State Relationship

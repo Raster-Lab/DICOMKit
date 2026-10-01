@@ -924,7 +924,7 @@ final class SegmentationLabelmapTests: XCTestCase {
         XCTAssertEqual(dataSet.string(for: .instanceNumber), "3")
         XCTAssertEqual(dataSet.string(for: .contentLabel), "LABELMAP")
         XCTAssertNotNil(dataSet[.contentDescription], "Content Description is Type 2")
-        XCTAssertNotNil(dataSet[.contentCreatorName], "Content Creator's Name is Type 2")
+        XCTAssertNotNil(dataSet[.contentCreatorName], "Content Creator's Name (Type 3, Table 10.9.3-1) is written, zero length when unknown")
         XCTAssertNotNil(dataSet.date(for: .contentDate))
         XCTAssertNotNil(dataSet.time(for: .contentTime))
         XCTAssertEqual(dataSet[.imageType]?.stringValues, ["DERIVED", "PRIMARY"])

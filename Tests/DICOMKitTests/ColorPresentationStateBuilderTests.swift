@@ -107,7 +107,7 @@ final class ColorPresentationStateBuilderTests: XCTestCase {
         XCTAssertNotNil(dataSet[.presentationCreationDate])
         XCTAssertNotNil(dataSet[.presentationCreationTime])
         XCTAssertEqual(dataSet.string(for: .contentLabel), "DOPPLER VIEW")
-        XCTAssertNotNil(dataSet[.contentCreatorName], "Type 2 (Table 10-12)")
+        XCTAssertNotNil(dataSet[.contentCreatorName], "Type 3 (Table 10.9.3-1 via Table 10-12), written zero length when unknown")
 
         let series = try XCTUnwrap(dataSet[.referencedSeriesSequence]?.sequenceItems?.first)
         XCTAssertEqual(series.string(for: .seriesInstanceUID), "1.2.3.4.5.6")

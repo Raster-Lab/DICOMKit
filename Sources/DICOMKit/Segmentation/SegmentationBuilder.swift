@@ -1252,7 +1252,7 @@ extension Segmentation {
         // Segmentation Image Module (Table C.8.20-2)
         dataSet.setStrings(["DERIVED", "PRIMARY"], for: .imageType, vr: .CS)
         // Content Identification Macro (Table 10-12): Instance Number 1, Content Label 1,
-        // Content Description 2, Content Creator's Name 2
+        // Content Description 2; Content Creator's Name 3 (Table 10.9.3-1), written zero length when unknown
         dataSet.setString(String(instanceNumber ?? 1), for: .instanceNumber, vr: .IS)
         dataSet.setString(contentLabel ?? "SEGMENTATION", for: .contentLabel, vr: .CS)
         dataSet.setString(contentDescription ?? "", for: .contentDescription, vr: .LO)
