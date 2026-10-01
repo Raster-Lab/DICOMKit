@@ -23,8 +23,8 @@ struct DICOMGateway: AsyncParsableCommand {
               # Convert DICOM to FHIR ImagingStudy
               dicom-gateway dicom-to-fhir study.dcm --output study.json --resource ImagingStudy
               
-              # Convert FHIR to DICOM
-              dicom-gateway fhir-to-dicom imaging-study.json --output study.dcm
+              # Convert FHIR to DICOM (--template is required, see fhir-to-dicom --help)
+              dicom-gateway fhir-to-dicom imaging-study.json --template template.dcm --output study.dcm
               
               # Batch conversion
               dicom-gateway batch dicom-to-fhir studies/*.dcm --output fhir-resources/
@@ -130,6 +130,12 @@ struct HL7ToDICOM: AsyncParsableCommand {
         discussion: """
             Parse HL7 v2 messages and populate DICOM tags from demographics
             and order information.
+
+            --template is required: an HL7 message carries no image, and without a
+            template the output would claim Secondary Capture Image Storage with no
+            Image Pixel or SC Image Module, which PS3.3 Table A.8-1 makes Mandatory.
+            A template that claims an image Storage SOP Class but has no Pixel Data
+            is refused for the same reason (exit 1).
             """
     )
     
@@ -139,11 +145,16 @@ struct HL7ToDICOM: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Output DICOM file path")
     var output: String
     
-    @Option(name: .long, help: "Template DICOM file to populate")
+    @Option(name: .long, help: "Template DICOM file to populate (required; PS3.3 Table A.8-1)")
     var template: String?
     
     @Flag(name: .shortAndLong, help: "Verbose output")
     var verbose: Bool = false
+
+    func validate() throws {
+        // P-GATEWAY-SC (D104): no image, so no Secondary Capture output without a template.
+        try GatewayOutputRules.requireTemplate(template, command: "hl7-to-dicom")
+    }
     
     mutating func run() async throws {
         guard FileManager.default.fileExists(atPath: input) else {
@@ -172,7 +183,9 @@ struct HL7ToDICOM: AsyncParsableCommand {
             guard FileManager.default.fileExists(atPath: templatePath) else {
                 throw GatewayError.invalidInput("Template file not found: \(templatePath)")
             }
-            templateFile = try DICOMFile.read(from: URL(fileURLWithPath: templatePath))
+            let file = try DICOMFile.read(from: URL(fileURLWithPath: templatePath))
+            try GatewayOutputRules.checkTemplate(file, path: templatePath)
+            templateFile = file
         }
         
         // Convert to DICOM
@@ -276,6 +289,12 @@ struct FHIRToDICOM: AsyncParsableCommand {
         abstract: "Convert FHIR resources to DICOM files",
         discussion: """
             Parse FHIR JSON resources and populate DICOM tags.
+
+            --template is required: a FHIR resource carries no image, and without a
+            template the output would claim Secondary Capture Image Storage with no
+            Image Pixel or SC Image Module, which PS3.3 Table A.8-1 makes Mandatory.
+            A template that claims an image Storage SOP Class but has no Pixel Data
+            is refused for the same reason (exit 1).
             """
     )
     
@@ -285,11 +304,16 @@ struct FHIRToDICOM: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Output DICOM file path")
     var output: String
     
-    @Option(name: .long, help: "Template DICOM file to populate")
+    @Option(name: .long, help: "Template DICOM file to populate (required; PS3.3 Table A.8-1)")
     var template: String?
     
     @Flag(name: .shortAndLong, help: "Verbose output")
     var verbose: Bool = false
+
+    func validate() throws {
+        // P-GATEWAY-SC (D104): no image, so no Secondary Capture output without a template.
+        try GatewayOutputRules.requireTemplate(template, command: "fhir-to-dicom")
+    }
     
     mutating func run() async throws {
         guard FileManager.default.fileExists(atPath: input) else {
@@ -316,7 +340,9 @@ struct FHIRToDICOM: AsyncParsableCommand {
             guard FileManager.default.fileExists(atPath: templatePath) else {
                 throw GatewayError.invalidInput("Template file not found: \(templatePath)")
             }
-            templateFile = try DICOMFile.read(from: URL(fileURLWithPath: templatePath))
+            let file = try DICOMFile.read(from: URL(fileURLWithPath: templatePath))
+            try GatewayOutputRules.checkTemplate(file, path: templatePath)
+            templateFile = file
         }
         
         // Convert to DICOM

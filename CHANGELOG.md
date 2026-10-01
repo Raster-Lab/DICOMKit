@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.bin1` / `.bin2` are deprecated. It is now a struct (`rawValue`, `init?(rawValue:)`, single-string
   `Codable`, `allCases` keep working; an exhaustive `switch` needs a `default`). `dicom-print send
   --film-destination` accepts any `bin-N` / `BIN_N`; the Print SCP accepts any BIN_i on N-CREATE.
+- **`dicom-gateway hl7-to-dicom` / `fhir-to-dicom` require `--template`** (P-GATEWAY-SC, closes D104):
+  without it the output claimed Secondary Capture Image Storage with no Image Pixel and no SC Image Module,
+  both Mandatory in PS3.3 2026a Table A.8-1; it is now refused with exit 1, as is a template that claims
+  an image Storage SOP Class but has no Pixel Data. README and examples updated.
 
 ### Changed — CLI P-items, pixel batch (approved 2026-10-01, DICOM 2026a)
 
