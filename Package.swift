@@ -425,6 +425,14 @@ let package = Package(
             dependencies: ["dicom-xml", "DICOMWeb", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-xmlTests"
         ),
+        // dicom-study / dicom-archive / dicom-export (G2): attribute names, query-key notes, cine
+        // frame rate, Burned In Annotation and the shared render path pinned to PS3.3 / PS3.4 /
+        // PS3.6 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
+        .testTarget(
+            name: "dicom-studyTests",
+            dependencies: ["dicom-study", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-studyTests"
+        ),
         .testTarget(
             name: "dicom-printTests",
             dependencies: [

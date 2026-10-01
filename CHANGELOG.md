@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-study, dicom-archive, dicom-export verified against DICOM 2026a (2026-10-01)
+
+- **dicom-study** help names what `organize --pattern descriptive` is built from (Patient's Name,
+  Study Description, Study Instance UID, Series Number, Modality, Series Description), the grouping keys
+  (Study / Series Instance UID, the PS3.4 C.6.1.1 unique keys), the count options as Number of Study
+  Related Series / Number of Series Related Instances, and the Instance Number (0020,0013) gap check as a
+  heuristic (PS3.3 Table C.7-9 does not require consecutive numbers). README synced. New `dicom-studyTests`.
+
 ### Fixed — dicom-json verified against DICOM 2026a (2026-10-01)
 
 - **dicom-json**: an attribute with an empty Value Field is now kept as `{"vr": ...}` by default,

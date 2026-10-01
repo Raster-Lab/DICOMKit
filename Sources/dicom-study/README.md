@@ -37,9 +37,10 @@ dicom-study organize input_dir/ --output organized/ --copy
 dicom-study organize input_dir/ --output organized/ --verbose
 ```
 
-**Naming Patterns:**
-- `descriptive`: Creates readable directory names like `PatientName_StudyDescription_UID`
-- `uid`: Uses UIDs directly for directory names
+**Naming Patterns** (files are grouped by Study Instance UID (0020,000D) and Series Instance UID
+(0020,000E), the Study and Series unique keys of PS3.4 C.6.1.1):
+- `descriptive`: `<Patient's Name>_<Study Description>_<last 8 characters of Study Instance UID>/<Series Number>_<Modality>_<Series Description>/<n>.dcm`
+- `uid`: `<Study Instance UID>/<Series Instance UID>/<n>.dcm`
 
 ### Summary Command
 
@@ -89,7 +90,9 @@ dicom-study check study_dir/ --verbose
 **Validation:**
 - Series count validation
 - Instance count validation per series
-- Missing slice detection (gaps in instance numbers)
+- Missing slice detection: gaps in Instance Number (0020,0013) within a series. This is a heuristic —
+  PS3.3 Table C.7-9 defines Instance Number as "A number that identifies this image" (Type 2) and
+  does not require consecutive numbering.
 
 ### Stats Command
 

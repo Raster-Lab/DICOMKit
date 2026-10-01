@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — thin adapters over DICOMKit StudyScanner / StudyReport; the file itself carries no DICOM-standard data (paths, error text, printing)
 import Foundation
 import DICOMCore
 import DICOMKit
