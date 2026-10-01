@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, study / archive / validator batch (2026-10-01, DICOM 2026a)
+
+- **Study engine labels are PS3.6 names** (D116): `StudyReport.renderSummary` (table) and `renderStats` (text),
+  used by dicom-study and DICOMStudio, print Study Instance UID, Patient's Name, Study Description, Series Number,
+  Series Description, Number of Study Related Series, Number of Study Related Instances and Number of Series
+  Related Instances (PS3.6 2026a Table 6-1) instead of "Study UID", "Patient Name", "Description", "Number",
+  "Series Count", "Total Instances", "Instances".
+- **`organize --pattern descriptive` gives every series (and study) its own folder** (D117): a descriptive name
+  shared by two series (Series Number is Type 2 in PS3.3 2026a Table C.7-5a, so absent numbers all became "0") or
+  two studies is suffixed with the full Series (Study) Instance UID; before, the second copy failed "already exists".
+- **Files without Series Instance UID / SOP Instance UID are reported, not merged** (D118): both are Type 1
+  (PS3.3 Tables C.7-5a, C.12-1). New `StudyScanner.scan(at:)` returns the studies and a `skipped` list
+  (`StudySkippedFile`: path + reason); `scanStudies(at:)` is unchanged in signature and leaves those files out
+  instead of grouping them under "UNKNOWN". dicom-study prints one `warning: skipped …` line per file on stderr;
+  `StudyOrganizer` logs `Missing Series Instance UID (0020,000E)` and leaves the file in place instead of filing it
+  under `UNKNOWN_SERIES`.
+
 ### Fixed — deferred rows, network batch (2026-10-01, DICOM 2026a)
 
 - **DIMSE-N, Modality Worklist, MPPS and Print status names** (D73, D79, D82, D91): `DIMSEServiceStatusText` now
