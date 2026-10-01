@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — the 25 codec/syntax help rows (alias → UID → name) diffed by script against PS3.6 2026a Table A-1 and the engine codec table: 24 match, 1 fixed (.4.110 is "JPEG XL Lossless", D9); JPEG Extended 8/12-bit per PS3.5 2026a Table 8.2.1-1; the cited PS3.5 A.4.4 / A.4.12 section titles confirmed
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -59,7 +60,7 @@ extension DICOMCompress {
                   jpeg-ls, jls              JPEG-LS Near-Lossless
                   jpeg-xl, jpeg-xl-lossy    JPEG XL, lossy              (.112)
                   jpeg-xl-lossless          JPEG XL, lossless           (.112)
-                  jpeg-xl-lossless-only     JPEG XL Lossless Only       (.110)
+                  jpeg-xl-lossless-only     JPEG XL Lossless            (.110)
                   rle                       RLE Lossless
                   deflate                   Deflated Explicit VR Little Endian
                   explicit-le               Explicit VR Little Endian
