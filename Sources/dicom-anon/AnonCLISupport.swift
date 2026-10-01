@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — option names diffed against the 12 Options of PS3.15 2026a E.3 and the Table E.1-1 Option columns (9 offered here: Retain UIDs, Device Identity, Institution Identity, Patient Characteristics, Longitudinal Temporal Information With Full Dates / With Modified Dates (E.3.6, mutually exclusive), Clean Descriptors, Retain Safe Private (E.3.10), Clean Graphics (E.3.3); Clean Pixel Data in main.swift; Clean Structured Content and Clean Recognizable Visual Features not offered); action labels are the 6 PS3.15 2026a Table E.1-1a single codes (K not listed: unchanged); names from PS3.6 2026a Table 6-1 via DataElementDictionary
+// NEMA-verified: 2026a, checked 2026-10-01 — option names diffed against the 12 Options of PS3.15 2026a E.3 and the Table E.1-1 Option columns (11 offered here: Retain UIDs, Device Identity, Institution Identity, Patient Characteristics, Longitudinal Temporal Information With Full Dates / With Modified Dates (E.3.6, mutually exclusive), Clean Descriptors, Retain Safe Private (E.3.10), Clean Graphics (E.3.3), Clean Structured Content (E.3.4, Table E.3.4-1), Clean Recognizable Visual Features (E.3.2, operator regions required); Clean Pixel Data in main.swift); action labels are the 6 PS3.15 2026a Table E.1-1a single codes (K not listed: unchanged); names from PS3.6 2026a Table 6-1 via DataElementDictionary
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -20,6 +20,8 @@ enum AnonCLI {
         var cleanDescriptors = false
         var retainSafePrivate = false
         var cleanGraphics = false
+        var cleanStructuredContent = false
+        var cleanRecognizableVisualFeatures = false
 
         /// Every flag that is set, by its command-line spelling.
         var setFlags: [String] {
@@ -28,7 +30,8 @@ enum AnonCLI {
              ("--retain-characteristics", retainCharacteristics), ("--retain-device", retainDevice),
              ("--retain-institution", retainInstitution), ("--retain-uids", retainUids),
              ("--clean-descriptors", cleanDescriptors), ("--retain-safe-private", retainSafePrivate),
-             ("--clean-graphics", cleanGraphics)].filter(\.1).map(\.0)
+             ("--clean-graphics", cleanGraphics), ("--clean-structured-content", cleanStructuredContent),
+             ("--clean-recognizable-visual-features", cleanRecognizableVisualFeatures)].filter(\.1).map(\.0)
         }
     }
 
@@ -90,8 +93,10 @@ enum AnonCLI {
     ///   `--shift-dates` is how the dates are modified, so it needs the Modified Dates
     ///   option and is meaningless with Full Dates.
     /// - `--keep` is applied only by the legacy profiles.
+    /// - PS3.15 E.3.2: recognizable visual features are not detected automatically, so
+    ///   `--clean-recognizable-visual-features` needs the operator's `--redact-region`s.
     static func validate(profile: String, flags: PS315Flags, shiftDates: Int?,
-                         regenerateUids: Bool, keep: [String]) throws {
+                         regenerateUids: Bool, keep: [String], redactRegions: [String] = []) throws {
         guard let resolved = resolveProfile(profile) else {
             throw ValidationError("Unknown --profile '\(profile)': use ps315 (or its alias basic), "
                 + "or the deprecated legacy-basic, legacy-clinical-trial, legacy-research")
@@ -125,6 +130,30 @@ enum AnonCLI {
             throw ValidationError(
                 "--keep is not applied by --profile ps315; select a PS3.15 Option (--retain-*) instead")
         }
+        if flags.cleanRecognizableVisualFeatures && redactRegions.isEmpty {
+            throw ValidationError(visualFeaturesNeedRegions)
+        }
+    }
+
+    /// Refusal of `--clean-recognizable-visual-features` without a region (PS3.15 E.3.2).
+    static let visualFeaturesNeedRegions =
+        "--clean-recognizable-visual-features (PS3.15 E.3.2 Clean Recognizable Visual Features Option) "
+        + "needs one or more --redact-region x,y,width,height: recognizable visual features are not "
+        + "detected automatically (E.3.2: \"This may require intervention of or approval by a human "
+        + "operator\"), and Recognizable Visual Features (0028,0302) = NO with code 113102 is recorded "
+        + "only when the operator's regions have been blanked"
+
+    /// Verbose report of the Clean Recognizable Visual Features pass (PS3.15 E.3.2).
+    static func visualFeaturesLines(outcome: PixelRedactor.Outcome) -> String {
+        var out = "Cleaned recognizable visual features (PS3.15 E.3.2): \(outcome.note)\n"
+        for r in outcome.regions {
+            out += "  blanked (\(r.x),\(r.y)) \(r.width)x\(r.height)"
+            out += outcome.frameCount > 1 ? " on all \(outcome.frameCount) frames\n" : "\n"
+        }
+        if outcome.removedIconImage { out += "  removed Icon Image Sequence (derived before cleaning)\n" }
+        out += "  recorded DCM 113102 Clean Recognizable Visual Features Option; Recognizable Visual Features = NO\n"
+        out += "  ⚠️  Verify visually (and in any 3D reconstruction of the series) that recognition is prevented.\n"
+        return out
     }
 
     /// The engine options for `--profile ps315`.
@@ -138,7 +167,8 @@ enum AnonCLI {
             cleanDescriptors: flags.cleanDescriptors,
             dateOffsetDays: shiftDates,
             retainSafePrivate: flags.retainSafePrivate,
-            cleanGraphics: flags.cleanGraphics)
+            cleanGraphics: flags.cleanGraphics,
+            cleanStructuredContent: flags.cleanStructuredContent)
     }
 
     /// Stderr notice for a `--profile` value: the deprecated legacy lists (which are

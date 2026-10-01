@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — --profile and the Option flags against PS3.15 2026a E.1-E.3 and the 12 Option columns of Table E.1-1 (10 Options offered — Retain Safe Private and Clean Graphics added 2026-10-01, D159 — 2 not offered: Clean Structured Content, Clean Recognizable Visual Features); on a fixture of the 647 data-set rows of Table E.1-1, --profile ps315 matches 647 (5 SQ D rows kept with scrubbed items) (the default; basic is its alias, P-ANON-PROFILE) and the deprecated legacy-basic 11, legacy-clinical-trial 15, legacy-research 1 (documented as not PS3.15); --retain-dates deprecated (P-ANON-RETAIN-DATES, E.3.6); recorded codes match PS3.16 2026a CID 7050 (13 rows); (0002,0003) follows (0008,0018) per PS3.10 2026a 7.1
+// NEMA-verified: 2026a, checked 2026-10-01 — --profile and the Option flags against PS3.15 2026a E.1-E.3 and the 12 Option columns of Table E.1-1 (all 12 Options offered — Retain Safe Private and Clean Graphics added 2026-10-01, Clean Structured Content (Table E.3.4-1) and Clean Recognizable Visual Features (E.3.2, operator --redact-region required, exit 1 without) added 2026-10-01, D159); on a fixture of the 647 data-set rows of Table E.1-1, --profile ps315 matches 647 (5 SQ D rows kept with scrubbed items) (the default; basic is its alias, P-ANON-PROFILE) and the deprecated legacy-basic 11, legacy-clinical-trial 15, legacy-research 1 (documented as not PS3.15); --retain-dates deprecated (P-ANON-RETAIN-DATES, E.3.6); recorded codes match PS3.16 2026a CID 7050 (13 rows); (0002,0003) follows (0008,0018) per PS3.10 2026a 7.1
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -107,6 +107,21 @@ struct DICOMAnon: ParsableCommand {
     var cleanGraphics: Bool = false
 
     @Flag(name: .long, help: """
+        PS3.15 Clean Structured Content Option (--profile ps315): keep Content Sequence \
+        (0040,A730), Acquisition Context Sequence and Specimen Preparation Sequence; each \
+        Content Item gets the action PS3.15 Table E.3.4-1 gives its Concept Name (removed, \
+        dummy, kept or cleaned) and the text kept is cleaned (E.3.4)
+        """)
+    var cleanStructuredContent: Bool = false
+
+    @Flag(name: .long, help: """
+        PS3.15 Clean Recognizable Visual Features Option (--profile ps315): blank the \
+        --redact-region areas (required; not detected automatically) on every frame, set \
+        Recognizable Visual Features (0028,0302) = NO and record code 113102 (E.3.2)
+        """)
+    var cleanRecognizableVisualFeatures: Bool = false
+
+    @Flag(name: .long, help: """
         PS3.15: Clean Pixel Data — blank burned-in identifiers out of the image itself. \
         Chooses the region automatically (declared clinical region, else device template) \
         and REFUSES rather than guessing when it cannot. Records code 113101 and sets \
@@ -116,7 +131,8 @@ struct DICOMAnon: ParsableCommand {
 
     @Option(name: .long, help: """
         Region to blank as x,y,width,height (repeatable). Implies --clean-pixel-data \
-        and overrides automatic region selection.
+        and overrides automatic region selection; with --clean-recognizable-visual-features \
+        the regions are the recognizable features to blank, and imply nothing else.
         """)
     var redactRegion: [String] = []
 
@@ -181,7 +197,7 @@ struct DICOMAnon: ParsableCommand {
         // Parse profile
         let anonProfile = try parseProfile()
         try AnonCLI.validate(profile: profile, flags: ps315Flags, shiftDates: shiftDates,
-                             regenerateUids: regenerateUids, keep: keep)
+                             regenerateUids: regenerateUids, keep: keep, redactRegions: redactRegion)
         if let notice = AnonCLI.legacyProfileNotice(profile) {
             FileHandle.standardError.write(Data((notice + "\n").utf8))
         }
@@ -250,7 +266,10 @@ struct DICOMAnon: ParsableCommand {
             if isPS315 {
                 // The PS3.15 engine keeps no change log of its own.
                 let text = AnonCLI.auditLogText(
-                    profileDescription: ps315Options.methodCodes.map(\.meaning),
+                    profileDescription: ps315Options.methodCodes.map(\.meaning)
+                        + (cleanRecognizableVisualFeatures
+                           ? [ConfidentialityProfile.DeidentificationMethodCode.cleanRecognizableVisualFeaturesOption.meaning]
+                           : []),
                     files: reports, generated: Date())
                 try text.write(to: auditURL, atomically: true, encoding: .utf8)
             } else {
@@ -275,7 +294,9 @@ struct DICOMAnon: ParsableCommand {
             retainModifiedDates: retainModifiedDates, retainCharacteristics: retainCharacteristics,
             retainDevice: retainDevice, retainInstitution: retainInstitution,
             retainUids: retainUids, cleanDescriptors: cleanDescriptors,
-            retainSafePrivate: retainSafePrivate, cleanGraphics: cleanGraphics)
+            retainSafePrivate: retainSafePrivate, cleanGraphics: cleanGraphics,
+            cleanStructuredContent: cleanStructuredContent,
+            cleanRecognizableVisualFeatures: cleanRecognizableVisualFeatures)
     }
 
     private var ps315Options: ConfidentialityProfile.Options {
@@ -405,12 +426,14 @@ struct DICOMAnon: ParsableCommand {
         // de-identification removes; planning afterwards would see a scrubbed data set
         // and match nothing. Both CTP and Presidio document this same ordering
         // dependency, so the order here is a correctness requirement, not a preference.
-        if cleanPixelData || !redactRegion.isEmpty {
-            let editor = PixelEditor(verbose: false)
-            let explicit = try redactRegion.map { spec -> PixelRedactionPlan.Region in
-                let r = try editor.parseRegion(spec)
-                return PixelRedactionPlan.Region(x: r.x, y: r.y, width: r.width, height: r.height)
-            }
+        let editor = PixelEditor(verbose: false)
+        let explicit = try redactRegion.map { spec -> PixelRedactionPlan.Region in
+            let r = try editor.parseRegion(spec)
+            return PixelRedactionPlan.Region(x: r.x, y: r.y, width: r.width, height: r.height)
+        }
+        // With --clean-recognizable-visual-features the regions are the features to blank
+        // (PS3.15 E.3.2); they claim nothing about burned-in text unless --clean-pixel-data.
+        if cleanPixelData || (!redactRegion.isEmpty && !cleanRecognizableVisualFeatures) {
             let plan = PixelRedactionPlan.plan(for: dicomFile.dataSet, explicitRegions: explicit)
             if let (redacted, outcome) = try PixelRedactor().redact(
                 fileData: fileData, plan: plan, fillValue: redactFill) {
@@ -419,6 +442,15 @@ struct DICOMAnon: ParsableCommand {
                 if verbose {
                     print(AnonConsole.pixelRedactionLines(outcome: outcome), terminator: "")
                 }
+            }
+        }
+        if cleanRecognizableVisualFeatures {
+            let (redacted, outcome) = try PixelRedactor().redactRecognizableVisualFeatures(
+                fileData: fileData, regions: explicit, fillValue: redactFill)
+            fileData = redacted
+            dicomFile = try DICOMFile.read(from: redacted, force: force)
+            if verbose {
+                print(AnonCLI.visualFeaturesLines(outcome: outcome), terminator: "")
             }
         }
 

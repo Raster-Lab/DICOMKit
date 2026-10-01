@@ -219,3 +219,136 @@ final class ConfidentialityOptionsTests: XCTestCase {
         XCTAssertEqual(out.dataSet.string(for: .studyInstanceUID), "1.2.3")
     }
 }
+
+// MARK: - D159 Clean Structured Content (PS3.15 2026a E.3.4, Table E.3.4-1)
+
+extension ConfidentialityOptionsTests {
+
+    /// Table E.3.4-1 rows, dumped by Scripts/generate_confidentiality_profile.py: 211 rows,
+    /// plus the SRT / SNM3 / 99SDM SNOMED IDs (PS3.16 Table O-1) of its 11 SCT rows.
+    func testStructuredContentTableIsE341() {
+        let rows = ConfidentialityProfile.structuredContentRows
+        XCTAssertEqual(rows.count, 211 + 11 * 3)
+        XCTAssertEqual(rows["DCM|121022|TEXT"], .init(meaning: "Accession Number", basic: "X"))
+        XCTAssertEqual(rows["DCM|121008|PNAME"], .init(meaning: "Person Observer Name", basic: "D"))
+        XCTAssertEqual(rows["DCM|126201|DATE"], .init(meaning: "Acquisition Date", basic: "X", fullDates: "K", modifiedDates: "C"))
+        XCTAssertEqual(rows["DCM|121080|IMAGE"], .init(meaning: "Best illustration of finding", basic: "X", uids: "K"))
+        XCTAssertEqual(rows["NCDR|76|PNAME"], .init(meaning: "Catheterization Operator", basic: "D"), "NCDR [2.0b]: designator NCDR")
+        // SCT 371524004 Clinical Report = SNOMED ID R-42B89 (PS3.16 2026a Table O-1).
+        XCTAssertEqual(rows["SCT|371524004|TEXT"], .init(meaning: "Clinical Report", basic: "X", cleanDescriptors: "C"))
+        for designator in ["SRT", "SNM3", "99SDM"] {
+            XCTAssertEqual(rows["\(designator)|R-42B89|TEXT"]?.basic, "X")
+        }
+    }
+
+    private func contentItem(_ valueType: String, _ designator: String, _ code: String, _ meaning: String,
+                             value: (Tag, VR, String)? = nil, children: [SequenceItem] = []) -> SequenceItem {
+        var concept = DataSet()
+        concept.setString(code, for: .codeValue, vr: .SH)
+        concept.setString(designator, for: .codingSchemeDesignator, vr: .SH)
+        concept.setString(meaning, for: .codeMeaning, vr: .LO)
+        var item = DataSet()
+        item.setString("CONTAINS", for: Tag(group: 0x0040, element: 0xA010), vr: .CS)
+        item.setString(valueType, for: .valueType, vr: .CS)
+        item.setSequence([SequenceItem(elements: concept.tags.compactMap { concept[$0] })], for: .conceptNameCodeSequence)
+        if let (tag, vr, text) = value { item.setString(text, for: tag, vr: vr) }
+        if !children.isEmpty { item.setSequence(children, for: .contentSequence) }
+        return SequenceItem(elements: item.tags.compactMap { item[$0] })
+    }
+
+    private func srDataSet() -> DataSet {
+        var ds = dataSet()
+        let date = Tag(group: 0x0040, element: 0xA121)
+        let observer = contentItem("PNAME", "DCM", "121008", "Person Observer Name",
+                                   value: (.personName, .PN, "SMITH^ANNA"))
+        ds.setSequence([
+            contentItem("TEXT", "DCM", "121022", "Accession Number", value: (.textValue, .UT, "ACC777")),
+            contentItem("TEXT", "DCM", "121106", "Comment", value: (.textValue, .UT, "Reviewed with John Doe, ACC777")),
+            contentItem("DATE", "DCM", "126201", "Acquisition Date", value: (date, .DA, "20240102")),
+            contentItem("TEXT", "DCM", "121073", "Impression", value: (.textValue, .UT, "Stable; John Doe to follow up")),
+            contentItem("TEXT", "SRT", "R-42B89", "Clinical report", value: (.textValue, .UT, "old-style code")),
+            contentItem("CONTAINER", "DCM", "121064", "Current Procedure Descriptions", children: [observer]),
+        ], for: .contentSequence)
+        return ds
+    }
+
+    private func content(_ out: DataSet) -> [DataSet] {
+        (out.sequence(for: .contentSequence) ?? []).map { DataSet(elements: $0.allElements) }
+    }
+
+    private func conceptCode(_ item: DataSet) -> String? {
+        item.sequence(for: .conceptNameCodeSequence)?.first?.string(for: .codeValue)
+    }
+
+    /// E.3.4 with Table E.3.4-1: X Content Items go (Accession Number, Comment, Acquisition
+    /// Date, and the retired SRT code of Clinical Report), D replaces the value (Person
+    /// Observer Name), an unlisted concept is kept with its text cleaned; 113104 recorded.
+    func testCleanStructuredContentAppliesTableE341() throws {
+        var engine = ConfidentialityEngine(options: .init(cleanStructuredContent: true))
+        let (out, changed) = engine.deidentify(srDataSet())
+        let items = content(out)
+        XCTAssertEqual(items.map(conceptCode), ["121073", "121064"])
+        XCTAssertEqual(items[0].string(for: .textValue), "Stable; to follow up", "unlisted: kept, text cleaned")
+        let observer = try XCTUnwrap(items[1].sequence(for: .contentSequence)?.first)
+        XCTAssertEqual(observer.string(for: .personName), "ANONYMOUS", "Person Observer Name: D")
+        XCTAssertTrue(changed.contains(.contentSequence))
+        let codes = (out.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []).compactMap { $0.string(for: .codeValue) }
+        XCTAssertEqual(codes, ["113100", "113104"])
+        XCTAssertEqual(out.string(for: Tag(group: 0x0012, element: 0x0063))?.components(separatedBy: "\\").last, "Clean Structured Content Option")
+    }
+
+    /// The option columns of Table E.3.4-1: Clean Descriptors cleans Comment (C), Full Dates
+    /// keeps Acquisition Date (K), Modified Dates shifts it (C).
+    func testCleanStructuredContentOptionColumns() throws {
+        let date = Tag(group: 0x0040, element: 0xA121)
+        var descriptors = ConfidentialityEngine(options: .init(cleanDescriptors: true, cleanStructuredContent: true))
+        let d = content(descriptors.deidentify(srDataSet()).0)
+        XCTAssertEqual(d.first { conceptCode($0) == "121106" }?.string(for: .textValue), "Reviewed with ,")
+        XCTAssertNil(d.first { conceptCode($0) == "121022" }, "Accession Number has no option column: X")
+
+        var full = ConfidentialityEngine(options: .init(retainLongitudinalTemporal: true, cleanStructuredContent: true))
+        XCTAssertEqual(content(full.deidentify(srDataSet()).0).first { conceptCode($0) == "126201" }?.string(for: date), "20240102")
+
+        var modified = ConfidentialityEngine(options: .init(retainLongitudinalTemporal: true, dateOffsetDays: 10,
+                                                            cleanStructuredContent: true))
+        XCTAssertEqual(content(modified.deidentify(srDataSet()).0).first { conceptCode($0) == "126201" }?.string(for: date), "20240112")
+    }
+
+    /// Without the Option the Content Sequence gets its Table E.1-1 Basic action (D: kept with
+    /// its Items processed) and no 113104 is recorded.
+    func testWithoutCleanStructuredContentNoContentItemIsRemoved() {
+        var engine = ConfidentialityEngine()
+        let (out, _) = engine.deidentify(srDataSet())
+        XCTAssertEqual(content(out).count, 6)
+        let codes = (out.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []).compactMap { $0.string(for: .codeValue) }
+        XCTAssertEqual(codes, ["113100"])
+    }
+
+    /// Acquisition Context Sequence (0040,0555) Items are Content Items too (E.3.4).
+    func testCleanStructuredContentCoversAcquisitionContext() {
+        var ds = dataSet()
+        ds.setSequence([contentItem("TEXT", "DCM", "121022", "Accession Number", value: (.textValue, .UT, "ACC777")),
+                        contentItem("TEXT", "DCM", "121073", "Impression", value: (.textValue, .UT, "ok"))],
+                       for: Tag(group: 0x0040, element: 0x0555))
+        var engine = ConfidentialityEngine(options: .init(cleanStructuredContent: true))
+        let out = engine.deidentify(ds).0
+        XCTAssertEqual(out.sequence(for: Tag(group: 0x0040, element: 0x0555))?.count, 1)
+        var basic = ConfidentialityEngine()
+        XCTAssertNil(basic.deidentify(ds).0[Tag(group: 0x0040, element: 0x0555)], "Table E.1-1 basic X/Z: X")
+    }
+
+    /// The engine keeps the 113102 Item and (0028,0302) NO written by the Clean Recognizable
+    /// Visual Features pass of PixelRedactor, and names it in (0012,0063) (E.3.2, D160).
+    func testEngineKeepsTheRecognizableVisualFeaturesRecord() {
+        var ds = dataSet()
+        ds.setString("NO", for: .recognizableVisualFeatures, vr: .CS)
+        ds.setSequence([ConfidentialityProfile.DeidentificationMethodCode.cleanRecognizableVisualFeaturesOption.sequenceItem],
+                       for: Tag(group: 0x0012, element: 0x0064))
+        var engine = ConfidentialityEngine()
+        let out = engine.deidentify(ds).0
+        XCTAssertEqual(out.string(for: .recognizableVisualFeatures), "NO")
+        let codes = (out.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []).compactMap { $0.string(for: .codeValue) }
+        XCTAssertEqual(codes, ["113100", "113102"])
+        XCTAssertEqual(out.string(for: Tag(group: 0x0012, element: 0x0063))?.components(separatedBy: "\\").last, "Clean Recognizable Visual Features Option")
+    }
+}

@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-10-01 — C (Table E.1-1a) cleans text per E.3.5 instead of keeping it verbatim (D158); Modified Dates shifts DA and the DT date part by whole days, keeps TM, and gives the 3 non-date rows their Basic action (E.3.6, D157); (0028,0303) REMOVED / UNMODIFIED / MODIFIED per E.2 / E.3.6 and PS3.3 Table C.7-1 (D161); 113100 is the first Item of (0012,0064) and (0012,0063) names every Item, including 113101 from pixel cleaning (D160); Retain Safe Private keeps the Table E.3.10-1 attributes and (0008,0300) SAFE / Nonidentifying elements with their Private Creators and applies (0008,0307) D/Z/X/U (E.3.10), Clean Graphics cleans the text of a C sequence (E.3.3) (D159)
+// NEMA-verified: 2026a, checked 2026-10-01 — Clean Structured Content (PS3.15 2026a E.3.4): the Items of Content Sequence (0040,A730), Acquisition Context Sequence (0040,0555) and Specimen Preparation Step Content Item Sequence (0040,0612) inside a cleaned (C) Sequence get the Table E.3.4-1 action of their Concept Name and Value Type (211 rows, retired SNOMED codes recognised): X removes the Content Item with its children, D replaces its value with a dummy of the Value Type, K keeps its value, C cleans its text or shifts its date (Modified Dates); the values removed join the text cleaner (D159)
 // NEMA-verified: 2026a, checked 2026-09-30 — applies PS3.15 2026a Table E.1-1 in full (D69): the pattern rows (curve data 50xx, overlay data and comments 60xx,3000/4000, private groups) are X; Z on SQ is an empty sequence; D is a non-empty value consistent with the VR (sequence kept scrubbed, UID mapped, binary zero bytes) (PS3.15 E.1.1)
 // NEMA-verified: 2026a, checked 2026-09-29 — applies the PS3.15 2026a Table E.1-1 actions; records (0012,0062) YES, (0012,0063) LO 1-n and (0012,0064) SQ of CID 7050 codes per PS3.15 E.1.1 and PS3.3 Table C.7-1; VRs per PS3.6 Table 6-1
 import Foundation
@@ -154,10 +155,20 @@ public struct ConfidentialityEngine {
             // Recurse into sequences first (nested identifiers), keeping the element.
             if let items = element.sequenceItems {
                 let innerCleaning = cleaning || effective == .clean
-                let scrubbedItems = items.map { item -> SequenceItem in
+                // Clean Structured Content (PS3.15 E.3.4): the Items of a cleaned Sequence of
+                // Content Items get the Table E.3.4-1 action of their Concept Name (D159).
+                let contentItems = options.cleanStructuredContent && innerCleaning
+                    && Self.contentItemSequences.contains(tag)
+                let scrubbedItems = items.compactMap { item -> SequenceItem? in
+                    let itemAction = contentItems
+                        ? ConfidentialityProfile.contentItemAction(for: item, options: options) : nil
+                    if itemAction == .remove || itemAction == .removePreferred { return nil }
                     var itemSet = DataSet(elements: item.allElements)
                     var inner: [Tag] = []
                     itemSet = apply(to: itemSet, changed: &inner, isRoot: false, cleaning: innerCleaning)
+                    if let itemAction {
+                        applyContentItemAction(itemAction, original: DataSet(elements: item.allElements), to: &itemSet)
+                    }
                     return SequenceItem(elements: itemSet.tags.compactMap { itemSet[$0] })
                 }
                 out.setSequence(scrubbedItems, for: tag)
@@ -209,10 +220,10 @@ public struct ConfidentialityEngine {
                 if element.vr == .SQ {
                     let items = out.sequence(for: tag) ?? []
                     let cleaned = items.map(cleanText(in:))
-                    if !Self.sameItems(cleaned, items) {
-                        out.setSequence(cleaned, for: tag)
-                        if isRoot { changed.append(tag) }
-                    }
+                    if !Self.sameItems(cleaned, items) { out.setSequence(cleaned, for: tag) }
+                    // Reported when the Items differ from the source (removed Content Items
+                    // and dummy values included), not only when the text cleaning changed them.
+                    if isRoot, !Self.sameItems(cleaned, element.sequenceItems ?? []) { changed.append(tag) }
                     continue
                 }
                 if Self.cleanableVRs.contains(element.vr) {
@@ -384,6 +395,112 @@ public struct ConfidentialityEngine {
         return true
     }
 
+    // MARK: - Clean Structured Content Option (PS3.15 2026a E.3.4, D159)
+
+    /// Sequences whose Items are Content Items (PS3.3 2026a Table C.17-6 Document Relationship
+    /// Macro, Table 10-2 Content Item Macro): the Content Sequence of an SR document and of a
+    /// Content Item, Acquisition
+    /// Context Sequence, and Specimen Preparation Step Content Item Sequence (the Items of
+    /// Specimen Preparation Sequence) (PS3.15 2026a E.3.4).
+    static let contentItemSequences: Set<Tag> = [
+        .contentSequence,                       // (0040,A730)
+        Tag(group: 0x0040, element: 0x0555),    // Acquisition Context Sequence
+        Tag(group: 0x0040, element: 0x0612),    // Specimen Preparation Step Content Item Sequence
+    ]
+
+    /// The attributes that hold a Content Item's value, by Value Type (PS3.3 2026a Table C.17-5
+    /// Document Content Macro, Table 10-2 Content Item Macro, Table C.18.1-1): what Table E.3.4-1 acts on when it keeps (K), cleans (C) or replaces (D)
+    /// the value of a Content Item.
+    static func contentItemValueTags(valueType: String) -> [Tag] {
+        switch valueType {
+        case "TEXT": return [.textValue]
+        case "DATE": return [Tag(group: 0x0040, element: 0xA121)]
+        case "TIME": return [Tag(group: 0x0040, element: 0xA122)]
+        case "DATETIME": return [Tag(group: 0x0040, element: 0xA120)]
+        case "PNAME": return [.personName]
+        case "UIDREF": return [Tag(group: 0x0040, element: 0xA124)]
+        case "NUM":  // SR: Measured Value Sequence (Table C.18.1-1); Content Item Macro: the values themselves
+            return [Tag(group: 0x0040, element: 0xA300), Tag(group: 0x0040, element: 0xA301),
+                    Tag(group: 0x0040, element: 0xA30A), Tag(group: 0x0040, element: 0xA161),
+                    Tag(group: 0x0040, element: 0xA162), Tag(group: 0x0040, element: 0xA163),
+                    Tag(group: 0x0040, element: 0x08EA)]
+        case "CODE": return [Tag(group: 0x0040, element: 0xA168)]
+        case "IMAGE", "COMPOSITE", "WAVEFORM": return [.referencedSOPSequence]
+        default: return []
+        }
+    }
+
+    /// Applies a Content Item's Table E.3.4-1 action (not X, which drops the Item) to the
+    /// Item after Table E.1-1 has processed its attributes:
+    /// - K: its value attributes are kept as they were in the source;
+    /// - C: TEXT cleaned (E.3.5 manner, ``DescriptorCleaner``); DATE and DATETIME shifted by
+    ///   the Modified Dates offset; TIME kept (the time of day of a date shifted by whole days);
+    /// - D (Z, Z/D): TEXT, DATE, TIME, DATETIME and PNAME get a dummy value of the VR, UIDREF a
+    ///   UID mapped consistently; a reference (IMAGE, COMPOSITE, WAVEFORM) keeps its Referenced
+    ///   SOP Sequence with the UIDs Table E.1-1 replaces (U) replaced.
+    private mutating func applyContentItemAction(_ action: ConfidentialityProfile.Action,
+                                                 original: DataSet, to item: inout DataSet) {
+        let valueType = original.string(for: .valueType)?.trimmingCharacters(in: .whitespaces).uppercased() ?? ""
+        for tag in Self.contentItemValueTags(valueType: valueType) {
+            guard let source = original[tag] else { continue }
+            switch action {
+            case .keep:
+                item[tag] = source
+            case .clean:
+                switch valueType {
+                case "TEXT":
+                    item[tag] = cleanedText(of: source) ?? source
+                case "DATE", "DATETIME":
+                    guard let days = options.dateOffsetDays, let value = original.string(for: tag) else {
+                        item[tag] = source
+                        continue
+                    }
+                    let shifted = valueType == "DATE" ? Self.shiftDICOMDate(value, byDays: days)
+                                                      : Self.shiftDICOMDateTime(value, byDays: days)
+                    if let shifted { item.setString(shifted, for: tag, vr: source.vr) }
+                    else { Self.setZeroLength(tag, vr: source.vr, in: &item) }
+                default:
+                    item[tag] = source
+                }
+            case .replaceDummy, .zero, .zeroOrDummy:
+                switch source.vr {
+                case .UI:
+                    if let uid = original.string(for: tag) { item.setString(mappedUID(uid), for: tag, vr: .UI) }
+                case .SQ:
+                    break  // a reference: its Items were processed by Table E.1-1 (UIDs replaced)
+                default:
+                    item.setString(dummyValue(for: source.vr), for: tag, vr: source.vr)
+                }
+            case .replaceUID:
+                if let uid = original.string(for: tag), source.vr == .UI {
+                    item.setString(mappedUID(uid), for: tag, vr: .UI)
+                }
+            case .remove, .removePreferred:
+                break  // the caller drops the Item
+            }
+        }
+    }
+
+    /// The text, name, date and UID values of a Content Item (and, when `recursive`, of the
+    /// Content Items below it), for the text cleaner: values a Content Item removed or
+    /// replaced by the Clean Structured Content Option are removed from the text kept.
+    static func contentItemValues(in item: SequenceItem, recursive: Bool) -> [(String, VR)] {
+        var out: [(String, VR)] = []
+        let ds = DataSet(elements: item.allElements)
+        let valueType = ds.string(for: .valueType)?.trimmingCharacters(in: .whitespaces).uppercased() ?? ""
+        for tag in contentItemValueTags(valueType: valueType) {
+            guard let element = ds[tag], element.vr != .SQ, let value = ds.string(for: tag) else { continue }
+            let values = singleValuedVRs.contains(element.vr) ? [value] : value.components(separatedBy: "\\")
+            out += values.map { ($0, element.vr) }
+        }
+        if recursive {
+            for child in ds.sequence(for: .contentSequence) ?? [] {
+                out += contentItemValues(in: child, recursive: true)
+            }
+        }
+        return out
+    }
+
     // MARK: - Retain Safe Private Option (PS3.15 2026a E.3.10, D159)
 
     /// A private block's declaration in Private Data Element Characteristics Sequence
@@ -486,9 +603,22 @@ public struct ConfidentialityEngine {
             let effective = effectiveAction(for: tag, element: element, cleaning: cleaning,
                                             privateActions: privateActions)
             if let items = element.sequenceItems {
+                let innerCleaning = cleaning || effective == .clean
+                let contentItems = options.cleanStructuredContent && innerCleaning
+                    && Self.contentItemSequences.contains(tag)
                 for item in items {
-                    out += removedValues(in: DataSet(elements: item.allElements),
-                                         cleaning: cleaning || effective == .clean)
+                    // A Content Item the Clean Structured Content Option removes (X) takes its
+                    // values, and those of its children, with it; a D replaces its own value.
+                    switch contentItems ? ConfidentialityProfile.contentItemAction(for: item, options: options) : nil {
+                    case .remove?, .removePreferred?:
+                        out += Self.contentItemValues(in: item, recursive: true)
+                        continue
+                    case .replaceDummy?, .zero?, .zeroOrDummy?:
+                        out += Self.contentItemValues(in: item, recursive: false)
+                    default:
+                        break
+                    }
+                    out += removedValues(in: DataSet(elements: item.allElements), cleaning: innerCleaning)
                 }
                 continue
             }

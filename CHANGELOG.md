@@ -98,6 +98,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and "Decompression ratio: 1:3.03" replace the output-as-percent-of-input figure; info prints "Samples per Pixel"
   (PS3.6 2026a (0028,0002)).
 
+### Added — PS3.15 Clean Structured Content and Clean Recognizable Visual Features Options, batch d159-rest (2026-10-01, DICOM 2026a)
+
+- **`ConfidentialityProfile.Options.cleanStructuredContent` (Clean Structured Content Option, 113104)** (D159;
+  PS3.15 2026a E.3.4, Table E.3.4-1): Content Sequence (0040,A730), Acquisition Context Sequence (0040,0555),
+  Specimen Preparation Sequence (0040,0610) and Waveform Annotation Sequence (0040,B020) are kept and cleaned
+  (Table E.1-1 Clean Struct. Cont. "C"); every Content Item of Content Sequence, Acquisition Context Sequence and
+  Specimen Preparation Step Content Item Sequence (0040,0612) gets the action Table E.3.4-1 gives its Concept Name
+  and Value Type under the Options in force — X removes the Content Item with its children, D replaces its value
+  with a dummy of the VR (UIDREF: a consistently mapped UID), K keeps its value, C cleans its text or shifts its
+  date (Modified Dates) — and the text kept is cleaned of the values removed (removed Content Items included).
+  The 211 rows are generated into `ConfidentialityProfileStructuredContent.swift` by
+  `Scripts/generate_confidentiality_profile.py` (`--check` re-verifies it; it now also reads PS3.16), with the
+  retired SRT / SNM3 / 99SDM SNOMED IDs of its 11 SCT rows from PS3.16 2026a Table O-1 (E.3.4: retired codes are
+  to be recognised). 113104 is recorded only with the Option. dicom-anon `--clean-structured-content`.
+- **`PixelRedactor.redactRecognizableVisualFeatures(fileData:regions:fillValue:)` (Clean Recognizable Visual
+  Features Option, 113102)** (D159; PS3.15 2026a E.3.2, "may require intervention of or approval by a human
+  operator"): operator-directed — the regions given are blanked on every frame, Icon Image Sequence removed,
+  Recognizable Visual Features (0028,0302) set to NO and 113102 appended to (0012,0064); no region throws the new
+  `PixelRedactionError.noRecognizableVisualFeatureRegions`. Burned In Annotation and 113101 are not written for
+  these regions. The PS3.15 engine keeps the record and names it in (0012,0063). dicom-anon
+  `--clean-recognizable-visual-features` needs one or more `--redact-region` (exit 1 citing PS3.15 E.3.2
+  without); with it, `--redact-region` no longer implies `--clean-pixel-data`.
+- `ConfidentialityEngine`: a cleaned (C) Sequence at the top level is reported as changed when its Items differ
+  from the source, not only when text cleaning changed them.
+
 ### Added — PS3.15 Retain Safe Private and Clean Graphics Options, batch b4 (2026-10-01, DICOM 2026a)
 
 - **`ConfidentialityProfile.Options.retainSafePrivate` (Retain Safe Private Option, 113111)** (D159; PS3.15 2026a
@@ -111,9 +136,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Table E.1-1 Clean Graph. column): Graphic Annotation Sequence (0070,0001) is kept and the text inside it is
   cleaned as Clean Descriptors cleans (a descriptor row inside a cleaned Sequence is cleaned, not replaced by a
   dummy); overlays are still removed. dicom-anon `--clean-graphics`.
-- Not offered (D159 carried): Clean Structured Content (113104, needs the concept-name actions of PS3.15 Table
-  E.3.4-1 applied to SR Content Items) and Clean Recognizable Visual Features (113102, needs pixel data distorted
-  so a person cannot be recognized, possibly by an operator).
+- Clean Structured Content and Clean Recognizable Visual Features: added later the same day (see the section
+  above).
 
 ### Fixed — deferred rows, de-identification, batch b4 (2026-10-01, DICOM 2026a)
 
