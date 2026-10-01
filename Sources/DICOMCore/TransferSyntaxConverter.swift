@@ -174,7 +174,7 @@ extension TranscodingError: CustomStringConvertible {
 /// decompression (compressed to uncompressed), and compression (uncompressed to compressed).
 ///
 /// Reference: DICOM PS3.5 Section 10 - Transfer Syntax Specification
-/// NEMA-verified: 2026a, checked 2026-09-25 — the byte-swap VR set (16-, 32- and 64-bit binary VRs incl. OV/SV/UV) follows PS3.5 2026a §7.3 and Table 6.2-1; the XYB to RGB relabel after JPEG XL decode follows PS3.3 2026a C.7.6.3.1.2 and PS3.5 Table 8.2.15-1 (fixed under P1/P3 on 2026-09-24). Re-checked for this marker on 2026-09-25.
+/// NEMA-verified: 2026a, checked 2026-10-01 — YBR_FULL converted to RGB before a lossy J2K/HTJ2K encode and refused for a reversible one (PS3.5 2026a 8.2.4, Table 8.2.4-1; D-CORE-3); JPEG colour labelled YBR_FULL_422 from the frame header sampling (Table 8.2.1-1; D190); byte-order transcoded values are marked with their new order (D206); the byte-swap VR set (16-, 32- and 64-bit binary VRs incl. OV/SV/UV) follows PS3.5 2026a §7.3 and Table 6.2-1; the XYB to RGB relabel after JPEG XL decode follows PS3.3 2026a C.7.6.3.1.2 and PS3.5 Table 8.2.15-1 (fixed under P1/P3 on 2026-09-24). Re-checked for this marker on 2026-09-25.
 public struct TransferSyntaxConverter: Sendable {
     
     /// Configuration for the converter
@@ -926,6 +926,18 @@ public struct TransferSyntaxConverter: Sendable {
                 
                 // Compress the pixel data
                 let effectiveCompressionConfiguration = target.isLossless ? .lossless : compressionConfiguration
+
+                // J2KSwift applies the Part 1 colour transform to every 3-component image, and
+                // "No other Value of Photometric Interpretation than YBR_RCT or YBR_ICT is permitted
+                // when SGcod Multiple component transformation type is 1" (PS3.5 2026a 8.2.4; 8.2.14).
+                // YBR_FULL needs MCT 0, so its samples are converted to RGB first and the output is
+                // labelled YBR_RCT / YBR_ICT below (D-CORE-3).
+                if target.isJPEG2000, descriptor.photometricInterpretation == .ybrFull {
+                    (pixelBytes, descriptor) = try Self.rgbForJPEG2000Encode(
+                        pixelBytes, descriptor: descriptor,
+                        lossless: effectiveCompressionConfiguration.preferLossless)
+                }
+
                 let compressedFrames = try encoder.encode(
                     pixelBytes,
                     descriptor: descriptor,
@@ -982,13 +994,29 @@ public struct TransferSyntaxConverter: Sendable {
         // Table 8.2.14-1 for HTJ2K).
         if target.isJPEG2000, let codestream = firstCodestream,
            let style = J2KCodestreamInspector.codingStyle(in: codestream), style.componentCount == 3 {
-            // Only RGB samples are relabelled: the transformation is defined on RGB (ISO/IEC
-            // 15444-1 Annex G). A J2KSwift encode of YBR_FULL samples also sets MCT = 1, which no
-            // Photometric Interpretation describes; that limitation is reported, not hidden.
+            // RGB samples, and YBR_FULL samples converted to RGB before the encode above, are
+            // relabelled: the transformation is defined on RGB (ISO/IEC 15444-1 Annex G).
             if style.multipleComponentTransform == 1 {
                 outputElements = Self.replacingPhotometricInterpretation(
-                    in: outputElements, when: ["RGB"], with: style.reversibleWavelet ? "YBR_RCT" : "YBR_ICT")
+                    in: outputElements, when: ["RGB", "YBR_FULL"],
+                    with: style.reversibleWavelet ? "YBR_RCT" : "YBR_ICT")
             }
+            outputElements = outputElements.map { element in
+                guard element.tag == .planarConfiguration else { return element }
+                var zero = UInt16(0).littleEndian
+                let value = Data(bytes: &zero, count: 2)
+                return DataElement(tag: element.tag, vr: .US, length: 2, valueData: value)
+            }
+        }
+
+        // JPEG lossy colour: the encoder writes YCbCr with chrominance at half the horizontal
+        // rate; Table 8.2.1-1 allows a 3-sample JPEG Baseline stream only as YBR_FULL_422 or RGB,
+        // and "JPEG compressed data streams are always color-by-pixel" (Planar Configuration 0)
+        // (PS3.5 2026a 8.2.1; D190 / D-CORE-2).
+        if target.uid == TransferSyntax.jpegBaseline.uid || target.uid == TransferSyntax.jpegExtended.uid,
+           let codestream = firstCodestream, JPEGInterchangeFormat.isHorizontally422(codestream) {
+            outputElements = Self.replacingPhotometricInterpretation(
+                in: outputElements, when: nil, with: "YBR_FULL_422")
             outputElements = outputElements.map { element in
                 guard element.tag == .planarConfiguration else { return element }
                 var zero = UInt16(0).littleEndian
@@ -1013,6 +1041,29 @@ public struct TransferSyntaxConverter: Sendable {
         return outputData
     }
     
+    /// Native YBR_FULL samples → RGB for a JPEG 2000 / HTJ2K encode (PS3.5 2026a 8.2.4, Table
+    /// 8.2.4-1: SGcod MCT = 1, which J2KSwift always writes for 3 components, is permitted only
+    /// under YBR_RCT / YBR_ICT; YBR_FULL needs MCT 0). The conversion (PS3.3 2026a C.7.6.3.1.2)
+    /// rounds, so it is refused for a reversible encode, whose pixels must be preserved bit for
+    /// bit: the caller must convert to RGB first, or pick a lossy target.
+    public static func rgbForJPEG2000Encode(
+        _ pixelBytes: Data, descriptor: PixelDataDescriptor, lossless: Bool
+    ) throws -> (Data, PixelDataDescriptor) {
+        guard !lossless else {
+            throw TranscodingError.encodingFailed(
+                "YBR_FULL Pixel Data cannot be encoded reversibly to JPEG 2000 / HTJ2K: the encoder "
+                + "always applies the multi-component transformation (SGcod MCT = 1), which PS3.5 "
+                + "2026a 8.2.4 permits only under YBR_RCT / YBR_ICT, and converting YBR_FULL to RGB "
+                + "first is not bit-preserving. Convert the image to RGB, or use a lossy target.")
+        }
+        guard let rgb = YBRFullConversion.rgb(fromYBRFull: pixelBytes, descriptor: descriptor) else {
+            throw TranscodingError.encodingFailed(
+                "YBR_FULL Pixel Data (Bits Allocated \(descriptor.bitsAllocated), Pixel Representation "
+                + "\(descriptor.isSigned ? 1 : 0)) cannot be converted to RGB for a JPEG 2000 / HTJ2K encode")
+        }
+        return (rgb, YBRFullConversion.rgbDescriptor(for: descriptor))
+    }
+
     /// Replaces the value of Photometric Interpretation (0028,0004) with `newValue` (padded to an
     /// even length) when its current value is in `values` (`nil`: whatever it is).
     static func replacingPhotometricInterpretation(
@@ -1557,21 +1608,25 @@ public struct TransferSyntaxConverter: Sendable {
             return element
         }
         
-        // Use the appropriate DataElement constructor based on whether there are sequence items
+        // Use the appropriate DataElement constructor based on whether there are sequence items.
+        // The value is now in `target` order, and says so: DICOMWriter byte-swaps a value whose
+        // order differs from its own (D206), so an unmarked value would be swapped twice.
         if let seqItems = element.sequenceItems {
             return DataElement(
                 tag: element.tag,
                 vr: element.vr,
                 length: UInt32(newData.count),
                 valueData: newData,
-                sequenceItems: seqItems
+                sequenceItems: seqItems,
+                byteOrder: target
             )
         } else {
             return DataElement(
                 tag: element.tag,
                 vr: element.vr,
                 length: UInt32(newData.count),
-                valueData: newData
+                valueData: newData,
+                byteOrder: target
             )
         }
     }

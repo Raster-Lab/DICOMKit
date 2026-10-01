@@ -39,6 +39,54 @@ public enum JPEGInterchangeFormat {
         return Data(out)
     }
 
+    /// One frame component of a frame header (ITU-T T.81 B.2.2): identifier and its
+    /// horizontal / vertical sampling factors.
+    public struct FrameComponent: Sendable, Equatable {
+        public let identifier: UInt8
+        public let horizontalSampling: Int
+        public let verticalSampling: Int
+    }
+
+    /// The components of the first frame header (SOF0 … SOF15, not DHT / JPG / DAC), or `nil`
+    /// when the stream has no readable frame header before its first scan.
+    public static func frameComponents(in stream: Data) -> [FrameComponent]? {
+        let bytes = [UInt8](stream)
+        guard bytes.count >= 4, bytes[0] == 0xFF, bytes[1] == 0xD8 else { return nil }
+        var offset = 2
+        while offset + 4 <= bytes.count, bytes[offset] == 0xFF {
+            let marker = bytes[offset + 1]
+            if marker == 0xFF { offset += 1; continue }           // fill byte
+            if marker == 0xDA { return nil }                      // SOS before any SOF
+            let length = Int(bytes[offset + 2]) << 8 | Int(bytes[offset + 3])
+            guard length >= 2, offset + 2 + length <= bytes.count else { return nil }
+            let isFrame = (0xC0...0xCF).contains(marker) && ![0xC4, 0xC8, 0xCC].contains(marker)
+            if isFrame {
+                // Lf(2) P(1) Y(2) X(2) Nf(1), then Nf × (Ci, Hi<<4|Vi, Tqi).
+                guard length >= 8 else { return nil }
+                let count = Int(bytes[offset + 9])
+                guard length >= 8 + 3 * count else { return nil }
+                return (0..<count).map { k in
+                    let o = offset + 10 + 3 * k
+                    return FrameComponent(identifier: bytes[o],
+                                          horizontalSampling: Int(bytes[o + 1] >> 4),
+                                          verticalSampling: Int(bytes[o + 1] & 0x0F))
+                }
+            }
+            offset += 2 + length
+        }
+        return nil
+    }
+
+    /// Whether the frame has three components with the first sampled at twice the horizontal
+    /// rate of the other two and all at the same vertical rate (H 2,1,1; V 1,1,1): the 4:2:2
+    /// layout of YBR_FULL_422 ("CB and CR values are sampled horizontally at half the Y rate",
+    /// PS3.3 2026a C.7.6.3.1.2).
+    public static func isHorizontally422(_ stream: Data) -> Bool {
+        guard let c = frameComponents(in: stream), c.count == 3 else { return false }
+        return c[0].horizontalSampling == 2 && c[1].horizontalSampling == 1 && c[2].horizontalSampling == 1
+            && c[0].verticalSampling == 1 && c[1].verticalSampling == 1 && c[2].verticalSampling == 1
+    }
+
     /// Whether the stream carries a JFIF APP0 marker segment before its frame header.
     public static func containsJFIFSegment(_ stream: Data) -> Bool {
         removingJFIFSegments(stream).count != stream.count
