@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import DICOMKit
 import DICOMCore
+import J2KCore
 
 /// D204 / D205 (2026-10-01): JP3DVolumeDocument geometry per PS3.3 2026a C.7.6.2.1.1 —
 /// Image Position (Patient) is the centre of the first voxel and Image Orientation (Patient)
@@ -101,5 +102,44 @@ struct JP3DSliceGeometryTests {
         #expect(JP3DVolumeDocument.fallbackSOPClassUID(modality: "MR") == "1.2.840.10008.5.1.4.1.1.4")
         #expect(JP3DVolumeDocument.fallbackSOPClassUID(modality: "PT") == "1.2.840.10008.5.1.4.1.1.128")
         #expect(JP3DVolumeDocument.fallbackSOPClassUID(modality: "US") == "1.2.840.10008.5.1.4.1.1.7")
+    }
+
+    // MARK: - D224: JP3DVolumeBridge.makeDICOMSeries
+
+    @Test("makeVolume keeps the first slice's position; makeDICOMSeries steps along the template normal")
+    func bridgeRoundTripKeepsSagittalGeometry() throws {
+        let frameOfReference = "1.2.826.0.1.3680043.10.511.99.2"
+        let xs: [Double] = [6, 10, 4, 8]
+        let series = try xs.map { x in try slice(index: Int((10 - x) / 2), x: x, frameOfReference: frameOfReference) }
+        let volume = try JP3DVolumeBridge.makeVolume(from: series)
+        // Sorted along the normal (-1,0,0): x = 10 first
+        #expect([volume.originX, volume.originY, volume.originZ] == [10, -100, 50])
+        #expect(volume.spacingZ == 2)
+
+        let slices = try JP3DVolumeBridge.makeDICOMSeries(from: volume, template: series[0])
+        #expect(slices.count == 4)
+        for (i, file) in slices.enumerated() {
+            #expect(positions(file) == [10 - 2 * Double(i), -100, 50])
+            #expect(file.dataSet.string(for: .imageOrientationPatient) == "0\\1\\0\\0\\0\\-1")
+            #expect(file.dataSet.string(for: .sliceLocation) == JP3DVolumeDocument.decimalString(-10 + 2 * Double(i)))
+            #expect(file.dataSet.string(for: .pixelSpacing) == "0.5\\0.75")
+            #expect(file.dataSet.string(for: .frameOfReferenceUID) == frameOfReference)
+        }
+    }
+
+    @Test("A template without Image Orientation (Patient) gets the axial orientation its z positions assume")
+    func bridgeWritesOrientationWithPosition() throws {
+        var template = try slice(index: 0, x: 0, frameOfReference: "1.2.3.9").dataSet
+        template[.imageOrientationPatient] = nil
+        let volume = J2KVolume(
+            width: 8, height: 8, depth: 2,
+            components: [J2KVolumeComponent(index: 0, bitDepth: 12, signed: false, width: 8, height: 8, depth: 2,
+                                            data: Data(count: 8 * 8 * 2 * 2))],
+            spacingX: 1, spacingY: 1, spacingZ: 3, originX: 1, originY: 2, originZ: 5)
+        let file = DICOMFile(fileMetaInformation: DataSet(), dataSet: template)
+        let slices = try JP3DVolumeBridge.makeDICOMSeries(from: volume, template: file)
+        #expect(positions(slices[1]) == [1, 2, 8])
+        #expect(slices[1].dataSet.string(for: .imageOrientationPatient) == "1\\0\\0\\0\\1\\0")
+        #expect(slices[1].dataSet.string(for: .sliceLocation) == "8")
     }
 }

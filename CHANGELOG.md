@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as passed literally; `ScriptParser` removes the quotes of a "quoted" argument (the query template's
   `--patient-name "DOE*"` used to reach dicom-query with its quotes). New `ScriptParser.tokenize(_:)` and
   `unsupportedShellSyntax(in:)`.
+- **`JP3DVolumeBridge` slice geometry** (D224; PS3.3 2026a C.7.6.2.1.1 Equation C.7.6.2.1-1, Table C.7-10,
+  C.7.6.2.1.2): `makeVolume` sets the `J2KVolume` origin to the first slice's Image Position (Patient) (was 0,0,0);
+  `makeDICOMSeries` places slice i at origin + i·spacing along the template's Image Orientation (Patient) normal
+  (was z-only), always writes Image Orientation (Patient) with the position (1\0\0\0\1\0 when the template has
+  none), and Pixel Spacing, Rows, Columns and Slice Location from the volume.
 
 ### Fixed — deferred rows, codec batch b6a (2026-10-01, DICOM 2026a)
 

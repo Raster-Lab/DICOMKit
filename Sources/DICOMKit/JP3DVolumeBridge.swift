@@ -1,5 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-29 — Instance Number read as IS per PS3.6 2026a Table 6-1; Pixel Data VR rule per PS3.5 8.1.1; the JP3D UIDs are private
-// NEMA-verified: 2026a, checked 2026-10-01 — makeVolume sorts and spaces slices by Image Position (Patient) projected on the normal of Image Orientation (Patient) per PS3.3 2026a C.7.6.2.1.1 (D205); makeDICOMSeries still writes z-only positions from a J2KVolume that has no orientation (recorded)
+// NEMA-verified: 2026a, checked 2026-10-01 — makeVolume sorts and spaces slices by Image Position (Patient) projected on the normal of Image Orientation (Patient) per PS3.3 2026a C.7.6.2.1.1 (D205); makeVolume records the first slice's Image Position (Patient) as the volume origin and makeDICOMSeries steps from it along the template's Image Orientation (Patient) normal (Equation C.7.6.2.1-1), writing Image Orientation (Patient), Pixel Spacing and Slice Location (Table C.7-10, C.7.6.2.1.2) (D224)
 import Foundation
 import DICOMCore
 import J2KCore
@@ -153,6 +153,9 @@ public enum JP3DVolumeBridge: Sendable {
             data: voxelData
         )
 
+        // Origin: Image Position (Patient) of the first slice in stacking order, the centre
+        // of the first voxel (PS3.3 2026a C.7.6.2.1.1)
+        let origin = extractImagePosition(from: ref)
         return J2KVolume(
             width: Int(cols),
             height: Int(rows),
@@ -160,7 +163,10 @@ public enum JP3DVolumeBridge: Sendable {
             components: [component],
             spacingX: pixelSpacingCol,
             spacingY: pixelSpacingRow,
-            spacingZ: spacing
+            spacingZ: spacing,
+            originX: origin.x,
+            originY: origin.y,
+            originZ: origin.z
         )
     }
 
@@ -170,6 +176,14 @@ public enum JP3DVolumeBridge: Sendable {
     ///
     /// Uses `template` as the basis for DICOM metadata. Each slice gets a new
     /// `SOPInstanceUID` while preserving the `SeriesInstanceUID`.
+    ///
+    /// Geometry (PS3.3 2026a C.7.6.2.1.1, Table C.7-10): slice `i` is at the volume origin
+    /// plus `i · spacingZ` along the normal of the template's Image Orientation (Patient)
+    /// (row cosine × column cosine, Equation C.7.6.2.1-1). A template without Image
+    /// Orientation (Patient) gets 1\0\0\0\1\0, the axial orientation the z-only stacking
+    /// assumes, so Image Position and Image Orientation (Patient) are always written
+    /// together. Pixel Spacing, Rows and Columns come from the volume, Slice Location is
+    /// the position along the normal (C.7.6.2.1.2).
     ///
     /// - Parameters:
     ///   - volume: The decoded `J2KVolume`.
@@ -190,6 +204,15 @@ public enum JP3DVolumeBridge: Sendable {
         let component = volume.components[0]
         let bytesPerPixel = (component.bitDepth + 7) / 8
         let bytesPerSlice = component.width * component.height * bytesPerPixel
+
+        // Stacking direction: the template's orientation, else axial
+        let templateNormal = sliceNormal(of: template.dataSet)
+        let orientation = templateNormal == nil
+            ? [1.0, 0, 0, 0, 1, 0]
+            : (decimals(template.dataSet, .imageOrientationPatient) ?? [1.0, 0, 0, 0, 1, 0])
+        let normal = templateNormal ?? [0, 0, 1]
+        let origin = [volume.originX, volume.originY, volume.originZ]
+        let ds6 = JP3DVolumeDocument.decimalString
 
         // Preserve the series UID from template
         let seriesUID = template.dataSet.string(for: .seriesInstanceUID)
@@ -227,17 +250,20 @@ public enum JP3DVolumeBridge: Sendable {
                 value: String(sliceIndex + 1)
             )
 
-            // Set image position
-            if volume.spacingZ > 0 {
-                let z = volume.originZ + Double(sliceIndex) * volume.spacingZ
-                ds[.imagePositionPatient] = DataElement.string(
-                    tag: .imagePositionPatient, vr: .DS,
-                    value: "\(volume.originX)\\\(volume.originY)\\\(z)"
-                )
-                ds[.sliceLocation] = DataElement.string(
-                    tag: .sliceLocation, vr: .DS,
-                    value: String(z)
-                )
+            // Image Plane geometry (PS3.3 2026a C.7.6.2.1.1, Table C.7-10)
+            ds.setUInt16(UInt16(clamping: component.height), for: .rows)
+            ds.setUInt16(UInt16(clamping: component.width), for: .columns)
+            if volume.spacingX > 0, volume.spacingY > 0 {
+                // Pixel Spacing is row spacing \ column spacing
+                ds.setString("\(ds6(volume.spacingY))\\\(ds6(volume.spacingX))", for: .pixelSpacing, vr: .DS)
+            }
+            if volume.spacingZ > 0 || volume.depth == 1 {
+                let position = JP3DVolumeDocument.slicePosition(
+                    origin: origin, orientation: orientation, spacing: max(0, volume.spacingZ), index: sliceIndex)
+                ds.setString(position.map(ds6).joined(separator: "\\"), for: .imagePositionPatient, vr: .DS)
+                ds.setString(orientation.map(ds6).joined(separator: "\\"), for: .imageOrientationPatient, vr: .DS)
+                let along = position[0] * normal[0] + position[1] * normal[1] + position[2] * normal[2]
+                ds.setString(ds6(along), for: .sliceLocation, vr: .DS)
             }
 
             // Set number of frames to 1
