@@ -122,8 +122,8 @@ dicom-retrieve pacs://server:11112 \
 - `--aet` - Local Application Entity Title (calling AE)
 - `--called-aet` - Remote Application Entity Title (default: ANY-SCP)
 - `--study-uid` - Study Instance UID (0020,000D) to retrieve — Query/Retrieve Level STUDY
-- `--series-uid` - Series Instance UID (0020,000E) to retrieve — Query/Retrieve Level SERIES (requires --study-uid)
-- `--instance-uid` - SOP Instance UID (0008,0018) to retrieve — Query/Retrieve Level IMAGE (requires --study-uid and --series-uid)
+- `--series-uid` - Series Instance UID (0020,000E) to retrieve — Query/Retrieve Level SERIES (requires --study-uid unless --relational-retrieve)
+- `--instance-uid` - SOP Instance UID (0008,0018) to retrieve — Query/Retrieve Level IMAGE (requires --study-uid and --series-uid unless --relational-retrieve)
 - `--uid-list` - File containing list of Study UIDs (one per line)
 - `--output` - Output directory for retrieved files (default: current directory)
 - `--method` - Retrieval method: c-move (Study Root Query/Retrieve Information Model - MOVE, 1.2.840.10008.5.1.4.1.2.2.2) or c-get (Study Root Query/Retrieve Information Model - GET, 1.2.840.10008.5.1.4.1.2.2.3) (default: c-move)
@@ -132,6 +132,8 @@ dicom-retrieve pacs://server:11112 \
 - `--transfer-syntax` - Requested transfer syntax (name or UID) for the C-GET storage presentation contexts; advisory for C-MOVE
 - `--timeout` - Connection timeout in seconds (default: 60)
 - `--parallel` - Number of parallel retrieval operations (default: 1)
+- `--priority` - Priority (0000,0700) of the C-MOVE-RQ / C-GET-RQ: `low` (0002H), `medium` (0000H), `high` (0001H) — PS3.7 2026a Tables 9.3-9 / 9.3-6 (default: medium). A non-default value is shown in the header as `Priority:`
+- `--relational-retrieve` - Propose relational-retrieval in a SOP Class Extended Negotiation Sub-Item for the retrieval SOP Class (PS3.4 2026a C.5.2.1 / C.5.3.1, Table C.5-3 byte 1 = 1; PS3.7 Table D.3-11). With it, `--series-uid` or `--instance-uid` may be given without the UIDs of the levels above (PS3.4 C.4.2.2.2.1 / C.4.3.2.2.1). If the SCP returns no sub-item or byte 1 = 0 (Table C.5-4) and the identifier lacks those UIDs, the request is not sent and the tool exits 1; with all UIDs given the retrieve proceeds as baseline
 - `-v, --verbose` - Show verbose output including progress
 
 ## C-MOVE vs C-GET

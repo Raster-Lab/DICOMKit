@@ -4,7 +4,7 @@
 //
 // DICOM 2026a verification of dicom-retrieve and dicom-qr (2026-10-01).
 // Tests/DICOMToolsTests is not compiled by any target, so this lives beside
-// PrintCLIEndToEndTests: the status table is read from the tools' Swift source
+// PrintCLIEndToEndTests: the status table is DICOMNetwork.DIMSEServiceStatusText
 // and the behaviour is checked by spawning the built products.
 //
 
@@ -39,38 +39,81 @@ final class QueryRetrieveCLIStandardTests: XCTestCase {
         ("C.4-3", "FF00", "Pending", "Sub-operations are continuing"),
     ]
 
-    private func statusTextSource(_ tool: String) throws -> String {
-        let url = Self.repoRoot.appendingPathComponent("Sources/\(tool)/RetrieveStatusText.swift")
-        return try String(contentsOf: url, encoding: .utf8)
+    // MARK: - DIMSEServiceStatusText (PS3.4 Tables B.2-1, C.4-1, C.4-2, C.4-3)
+
+    /// Every row of PS3.4 2026a Tables C.4-2 / C.4-3 is carried verbatim by the
+    /// DICOMNetwork table the CLI tools now use (hoisted from the tools' former
+    /// RetrieveStatusText copies, P-QR-STATUS-TEXT), and nothing else is.
+    func testServiceStatusTextCarriesPS34RetrieveTables2026a() {
+        for (service, table) in [(DIMSEStatusService.cMove, "C.4-2"), (.cGet, "C.4-3")] {
+            let expected = Self.ps34StatusRows.filter { $0.table == table }
+                .map { DIMSEServiceStatusRow(code: $0.code, serviceStatus: $0.serviceStatus, furtherMeaning: $0.furtherMeaning) }
+            XCTAssertEqual(DIMSEServiceStatusText.rows(for: service), expected, "Table \(table)")
+            XCTAssertEqual(service.statusTable, table)
+        }
     }
 
-    // MARK: - RetrieveStatusText (PS3.4 Tables C.4-2 / C.4-3)
-
-    /// Every row of PS3.4 2026a Tables C.4-2 / C.4-3 is carried verbatim, in the
-    /// table of the right service, and nothing else is.
-    func testRetrieveStatusTextCarriesPS34Tables2026a() throws {
-        let source = try statusTextSource("dicom-retrieve")
-        guard let split = source.range(of: "static let cGetRows") else {
-            return XCTFail("cGetRows not found")
-        }
-        let cMoveSection = String(source[..<split.lowerBound])
-        let cGetSection = String(source[split.lowerBound...])
-
-        for row in Self.ps34StatusRows {
-            let literal = "Row(code: \"\(row.code)\", serviceStatus: \"\(row.serviceStatus)\", "
-                + "furtherMeaning: \"\(row.furtherMeaning)\")"
-            let section = row.table == "C.4-2" ? cMoveSection : cGetSection
-            XCTAssertTrue(section.contains(literal), "Table \(row.table) row \(row.code) missing or reworded: \(literal)")
-        }
-        let moveCount = cMoveSection.components(separatedBy: "Row(code: \"").count - 1
-        let getCount = cGetSection.components(separatedBy: "Row(code: \"").count - 1
-        XCTAssertEqual(moveCount, Self.ps34StatusRows.filter { $0.table == "C.4-2" }.count, "extra C-MOVE rows")
-        XCTAssertEqual(getCount, Self.ps34StatusRows.filter { $0.table == "C.4-3" }.count, "extra C-GET rows")
+    /// PS3.4 2026a Table B.2-1 (C-STORE, 7 rows) and Table C.4-1 (C-FIND, 7 rows),
+    /// dumped by Scripts/nema_docbook.py.
+    func testServiceStatusTextCarriesPS34StoreAndFindTables2026a() {
+        let store: [(String, String, String)] = [
+            ("A7xx", "Failure", "Refused: Out of resources"),
+            ("A9xx", "Failure", "Error: Data Set does not match SOP Class"),
+            ("Cxxx", "Failure", "Error: Cannot understand"),
+            ("B000", "Warning", "Coercion of Data Elements"),
+            ("B007", "Warning", "Data Set does not match SOP Class"),
+            ("B006", "Warning", "Elements Discarded"),
+            ("0000", "Success", "Success"),
+        ]
+        let find: [(String, String, String)] = [
+            ("A700", "Failure", "Refused: Out of resources"),
+            ("A900", "Failure", "Error: Data Set does not match SOP Class"),
+            ("Cxxx", "Failure", "Failed: Unable to process"),
+            ("FE00", "Cancel", "Matching terminated due to Cancel request"),
+            ("0000", "Success", "Matching is complete - No final Identifier is supplied."),
+            ("FF00", "Pending", "Matches are continuing - Current Match is supplied and any Optional Keys were supported in the same manner as Required Keys."),
+            ("FF01", "Pending", "Matches are continuing - Warning that one or more Optional Keys were not supported for existence and/or matching for this Identifier."),
+        ]
+        XCTAssertEqual(DIMSEServiceStatusText.rows(for: .cStore),
+                       store.map { DIMSEServiceStatusRow(code: $0.0, serviceStatus: $0.1, furtherMeaning: $0.2) })
+        XCTAssertEqual(DIMSEServiceStatusText.rows(for: .cFind),
+                       find.map { DIMSEServiceStatusRow(code: $0.0, serviceStatus: $0.1, furtherMeaning: $0.2) })
     }
 
-    /// dicom-qr carries a byte-identical copy of the table.
-    func testRetrieveStatusTextCopiesAreIdentical() throws {
-        XCTAssertEqual(try statusTextSource("dicom-retrieve"), try statusTextSource("dicom-qr"))
+    /// The service decides the wording (D76): 0xB000, 0xA701, 0xA801, 0xA900 and
+    /// Cxxx read as PS3.4 names them for the service that answered; ranges match
+    /// and codes outside the table fall back to DIMSEStatus.description.
+    func testServiceAwareDescriptionsPerPS34() {
+        XCTAssertEqual(DIMSEStatus.from(0xB000).description(for: .cMove),
+                       "Warning (0xB000): Sub-operations Complete - One or more Failures")
+        XCTAssertEqual(DIMSEStatus.from(0xB000).description(for: .cGet),
+                       "Warning (0xB000): Sub-operations Complete - One or more Failures or Warnings")
+        XCTAssertEqual(DIMSEStatus.from(0xB000).description(for: .cStore),
+                       "Warning (0xB000): Coercion of Data Elements")
+        XCTAssertEqual(DIMSEStatus.from(0xA701).description(for: .cMove),
+                       "Failure (0xA701): Refused: Out of resources - Unable to calculate number of matches")
+        XCTAssertEqual(DIMSEStatus.from(0xA801).description(for: .cMove),
+                       "Failure (0xA801): Refused: Move Destination unknown")
+        XCTAssertEqual(DIMSEStatus.from(0xC123).description(for: .cGet),
+                       "Failure (0xC123): Failed: Unable to process")
+        XCTAssertEqual(DIMSEStatus.from(0xC123).description(for: .cStore),
+                       "Failure (0xC123): Error: Cannot understand")
+        XCTAssertEqual(DIMSEStatus.from(0xA7FE).description(for: .cStore),
+                       "Failure (0xA7FE): Refused: Out of resources")
+        XCTAssertEqual(DIMSEStatus.from(0xA900).description(for: .cStore),
+                       "Failure (0xA900): Error: Data Set does not match SOP Class")
+        XCTAssertEqual(DIMSEStatus.from(0xA801).description(for: .cGet),
+                       "Failed: Move destination unknown (0xA801) (not listed in PS3.4 Table C.4-3)")
+        XCTAssertEqual(DIMSEServiceStatusText.subOperationCounts(RetrieveProgress(completed: 3, failed: 1, warning: 2)),
+                       "Number of Completed Sub-operations: 3, Number of Failed Sub-operations: 1, Number of Warning Sub-operations: 2")
+    }
+
+    /// The tools no longer carry a private copy of the table.
+    func testToolsUseTheSharedStatusTable() {
+        for tool in ["dicom-retrieve", "dicom-qr"] {
+            let copy = Self.repoRoot.appendingPathComponent("Sources/\(tool)/RetrieveStatusText.swift")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: copy.path), "\(tool) still has its own status table")
+        }
     }
 
     #if os(macOS)

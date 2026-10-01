@@ -109,6 +109,7 @@ All queries are Study Root, Query/Retrieve Level STUDY (PS3.4 2026a Table C.6-5)
 - `--output, -o <path>`: Output directory for retrieved files (default: current directory)
 - `--hierarchical`: Organize C-GET output hierarchically (`<output>/<Study Instance UID>/`); C-MOVE output is stored by the move destination
 - `--transfer-syntax <name|uid>`: Requested transfer syntax for the C-GET storage presentation contexts; advisory for C-MOVE
+- `--priority <low|medium|high>`: Priority (0000,0700) of each C-MOVE-RQ / C-GET-RQ — LOW 0002H, MEDIUM 0000H, HIGH 0001H (PS3.7 2026a Tables 9.3-9 / 9.3-6; default: medium; also accepted by `resume`). Relational-retrieval is not offered: `dicom-qr` retrieves at STUDY level, where the Identifier already carries the level's Unique Key (use `dicom-retrieve --relational-retrieve` for series/instance retrieval by UID alone)
 
 ### Mode Selection (choose one)
 
@@ -120,7 +121,7 @@ All queries are Study Root, Query/Retrieve Level STUDY (PS3.4 2026a Table C.6-5)
 
 - `--save-state <path>`: Save query/retrieval state to file
 - `--validate`: Validate retrieved files after download
-- `--parallel <n>`: Accepted for compatibility; `query` retrieves the selected studies one after another (see dicom-retrieve `--uid-list --parallel` for concurrent study retrieval)
+- `--parallel <n>`: Maximum concurrent retrievals (default: 1). Up to `n` studies are retrieved at once, each on its own association; the per-study `[i/N] Retrieving` / outcome lines are printed in study order once each batch of `n` finishes (with `1`, each line is printed before its retrieval starts). Must be at least 1
 - `--timeout <seconds>`: Connection timeout in seconds (default: 60; also accepted by `resume`)
 - `--verbose`: Show verbose output including detailed progress
 - `--aet <title>`: Local Application Entity Title (calling AE)
@@ -229,6 +230,7 @@ State file structure:
       "patientID": "123456",
       "studyInstanceUID": "1.2.840.113619.2.xxx",
       "studyDate": "20240105",
+      "ModalitiesInStudy": "CT\\PR",
       "modality": "CT",
       "studyDescription": "CT CHEST W/CONTRAST"
     }
@@ -243,6 +245,13 @@ State file structure:
   "hierarchical": true
 }
 ```
+
+`ModalitiesInStudy` is the PS3.6 keyword of Modalities in Study (0008,0061), the
+STUDY-level value of PS3.4 Table C.6-5 (multiple values joined by `\`). The older
+`modality` key holds Modality (0008,0060), a Series-level attribute that is usually
+absent from a STUDY-level response; it is still written with the same value for older
+readers but is **deprecated** — read `ModalitiesInStudy`. State files written before
+this change lack `ModalitiesInStudy` and still load.
 
 ## Validation
 
@@ -284,7 +293,7 @@ The tool provides detailed error messages for common issues:
 
 For large retrievals, consider:
 
-- Using `dicom-retrieve --uid-list --parallel` for concurrent study retrieval (use cautiously)
+- Using `--parallel <n>` (or `dicom-retrieve --uid-list --parallel`) for concurrent study retrieval (use cautiously)
 - Saving state files for checkpoint/resume capability
 - Using `--hierarchical` for better organization of retrieved files
 - Monitoring with `--verbose` to track progress

@@ -1,7 +1,7 @@
 import Foundation
 import DICOMCore
 import DICOMNetwork
-// NEMA-verified: 2026a, checked 2026-10-01 — final-status handling checked against PS3.4 2026a Tables C.4-2 / C.4-3 (status wording via RetrieveStatusText, success = 0000 with no failed sub-operations per C.4.2.2.1 / C.4.3.2.1), the four counters against PS3.7 2026a Tables 9.3-7 / 9.3-10, Failed SOP Instance UID List (0008,0058) against C.4.2.1.4.2; the Part 10 wrapper writes the 6 Type 1 rows of PS3.10 2026a Table 7.1-1 (group length, (0002,0001), (0002,0002), (0002,0003), (0002,0010), (0002,0012)) and no Type 3 row
+// NEMA-verified: 2026a, checked 2026-10-01 — final-status handling checked against PS3.4 2026a Tables C.4-2 / C.4-3 (status wording via DICOMNetwork.DIMSEServiceStatusText, 17 rows, success = 0000 with no failed sub-operations per C.4.2.2.1 / C.4.3.2.1), the four counters against PS3.7 2026a Tables 9.3-7 / 9.3-10, Failed SOP Instance UID List (0008,0058) against C.4.2.1.4.2; the Part 10 wrapper writes the 6 Type 1 rows of PS3.10 2026a Table 7.1-1 (group length, (0002,0001), (0002,0002), (0002,0003), (0002,0010), (0002,0012)) and no Type 3 row; requests built as RetrieveKeys at the level of the most specific UID with the requested Priority (PS3.7 Tables 9.3-9 / 9.3-6) and optional relational-retrieval (PS3.4 Table C.5-3)
 
 #if canImport(Network)
 
@@ -17,44 +17,62 @@ struct RetrieveExecutor {
     let hierarchical: Bool
     let verbose: Bool
     let preferredTransferSyntaxUID: String?
+    /// Priority (0000,0700) of every C-MOVE-RQ / C-GET-RQ (PS3.7 Tables 9.3-9 / 9.3-6)
+    var priority: DIMSEPriority = .medium
+    /// Propose relational-retrieval (PS3.4 C.5.2.1 / C.5.3.1, Table C.5-3 byte 1)
+    var relationalRetrieval: Bool = false
     
     /// Retrieves a study from PACS
     func retrieveStudy(studyUID: String, method: RetrievalMethod) async throws {
-        switch method {
-        case .cMove:
-            guard let dest = moveDestination else {
-                throw RetrieveError.missingMoveDestination
-            }
-            try await performCMove(studyUID: studyUID, seriesUID: nil, sopUID: nil, destination: dest)
-        case .cGet:
-            try await performCGet(studyUID: studyUID, seriesUID: nil, sopUID: nil)
-        }
+        try await retrieve(studyUID: studyUID, seriesUID: nil, sopUID: nil, method: method)
     }
     
-    /// Retrieves a series from PACS
-    func retrieveSeries(studyUID: String, seriesUID: String, method: RetrievalMethod) async throws {
-        switch method {
-        case .cMove:
-            guard let dest = moveDestination else {
-                throw RetrieveError.missingMoveDestination
-            }
-            try await performCMove(studyUID: studyUID, seriesUID: seriesUID, sopUID: nil, destination: dest)
-        case .cGet:
-            try await performCGet(studyUID: studyUID, seriesUID: seriesUID, sopUID: nil)
-        }
+    /// Retrieves a series from PACS (`studyUID` may be nil only with relational-retrieval)
+    func retrieveSeries(studyUID: String?, seriesUID: String, method: RetrievalMethod) async throws {
+        try await retrieve(studyUID: studyUID, seriesUID: seriesUID, sopUID: nil, method: method)
     }
     
-    /// Retrieves an instance from PACS
-    func retrieveInstance(studyUID: String, seriesUID: String, sopUID: String, method: RetrievalMethod) async throws {
+    /// Retrieves an instance from PACS (`studyUID` / `seriesUID` may be nil only with relational-retrieval)
+    func retrieveInstance(studyUID: String?, seriesUID: String?, sopUID: String, method: RetrievalMethod) async throws {
+        try await retrieve(studyUID: studyUID, seriesUID: seriesUID, sopUID: sopUID, method: method)
+    }
+
+    private func retrieve(studyUID: String?, seriesUID: String?, sopUID: String?, method: RetrievalMethod) async throws {
+        let keys = Self.retrieveKeys(studyUID: studyUID, seriesUID: seriesUID, sopUID: sopUID)
         switch method {
         case .cMove:
             guard let dest = moveDestination else {
                 throw RetrieveError.missingMoveDestination
             }
-            try await performCMove(studyUID: studyUID, seriesUID: seriesUID, sopUID: sopUID, destination: dest)
+            try await performCMove(keys: keys, destination: dest)
         case .cGet:
-            try await performCGet(studyUID: studyUID, seriesUID: seriesUID, sopUID: sopUID)
+            try await performCGet(keys: keys, studyUID: studyUID, seriesUID: seriesUID)
         }
+    }
+
+    /// The Identifier: Query/Retrieve Level from the most specific UID given, and
+    /// every UID given (PS3.4 C.4.2.2.1; relational-retrieve allows the
+    /// above-level ones to be absent, C.4.2.2.2.1).
+    static func retrieveKeys(studyUID: String?, seriesUID: String?, sopUID: String?) -> RetrieveKeys {
+        let level: QueryLevel = sopUID != nil ? .image : (seriesUID != nil ? .series : .study)
+        var keys = RetrieveKeys(level: level)
+        if let studyUID { keys = keys.studyInstanceUID(studyUID) }
+        if let seriesUID { keys = keys.seriesInstanceUID(seriesUID) }
+        if let sopUID { keys = keys.sopInstanceUID(sopUID) }
+        return keys
+    }
+
+    /// The engine configuration: Study Root, the requested Priority and, when
+    /// asked, the relational-retrieval SOP Class Extended Negotiation.
+    func retrieveConfiguration() throws -> RetrieveConfiguration {
+        RetrieveConfiguration(
+            callingAETitle: try AETitle(callingAE),
+            calledAETitle: try AETitle(calledAE),
+            timeout: timeout,
+            informationModel: .studyRoot,
+            priority: priority,
+            extendedNegotiation: relationalRetrieval ? RetrieveExtendedNegotiation(relationalRetrieval: true) : nil
+        )
     }
     
     /// Retrieves multiple studies in bulk
@@ -105,58 +123,24 @@ struct RetrieveExecutor {
     
     // MARK: - C-MOVE Implementation
     
-    private func performCMove(studyUID: String, seriesUID: String?, sopUID: String?, destination: String) async throws {
+    private func performCMove(keys: RetrieveKeys, destination: String) async throws {
         // Intermediate progress is suppressed: the count/cadence of C-MOVE progress
         // messages depends on SCP pacing and differs between two associations, so it
         // can't be compared. Only the deterministic final result is rendered.
         let onProgress: @Sendable (RetrieveProgress) -> Void = { _ in }
 
-        let result: RetrieveResult
-        
-        if let sopUID = sopUID, let seriesUID = seriesUID {
-            // Instance level
-            result = try await DICOMRetrieveService.moveInstance(
-                host: host,
-                port: port,
-                callingAE: callingAE,
-                calledAE: calledAE,
-                studyInstanceUID: studyUID,
-                seriesInstanceUID: seriesUID,
-                sopInstanceUID: sopUID,
-                moveDestination: destination,
-                onProgress: onProgress,
-                timeout: timeout
-            )
-        } else if let seriesUID = seriesUID {
-            // Series level
-            result = try await DICOMRetrieveService.moveSeries(
-                host: host,
-                port: port,
-                callingAE: callingAE,
-                calledAE: calledAE,
-                studyInstanceUID: studyUID,
-                seriesInstanceUID: seriesUID,
-                moveDestination: destination,
-                onProgress: onProgress,
-                timeout: timeout
-            )
-        } else {
-            // Study level
-            result = try await DICOMRetrieveService.moveStudy(
-                host: host,
-                port: port,
-                callingAE: callingAE,
-                calledAE: calledAE,
-                studyInstanceUID: studyUID,
-                moveDestination: destination,
-                onProgress: onProgress,
-                timeout: timeout
-            )
-        }
+        let result = try await DICOMRetrieveService.move(
+            host: host,
+            port: port,
+            configuration: try retrieveConfiguration(),
+            keys: keys,
+            moveDestination: destination,
+            onProgress: onProgress
+        )
         
         // C-MOVE result via the SHARED formatter, printed to STDOUT (always).
         print(NetworkConsole.cMoveResult(
-            status: RetrieveStatusText.describe(result.status, service: .cMove),
+            status: DIMSEServiceStatusText.describe(result.status, service: .cMove),
             completed: result.progress.completed,
             failed: result.progress.failed,
             warning: result.progress.warning,
@@ -171,15 +155,15 @@ struct RetrieveExecutor {
     /// Prints failed/warning details to stderr and throws unless `result.isSuccess`.
     /// The status is worded per PS3.4 2026a Table C.4-2 (C-MOVE) or C.4-3 (C-GET)
     /// and the counters per PS3.7 Tables 9.3-10 / 9.3-7.
-    static func checkResult(_ result: RetrieveResult, service: RetrieveStatusText.Service) throws {
+    static func checkResult(_ result: RetrieveResult, service: DIMSEStatusService) throws {
         if !result.failedSOPInstanceUIDs.isEmpty {
             fprintln("Failed SOP Instance UID List (0008,0058), \(result.failedSOPInstanceUIDs.count) UID(s):")
             for uid in result.failedSOPInstanceUIDs { fprintln("  \(uid)") }
         }
         if result.isSuccess { return }
         fprintln("Final \(service.rawValue) response: "
-            + RetrieveStatusText.describe(result.status, service: service)
-            + " — " + RetrieveStatusText.subOperationCounts(result.progress))
+            + DIMSEServiceStatusText.describe(result.status, service: service)
+            + " — " + DIMSEServiceStatusText.subOperationCounts(result.progress))
         throw RetrieveError.retrievalFailed(service: service,
                                             status: result.status,
                                             progress: result.progress,
@@ -188,46 +172,14 @@ struct RetrieveExecutor {
     
     // MARK: - C-GET Implementation
     
-    private func performCGet(studyUID: String, seriesUID: String?, sopUID: String?) async throws {
-        let stream: AsyncStream<DICOMRetrieveService.GetEvent>
-        
-        if let sopUID = sopUID, let seriesUID = seriesUID {
-            // Instance level
-            stream = try await DICOMRetrieveService.getInstance(
-                host: host,
-                port: port,
-                callingAE: callingAE,
-                calledAE: calledAE,
-                studyInstanceUID: studyUID,
-                seriesInstanceUID: seriesUID,
-                sopInstanceUID: sopUID,
-                preferredTransferSyntaxUID: preferredTransferSyntaxUID,
-                timeout: timeout
-            )
-        } else if let seriesUID = seriesUID {
-            // Series level
-            stream = try await DICOMRetrieveService.getSeries(
-                host: host,
-                port: port,
-                callingAE: callingAE,
-                calledAE: calledAE,
-                studyInstanceUID: studyUID,
-                seriesInstanceUID: seriesUID,
-                preferredTransferSyntaxUID: preferredTransferSyntaxUID,
-                timeout: timeout
-            )
-        } else {
-            // Study level
-            stream = try await DICOMRetrieveService.getStudy(
-                host: host,
-                port: port,
-                callingAE: callingAE,
-                calledAE: calledAE,
-                studyInstanceUID: studyUID,
-                preferredTransferSyntaxUID: preferredTransferSyntaxUID,
-                timeout: timeout
-            )
-        }
+    private func performCGet(keys: RetrieveKeys, studyUID: String?, seriesUID: String?) async throws {
+        let stream = DICOMRetrieveService.get(
+            host: host,
+            port: port,
+            configuration: try retrieveConfiguration(),
+            keys: keys,
+            preferredTransferSyntaxUID: preferredTransferSyntaxUID
+        )
         
         var filesReceived = 0
         var finalResult: RetrieveResult?
@@ -277,11 +229,15 @@ struct RetrieveExecutor {
         sopClassUID: String,
         transferSyntaxUID: String,
         data: Data,
-        studyUID: String,
+        studyUID: String?,
         seriesUID: String?
     ) throws {
         let filename = "\(sopInstanceUID).dcm"
         let filepath: String
+        // A relational-retrieve by Series/SOP Instance UID alone has no study UID
+        // to file under, so recover it from the received data set as for series.
+        let effectiveStudyUID = studyUID
+            ?? Self.extractUID(element: 0x000D, fromDataSet: data, transferSyntaxUID: transferSyntaxUID)
 
         // For a study-level C-GET the caller has no series UID, so recover it from the
         // received dataset itself; otherwise --hierarchical would collapse to a flat dump.
@@ -289,7 +245,7 @@ struct RetrieveExecutor {
         let effectiveSeriesUID = seriesUID
             ?? Self.extractSeriesUID(fromDataSet: data, transferSyntaxUID: transferSyntaxUID)
 
-        if hierarchical, let series = effectiveSeriesUID {
+        if hierarchical, let series = effectiveSeriesUID, let studyUID = effectiveStudyUID {
             // Organize as study/series/instance
             let studyDir = (outputPath as NSString).appendingPathComponent(studyUID)
             let seriesDir = (studyDir as NSString).appendingPathComponent(series)
@@ -323,6 +279,12 @@ struct RetrieveExecutor {
     /// (undefined-length sequences, big endian, truncation) so callers fall back to a
     /// flat layout rather than misfiling. Never traps: every read is bounds-checked.
     static func extractSeriesUID(fromDataSet data: Data, transferSyntaxUID: String) -> String? {
+        extractUID(element: 0x000E, fromDataSet: data, transferSyntaxUID: transferSyntaxUID)
+    }
+
+    /// Best-effort scan for a UID in group 0020 — Study Instance UID (0020,000D)
+    /// or Series Instance UID (0020,000E); same rules as ``extractSeriesUID``.
+    static func extractUID(element target: UInt16, fromDataSet data: Data, transferSyntaxUID: String) -> String? {
         // Re-base to guarantee 0-based indexing (the dataset may arrive as a slice).
         let bytes = Data(data)
         let implicitVR = (transferSyntaxUID == "1.2.840.10008.1.2")
@@ -334,8 +296,8 @@ struct RetrieveExecutor {
             guard let group = bytes.readUInt16LE(at: offset),
                   let element = bytes.readUInt16LE(at: offset + 2) else { return nil }
 
-            // Elements are ordered by (group, element); once we pass 0020,000E it's absent.
-            if group > 0x0020 || (group == 0x0020 && element > 0x000E) { return nil }
+            // Elements are ordered by (group, element); once we pass the target it's absent.
+            if group > 0x0020 || (group == 0x0020 && element > target) { return nil }
 
             let valueLength: Int
             let valueOffset: Int
@@ -361,7 +323,7 @@ struct RetrieveExecutor {
             if valueLength == 0xFFFF_FFFF { return nil }
             guard valueOffset + valueLength <= bytes.count else { return nil }
 
-            if group == 0x0020 && element == 0x000E {
+            if group == 0x0020 && element == target {
                 let raw = bytes[valueOffset ..< valueOffset + valueLength]
                 let uid = String(decoding: raw, as: UTF8.self)
                     .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
@@ -415,7 +377,7 @@ struct RetrieveExecutor {
 
 enum RetrieveError: Error, CustomStringConvertible, LocalizedError {
     case missingMoveDestination
-    case retrievalFailed(service: RetrieveStatusText.Service, status: DIMSEStatus,
+    case retrievalFailed(service: DIMSEStatusService, status: DIMSEStatus,
                          progress: RetrieveProgress, failedSOPInstanceUIDs: [String])
     case partialFailure(succeeded: Int, failed: Int)
     
@@ -425,8 +387,8 @@ enum RetrieveError: Error, CustomStringConvertible, LocalizedError {
             return "C-MOVE requires a move destination AE title"
         case .retrievalFailed(let service, let status, let progress, let uids):
             var text = "\(service.rawValue) final response "
-                + RetrieveStatusText.describe(status, service: service)
-                + " (" + RetrieveStatusText.subOperationCounts(progress) + ")"
+                + DIMSEServiceStatusText.describe(status, service: service)
+                + " (" + DIMSEServiceStatusText.subOperationCounts(progress) + ")"
             if !uids.isEmpty {
                 text += "; Failed SOP Instance UID List (0008,0058): " + uids.joined(separator: ", ")
             }

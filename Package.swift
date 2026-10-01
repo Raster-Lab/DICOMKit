@@ -427,6 +427,18 @@ let package = Package(
             dependencies: ["dicom-send", "DICOMNetwork", "DICOMCore"],
             path: "Tests/dicom-sendTests"
         ),
+        // dicom-retrieve / dicom-qr: --priority (PS3.7 Tables 9.3-9 / 9.3-6),
+        // --relational-retrieve (PS3.4 C.5.2.1), --parallel (P-items 2026-10-01).
+        .testTarget(
+            name: "dicom-retrieveTests",
+            dependencies: ["dicom-retrieve", "DICOMNetwork", "DICOMCore"],
+            path: "Tests/dicom-retrieveTests"
+        ),
+        .testTarget(
+            name: "dicom-qrTests",
+            dependencies: ["dicom-qr", "DICOMNetwork", "DICOMCore"],
+            path: "Tests/dicom-qrTests"
+        ),
         // dicom-diff / dicom-split / dicom-merge: option vocabularies pinned to PS3.3 / PS3.5 /
         // PS3.6 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(
