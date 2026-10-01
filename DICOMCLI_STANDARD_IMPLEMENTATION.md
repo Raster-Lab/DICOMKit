@@ -1,6 +1,6 @@
 # `dicom-*` CLI tools — DICOM 2026a verification
 
-Scope: the 42 `dicom-*` executable targets under `Sources/dicom-*` (80 Swift files). Target edition
+Scope: the 42 `dicom-*` executable targets under `Sources/dicom-*` (80 Swift files at the start, 102 after this pass). Target edition
 **DICOM 2026a**. Method: ["Verification method (reuse for every module)"](DICOMCORE_STANDARD_IMPLEMENTATION.md#verification-method-reuse-for-every-module),
 applied to the tools' *surface*: every tool is an adapter over a DICOMKit engine that was verified in
 [DICOMKIT_STANDARD_IMPLEMENTATION.md](DICOMKIT_STANDARD_IMPLEMENTATION.md), so what is checked here is the
@@ -11,7 +11,7 @@ keys, XML elements, printed labels, status texts and exit codes it emits (output
 keys, printed labels and exit codes; standard side from the DocBook tables named in each row; the
 DICOMKit literal checks of `diff_kit.py` / `diff_web.py` are re-run over every tool's sources).
 
-Started 2026-10-01. Status: **in progress** — see the Summary table.
+Started and completed 2026-10-01. Status: **complete** — every tool has both contract tables; P-items wait for the owner (Priority action list).
 
 Groups (one section each, worked in this order):
 
@@ -31,11 +31,11 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 
 | Bucket | Count | Meaning | Status |
 |---|---|---|---|
-| Carried rows | 4 | D9, D29, D44, D56 — CLI halves of findings opened by earlier reports | ✅ D9, D29, D44, D56 CLI halves closed 2026-10-01 (D9, D29, D56 DICOMStudio halves remain open) |
+| Carried rows | 4 | D9, D29, D44, D56 — CLI halves of findings opened by earlier reports | ✅ CLI halves closed 2026-10-01 (D9, D29, D56 DICOMStudio halves handed to DICOMStudio) |
 | G1 Network | 14 tools | input/output contract vs PS3.7 Annex C, PS3.4 C.4/C.6/K/F/H, PS3.18 | ✅ 14 of 14 contracts done 2026-10-01; dicom-server repaired (D94–D102 closed, `7bad09d`); dicom-cloud excluded from Package.swift (no build) |
 | G2 File and media | 14 tools | contract vs PS3.5, PS3.10, PS3.11 Annex H, PS3.18 F, PS3.19 A | ✅ 14 of 14 contracts done 2026-10-01 |
 | G3 Encoding and pixel | 8 tools | contract vs PS3.5 8.2 / 10, PS3.6 A-1, PS3.3 C.7.6.3 / C.11.2, PS3.15 E | ✅ 8 of 8 contracts done 2026-10-01 |
-| G4 Derived objects | 6 tools | contract vs PS3.3 C.8.20 / C.17, PS3.16 TIDs and CIDs | ⏳ in progress (started 2026-10-01) |
+| G4 Derived objects | 6 tools | contract vs PS3.3 C.8.20 / C.17, PS3.16 TIDs and CIDs | ✅ 6 of 6 contracts done 2026-10-01 |
 
 ---
 
@@ -68,6 +68,8 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | 2026-10-01 | G4 report | renders SR only; PS3.3 C.17.3 value types (16) and relationship types (7), Table 8.8-1 coded entries, C.17.2 flags, Content Template Sequence, PS3.6 A-1 SR SOP Class names (20/20); an Extensible SR fixture using every value and relationship type rendered in text/JSON/Markdown/HTML and diffed by script: 75 labels matched, 0 wrong. matched 4, wrong 3, missing 4 (all fixed), plumbing 14 | `89c3ed93`: 10 value types printed `[Content]` and children of non-CONTAINER items were dropped — fixed in every format; CODE as (value, scheme, "meaning"); units by Code Meaning; completion/verification/preliminary flags and root template shown; JSON adds `value_type`, flag keys, `content_template` (no key changed); HTML escaped; **behaviour change**: a non-SR input is refused naming its SOP Class (was an empty report, exit 0); P-REPORT-TEMPLATE, P-REPORT-SUMMARY; D194–D196 | dicom_reportTests 10/10 |
 | 2026-10-01 | G4 measure | PS3.3 10.7.1, C.7.6.2.1.1 Pixel Spacing, Tables C.8-2/C.8-71 Imager Pixel Spacing, Nominal Scanned Pixel Spacing, C.7.6.16.2.1 Pixel Measures, C.8.5.5 US Regions, Table C.18.6-1 ROI pixel inclusion, C.11.1 Modality LUT and Rescale Type; PS3.16 unit CIDs; 22 tag literals and 22 citations match. matched 10, wrong 7 (fixed), missing 2 (1 fixed; SUV not offered), plumbing 7. Correction: 2026a 10.7.1.3 has no "UI shall indicate" rule for detector-plane spacing; the wording is in Tables C.8-2/C.8-71 | `0fbc334f`: spacing from Pixel Spacing / Pixel Measures / US region / Imager Pixel Spacing (labelled detector plane) / Nominal Scanned, else pixels with a warning (was mm at an assumed 1 mm/pixel); angles in mm space; ROI by pixel centre; Bits Stored mask; Modality LUT applied (was ignored); HU only when Rescale Type is HU or absent on CT; `--frame` range-checked; output adds `spacing_source` and JSON `unit_ucum`; P-MEASURE-FRAME, P-MEASURE-UNIT; D197 | dicom_measureTests 17/17 |
 | 2026-10-01 | G4 ai, script | ai: PS3.16 TID 1500, TID 4019, TID 1001, Table D-1 (coded concepts 35 matched, 0 wrong), CID 7203 / (121322, DCM), PS3.10 7.1; 46 options: matched 5, wrong 1, missing 1, plumbing 39. script: scripts name `dicom-*` tools and options, no DICOM keywords/tags/UIDs (plumbing 9/9) | `1ff3934e` ai: `--format dicom-sr` wrote unregistered titles 129007/129008, (121072, DCM) as "Confidence" (it is "Impressions"), (121191, DCM) misused, a 0–1 value labelled percent, no template and no File Meta — now a TID 1500 Measurement Report from `MeasurementReportBuilder`, validated strictly, confidence as (111012, DCM, "Certainty of Finding") in percent 0–100; `--algorithm-version` added (TID 4019 row 2 mandatory); SR and `enhance` outputs are PS3.10 files; `enhance` writes a DERIVED image with Source Image Sequence; `c233ec05` script: marker; D198–D203 (D202: ScriptEngine templates call `dicom-anon --profile basic/strict`) | dicom_aiTests 11/11 (6 new) |
+| 2026-10-01 | G4 3d, viewer | 3d: PS3.3 C.7.6.2 / Table C.7-10 Pixel Spacing order, Equation C.7.6.2.1-1, C.7.4.1.1.1 Frame of Reference, C.7.6.16.2.3/.4 plane functional groups, C.7.6.1.1.2 / CID 7203 derived MPR, C.11.2 (54 rows: matched 1, wrong 16, missing 8, extra 5, plumbing 24); viewer: C.11.2 VOI LUT Function, MONOCHROME1, C.9.2 overlays, Table 10-3 frame numbering, PS3.6 labels (22 rows: wrong 4, missing 5, plumbing 13) | `aa35a519` 3d: Pixel Spacing was read as x\\y (value 1 is the row spacing); slice offset applied to z only instead of along the normal (also moved STL/OBJ vertices); slice spacing from the mean distance along the normal; Frame of Reference / orientation consistency checked; enhanced multi-frame read from plane functional groups; plane names are LPS planes (sagittal/coronal were upside down); `--format dcm` wrote PNG; `--thickness` honoured; derived MPR series with DERIVED and CID 7203; NIfTI/MetaImage affines corrected; `ffbc8d20` viewer: VOI LUT Function, MONOCHROME1 inversion, overlays, 1-based `--frame-number`, PS3.6 labels; P-3D-OBLIQUE, P-3D-INTERPOLATION, P-3D-VOLUME, P-VIEWER-FRAME; D204–D205 | dicom_3dTests 21/21, dicom_viewerTests 8/8 (verified after the agent stopped at the session restart) |
+| 2026-10-01 | Module close | `diff_cli.py` over all 42 tools: 0 FAIL; `check_nema_markers.py` on every `Sources/dicom-*`: exit 0; full `swift test` (release dicom-split/dicom-merge rebuilt first); D103 closed, D104 carried as P-GATEWAY-SC; Rows handed to DICOMStudio written | `92421a38` (D103) | full `swift test` exit 0: XCTest 5,421 executed, 44 skipped, 0 failures; Swift Testing 9,036 passed |
 | 2026-10-01 | Scaffold | `Scripts/diff_cli.py`: surface extractor (1,042 options), generic DICOMKit literal checks re-run per tool, transfer-syntax-name and documented-default checks; this report | — | — |
 
 ---
@@ -119,6 +121,11 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | P-REPORT-SUMMARY | `dicom-report --include-summary` is accepted but has no effect. Proposal: make it control the summary sections, or deprecate it | PEND | — |
 | P-MEASURE-FRAME | `dicom-measure --frame` is 0-based; frames are numbered from 1. Proposal: a 1-based `--frame-number` (decide with P-EXPORT-1, P-SPLIT-1, P-CONVERT-FRAME, P-J2K-FRAME) | PEND | PS3.3 2026a C.7.6.6 |
 | P-MEASURE-UNIT | `dicom-measure` text/JSON `unit` prints symbols (`mm²`, `°`); JSON now also carries `unit_ucum`. Proposal: make `unit` the UCUM code and add `um` | PEND | PS3.16 2026a CID 7460–7462, CID 82 |
+| P-3D-OBLIQUE | `dicom-3d --planes oblique` is accepted but cannot produce output (no option supplies the plane); a warning is now printed. Proposal: add `--oblique-normal` / `--oblique-point` (LPS mm) implemented with Equation C.7.6.2.1-1, or remove `oblique` | PEND | PS3.3 2026a C.7.6.2.1.1 |
+| P-3D-INTERPOLATION | `--interpolation` has no effect on axial/sagittal/coronal planes and `cubic` is linear. Proposal: drop `cubic` or implement it; document that orthogonal planes are not resampled | PEND | — |
+| P-3D-VOLUME | `dicom-3d volume` and its `--camera-angle` / `--transfer-function` are not implemented (exit 1). Proposal: hide the subcommand until implemented | PEND | — |
+| P-VIEWER-FRAME | `dicom-viewer --frame` is 0-based; an additive 1-based `--frame-number` was added. Proposal: deprecate `--frame` (decide with the other frame-numbering items) | PEND | PS3.3 2026a Table 10-3 |
+| P-GATEWAY-SC | `dicom-gateway hl7-to-dicom` / `fhir-to-dicom` without `--template` write an instance that claims Secondary Capture Image Storage but has no Image Pixel Module and no Conversion Type (D104). Options: (a) require `--template`; (b) write a Modality Worklist-shaped data set (PS3.4 Table K.6-1) that claims no storage SOP Class; (c) add a blank Image Pixel Module and Conversion Type WSD. Recommendation: (a), since the output has no image | PEND | PS3.3 2026a A.8.1; PS3.4 Table K.6-1 |
 | P-AUDIO-SOURCE-PER-TRACK | `VideoWorkflow.Metadata.audioChannelSource` (DICOMKit, `VideoWorkflow.swift:133`, `audioChannels(for:metadata:)`) is one Source applied to every audio track, so `--audio-channel-source` is single-valued. Proposal: add `audioChannelSources: [VideoAudioChannel.Source]?` to `Metadata` (one per track) and let the CLI option repeat | PEND | PS3.3 2026a Table C.7-13 (one (003A,0300) Item per channel, each with its own (003A,0208)) |
 
 ---
@@ -172,8 +179,8 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | D100 | dicom-server | DatabaseManager.swift query*Level | Required keys not matched/returned: Study Time, Accession Number, Study ID (C.6-2), Patient's Name at Study level (C.6-5), Series Number (C.6-3), Instance Number (C.6-4); responses carry a fixed attribute set instead of the requested keys and omit Query/Retrieve Level (C.4.1.1.3.2) | PS3.4 Tables C.6-1..C.6-5, C.4.1.1.3.2 | Medium | ✅ Closed 2026-10-01 (`7bad09d`); dicom-serverTests 72 pass |
 | D101 | dicom-server | ServerSession.swift handleCFind/CMove/CGet (`?? "STUDY"`) | Missing Query/Retrieve Level (0008,0052) defaults to STUDY; the request Identifier "shall contain" it (C.4.1.1.3.1 / C.4.2.1.4.1) — should fail A900 | PS3.4 C.4.1.1.3.1, Table C.4-1 | Low | ✅ Closed 2026-10-01 (`7bad09d`); dicom-serverTests 72 pass |
 | D102 | dicom-server | StorageManager.swift storeFile; ServerSession.swift handleCStore | Stored files lack preamble/DICM/File Meta (PS3.10 7.1) and the data set is parsed without the negotiated transfer syntax; sendViaCStore then rejects every stored file (no DICM) | PS3.10 7.1; PS3.5 10 | High | ✅ Closed 2026-10-01 (`7bad09d`); dicom-serverTests 72 pass |
-| D103 | dicom-gateway | GatewayListener.swift handleDICOMClient / forwardToPACS | `forward --listen-port` accepts TCP but implements no PS3.8 Upper Layer / C-STORE SCP; `listen --forward pacs://` only prints "Would forward" | PS3.8 9; PS3.4 B | Low (help overstates) | ⏳ Open |
-| D104 | dicom-gateway | HL7ToDICOMConverter.swift / FHIRConverter.swift createBasicDICOMFile | Without --template the output claims Secondary Capture Image Storage but has no Image Pixel Module and no Type 1 Conversion Type (0008,0064) — not a conforming SC instance; an MWL-shaped output (PS3.4 Table K.6-1) or a template requirement is a design decision | PS3.3 A.8.1; PS3.4 K.6-1 | Medium | ⏳ Open |
+| D103 | dicom-gateway | GatewayListener.swift handleDICOMClient / forwardToPACS | `forward --listen-port` accepts TCP but implements no PS3.8 Upper Layer / C-STORE SCP; `listen --forward pacs://` only prints "Would forward" | PS3.8 9; PS3.4 B | Low (help overstates) | ✅ Closed 2026-10-01 (`92421a38`): help and a stderr warning now say both are not implemented; implementing them is a feature, not a standard row |
+| D104 | dicom-gateway | HL7ToDICOMConverter.swift / FHIRConverter.swift createBasicDICOMFile | Without --template the output claims Secondary Capture Image Storage but has no Image Pixel Module and no Type 1 Conversion Type (0008,0064) — not a conforming SC instance; an MWL-shaped output (PS3.4 Table K.6-1) or a template requirement is a design decision | PS3.3 A.8.1; PS3.4 K.6-1 | Medium | ⏳ Carried as P-GATEWAY-SC (owner decision) |
 | D105 | DICOMWeb | `QIDOResultFormatter` (QIDOResultFormatter.swift:34, :95, :148) | study column "Modality" holds Modalities In Study (0008,0061); "# Images" is Number of Series Related Instances (0020,1209); "SOP Class" truncates the UID to 15 chars. PS3.6 Table 6-1 names | see the tool section | Low | ⏳ Open |
 | D106 | DICOMWeb | `STOWResultFormatter.failureReason` (STOWResultFormatter.swift:52) | prints "Code <decimal>" without the PS3.18 Table I.2-2 meaning/hex; Warning Reason (Table I.2-1) never printed | see the tool section | Low | ⏳ Open |
 | D107 | DICOMWeb | `UPSQuery.workitemSearch` (Sources/DICOMWeb/UPS/UPSQuery.swift:611) | rejects the standard term "IN PROGRESS" (accepts only IN_PROGRESS/INPROGRESS); PS3.3 Table C.30.1-1 (Tool normalises before calling.) | see the tool section | Low | ⏳ Open |
@@ -273,10 +280,59 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | D201 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:555, :558, :584, :587 | `pipeline` / `query` templates pass `--host ${PACS_HOST}`; dicom-query and dicom-retrieve take host[:port] as a positional argument, and dicom-retrieve has no `--patient-id` (it retrieves by `--study-uid` etc.), so the generated scripts fail | — (template plumbing) | Low | ⏳ Open |
 | D202 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:564, :619, :623 | `pipeline` / `anonymize` templates use `dicom-anon --profile basic` (the legacy profile dicom-anon documents as not PS3.15) and `--profile strict` (no such profile); the PS3.15 Basic Application Level Confidentiality Profile is `--profile ps315` | PS3.15 2026a E.1 | Medium | ⏳ Open |
 | D203 | DICOMKit | Sources/DICOMKit/Scripting/ScriptEngine.swift:567, :600 | `dicom-archive create … --input` — dicom-archive has no `create` subcommand (`init`, `import`) | — (template plumbing) | Low | ⏳ Open |
+| D204 | DICOMKit | Sources/DICOMKit/JP3DVolumeDocument.swift:486-497 | decode-volume slices: Image Position (Patient) z = origin.z + i·spacing (ignores Image Orientation (Patient)); no Image Orientation (Patient), Pixel Spacing, Frame of Reference UID or Rescale written; Slice Location = z; SOP Class falls back to CT Image Storage for any source | PS3.3 2026a C.7.6.2.1.1, Table C.7-10, C.7.4.1.1.1 | Medium | ⏳ Open |
+| D205 | DICOMKit | Sources/DICOMKit/JP3DVolumeDocument.swift:393, 412-424 | sidecar origin taken from the unsorted series[0] and slice spacing from the z coordinate of the first/last input files, while JP3DVolumeBridge sorts the volume itself; wrong for unsorted or non-axial input (dicom-3d encode-volume now pre-sorts) | PS3.3 2026a C.7.6.2.1.1 | Low | ⏳ Open |
 
 ### Rows handed to DICOMStudio
 
-Filled at the end of the module.
+DICOMStudio's CLI Workshop runs the same DICOMKit engines and shared console types as the tools. So the Studio audit
+inherits three kinds of work from this module.
+
+**1. DICOMStudio halves of carried rows**
+
+| Row | What Studio still has | Where |
+|---|---|---|
+| D9 | .4.110 called "JPEG XL Lossless Only" | `J2KTestBenchModels.swift:123,392` |
+| D29 | `--profile` choices list STD-GEN-DVD / STD-GEN-USB | `CLIWorkshopViewModel.swift:1730`, `CLIWorkshopHelpers.swift:3128` |
+| D56 | no Channel Source field for `dicom-video` | CLI Workshop video form |
+| D42, D65 (viewer half), D68 | from earlier reports, unchanged | see DICOMPRINTKIT / DICOMRENDERKIT reports |
+
+**2. Rows owned by DICOMStudio, opened here**
+
+D85 (mpps placeholder and optional Modality), D88 (parity-test fixtures with wrong CID 9300 meanings), D114
+(json/xml empty-attribute default), D127 (export contact-sheet/animate render path), D132 (dcmdir validate rules and
+File-set ID default), D154 (split `--frames` help). Each row is in the Deferred findings table above.
+
+**3. Workshop parity with CLI changes made here**
+
+The CLI gained options, defaults or refusals that the Workshop forms do not offer yet. Each is additive or a fix in
+the tool layer; the Workshop should mirror them:
+
+| Tool | Change the Workshop must mirror | Commit |
+|---|---|---|
+| dicom-query | `--level image` (IMAGE wire value) | `695d961` |
+| dicom-send | Failure statuses counted as failures; warnings tallied | `0efff87` |
+| dicom-qr / dicom-retrieve | status text per PS3.4 Tables C.4-2/C.4-3 (`RetrieveStatusText.swift`; see P-QR-STATUS-TEXT) | `1f853e8`, `0b5a61a` |
+| dicom-mwl / dicom-mpps | SPS Status terms; `create` requires `--modality`; CID 9300 examples | `f2db8f9`, `416de5a` |
+| dicom-print / dicom-printscp | MAMMO media, token→wire value help, all Image Display Formats | `ceeb966`, `deb66db` |
+| dicom-wado | `--transfer-syntax`, `--anonymize`, `--rows`, `--columns`, `--fuzzy-matching`; "IN PROGRESS" | `39da529` |
+| dicom-json / dicom-xml | empty attributes kept by default; `--no-include-empty` | `78214e8`, `4a428da` |
+| dicom-tags | `--set` VR and value-limit rules (`TagEditRules.swift`; engine still lacks them, D150) | `b091aa5` |
+| dicom-dcmdir | File-set ID / File ID rules in `validate` | `a45fd45` |
+| dicom-uid | `generate --uuid`; root validation | `788f620` |
+| dicom-validate | `--iod` accepts Table A-1 keywords/UIDs | `606ef6d` |
+| dicom-export | shared render path for contact-sheet/animate; frame-rate default | `104202f` |
+| dicom-anon | ps315 honours `--remove/--replace/--keep`; `--retain-full-dates`, `--retain-modified-dates`; refusals | `06717c9` |
+| dicom-image / dicom-pixedit | `--conversion-type`; derived-image output; rescaled window | `1c9aaba8`, `698de5df` |
+| dicom-pdf | `--conversion-type`, `--burned-in-annotation`, `--hl7-instance-identifier`; Encapsulated Document Length | `3c739850` |
+| dicom-video | `--audio-channel-source`; value warnings | `8eebfab`, `cfc81d9f` |
+| dicom-ai | `--segment-category`, `--segment-type`, `--algorithm-version`; TID 1500 SR | `3fe88bd`, `1ff3934e` |
+| dicom-measure | spacing source and UCUM units | `0fbc334f` |
+| dicom-3d / dicom-viewer | LPS planes, Pixel Spacing order, `--frame-number` | `aa35a519`, `ffbc8d20` |
+
+Engine rows (DICOMKit, DICOMNetwork, DICOMWeb, DICOMCore, DICOMPrintKit) stay with their modules; fixing them fixes the
+Workshop too. Where the CLI works around an engine bug (D112/D137/D162/D165 via D175, D150, D158), the Workshop is
+still affected until the engine row is closed.
 
 ---
 
@@ -2968,8 +3024,177 @@ Commands: dicom-script, run, validate, template · 1 Swift file · 9 options. Th
 
 **Marker (main.swift):** `// NEMA-verified: 2026a, checked 2026-10-01 — carries no DICOM-standard data (runs, validates and prints templates of the shell-like script language in DICOMKit/Scripting; scripts name dicom-* tools and their options, not DICOM keywords, tags or UIDs)`
 
+### dicom-3d (G4)
 
-## dicom-report (G4) — renders SR documents to text/HTML/JSON/Markdown (PDF not implemented)
+Files: main.swift, VolumeData.swift, MPRGenerator.swift, VolumeExport.swift, SurfaceExtractor.swift, DerivedSeries.swift (new) · 11 subcommands · 54 options.
+Evidence: `<scratch>/g4v/g4v_std.py` (output `g4v/std_dump.txt`) dumps PS3.3 Tables C.7-10, C.7.6.16-2/-4/-5, C.7-6, C.11-2b, C.9-2, 10-3, C.12-10, C.8-130, sections C.7.6.2.1.1, C.7.4.1.1.1, C.7.6.1.1.2, C.8.2.1.1.1, C.8.3.1.1.1, C.11.2.1.2.1, C.11.2.1.3.1/.2, C.7.6.3.1.2, and PS3.16 CID 7203 (34 rows; 113072 written, 113078/113079/113049 cited) and CID 7202 (121322). `diff_cli.py --tool dicom-3d`: 12 checks ok (no 1.2.840.10008 literals; 2 Photometric Interpretation literals match).
+
+**Input contract** — matched 1, wrong 16, missing 8, extra 5, plumbing 24 (54 rows; every wrong/missing row fixed with a test)
+
+| Option | DICOM concept | 2026a reference | Allowed per standard / accepted by code | Verdict |
+|---|---|---|---|---|
+| `mpr <input-paths>` | volume assembly from Image Plane / functional groups | PS3.3 Table C.7-10, C.7.6.2.1.1, C.7.4.1.1.1, Tables C.7.6.16-2/-4/-5, C.11.1.1.2 | Pixel Spacing value 1 = row spacing, value 2 = column spacing; sort along normal; one Frame of Reference UID; per-frame Plane Position/Orientation; per-instance rescale | wrong → fixed |
+| `mpr --output` | output path | — | path | plumbing |
+| `mpr --planes` | patient planes axial/sagittal/coronal | PS3.3 C.7.6.2.1.1 (LPS axes) | axial ⟂ z, coronal ⟂ y, sagittal ⟂ x; oblique accepted, not generated (warning) | wrong → fixed |
+| `mpr --format` | derived image output (dcm) | PS3.3 C.7.6.1.1.2, Table C.12-10, PS3.16 CID 7203 (113072), CID 7202 (121322) | png \| dcm; dcm = DERIVED\SECONDARY (MR Value 3 MPR), Derivation Code 113072, Source Image Sequence, plane geometry | missing → fixed |
+| `mpr --thickness` | Slice Thickness of the reformatted image | PS3.3 Table C.7-10 (Slice Thickness nominal) | mm > 0; slabs averaged | missing → fixed |
+| `mpr --interpolation` | resampling method (no DICOM attribute) | — | nearest \| linear \| cubic (cubic = linear; only the unreachable oblique path interpolates) | extra |
+| `mpr --window-center` | Window Center | PS3.3 Table C.11-2b, C.11.2.1.2.1 | Modality LUT output units; LINEAR function | wrong → fixed |
+| `mpr --window-width` | Window Width | PS3.3 C.11.2.1.2.1 | >= 1 (LINEAR) | missing → fixed |
+| `mpr --verbose` | verbosity | — | flag | plumbing |
+| `mip <input-paths>` | volume assembly | PS3.3 Table C.7-10, C.7.6.2.1.1 | shared VolumeLoader (see mpr) | wrong → fixed |
+| `mip --output` | output path | — | path | plumbing |
+| `mip --direction` | projection plane | PS3.3 C.7.6.2.1.1 | axial \| sagittal \| coronal (LPS) | wrong → fixed |
+| `mip --thickness` | projection slab (Pixel by pixel Maximum) | PS3.3 Table C.8-130 MAXIMUM; PS3.16 CID 7203 113078 | mm, centred slab; 0 = whole volume | missing → fixed |
+| `mip --window-center` | Window Center | PS3.3 Table C.11-2b, C.11.2.1.2.1 | LINEAR function | wrong → fixed |
+| `mip --window-width` | Window Width | PS3.3 C.11.2.1.2.1 | >= 1 | missing → fixed |
+| `mip --verbose` | verbosity | — | flag | plumbing |
+| `minip <input-paths>` | volume assembly | PS3.3 Table C.7-10, C.7.6.2.1.1 | shared VolumeLoader (see mpr) | wrong → fixed |
+| `minip --output` | output path | — | path | plumbing |
+| `minip --direction` | projection plane | PS3.3 C.7.6.2.1.1 | axial \| sagittal \| coronal (LPS); unknown values rejected (were silently axial) | wrong → fixed |
+| `minip --thickness` | projection slab (Pixel by pixel Minimum) | PS3.3 Table C.8-130 MINIMUM; PS3.16 CID 7203 113079 | mm, centred slab; 0 = whole volume | missing → fixed |
+| `minip --window-center` | Window Center | PS3.3 Table C.11-2b, C.11.2.1.2.1 | LINEAR function | wrong → fixed |
+| `minip --window-width` | Window Width | PS3.3 C.11.2.1.2.1 | >= 1 | missing → fixed |
+| `minip --verbose` | verbosity | — | flag | plumbing |
+| `average <input-paths>` | volume assembly | PS3.3 Table C.7-10, C.7.6.2.1.1 | shared VolumeLoader (see mpr) | wrong → fixed |
+| `average --output` | output path | — | path | plumbing |
+| `average --direction` | projection plane (Pixel by pixel mean) | PS3.3 C.7.6.2.1.1; Table C.8-130 MEAN | axial \| sagittal \| coronal (LPS); unknown values rejected | wrong → fixed |
+| `average --window-center` | Window Center | PS3.3 Table C.11-2b, C.11.2.1.2.1 | LINEAR function | wrong → fixed |
+| `average --window-width` | Window Width | PS3.3 C.11.2.1.2.1 | >= 1 | missing → fixed |
+| `average --verbose` | verbosity | — | flag | plumbing |
+| `surface <input-paths>` | volume assembly; vertices in patient LPS mm | PS3.3 C.7.6.2.1.1 Equation C.7.6.2.1-1 | vertex = S + X·Δi·i + Y·Δj·j + N·Δk·k | wrong → fixed |
+| `surface --output` | output path | — | path | plumbing |
+| `surface --threshold` | iso-value in Modality LUT output units | PS3.3 C.11.1.1.2 | real value (e.g. HU) | match |
+| `surface --format` | mesh file format (not a DICOM Surface Segmentation / Surface Scan Mesh IOD) | — | stl \| obj | plumbing |
+| `surface --verbose` | verbosity | — | flag | plumbing |
+| `volume <input-paths>` | volume rendering (not implemented, exits 1) | — | paths | plumbing |
+| `volume --output` | output path | — | path | plumbing |
+| `volume --camera-angle` | view angle (not implemented) | — | azimuth,elevation | extra |
+| `volume --transfer-function` | transfer function file (not implemented) | — | JSON path | extra |
+| `volume --verbose` | verbosity | — | flag | plumbing |
+| `export <input-paths>` | volume assembly | PS3.3 Table C.7-10, C.7.6.2.1.1 | shared VolumeLoader | wrong → fixed |
+| `export --output` | output prefix | — | path | plumbing |
+| `export --formats` | NIfTI / MetaImage geometry from the DICOM affine | PS3.3 C.7.6.2.1.1 (LPS), C.11.1.1.2 | nifti (sform RAS, scl 1/0) \| metaimage (TransformMatrix from IOP) | wrong → fixed |
+| `export --verbose` | verbosity | — | flag | plumbing |
+| `backends --json` | codec backend list | — | flag | plumbing |
+| `encode-volume <input-paths>` | slice order of the encoded volume | PS3.3 C.7.6.2.1.1 | sorted along the normal before encoding (was file-name order) | wrong → fixed |
+| `encode-volume --output` | output path | — | path | plumbing |
+| `encode-volume --mode` | JP3D codestream mode (ISO/IEC 15444-10 / -15; private SOP Class 1.2.826.0.1.3680043.10.511.10, not in PS3.6 Table A-1) | PS3.6 Table A-1 (no JP3D entry) | lossless \| lossless-htj2k \| lossy \| lossy-htj2k | extra |
+| `encode-volume --psnr` | lossy target PSNR | — | dB > 0 | plumbing |
+| `encode-volume --verbose` | verbosity | — | flag | plumbing |
+| `decode-volume <input-path>` | JP3D document (private SOP Class) | — | path | plumbing |
+| `decode-volume --output` | output directory | — | path | plumbing |
+| `decode-volume --verbose` | verbosity | — | flag | plumbing |
+| `inspect <input-path>` | JP3D document (private SOP Class) | — | path | plumbing |
+| `inspect --json` | sidecar JSON (engine format, camelCase keys; not PS3.18 Annex F) | — | flag | extra |
+
+**Output contract**
+
+| Field | DICOM source | Standard | Code | Verdict |
+|---|---|---|---|---|
+| `mpr --format dcm` Image Type (0008,0008) | C.7.6.1.1.2, C.8.2.1.1.1, C.8.3.1.1.1 | DERIVED\SECONDARY; CT Value 3 AXIAL covers coronal/sagittal; MR Value 3 MPR | same | missing → fixed (was PNG) |
+| Derivation Code Sequence (0008,9215) | Table C.12-10, CID 7203 | (113072, DCM, "Multiplanar reformatting") | same | missing → fixed |
+| Derivation Description (0008,2111) | Table C.12-10 | ST | "Multiplanar reformatting, <plane> plane, by dicom-3d" | missing → fixed |
+| Source Image Sequence (0008,2112) + Purpose of Reference | Table C.12-10, CID 7202 | Referenced SOP Class/Instance UID; (121322, DCM) | one Item per source instance | missing → fixed |
+| SOP Instance UID / Series Instance UID | C.7.6.1.1.2 | new UIDs | new per instance / per plane | missing → fixed |
+| Image Position / Orientation (Patient), Pixel Spacing, Slice Thickness, Rows, Columns | Table C.7-10, C.7.6.2.1.1 | Equation C.7.6.2.1-1, row\column spacing | per reformatted plane; test checks every pixel maps to its voxel | missing → fixed |
+| Pixel Data | C.11.1.1.2 | stored = (value − intercept)/slope | clamped to Bits Stored / Pixel Representation; Explicit VR Little Endian | missing → fixed |
+| PNG gray values | C.11.2.1.2.1, C.7.6.3.1.2 | LINEAR window; MONOCHROME1 minimum white | same (was LINEAR_EXACT formula, MONOCHROME1 not inverted) | wrong → fixed |
+| NIfTI sform / scl_slope, scl_inter | C.7.6.2.1.1 (LPS), C.11.1.1.2 | LPS affine → RAS; voxels already rescaled | sform RAS from IOP; 1 / 0 (was axis-aligned LPS, rescale applied twice) | wrong → fixed |
+| MetaImage TransformMatrix / AnatomicalOrientation | C.7.6.2.1.1 | direction cosines | from IOP (was identity / fixed RAI) | wrong → fixed |
+| STL / OBJ vertices | C.7.6.2.1.1 | patient LPS mm | VolumeData.physicalCoordinates (slice offset now along the normal) | wrong → fixed |
+| inspect labels | PS3.6 Table 6-1 | Patient's Name, Patient ID, Modality, Study Instance UID, Series Description, SOP Instance UID | same (were Patient, Study UID, Series) | wrong → fixed (3), match (3) |
+| inspect `--json` keys | — (engine sidecar) | not PS3.18 Annex F | rows, columns, frames, bitsAllocated, …, _jp3dCodestreamBytes | extra |
+| encode-volume SOP Class | PS3.6 Table A-1 | no JP3D SOP Class / TS | private 1.2.826.0.1.3680043.10.511.10 (help text = engine constant, test) | extra (documented private) |
+| error text | PS3.6 names | Image Position (Patient) (0020,0032), Image Orientation (Patient) (0020,0037), Pixel Spacing (0028,0030), Frame of Reference UID (0020,0052) | same (were "Image Position Patient") | wrong → fixed |
+| exit codes | — | — | ArgumentParser 64 on validation, 1 on failure; `volume` exits 1 "not yet implemented" | plumbing |
+
+**Findings fixed** (commit aa35a519): Pixel Spacing read as x\y (value 1 is the row spacing, Table C.7-10); slice offset added to z only instead of along the normal (C.7.6.2.1.1), which also moved STL/OBJ vertices; slice spacing was the 3-D distance of the first two slices (now mean distance along the normal), and the one-slice fallback preferred Slice Thickness over Spacing Between Slices; no Frame of Reference UID / orientation / matrix consistency check (C.7.4.1.1.1); Enhanced multi-frame unreadable (Plane Position/Orientation functional groups) and classic multi-frame silently read as one slice; rescale from the first slice only; plane names were volume index planes, not LPS planes (wrong for sagittal/coronal acquisitions; sagittal/coronal images had the feet at the top); `--format dcm` wrote PNG; `--thickness` ignored by mpr, mip and minip; `oblique` silently skipped; single-plane PNG output landed in the parent directory; minip/average accepted any direction as axial; window used the LINEAR_EXACT formula with no width >= 1 check; MONOCHROME1 not inverted; NIfTI sform ignored orientation and LPS→RAS, and scl applied rescale twice; MetaImage transform was identity; encode-volume passed file-name order to the engine; inspect labels were not PS3.6 names.
+
+**Tests**: new target `dicom-3dTests` (Tests/dicom-3dTests/Volume3DContractTests.swift), `swift test --filter dicom_3dTests`: 21 tests, 0 failures. `swift build --product dicom-3d` ok. `check_nema_markers.py Sources/dicom-3d`: 6/6 files marked 2026a.
+
+**P-items**
+- P-3D-OBLIQUE: `--planes oblique` is accepted but cannot produce output (no option supplies the normal/point; the generator ignores the volume origin/orientation). Proposal: add `--oblique-normal x,y,z` / `--oblique-point x,y,z` (LPS mm) and implement it with Equation C.7.6.2.1-1, or remove `oblique` from the accepted values. Kept; a warning is printed.
+- P-3D-INTERPOLATION: `--interpolation` has no effect on the axial/sagittal/coronal planes (voxel-aligned) and `cubic` is linear. Proposal: drop `cubic` or implement it; document that orthogonal planes are not resampled.
+- P-3D-VOLUME: `volume` and its `--camera-angle` / `--transfer-function` options are not implemented (exit 1). Proposal: hide the subcommand until implemented.
+
+**Deferred findings**
+
+| D204 | DICOMKit | Sources/DICOMKit/JP3DVolumeDocument.swift:486-497 | decode-volume slices: Image Position (Patient) z = origin.z + i·spacing (ignores Image Orientation (Patient)); no Image Orientation (Patient), Pixel Spacing, Frame of Reference UID or Rescale written; Slice Location = z; SOP Class falls back to CT Image Storage for any source | PS3.3 2026a C.7.6.2.1.1, Table C.7-10, C.7.4.1.1.1 | Medium | ⏳ Open |
+| D205 | DICOMKit | Sources/DICOMKit/JP3DVolumeDocument.swift:393, 412-424 | sidecar origin taken from the unsorted series[0] and slice spacing from the z coordinate of the first/last input files, while JP3DVolumeBridge sorts the volume itself; wrong for unsorted or non-axial input (dicom-3d encode-volume now pre-sorts) | PS3.3 2026a C.7.6.2.1.1 | Low | ⏳ Open |
+
+**Marker text** (first line of each file; abridged here, full text in the files):
+- main.swift: `NEMA-verified: 2026a, checked 2026-10-01 — 54 options of 11 subcommands: plane names (axial/sagittal/coronal) per the LPS axes of PS3.3 2026a C.7.6.2.1.1; --window-center/--window-width are the C.11.2.1.2.1 LINEAR window (width >= 1, Table C.11-2b); --format dcm writes a derived series (C.7.6.1.1.2, CID 7203 113072); inspect labels are PS3.6 2026a Table 6-1 names (…); the JP3D SOP Class 1.2.826.0.1.3680043.10.511.10 is private (not in PS3.6 Table A-1); encode-volume orders slices along the normal before encoding`
+- VolumeData.swift: `… PS3.3 2026a Table C.7-10 (…), C.7.6.2.1.1 Equation C.7.6.2.1-1 and LPS axes, C.7.4.1.1.1, Tables C.7.6.16-2/-4/-5, C.7.6.6.1.1, C.11.1.1.2: 6 geometry rules, 2 were wrong (spacing order, z offset off the normal) and 4 missing (FoR, orientation, per-frame geometry, per-slice rescale), all fixed`
+- MPRGenerator.swift: `… plane names against the patient-based coordinate system of PS3.3 2026a C.7.6.2.1.1 (…; 3 planes mapped to the volume axis nearest each LPS axis …); reformatted-plane geometry by Equation C.7.6.2.1-1 with Pixel Spacing row\column order of Table C.7-10; window by the LINEAR function of C.11.2.1.2.1 (width >= 1) and MONOCHROME1 shown inverted (C.7.6.3.1.2)`
+- DerivedSeries.swift: `… C.7.6.1.1.2, C.8.3.1.1.1, C.8.2.1.1.1, C.12.4 Table C.12-10, PS3.16 2026a CID 7203 (DCM 113072 "Multiplanar reformatting", 1 of 34 rows used) and CID 7202 (DCM 121322), Table C.7-10 / C.7.6.2.1.1, C.11.1.1.2, PS3.5 Table 6.2-1 (DS 16 bytes, ST 1024 chars)`
+- VolumeExport.swift: `… the voxel-to-patient affine is PS3.3 2026a C.7.6.2.1.1 Equation C.7.6.2.1-1 with the LPS axes (NIfTI sform converted to RAS …; MetaImage keeps LPS), Pixel Spacing order of Table C.7-10, voxels already in Modality LUT output units (C.11.1.1.2) …; NIfTI-1 / MetaIO header layouts are not DICOM and were not compared with the standard`
+- SurfaceExtractor.swift: `carries no DICOM-standard data (marching-cubes mesh, binary STL / OBJ writers); vertex coordinates come from VolumeData.physicalCoordinates, i.e. patient LPS millimetres of PS3.3 2026a C.7.6.2.1.1; no Surface Segmentation / Surface Scan Mesh IOD is written`
+
+**Commit**: aa35a519 `fix(cli): dicom-3d volume geometry, LPS plane names and derived MPR series per DICOM 2026a` (Package.swift hunk = dicom-3dTests target only; CHANGELOG [Unreleased] section "dicom-3d volume geometry, plane names and DICOM MPR output …").
+
+### dicom-viewer (G4)
+
+Files: main.swift, TerminalRenderer.swift · 1 command · 22 options (20 + new `--voi-lut-function`, `--frame-number`).
+Evidence: same dump (`<scratch>/g4v/g4v_std.py`): PS3.3 Table C.11-2b (VOI LUT Function; 3 Defined Terms, via DICOMCore VOILUTFunction, NEMA-verified 2026-09-24), C.11.2.1.2.1 / C.11.2.1.3.1 / C.11.2.1.3.2 (formulas and width rules; DICOMCore WindowSettings, verified D64), C.7.6.3.1.2 (MONOCHROME1), Table C.9-2 (Overlay Origin, Overlay Data order) and Image Frame Origin text, Table 10-3 (Referenced Frame Number: "The first Frame shall be denoted as Frame number 1"), PS3.6 Table 6-1 names. `diff_cli.py --tool dicom-viewer`: 12 checks ok.
+
+**Input contract** — matched 0, wrong 4, missing 5, extra 0, plumbing 13 (22 rows; wrong/missing rows fixed with tests, except `--frame`, a P-item)
+
+| Option | DICOM concept | 2026a reference | Allowed per standard / accepted by code | Verdict |
+|---|---|---|---|---|
+| `<file-paths>` | input files | PS3.10 7.1 | paths | plumbing |
+| `--mode` | terminal output protocol | — | ascii \| ansi \| iterm2 \| kitty \| sixel | plumbing |
+| `--quality` | ASCII ramp | — | low \| high | plumbing |
+| `--color` | ANSI colour depth | — | 256 \| 24bit | plumbing |
+| `--window-center` | Window Center | PS3.3 Table C.11-2b, C.11.2.1.2 | Modality LUT output units; applied with the VOI LUT Function (LINEAR when absent) | wrong → fixed |
+| `--window-width` | Window Width | PS3.3 C.11.2.1.2.1, C.11.2.1.3.1, C.11.2.1.3.2 | >= 1 for LINEAR; > 0 for LINEAR_EXACT / SIGMOID | missing → fixed |
+| `--voi-lut-function` | VOI LUT Function (0028,1056) | PS3.3 Table C.11-2b, C.11.2.1.3 | LINEAR \| LINEAR_EXACT \| SIGMOID (new option) | missing → fixed |
+| `--frame` | frame index | PS3.3 Table 10-3 ("The first Frame shall be denoted as Frame number 1") | 0-based index (DICOM numbers from 1) | wrong (P-VIEWER-FRAME) |
+| `--frame-number` | Frame Number | PS3.3 Table 10-3, Table C.9-2 Image Frame Origin | 1-based (new option) | missing → fixed |
+| `--width` | output width | — | characters >= 1 | plumbing |
+| `--height` | output height | — | characters >= 1 | plumbing |
+| `--invert` | display inversion (MONOCHROME1 already inverted) | PS3.3 C.7.6.3.1.2 | flag; MONOCHROME1 minimum shown white | missing → fixed |
+| `--show-info` | attribute labels | PS3.6 Table 6-1 | Patient's Name, Patient ID, Patient's Sex, Study Description, Study Date, Modality, Rows x Columns, Bits Stored, Number of Frames, Window Center, Window Width | wrong → fixed |
+| `--show-overlay` | Overlay Plane display | PS3.3 Table C.9-2, C.9.2 | Overlay Origin 1\1 = upper left pixel (row\column); Overlay Data bit-packed | missing → fixed |
+| `--thumbnail` | grid of files / frames | PS3.3 Table 10-3 | frame labels 1-based | wrong → fixed |
+| `--size` | grid size | — | WxH | plumbing |
+| `--force` | parse without preamble / DICM | PS3.10 7.1 | flag | plumbing |
+| `--verbose` | verbosity | — | flag | plumbing |
+| `--reduce` | downscale by 2^n after decode | — | n >= 0 | plumbing |
+| `--roi` | crop rectangle (tool pixel coordinates, 0-based) | — | x,y,width,height | plumbing |
+| `--volume` | all frames as filmstrip | — | flag | plumbing |
+| `--jpip` | JPIP URL (unavailable in this build) | PS3.5 8.4 / PS3.6 JPIP Referenced TS | URL | plumbing |
+
+**Output contract**
+
+| Field | DICOM source | Standard | Code | Verdict |
+|---|---|---|---|---|
+| gray value of a pixel | C.11.1.1.2 → C.11.2.1.2/.3 → C.7.6.3.1.2 | rescale per frame → VOI LUT Function (LINEAR when absent) → MONOCHROME1 inverted | same (was: first-frame rescale, LINEAR_EXACT formula always, the file's SIGMOID/LINEAR_EXACT ignored, MONOCHROME1 not inverted) | wrong → fixed |
+| auto window | C.11.2.1.2 (window in Modality LUT output units) | rescaled range | rescaled min/max (was stored-value range: CT with an intercept mis-windowed) | wrong → fixed |
+| overlay pixels (`--show-overlay`) | Table C.9-2 | Overlay Origin row\column, 1\1 = upper left; bits left to right, top to bottom | drawn white via OverlayPlaneRenderer.planes / isSet (was not drawn) | missing → fixed |
+| status line `Frame n/N` | Table 10-3 | 1-based | 1-based | match |
+| thumbnail labels `Frame n` | Table 10-3 | 1-based | 1-based (were 0-based) | wrong → fixed |
+| frame error text | Table 10-3 | — | "Frame 5 (0-based index 4) is not available"; past Number of Frames: "Frame number N does not exist; Number of Frames is M" | wrong → fixed |
+| `--show-info` labels | PS3.6 Table 6-1 | Patient's Name, Patient ID, Patient's Sex, Study Description, Study Date, Modality, Rows/Columns, Bits Stored, Number of Frames, Window Center, Window Width (+ VOI LUT Function) | same (were Patient, ID, Sex, Study, Date, Size, Frames, "W/L: center/width" with truncated decimals) | wrong → fixed (8), match (2) |
+| exit codes | — | — | ArgumentParser 64 on validation, 1 for JPIP | plumbing |
+
+**Tests**: new target `dicom-viewerTests` (Tests/dicom-viewerTests/ViewerContractTests.swift), `swift test --filter dicom_viewerTests`: 8 tests, 0 failures. `swift build --product dicom-viewer` ok. `check_nema_markers.py Sources/dicom-viewer`: 2/2 files marked 2026a.
+
+**P-items**
+- P-VIEWER-FRAME: `--frame` is a 0-based index while DICOM numbers frames from 1 (PS3.3 Table 10-3; Table C.9-2 Image Frame Origin). Kept; additive `--frame-number` (1-based) added. Proposal: deprecate `--frame` in favour of `--frame-number`, or make `--frame` 1-based in the next major version.
+
+**Deferred findings**: none. The engines used (DICOMCore WindowSettings / VOILUTFunction, DICOMKit OverlayPlaneRenderer) are already NEMA-verified 2026a and behaved per the text in the tests.
+
+**Marker text**:
+- main.swift: `NEMA-verified: 2026a, checked 2026-10-01 — 22 options (20 + new --voi-lut-function, --frame-number): window per PS3.3 2026a C.11.2.1.2.1 (LINEAR width >= 1; LINEAR_EXACT / SIGMOID width > 0, C.11.2.1.3.1/.2), VOI LUT Function values = the 3 Defined Terms of Table C.11-2b, frame numbering (Frame Number = 0-based --frame + 1; "The first Frame shall be denoted as Frame number 1", Table 10-3), --show-overlay draws 60xx overlay planes (C.9.2); display modes, sizes, ROI, JPIP are plumbing`
+- TerminalRenderer.swift: `NEMA-verified: 2026a, checked 2026-10-01 — grayscale pipeline against PS3.3 2026a C.11.1.1.2 (Rescale per frame), Table C.11-2b / C.11.2.1.2.1 / C.11.2.1.3 (3 VOI LUT Function Defined Terms LINEAR, LINEAR_EXACT, SIGMOID; LINEAR when absent; via DICOMCore WindowSettings), C.7.6.3.1.2 (MONOCHROME1 minimum shown white), Table C.9-2 (Overlay Origin 1\1 = upper left pixel, row\column; Overlay Data left to right, top to bottom) and Image Frame Origin "Frames are numbered from 1"; 10 info labels are PS3.6 2026a Table 6-1 names; frame labels are 1-based Frame Numbers`
+
+**Commit**: ffbc8d20 `fix(cli): dicom-viewer VOI LUT function, MONOCHROME1, overlays and frame numbers per DICOM 2026a` (Package.swift hunk = dicom-viewerTests target only; CHANGELOG [Unreleased] section "dicom-viewer grayscale display …").
+
+**diff_cli.py**: no extractor change needed (54 and 22 options found).
+
+
+### dicom-report (G4) — renders SR documents to text/HTML/JSON/Markdown (PDF not implemented)
 
 The tool renders SR only; it does not create SR. Files: `Sources/dicom-report/main.swift`, `ReportGenerator.swift` (+ README.md). No SR `.dcm` fixture exists under Tests/ (only `Tests/DICOMStudioTests/Fixtures/syn-ct.dcm`), so `dicom-reportTests` builds an Extensible SR fixture (all 16 Value Types, all 7 Relationship Types, root TID 1500 DCMR, COMPLETE/UNVERIFIED/FINAL) through `SRDocumentSerializer` + `DICOMFile.create`. Setting `DICOM_REPORT_FIXTURE_DIR` writes it to disk; the CLI was then run on it in 4 formats, and `scratch/report/diff_report_labels.py` diffed the printed labels against the DocBook.
 
