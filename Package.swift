@@ -730,6 +730,8 @@ let package = Package(
                 "Segmentation/SegmentedPropertyCodeTests.swift",
                 // PS3.3 Table C.8.20-4 Tracking ID / Tracking UID each Type 1C on the other (D45, 2026-09-30).
                 "Segmentation/SegmentTrackingTests.swift",
+                // PS3.3 Table A.51-1 Patient / General Study Type 2 and Table C.7-8b Enhanced General Equipment (D71, 2026-10-01).
+                "Segmentation/SegmentationIODModulesTests.swift",
                 "StructuredReporting/BasicTextSRBuilderTests.swift",
                 "StructuredReporting/CADFindingsExtractorTests.swift",
                 "StructuredReporting/ChestCADSRBuilderTests.swift",

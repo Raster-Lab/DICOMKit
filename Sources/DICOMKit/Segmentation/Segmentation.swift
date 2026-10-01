@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-30 — Segmentation Type (BINARY, FRACTIONAL, LABELMAP), Segments Overlap and Fractional Type terms per PS3.3 2026a Table C.8.20-2 and C.8.20.2.3; Algorithm Type per Table C.8.20-4; Pixel Padding Value for LABELMAP per A.51.4 and C.8.20.2.4; SOP Class UIDs per PS3.6 Table A-1 and PS3.4 B.5.1.25; Palette Color Lookup Table and ICC Profile Modules required with PALETTE COLOR per Table A.51-1, absent otherwise per A.1.3.2 (D37b); Segmented Property Category/Type Code Sequences Type 1 per Table C.8.20-4 (D37d)
+// NEMA-verified: 2026a, checked 2026-10-01 — Patient (Table C.7-1) / General Study (Table C.7-3) Type 2 rows and Enhanced General Equipment Module (Table C.7-8b, 4 Type 1 rows) carried for buildDataSet, both M in PS3.3 2026a Table A.51-1 (D71)
 //
 // Segmentation.swift
 // DICOMKit
@@ -166,6 +167,18 @@ public struct Segmentation: Sendable {
     /// Color Space (0028,2002), Type 3 in the ICC Profile Module (C.11.15.1.2 Defined
     /// Terms SRGB, ADOBERGB, ROMMRGB, DISPLAYP3)
     public let colorSpace: String?
+
+    // MARK: - Patient, General Study and Enhanced General Equipment (Table A.51-1)
+
+    /// The Type 2 attributes of the Patient (PS3.3 2026a Table C.7-1) and General Study
+    /// (Table C.7-3) Modules, both M in Table A.51-1; written by `buildDataSet`, zero length
+    /// when unknown. `SegmentationBuilder.setPatientAndStudy(_:)` sets it.
+    public var patientAndStudy = SegmentationPatientAndStudy()
+
+    /// The Enhanced General Equipment Module (Table A.51-1, M; Table C.7-8b, all Type 1),
+    /// written by `buildDataSet`; it also supplies Manufacturer (0008,0070) of the General
+    /// Equipment Module. `SegmentationBuilder.setEquipment(_:)` sets it.
+    public var equipment = SegmentationEquipment.dicomKit
     
     // MARK: - Initialization
     
@@ -669,4 +682,84 @@ public struct PlaneOrientation: Sendable {
     public init(imageOrientationPatient: [Double]) {
         self.imageOrientationPatient = imageOrientationPatient
     }
+}
+
+
+// MARK: - Patient / Study and Equipment attributes (PS3.3 2026a Table A.51-1)
+
+/// The Type 2 attributes of the Patient Module (PS3.3 2026a Table C.7-1: Patient's Name,
+/// Patient ID, Patient's Birth Date, Patient's Sex) and General Study Module (Table C.7-3:
+/// Study Date, Study Time, Referring Physician's Name, Study ID, Accession Number); `nil` is
+/// written as zero length (value unknown, PS3.5 7.4.3)
+public struct SegmentationPatientAndStudy: Sendable, Equatable, Hashable {
+    public var patientName: String?
+    public var patientID: String?
+    public var patientBirthDate: String?
+    public var patientSex: String?
+    public var studyDate: String?
+    public var studyTime: String?
+    public var referringPhysicianName: String?
+    public var studyID: String?
+    public var accessionNumber: String?
+
+    public init(
+        patientName: String? = nil, patientID: String? = nil, patientBirthDate: String? = nil,
+        patientSex: String? = nil, studyDate: String? = nil, studyTime: String? = nil,
+        referringPhysicianName: String? = nil, studyID: String? = nil, accessionNumber: String? = nil
+    ) {
+        self.patientName = patientName
+        self.patientID = patientID
+        self.patientBirthDate = patientBirthDate
+        self.patientSex = patientSex
+        self.studyDate = studyDate
+        self.studyTime = studyTime
+        self.referringPhysicianName = referringPhysicianName
+        self.studyID = studyID
+        self.accessionNumber = accessionNumber
+    }
+
+    /// The attributes copied from a source image, so that the segmentation joins its study
+    public init(copyingFrom source: DataSet) {
+        self.init(
+            patientName: source.string(for: .patientName), patientID: source.string(for: .patientID),
+            patientBirthDate: source.string(for: .patientBirthDate), patientSex: source.string(for: .patientSex),
+            studyDate: source.string(for: .studyDate), studyTime: source.string(for: .studyTime),
+            referringPhysicianName: source.string(for: .referringPhysicianName),
+            studyID: source.string(for: .studyID), accessionNumber: source.string(for: .accessionNumber))
+    }
+
+    /// (tag, VR, value) for each attribute, in data set order
+    var elements: [(Tag, VR, String?)] {
+        [(.studyDate, .DA, studyDate), (.studyTime, .TM, studyTime), (.accessionNumber, .SH, accessionNumber),
+         (.referringPhysicianName, .PN, referringPhysicianName), (.patientName, .PN, patientName),
+         (.patientID, .LO, patientID), (.patientBirthDate, .DA, patientBirthDate),
+         (.patientSex, .CS, patientSex), (.studyID, .SH, studyID)]
+    }
+}
+
+/// The Enhanced General Equipment Module (PS3.3 2026a Table C.7-8b): Manufacturer
+/// (0008,0070), Manufacturer's Model Name (0008,1090), Device Serial Number (0018,1000) and
+/// Software Versions (0018,1020), all Type 1
+public struct SegmentationEquipment: Sendable, Equatable, Hashable {
+    public var manufacturer: String
+    public var manufacturerModelName: String
+    public var deviceSerialNumber: String
+    public var softwareVersions: String
+
+    public init(manufacturer: String, manufacturerModelName: String, deviceSerialNumber: String, softwareVersions: String) {
+        self.manufacturer = manufacturer
+        self.manufacturerModelName = manufacturerModelName
+        self.deviceSerialNumber = deviceSerialNumber
+        self.softwareVersions = softwareVersions
+    }
+
+    /// DICOMKit as the producing software: Manufacturer "DICOMKit", Model Name
+    /// "SegmentationBuilder", Device Serial Number = DICOMKit's Implementation Class UID (the
+    /// software has no hardware serial number), Software Versions = its Implementation
+    /// Version Name
+    public static let dicomKit = SegmentationEquipment(
+        manufacturer: "DICOMKit",
+        manufacturerModelName: "SegmentationBuilder",
+        deviceSerialNumber: DICOMFile.implementationClassUID,
+        softwareVersions: DICOMFile.implementationVersionName)
 }

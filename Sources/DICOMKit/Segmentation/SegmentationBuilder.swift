@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — 1-bit frames packed least-significant-bit first per PS3.5 2026a 8.1.1 and D.1; LABELMAP per PS3.3 Table C.8.20-2 (Bits Allocated 8/16, Bits Stored, High Bit, Pixel Representation 0, MONOCHROME2, Segments Overlap NO), C.8.20.2.3.3 (every encoded value described in Segment Sequence), Table A.51-2 (no Segmentation Functional Group for LABELMAP), A.51.4 (Pixel Padding Value), PS3.4 B.5.1.25 (Label Map Segmentation Storage); toDataSet writes the Type 1 attributes of Tables C.8.20-2, C.8.20-4, C.7.6.16-1, C.7.6.17-1; category and type codes per PS3.16 CID 7150/7151; Segmented Property Category/Type Code Sequences (0062,0003)/(0062,000F) Type 1 with one Item per Table C.8.20-4, enforced by buildDataSet (D37d); Tracking ID (0062,0020) UT and Tracking UID (0062,0021) UI, each Type 1C on the other per Table C.8.20-4, enforced by buildDataSet (D45); PALETTE COLOR LABELMAP (D37b): Photometric Interpretation per Table C.8.20-2 (PALETTE COLOR only for LABELMAP, no Recommended Display CIELab Value), Palette Color Lookup Table and ICC Profile Modules per Table A.51-1 and A.1.3.2, descriptors/data per Table C.7-22a, C.7.6.3.1.5 (8 or 16 bits per entry in the Segmentation IOD, US with Pixel Representation 0, no segmented data) and C.7.6.3.1.6 (8-bit values replicated into 16 bits), ICC Profile header per C.11.15.1.1 and Color Space per C.11.15.1.2, VRs per PS3.6 Table 6-1
+// NEMA-verified: 2026a, checked 2026-09-30 — 1-bit frames packed least-significant-bit first per PS3.5 2026a 8.1.1 and D.1; LABELMAP per PS3.3 Table C.8.20-2 (Bits Allocated 8/16, Bits Stored, High Bit, Pixel Representation 0, MONOCHROME2, Segments Overlap NO), C.8.20.2.3.3 (every encoded value described in Segment Sequence), Table A.51-2 (no Segmentation Functional Group for LABELMAP), A.51.4 (Pixel Padding Value), PS3.4 B.5.1.25 (Label Map Segmentation Storage); toDataSet writes the Type 1 attributes of Tables C.8.20-2, C.8.20-4, C.7.6.16-1, C.7.6.17-1; category and type codes per PS3.16 CID 7150/7151; Segmented Property Category/Type Code Sequences (0062,0003)/(0062,000F) Type 1 with one Item per Table C.8.20-4, enforced by buildDataSet (D37d); Tracking ID (0062,0020) UT and Tracking UID (0062,0021) UI, each Type 1C on the other per Table C.8.20-4, enforced by buildDataSet (D45); Patient / General Study Type 2 rows (Tables C.7-1, C.7-3) and Enhanced General Equipment Type 1 rows (Table C.7-8b), both modules M in Table A.51-1, written by buildDataSet (D71, 2026-10-01); PALETTE COLOR LABELMAP (D37b): Photometric Interpretation per Table C.8.20-2 (PALETTE COLOR only for LABELMAP, no Recommended Display CIELab Value), Palette Color Lookup Table and ICC Profile Modules per Table A.51-1 and A.1.3.2, descriptors/data per Table C.7-22a, C.7.6.3.1.5 (8 or 16 bits per entry in the Segmentation IOD, US with Pixel Representation 0, no segmented data) and C.7.6.3.1.6 (8-bit values replicated into 16 bits), ICC Profile header per C.11.15.1.1 and Color Space per C.11.15.1.2, VRs per PS3.6 Table 6-1
 //
 // SegmentationBuilder.swift
 // DICOMKit
@@ -118,6 +118,8 @@ public final class SegmentationBuilder {
     private var pixelPaddingValue: Int?
     private var labelmapBitsAllocated: Int?
     private var paletteColor: (iccProfile: Data, colorSpace: String?)?
+    private var patientAndStudy = SegmentationPatientAndStudy()
+    private var equipment = SegmentationEquipment.dicomKit
 
     // MARK: - Segments and Pixel Data
 
@@ -173,6 +175,22 @@ public final class SegmentationBuilder {
     
     // MARK: - Configuration Methods
     
+    /// Sets the Type 2 Patient (PS3.3 2026a Table C.7-1) and General Study (Table C.7-3)
+    /// attributes, e.g. `SegmentationPatientAndStudy(copyingFrom: sourceImage)`
+    @discardableResult
+    public func setPatientAndStudy(_ attributes: SegmentationPatientAndStudy) -> Self {
+        patientAndStudy = attributes
+        return self
+    }
+
+    /// Sets the Enhanced General Equipment Module (Table C.7-8b, all Type 1); the default is
+    /// ``SegmentationEquipment/dicomKit``
+    @discardableResult
+    public func setEquipment(_ equipment: SegmentationEquipment) -> Self {
+        self.equipment = equipment
+        return self
+    }
+
     /// Sets the SOP Instance UID
     /// - Parameter uid: The SOP Instance UID (will be auto-generated if not set)
     /// - Returns: Updated builder
@@ -832,7 +850,7 @@ public final class SegmentationBuilder {
         // Build the Segmentation object. The SOP Class follows PS3.4 B.5.1.25:
         // Segmentation Storage for BINARY/FRACTIONAL, Label Map Segmentation Storage for
         // LABELMAP.
-        let segmentation = Segmentation(
+        var segmentation = Segmentation(
             sopInstanceUID: finalSOPInstanceUID,
             sopClassUID: Segmentation.sopClassUID(for: segmentationType),
             seriesInstanceUID: seriesInstanceUID,
@@ -869,6 +887,8 @@ public final class SegmentationBuilder {
             iccProfile: paletteColor?.iccProfile,
             colorSpace: paletteColor?.colorSpace
         )
+        segmentation.patientAndStudy = patientAndStudy
+        segmentation.equipment = equipment
         
         return (segmentation: segmentation, pixelData: combinedPixelData)
     }
@@ -1203,6 +1223,20 @@ extension Segmentation {
         // SOP Common Module
         dataSet.setString(sopClassUID, for: .sopClassUID, vr: .UI)
         dataSet.setString(sopInstanceUID, for: .sopInstanceUID, vr: .UI)
+
+        // Patient Module (Table C.7-1) and General Study Module (Table C.7-3), both M in
+        // Table A.51-1: the Type 2 attributes, zero length when unknown (D71, 2026-10-01)
+        for (tag, vr, value) in patientAndStudy.elements {
+            dataSet.setString(value ?? "", for: tag, vr: vr)
+        }
+
+        // General Equipment (Table C.7-8) and Enhanced General Equipment (Table C.7-8b)
+        // Modules, both M in Table A.51-1: Manufacturer, Manufacturer's Model Name, Device
+        // Serial Number and Software Versions, Type 1 in Table C.7-8b (D71, 2026-10-01)
+        dataSet.setString(equipment.manufacturer, for: .manufacturer, vr: .LO)
+        dataSet.setString(equipment.manufacturerModelName, for: .manufacturerModelName, vr: .LO)
+        dataSet.setString(equipment.deviceSerialNumber, for: .deviceSerialNumber, vr: .LO)
+        dataSet.setString(equipment.softwareVersions, for: .softwareVersions, vr: .LO)
 
         // General Study / General Series / Segmentation Series (Table C.8.20-1)
         dataSet.setString(studyInstanceUID, for: .studyInstanceUID, vr: .UI)
