@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — a non-SR input is refused (root Value Type (0040,A040) must be CONTAINER, PS3.3 2026a C.17.3) with its PS3.6 Table A-1 SOP Class name; --format/--template/--language/--title/--logo/--footer/--image-dir/--embed-images/--include-*/--force/--verbose are plumbing (presentation; --template is a styling preset, not a PS3.16 TID)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -82,6 +83,10 @@ struct DICOMReport: ParsableCommand {
             print("Parsing SR document...")
         }
         
+        // An SR Document has a root Content Item of Value Type CONTAINER (PS3.3 2026a C.17.3);
+        // anything else (an image, say) is refused instead of producing an empty report.
+        try Self.requireStructuredReport(dicomFile.dataSet)
+
         // Parse SR document
         let parser = SRDocumentParser()
         let document = try parser.parse(dataSet: dicomFile.dataSet)
@@ -132,6 +137,16 @@ struct DICOMReport: ParsableCommand {
             let sizeKB = Double(reportData.count) / 1024.0
             print("  Size: \(String(format: "%.2f", sizeKB)) KB")
         }
+    }
+
+    /// Throws unless the data set's root Content Item has Value Type (0040,A040) CONTAINER
+    /// (PS3.3 2026a C.17.3, Table C.17-6); names the SOP Class from PS3.6 Table A-1.
+    static func requireStructuredReport(_ dataSet: DataSet) throws {
+        let valueType = dataSet.string(for: .valueType)?.trimmingCharacters(in: .whitespaces)
+        guard valueType != "CONTAINER" else { return }
+        let uid = dataSet.string(for: .sopClassUID)?.trimmingCharacters(in: CharacterSet(charactersIn: " \0")) ?? ""
+        let name = UIDDictionary.lookup(uid: uid)?.name ?? (uid.isEmpty ? "(no SOP Class UID)" : uid)
+        throw ValidationError("Not a Structured Report. SOP Class UID indicates: \(name)")
     }
 }
 

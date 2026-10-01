@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-report SR rendering verified against DICOM 2026a (2026-10-01)
+
+- **dicom-report** prints a value for every Value Type of PS3.3 Table C.17.3-7: DATE, TIME, UIDREF, PNAME,
+  COMPOSITE, WAVEFORM (with channels), SCOORD/SCOORD3D (graphic type and points), TCOORD (range type and
+  references) and TABLE printed `[Content]` before. CODE values print as `(CV, CSD, "CM")` (PS3.16 6.1;
+  Long/URN Code Value when Code Value is absent, Table 8.8-1a); NUM prints whole numbers without `.0` and
+  keeps the Code Meaning of the Measurement Units Code Sequence. Children of NUM, CODE, TCOORD and every
+  other Value Type are rendered (they were dropped unless the parent was a CONTAINER), in all formats and in
+  the measurement / referenced-image / section searches. The header shows Completion Flag, Verification
+  Flag, Preliminary Flag (Table C.17-2) and the root Content Template (`TID 1500 Measurement Report (DCMR)`,
+  Table C.18.8-1); the text format also shows the SR SOP Class. JSON adds `value_type`, `completion_flag`,
+  `verification_flag`, `preliminary_flag` and `content_template` (additive). HTML escapes concept names and
+  values. A file whose root Value Type is not CONTAINER (e.g. an image) is refused with "Not a Structured
+  Report. SOP Class UID indicates: <PS3.6 Table A-1 name>" instead of producing an empty report. New
+  `dicom-reportTests` (10 tests).
+
 ### Fixed — dicom-measure calibration, coordinates and units verified against DICOM 2026a (2026-10-01)
 
 - **dicom-measure** takes the pixel spacing from, in order, Pixel Spacing (0028,0030), the frame's Pixel

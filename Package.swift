@@ -1356,6 +1356,13 @@ let package = Package(
             dependencies: ["dicom-compress", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-compressTests"
         ),
+        // dicom-report: SR rendering pinned to PS3.3 2026a Tables C.17.3-7, C.17.3-8, C.17-2,
+        // C.18.1-1, C.18.8-1, 8.8-1a and PS3.16 2026a 6.1.
+        .testTarget(
+            name: "dicom-reportTests",
+            dependencies: ["dicom-report", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-reportTests"
+        ),
         // dicom-j2k: frame/fragment mapping, Photometric Interpretation, lossy provenance and
         // derived-image attributes after a re-encode, pinned to PS3.5 / PS3.3 2026a.
         .testTarget(
