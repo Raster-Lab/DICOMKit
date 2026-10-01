@@ -28,7 +28,7 @@ struct DICOMDIRReaderRecordTypeTests {
         return dataSet
     }
 
-    @Test("A PRIVATE record and a record type from a later edition are skipped, not fatal")
+    @Test("A record type from a later edition is skipped, not fatal; PRIVATE is kept (D240)")
     func unknownRecordTypesAreSkipped() throws {
         let items = [
             record("PATIENT", [.string(tag: .patientID, vr: .LO, value: "P1")]),
@@ -46,7 +46,9 @@ struct DICOMDIRReaderRecordTypeTests {
         #expect(patient.recordType == .patient)
         let study = try #require(patient.children.first)
         let series = try #require(study.children.first)
-        #expect(series.children.map(\.recordType) == [.image])
+        // PS3.3 2026a Table F.4-1: PRIVATE may sit under any record type; in sequence order it
+        // belongs to the open SERIES
+        #expect(series.children.map(\.recordType) == [.image, .private])
     }
 
     @Test("A record without Directory Record Type (Type 1) is an error")

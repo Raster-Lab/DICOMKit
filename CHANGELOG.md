@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `selectTransferSyntax` no longer offers .100 / .101 to such a stream. The tables are public
   (`mpeg2MainLevelFormats`, `mpeg2HighLevelFrameRates`, `mpeg2HighLevel1080FrameRates`) and diffed against the
   2026a DocBook by `Scripts/diff_kit.py` (check `mpeg2-frame-rates`). A stream with no frame rate is not refused.
+- **DICOMDIR read by its offsets** (D240; PS3.3 2026a F.3.2.2, Table F.3-3, Table F.4-1, F.6.1):
+  `DICOMDIRReader.read(from:)` builds the record tree from Offset of the First Directory Record of the Root
+  Directory Entity (0004,1200), Offset of the Next Directory Record (0004,1400) and Offset of Referenced
+  Lower-Level Directory Entity (0004,1420), counted from the first byte of the File Meta Information (Explicit or
+  Implicit VR Little Endian, defined or undefined lengths), so a DICOMDIR whose records are not in depth-first
+  order is read correctly; the sequence order is used only when the offsets cannot be followed. PRIVATE records are
+  kept where the offsets place them (were dropped). A Record In-use Flag other than 0000H is read as FFFFH, as
+  Table F.3-3 requires (was inactive).
 
 ### Fixed — Basic Profile D on SR Content Sequence (D236, 2026-10-01)
 
