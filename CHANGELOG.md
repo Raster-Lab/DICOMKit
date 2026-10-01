@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   header, frame count, audio stream count) and `VideoProbeResult.mpeg2SystemsLayer` / `containerDisplayName` name
   the container; the systems stream is encapsulated unchanged. A PES input was "not a recognized video container".
   `VideoContainer` keeps its cases (PS / PES report `.elementaryStream`); `ExtractedVideo` suggests `.mpg`.
+- **Script templates without shell syntax** (D223; template plumbing): the runner execs each tool without a shell,
+  so the workflow / pipeline / anonymize templates and the `dicom-script` README now pass a directory with
+  `--recursive` instead of `*.dcm` and drop `> file` redirection. `ScriptValidator` reports globs and redirection
+  as passed literally; `ScriptParser` removes the quotes of a "quoted" argument (the query template's
+  `--patient-name "DOE*"` used to reach dicom-query with its quotes). New `ScriptParser.tokenize(_:)` and
+  `unsupportedShellSyntax(in:)`.
 
 ### Fixed — deferred rows, codec batch b6a (2026-10-01, DICOM 2026a)
 

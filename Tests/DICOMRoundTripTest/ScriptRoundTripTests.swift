@@ -540,3 +540,66 @@ final class ScriptRoundTripTests: XCTestCase {
     }
 }
 
+// MARK: - D223: no shell between the script and the tools
+
+extension ScriptRoundTripTests {
+
+    /// The runner execs `<tool> args` without a shell, so templates pass directories with
+    /// `--recursive` instead of `*.dcm`, and never redirect with `>`.
+    func testTemplatesUseNoGlobsOrRedirection() throws {
+        for name in ["workflow", "pipeline", "query", "archive", "anonymize"] {
+            let template = try TemplateGenerator().generate(templateName: name)
+            for line in template.split(separator: "\n") {
+                let text = line.trimmingCharacters(in: .whitespaces)
+                guard text.hasPrefix("dicom-") else { continue }
+                XCTAssertEqual(ScriptParser.unsupportedShellSyntax(in: text), [], "\(name): \(text)")
+            }
+        }
+    }
+
+    /// dicom-validate, dicom-convert and dicom-anon take one path; a directory needs --recursive.
+    func testTemplateDirectoryInputsCarryRecursive() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        let toolFiles = ["dicom-validate": "DICOMValidate.swift", "dicom-convert": "DICOMConvert.swift", "dicom-anon": "main.swift"]
+        var checked = 0
+        for name in ["workflow", "pipeline", "anonymize"] {
+            let template = try TemplateGenerator().generate(templateName: name)
+            for line in template.split(separator: "\n") {
+                let words = ScriptParser.tokenize(String(line))
+                guard let tool = words.first, let file = toolFiles[tool], words.count > 1,
+                      !words[1].hasSuffix(".dcm") else { continue }
+                XCTAssertTrue(words.contains("--recursive"), "\(name): \(line)")
+                let source = try String(contentsOf: sources.appendingPathComponent(tool).appendingPathComponent(file), encoding: .utf8)
+                XCTAssertTrue(source.contains("var recursive: Bool"), tool)
+                XCTAssertEqual(words.dropFirst().filter { !$0.hasPrefix("-") }.count,
+                               words.dropFirst().count - words.dropFirst().filter { $0.hasPrefix("-") }.count)
+                checked += 1
+            }
+        }
+        XCTAssertEqual(checked, 6)
+    }
+
+    func testQuotedArgumentsReachTheToolWithoutQuotes() throws {
+        XCTAssertEqual(ScriptParser.tokenize(#"dicom-query host --patient-name "DOE*"  --x 'a b'"#),
+                       ["dicom-query", "host", "--patient-name", "DOE*", "--x", "a b"])
+        let commands = try ScriptParser().parse(content: #"dicom-archive query --archive a --patient-id "12345""#)
+        guard case .toolCommand(let command) = commands.first else { return XCTFail("\(commands)") }
+        XCTAssertEqual(command.arguments, ["query", "--archive", "a", "--patient-id", "12345"])
+    }
+
+    func testValidatorFlagsGlobsAndRedirection() throws {
+        let path = try writeScript("""
+            IN=/data
+            dicom-validate ${IN}/*.dcm --level 2
+            dicom-study summary ${IN} --format json > ${IN}/s.json
+            dicom-query h --patient-name "DOE*"
+            dicom-validate ${IN} --recursive
+            """, name: "shell.dcmscript")
+        let issues = try ScriptValidator().validate(scriptPath: path, verbose: false)
+        XCTAssertEqual(issues.count, 2, "\(issues)")
+        XCTAssertTrue(issues[0].hasPrefix("Line 2: ${IN}/*.dcm is passed to the tool literally"), issues[0])
+        XCTAssertTrue(issues[1].hasPrefix("Line 3: > is passed to the tool literally"), issues[1])
+    }
+}
