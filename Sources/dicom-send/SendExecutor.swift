@@ -1,7 +1,7 @@
 import Foundation
 import DICOMCore
 import DICOMNetwork
-// NEMA-verified: 2026a, checked 2026-10-01 — C-STORE response handling diffed against PS3.4 2026a Table B.2-1 (7 rows: Success 0000 stored; Warning B000/B006/B007 stored and reported; Failure A7xx/A9xx/Cxxx not stored, counted as failed) and PS3.7 9.1.1.1.9 (0122 Refused: SOP Class not supported); status text comes from DICOMNetwork.DIMSEStatus
+// NEMA-verified: 2026a, checked 2026-10-01 — C-STORE response handling diffed against PS3.4 2026a Table B.2-1 (7 rows: Success 0000 stored; Warning B000/B006/B007 stored and reported; Failure A7xx/A9xx/Cxxx not stored, counted as failed) and PS3.7 9.1.1.1.9 (0122 Refused: SOP Class not supported); status text comes from DICOMNetwork.DIMSEStatus; the per-file warning line and the summary Warnings count are rendered by the shared NetworkConsole (Table B.2-1 wording via DIMSEServiceStatusText, P-SEND-SUMMARY)
 
 /// How a C-STORE response status is reported, per PS3.4 Table B.2-1: Success
 /// (0000) and the Warning class (B000 Coercion of Data Elements, B006 Elements
@@ -87,7 +87,7 @@ struct SendExecutor {
                     // PS3.4 Table B.2-1 Warning class: stored, but the SCP reports a
                     // deviation (coercion, discarded elements, SOP Class mismatch).
                     warningCount += 1
-                    print("    ⚠️ Stored with warning: \(result.status)")
+                    print(NetworkConsole.sendFileWarningLine(status: result.status), terminator: "")
                 }
 
             } catch {
@@ -101,11 +101,9 @@ struct SendExecutor {
         // Print final summary
         print(NetworkConsole.sendSummary(
             total: filePaths.count, succeeded: successCount, failed: failureCount,
-            bytes: totalBytesTransferred, duration: Date().timeIntervalSince(startTime)),
+            bytes: totalBytesTransferred, duration: Date().timeIntervalSince(startTime),
+            warnings: warningCount),
             terminator: "")
-        if warningCount > 0 {
-            print("  Stored with warning: \(warningCount) (PS3.4 Table B.2-1 Warning class)")
-        }
 
         if failureCount > 0 {
             throw SendError.partialFailure(succeeded: successCount, failed: failureCount)

@@ -44,4 +44,32 @@ final class StoreOutcomeTests: XCTestCase {
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
         XCTAssertTrue(help.contains("low (0002H), medium (0000H), high (0001H)"), help)
     }
+
+    // P-SEND-SUMMARY: the Warning class of PS3.4 Table B.2-1 is counted in the
+    // SHARED NetworkConsole summary (so the DICOMStudio Workshop renders it too).
+    func testSharedSummaryCountsWarnings() {
+        let withWarnings = NetworkConsole.sendSummary(total: 3, succeeded: 3, failed: 0, bytes: 10,
+                                                      duration: 0.5, warnings: 2)
+        XCTAssertTrue(withWarnings.contains("Warnings:          2 (stored; PS3.4 Table B.2-1 Warning class)"), withWarnings)
+        let lines = withWarnings.components(separatedBy: "\n")
+        let succeeded = lines.firstIndex { $0.contains("Succeeded:") } ?? -1
+        let warnings = lines.firstIndex { $0.contains("Warnings:") } ?? -1
+        let failed = lines.firstIndex { $0.contains("Failed:") } ?? -1
+        XCTAssertTrue(succeeded < warnings && warnings < failed, withWarnings)
+
+        // No warnings: byte-identical to the summary without the parameter.
+        XCTAssertEqual(NetworkConsole.sendSummary(total: 1, succeeded: 1, failed: 0, bytes: 10, duration: 0.5, warnings: 0),
+                       NetworkConsole.sendSummary(total: 1, succeeded: 1, failed: 0, bytes: 10, duration: 0.5))
+        XCTAssertFalse(NetworkConsole.sendSummary(total: 1, succeeded: 1, failed: 0, bytes: 10, duration: 0.5)
+            .contains("Warnings:"))
+    }
+
+    func testWarningLineUsesTableB21Wording() {
+        XCTAssertEqual(NetworkConsole.sendFileWarningLine(status: .from(0xB000)),
+                       "    ⚠️ Stored with warning: Warning (0xB000): Coercion of Data Elements\n")
+        XCTAssertEqual(NetworkConsole.sendFileWarningLine(status: .from(0xB006)),
+                       "    ⚠️ Stored with warning: Warning (0xB006): Elements Discarded\n")
+        XCTAssertEqual(NetworkConsole.sendFileWarningLine(status: .from(0xB007)),
+                       "    ⚠️ Stored with warning: Warning (0xB007): Data Set does not match SOP Class\n")
+    }
 }

@@ -199,7 +199,10 @@ Each C-STORE response is classified by PS3.4 Table B.2-1 (2026a):
 - **Success** (`0000`): stored.
 - **Warning** (`B000` Coercion of Data Elements, `B006` Elements Discarded, `B007` Data Set does
   not match SOP Class): the SCP stored the instance but reports a deviation. The file counts as
-  sent; the status is printed under the file line and tallied as "Stored with warning".
+  sent; the status is printed under the file line in the Table B.2-1 wording
+  (`⚠️ Stored with warning: Warning (0xB000): Coercion of Data Elements`) and counted on the
+  `Warnings:` line of the Transfer Summary (shown only when non-zero; the same shared summary
+  the DICOMStudio Workshop prints).
 - **Failure** (`A7xx` Refused: Out of resources, `A9xx` Error: Data Set does not match SOP Class,
   `Cxxx` Error: Cannot understand, `0122` Refused: SOP Class not supported): not stored. The
   file counts as failed, `--retry` applies, and the status is printed on the file line.

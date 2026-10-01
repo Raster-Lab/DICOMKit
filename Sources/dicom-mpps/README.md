@@ -87,6 +87,19 @@ Other CID 9301 codes: `110500` Doctor canceled procedure, `110501` Equipment fai
 - `--timeout`: Connection timeout in seconds (default: 60)
 - `-v, --verbose`: Show verbose output
 
+## Input Validation
+
+These are refused before any association is opened (usage error, exit 64), with a
+message citing the 2026a table; there is no override flag (owner decision
+P-MPPS-STRICT, 2026-10-01: keep them as errors, not warnings):
+
+| Refused input | Why (DICOM 2026a) |
+|---|---|
+| `create` without `--modality` | Modality (0008,0060) is Type 1 in the N-CREATE (PS3.4 Table F.7.2-1) |
+| `--patient-sex` other than `M`, `F`, `O` | Patient's Sex (0010,0040) Enumerated Values (PS3.3 Table C.2-3) |
+| `--patient-birth-date` not `YYYYMMDD` | Patient's Birth Date (0010,0030) is VR DA (PS3.5 Table 6.2-1) |
+| `update --image-uid` without `--study-uid` and `--series-uid` | Referenced Image Sequence (0008,1140) items live in a Performed Series Sequence (0040,0340) item, which needs Series Instance UID (0020,000E) (PS3.4 Table F.7.2-1) |
+
 ## MPPS Workflow
 
 1. **Procedure Start**: Create MPPS with status "IN PROGRESS"

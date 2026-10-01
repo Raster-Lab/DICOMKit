@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — CLI P-items, net batch (approved 2026-10-01, DICOM 2026a)
+
+- **Service-specific DIMSE status text in DICOMNetwork** (P-QR-STATUS-TEXT, closes D76): new public
+  `DIMSEServiceStatusText` / `DIMSEStatusService` carry the 31 rows of PS3.4 2026a Tables B.2-1 (C-STORE),
+  C.4-1 (C-FIND), C.4-2 (C-MOVE) and C.4-3 (C-GET) verbatim, and `DIMSEStatus.description(for:)` words a status
+  as the table of the answering service names it (0xB000 is "Sub-operations Complete - One or more Failures"
+  for C-MOVE, "Coercion of Data Elements" for C-STORE). `dicom-retrieve` and `dicom-qr` drop their private
+  `RetrieveStatusText.swift` copies and use it; output text is unchanged. `DIMSEStatus.description` is unchanged.
+- **`dicom-retrieve --priority low|medium|high`** and **`dicom-qr query|resume --priority`** (P-RETRIEVE-PRIORITY):
+  Priority (0000,0700) of the C-MOVE-RQ / C-GET-RQ, LOW 0002H / MEDIUM 0000H / HIGH 0001H (PS3.7 2026a Tables
+  9.3-9 / 9.3-6; default medium, as before). Engine: `RetrieveConfiguration.priority` (new initializer overload
+  with `priority:`; the existing initializers keep their signatures and send MEDIUM).
+- **`dicom-retrieve --relational-retrieve`** (P-RETRIEVE-EXTNEG): proposes relational-retrieval in a SOP Class
+  Extended Negotiation Sub-Item (PS3.7 Table D.3-11; PS3.4 C.5.2.1 / C.5.3.1, Table C.5-3 byte 1), so
+  `--series-uid` / `--instance-uid` may be given without the UIDs of the levels above (PS3.4 C.4.2.2.2.1 /
+  C.4.3.2.2.1). If the SCP turns it down (no sub-item, or byte 1 = 0, Table C.5-4) such a request is not sent
+  (exit 1). Engine: new public `SOPClassExtendedNegotiation`, `RetrieveExtendedNegotiation`,
+  `RetrieveConfiguration.extendedNegotiation`, `AssociateRequestPDU` / `AssociateAcceptPDU.extendedNegotiations`
+  (encoded and decoded; `PDUDecoder` no longer skips item 56H) and `Association.request(…extendedNegotiations:)`
+  — all as overloads, existing signatures unchanged. A non-default priority and the proposal appear in the
+  shared retrieve header (`NetworkConsole.retrieveHeader(…priority:relationalRetrieval:)`).
+- **`dicom-qr --parallel` now works** (P-QR-PARALLEL): up to N studies are retrieved at once, each on its own
+  association; per-study lines are printed in study order after each batch (with the default 1, output is as
+  before). `--parallel` below 1 is refused.
+- **`dicom-qr` state files gain `ModalitiesInStudy`** (P-QR-STATE-MODALITIES): the PS3.6 keyword key for
+  Modalities in Study (0008,0061), the STUDY-level value of PS3.4 Table C.6-5 (`QRStudyInfo.modalitiesInStudy`).
+  The old `modality` key ((0008,0060)) is still written with the same value and is deprecated; old state files
+  still load.
+- **`dicom-send` warning count in the shared summary** (P-SEND-SUMMARY): `NetworkConsole.sendSummary(…warnings:)`
+  prints `Warnings: N (stored; PS3.4 Table B.2-1 Warning class)` (only when N > 0) and
+  `NetworkConsole.sendFileWarningLine(status:)` words the per-file line by Table B.2-1
+  (`⚠️ Stored with warning: Warning (0xB000): Coercion of Data Elements`); the tool's own trailing
+  `Stored with warning: N` line is gone.
+- **`dicom-query --format dicom-json`** (P-QUERY-JSON): the PS3.18 2026a F.2 DICOM JSON Model (tag keys, `vr`,
+  `Value`, PN component objects; UTF-8 / ISO_IR 192), encoded by DICOMWeb's `DICOMJSONEncoder`
+  (`QueryOutputFormat.dicomJSON`, `GenericQueryResult.dicomJSONElements()`). `--format json` is unchanged.
+- **`dicom-query` table labels are PS3.6 Attribute Names** (P-QUERY-COLUMNS): `Patient's Name`, `Patient's
+  Birth Date`, `Patient's Sex`, `Number of Patient Related Studies`, `Study Date`, `Study Description`,
+  `Modalities in Study`, `Number of Study Related Series`, `Series Description`, `Series Date`, `Number of Series
+  Related Instances`, `SOP Class UID`, `Columns × Rows`, `Number of Frames` (shared formatter, so the DICOMStudio
+  query console changes too; columns widen to fit). New `--csv-keywords` writes PS3.6 keywords in the CSV header;
+  the default `(GGGG,EEEE)` header is unchanged.
+- **`dicom-mwl --json` adds PS3.6 keyword keys** (P-MWL-JSON-KEYS): `ScheduledProcedureStepStartDate`, `…StartTime`,
+  `…Status`, `…ID`, `…Description`, `…Location`, `ScheduledPerformingPhysicianName`,
+  `RequestedProcedureCodeSequence`, `ScheduledProtocolCodeSequence`, `ReferencedStudySequence` (sequences as arrays
+  of item objects) next to the ten abbreviated keys, which keep their values and are deprecated.
+- **`dicom-mpps` input checks stay errors** (P-MPPS-STRICT, owner decision): missing `--modality` (Type 1, PS3.4
+  Table F.7.2-1), `--patient-sex` outside M/F/O (PS3.3 Table C.2-3), a non-DA `--patient-birth-date`, and
+  `update --image-uid` without study/series UIDs are refused (exit 64); now documented in the README.
+
 ### Changed — CLI P-items, codec batch (approved 2026-10-01, DICOM 2026a)
 
 - **`dicom-convert --transfer-syntax` / `dicom-j2k transcode --target`: PS3.6 Table A-1 keywords mean their

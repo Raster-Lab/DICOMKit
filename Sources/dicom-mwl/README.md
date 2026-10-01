@@ -101,7 +101,27 @@ dicom-mwl query pacs://server:11112 --aet MODALITY \
   (Single Value or Wild Card Matching: *)
 - `--timeout`: Connection timeout in seconds (default: 60)
 - `-v, --verbose`: Show verbose output with all attributes
-- `--json`: Output results as JSON
+- `--json`: Output results as JSON (one object per worklist item; see JSON keys below)
+
+## JSON Keys
+
+`--json` keys are PS3.6 2026a Table 6-1 keywords. Ten values were written under
+abbreviated keys before 2026-10-01; they are now **also** written under their
+keywords, and the old keys are kept with the same values but are **deprecated**
+(read the keyword key; the old ones will be removed in a later release):
+
+| Keyword key (use this) | Deprecated key | Attribute |
+|---|---|---|
+| `ScheduledProcedureStepStartDate` | `SPSStartDate` | (0040,0002) |
+| `ScheduledProcedureStepStartTime` | `SPSStartTime` | (0040,0003) |
+| `ScheduledProcedureStepStatus` | `SPSStatus` | (0040,0020) |
+| `ScheduledProcedureStepID` | `SPSID` | (0040,0009) |
+| `ScheduledProcedureStepDescription` | `SPSDescription` | (0040,0007) |
+| `ScheduledProcedureStepLocation` | `SPSLocation` | (0040,0011) |
+| `ScheduledPerformingPhysicianName` | `ScheduledPerformingPhysician` | (0040,0006) |
+| `RequestedProcedureCodeSequence` (array of `{CodeValue, CodingSchemeDesignator, CodeMeaning}`) | `RequestedProcedureCode` (one object) | (0032,1064) |
+| `ScheduledProtocolCodeSequence` (array) | `ScheduledProtocolCodes` | (0040,0008) |
+| `ReferencedStudySequence` (array of `{ReferencedSOPClassUID, ReferencedSOPInstanceUID}`, every item) | `ReferencedStudySOPInstanceUID` (first item's UID only) | (0008,1110) |
 
 ## DICOM Reference
 

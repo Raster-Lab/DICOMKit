@@ -4,7 +4,8 @@
 // C.2.2.2.5.1/.2 and the combined date-time remark under (0040,0003) in Table K.6-1; SPS Status values against
 // PS3.3 Table C.4-10 (0040,0020) Defined Terms (5: SCHEDULED, ARRIVED, READY, STARTED, DEPARTED); SOP Class UID
 // against PS3.6 Table A-1; DA/TM forms against PS3.5 Table 6.2-1. The 38 JSON keys and the response statuses are
-// shared DICOMNetwork code (NetworkConsole.mwlJSON, DIMSEStatus): 28 keys are PS3.6 keywords, 10 are not (P-item).
+// shared DICOMNetwork code (NetworkConsole.mwlJSON, DIMSEStatus): 28 keys are PS3.6 keywords; the other 10 are
+// now also written under their PS3.6 2026a Table 6-1 keywords (P-MWL-JSON-KEYS, 10 of 10 checked), old keys kept.
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -145,7 +146,7 @@ extension DICOMMWLCommand {
         @Flag(name: .shortAndLong, help: "Show verbose output")
         var verbose: Bool = false
         
-        @Flag(name: .long, help: "Output as JSON")
+        @Flag(name: .long, help: "Output as JSON. Keys are PS3.6 keywords (e.g. ScheduledProcedureStepStartDate, ReferencedStudySequence); the abbreviated keys SPSStartDate, SPSStartTime, SPSStatus, SPSID, SPSDescription, SPSLocation, ScheduledPerformingPhysician, RequestedProcedureCode, ScheduledProtocolCodes, ReferencedStudySOPInstanceUID are still written but deprecated")
         var json: Bool = false
         
         /// Scheduled Procedure Step Status (0040,0020) Defined Terms, PS3.3 2026a Table C.4-10.
