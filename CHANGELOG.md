@@ -24,6 +24,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the tool never returns. Tokens, defaults and the values sent are otherwise unchanged. New test
   target `dicom-printTests`.
 
+### Fixed — dicom-wado verified against DICOM 2026a (2026-10-01)
+
+- **dicom-wado:** `retrieve --uri --content-type` rejects a value WADOURIClient cannot request
+  instead of silently fetching application/dicom (PS3.18 9.1.2.2.1; help lists the 7 values);
+  `--frames` with `--uri` must start with a positive frame number (9.5.1.2.1; `0` or text was sent
+  or dropped) and warns that only the first frame of a list is sent. New WADO-URI options
+  `--transfer-syntax`, `--anonymize`, `--rows`, `--columns` (Tables 9.4.1-1 / 9.5.1-1); a
+  parameter outside its representation's table warns. `retrieve --timeout` now sets the request
+  timeout (it was ignored). `query` adds `--fuzzy-matching` (8.3.4.2) and rejects a negative
+  `--limit` / `--offset` (8.3.4.4). `ups --state` and `--filter-state` accept the standard
+  "IN PROGRESS" (PS3.3 Table C.30.1-1; IN_PROGRESS still accepted); `--state SCHEDULED` warns
+  that it is not a Change State target (PS3.18 11.7.1.4). Help names the Enumerated Values of
+  `--priority` (HIGH, MEDIUM, LOW; STAT sent as HIGH), `--patient-sex` and `ups --format csv`.
+  `store` exits 1 when any file was not stored, also with `--continue-on-error`. README: exit
+  code 64 (not 2) for invalid arguments, error text as printed, `query --format json` keys are
+  keywords (the jq example used tag keys), WADO-URI section added. New test target
+  `dicom-wadoTests`; `Scripts/diff_cli_web.py` diffs the tool against PS3.18 / PS3.3 / PS3.6.
+
 ### Fixed — dicom-mwl and dicom-mpps verified against DICOM 2026a (2026-10-01)
 
 - **dicom-mwl:** `--sps-status` help and the discussion listed the Performed Procedure Step

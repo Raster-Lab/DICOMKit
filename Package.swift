@@ -379,6 +379,15 @@ let package = Package(
             dependencies: ["dicom-video", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-videoTests"
         ),
+        // dicom-wado: WADO-URI / QIDO-RS / UPS-RS option values pinned to PS3.18 / PS3.3 2026a.
+        .testTarget(
+            name: "dicom-wadoTests",
+            dependencies: [
+                "dicom-wado", "DICOMWeb", "DICOMCore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Tests/dicom-wadoTests"
+        ),
         // dicom-query / dicom-send: option values and C-STORE status handling
         // pinned to PS3.4 / PS3.7 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(
