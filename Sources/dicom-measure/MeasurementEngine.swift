@@ -203,6 +203,7 @@ struct MeasurementEngine {
         switch unit {
         case .mm: return distanceMM
         case .cm: return distanceMM / 10.0
+        case .um: return distanceMM * 1000.0
         case .inches: return distanceMM / 25.4
         case .pixels: return sqrt(dx * dx + dy * dy)
         }
@@ -215,6 +216,7 @@ struct MeasurementEngine {
         switch unit {
         case .mm: return physicalArea
         case .cm: return physicalArea / 100.0
+        case .um: return physicalArea * 1_000_000.0
         case .inches: return physicalArea / (25.4 * 25.4)
         case .pixels: return pixelArea
         }
@@ -225,6 +227,7 @@ struct MeasurementEngine {
         switch unit {
         case .mm: return "mm²"
         case .cm: return "cm²"
+        case .um: return "µm²"
         case .inches: return "in²"
         case .pixels: return "px²"
         }
@@ -235,18 +238,22 @@ struct MeasurementEngine {
         switch unit {
         case .mm: return "mm"
         case .cm: return "cm"
+        case .um: return "µm"
         case .inches: return "in"
         case .pixels: return "px"
         }
     }
 
     /// UCUM code of a distance unit, from PS3.16 2026a CID 7460 Linear Measurement Unit
-    /// (cm, mm, um). Inches and pixels have no code in PS3.16.
+    /// (cm, mm, um); pixels as PS3.16 2026a writes them in TID UNITS constraints
+    /// ({pixels}, UCUM, "pixels"). Inches have no code in PS3.16.
     static func distanceUCUM(_ unit: MeasurementUnit) -> String? {
         switch unit {
         case .mm: return "mm"
         case .cm: return "cm"
-        case .inches, .pixels: return nil
+        case .um: return "um"
+        case .pixels: return "{pixels}"
+        case .inches: return nil
         }
     }
 
@@ -256,6 +263,7 @@ struct MeasurementEngine {
         switch unit {
         case .mm: return "mm2"
         case .cm: return "cm2"
+        case .um: return "um2"
         case .inches, .pixels: return nil
         }
     }
@@ -632,8 +640,8 @@ enum MeasureError: LocalizedError {
         case .unsupportedBitDepth(let bits):
             return "Unsupported bit depth: \(bits) bits allocated"
         case .frameOutOfRange(let frame, let n):
-            return "Frame index \(frame) is out of range: Number of Frames (0028,0008) is \(n); "
-                + "valid indices are 0...\(n - 1) (DICOM Frame numbers 1...\(n))"
+            return "Frame number \(frame + 1) is out of range: Number of Frames (0028,0008) is \(n); "
+                + "valid Frame numbers are 1...\(n) (deprecated --frame index 0...\(n - 1))"
         case .notMonochrome(let spp):
             return "Pixel values need Samples per Pixel (0028,0002) = 1; this image has \(spp)"
         }

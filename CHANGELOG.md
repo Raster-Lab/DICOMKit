@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — CLI P-items, derived batch (approved 2026-10-01, DICOM 2026a)
 
+- **`dicom-measure pixel --frame-number N`** (1-based; PS3.3 2026a Table 10-3 "The first Frame shall be
+  denoted as Frame number 1") is added; `--frame` (0-based index) is **deprecated** (stderr note) and
+  giving both is refused with exit 1. Text output labels "Frame number N"; JSON adds `frame_number` and
+  keeps `frame` (0-based, deprecated) (P-MEASURE-FRAME).
+- **`dicom-measure --unit um`** (micrometre, UCUM `um` / `um2`, PS3.16 2026a CID 7460 / CID 7461) is
+  added. Text output prints the UCUM code with the display symbol in parentheses when it differs
+  (`2.0 mm2 (mm²)`, `90.0 deg (°)`, `[hnsf'U] (HU)`); distances in pixels carry UCUM `{pixels}` as PS3.16
+  TIDs write it. JSON `unit` / `area_unit` (display symbols) are **deprecated** and unchanged;
+  `unit_ucum` / `area_unit_ucum` carry the code (P-MEASURE-UNIT).
 - **`dicom-report --style`** names the styling preset (default, cardiology, radiology, oncology);
   `--template` is a **deprecated** alias (stderr note; giving both is refused). An unknown value is
   now refused with exit 1 listing the valid styles (was a silent fallback to `default`); a value that

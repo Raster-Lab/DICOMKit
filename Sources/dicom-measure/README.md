@@ -12,7 +12,7 @@ Perform precise medical imaging measurements on DICOM images with calibration su
 - **Pixel Values**: Raw pixel value extraction with frame support
 - **Calibration**: Automatic use of Pixel Spacing, Rescale Slope/Intercept
 - **Multiple Formats**: Text, JSON, CSV output
-- **Unit Conversion**: mm, cm, inches, pixels
+- **Unit Conversion**: mm, cm, um, inches, pixels
 
 ## Usage
 
@@ -36,7 +36,7 @@ dicom-measure roi ct.dcm --rect 100,100,50,50 --statistics --histogram
 dicom-measure hu ct.dcm --point 200,200
 
 # Raw pixel value
-dicom-measure pixel ct.dcm --point 150,150 --frame 0
+dicom-measure pixel ct.dcm --point 150,150 --frame-number 1
 
 # Output to file in JSON format
 dicom-measure distance ct.dcm --p1 100,200 --p2 300,400 --format json --output result.json
@@ -52,6 +52,7 @@ dicom-measure distance ct.dcm --p1 100,200 --p2 300,400 --format json --output r
 
 - **mm**: Millimeters (default, uses Pixel Spacing)
 - **cm**: Centimeters
+- **um**: Micrometres (UCUM `um`, PS3.16 CID 7460 / `um2` CID 7461)
 - **inches**: Imperial inches
 - **pixels**: Raw pixel distances (no calibration)
 
@@ -66,8 +67,12 @@ Physical units use the first of these that the object carries:
 
 Without any of them, results are in pixels (`px`, `px²`) and a warning is printed. Results
 report the attribute used as `spacing_source` (its PS3.6 keyword) and, in JSON, the PS3.16
-UCUM code as `unit_ucum` (`mm`, `cm` — CID 7460; `mm2`, `cm2` — CID 7461; `deg` — CID 7183;
-`[hnsf'U]` — CID 7181).
+UCUM code (CID 82) as `unit_ucum` / `area_unit_ucum` (`mm`, `cm`, `um` — CID 7460; `mm2`, `cm2`,
+`um2` — CID 7461; `deg` — CID 7183; `[hnsf'U]` — CID 7181; `{pixels}` as PS3.16 TIDs write
+pixel units). Text output prints the UCUM code with the display symbol in parentheses when it
+differs (`2.0 mm2 (mm²)`, `90.0 deg (°)`). The JSON keys `unit` and `area_unit` (display
+symbols such as `mm²`, `°`) are **deprecated** and kept unchanged; inches and px² have no
+PS3.16 code and carry no `unit_ucum`.
 
 Pixel values are the stored values (Bits Stored / High Bit / Pixel Representation, PS3.5 8.1.1)
 passed through the Modality LUT Sequence (0028,3000) or Rescale Slope / Intercept (PS3.3 C.11.1).
@@ -78,4 +83,7 @@ passed through the Modality LUT Sequence (0028,3000) or Rescale Slope / Intercep
 
 `x,y` are column,row in the PS3.3 Table C.18.6-1 system: 0,0 is the top-left corner of the
 top-left pixel. A point samples pixel floor(x),floor(y); an ROI holds the pixels whose centres
-lie inside it. `--frame` is a 0-based index (0 = DICOM Frame number 1).
+lie inside it. `pixel --frame-number N` is 1-based (PS3.3 C.7.6.6 / Table 10-3: the first
+Frame is Frame number 1); text output labels it "Frame number N" and JSON adds `frame_number`.
+`--frame` (0-based index) is **deprecated**: it still works, prints a note on stderr, and its
+JSON key `frame` keeps the 0-based index. Giving both is refused (exit 1).

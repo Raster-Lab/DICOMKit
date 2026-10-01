@@ -137,7 +137,7 @@ final class MeasureStandardTests: XCTestCase {
         XCTAssertEqual(r.value, 5.0)
         XCTAssertEqual(r.unitLabel, "px")
         XCTAssertNil(r.calibration)
-        XCTAssertNil(r.ucum)
+        XCTAssertEqual(r.ucum, "{pixels}")   // PS3.16 2026a TID UNITS ({pixels}, UCUM, "pixels")
         let area = e.measurePolygonArea(vertices: [p(0, 0), p(2, 0), p(2, 2)], unit: .cm)
         XCTAssertEqual(area.unitLabel, "px²")
         XCTAssertEqual(area.value, 2.0)
@@ -191,7 +191,8 @@ final class MeasureStandardTests: XCTestCase {
         let e = try image(rows: 2, columns: 2, frames: 2)
         XCTAssertEqual(try e.rawPixelValue(at: p(0, 0), frame: 1), 4)
         XCTAssertThrowsError(try e.rawPixelValue(at: p(0, 0), frame: 2)) { error in
-            XCTAssertTrue("\(error.localizedDescription)".contains("Frame numbers 1...2"))
+            XCTAssertTrue("\(error.localizedDescription)".contains("Frame number 3 is out of range"))
+            XCTAssertTrue("\(error.localizedDescription)".contains("valid Frame numbers are 1...2"))
         }
     }
 
@@ -245,10 +246,13 @@ final class MeasureStandardTests: XCTestCase {
         // CID 7460 Linear Measurement Unit: cm, mm, um. CID 7461 Area Measurement Unit: cm2, mm2, um2.
         XCTAssertEqual(MeasurementEngine.distanceUCUM(.mm), "mm")
         XCTAssertEqual(MeasurementEngine.distanceUCUM(.cm), "cm")
+        XCTAssertEqual(MeasurementEngine.distanceUCUM(.um), "um")
         XCTAssertNil(MeasurementEngine.distanceUCUM(.inches))
-        XCTAssertNil(MeasurementEngine.distanceUCUM(.pixels))
+        XCTAssertEqual(MeasurementEngine.distanceUCUM(.pixels), "{pixels}")   // PS3.16 TID UNITS ({pixels}, UCUM, "pixels")
         XCTAssertEqual(MeasurementEngine.areaUCUM(.mm), "mm2")
         XCTAssertEqual(MeasurementEngine.areaUCUM(.cm), "cm2")
+        XCTAssertEqual(MeasurementEngine.areaUCUM(.um), "um2")
+        XCTAssertNil(MeasurementEngine.areaUCUM(.pixels))
         XCTAssertEqual(MeasurementEngine.angleUCUM, "deg")              // CID 7183 Degree
         XCTAssertEqual(MeasurementEngine.hounsfieldUCUM, "[hnsf'U]")    // CID 7181 / CID 83
     }
@@ -263,5 +267,78 @@ final class MeasureStandardTests: XCTestCase {
         XCTAssertTrue(json.contains("\"spacing_source\" : \"PixelSpacing\""), json)
         XCTAssertTrue(json.contains("\"unit_ucum\" : \"mm\""), json)
         XCTAssertTrue(keywords.contains("PixelSpacing"))
+    }
+
+    // MARK: - P-MEASURE-UNIT: um, UCUM code in text, deprecated unit key kept
+
+    /// PS3.16 2026a CID 7460 / CID 7461, dumped from part16_2026a.xml by Scripts/nema_docbook.py.
+    static let cid7460 = ["cm", "mm", "um"]
+    static let cid7461 = ["cm2", "mm2", "um2"]
+
+    func testEveryCodedUnitIsInCID7460Or7461() {
+        for unit in MeasurementUnit.allCases {
+            if let code = MeasurementEngine.distanceUCUM(unit), code != "{pixels}" {
+                XCTAssertTrue(Self.cid7460.contains(code), code)
+            }
+            if let code = MeasurementEngine.areaUCUM(unit) { XCTAssertTrue(Self.cid7461.contains(code), code) }
+        }
+        XCTAssertEqual(MeasurementUnit(argument: "um"), .um)
+    }
+
+    func testMicrometreConversion() throws {
+        let e = try image { $0.setStrings(["0.5", "0.25"], for: .pixelSpacing, vr: .DS) }
+        let d = e.measureDistance(from: p(0, 0), to: p(4, 0), unit: .um)   // 4 columns x 0.25 mm
+        XCTAssertEqual(d.value, 1000, accuracy: 1e-9)
+        XCTAssertEqual(d.unitLabel, "µm")
+        XCTAssertEqual(d.ucum, "um")
+        let a = e.measurePolygonArea(vertices: [p(0, 0), p(4, 0), p(4, 2), p(0, 2)], unit: .um)  // 1 mm x 1 mm
+        XCTAssertEqual(a.value, 1_000_000, accuracy: 1e-6)
+        XCTAssertEqual(a.ucum, "um2")
+    }
+
+    func testTextPrintsUCUMCodeWithSymbolInParentheses() throws {
+        let e = try image { $0.setStrings(["1", "1"], for: .pixelSpacing, vr: .DS) }
+        let area = e.measurePolygonArea(vertices: [p(0, 0), p(2, 0), p(2, 2)], unit: .mm)
+        let text = formatResult(type: "area", result: area, format: .text, details: [:], geometric: true)
+        XCTAssertTrue(text.hasPrefix("Polygon area (3 vertices): 2.0 mm2 (mm²)\n"), text)
+        let angle = e.measureAngle(vertex: p(0, 0), p1: p(1, 0), p2: p(0, 1))
+        XCTAssertTrue(formatResult(type: "angle", result: angle, format: .text, details: [:]).hasPrefix("Angle: 90.0 deg (°)"))
+        XCTAssertEqual(textUnit(ucum: "mm", symbol: "mm"), "mm")
+        XCTAssertEqual(textUnit(ucum: nil, symbol: "in"), "in")
+        XCTAssertEqual(textUnit(ucum: "[hnsf'U]", symbol: "HU"), "[hnsf'U] (HU)")
+        // JSON keeps the deprecated display-symbol key next to the UCUM code
+        let json = formatResult(type: "area", result: area, format: .json, details: [:], geometric: true)
+        XCTAssertTrue(json.contains("\"unit\" : \"mm²\""), json)
+        XCTAssertTrue(json.contains("\"unit_ucum\" : \"mm2\""), json)
+    }
+
+    // MARK: - P-MEASURE-FRAME: 1-based --frame-number, deprecated --frame
+
+    func testFrameNumberIsOneBasedAndFrameIsDeprecated() throws {
+        XCTAssertEqual(Pixel.frameIndex(frameNumber: nil, frame: nil).index, 0)
+        XCTAssertEqual(Pixel.frameIndex(frameNumber: 2, frame: nil).index, 1)
+        XCTAssertNil(Pixel.frameIndex(frameNumber: 2, frame: nil).note)
+        let old = Pixel.frameIndex(frameNumber: nil, frame: 1)
+        XCTAssertEqual(old.index, 1)
+        XCTAssertEqual(old.note, "Note: --frame is deprecated (0-based index); use --frame-number 2")
+        XCTAssertThrowsError(try Pixel.parse(["f.dcm", "--point", "0,0", "--frame-number", "0"]))
+        XCTAssertNoThrow(try Pixel.parse(["f.dcm", "--point", "0,0", "--frame-number", "1"]))
+        // Both given: refused in run() with exit 1 (parsing accepts it)
+        var both = try Pixel.parse(["f.dcm", "--point", "0,0", "--frame-number", "1", "--frame", "0"])
+        XCTAssertThrowsError(try both.run()) { error in
+            XCTAssertEqual(Pixel.exitCode(for: error).rawValue, 1)
+        }
+    }
+
+    func testPixelOutputLabelsFrameNumber() throws {
+        let e = try image(rows: 2, columns: 2, frames: 2)
+        let r = try e.measurePixelValue(at: p(0, 0), frame: 1)
+        let details = ["point": "0.0,0.0", "frame": "1", "frame_number": "2"]
+        let text = formatResult(type: "pixel", result: r, format: .text, details: details)
+        XCTAssertTrue(text.contains("  Frame number: 2\n"), text)
+        XCTAssertFalse(text.contains("frame: 1"), text)
+        let json = formatResult(type: "pixel", result: r, format: .json, details: details)
+        XCTAssertTrue(json.contains("\"frame_number\" : \"2\""), json)
+        XCTAssertTrue(json.contains("\"frame\" : \"1\""), json)
     }
 }

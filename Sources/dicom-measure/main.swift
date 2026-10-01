@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — option help and output keys diffed against PS3.3 2026a 10.7.1.3 (spacing Value order), Table C.18.6-1 (column,row; 0,0 = TLHC of the TLHC pixel), 10.3 (first Frame is Frame number 1; --frame stays a 0-based index, P-MEASURE-FRAME), C.11.1.1.2 (output units); spacing_source values are PS3.6 2026a Table 6-1 keywords (5); unit_ucum values per PS3.16 2026a CID 7460/7461/7181/7183
+// NEMA-verified: 2026a, checked 2026-10-01 — option help and output keys diffed against PS3.3 2026a 10.7.1.3 (spacing Value order), Table C.18.6-1 (column,row; 0,0 = TLHC of the TLHC pixel), Table 10-3 / C.7.6.6 (pixel --frame-number is 1-based, "The first Frame shall be denoted as Frame number 1"; --frame 0-based index deprecated, P-MEASURE-FRAME), C.11.1.1.2 (output units); spacing_source values are PS3.6 2026a Table 6-1 keywords (5); unit_ucum values per PS3.16 2026a CID 82 (UCUM), CID 7460 (3 of 3 incl. um), CID 7461 (3 of 3 incl. um2), CID 7181/7183, {pixels} as PS3.16 TID UNITS; text prints the UCUM code (P-MEASURE-UNIT)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -25,13 +25,25 @@ struct DICOMMeasure: ParsableCommand {
             and 1,1 its bottom-right corner, so a sampled point reads pixel
             floor(x),floor(y) and an ROI holds the pixels whose centres lie in it.
 
+            Units: text output prints the UCUM code (PS3.16 CID 82; CID 7460
+            cm, mm, um; CID 7461 cm2, mm2, um2; deg; [hnsf'U]; {pixels}) with
+            the display symbol in parentheses when it differs, e.g.
+            "Area: 12.0 mm2 (mm²)". JSON carries the UCUM code in unit_ucum /
+            area_unit_ucum; the keys unit / area_unit (display symbols) are
+            deprecated and kept unchanged. inches and px² have no UCUM code
+            in PS3.16 and print the symbol only.
+
+            Frames: pixel --frame-number N is 1-based (PS3.3 C.7.6.6, Table
+            10-3: the first Frame is Frame number 1). --frame (0-based index)
+            is deprecated.
+
             Examples:
               dicom-measure distance ct.dcm --p1 100,200 --p2 300,400
               dicom-measure area ct.dcm --polygon 100,100 150,200 200,200 180,120
               dicom-measure angle ct.dcm --vertex 200,200 --p1 100,100 --p2 300,100
               dicom-measure roi ct.dcm --rect 100,100,50,50 --statistics
               dicom-measure hu ct.dcm --point 200,200
-              dicom-measure pixel ct.dcm --point 150,150
+              dicom-measure pixel ct.dcm --point 150,150 --frame-number 1
             """,
         version: "1.4.0",
         subcommands: [
@@ -57,7 +69,7 @@ struct CommonOptions: ParsableArguments {
     @Option(name: .shortAndLong, help: "Output format: text, json, csv")
     var format: OutputFormat = .text
 
-    @Option(name: .long, help: "Unit for measurements: mm, cm, inches, pixels (physical units need a pixel spacing; see the overview)")
+    @Option(name: .long, help: "Unit for measurements: mm, cm, um, inches, pixels (physical units need a pixel spacing; see the overview)")
     var unit: MeasurementUnit = .mm
 
     @Flag(name: .long, help: "Force parsing of files without DICM prefix")
@@ -76,6 +88,8 @@ enum OutputFormat: String, ExpressibleByArgument, CaseIterable, Sendable {
 enum MeasurementUnit: String, ExpressibleByArgument, CaseIterable, Sendable {
     case mm
     case cm
+    /// Micrometre, UCUM "um" (PS3.16 2026a CID 7460 / CID 7461)
+    case um
     case inches
     case pixels
 }
@@ -354,14 +368,40 @@ struct Pixel: ParsableCommand {
     @Option(name: .long, help: "Point to sample as x,y (e.g., 150,150)")
     var point: String
 
-    @Option(name: .long, help: "Frame index, 0-based (0 is DICOM Frame number 1, PS3.3 10.3); must be below Number of Frames (0028,0008)")
-    var frame: Int = 0
+    @Option(name: .long, help: "Frame number, 1-based (PS3.3 C.7.6.6, Table 10-3: the first Frame is Frame number 1); at most Number of Frames (0028,0008). Default 1")
+    var frameNumber: Int?
+
+    @Option(name: .long, help: "Deprecated: 0-based index; use --frame-number (index 0 is Frame number 1)")
+    var frame: Int?
+
+    mutating func validate() throws {
+        if let n = frameNumber, n < 1 {
+            throw ValidationError("--frame-number must be 1 or greater: the first Frame is Frame number 1 (PS3.3 C.7.6.6)")
+        }
+    }
+
+    /// 0-based frame index from --frame-number (1-based) or the deprecated --frame (0-based),
+    /// with the deprecation note when --frame is used.
+    static func frameIndex(frameNumber: Int?, frame: Int?) -> (index: Int, note: String?) {
+        if let n = frameNumber { return (n - 1, nil) }
+        if let i = frame {
+            return (i, "Note: --frame is deprecated (0-based index); use --frame-number \(i + 1)")
+        }
+        return (0, nil)
+    }
 
     mutating func run() throws {
+        if frame != nil && frameNumber != nil {
+            FileHandle.standardError.write(Data(
+                "Error: --frame (deprecated 0-based index) and --frame-number both given; use --frame-number only\n".utf8))
+            throw ExitCode.failure
+        }
         let pt = try parsePoint(point, name: "point")
+        let (index, note) = Self.frameIndex(frameNumber: frameNumber, frame: frame)
+        if let note { FileHandle.standardError.write(Data((note + "\n").utf8)) }
         let engine = try MeasurementEngine(options: options)
 
-        let result = try engine.measurePixelValue(at: pt, frame: frame)
+        let result = try engine.measurePixelValue(at: pt, frame: index)
 
         let output = formatResult(
             type: "pixel",
@@ -369,7 +409,8 @@ struct Pixel: ParsableCommand {
             format: options.format,
             details: [
                 "point": "\(pt.x),\(pt.y)",
-                "frame": "\(frame)",
+                "frame": "\(index)",               // deprecated key: 0-based index
+                "frame_number": "\(index + 1)",    // PS3.3 C.7.6.6: 1-based
             ]
         )
         try writeOutput(output, to: options.output)
@@ -455,9 +496,13 @@ func formatResult(type: String, result: MeasurementResult, format: OutputFormat,
     }
     switch format {
     case .text:
-        var output = "\(result.description): \(formatValue(result.value)) \(result.unitLabel)\n"
+        var output = "\(result.description): \(formatValue(result.value)) \(textUnit(ucum: result.ucum, symbol: result.unitLabel))\n"
         for (key, value) in details.sorted(by: { $0.key < $1.key }) {
-            output += "  \(key): \(value)\n"
+            switch key {
+            case "frame": continue                                   // 0-based index: JSON only (deprecated)
+            case "frame_number": output += "  Frame number: \(value)\n"
+            default: output += "  \(key): \(value)\n"
+            }
         }
         return output
 
@@ -490,7 +535,7 @@ func formatROIResult(result: ROIAnalysisResult, format: OutputFormat) -> String 
     case .text:
         var output = "ROI Analysis: \(result.roiDescription)\n"
         output += "  Pixel count: \(result.pixelCount)\n"
-        output += "  Area: \(formatValue(result.areaValue)) \(result.areaUnit)\n"
+        output += "  Area: \(formatValue(result.areaValue)) \(textUnit(ucum: result.areaUCUM, symbol: result.areaUnit))\n"
         if let cal = result.calibration {
             output += "  Spacing: \(formatValue(cal.rowSpacing))\\\(formatValue(cal.columnSpacing)) mm (\(cal.source)\(cal.note.map { "; \($0)" } ?? ""))\n"
         } else {
@@ -555,6 +600,14 @@ func formatROIResult(result: ROIAnalysisResult, format: OutputFormat) -> String 
         if let max = result.maximum { parts.append(formatValue(max)) }
         return parts.joined(separator: ",") + "\n"
     }
+}
+
+/// Unit as printed in text output: the UCUM code (PS3.16 2026a CID 82) with the display symbol
+/// in parentheses when it differs ("mm2 (mm²)", "deg (°)"); the symbol alone without a code.
+func textUnit(ucum: String?, symbol: String) -> String {
+    guard let ucum, !ucum.isEmpty else { return symbol }
+    if symbol.isEmpty || symbol == ucum { return ucum }
+    return "\(ucum) (\(symbol))"
 }
 
 /// Format a double value for display
