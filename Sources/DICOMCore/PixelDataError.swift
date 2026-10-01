@@ -160,16 +160,14 @@ extension PixelDataError {
     /// Human-readable name for the unsupported transfer syntax, or nil for an unknown
     /// UID (or a non-`unsupportedTransferSyntax` error).
     ///
-    /// Sourced from the single shared catalog (`TransferSyntax.displayName` /
-    /// `SelectableEncoding`) so error text matches labels used everywhere else. The
-    /// `both`-capable general UIDs (`.91`/`.93`/`.203`) are surfaced in their lossy form,
-    /// consistent with the compression layer.
+    /// The PS3.6 2026a Table A-1 name (`TransferSyntax.displayName`). A UID that may carry
+    /// lossy or lossless data (`.91`/`.93`/`.203`) is named as the standard names it; before
+    /// 2026-10-01 its "Lossy" picker label was shown (D176).
     public var transferSyntaxName: String? {
         guard case .unsupportedTransferSyntax(let uid) = self,
               let syntax = TransferSyntax.from(uid: uid) else {
             return nil
         }
-        guard syntax.losslessCapability == .both else { return syntax.displayName }
-        return SelectableEncoding(transferSyntax: syntax, intent: .lossy).displayName
+        return syntax.displayName
     }
 }

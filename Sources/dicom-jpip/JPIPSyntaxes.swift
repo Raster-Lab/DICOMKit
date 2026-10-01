@@ -33,25 +33,9 @@ enum JPIPSyntaxes {
     }
 
     /// The Pixel Data Provider URL (0028,7FE0) of a Data Set encoded with a JPIP Referenced
-    /// Transfer Syntax. `DICOMJPIPClient.jpipURI` serves .94 / .95; its `TransferSyntax.isJPIP`
-    /// guard does not know the HTJ2K pair (.204 / .205), which is read here the same way.
+    /// Transfer Syntax. `DICOMJPIPClient.jpipURI` serves all four (`TransferSyntax.isJPIP` knows
+    /// the HTJ2K pair .204 / .205 since D109 was closed on 2026-10-01).
     static func pixelDataProviderURL(from dataset: DataSet, transferSyntaxUID: String) throws -> URL {
-        if TransferSyntax.from(uid: transferSyntaxUID)?.isJPIP == true {
-            return try DICOMJPIPClient.jpipURI(from: dataset, transferSyntaxUID: transferSyntaxUID)
-        }
-        guard isJPIP(transferSyntaxUID) else {
-            throw DICOMJPIPError.notAJPIPTransferSyntax(transferSyntaxUID)
-        }
-        guard let element = dataset[Tag.pixelDataProviderURL] else {
-            throw DICOMJPIPError.missingPixelDataProviderURL
-        }
-        // UR: trailing space padding is permitted (PS3.5 Table 6.2-1).
-        guard let text = String(data: element.valueData, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) else {
-            throw DICOMJPIPError.invalidJPIPURI("<binary>")
-        }
-        guard !text.isEmpty else { throw DICOMJPIPError.missingPixelDataProviderURL }
-        guard let url = URL(string: text) else { throw DICOMJPIPError.invalidJPIPURI(text) }
-        return url
+        try DICOMJPIPClient.jpipURI(from: dataset, transferSyntaxUID: transferSyntaxUID)
     }
 }

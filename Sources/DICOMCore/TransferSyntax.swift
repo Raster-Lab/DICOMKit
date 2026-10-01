@@ -251,7 +251,7 @@ extension TransferSyntax {
     ///
     /// JPEG 2000 Interactive Protocol — the pixel data is a URI reference to a
     /// JPIP server endpoint rather than inline pixel data.
-    /// Reference: PS3.5 Table A-1, PS3.5 Annex A.8
+    /// Reference: PS3.6 2026a Table A-1, PS3.5 2026a Annex A.6 (was cited as A.8, which is SMPTE ST 2110-20)
     public static let jpipReferenced = TransferSyntax(
         uid: "1.2.840.10008.1.2.4.94",
         isExplicitVR: true,
@@ -262,7 +262,7 @@ extension TransferSyntax {
     /// JPIP Referenced Deflate (1.2.840.10008.1.2.4.95)
     ///
     /// Like ``jpipReferenced`` but the DICOM dataset is deflate-compressed.
-    /// Reference: PS3.5 Table A-1, PS3.5 Annex A.8
+    /// Reference: PS3.6 2026a Table A-1, PS3.5 2026a Annex A.7
     public static let jpipReferencedDeflate = TransferSyntax(
         uid: "1.2.840.10008.1.2.4.95",
         isExplicitVR: true,
@@ -304,6 +304,10 @@ extension TransferSyntax {
     // NEMA-verified: 2026a, checked 2026-09-25 — the whole registry was diffed against the 63
     // Transfer Syntax rows of PS3.6 2026a Table A-1 and the 22 missing ones added (Q2); the
     // JP3D pair is private and the two HEVC "Fragmentable" UIDs are unregistered but kept by decision.
+    // NEMA-verified: 2026a, checked 2026-10-01 — `displayName` returns the PS3.6 2026a Table A-1
+    // "UID Name" of all 63 Transfer Syntax rows verbatim (dumped by script; 48 had differed, old
+    // abbreviations kept as `shortName`, D176); `isJPIP` covers the 4 JPIP rows .94/.95/.204/.205
+    // (PS3.5 2026a A.6, A.7, A.11, A.12; D109).
     // UIDs .4.110/.111/.112 match PS3.6 Table A-1 (name, keyword, type "Transfer Syntax").
     // PS3.5 §10.19 and §A.4.12 are present. Explicit VR, Little Endian and encapsulated
     // agree with PS3.5 §A.4. `.112` may be lossy or lossless (§A.4.12), and (0028,2114)
@@ -578,7 +582,9 @@ extension TransferSyntax {
         isEncapsulated: true
     )
 
-    /// JPIP HTJ2K Referenced: the Pixel Data is a URI reference to a JPIP server, as with ``jpipReferenced``.
+    /// JPIP HTJ2K Referenced (PS3.5 A.11): Pixel Data (7FE0,0010) is absent and the pixel data is
+    /// referenced through Pixel Data Provider URL (0028,7FE0), as with ``jpipReferenced``;
+    /// Photometric Interpretation is limited to MONOCHROME1, MONOCHROME2, YBR_ICT and YBR_RCT.
     /// PS3.6 2026a Table A-1: 1.2.840.10008.1.2.4.204
     public static let jpipHTJ2KReferenced = TransferSyntax(
         uid: "1.2.840.10008.1.2.4.204",
@@ -1083,12 +1089,18 @@ extension TransferSyntax {
     
     /// Whether this transfer syntax is a JPIP referenced transfer syntax.
     ///
-    /// JPIP transfer syntaxes contain a URI reference rather than inline pixel data.
-    /// The URI points to a JPIP server where the actual JPEG 2000 image resides.
+    /// In a Data Set encoded with one of them "Pixel Data (7FE0,0010) shall not be present, but
+    /// rather Pixel Data shall be referenced via Data Element (0028,7FE0) Pixel Data Provider URL";
+    /// the URL points to a JPIP server where the JPEG 2000 / HTJ2K image resides. These are the
+    /// four "JPIP" rows of PS3.6 2026a Table A-1: JPIP Referenced (.94, PS3.5 A.6), JPIP Referenced
+    /// Deflate (.95, A.7), JPIP HTJ2K Referenced (.204, A.11) and JPIP HTJ2K Referenced Deflate
+    /// (.205, A.12). Before 2026-10-01 the HTJ2K pair was missing (D109).
     public var isJPIP: Bool {
         switch uid {
         case TransferSyntax.jpipReferenced.uid,
-             TransferSyntax.jpipReferencedDeflate.uid:
+             TransferSyntax.jpipReferencedDeflate.uid,
+             TransferSyntax.jpipHTJ2KReferenced.uid,
+             TransferSyntax.jpipHTJ2KReferencedDeflate.uid:
             return true
         default:
             return false
@@ -1328,60 +1340,135 @@ extension TransferSyntax {
         .rfc2557MIMEEncapsulationRetired, .xmlEncodingRetired, .papyrus3ImplicitVRLittleEndianRetired,
     ]
 
-    /// A short, human-readable name for pickers and summaries (distinct from the more
-    /// verbose `description`, which always appends the UID and VR/endianness).
+    /// The name of the Transfer Syntax in PS3.6 2026a Table A-1 ("UID Name" column, verbatim,
+    /// including any ": Default Transfer Syntax for …" qualifier and "(Retired)"), so every tool
+    /// and message that prints it uses the standard's name. Before 2026-10-01 this returned the
+    /// abbreviations that are now ``shortName`` (D176).
+    ///
+    /// Four UIDs are not in Table A-1 and keep a descriptive name: the two unregistered HEVC
+    /// "Fragmentable" UIDs (named after the registered Fragmentable rows) and the private JP3D
+    /// pair. An unknown UID falls back to ``description``.
     public var displayName: String {
         switch uid {
-        case TransferSyntax.implicitVRLittleEndian.uid:        return "Implicit VR Little Endian"
-        case TransferSyntax.explicitVRLittleEndian.uid:        return "Explicit VR Little Endian"
+        case TransferSyntax.implicitVRLittleEndian.uid: return "Implicit VR Little Endian: Default Transfer Syntax for DICOM"
+        case TransferSyntax.explicitVRLittleEndian.uid: return "Explicit VR Little Endian"
         case TransferSyntax.deflatedExplicitVRLittleEndian.uid: return "Deflated Explicit VR Little Endian"
-        case TransferSyntax.explicitVRBigEndian.uid:           return "Explicit VR Big Endian (retired)"
-        case TransferSyntax.jpegBaseline.uid:                  return "JPEG Baseline (Process 1)"
-        case TransferSyntax.jpegExtended.uid:                  return "JPEG Extended (Process 2 & 4)"
-        case TransferSyntax.jpegLossless.uid:                  return "JPEG Lossless (Process 14)"
-        case TransferSyntax.jpegLosslessSV1.uid:               return "JPEG Lossless SV1 (Process 14)"
-        case TransferSyntax.jpeg2000Lossless.uid:              return "JPEG 2000 Lossless Only"
-        case TransferSyntax.jpeg2000.uid:                      return "JPEG 2000"
-        case TransferSyntax.jpeg2000Part2Lossless.uid:         return "JPEG 2000 Part 2 Multi-component Lossless Only"
-        case TransferSyntax.jpeg2000Part2.uid:                 return "JPEG 2000 Part 2 Multi-component"
-        case TransferSyntax.htj2kLossless.uid:                 return "HTJ2K Lossless Only"
-        case TransferSyntax.htj2kRPCLLossless.uid:             return "HTJ2K Lossless Only (RPCL)"
-        case TransferSyntax.htj2kLossy.uid:                    return "HTJ2K"
-        case TransferSyntax.jpegLSLossless.uid:                return "JPEG-LS Lossless"
-        case TransferSyntax.jpegLSNearLossless.uid:            return "JPEG-LS Near-Lossless"
-        case TransferSyntax.jpegXLLossless.uid:                return "JPEG XL Lossless"
-        case TransferSyntax.jpegXLRecompression.uid:           return "JPEG XL JPEG Recompression"
-        case TransferSyntax.jpegXL.uid:                        return "JPEG XL"
-        case TransferSyntax.rleLossless.uid:                   return "RLE Lossless"
-        case TransferSyntax.mpeg2MainProfile.uid:              return "MPEG2 Main Profile @ Main Level"
-        case TransferSyntax.mpeg2MainProfileHighLevel.uid:     return "MPEG2 Main Profile @ High Level"
-        case TransferSyntax.mpeg4AVCHP41.uid:                  return "MPEG-4 AVC/H.264 HP @ Level 4.1"
-        case TransferSyntax.mpeg4AVCHP41BD.uid:                return "MPEG-4 AVC/H.264 BD-compatible HP @ Level 4.1"
-        case TransferSyntax.hevcH265MainProfile.uid:           return "HEVC/H.265 Main Profile @ Level 5.1"
-        case TransferSyntax.mpeg4AVCHP42For2DVideo.uid:        return "MPEG-4 AVC/H.264 HP @ Level 4.2 For 2D Video"
-        case TransferSyntax.mpeg4AVCHP42For3DVideo.uid:        return "MPEG-4 AVC/H.264 HP @ Level 4.2 For 3D Video"
-        case TransferSyntax.mpeg4AVCStereoHP42.uid:            return "MPEG-4 AVC/H.264 Stereo HP @ Level 4.2"
-        case TransferSyntax.hevcH265Main10Profile.uid:         return "HEVC/H.265 Main 10 Profile @ Level 5.1"
-        case TransferSyntax.mpeg2MainProfileFragmentable.uid:  return "Fragmentable MPEG2 Main Profile @ Main Level"
-        case TransferSyntax.mpeg2MainProfileHighLevelFragmentable.uid:
-            return "Fragmentable MPEG2 Main Profile @ High Level"
-        case TransferSyntax.mpeg4AVCHP41Fragmentable.uid:      return "Fragmentable MPEG-4 AVC/H.264 HP @ Level 4.1"
-        case TransferSyntax.mpeg4AVCHP41BDFragmentable.uid:
-            return "Fragmentable MPEG-4 AVC/H.264 BD-compatible HP @ Level 4.1"
-        case TransferSyntax.mpeg4AVCHP42For2DVideoFragmentable.uid:
-            return "Fragmentable MPEG-4 AVC/H.264 HP @ Level 4.2 For 2D Video"
-        case TransferSyntax.mpeg4AVCHP42For3DVideoFragmentable.uid:
-            return "Fragmentable MPEG-4 AVC/H.264 HP @ Level 4.2 For 3D Video"
-        case TransferSyntax.mpeg4AVCStereoHP42Fragmentable.uid:
-            return "Fragmentable MPEG-4 AVC/H.264 Stereo HP @ Level 4.2"
-        case TransferSyntax.hevcH265MainProfileFragmentable.uid:
-            return "Fragmentable HEVC/H.265 Main Profile @ Level 5.1"
-        case TransferSyntax.hevcH265Main10ProfileFragmentable.uid:
-            return "Fragmentable HEVC/H.265 Main 10 Profile @ Level 5.1"
-        case TransferSyntax.jpipReferenced.uid:                return "JPIP Referenced"
-        case TransferSyntax.jpipReferencedDeflate.uid:         return "JPIP Referenced Deflate"
-        case TransferSyntax.jp3dLossless.uid:                  return "JP3D Lossless (experimental)"
-        case TransferSyntax.jp3dLossy.uid:                     return "JP3D Lossy (experimental)"
+        case TransferSyntax.explicitVRBigEndian.uid: return "Explicit VR Big Endian (Retired)"
+        case TransferSyntax.jpegBaseline.uid: return "JPEG Baseline (Process 1): Default Transfer Syntax for Lossy JPEG 8 Bit Image Compression"
+        case TransferSyntax.jpegExtended.uid: return "JPEG Extended (Process 2 & 4): Default Transfer Syntax for Lossy JPEG 12 Bit Image Compression (Process 4 only)"
+        case TransferSyntax.jpegLossless.uid: return "JPEG Lossless, Non-Hierarchical (Process 14)"
+        case TransferSyntax.jpegLosslessSV1.uid: return "JPEG Lossless, Non-Hierarchical, First-Order Prediction (Process 14 [Selection Value 1]): Default Transfer Syntax for Lossless JPEG Image Compression"
+        case TransferSyntax.jpeg2000Lossless.uid: return "JPEG 2000 Image Compression (Lossless Only)"
+        case TransferSyntax.jpeg2000.uid: return "JPEG 2000 Image Compression"
+        case TransferSyntax.jpeg2000Part2Lossless.uid: return "JPEG 2000 Part 2 Multi-component Image Compression (Lossless Only)"
+        case TransferSyntax.jpeg2000Part2.uid: return "JPEG 2000 Part 2 Multi-component Image Compression"
+        case TransferSyntax.htj2kLossless.uid: return "High-Throughput JPEG 2000 Image Compression (Lossless Only)"
+        case TransferSyntax.htj2kRPCLLossless.uid: return "High-Throughput JPEG 2000 with RPCL Options Image Compression (Lossless Only)"
+        case TransferSyntax.htj2kLossy.uid: return "High-Throughput JPEG 2000 Image Compression"
+        case TransferSyntax.jpegLSLossless.uid: return "JPEG-LS Lossless Image Compression"
+        case TransferSyntax.jpegLSNearLossless.uid: return "JPEG-LS Lossy (Near-Lossless) Image Compression"
+        case TransferSyntax.jpegXLLossless.uid: return "JPEG XL Lossless"
+        case TransferSyntax.jpegXLRecompression.uid: return "JPEG XL JPEG Recompression"
+        case TransferSyntax.jpegXL.uid: return "JPEG XL"
+        case TransferSyntax.rleLossless.uid: return "RLE Lossless"
+        case TransferSyntax.mpeg2MainProfile.uid: return "MPEG2 Main Profile / Main Level"
+        case TransferSyntax.mpeg2MainProfileHighLevel.uid: return "MPEG2 Main Profile / High Level"
+        case TransferSyntax.mpeg4AVCHP41.uid: return "MPEG-4 AVC/H.264 High Profile / Level 4.1"
+        case TransferSyntax.mpeg4AVCHP41BD.uid: return "MPEG-4 AVC/H.264 BD-compatible High Profile / Level 4.1"
+        case TransferSyntax.hevcH265MainProfile.uid: return "HEVC/H.265 Main Profile / Level 5.1"
+        case TransferSyntax.mpeg4AVCHP42For2DVideo.uid: return "MPEG-4 AVC/H.264 High Profile / Level 4.2 For 2D Video"
+        case TransferSyntax.mpeg4AVCHP42For3DVideo.uid: return "MPEG-4 AVC/H.264 High Profile / Level 4.2 For 3D Video"
+        case TransferSyntax.mpeg4AVCStereoHP42.uid: return "MPEG-4 AVC/H.264 Stereo High Profile / Level 4.2"
+        case TransferSyntax.hevcH265Main10Profile.uid: return "HEVC/H.265 Main 10 Profile / Level 5.1"
+        case TransferSyntax.mpeg2MainProfileFragmentable.uid: return "Fragmentable MPEG2 Main Profile / Main Level"
+        case TransferSyntax.mpeg2MainProfileHighLevelFragmentable.uid: return "Fragmentable MPEG2 Main Profile / High Level"
+        case TransferSyntax.mpeg4AVCHP41Fragmentable.uid: return "Fragmentable MPEG-4 AVC/H.264 High Profile / Level 4.1"
+        case TransferSyntax.mpeg4AVCHP41BDFragmentable.uid: return "Fragmentable MPEG-4 AVC/H.264 BD-compatible High Profile / Level 4.1"
+        case TransferSyntax.mpeg4AVCHP42For2DVideoFragmentable.uid: return "Fragmentable MPEG-4 AVC/H.264 High Profile / Level 4.2 For 2D Video"
+        case TransferSyntax.mpeg4AVCHP42For3DVideoFragmentable.uid: return "Fragmentable MPEG-4 AVC/H.264 High Profile / Level 4.2 For 3D Video"
+        case TransferSyntax.mpeg4AVCStereoHP42Fragmentable.uid: return "Fragmentable MPEG-4 AVC/H.264 Stereo High Profile / Level 4.2"
+        case TransferSyntax.hevcH265MainProfileFragmentable.uid: return "Fragmentable HEVC/H.265 Main Profile / Level 5.1"
+        case TransferSyntax.hevcH265Main10ProfileFragmentable.uid: return "Fragmentable HEVC/H.265 Main 10 Profile / Level 5.1"
+        case TransferSyntax.jpipReferenced.uid: return "JPIP Referenced"
+        case TransferSyntax.jpipReferencedDeflate.uid: return "JPIP Referenced Deflate"
+        case TransferSyntax.jp3dLossless.uid: return "JP3D Lossless (experimental)"
+        case TransferSyntax.jp3dLossy.uid: return "JP3D Lossy (experimental)"
+        case TransferSyntax.encapsulatedUncompressedExplicitVRLittleEndian.uid: return "Encapsulated Uncompressed Explicit VR Little Endian"
+        case TransferSyntax.jpipHTJ2KReferenced.uid: return "JPIP HTJ2K Referenced"
+        case TransferSyntax.jpipHTJ2KReferencedDeflate.uid: return "JPIP HTJ2K Referenced Deflate"
+        case TransferSyntax.smpteST2110_20UncompressedProgressiveVideo.uid: return "SMPTE ST 2110-20 Uncompressed Progressive Active Video"
+        case TransferSyntax.smpteST2110_20UncompressedInterlacedVideo.uid: return "SMPTE ST 2110-20 Uncompressed Interlaced Active Video"
+        case TransferSyntax.smpteST2110_30PCMDigitalAudio.uid: return "SMPTE ST 2110-30 PCM Digital Audio"
+        case TransferSyntax.deflatedImageFrameCompression.uid: return "Deflated Image Frame Compression"
+        case TransferSyntax.jpegExtendedProcess3And5Retired.uid: return "JPEG Extended (Process 3 & 5) (Retired)"
+        case TransferSyntax.jpegSpectralSelectionProcess6And8Retired.uid: return "JPEG Spectral Selection, Non-Hierarchical (Process 6 & 8) (Retired)"
+        case TransferSyntax.jpegSpectralSelectionProcess7And9Retired.uid: return "JPEG Spectral Selection, Non-Hierarchical (Process 7 & 9) (Retired)"
+        case TransferSyntax.jpegFullProgressionProcess10And12Retired.uid: return "JPEG Full Progression, Non-Hierarchical (Process 10 & 12) (Retired)"
+        case TransferSyntax.jpegFullProgressionProcess11And13Retired.uid: return "JPEG Full Progression, Non-Hierarchical (Process 11 & 13) (Retired)"
+        case TransferSyntax.jpegLosslessProcess15Retired.uid: return "JPEG Lossless, Non-Hierarchical (Process 15) (Retired)"
+        case TransferSyntax.jpegExtendedHierarchicalProcess16And18Retired.uid: return "JPEG Extended, Hierarchical (Process 16 & 18) (Retired)"
+        case TransferSyntax.jpegExtendedHierarchicalProcess17And19Retired.uid: return "JPEG Extended, Hierarchical (Process 17 & 19) (Retired)"
+        case TransferSyntax.jpegSpectralSelectionHierarchicalProcess20And22Retired.uid: return "JPEG Spectral Selection, Hierarchical (Process 20 & 22) (Retired)"
+        case TransferSyntax.jpegSpectralSelectionHierarchicalProcess21And23Retired.uid: return "JPEG Spectral Selection, Hierarchical (Process 21 & 23) (Retired)"
+        case TransferSyntax.jpegFullProgressionHierarchicalProcess24And26Retired.uid: return "JPEG Full Progression, Hierarchical (Process 24 & 26) (Retired)"
+        case TransferSyntax.jpegFullProgressionHierarchicalProcess25And27Retired.uid: return "JPEG Full Progression, Hierarchical (Process 25 & 27) (Retired)"
+        case TransferSyntax.jpegLosslessHierarchicalProcess28Retired.uid: return "JPEG Lossless, Hierarchical (Process 28) (Retired)"
+        case TransferSyntax.jpegLosslessHierarchicalProcess29Retired.uid: return "JPEG Lossless, Hierarchical (Process 29) (Retired)"
+        case TransferSyntax.rfc2557MIMEEncapsulationRetired.uid: return "RFC 2557 MIME encapsulation (Retired)"
+        case TransferSyntax.xmlEncodingRetired.uid: return "XML Encoding (Retired)"
+        case TransferSyntax.papyrus3ImplicitVRLittleEndianRetired.uid: return "Papyrus 3 Implicit VR Little Endian (Retired)"
+        default: return description
+        }
+    }
+
+    /// A short, human-readable name for pickers and compact summaries, e.g. "JPEG Baseline
+    /// (Process 1)", "MPEG2 Main Profile @ Main Level", "HTJ2K Lossless Only". It is not the
+    /// standard's name; ``displayName`` is.
+    public var shortName: String {
+        switch uid {
+        case TransferSyntax.implicitVRLittleEndian.uid: return "Implicit VR Little Endian"
+        case TransferSyntax.explicitVRLittleEndian.uid: return "Explicit VR Little Endian"
+        case TransferSyntax.deflatedExplicitVRLittleEndian.uid: return "Deflated Explicit VR Little Endian"
+        case TransferSyntax.explicitVRBigEndian.uid: return "Explicit VR Big Endian (retired)"
+        case TransferSyntax.jpegBaseline.uid: return "JPEG Baseline (Process 1)"
+        case TransferSyntax.jpegExtended.uid: return "JPEG Extended (Process 2 & 4)"
+        case TransferSyntax.jpegLossless.uid: return "JPEG Lossless (Process 14)"
+        case TransferSyntax.jpegLosslessSV1.uid: return "JPEG Lossless SV1 (Process 14)"
+        case TransferSyntax.jpeg2000Lossless.uid: return "JPEG 2000 Lossless Only"
+        case TransferSyntax.jpeg2000.uid: return "JPEG 2000"
+        case TransferSyntax.jpeg2000Part2Lossless.uid: return "JPEG 2000 Part 2 Multi-component Lossless Only"
+        case TransferSyntax.jpeg2000Part2.uid: return "JPEG 2000 Part 2 Multi-component"
+        case TransferSyntax.htj2kLossless.uid: return "HTJ2K Lossless Only"
+        case TransferSyntax.htj2kRPCLLossless.uid: return "HTJ2K Lossless Only (RPCL)"
+        case TransferSyntax.htj2kLossy.uid: return "HTJ2K"
+        case TransferSyntax.jpegLSLossless.uid: return "JPEG-LS Lossless"
+        case TransferSyntax.jpegLSNearLossless.uid: return "JPEG-LS Near-Lossless"
+        case TransferSyntax.jpegXLLossless.uid: return "JPEG XL Lossless"
+        case TransferSyntax.jpegXLRecompression.uid: return "JPEG XL JPEG Recompression"
+        case TransferSyntax.jpegXL.uid: return "JPEG XL"
+        case TransferSyntax.rleLossless.uid: return "RLE Lossless"
+        case TransferSyntax.mpeg2MainProfile.uid: return "MPEG2 Main Profile @ Main Level"
+        case TransferSyntax.mpeg2MainProfileHighLevel.uid: return "MPEG2 Main Profile @ High Level"
+        case TransferSyntax.mpeg4AVCHP41.uid: return "MPEG-4 AVC/H.264 HP @ Level 4.1"
+        case TransferSyntax.mpeg4AVCHP41BD.uid: return "MPEG-4 AVC/H.264 BD-compatible HP @ Level 4.1"
+        case TransferSyntax.hevcH265MainProfile.uid: return "HEVC/H.265 Main Profile @ Level 5.1"
+        case TransferSyntax.mpeg4AVCHP42For2DVideo.uid: return "MPEG-4 AVC/H.264 HP @ Level 4.2 For 2D Video"
+        case TransferSyntax.mpeg4AVCHP42For3DVideo.uid: return "MPEG-4 AVC/H.264 HP @ Level 4.2 For 3D Video"
+        case TransferSyntax.mpeg4AVCStereoHP42.uid: return "MPEG-4 AVC/H.264 Stereo HP @ Level 4.2"
+        case TransferSyntax.hevcH265Main10Profile.uid: return "HEVC/H.265 Main 10 Profile @ Level 5.1"
+        case TransferSyntax.mpeg2MainProfileFragmentable.uid: return "Fragmentable MPEG2 Main Profile @ Main Level"
+        case TransferSyntax.mpeg2MainProfileHighLevelFragmentable.uid: return "Fragmentable MPEG2 Main Profile @ High Level"
+        case TransferSyntax.mpeg4AVCHP41Fragmentable.uid: return "Fragmentable MPEG-4 AVC/H.264 HP @ Level 4.1"
+        case TransferSyntax.mpeg4AVCHP41BDFragmentable.uid: return "Fragmentable MPEG-4 AVC/H.264 BD-compatible HP @ Level 4.1"
+        case TransferSyntax.mpeg4AVCHP42For2DVideoFragmentable.uid: return "Fragmentable MPEG-4 AVC/H.264 HP @ Level 4.2 For 2D Video"
+        case TransferSyntax.mpeg4AVCHP42For3DVideoFragmentable.uid: return "Fragmentable MPEG-4 AVC/H.264 HP @ Level 4.2 For 3D Video"
+        case TransferSyntax.mpeg4AVCStereoHP42Fragmentable.uid: return "Fragmentable MPEG-4 AVC/H.264 Stereo HP @ Level 4.2"
+        case TransferSyntax.hevcH265MainProfileFragmentable.uid: return "Fragmentable HEVC/H.265 Main Profile @ Level 5.1"
+        case TransferSyntax.hevcH265Main10ProfileFragmentable.uid: return "Fragmentable HEVC/H.265 Main 10 Profile @ Level 5.1"
+        case TransferSyntax.jpipReferenced.uid: return "JPIP Referenced"
+        case TransferSyntax.jpipReferencedDeflate.uid: return "JPIP Referenced Deflate"
+        case TransferSyntax.jp3dLossless.uid: return "JP3D Lossless (experimental)"
+        case TransferSyntax.jp3dLossy.uid: return "JP3D Lossy (experimental)"
         case TransferSyntax.encapsulatedUncompressedExplicitVRLittleEndian.uid: return "Encapsulated Uncompressed Explicit VR Little Endian"
         case TransferSyntax.jpipHTJ2KReferenced.uid: return "JPIP HTJ2K Referenced"
         case TransferSyntax.jpipHTJ2KReferencedDeflate.uid: return "JPIP HTJ2K Referenced Deflate"
@@ -1406,7 +1493,7 @@ extension TransferSyntax {
         case TransferSyntax.rfc2557MIMEEncapsulationRetired.uid: return "RFC 2557 MIME encapsulation (retired)"
         case TransferSyntax.xmlEncodingRetired.uid: return "XML Encoding (retired)"
         case TransferSyntax.papyrus3ImplicitVRLittleEndianRetired.uid: return "Papyrus 3 Implicit VR Little Endian (retired)"
-        default:                                               return description
+        default: return description
         }
     }
 }
@@ -1532,14 +1619,26 @@ public struct SelectableEncoding: Sendable, Hashable, Identifiable {
         }
     }
 
-    /// Human-readable label, e.g. "JPEG 2000 Lossless", "JPEG 2000 Lossy",
-    /// "JPEG 2000 Lossless Only". For `both` UIDs the base name carries no lossy/lossless
-    /// suffix, so we append one; single-capability names already encode it.
+    /// The PS3.6 Table A-1 name of the transfer syntax (``TransferSyntax/displayName``), with the
+    /// chosen intent in parentheses for a UID that may carry either (PS3.5 A.4.4: `.91`, `.93`,
+    /// `.203`), e.g. "JPEG 2000 Image Compression (lossy)"; single-capability names already say
+    /// it ("JPEG 2000 Image Compression (Lossless Only)").
     public var displayName: String {
         switch intent {
-        case .lossless:       return "\(transferSyntax.displayName) Lossless"
-        case .lossy:          return "\(transferSyntax.displayName) Lossy"
+        case .lossless:       return "\(transferSyntax.displayName) (lossless)"
+        case .lossy:          return "\(transferSyntax.displayName) (lossy)"
         case .notApplicable:  return transferSyntax.displayName
+        }
+    }
+
+    /// Short picker label, e.g. "JPEG 2000 Lossless", "JPEG 2000 Lossy", "JPEG 2000 Lossless
+    /// Only" (``TransferSyntax/shortName`` plus the intent). This was ``displayName`` before
+    /// 2026-10-01 (D176).
+    public var shortName: String {
+        switch intent {
+        case .lossless:       return "\(transferSyntax.shortName) Lossless"
+        case .lossy:          return "\(transferSyntax.shortName) Lossy"
+        case .notApplicable:  return transferSyntax.shortName
         }
     }
 }

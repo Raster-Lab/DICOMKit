@@ -70,7 +70,7 @@ final class ConversionDiagnosticsTests: XCTestCase {
             .jpegXLRecompression))
         XCTAssertEqual(f.category, .recompressionSource)
         XCTAssertTrue(f.reason.contains("SOF3"), f.reason)
-        XCTAssertTrue(f.headline?.contains("JPEG Lossless (Process 14) [1.2.840.10008.1.2.4.57]") == true)
+        XCTAssertTrue(f.headline?.contains("JPEG Lossless, Non-Hierarchical (Process 14) [1.2.840.10008.1.2.4.57]") == true)  // PS3.6 Table A-1 (D176)
         XCTAssertTrue(f.suggestion?.contains("jxl-lossless-only") == true)
         XCTAssertEqual(f.sourceDetails?.contains("3 samples per pixel, RGB"), true)
     }

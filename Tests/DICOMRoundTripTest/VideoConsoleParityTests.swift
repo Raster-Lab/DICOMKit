@@ -224,7 +224,7 @@ final class VideoConsoleParityTests: XCTestCase {
             Frame rate:       30.000 fps
             Frames:           300 (sampleTable)
             Transfer syntax:  1.2.840.10008.1.2.4.102
-                              MPEG-4 AVC/H.264 HP @ Level 4.1
+                              MPEG-4 AVC/H.264 High Profile / Level 4.1
 
             Conformance:      OK
             """)

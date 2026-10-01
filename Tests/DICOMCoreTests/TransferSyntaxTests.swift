@@ -406,8 +406,10 @@ struct TransferSyntaxCapabilityTests {
         #expect(lossy != nil)
         #expect(lossless?.isLossless == true)
         #expect(lossy?.isLossless == false)
-        #expect(lossless?.displayName == "JPEG 2000 Lossless")
-        #expect(lossy?.displayName == "JPEG 2000 Lossy")
+        #expect(lossless?.displayName == "JPEG 2000 Image Compression (lossless)")
+        #expect(lossy?.displayName == "JPEG 2000 Image Compression (lossy)")
+        #expect(lossless?.shortName == "JPEG 2000 Lossless")
+        #expect(lossy?.shortName == "JPEG 2000 Lossy")
         // Distinct identity so pickers/result maps can key on them independently.
         #expect(lossless?.id != lossy?.id)
         #expect(lossless?.id == "1.2.840.10008.1.2.4.91#lossless")
@@ -418,14 +420,18 @@ struct TransferSyntaxCapabilityTests {
         let row = TransferSyntax.selectableEncodings.first { $0.uid == "1.2.840.10008.1.2.4.90" }
         #expect(row?.intent == .notApplicable)
         #expect(row?.isLossless == true)
-        #expect(row?.displayName == "JPEG 2000 Lossless Only")
+        #expect(row?.displayName == "JPEG 2000 Image Compression (Lossless Only)")
     }
 
     @Test("Canonical HTJ2K display names")
     func testHTJ2KDisplayNames() {
-        #expect(TransferSyntax.htj2kLossless.displayName == "HTJ2K Lossless Only")
-        #expect(TransferSyntax.htj2kRPCLLossless.displayName == "HTJ2K Lossless Only (RPCL)")
-        #expect(TransferSyntax.htj2kLossy.displayName == "HTJ2K")
+        // PS3.6 2026a Table A-1 names (D176); the old labels are `shortName`.
+        #expect(TransferSyntax.htj2kLossless.displayName == "High-Throughput JPEG 2000 Image Compression (Lossless Only)")
+        #expect(TransferSyntax.htj2kRPCLLossless.displayName == "High-Throughput JPEG 2000 with RPCL Options Image Compression (Lossless Only)")
+        #expect(TransferSyntax.htj2kLossy.displayName == "High-Throughput JPEG 2000 Image Compression")
+        #expect(TransferSyntax.htj2kLossless.shortName == "HTJ2K Lossless Only")
+        #expect(TransferSyntax.htj2kRPCLLossless.shortName == "HTJ2K Lossless Only (RPCL)")
+        #expect(TransferSyntax.htj2kLossy.shortName == "HTJ2K")
     }
 
     @Test("from(uid:) stays deterministic despite two rows sharing a UID")
