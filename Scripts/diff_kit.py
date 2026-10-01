@@ -627,6 +627,46 @@ def check_video_constraints(rep, p6, files):
     rep.check('PS3.6 Table A-1: video transfer syntax profile, level and BD flag in VideoConformanceValidator', matched, wrong)
 
 
+def check_mpeg2_frame_rates(rep, p5, files):
+    """PS3.5 Table 8-1 (MP@ML frame rate / maximum Rows, Columns), Table 8-2 (MP@HL frame
+    rates) and Table 8-3 (MP@HL 1080-row frame rates) against the VideoConformanceValidator
+    literals mpeg2MainLevelFormats, mpeg2HighLevelFrameRates, mpeg2HighLevel1080FrameRates (D238)."""
+    src = files.get('Video/VideoConformanceValidator.swift', '')
+    matched, wrong, missing = 0, [], []
+    # Table 8-1: Video Type | Spatial resolution | Frame Rate | Frame Time | Maximum Rows | Maximum Columns
+    code = {(m.group(1), float(m.group(2)), int(m.group(3)), int(m.group(4))) for m in re.finditer(
+        r'MPEG2MainLevelFormat\(videoType:\s*"([^"]+)",\s*frameRate:\s*([\d.]+),\s*maximumRows:\s*(\d+),'
+        r'\s*maximumColumns:\s*(\d+)\)', src)}
+    std = {(r[0], float(r[2]), int(r[4]), int(r[5])) for r in dw.table_rows(p5, '8-1')}
+    matched += len(code & std)
+    missing += [f'Table 8-1 {r}' for r in sorted(std - code)]
+    wrong += [f'not in Table 8-1: {r}' for r in sorted(code - std)]
+    # Table 8-2: Video Type | Spatial resolution layer | Frame Rate | Frame Time
+    body = src[src.find('mpeg2HighLevelFrameRates:'):]
+    body = body[:body.find(']\n')]
+    code = {(m.group(1), float(m.group(2))) for m in re.finditer(
+        r'videoType:\s*"([^"]+)",\s*frameRate:\s*([\d.]+)', body)}
+    std = {(r[0], float(r[2])) for r in dw.table_rows(p5, '8-2')}
+    matched += len(code & std)
+    missing += [f'Table 8-2 {r}' for r in sorted(std - code)]
+    wrong += [f'not in Table 8-2: {r}' for r in sorted(code - std)]
+    # Table 8-3 (rows directly under <table>): Rows | Columns | Frame rate | Video Type | P / I
+    table = p5.table('8-3')
+    rates = set()
+    for tr in table.iter(dw.D + 'tr'):
+        cells = [p5.text(c) for c in tr if c.tag == dw.D + 'td']
+        if len(cells) >= 3 and cells[0] == '1080':
+            # "29.97, 30" is the 30 Hz nominal rate and its 1/1.001 variant
+            rates |= {float(v) for v in re.findall(r'[\d.]+', cells[2]) if float(v) == int(float(v))}
+    m = re.search(r'mpeg2HighLevel1080FrameRates:\s*\[Double\]\s*=\s*\[([^\]]*)\]', src)
+    code = {float(v) for v in re.findall(r'[\d.]+', m.group(1))} if m else set()
+    matched += len(code & rates)
+    missing += [f'Table 8-3 1080-row rate {r}' for r in sorted(rates - code)]
+    wrong += [f'not a Table 8-3 1080-row rate: {r}' for r in sorted(code - rates)]
+    rep.check('PS3.5 Tables 8-1, 8-2, 8-3: MPEG2 frame rates and Main Level maximum Rows / Columns in '
+              'VideoConformanceValidator', matched, wrong, missing)
+
+
 def check_waveform_sample_interpretation(rep, p3, files):
     """PS3.3 Table C.10-10: the Sample Interpretation terms and which of them are signed."""
     src = files.get('Waveform/Waveform.swift', '')
@@ -774,6 +814,7 @@ def main():
         ('cs_literals', lambda: check_cs_literals(rep, parts[3], parts[6], files, tags)),
         ('deidentification', lambda: check_deidentification(rep, parts[15], files, tags)),
         ('video', lambda: check_video_constraints(rep, parts[6], files)),
+        ('mpeg2-frame-rates', lambda: check_mpeg2_frame_rates(rep, parts[5], files)),
         ('waveform', lambda: check_waveform_sample_interpretation(rep, parts[3], files)),
         ('photometric', lambda: check_photometric_terms(rep, parts[3], files)),
         ('non_image_sop_classes', lambda: check_non_image_sop_classes(rep, parts[3], parts[4], files)),

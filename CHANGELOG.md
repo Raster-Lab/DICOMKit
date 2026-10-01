@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, batch r3 (2026-10-01, DICOM 2026a)
+
+- **MPEG2 frame rates** (D238; PS3.5 2026a 8.2.5 Table 8-1, 8.2.6 Table 8-2, Note 4, Table 8-3):
+  `VideoConformanceValidator.validate` refuses an MPEG2 Main Profile / Main Level stream whose frame rate is not
+  30 (29.97, 525-line NTSC, at most 480 x 720) or 25 (625-line PAL, at most 576 x 720)
+  (`mpeg2FrameRateNotPermitted`, `mpeg2MainLevelGeometryExceedsMaximum`), and a Main Profile / High Level stream
+  whose frame rate is not 25, 30 (29.97), 50 or 60 (59.94), or that is 1080 rows at 50 / 60.
+  `selectTransferSyntax` no longer offers .100 / .101 to such a stream. The tables are public
+  (`mpeg2MainLevelFormats`, `mpeg2HighLevelFrameRates`, `mpeg2HighLevel1080FrameRates`) and diffed against the
+  2026a DocBook by `Scripts/diff_kit.py` (check `mpeg2-frame-rates`). A stream with no frame rate is not refused.
+
 ### Fixed — Basic Profile D on SR Content Sequence (D236, 2026-10-01)
 
 - **DICOMKit** `ConfidentialityEngine`: without the Clean Structured Content Option, Content Sequence (0040,A730) gets its PS3.15 2026a Table E.1-1 Basic Profile action D on the Sequence "and all of its contents" (E.1.1); C applies only under the Option. The Content Items stay (Relationship Type, Value Type, Concept Name, references), Date / Time / DateTime / Person Name keep their own Table E.1-1 rows (D, or K/C under the temporal Options) and UID its U, and the values Table E.1-1 does not list are replaced by dummies of their VR: Text Value (0040,A160), the NUM numeric values (Numeric Value 0, Floating Point Value 0, Rational Numerator 0, Rational Denominator 1, in the Item and its Measured Value Sequence) and the Selector <VR> Value of each TABLE cell (number of values kept). Previously the Basic Profile released SR free text unchanged. Coded values are kept (E.1.1 note on Code Sequences). `dicom-anon` help and README describe the Basic behaviour.
