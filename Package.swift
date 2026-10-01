@@ -1343,6 +1343,13 @@ let package = Package(
             ],
             path: "Tests/dicom-convertTests"
         ),
+        // dicom-measure: spacing source (PS3.3 10.7.1, C.7.6.16.2.1, C.8.5.5, Tables C.8-71 / C.8-25),
+        // C.18.6-1 coordinates, C.11.1.1.2 output units, PS3.16 UCUM codes.
+        .testTarget(
+            name: "dicom-measureTests",
+            dependencies: ["dicom-measure", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-measureTests"
+        ),
         // dicom-compress: codec / syntax help rows pinned to PS3.6 2026a Table A-1 (D9).
         .testTarget(
             name: "dicom-compressTests",

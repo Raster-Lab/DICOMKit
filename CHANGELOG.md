@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-measure calibration, coordinates and units verified against DICOM 2026a (2026-10-01)
+
+- **dicom-measure** takes the pixel spacing from, in order, Pixel Spacing (0028,0030), the frame's Pixel
+  Measures Sequence (0028,9110) (PS3.3 C.7.6.16.2.1), the Sequence of Ultrasound Regions (0018,6011) region
+  in cm holding the points (C.8.5.5), Imager Pixel Spacing (0018,1164) (front plane of the detector housing,
+  Tables C.8-2 / C.8-71) and Nominal Scanned Pixel Spacing (0018,2010) (Table C.8-25). An image with none of
+  them is measured in pixels (`px`, `px²`) with a warning, instead of being reported in mm at an assumed
+  1.0 mm per pixel. Results carry `spacing_source` (PS3.6 keyword), `spacing_mm` and `spacing_note`; JSON adds
+  `unit_ucum` / `area_unit_ucum` (PS3.16 CID 7460, 7461, 7183 `deg`, 7181 `[hnsf'U]`) and ROI `value_unit`.
+- `angle` scales the vectors by column and row spacing, so the angle is correct when they differ.
+- Pixel values come from `PixelData` (Bits Stored / High Bit masking and sign extension, PS3.5 8.1.1;
+  compressed transfer syntaxes decoded), go through the Modality LUT Sequence when present (it was ignored)
+  or the frame's Rescale Slope/Intercept; images with Samples per Pixel ≠ 1 are refused.
+- `hu` labels a value HU only when Rescale Type (or Modality LUT Type) is HU, or absent on a CT image (PS3.3
+  Table C.8-3); otherwise the value keeps its Rescale Type as unit with a warning. `pixel` reports that unit.
+- Coordinates follow PS3.3 Table C.18.6-1 (0,0 = top-left corner of the top-left pixel): a point samples pixel
+  floor(x),floor(y) (negative coordinates are out of bounds), ROIs hold the pixels whose centres lie inside.
+- `--frame` is checked against Number of Frames (0028,0008); the help says it is 0-based (Frame number 1 = 0).
+  Verbose diagnostics go to stderr. New test target `dicom-measureTests` (17 tests).
+
 ### Fixed — dicom-convert option contract verified against DICOM 2026a (2026-10-01)
 
 - **dicom-convert** `--transfer-syntax` also accepts the PS3.6 Table A-1 keywords of the catalog targets it

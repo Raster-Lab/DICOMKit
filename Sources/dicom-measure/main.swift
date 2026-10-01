@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — option help and output keys diffed against PS3.3 2026a 10.7.1.3 (spacing Value order), Table C.18.6-1 (column,row; 0,0 = TLHC of the TLHC pixel), 10.3 (first Frame is Frame number 1; --frame stays a 0-based index, P-MEASURE-FRAME), C.11.1.1.2 (output units); spacing_source values are PS3.6 2026a Table 6-1 keywords (5); unit_ucum values per PS3.16 2026a CID 7460/7461/7181/7183
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -9,9 +10,21 @@ struct DICOMMeasure: ParsableCommand {
         commandName: "dicom-measure",
         abstract: "Perform precise medical imaging measurements on DICOM images",
         discussion: """
-            Measure distances, areas, angles, and extract pixel statistics from DICOM images
-            with support for physical calibration using Pixel Spacing.
-            
+            Measure distances, areas, angles, and extract pixel statistics from DICOM images.
+
+            Physical units come from, in this order: Pixel Spacing (0028,0030);
+            the frame's Pixel Measures Sequence (0028,9110); the Sequence of
+            Ultrasound Regions (0018,6011) region in cm holding the points;
+            Imager Pixel Spacing (0018,1164), at the front plane of the detector
+            housing; Nominal Scanned Pixel Spacing (0018,2010). Without any of
+            them the result is in pixels. Spacing Values are row spacing, then
+            column spacing (PS3.3 10.7.1.3).
+
+            Points are x,y = column,row in the PS3.3 Table C.18.6-1 image
+            coordinate system: 0,0 is the top-left corner of the top-left pixel
+            and 1,1 its bottom-right corner, so a sampled point reads pixel
+            floor(x),floor(y) and an ROI holds the pixels whose centres lie in it.
+
             Examples:
               dicom-measure distance ct.dcm --p1 100,200 --p2 300,400
               dicom-measure area ct.dcm --polygon 100,100 150,200 200,200 180,120
@@ -44,7 +57,7 @@ struct CommonOptions: ParsableArguments {
     @Option(name: .shortAndLong, help: "Output format: text, json, csv")
     var format: OutputFormat = .text
 
-    @Option(name: .long, help: "Unit for measurements: mm, cm, inches, pixels")
+    @Option(name: .long, help: "Unit for measurements: mm, cm, inches, pixels (physical units need a pixel spacing; see the overview)")
     var unit: MeasurementUnit = .mm
 
     @Flag(name: .long, help: "Force parsing of files without DICM prefix")
@@ -96,7 +109,8 @@ struct Distance: ParsableCommand {
             details: [
                 "p1": "\(point1.x),\(point1.y)",
                 "p2": "\(point2.x),\(point2.y)",
-            ]
+            ],
+            geometric: true
         )
         try writeOutput(output, to: options.output)
     }
@@ -153,7 +167,7 @@ struct Area: ParsableCommand {
             details["vertices"] = "\(points.count)"
         }
 
-        let output = formatResult(type: "area", result: result, format: options.format, details: details)
+        let output = formatResult(type: "area", result: result, format: options.format, details: details, geometric: true)
         try writeOutput(output, to: options.output)
     }
 }
@@ -192,7 +206,8 @@ struct Angle: ParsableCommand {
                 "vertex": "\(vertexPoint.x),\(vertexPoint.y)",
                 "p1": "\(point1.x),\(point1.y)",
                 "p2": "\(point2.x),\(point2.y)",
-            ]
+            ],
+            geometric: true
         )
         try writeOutput(output, to: options.output)
     }
@@ -339,7 +354,7 @@ struct Pixel: ParsableCommand {
     @Option(name: .long, help: "Point to sample as x,y (e.g., 150,150)")
     var point: String
 
-    @Option(name: .long, help: "Frame number (0-based, default: 0)")
+    @Option(name: .long, help: "Frame index, 0-based (0 is DICOM Frame number 1, PS3.3 10.3); must be below Number of Frames (0028,0008)")
     var frame: Int = 0
 
     mutating func run() throws {
@@ -374,6 +389,10 @@ struct MeasurementResult: Sendable {
     let value: Double
     let unitLabel: String
     let description: String
+    /// UCUM code of the unit when PS3.16 lists one (CID 7460, 7461, 7181, 7183)
+    var ucum: String? = nil
+    /// Spacing used, for geometric measurements
+    var calibration: SpacingCalibration? = nil
 }
 
 /// ROI definition
@@ -394,6 +413,21 @@ struct ROIAnalysisResult: Sendable {
     let maximum: Double?
     let histogram: [HistogramBin]?
     let roiDescription: String
+    /// UCUM code of the area unit (PS3.16 CID 7461)
+    var areaUCUM: String? = nil
+    /// Output units of the statistics: Rescale Type / Modality LUT Type (PS3.3 C.11.1.1.2)
+    var valueUnit: String? = nil
+    /// Spacing used for the area
+    var calibration: SpacingCalibration? = nil
+}
+
+/// Detail rows describing the spacing a result used (keys spacing_source, spacing_mm, spacing_note)
+func calibrationDetails(_ cal: SpacingCalibration?) -> [String: String] {
+    guard let cal else { return ["spacing_source": "none"] }
+    var d = ["spacing_source": cal.source,
+             "spacing_mm": "\(formatValue(cal.rowSpacing))\\\(formatValue(cal.columnSpacing))"]
+    if let note = cal.note { d["spacing_note"] = note }
+    return d
 }
 
 /// Histogram bin
@@ -413,7 +447,12 @@ func parsePoint(_ str: String, name: String) throws -> PixelPoint {
 }
 
 /// Format a single measurement result
-func formatResult(type: String, result: MeasurementResult, format: OutputFormat, details: [String: String]) -> String {
+func formatResult(type: String, result: MeasurementResult, format: OutputFormat, details: [String: String],
+                  geometric: Bool = false) -> String {
+    var details = details
+    if geometric {
+        details.merge(calibrationDetails(result.calibration)) { a, _ in a }
+    }
     switch format {
     case .text:
         var output = "\(result.description): \(formatValue(result.value)) \(result.unitLabel)\n"
@@ -429,6 +468,7 @@ func formatResult(type: String, result: MeasurementResult, format: OutputFormat,
             "unit": result.unitLabel,
             "description": result.description,
         ]
+        if let ucum = result.ucum { dict["unit_ucum"] = ucum }
         for (key, value) in details {
             dict[key] = value
         }
@@ -451,6 +491,14 @@ func formatROIResult(result: ROIAnalysisResult, format: OutputFormat) -> String 
         var output = "ROI Analysis: \(result.roiDescription)\n"
         output += "  Pixel count: \(result.pixelCount)\n"
         output += "  Area: \(formatValue(result.areaValue)) \(result.areaUnit)\n"
+        if let cal = result.calibration {
+            output += "  Spacing: \(formatValue(cal.rowSpacing))\\\(formatValue(cal.columnSpacing)) mm (\(cal.source)\(cal.note.map { "; \($0)" } ?? ""))\n"
+        } else {
+            output += "  Spacing: none\n"
+        }
+        if let unit = result.valueUnit {
+            output += "  Value units: \(unit)\n"
+        }
         if let mean = result.mean {
             output += "  Mean: \(formatValue(mean))\n"
         }
@@ -481,6 +529,9 @@ func formatROIResult(result: ROIAnalysisResult, format: OutputFormat) -> String 
             "area": result.areaValue,
             "area_unit": result.areaUnit,
         ]
+        if let ucum = result.areaUCUM { dict["area_unit_ucum"] = ucum }
+        if let unit = result.valueUnit { dict["value_unit"] = unit }
+        for (key, value) in calibrationDetails(result.calibration) { dict[key] = value }
         if let mean = result.mean { dict["mean"] = mean }
         if let std = result.standardDeviation { dict["std_dev"] = std }
         if let min = result.minimum { dict["min"] = min }
