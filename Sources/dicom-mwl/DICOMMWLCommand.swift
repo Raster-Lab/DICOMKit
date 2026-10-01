@@ -1,3 +1,10 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — the 9 matching keys behind --date/--time/--station/--patient/
+// --patient-id/--modality/--sps-status/--accession-number/--performing-physician diffed against PS3.4 2026a
+// Table K.6-1 (139 rows; matching-key type and allowed matching per row); Range Matching forms against PS3.4
+// C.2.2.2.5.1/.2 and the combined date-time remark under (0040,0003) in Table K.6-1; SPS Status values against
+// PS3.3 Table C.4-10 (0040,0020) Defined Terms (5: SCHEDULED, ARRIVED, READY, STARTED, DEPARTED); SOP Class UID
+// against PS3.6 Table A-1; DA/TM forms against PS3.5 Table 6.2-1. The 38 JSON keys and the response statuses are
+// shared DICOMNetwork code (NetworkConsole.mwlJSON, DIMSEStatus): 28 keys are PS3.6 keywords, 10 are not (P-item).
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -35,11 +42,12 @@ struct DICOMMWLCommand: AsyncParsableCommand {
                 --date today-
 
               # Query a combined date+time range as one continuous interval
-              # (PS3.4 K.6.1): July 5 10:00 through July 7 18:00
+              # (PS3.4 Table K.6-1, remark under Scheduled Procedure Step Start
+              # Time (0040,0003)): July 5 10:00 through July 7 18:00
               dicom-mwl query server --port 11112 --aet MODALITY \\
                 --date 20240705-20240707 --time 1000-1800
 
-              # Filter to only SCHEDULED items
+              # Filter to only SCHEDULED steps (PS3.3 Table C.4-10 Defined Term)
               dicom-mwl query server --port 11112 --aet MODALITY \\
                 --sps-status SCHEDULED
 
@@ -51,15 +59,20 @@ struct DICOMMWLCommand: AsyncParsableCommand {
               dicom-mwl query server --port 11112 --aet MODALITY \\
                 --date today --verbose
 
-            Date/Time filter syntax (PS3.4 C.2.2.2.5):
+            Date/Time filter syntax (PS3.4 C.2.2.2.5.1 for DA, C.2.2.2.5.2 for TM):
               --date YYYYMMDD              Single Value Matching
               --date YYYYMMDD-YYYYMMDD     Range Matching (both bounds inclusive)
               --date YYYYMMDD-             Open-ended range (that date onward)
               --date -YYYYMMDD             Open-ended range (up to and including that date)
               --date today | tomorrow      Convenience shorthands, usable as a bound too
-              --time HHMMSS[-HHMMSS]       Same Single Value / Range Matching for time
+              --time HHMMSS[-HHMMSS]       Same Single Value / Range Matching for time;
+                                           a TM value may be HH, HHMM or HHMMSS[.FFFFFF]
+                                           (PS3.5 Table 6.2-1), never across midnight
 
-            SPS Status values: SCHEDULED, IN PROGRESS, DISCONTINUED, COMPLETED
+            SPS Status (0040,0020) Defined Terms (PS3.3 Table C.4-10):
+              SCHEDULED, ARRIVED, READY, STARTED, DEPARTED
+            (IN PROGRESS / COMPLETED / DISCONTINUED are Performed Procedure Step
+            Status values, PS3.3 Table C.4-14, and never appear in a worklist.)
             
             Note: If the server returns a limited number of results, adjust the
             server-side maximum results configuration (e.g., MaximumResults in
@@ -96,7 +109,7 @@ extension DICOMMWLCommand {
         @Option(name: .long, help: "Scheduled date filter: YYYYMMDD, 'today', 'tomorrow', or a DICOM date range (YYYYMMDD-YYYYMMDD, YYYYMMDD-, -YYYYMMDD). A leading-hyphen range needs the equals form: --date=-YYYYMMDD")
         var date: String?
 
-        @Option(name: .long, help: "Scheduled time filter: HHMMSS, or a DICOM time range (HHMMSS-HHMMSS, HHMMSS-, -HHMMSS). Combined with --date as one continuous interval per PS3.4 K.6.1 when both are ranges. A leading-hyphen range needs the equals form: --time=-HHMMSS")
+        @Option(name: .long, help: "Scheduled time filter: HHMMSS (or HH / HHMM / HHMMSS.FFFFFF, PS3.5 Table 6.2-1 TM), or a DICOM time range (HHMMSS-HHMMSS, HHMMSS-, -HHMMSS; PS3.4 C.2.2.2.5.2). Combined with --date as one continuous interval when both are ranges (PS3.4 Table K.6-1, remark under (0040,0003)). A leading-hyphen range needs the equals form: --time=-HHMMSS")
         var time: String?
 
         @Option(name: .long, help: "Scheduled Station AE Title filter")
@@ -114,7 +127,7 @@ extension DICOMMWLCommand {
         @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
         var strictModality: Bool = false
         
-        @Option(name: .long, help: "SPS Status filter (SCHEDULED, IN PROGRESS, DISCONTINUED, COMPLETED)")
+        @Option(name: .long, help: "Scheduled Procedure Step Status (0040,0020) filter. Defined Terms per PS3.3 Table C.4-10: SCHEDULED, ARRIVED, READY, STARTED, DEPARTED (another value is sent as given, with a warning)")
         var spsStatus: String?
         
         @Option(name: .long, help: "Accession number filter")
@@ -135,11 +148,32 @@ extension DICOMMWLCommand {
         @Flag(name: .long, help: "Output as JSON")
         var json: Bool = false
         
+        /// Scheduled Procedure Step Status (0040,0020) Defined Terms, PS3.3 2026a Table C.4-10.
+        /// Defined Terms may be extended, so an unlisted value is sent as given — but it is
+        /// almost always a Performed Procedure Step Status (IN PROGRESS / COMPLETED /
+        /// DISCONTINUED, Table C.4-14) typed by mistake, which matches nothing.
+        static let scheduledProcedureStepStatusDefinedTerms: [String] =
+            ["SCHEDULED", "ARRIVED", "READY", "STARTED", "DEPARTED"]
+
+        /// The warning printed to stderr for a `--sps-status` value outside Table C.4-10,
+        /// or nil when the value is a Defined Term (or absent).
+        static func spsStatusWarning(_ value: String?) -> String? {
+            guard let value, !value.isEmpty,
+                  !scheduledProcedureStepStatusDefinedTerms.contains(value) else { return nil }
+            return "warning: --sps-status '\(value)' is not a Scheduled Procedure Step Status Defined Term "
+                + "(PS3.3 Table C.4-10: \(scheduledProcedureStepStatusDefinedTerms.joined(separator: ", "))); "
+                + "it is sent as given and will match only an SCP that uses that private term\n"
+        }
+
         mutating func run() async throws {
             // Validate --modality up front: an unrecognized code otherwise
             // reaches the PACS as a filter that silently matches nothing.
             modality = try ModalityOptionValidator.resolve(
                 modality, strict: strictModality, verbose: verbose)
+
+            if let warning = Query.spsStatusWarning(spsStatus) {
+                FileHandle.standardError.write(Data(warning.utf8))
+            }
 
             #if canImport(Network)
             // Resolve host and port
