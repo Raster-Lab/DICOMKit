@@ -448,5 +448,14 @@ extension AnonOptionContractTests {
             $0.string(for: .codeValue)?.trimmingCharacters(in: .whitespaces)
         }
         XCTAssertEqual(codes, ["113100", "113104"])
+
+        // Without the Option: Table E.1-1 Basic D on Content Sequence (0040,A730) reaches all
+        // of its contents (E.1.1), so both Content Items stay with their Text Value replaced (D236).
+        let basicOut = dir.appendingPathComponent("basic.dcm")
+        try run([input.path, "-o", basicOut.path])
+        let basic = try DICOMFile.read(from: Data(contentsOf: basicOut)).dataSet
+        XCTAssertEqual((basic.sequence(for: .contentSequence) ?? []).compactMap {
+            $0.string(for: .textValue)?.trimmingCharacters(in: .whitespaces)
+        }, ["ANONYMIZED", "ANONYMIZED"])
     }
 }

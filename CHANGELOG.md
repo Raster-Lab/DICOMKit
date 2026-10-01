@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Basic Profile D on SR Content Sequence (D236, 2026-10-01)
+
+- **DICOMKit** `ConfidentialityEngine`: without the Clean Structured Content Option, Content Sequence (0040,A730) gets its PS3.15 2026a Table E.1-1 Basic Profile action D on the Sequence "and all of its contents" (E.1.1); C applies only under the Option. The Content Items stay (Relationship Type, Value Type, Concept Name, references), Date / Time / DateTime / Person Name keep their own Table E.1-1 rows (D, or K/C under the temporal Options) and UID its U, and the values Table E.1-1 does not list are replaced by dummies of their VR: Text Value (0040,A160), the NUM numeric values (Numeric Value 0, Floating Point Value 0, Rational Numerator 0, Rational Denominator 1, in the Item and its Measured Value Sequence) and the Selector <VR> Value of each TABLE cell (number of values kept). Previously the Basic Profile released SR free text unchanged. Coded values are kept (E.1.1 note on Code Sequences). `dicom-anon` help and README describe the Basic behaviour.
+
 ### Fixed — JPEG 2000 / HTJ2K irreversible encode at maximum quality (D234, 2026-10-01)
 
 - **DICOMCore** `J2KSwiftCodec`: the bit-exact round-trip check now follows the planned encode. A lossy-intent encode on .91 / .203 with `--quality maximum` is planned as the irreversible 9-7 transform (PS3.5 2026a 8.2.4) and is no longer refused with "lossless round-trip validation failed"; reversible (5-3) encodes are still verified bit-exact.

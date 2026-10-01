@@ -1,6 +1,7 @@
 // NEMA-verified: 2026a, checked 2026-10-01 — C (Table E.1-1a) cleans text per E.3.5 instead of keeping it verbatim (D158); Modified Dates shifts DA and the DT date part by whole days, keeps TM, and gives the 3 non-date rows their Basic action (E.3.6, D157); (0028,0303) REMOVED / UNMODIFIED / MODIFIED per E.2 / E.3.6 and PS3.3 Table C.7-1 (D161); 113100 is the first Item of (0012,0064) and (0012,0063) names every Item, including 113101 from pixel cleaning (D160); Retain Safe Private keeps the Table E.3.10-1 attributes and (0008,0300) SAFE / Nonidentifying elements with their Private Creators and applies (0008,0307) D/Z/X/U (E.3.10), Clean Graphics cleans the text of a C sequence (E.3.3) (D159)
 // NEMA-verified: 2026a, checked 2026-10-01 — Clean Structured Content (PS3.15 2026a E.3.4): the Items of Content Sequence (0040,A730), Acquisition Context Sequence (0040,0555) and Specimen Preparation Step Content Item Sequence (0040,0612) inside a cleaned (C) Sequence get the Table E.3.4-1 action of their Concept Name and Value Type (211 rows, retired SNOMED codes recognised): X removes the Content Item with its children, D replaces its value with a dummy of the Value Type, K keeps its value, C cleans its text or shifts its date (Modified Dates); the values removed join the text cleaner (D159)
 // NEMA-verified: 2026a, checked 2026-09-30 — applies PS3.15 2026a Table E.1-1 in full (D69): the pattern rows (curve data 50xx, overlay data and comments 60xx,3000/4000, private groups) are X; Z on SQ is an empty sequence; D is a non-empty value consistent with the VR (sequence kept scrubbed, UID mapped, binary zero bytes) (PS3.15 E.1.1)
+// NEMA-verified: 2026a, checked 2026-10-01 — Content Sequence (0040,A730) Basic Profile D without the Clean Structured Content Option (Table E.1-1 D, C only under the Option; E.1.1 "the action is applicable to the Sequence and all of its contents"): Content Items kept, Date/Time/DateTime/Person Name D and UID U by their own rows, and the values Table E.1-1 does not list (Text Value, NUM numeric values, TABLE cell values) replaced by dummies of the VR; Acquisition Context Sequence X/Z and Specimen Preparation Sequence Z unchanged (D236)
 // NEMA-verified: 2026a, checked 2026-09-29 — applies the PS3.15 2026a Table E.1-1 actions; records (0012,0062) YES, (0012,0063) LO 1-n and (0012,0064) SQ of CID 7050 codes per PS3.15 E.1.1 and PS3.3 Table C.7-1; VRs per PS3.6 Table 6-1
 import Foundation
 import DICOMCore
@@ -159,6 +160,9 @@ public struct ConfidentialityEngine {
                 // Content Items get the Table E.3.4-1 action of their Concept Name (D159).
                 let contentItems = options.cleanStructuredContent && innerCleaning
                     && Self.contentItemSequences.contains(tag)
+                // Basic Profile D on Content Sequence (0040,A730) without the Option: the D
+                // reaches the Content Items' values Table E.1-1 does not list (D236).
+                let dummyContentItems = effective == .replaceDummy && Self.contentItemSequences.contains(tag)
                 let scrubbedItems = items.compactMap { item -> SequenceItem? in
                     let itemAction = contentItems
                         ? ConfidentialityProfile.contentItemAction(for: item, options: options) : nil
@@ -169,6 +173,7 @@ public struct ConfidentialityEngine {
                     if let itemAction {
                         applyContentItemAction(itemAction, original: DataSet(elements: item.allElements), to: &itemSet)
                     }
+                    if dummyContentItems { Self.replaceUnlistedContentItemValues(in: &itemSet) }
                     return SequenceItem(elements: itemSet.tags.compactMap { itemSet[$0] })
                 }
                 out.setSequence(scrubbedItems, for: tag)
@@ -195,7 +200,8 @@ public struct ConfidentialityEngine {
                 if isRoot { changed.append(tag) }
             case .replaceDummy:
                 // A non-zero-length value "consistent with the VR" (PS3.15 E.1.1, D):
-                // a sequence keeps its items, already scrubbed above; a UID is replaced
+                // a sequence keeps its items, already scrubbed above (a Sequence of Content
+                // Items with the values Table E.1-1 does not list replaced, D236); a UID is replaced
                 // by its consistently mapped UID; binary VRs get zero bytes.
                 switch element.vr {
                 case .SQ:
@@ -430,6 +436,92 @@ public struct ConfidentialityEngine {
         }
     }
 
+    // MARK: - Basic Profile D on Content Sequence (PS3.15 2026a Table E.1-1, D236)
+
+    /// Measured Value Sequence (0040,A300), Tabulated Values Sequence (0040,A801) and Cell
+    /// Values Sequence (0040,A808) (PS3.3 2026a Tables C.18.1-1, C.18.10-1).
+    static let measuredValueSequence = Tag(group: 0x0040, element: 0xA300)
+    static let tabulatedValuesSequence = Tag(group: 0x0040, element: 0xA801)
+    static let cellValuesSequence = Tag(group: 0x0040, element: 0xA808)
+    /// The numeric value attributes of a NUM Content Item (Table C.18.1-1, Table 10-2): Numeric
+    /// Value (0040,A30A), Floating Point Value (0040,A161), Rational Numerator Value (0040,A162);
+    /// Rational Denominator Value (0040,A163) is handled apart (it must stay non-zero).
+    static let numericValueTags: [Tag] = [Tag(group: 0x0040, element: 0xA30A),
+                                          Tag(group: 0x0040, element: 0xA161),
+                                          Tag(group: 0x0040, element: 0xA162)]
+    static let rationalDenominatorValue = Tag(group: 0x0040, element: 0xA163)
+    /// Selector Attribute VR (0072,0050): names the VR of a table cell; not a value.
+    static let selectorAttributeVR = Tag(group: 0x0072, element: 0x0050)
+
+    /// PS3.15 2026a Table E.1-1 gives Content Sequence (0040,A730) the Basic Profile action D
+    /// ("replace with a non-zero length value that may be a dummy value and consistent with
+    /// the VR", Table E.1-1a), and E.1.1: "in the case of Sequences, the action is applicable
+    /// to the Sequence and all of its contents". The Content Items themselves are kept (a
+    /// non-zero length Sequence, with the Relationship Type, Value Type, Concept Name and
+    /// references the SR IOD requires, E.1.1 "does not negatively affect the integrity of the
+    /// Information Object Definition"), the Content Item attributes that have their own Table
+    /// E.1-1 row get that row's action (Date, Time, DateTime, Person Name D; UID U), and the
+    /// value attributes Table E.1-1 does not list get a dummy value of their VR here:
+    /// - TEXT: Text Value (0040,A160);
+    /// - NUM: Numeric Value, Floating Point Value, Rational Numerator Value 0 and Rational
+    ///   Denominator Value 1, in the Item and in its Measured Value Sequence Items;
+    /// - TABLE: the Selector <VR> Value of each Cell Values Sequence Item.
+    /// Each value of a multi-valued attribute is replaced, so the number of values is kept.
+    /// Coded values (Concept Code Sequence) are kept: "it is usually safe to assume that coded
+    /// sequence entries … do not contain identifying information" (E.1.1). The Clean
+    /// Structured Content Option replaces this D with C (E.3.4, Table E.3.4-1).
+    static func replaceUnlistedContentItemValues(in item: inout DataSet) {
+        if let text = item[.textValue] { item[.textValue] = dummyElement(text) }
+        replaceNumericValues(in: &item)
+        if let measured = item.sequence(for: measuredValueSequence) {
+            item.setSequence(measured.map { value in
+                var ds = DataSet(elements: value.allElements)
+                replaceNumericValues(in: &ds)
+                return SequenceItem(elements: ds.tags.compactMap { ds[$0] })
+            }, for: measuredValueSequence)
+        }
+        if let tables = item.sequence(for: tabulatedValuesSequence) {
+            item.setSequence(tables.map { table in
+                var ds = DataSet(elements: table.allElements)
+                if let cells = ds.sequence(for: cellValuesSequence) {
+                    ds.setSequence(cells.map { cell in
+                        var c = DataSet(elements: cell.allElements)
+                        for tag in c.tags where tag.group == 0x0072 && tag != selectorAttributeVR {
+                            if let e = c[tag], e.sequenceItems == nil { c[tag] = dummyElement(e) }
+                        }
+                        return SequenceItem(elements: c.tags.compactMap { c[$0] })
+                    }, for: cellValuesSequence)
+                }
+                return SequenceItem(elements: ds.tags.compactMap { ds[$0] })
+            }, for: tabulatedValuesSequence)
+        }
+    }
+
+    private static func replaceNumericValues(in ds: inout DataSet) {
+        for tag in numericValueTags {
+            if let e = ds[tag] { ds[tag] = dummyElement(e) }
+        }
+        if let e = ds[rationalDenominatorValue] {
+            let count = max(1, e.valueData.count / 4)
+            var one = Data()
+            for _ in 0..<count { one.append(contentsOf: [1, 0, 0, 0]) }  // UL 1, little endian
+            ds[rationalDenominatorValue] = DataElement.data(tag: e.tag, vr: e.vr, data: one)
+        }
+    }
+
+    /// A dummy value consistent with the VR, with as many values as the source: zero bytes of
+    /// the same length for a binary VR, ``dummyString(for:)`` for each value of a string VR.
+    private static func dummyElement(_ e: DataElement) -> DataElement {
+        if binaryVRs.contains(e.vr) {
+            let count = max(e.valueData.count, binaryDummyLength(e.vr))
+            return DataElement.data(tag: e.tag, vr: e.vr, data: Data(repeating: 0, count: count))
+        }
+        let values = singleValuedVRs.contains(e.vr) ? [e.stringValue ?? ""]
+                                                     : (e.stringValue ?? "").components(separatedBy: "\\")
+        let dummy = dummyString(for: e.vr)
+        return DataElement.string(tag: e.tag, vr: e.vr, value: values.map { _ in dummy }.joined(separator: "\\"))
+    }
+
     /// Applies a Content Item's Table E.3.4-1 action (not X, which drops the Item) to the
     /// Item after Table E.1-1 has processed its attributes:
     /// - K: its value attributes are kept as they were in the source;
@@ -606,7 +698,10 @@ public struct ConfidentialityEngine {
                 let innerCleaning = cleaning || effective == .clean
                 let contentItems = options.cleanStructuredContent && innerCleaning
                     && Self.contentItemSequences.contains(tag)
+                let dummyContentItems = effective == .replaceDummy && Self.contentItemSequences.contains(tag)
                 for item in items {
+                    // Basic Profile D on Content Sequence: the values replaced (D236).
+                    if dummyContentItems { out += Self.contentItemValues(in: item, recursive: false) }
                     // A Content Item the Clean Structured Content Option removes (X) takes its
                     // values, and those of its children, with it; a D replaces its own value.
                     switch contentItems ? ConfidentialityProfile.contentItemAction(for: item, options: options) : nil {
@@ -633,6 +728,10 @@ public struct ConfidentialityEngine {
     }
 
     private func dummyValue(for vr: VR) -> String {
+        Self.dummyString(for: vr)
+    }
+
+    private static func dummyString(for vr: VR) -> String {
         switch vr {
         case .PN: return "ANONYMOUS"
         case .DA: return "19000101"

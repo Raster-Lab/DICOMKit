@@ -314,14 +314,78 @@ extension ConfidentialityOptionsTests {
         XCTAssertEqual(content(modified.deidentify(srDataSet()).0).first { conceptCode($0) == "126201" }?.string(for: date), "20240112")
     }
 
-    /// Without the Option the Content Sequence gets its Table E.1-1 Basic action (D: kept with
-    /// its Items processed) and no 113104 is recorded.
-    func testWithoutCleanStructuredContentNoContentItemIsRemoved() {
+    /// Without the Option the Content Sequence gets its Table E.1-1 Basic action D (C only
+    /// under the Option): the Content Items are kept, and the action reaches all of their
+    /// contents (E.1.1), so no Text Value is released verbatim; no 113104 is recorded (D236).
+    func testWithoutCleanStructuredContentNoContentItemIsRemoved() throws {
+        let row = try XCTUnwrap(ConfidentialityProfile.tableE11[0x0040A730])
+        XCTAssertEqual(row.basic, "D")
+        XCTAssertEqual(row.cleanStructuredContent, "C")
         var engine = ConfidentialityEngine()
-        let (out, _) = engine.deidentify(srDataSet())
-        XCTAssertEqual(content(out).count, 6)
+        let (out, changed) = engine.deidentify(srDataSet())
+        let items = content(out)
+        XCTAssertEqual(items.map(conceptCode), ["121022", "121106", "126201", "121073", "R-42B89", "121064"],
+                       "D: a non-zero length Sequence, every Content Item and Concept Name kept")
+        XCTAssertEqual(items.compactMap { $0.string(for: .textValue) }, Array(repeating: "ANONYMIZED", count: 4),
+                       "Text Value has no Table E.1-1 row: it takes the D of the Content Sequence")
+        XCTAssertEqual(items[2].string(for: Tag(group: 0x0040, element: 0xA121)), "19000101", "Date (0040,A121): D")
+        let observer = try XCTUnwrap(items[5].sequence(for: .contentSequence)?.first)
+        XCTAssertEqual(observer.string(for: .personName), "ANONYMOUS", "Person Name (0040,A123): D, nested Content Sequence")
+        XCTAssertTrue(changed.contains(.contentSequence))
         let codes = (out.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []).compactMap { $0.string(for: .codeValue) }
         XCTAssertEqual(codes, ["113100"])
+    }
+
+    /// Basic D on a NUM and a TABLE Content Item: the numeric values and the cell values are
+    /// dummies of their VR with the number of values kept; units, codes and the Rational
+    /// Denominator (non-zero) stay valid; Retain Longitudinal Full Dates still keeps Date
+    /// (0040,A121) by its own Table E.1-1 row (D236).
+    func testBasicContentSequenceReplacesNumericAndTableValues() throws {
+        var units = DataSet()
+        units.setString("mm", for: .codeValue, vr: .SH)
+        units.setString("UCUM", for: .codingSchemeDesignator, vr: .SH)
+        units.setString("millimeter", for: .codeMeaning, vr: .LO)
+        let unitsItem = SequenceItem(elements: units.tags.compactMap { units[$0] })
+        var measured = DataSet()
+        measured.setString("89", for: Tag(group: 0x0040, element: 0xA30A), vr: .DS)
+        measured[Tag(group: 0x0040, element: 0xA162)] = DataElement.data(tag: Tag(group: 0x0040, element: 0xA162), vr: .SL,
+                                                                          data: Data([89, 0, 0, 0]))
+        measured[Tag(group: 0x0040, element: 0xA163)] = DataElement.data(tag: Tag(group: 0x0040, element: 0xA163), vr: .UL,
+                                                                          data: Data([1, 0, 0, 0]))
+        measured.setSequence([unitsItem], for: Tag(group: 0x0040, element: 0x08EA))
+        var num = DataSet(elements: contentItem("NUM", "DCM", "121033", "Subject Age").allElements)
+        num.setSequence([SequenceItem(elements: measured.tags.compactMap { measured[$0] })], for: Tag(group: 0x0040, element: 0xA300))
+
+        var cell = DataSet()
+        cell.setString("UC", for: Tag(group: 0x0072, element: 0x0050), vr: .CS)
+        cell.setString("John Doe\\MRN12345", for: Tag(group: 0x0072, element: 0x006F), vr: .UC)
+        var table = DataSet()
+        table.setSequence([SequenceItem(elements: cell.tags.compactMap { cell[$0] })], for: Tag(group: 0x0040, element: 0xA808))
+        var tableItem = DataSet(elements: contentItem("TABLE", "DCM", "111111", "Table").allElements)
+        tableItem.setSequence([SequenceItem(elements: table.tags.compactMap { table[$0] })], for: Tag(group: 0x0040, element: 0xA801))
+
+        var ds = srDataSet()
+        var items = ds.sequence(for: .contentSequence) ?? []
+        items += [SequenceItem(elements: num.tags.compactMap { num[$0] }),
+                  SequenceItem(elements: tableItem.tags.compactMap { tableItem[$0] })]
+        ds.setSequence(items, for: .contentSequence)
+
+        var engine = ConfidentialityEngine()
+        let out = content(engine.deidentify(ds).0)
+        let value = DataSet(elements: try XCTUnwrap(out[6].sequence(for: Tag(group: 0x0040, element: 0xA300))?.first).allElements)
+        XCTAssertEqual(value.string(for: Tag(group: 0x0040, element: 0xA30A)), "0")
+        XCTAssertEqual(value[Tag(group: 0x0040, element: 0xA162)]?.valueData, Data([0, 0, 0, 0]))
+        XCTAssertEqual(value[Tag(group: 0x0040, element: 0xA163)]?.valueData, Data([1, 0, 0, 0]))
+        XCTAssertEqual(value.sequence(for: Tag(group: 0x0040, element: 0x08EA))?.first?.string(for: .codeValue), "mm")
+        let tabulated = DataSet(elements: try XCTUnwrap(out[7].sequence(for: Tag(group: 0x0040, element: 0xA801))?.first).allElements)
+        let outCell = try XCTUnwrap(tabulated.sequence(for: Tag(group: 0x0040, element: 0xA808))?.first)
+        XCTAssertEqual(outCell.string(for: Tag(group: 0x0072, element: 0x006F)), "ANONYMIZED\\ANONYMIZED")
+        XCTAssertEqual(outCell.string(for: Tag(group: 0x0072, element: 0x0050)), "UC")
+
+        var full = ConfidentialityEngine(options: .init(retainLongitudinalTemporal: true))
+        let kept = content(full.deidentify(ds).0)
+        XCTAssertEqual(kept[2].string(for: Tag(group: 0x0040, element: 0xA121)), "20240102", "Date: Full Dates K")
+        XCTAssertEqual(kept[1].string(for: .textValue), "ANONYMIZED")
     }
 
     /// Acquisition Context Sequence (0040,0555) Items are Content Items too (E.3.4).

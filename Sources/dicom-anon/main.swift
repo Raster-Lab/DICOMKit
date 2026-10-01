@@ -108,7 +108,8 @@ struct DICOMAnon: ParsableCommand {
 
     @Flag(name: .long, help: """
         PS3.15 Clean Structured Content Option (--profile ps315): keep Content Sequence \
-        (0040,A730), Acquisition Context Sequence and Specimen Preparation Sequence; each \
+        (0040,A730) values (without it, Basic D: every Text Value and numeric value is a \
+        dummy), Acquisition Context Sequence and Specimen Preparation Sequence; each \
         Content Item gets the action PS3.15 Table E.3.4-1 gives its Concept Name (removed, \
         dummy, kept or cleaned) and the text kept is cleaned (E.3.4)
         """)
