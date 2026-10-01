@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — derived MPR output against PS3.3 2026a C.7.6.1.1.2 (Image Type DERIVED\SECONDARY, new SOP Instance UID), C.8.3.1.1.1 (MR Value 3 MPR) and C.8.2.1.1.1 (CT Value 3 AXIAL covers coronal/sagittal), C.12.4 Table C.12-10 (Derivation Description, Derivation Code Sequence, Source Image Sequence), PS3.16 2026a CID 7203 (DCM 113072 "Multiplanar reformatting", 1 of 34 rows used) and CID 7202 (DCM 121322), Table C.7-10 / C.7.6.2.1.1 (Image Position/Orientation (Patient), Pixel Spacing row\column), C.11.1.1.2 (stored value = (output - intercept) / slope), PS3.5 Table 6.2-1 (DS 16 bytes, ST 1024 chars)
+// NEMA-verified: 2026a, checked 2026-10-01 — derived MPR output against PS3.3 2026a C.7.6.1.1.2 (Image Type DERIVED\SECONDARY, new SOP Instance UID), C.8.3.1.1.1 (MR Value 3 MPR) and C.8.2.1.1.1 (CT Value 3 AXIAL covers coronal/sagittal), C.12.4 Table C.12-10 (Derivation Description, Derivation Code Sequence, Source Image Sequence), PS3.16 2026a CID 7203 (DCM 113072 "Multiplanar reformatting", 1 of 34 rows used) and CID 7202 (DCM 121322), Table C.7-10 / C.7.6.2.1.1 (Image Position/Orientation (Patient), Pixel Spacing row\column), C.11.1.1.2 (stored value = (output - intercept) / slope), PS3.5 Table 6.2-1 (DS 16 bytes, ST 1024 chars); oblique slices carry their own Image Position / Orientation (Patient)
 import Foundation
 import DICOMCore
 import DICOMKit
@@ -60,6 +60,14 @@ enum DerivedSeries {
     /// Builds one derived instance per slice of a plane.
     static func makeInstances(slices: [SliceImage], plane: PatientPlane, volume: VolumeData,
                               seriesInstanceUID: String = UIDGenerator.generateUID().value) throws -> [DICOMFile] {
+        try makeInstances(slices: slices, planeName: plane.rawValue, volume: volume,
+                          seriesInstanceUID: seriesInstanceUID)
+    }
+
+    /// Builds one derived instance per slice; `planeName` is axial, sagittal, coronal or
+    /// oblique (an oblique slice carries its own Image Orientation / Position (Patient)).
+    static func makeInstances(slices: [SliceImage], planeName: String, volume: VolumeData,
+                              seriesInstanceUID: String = UIDGenerator.generateUID().value) throws -> [DICOMFile] {
         let template = volume.template
         guard let sopClassUID = template.string(for: .sopClassUID) else { throw DerivedError.noTemplate }
         guard template[.perFrameFunctionalGroupsSequence] == nil,
@@ -95,7 +103,7 @@ enum DerivedSeries {
                         for: .imageType, vr: .CS)
         base.setString(seriesInstanceUID, for: .seriesInstanceUID, vr: .UI)
         let sourceDescription = template.string(for: .seriesDescription)?.trimmingCharacters(in: .whitespaces) ?? ""
-        let description = (sourceDescription.isEmpty ? "" : sourceDescription + " ") + "MPR " + plane.rawValue
+        let description = (sourceDescription.isEmpty ? "" : sourceDescription + " ") + "MPR " + planeName
         base.setString(String(description.prefix(64)), for: .seriesDescription, vr: .LO)
 
         let derivationCode = SequenceItem(elements: [
@@ -104,7 +112,7 @@ enum DerivedSeries {
             DataElement.string(tag: .codeMeaning, vr: .LO, value: multiplanarReformatting.meaning),
         ])
         base.setSequence([derivationCode], for: .derivationCodeSequence)
-        base.setString("Multiplanar reformatting, \(plane.rawValue) plane, by dicom-3d",
+        base.setString("Multiplanar reformatting, \(planeName) plane, by dicom-3d",
                        for: .derivationDescription, vr: .ST)
 
         let purpose = SequenceItem(elements: [

@@ -338,3 +338,135 @@ final class Volume3DContractTests: XCTestCase {
         XCTAssertFalse(JP3DVolumeDocument.sopClassUID.hasPrefix("1.2.840.10008."))
     }
 }
+
+// MARK: - P-3D-OBLIQUE, P-3D-INTERPOLATION, P-3D-VOLUME
+
+extension Volume3DContractTests {
+
+    /// Axial stack, 6 columns x 5 rows x 4 slices, Pixel Spacing 0.5\0.8, slices at z = 10..16:
+    /// voxel (c, r, k) at LPS (-10 + 0.8c, -20 + 0.5r, 10 + 2k) holds 100 + 10c + 20r + 30k,
+    /// a linear function of position, which trilinear interpolation reproduces exactly.
+    private static func linearVolume() throws -> VolumeData {
+        let files = (0..<4).map { k in
+            slice(rows: 5, columns: 6, position: [-10, -20, 10 + 2 * Double(k)], instanceNumber: k + 1,
+                  value: { c, r in UInt16(100 + 10 * c + 20 * r + 30 * k) })
+        }
+        return try VolumeLoader().loadVolume(files: files)
+    }
+
+    /// The known value at an LPS point of `linearVolume`.
+    private static func expected(_ p: V3) -> Double {
+        let c = (p.x + 10) / 0.8, r = (p.y + 20) / 0.5, k = (p.z - 10) / 2
+        return 100 + 10 * c + 20 * r + 30 * k
+    }
+
+    func testObliquePlaneDirectionsAreOrthonormalAndInThePlane() throws {
+        let plane = try XCTUnwrap(ObliquePlane(normal: V3(x: 0, y: 2, z: 2), point: V3(x: 0, y: 0, z: 0)))
+        let s = 1 / 2.0.squareRoot()
+        assertClose(plane.normal, V3(x: 0, y: s, z: s))
+        assertClose(plane.rowDirection, V3(x: 1, y: 0, z: 0))        // axial row, already in the plane
+        assertClose(plane.columnDirection, V3(x: 0, y: s, z: -s))    // axial column projected
+        XCTAssertEqual(plane.rowDirection.dot(plane.columnDirection), 0, accuracy: 1e-12)
+        XCTAssertEqual(abs(plane.rowDirection.cross(plane.columnDirection).dot(plane.normal)), 1, accuracy: 1e-12)
+        XCTAssertNil(ObliquePlane(normal: V3(x: 0, y: 0, z: 0), point: .zero))
+        // Near-coronal normal: rows +x, columns toward the feet, as a coronal image
+        let coronal = try XCTUnwrap(ObliquePlane(normal: V3(x: 0, y: 1, z: 0.1), point: .zero))
+        XCTAssertGreaterThan(coronal.rowDirection.x, 0.99)
+        XCTAssertLessThan(coronal.columnDirection.z, -0.99)
+    }
+
+    /// Equation C.7.6.2.1-1: pixel (i, j) of the oblique image is at S + X·Δ·i + Y·Δ·j and
+    /// holds the volume's value there.
+    func testObliqueSamplesFollowEquationC7621() throws {
+        let volume = try Self.linearVolume()
+        let point = V3(x: -10 + 0.8 * 2, y: -20 + 0.5 * 2, z: 12)       // voxel (2, 2, 1): 190
+        let slices = try MPRGenerator(volume: volume, interpolation: .linear)
+            .generateMPR(plane: .oblique(normal: V3(x: 0, y: 1, z: 1), point: point))
+        XCTAssertEqual(slices.count, 1)
+        let image = slices[0]
+        let g = try XCTUnwrap(image.geometry)
+        XCTAssertEqual(g.rowSpacing, 0.5)
+        XCTAssertEqual(g.columnSpacing, 0.5)
+        // The point lies on a pixel centre
+        let rel = point - g.imagePosition
+        let i0 = rel.dot(g.rowCosines) / 0.5, j0 = rel.dot(g.columnCosines) / 0.5
+        XCTAssertEqual(i0, i0.rounded(), accuracy: 1e-9)
+        XCTAssertEqual(j0, j0.rounded(), accuracy: 1e-9)
+        let (pi, pj) = (Int(i0.rounded()), Int(j0.rounded()))
+        XCTAssertEqual(image.pixels[pj * image.width + pi], 190, accuracy: 1e-9)
+        // Neighbours: +1 column = +0.5 mm along x = +6.25; +1 row = (0, +0.354, -0.354) mm = +8.839
+        XCTAssertEqual(image.pixels[pj * image.width + pi + 1], 196.25, accuracy: 1e-9)
+        XCTAssertEqual(image.pixels[(pj + 1) * image.width + pi], 190 + 20 * 0.5 / 2.0.squareRoot() / 0.5
+                       - 30 * 0.5 / 2.0.squareRoot() / 2, accuracy: 1e-9)
+        // Every pixel inside the volume matches the known function at its Equation C.7.6.2.1-1 position
+        var checked = 0
+        for j in 0..<image.height {
+            for i in 0..<image.width {
+                let p = g.imagePosition + g.rowCosines.scaled(0.5 * Double(i)) + g.columnCosines.scaled(0.5 * Double(j))
+                let c = (p.x + 10) / 0.8, r = (p.y + 20) / 0.5, k = (p.z - 10) / 2
+                guard c >= 0, c <= 5, r >= 0, r <= 4, k >= 0, k <= 3 else { continue }
+                XCTAssertEqual(image.pixels[j * image.width + i], Self.expected(p), accuracy: 1e-9)
+                checked += 1
+            }
+        }
+        XCTAssertGreaterThan(checked, 20)
+        // Nearest neighbour reads the voxel itself at a voxel centre
+        let nearest = try MPRGenerator(volume: volume, interpolation: .nearest)
+            .generateMPR(plane: .oblique(normal: V3(x: 0, y: 1, z: 1), point: point))[0]
+        XCTAssertEqual(nearest.pixels[pj * nearest.width + pi], 190)
+    }
+
+    func testObliqueDerivedImageCarriesThePlaneGeometry() throws {
+        let volume = try Self.linearVolume()
+        let point = V3(x: -10 + 0.8 * 2, y: -20 + 0.5 * 2, z: 12)
+        let slices = try MPRGenerator(volume: volume)
+            .generateMPR(plane: .oblique(normal: V3(x: 0, y: 1, z: 1), point: point))
+        let out = try DerivedSeries.makeInstances(slices: slices, planeName: "oblique", volume: volume,
+                                                  seriesInstanceUID: "1.2.3.10")
+        let ds = try XCTUnwrap(out.first?.dataSet)
+        XCTAssertEqual(ds.strings(for: .imageOrientationPatient),
+                       ["1", "0", "0", "0", "0.7071067812", "-0.7071067812"])
+        let g = try XCTUnwrap(slices[0].geometry)
+        XCTAssertEqual(ds.strings(for: .imagePositionPatient),
+                       [g.imagePosition.x, g.imagePosition.y, g.imagePosition.z].map(DerivedSeries.formatted))
+        XCTAssertEqual(ds.strings(for: .pixelSpacing), ["0.5", "0.5"])
+        XCTAssertEqual(ds.string(for: .seriesDescription), "MPR oblique")
+        XCTAssertEqual(ds.string(for: .derivationDescription), "Multiplanar reformatting, oblique plane, by dicom-3d")
+        XCTAssertEqual(ds.strings(for: .imageType), ["DERIVED", "SECONDARY", "AXIAL"])
+        let pixels = try XCTUnwrap(out[0].pixelData()?.pixelValues(forFrame: 0))
+        let rel = point - g.imagePosition
+        let index = Int((rel.dot(g.columnCosines) / 0.5).rounded()) * slices[0].width + Int((rel.dot(g.rowCosines) / 0.5).rounded())
+        XCTAssertEqual(pixels[index], 190)
+    }
+
+    func testObliqueOptionsAreValidated() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("dicom3d-oblique-\(UUID().uuidString).dcm")
+        try Data([0]).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let base = [file.path, "-o", "out"]
+        XCTAssertThrowsError(try MPRCommand.parse(base + ["--planes", "oblique"]))
+        XCTAssertThrowsError(try MPRCommand.parse(base + ["--planes", "oblique", "--oblique-normal", "0,0,0"]))
+        XCTAssertThrowsError(try MPRCommand.parse(base + ["--planes", "oblique", "--oblique-normal", "1,2"]))
+        XCTAssertThrowsError(try MPRCommand.parse(base + ["--planes", "axial", "--oblique-normal", "0,0,1"]))
+        XCTAssertThrowsError(try MPRCommand.parse(base + ["--planes", "oblique", "--oblique-normal", "0,0,1",
+                                                          "--oblique-point", "x"]))
+        XCTAssertNoThrow(try MPRCommand.parse(base + ["--planes", "oblique", "--oblique-normal", "0,1,1",
+                                                      "--oblique-point", "0,-20,35"]))
+    }
+
+    func testCubicInterpolationIsDeprecatedAndUsesLinear() {
+        XCTAssertEqual(InterpolationMethod.cubic.effective, .linear)
+        XCTAssertEqual(InterpolationMethod.nearest.effective, .nearest)
+        XCTAssertNotNil(InterpolationMethod.cubic.deprecationNote)
+        XCTAssertNil(InterpolationMethod.linear.deprecationNote)
+    }
+
+    func testVolumeSubcommandIsHiddenAndNotImplemented() throws {
+        XCTAssertFalse(VolumeCommand.configuration.shouldDisplay)
+        var command = try VolumeCommand.parse(["a.dcm", "--camera-angle", "30,10"])
+        XCTAssertThrowsError(try command.run()) { error in
+            XCTAssertEqual(VolumeCommand.exitCode(for: error).rawValue, 1)
+        }
+        XCTAssertTrue(VolumeCommand.notImplementedMessage.contains("not implemented"))
+    }
+}

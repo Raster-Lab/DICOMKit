@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — 54 options of 11 subcommands: plane names (axial/sagittal/coronal) per the LPS axes of PS3.3 2026a C.7.6.2.1.1; --window-center/--window-width are the C.11.2.1.2.1 LINEAR window (width >= 1, Table C.11-2b); --format dcm writes a derived series (C.7.6.1.1.2, CID 7203 113072); inspect labels are PS3.6 2026a Table 6-1 names (Patient's Name, Patient ID, Modality, Study Instance UID, Series Description, SOP Instance UID); the JP3D SOP Class 1.2.826.0.1.3680043.10.511.10 is private (not in PS3.6 Table A-1); encode-volume orders slices along the normal before encoding
+// NEMA-verified: 2026a, checked 2026-10-01 — 54 options of 11 subcommands: plane names (axial/sagittal/coronal) per the LPS axes of PS3.3 2026a C.7.6.2.1.1; --window-center/--window-width are the C.11.2.1.2.1 LINEAR window (width >= 1, Table C.11-2b); --format dcm writes a derived series (C.7.6.1.1.2, CID 7203 113072); inspect labels are PS3.6 2026a Table 6-1 names (Patient's Name, Patient ID, Modality, Study Instance UID, Series Description, SOP Instance UID); the JP3D SOP Class 1.2.826.0.1.3680043.10.511.10 is private (not in PS3.6 Table A-1); encode-volume orders slices along the normal before encoding; mpr --oblique-normal/--oblique-point are LPS mm (C.7.6.2.1.1, P-3D-OBLIQUE); --interpolation cubic deprecated → linear, orthogonal planes voxel-aligned (P-3D-INTERPOLATION); volume hidden, exit 1 (P-3D-VOLUME)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -16,6 +16,10 @@ struct DICOM3D: ParsableCommand {
             Examples:
               # Generate axial, sagittal, coronal MPR
               dicom-3d mpr series/*.dcm --output mpr/ --planes axial,sagittal,coronal
+
+              # Oblique plane through a point (LPS mm), as a derived DICOM image
+              dicom-3d mpr series/*.dcm --output obl/ --planes oblique \\
+                --oblique-normal 0,1,1 --oblique-point 0,-20,35 --format dcm
 
               # Maximum Intensity Projection
               dicom-3d mip series/*.dcm --output mip.png --thickness 20
@@ -95,8 +99,18 @@ struct MPRCommand: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output directory or file path")
     var output: String
     
-    @Option(name: .long, help: "Planes to generate: axial, sagittal, coronal (patient planes, PS3.3 C.7.6.2.1.1), or oblique (not generated)")
+    @Option(name: .long, help: "Planes to generate: axial, sagittal, coronal (patient planes, PS3.3 C.7.6.2.1.1), oblique (needs --oblique-normal)")
     var planes: String = "axial,sagittal,coronal"
+
+    @Option(name: .long, help: ArgumentHelp(
+        "Normal of the oblique plane as x,y,z in the patient (LPS) system: x to patient left, y to posterior, z to head (PS3.3 C.7.6.2.1.1); need not be unit length",
+        valueName: "x,y,z"))
+    var obliqueNormal: String?
+
+    @Option(name: .long, help: ArgumentHelp(
+        "A point on the oblique plane as x,y,z in mm (LPS); default: the centre of the volume",
+        valueName: "x,y,z"))
+    var obliquePoint: String?
     
     @Option(name: .long, help: "Output format: png, dcm (derived DICOM series, Image Type DERIVED\\SECONDARY)")
     var format: OutputFormat = .png
@@ -104,7 +118,7 @@ struct MPRCommand: ParsableCommand {
     @Option(name: .long, help: "Slice thickness in mm (planes averaged into slabs of this thickness)")
     var thickness: Double?
     
-    @Option(name: .long, help: "Interpolation method: nearest, linear, cubic")
+    @Option(name: .long, help: "Interpolation for oblique planes: nearest, linear (trilinear). cubic is deprecated and uses linear. Axial/sagittal/coronal planes are cut along the voxel grid and are not resampled")
     var interpolation: InterpolationMethod = .linear
     
     @Option(name: .long, help: "Window Center for display (Modality LUT output units, e.g. HU)")
@@ -119,6 +133,24 @@ struct MPRCommand: ParsableCommand {
     mutating func validate() throws {
         guard !inputPaths.isEmpty else {
             throw ValidationError("At least one input file is required")
+        }
+        let wantsOblique = planes.split(separator: ",")
+            .contains { $0.trimmingCharacters(in: .whitespaces).lowercased() == "oblique" }
+        if wantsOblique {
+            guard let normalText = obliqueNormal else {
+                throw ValidationError("--planes oblique needs --oblique-normal x,y,z (LPS)")
+            }
+            guard let normal = Point3D.parse(normalText) else {
+                throw ValidationError("--oblique-normal must be x,y,z (three numbers); got \(normalText)")
+            }
+            guard normal.length > 1e-9 else {
+                throw ValidationError("--oblique-normal must not be the zero vector")
+            }
+            if let pointText = obliquePoint, Point3D.parse(pointText) == nil {
+                throw ValidationError("--oblique-point must be x,y,z in mm (three numbers); got \(pointText)")
+            }
+        } else if obliqueNormal != nil || obliquePoint != nil {
+            throw ValidationError("--oblique-normal / --oblique-point need --planes to include oblique")
         }
         
         for path in inputPaths {
@@ -155,7 +187,10 @@ struct MPRCommand: ParsableCommand {
         }
         
         // Generate MPR
-        let generator = MPRGenerator(volume: volume, interpolation: interpolation, verbose: verbose)
+        if let note = interpolation.deprecationNote {
+            FileHandle.standardError.write(Data((note + "\n").utf8))
+        }
+        let generator = MPRGenerator(volume: volume, interpolation: interpolation.effective, verbose: verbose)
         let requestedPlanes = planes.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
         
         // Output: a single .png file when one plane yields one image, otherwise a
@@ -180,9 +215,8 @@ struct MPRCommand: ParsableCommand {
             case "coronal":
                 planeType = .coronal
             default:
-                FileHandle.standardError.write(Data(
-                    "warning: plane '\(planeName)' is not generated (an oblique plane needs a normal and a point, which this command has no option for)\n".utf8))
-                continue
+                planeType = .oblique(normal: Point3D.parse(obliqueNormal ?? "") ?? Point3D(x: 0, y: 0, z: 1),
+                                     point: obliquePoint.flatMap(Point3D.parse) ?? Self.centre(of: volume))
             }
             
             let slices = try generator.generateMPR(plane: planeType, sliceThickness: thickness)
@@ -198,7 +232,7 @@ struct MPRCommand: ParsableCommand {
 
             switch format {
             case .dcm:
-                let files = try DerivedSeries.makeInstances(slices: slices, plane: PatientPlane(planeType), volume: volume)
+                let files = try DerivedSeries.makeInstances(slices: slices, planeName: planeType.name, volume: volume)
                 for (index, file) in files.enumerated() {
                     let url = outputDir.appendingPathComponent("\(planeName)_\(String(format: "%04d", index)).dcm")
                     try file.write().write(to: url)
@@ -221,6 +255,13 @@ struct MPRCommand: ParsableCommand {
         if verbose {
             print("MPR generation complete. Output: \(output)")
         }
+    }
+
+    /// Centre of the volume in patient (LPS) coordinates: the default --oblique-point.
+    static func centre(of volume: VolumeData) -> Point3D {
+        volume.physicalCoordinates(x: Double(volume.dimensions.width - 1) / 2,
+                                   y: Double(volume.dimensions.height - 1) / 2,
+                                   z: Double(volume.dimensions.depth - 1) / 2)
     }
 }
 
@@ -516,17 +557,19 @@ struct SurfaceCommand: ParsableCommand {
 
 // MARK: - Volume Command
 
+/// Not implemented: hidden from help (P-3D-VOLUME); running it prints so and exits 1.
 struct VolumeCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "volume",
-        abstract: "Render volume using ray casting"
+        abstract: "Volume rendering (not implemented)",
+        shouldDisplay: false
     )
     
     @Argument(help: "Input DICOM files (multi-slice series)")
-    var inputPaths: [String]
+    var inputPaths: [String] = []
     
     @Option(name: .shortAndLong, help: "Output file path")
-    var output: String
+    var output: String?
     
     @Option(name: .long, help: "Camera angle as azimuth,elevation (degrees)")
     var cameraAngle: String?
@@ -537,14 +580,11 @@ struct VolumeCommand: ParsableCommand {
     @Flag(name: .long, help: "Verbose output")
     var verbose: Bool = false
     
-    mutating func validate() throws {
-        guard !inputPaths.isEmpty else {
-            throw ValidationError("At least one input file is required")
-        }
-    }
-    
+    static let notImplementedMessage =
+        "dicom-3d volume: volume rendering (ray casting) is not implemented; --camera-angle and --transfer-function have no effect. Use mip, minip, average or surface."
+
     mutating func run() throws {
-        print("Volume rendering not yet implemented")
+        FileHandle.standardError.write(Data((Self.notImplementedMessage + "\n").utf8))
         throw ExitCode.failure
     }
 }
@@ -620,7 +660,16 @@ enum OutputFormat: String, ExpressibleByArgument {
 enum InterpolationMethod: String, ExpressibleByArgument {
     case nearest
     case linear
+    /// Deprecated: there is no cubic kernel; it samples as `linear` (P-3D-INTERPOLATION).
     case cubic
+
+    /// The method actually used: `cubic` maps to `linear`.
+    var effective: InterpolationMethod { self == .cubic ? .linear : self }
+
+    /// Stderr note when the deprecated `cubic` is chosen.
+    var deprecationNote: String? {
+        self == .cubic ? "Note: --interpolation cubic is deprecated and uses linear (trilinear) interpolation" : nil
+    }
 }
 
 enum MeshFormat: String, ExpressibleByArgument {

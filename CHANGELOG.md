@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — CLI P-items, derived batch (approved 2026-10-01, DICOM 2026a)
 
+- **`dicom-3d mpr --planes oblique --oblique-normal x,y,z [--oblique-point x,y,z]`** (LPS mm; point
+  defaults to the volume centre) now generates the oblique plane (it was skipped with a warning): one
+  image sampled with PS3.3 2026a Equation C.7.6.2.1-1, nearest or trilinear, `--thickness` averages
+  along the normal; `--format dcm` writes Image Orientation (Patient) / Image Position (Patient) /
+  Pixel Spacing of the oblique plane (P-3D-OBLIQUE).
+- **`dicom-3d mpr --interpolation cubic`** is **deprecated**: it uses linear and prints a note; help
+  and README say that axial/sagittal/coronal planes are voxel-aligned and not resampled
+  (P-3D-INTERPOLATION).
+- **`dicom-3d volume`** is hidden from `--help`; it prints that volume rendering is not implemented
+  (stderr) and exits 1 for any arguments (P-3D-VOLUME).
 - **`dicom-measure pixel --frame-number N`** (1-based; PS3.3 2026a Table 10-3 "The first Frame shall be
   denoted as Frame number 1") is added; `--frame` (0-based index) is **deprecated** (stderr note) and
   giving both is refused with exit 1. Text output labels "Frame number N"; JSON adds `frame_number` and

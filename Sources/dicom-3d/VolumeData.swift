@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — volume assembly against PS3.3 2026a Table C.7-10 (Pixel Spacing value 1 = adjacent row spacing, value 2 = adjacent column spacing; Spacing Between Slices centre-to-centre; Slice Thickness nominal), C.7.6.2.1.1 Equation C.7.6.2.1-1 and LPS axes, C.7.4.1.1.1 (one Frame of Reference UID per series), Tables C.7.6.16-2/-4/-5 (Pixel Measures, Plane Position (Patient), Plane Orientation (Patient) per frame), C.7.6.6.1.1, C.11.1.1.2 (Rescale per instance): 6 geometry rules, 2 were wrong (spacing order, z offset off the normal) and 4 missing (FoR, orientation, per-frame geometry, per-slice rescale), all fixed
+// NEMA-verified: 2026a, checked 2026-10-01 — volume assembly against PS3.3 2026a Table C.7-10 (Pixel Spacing value 1 = adjacent row spacing, value 2 = adjacent column spacing; Spacing Between Slices centre-to-centre; Slice Thickness nominal), C.7.6.2.1.1 Equation C.7.6.2.1-1 and LPS axes, C.7.4.1.1.1 (one Frame of Reference UID per series), Tables C.7.6.16-2/-4/-5 (Pixel Measures, Plane Position (Patient), Plane Orientation (Patient) per frame), C.7.6.6.1.1, C.11.1.1.2 (Rescale per instance): 6 geometry rules, 2 were wrong (spacing order, z offset off the normal) and 4 missing (FoR, orientation, per-frame geometry, per-slice rescale), all fixed; voxelCoordinates is the inverse of Equation C.7.6.2.1-1 for orthonormal row/column/normal
 import Foundation
 import DICOMKit
 import DICOMCore
@@ -185,6 +185,15 @@ struct VolumeData {
         }
     }
 
+    /// Continuous volume index (x = column, y = row, z = slice) of a patient (LPS) point:
+    /// the inverse of `physicalCoordinates` (row, column and normal are orthonormal,
+    /// PS3.3 2026a C.7.6.2.1.1).
+    func voxelCoordinates(of p: Point3D) -> (x: Double, y: Double, z: Double) {
+        let d = p - origin
+        return (d.dot(axisDirection(0)) / spacing.x, d.dot(axisDirection(1)) / spacing.y,
+                d.dot(axisDirection(2)) / spacing.z)
+    }
+
     /// Spacing along a volume index axis, in mm.
     func axisSpacing(_ axis: Int) -> Double {
         switch axis {
@@ -292,6 +301,30 @@ struct Point3D: Equatable {
 
     static func + (a: Point3D, b: Point3D) -> Point3D {
         Point3D(x: a.x + b.x, y: a.y + b.y, z: a.z + b.z)
+    }
+
+    static func - (a: Point3D, b: Point3D) -> Point3D {
+        Point3D(x: a.x - b.x, y: a.y - b.y, z: a.z - b.z)
+    }
+
+    var length: Double { sqrt(dot(self)) }
+
+    /// Unit vector in the same direction (the zero vector stays zero).
+    var normalized: Point3D {
+        let l = length
+        return l > 0 ? scaled(1 / l) : self
+    }
+
+    func cross(_ o: Point3D) -> Point3D {
+        Point3D(x: y * o.z - z * o.y, y: z * o.x - x * o.z, z: x * o.y - y * o.x)
+    }
+
+    /// Parses "x,y,z" (mm, LPS) as used by --oblique-normal / --oblique-point.
+    static func parse(_ text: String) -> Point3D? {
+        let parts = text.split(separator: ",").map { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard parts.count == 3, let x = parts[0], let y = parts[1], let z = parts[2],
+              x.isFinite, y.isFinite, z.isFinite else { return nil }
+        return Point3D(x: x, y: y, z: z)
     }
 }
 

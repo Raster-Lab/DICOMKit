@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — plane names against the patient-based coordinate system of PS3.3 2026a C.7.6.2.1.1 (x to patient left, y to posterior, z to head; 3 planes mapped to the volume axis nearest each LPS axis, rows/columns oriented as row +x/+y and column +y/-z); reformatted-plane geometry by Equation C.7.6.2.1-1 with Pixel Spacing row\column order of Table C.7-10; window by the LINEAR function of C.11.2.1.2.1 (width >= 1) and MONOCHROME1 shown inverted (C.7.6.3.1.2)
+// NEMA-verified: 2026a, checked 2026-10-01 — plane names against the patient-based coordinate system of PS3.3 2026a C.7.6.2.1.1 (x to patient left, y to posterior, z to head; 3 planes mapped to the volume axis nearest each LPS axis, rows/columns oriented as row +x/+y and column +y/-z); reformatted-plane geometry by Equation C.7.6.2.1-1 with Pixel Spacing row\column order of Table C.7-10; window by the LINEAR function of C.11.2.1.2.1 (width >= 1) and MONOCHROME1 shown inverted (C.7.6.3.1.2); oblique planes sampled by Equation C.7.6.2.1-1 (P = S + X·Δi·i + Y·Δj·j, i column / j row index from zero, Δi column / Δj row spacing, as dumped from part03_2026a.xml) with orthonormal Image Orientation (Patient) in the plane
 import Foundation
 import DICOMKit
 import DICOMCore
@@ -16,6 +16,16 @@ enum PlaneType {
     case sagittal
     case coronal
     case oblique(normal: Point3D, point: Point3D)
+
+    /// Name used in file names, Series Description and Derivation Description.
+    var name: String {
+        switch self {
+        case .axial: return "axial"
+        case .sagittal: return "sagittal"
+        case .coronal: return "coronal"
+        case .oblique: return "oblique"
+        }
+    }
 }
 
 enum ProjectionType {
@@ -244,7 +254,10 @@ class MPRGenerator {
     /// thickness (rounded to whole voxels along the cut axis), one output image per slab.
     func generateMPR(plane: PlaneType, sliceThickness: Double? = nil) throws -> [SliceImage] {
         if case .oblique(let normal, let point) = plane {
-            return try [generateObliqueSlice(normal: normal, point: point)]
+            guard let oblique = ObliquePlane(normal: normal, point: point) else {
+                throw MPRError.zeroObliqueNormal
+            }
+            return [generateObliqueSlice(plane: oblique, sliceThickness: sliceThickness)]
         }
         let layout = ReformatLayout(plane: PatientPlane(plane), volume: volume)
         let depth = volume.axisCount(layout.fixedAxis)
@@ -282,60 +295,96 @@ class MPRGenerator {
         return slices
     }
     
-    /// Generate oblique slice through an arbitrary plane
-    private func generateObliqueSlice(normal: Point3D, point: Point3D) throws -> SliceImage {
-        // Normalize the normal vector
-        let length = sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z)
-        let nx = normal.x / length
-        let ny = normal.y / length
-        let nz = normal.z / length
-        
-        // Create two perpendicular vectors in the plane
-        var u = Point3D(x: 1, y: 0, z: 0)
-        if abs(nx) > 0.9 {
-            u = Point3D(x: 0, y: 1, z: 0)
-        }
-        
-        // u = u - (u · n)n (project onto plane)
-        let dot = u.x * nx + u.y * ny + u.z * nz
-        let ux = u.x - dot * nx
-        let uy = u.y - dot * ny
-        let uz = u.z - dot * nz
-        let ulen = sqrt(ux * ux + uy * uy + uz * uz)
-        let u_norm = Point3D(x: ux / ulen, y: uy / ulen, z: uz / ulen)
-        
-        // v = n × u (cross product)
-        let vx = ny * u_norm.z - nz * u_norm.y
-        let vy = nz * u_norm.x - nx * u_norm.z
-        let vz = nx * u_norm.y - ny * u_norm.x
-        let v_norm = Point3D(x: vx, y: vy, z: vz)
-        
-        // Sample the plane
-        let width = volume.dimensions.width
-        let height = volume.dimensions.height
-        var pixels: [Double] = []
-        pixels.reserveCapacity(width * height)
-        
-        for j in 0..<height {
-            for i in 0..<width {
-                let px = point.x + Double(i - width / 2) * volume.spacing.x * u_norm.x + Double(j - height / 2) * volume.spacing.y * v_norm.x
-                let py = point.y + Double(i - width / 2) * volume.spacing.x * u_norm.y + Double(j - height / 2) * volume.spacing.y * v_norm.y
-                let pz = point.z + Double(i - width / 2) * volume.spacing.x * u_norm.z + Double(j - height / 2) * volume.spacing.y * v_norm.z
-                
-                // Convert to voxel coordinates
-                let vx = px / volume.spacing.x
-                let vy = py / volume.spacing.y
-                let vz = pz / volume.spacing.z
-                
-                if let value = volume.interpolatedVoxelAt(x: vx, y: vy, z: vz, method: interpolation) {
-                    pixels.append(value)
-                } else {
-                    pixels.append(0)
+    /// One image on an oblique plane (`--planes oblique`), sampled with Equation
+    /// C.7.6.2.1-1 of PS3.3 2026a: output pixel (i, j) lies at P = S + X·Δi·i + Y·Δj·j,
+    /// where S is the Image Position (Patient) of the first pixel, X / Y the row / column
+    /// direction cosines of `plane` and Δi = Δj the output spacing (the smaller in-plane
+    /// source spacing). Each P is mapped back to a continuous voxel index and read with
+    /// `interpolation` (nearest or trilinear). The image covers the projection of the
+    /// volume onto the plane, on a grid that has a pixel centre on `plane.point`; samples
+    /// outside the volume take the volume's minimum value. With `sliceThickness`, samples
+    /// at Δ-spaced offsets along the normal are averaged into a slab of that thickness.
+    func generateObliqueSlice(plane: ObliquePlane, sliceThickness: Double? = nil) -> SliceImage {
+        let step = min(volume.spacing.x, volume.spacing.y)
+        let X = plane.rowDirection, Y = plane.columnDirection, n = plane.normal
+
+        var us: [Double] = [], vs: [Double] = []
+        for cx in [0, volume.dimensions.width - 1] {
+            for cy in [0, volume.dimensions.height - 1] {
+                for cz in [0, volume.dimensions.depth - 1] {
+                    let rel = volume.physicalCoordinates(x: cx, y: cy, z: cz) - plane.point
+                    us.append(rel.dot(X)); vs.append(rel.dot(Y))
                 }
             }
         }
-        
-        return SliceImage(width: width, height: height, pixels: pixels)
+        let tolerance = 1e-9
+        let iMin = floor(us.min()! / step + tolerance), iMax = ceil(us.max()! / step - tolerance)
+        let jMin = floor(vs.min()! / step + tolerance), jMax = ceil(vs.max()! / step - tolerance)
+        let width = Int(iMax - iMin) + 1
+        let height = Int(jMax - jMin) + 1
+        let first = plane.point + X.scaled(iMin * step) + Y.scaled(jMin * step)   // S
+
+        let samples = max(1, Int(((sliceThickness ?? 0) / step).rounded()))
+        let offsets = (0..<samples).map { (Double($0) - Double(samples - 1) / 2) * step }
+        let padding = volume.voxels.min() ?? 0
+
+        var pixels = [Double](repeating: padding, count: width * height)
+        for j in 0..<height {
+            for i in 0..<width {
+                let p = first + X.scaled(step * Double(i)) + Y.scaled(step * Double(j))
+                var sum = 0.0, count = 0
+                for offset in offsets {
+                    if let value = sample(at: p + n.scaled(offset)) { sum += value; count += 1 }
+                }
+                if count > 0 { pixels[j * width + i] = sum / Double(count) }
+            }
+        }
+        let geometry = SliceGeometry(imagePosition: first, rowCosines: X, columnCosines: Y,
+                                     rowSpacing: step, columnSpacing: step,
+                                     sliceThickness: sliceThickness ?? step)
+        return SliceImage(width: width, height: height, pixels: pixels, geometry: geometry)
+    }
+
+    /// Voxel value at a patient (LPS) point, or nil outside the volume's voxel centres.
+    func sample(at p: Point3D) -> Double? {
+        let c = volume.voxelCoordinates(of: p)
+        func snap(_ v: Double, _ count: Int) -> Double? {
+            let upper = Double(count - 1), eps = 1e-6
+            if v < -eps || v > upper + eps { return nil }
+            return min(max(v, 0), upper)
+        }
+        guard let x = snap(c.x, volume.dimensions.width), let y = snap(c.y, volume.dimensions.height),
+              let z = snap(c.z, volume.dimensions.depth) else { return nil }
+        return volume.interpolatedVoxelAt(x: x, y: y, z: z, method: interpolation)
+    }
+}
+
+/// An oblique plane given by `--oblique-normal` and `--oblique-point` (LPS mm, PS3.3
+/// 2026a C.7.6.2.1.1). The row (X) and column (Y) directions are those of the patient
+/// plane (axial, coronal or sagittal) whose normal is closest to the given normal,
+/// projected into the oblique plane and made orthonormal, so an oblique plane close to
+/// coronal is displayed like a coronal image. X and Y are the Image Orientation (Patient)
+/// of the output.
+struct ObliquePlane: Equatable {
+    let normal: Point3D
+    let point: Point3D
+    let rowDirection: Point3D
+    let columnDirection: Point3D
+
+    init?(normal given: Point3D, point: Point3D) {
+        guard given.length > 1e-9 else { return nil }
+        let n = given.normalized
+        var reference = PatientPlane.axial
+        for candidate in PatientPlane.allCases where abs(candidate.normalAxis.dot(n)) > abs(reference.normalAxis.dot(n)) + 1e-12 {
+            reference = candidate
+        }
+        func reject(_ v: Point3D, from a: Point3D) -> Point3D { v - a.scaled(v.dot(a)) }
+        let x = reject(reference.rowDirection, from: n).normalized
+        let y = reject(reject(reference.columnDirection, from: n), from: x).normalized
+        self.normal = n
+        self.point = point
+        self.rowDirection = x
+        self.columnDirection = y
     }
 }
 
@@ -405,6 +454,16 @@ class ProjectionRenderer {
 }
 
 // MARK: - Errors
+
+enum MPRError: Error, CustomStringConvertible {
+    case zeroObliqueNormal
+
+    var description: String {
+        switch self {
+        case .zeroObliqueNormal: return "--oblique-normal must not be the zero vector"
+        }
+    }
+}
 
 enum SliceError: Error, CustomStringConvertible {
     case imageCreationFailed

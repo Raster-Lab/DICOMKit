@@ -12,7 +12,12 @@
 ### Multi-Planar Reformation (MPR)
 - **Axial, Sagittal, Coronal** reformations, named in the patient (LPS) coordinate
   system of PS3.3 C.7.6.2.1.1 whatever the acquisition plane
-- Oblique and curved MPR: not available from the command line (`oblique` is skipped with a warning)
+- **Oblique** MPR: `--planes oblique --oblique-normal x,y,z [--oblique-point x,y,z]` (patient LPS
+  coordinates, mm), one image sampled with PS3.3 C.7.6.2.1.1 Equation C.7.6.2.1-1; its Image
+  Orientation (Patient) / Image Position (Patient) describe the oblique plane in `--format dcm`
+- Curved MPR: not available
+- Axial/sagittal/coronal planes are cut along the voxel grid (the volume axis closest to each LPS
+  axis): no resampling, so `--interpolation` affects oblique planes only
 - Configurable slice thickness (thick-slab averaging)
 - `--format dcm`: derived DICOM series (Image Type `DERIVED\SECONDARY`, Derivation Code
   DCM 113072 "Multiplanar reformatting", Source Image Sequence, plane geometry)
@@ -62,6 +67,13 @@ Generate only sagittal slices:
 
 ```bash
 dicom-3d mpr series/*.dcm --output sagittal/ --planes sagittal
+```
+
+An oblique plane through a point, as a derived DICOM image (normal and point in LPS mm):
+
+```bash
+dicom-3d mpr series/*.dcm --output obl/ --planes oblique \
+  --oblique-normal 0,1,1 --oblique-point 0,-20,35 --format dcm
 ```
 
 With custom windowing:
@@ -204,9 +216,18 @@ dicom-3d export series/*.dcm \
 
 ### MPR Options
 
-- `--planes <list>` - Comma-separated list: axial, sagittal, coronal (oblique is accepted but not generated)
+- `--planes <list>` - Comma-separated list: axial, sagittal, coronal, oblique
+- `--oblique-normal <x,y,z>` - Normal of the oblique plane in the patient (LPS) system (x to patient
+  left, y to posterior, z to head); required with `oblique`, need not be unit length
+- `--oblique-point <x,y,z>` - A point on the oblique plane, mm (LPS); default: the centre of the volume.
+  The output grid has a pixel centre on this point; Pixel Spacing is the smaller in-plane source
+  spacing; the image covers the volume's projection on the plane, outside samples take the volume
+  minimum. Row/column directions follow the patient plane whose normal is closest to the given normal
 - `--thickness <mm>` - Slice thickness in millimeters: consecutive planes are averaged into slabs
-- `--interpolation <method>` - Interpolation: nearest, linear, cubic (default: linear)
+  (oblique: samples along the normal averaged over this thickness)
+- `--interpolation <method>` - Interpolation of oblique planes: nearest, linear (trilinear; default).
+  `cubic` is **deprecated** and uses linear (a note is printed). Axial/sagittal/coronal planes are
+  voxel-aligned and not resampled
 - `--format <fmt>` - Output format: png, dcm (default: png)
 
 ### Projection Options
@@ -281,9 +302,11 @@ dicom-3d export brain-mri/*.dcm \
 
 ### Interpolation Methods
 
+Used only for oblique planes (axial/sagittal/coronal are voxel-aligned, not resampled):
+
 - **Nearest**: Fast, preserves original values
-- **Linear**: Smooth, good for most cases (default)
-- **Cubic**: Smoothest, slower (planned)
+- **Linear**: Trilinear, smooth (default)
+- **Cubic**: Deprecated — no cubic kernel exists; it uses linear and prints a note
 
 ### Coordinate Systems
 
@@ -321,7 +344,8 @@ dicom-3d export brain-mri/*.dcm \
 
 ### Current Version (1.5.0)
 
-- **Volume rendering**: Not yet implemented
+- **Volume rendering**: Not implemented. The `volume` subcommand is hidden from `--help`; running
+  it prints that it is not implemented and exits 1 (`--camera-angle`, `--transfer-function` have no effect)
 - **Curved MPR**: Planned for future version
 - **Animation**: Planned for future version
 - **Transfer functions**: Planned for future version
