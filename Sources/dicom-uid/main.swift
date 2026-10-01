@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — help and checks cite PS3.5 2026a 9.1, 9.2.2 and B.2; --root is validated (UIDRootRule) and the default root is UIDGenerator.defaultRoot; lookup prints the PS3.6 2026a Table A-1 names (465 of 465 match, 2 unregistered Fragmentable HEVC entries by decision) and --type filters every Table A-1 UID Type (UIDOptions.swift); regenerate replaces top-level UI values that are not Table A-1 UIDs (compared with PS3.15 Table E.1-1: 53 UI rows, action U except Annotation Group UID D; sequence items are not remapped, deferred)
+// NEMA-verified: 2026a, checked 2026-10-01 — help and checks cite PS3.5 2026a 9.1, 9.2.2 and B.2; --root is validated (UIDRootRule) and the default root is UIDGenerator.defaultRoot; lookup prints the PS3.6 2026a Table A-1 names (465 of 465 match, 2 unregistered Fragmentable HEVC entries by decision) and --type filters every Table A-1 UID Type (UIDOptions.swift); regenerate replaces the 57 UI attributes of PS3.15 2026a Table E.1-1 (action U, Annotation Group UID D) at every sequence depth and never a Table A-1 UID (engine UIDManager.regeneratedUIDTags, D135/D138); validate applies only the PS3.5 9.1 rules, --file covers sequence items (D133)
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -117,9 +117,8 @@ extension DICOMUID {
             discussion: """
                 Check UIDs against DICOM PS3.5 9.1: at most 64 characters, numeric
                 components separated by ".", no leading zero in a component other than "0".
-                The engine also rejects a UID with a single component, which 9.1 does not
-                state. UUID derived UIDs (2.25.<decimal>, PS3.5 B.2) are valid UIDs.
-                --file checks the top-level UI elements of the data set.
+                UUID derived UIDs (2.25.<decimal>, PS3.5 B.2) are valid UIDs. --file checks
+                every UI value of the file, including File Meta and sequence items.
                 
                 Examples:
                   dicom-uid validate 1.2.840.10008.1.2.1
@@ -246,7 +245,7 @@ extension DICOMUID {
                 // Filter by type
                 if let typeFilter = type {
                     guard let filtered = LookupTypeFilter.entries(for: typeFilter) else {
-                        fprintln("Unknown type filter '\(typeFilter)'. Valid types (PS3.6 Table A-1 UID Type): \(LookupTypeFilter.valueList)")
+                        fprintln(UIDConsole.unknownTypeFilterLine(typeFilter))
                         throw ExitCode.failure
                     }
                     entries = filtered
@@ -293,12 +292,13 @@ extension DICOMUID {
         static let configuration = CommandConfiguration(
             abstract: "Regenerate UIDs in DICOM files",
             discussion: """
-                Replace UIDs in DICOM files with new unique identifiers. Every top-level
-                UI value that is not a PS3.6 Table A-1 UID (Transfer Syntax, SOP Class, ...)
-                is replaced. UIDs inside sequence items, e.g. Referenced SOP Instance UID
-                (0008,1155), are not remapped, so references between the files are not kept
-                (compare PS3.15 Table E.1-1, action U). Use --maintain-relationships to map
-                the same old UID to the same new UID across files in a study.
+                Replace UIDs in DICOM files with new unique identifiers. The UI attributes
+                PS3.15 Table E.1-1 replaces (action U: SOP Instance, Study, Series, Frame of
+                Reference UID, Referenced SOP Instance UID (0008,1155), ...) are replaced at
+                every level, inside sequence items too, and the same old UID gets the same new
+                UID throughout a file. SOP Class, Transfer Syntax, Coding Scheme UIDs and any
+                PS3.6 Table A-1 UID are kept. Use --maintain-relationships (on by default for
+                more than one file) to map the same old UID to the same new UID across files.
                 
                 Examples:
                   dicom-uid regenerate file.dcm

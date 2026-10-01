@@ -2,6 +2,7 @@
 import Foundation
 import DICOMCore
 import DICOMDictionary
+import DICOMKit
 
 /// PS3.5 9.1 checks for a `--root` value and the room it leaves for generated UIDs.
 enum UIDRootRule {
@@ -58,36 +59,15 @@ enum UUIDDerivedUID {
     }
 }
 
-/// `lookup --type` values: one per UID Type of PS3.6 Table A-1.
+/// `lookup --type` values: one per UID Type of PS3.6 Table A-1 (the shared engine list,
+/// `UIDConsole.lookupTypeFilters`, so the CLI and DICOMStudio accept the same values).
 enum LookupTypeFilter {
     /// (option value, DICOMDictionary type, PS3.6 Table A-1 "UID Type" text)
-    static let all: [(value: String, type: UIDType, tableA1: String)] = [
-        ("transfer-syntax", .transferSyntax, "Transfer Syntax"),
-        ("sop-class", .sopClass, "SOP Class"),
-        ("meta-sop-class", .metaSOPClass, "Meta SOP Class"),
-        ("well-known-sop-instance", .wellKnown, "Well-known SOP Instance"),
-        ("ldap-oid", .ldap, "LDAP OID"),
-        ("coding-scheme", .codingScheme, "Coding Scheme"),
-        ("application-context-name", .applicationContext, "Application Context Name"),
-        ("service-class", .serviceClass, "Service Class"),
-        ("application-hosting-model", .applicationHostingModel, "Application Hosting Model"),
-        ("mapping-resource", .mappingResource, "Mapping Resource"),
-        ("synchronization-frame-of-reference", .synchronizationFrameOfReference, "Synchronization Frame of Reference"),
-    ]
-
-    /// The original spellings without a hyphen stay accepted.
-    static let aliases: [String: String] = ["transfersyntax": "transfer-syntax", "sopclass": "sop-class"]
+    static var all: [(value: String, type: UIDType, tableA1: String)] { UIDConsole.lookupTypeFilters }
 
     static var valueList: String { all.map(\.value).joined(separator: ", ") }
 
-    static func type(for value: String) -> UIDType? {
-        let v = value.lowercased()
-        let key = aliases[v] ?? v
-        return all.first { $0.value == key }?.type
-    }
-
     static func entries(for value: String) -> [UIDEntry]? {
-        guard let type = type(for: value) else { return nil }
-        return UIDDictionary.allEntries.filter { $0.type == type }
+        UIDConsole.entries(forTypeFilter: value)
     }
 }

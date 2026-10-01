@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, UID batch (2026-10-01, DICOM 2026a)
+
+- **`UIDManager.regenerateData` remaps UIDs inside sequences and only the UIDs PS3.15 replaces** (D135, D138;
+  PS3.15 2026a Table E.1-1): the 57 UI attributes of Table E.1-1 (action U; D for Annotation Group UID) —
+  `UIDManager.regeneratedUIDTags` — are replaced at every sequence depth, so Referenced SOP Instance UID (0008,1155)
+  in Referenced / Source Image Sequence and Referenced Frame of Reference UID (3006,0024) follow the instance they
+  point at, within a file always and across files with `maintainRelationships`. UIDs of other attributes (Coding
+  Scheme UID, Context Group Extension Creator UID, SOP Class UIDs, private UI attributes) and any PS3.6 Table A-1 UID
+  are no longer replaced. The dry-run preview lists nested values as `(0008,1140)>(0008,1155)`; nested mapping
+  entries carry that path in `tagName`. `UIDManager.uidTags` is deprecated.
+- **`validateUID` applies the PS3.5 9.1 rules only** (D133): a one-component UID is valid (the "at least 2
+  components" rule is not in 9.1) and every message cites PS3.5 9.1; `validateFileUIDs` checks every UI value of the
+  File Meta and of all sequence items (was top-level data set only).
+- **`UIDConsole` lookup texts name PS3.6 Table A-1** (D136): "UID not found in the DICOM UID registry (PS3.6 Table
+  A-1): …"; the unknown `--type` line lists the 11 UID Type filters (new shared `UIDConsole.lookupTypeFilters` /
+  `entries(forTypeFilter:)`, used by `dicom-uid`).
+
 ### Fixed — deferred rows, DICOMDIR batch (2026-10-01, DICOM 2026a)
 
 - **`DICOMDirectory.Builder` indexes every instance** (D129; PS3.3 2026a F.4, Table F.4-1): a second image of a

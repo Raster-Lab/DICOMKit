@@ -97,15 +97,22 @@ dicom-uid regenerate file.dcm --dry-run --verbose
 - No leading or trailing periods
 - No consecutive periods
 - No leading zeros in components (except "0" itself)
-- At least 2 components (an extra check of the engine; PS3.5 9.1 does not state it)
+
+Each failure names PS3.5 9.1. `validate --file` checks every UI value of the file, File Meta
+and sequence items included.
 
 ## Regeneration scope
 
-`regenerate` replaces every top-level UI value that is not a PS3.6 Table A-1 UID. UIDs
-inside sequence items (for example Referenced SOP Instance UID (0008,1155) in Referenced
-Image Sequence) are not remapped, and UI attributes that PS3.15 Table E.1-1 does not
-list for replacement (for example Coding Scheme UID (0008,010C)) are replaced too; see the
-deferred findings in DICOMCLI_STANDARD_IMPLEMENTATION.md.
+`regenerate` replaces the values of the 57 UI attributes of PS3.15 Table E.1-1 (action U,
+and D for Annotation Group UID): SOP Instance, Study, Series and Frame of Reference UIDs,
+Referenced SOP Instance UID (0008,1155) in Referenced / Source Image Sequence, Referenced
+Frame of Reference UID (3006,0024), and the rest of that table, at every sequence depth. The
+same old UID gets the same new UID throughout a file and, with `--maintain-relationships`
+(automatic for more than one input), across files, so references between the files keep
+pointing at the right instance. Other UI attributes (SOP Class, Transfer Syntax, Coding
+Scheme UID (0008,010C), Context Group Extension Creator UID, private attributes) and any
+value that is a PS3.6 Table A-1 UID are kept. The Media Storage SOP Instance UID (0002,0003)
+follows the new SOP Instance UID.
 
 ## Version
 
