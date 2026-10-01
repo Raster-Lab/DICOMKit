@@ -509,6 +509,14 @@ let package = Package(
             path: "Tests/dicom-infoTests"
         ),
         .testTarget(
+            name: "dicom-tagsTests",
+            dependencies: [
+                "dicom-tags", "DICOMKit", "DICOMCore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Tests/dicom-tagsTests"
+        ),
+        .testTarget(
             name: "DICOMKitTests",
             // DICOMDictionary: the presentation-state builders' VRs are asserted
             // against the standard dictionary rather than a hand-copied table.

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — tag specifiers resolve PS3.6 2026a Table 6-1/7-1 keywords exactly (case-sensitive) or (gggg,eeee); --set writes the dictionary VR within PS3.5 Table 6.2-1 limits (TagEditRules.swift); group 0002 refused per PS3.10 7.1; --list-modalities = PS3.3 C.7.3.1.1.1 (79 current terms match, 18 retired not listed)
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -15,8 +16,14 @@ struct DICOMTags: ParsableCommand {
         abstract: "Add, modify, and delete tags in DICOM files",
         discussion: """
             Manipulate DICOM tags by setting values, deleting tags, removing private tags,
-            or copying tags from another DICOM file. Supports tag specification by name
-            (e.g., PatientName) or hex format (e.g., 0010,0010).
+            or copying tags from another DICOM file. A tag is given by its PS3.6 keyword
+            (e.g., PatientName, exact case) or as GGGG,EEEE (e.g., 0010,0010).
+
+            --set writes the PS3.6 dictionary VR and refuses a value outside the PS3.5
+            Table 6.2-1 limits for that VR (length, characters, numeric range). US, SS, UL,
+            SL, FL and FD values are given as decimal numbers, multiple values separated
+            by a backslash. File Meta Information (group 0002) cannot be edited here: PS3.10
+            7.1 keeps it out of the Data Set and the file writer sets it.
 
             Examples:
               dicom-tags file.dcm --set PatientName=DOE^JOHN
@@ -39,10 +46,10 @@ struct DICOMTags: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output file path (defaults to overwrite input)")
     var output: String?
 
-    @Option(name: .long, help: "Tag values to set (format: TagName=Value or GGGG,EEEE=Value)")
+    @Option(name: .long, help: "Tag values to set (format: Keyword=Value or GGGG,EEEE=Value)")
     var set: [String] = []
 
-    @Option(name: .long, help: "Tags to delete (by name or GGGG,EEEE)")
+    @Option(name: .long, help: "Tags to delete (by keyword or GGGG,EEEE)")
     var delete: [String] = []
 
     @Flag(name: .long, help: "Delete all private tags (odd group numbers)")
@@ -51,7 +58,7 @@ struct DICOMTags: ParsableCommand {
     @Option(name: .long, help: "Copy tags from another DICOM file")
     var copyFrom: String?
 
-    @Option(name: .long, help: "Comma-separated tag names to copy (used with --copy-from)")
+    @Option(name: .long, help: "Comma-separated keywords or GGGG,EEEE tags to copy (used with --copy-from)")
     var tags: String?
 
     @Flag(name: .shortAndLong, help: "Show verbose output")
@@ -96,11 +103,15 @@ struct DICOMTags: ParsableCommand {
             sourceDataSet = sourceFile.dataSet
         }
 
-        // Apply all operations via the shared DICOMKit engine.
+        // Refuse, before anything is written, an edit the standard does not allow.
+        try Self.checkDataSetEdits(deletes: delete, copyTags: copyTags, sets: set)
+
+        // Deletes, private-tag removal and copies via the shared DICOMKit engine; --set is
+        // applied here so the VR and value limits of PS3.5 Table 6.2-1 are enforced.
         let editor = TagEditor()
-        let changes = editor.applyChanges(
+        var changes = editor.applyChanges(
             to: &dataSet,
-            sets: set,
+            sets: [],
             deletes: delete,
             deletePrivate: deletePrivate,
             sourceDataSet: sourceDataSet,
@@ -108,6 +119,7 @@ struct DICOMTags: ParsableCommand {
             verbose: verbose,
             dryRun: dryRun
         )
+        changes += try Self.applySets(set, to: &dataSet, dryRun: dryRun)
 
         // Console lines via the SHARED TagEditConsole (DICOMKit) — the same
         // builders the Workshop executor uses, so app and CLI stay text-exact.
@@ -124,6 +136,49 @@ struct DICOMTags: ParsableCommand {
         }
 
         fprint(TagEditConsole.completionLine(dryRun: dryRun, outputPath: destPath))
+    }
+
+    /// Throws when a --delete, --tags or --set specifier names a tag the Data Set may not
+    /// hold (group 0002, Item/delimiters, unused groups). Unresolved specifiers are left to
+    /// the per-change "skipped" lines.
+    static func checkDataSetEdits(deletes: [String], copyTags: [String], sets: [String]) throws {
+        let editor = TagEditor()
+        let specs = deletes + copyTags + sets.compactMap { spec in
+            spec.range(of: "=").map { String(spec[..<$0.lowerBound]) }
+        }
+        for spec in specs {
+            if let tag = editor.parseTagSpecifier(spec), let reason = TagEditRules.dataSetRefusal(for: tag) {
+                throw TagEditRefusal(reason)
+            }
+        }
+    }
+
+    /// Applies the --set specifiers in order and returns one change line per specifier
+    /// (same wording as the shared TagEditor). Throws before mutating anything when a value
+    /// breaks the PS3.5 Table 6.2-1 limits of the VR that would be written.
+    static func applySets(_ sets: [String], to dataSet: inout DataSet, dryRun: Bool) throws -> [String] {
+        let editor = TagEditor()
+        var lines: [String] = []
+        var elements: [DataElement] = []
+        for spec in sets {
+            guard let eq = spec.range(of: "=") else {
+                lines.append("SET \(spec) (invalid format, expected TagName=Value)")
+                continue
+            }
+            let tagPart = String(spec[..<eq.lowerBound])
+            let value = String(spec[eq.upperBound...])
+            guard let tag = editor.parseTagSpecifier(tagPart) else {
+                lines.append("SET \(tagPart) (unknown tag, skipped)")
+                continue
+            }
+            let vr = TagEditRules.writeVR(for: tag, existing: dataSet[tag]?.vr)
+            elements.append(try TagEditRules.element(tag: tag, vr: vr, text: value).get())
+            lines.append("SET \(TagEditRules.label(for: tag)) = \(value)")
+        }
+        if !dryRun {
+            for element in elements { dataSet[element.tag] = element }
+        }
+        return lines
     }
 }
 

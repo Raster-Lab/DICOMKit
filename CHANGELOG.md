@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — dicom-dump, dicom-info, dicom-tags verified against DICOM 2026a (2026-10-01)
 
+- **dicom-tags** `--set` now writes the PS3.6 dictionary VR and refuses, before anything is
+  written (exit 1), a value outside the PS3.5 2026a Table 6.2-1 limits of that VR (length,
+  character repertoire, IS range, PN component groups). US, SS, UL, SL, FL and FD values are
+  encoded as binary numbers (`--set Rows=512` used to write the text "512 " under VR US); AT,
+  OB, OD, OF, OL, OV, OW, SQ, SV, UV and UN are refused. `--set`, `--delete` and `--tags` refuse
+  File Meta Information tags (group 0002, PS3.10 7.1 — setting TransferSyntaxUID used to put
+  (0002,0010) into the Data Set and make the file unreadable), Item/delimiter tags (FFFE,xxxx)
+  and the groups PS3.5 7.8.1 says shall not be used. New `dicom-tagsTests`.
 - **dicom-info** `--tag` also accepts a PS3.6 keyword exactly (the documented
   `--tag PatientName --tag StudyDate` selected nothing). New `dicom-infoTests`.
 - **dicom-dump** `--tag` / `--highlight` accept a PS3.6 keyword; a negative `--length` (trap)
