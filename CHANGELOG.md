@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-* CLI tools verified against DICOM 2026a (2026-10-01)
+
+- **dicom-compress** help names transfer syntax 1.2.840.10008.1.2.4.110 "JPEG XL Lossless", the
+  PS3.6 2026a Table A-1 name, instead of "JPEG XL Lossless Only" (D9). The `jpeg-xl-lossless-only`
+  codec name is unchanged.
+- **dicom-dcmdir** `--profile` help and error text name PS3.11 2026a Application Profile
+  identifiers (STD-GEN-CD, STD-GEN-DVD-JPEG, STD-GEN-DVD-J2K, STD-GEN-USB-JPEG, STD-GEN-USB-J2K, …)
+  instead of the family headings STD-GEN-DVD / STD-GEN-USB (D29); the error lists every identifier
+  `DICOMDIRProfile.allStandard` accepts. Accepted values are unchanged (the old spellings remain
+  aliases).
+
 ### Fixed — remaining DICOMKit deferred findings and verification gaps (2026-09-30)
 
 - **De-identification covers all of PS3.15 Table E.1-1 (D69):** the Basic Profile rules are

@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — the --profile help and error text name only identifiers from PS3.11 2026a Tables A.1-1, B.1-1, C.1-1, D.1-1, E.1-1, G.1-1, H.1-1 to N.1-1 (64 identifiers extracted by script; STD-GEN-DVD and STD-GEN-USB are family headings, not identifiers, D29); the accepted values are those of DICOMCore.DICOMDIRProfile
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -55,7 +56,7 @@ extension DICOMDCMDIR {
         @Option(name: .long, help: "File-set ID (default: derived from directory name)")
         var fileSetID: String?
         
-        @Option(name: .long, help: "Application profile (STD-GEN-CD, STD-GEN-DVD, STD-GEN-USB)")
+        @Option(name: .long, help: "PS3.11 Application Profile identifier, e.g. STD-GEN-CD (default), STD-GEN-DVD-JPEG, STD-GEN-DVD-J2K, STD-GEN-USB-JPEG, STD-GEN-USB-J2K, STD-GEN-BD-JPEG (STD-GEN-DVD / STD-GEN-USB are accepted as aliases of the -JPEG profiles)")
         var profile: String = "STD-GEN-CD"
         
         // `.inversion` is required by ArgumentParser for a Bool flag whose default is
@@ -100,7 +101,8 @@ extension DICOMDCMDIR {
             
             // Parse profile
             guard let dicomProfile = DICOMDIRProfile(rawValue: profile) else {
-                throw ValidationError("Invalid profile: \(profile). Use STD-GEN-CD, STD-GEN-DVD, or STD-GEN-USB")
+                let standard = DICOMDIRProfile.allStandard.map(\.rawValue).joined(separator: ", ")
+                throw ValidationError("Invalid profile: \(profile). Use a PS3.11 Application Profile identifier: \(standard), or STD-US-<ID|SC|CC>-<SF|MF>-<media>")
             }
             
             if verbose {
@@ -108,7 +110,7 @@ extension DICOMDCMDIR {
                 print("  Input directory: \(inputDirectory)")
                 print("  Output file: \(outputPath)")
                 print("  File-set ID: \(fsID)")
-                print("  Profile: \(profile)")
+                print("  Profile: \(dicomProfile.rawValue)")
                 print("  Recursive: \(recursive)")
                 print("")
             }
