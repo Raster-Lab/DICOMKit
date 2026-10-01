@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   P-XML-NO-KEYWORDS): both still work, `--help` says "Deprecated", and using them prints a one-line stderr
   warning, because their output breaks PS3.18 2026a F.2.2 (ascending tag order) and PS3.19 2026a
   Table A.1.5-2 (keyword required). They will be removed in the next major version.
+- **`dicom-diff` exit status** (P-DIFF-1): 0 identical, 1 different, **2** when a file is missing or cannot
+  be read or parsed as DICOM, or the comparison fails (the `diff`/`cmp` convention; such errors exited 1, a
+  missing file 64). The error goes to stderr; 64 remains the usage error. `--help` and README document it.
 
 ### Fixed — dicom-viewer grayscale display verified against DICOM 2026a (2026-10-01)
 

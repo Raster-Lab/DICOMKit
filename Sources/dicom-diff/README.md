@@ -9,7 +9,7 @@ A command-line tool for comparing two DICOM files and reporting differences in m
 - **Multiple Output Formats**: text, JSON, summary
 - **Flexible Filtering**: Ignore specific tags (Tag or PS3.6 keyword) or all private data elements
 - **Detailed Reports**: Show differences, additions, deletions
-- **Exit Codes**: Returns 0 for identical files, 1 for differences
+- **Exit Codes**: Returns 0 for identical files, 1 for differences, 2 when a file cannot be read
 
 ## Installation
 
@@ -167,19 +167,21 @@ Pixel data: IDENTICAL
 ## Exit Codes
 
 - **0**: Files are identical (no differences found)
-- **1**: Files are different (differences found), or a file could not be read as DICOM
-- **64**: Usage error (invalid arguments, file not found, invalid `--ignore-tag` value)
+- **1**: Files are different (differences found)
+- **2**: Trouble: a file is missing or cannot be read or parsed as DICOM, or the comparison failed
+  (the `diff`/`cmp` convention; before 2026-10-01 this was exit 1, or 64 for a missing file)
+- **64**: Usage error (invalid arguments, invalid `--ignore-tag` value)
 
 This makes the tool suitable for use in scripts and automated workflows:
 
 ```bash
 #!/bin/bash
-if dicom-diff original.dcm new.dcm > /dev/null 2>&1; then
-    echo "Files are identical"
-else
-    echo "Files differ"
-    dicom-diff original.dcm new.dcm
-fi
+dicom-diff original.dcm new.dcm > /dev/null 2>&1
+case $? in
+    0) echo "Files are identical" ;;
+    1) echo "Files differ"; dicom-diff original.dcm new.dcm ;;
+    *) echo "Could not compare (unreadable file or bad arguments)" ;;
+esac
 ```
 
 ## Common Use Cases

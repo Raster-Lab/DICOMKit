@@ -19,6 +19,9 @@ struct DICOMDiff: ParsableCommand {
             Compares metadata tags and optionally pixel data between two DICOM files.
             Supports filtering, tolerance settings, and multiple output formats.
 
+            Exit status: 0 identical, 1 different, 2 a file is missing or cannot be
+            read as DICOM (64: invalid arguments).
+
             Examples:
               dicom-diff file1.dcm file2.dcm
               dicom-diff --compare-pixels --tolerance 5 original.dcm processed.dcm
@@ -57,22 +60,33 @@ struct DICOMDiff: ParsableCommand {
     @Flag(name: .long, help: "Verbose output with detailed information")
     var verbose: Bool = false
 
+    /// Exit status (P-DIFF-1, approved 2026-10-01; the diff(1)/cmp(1) convention):
+    /// 0 the files are identical, 1 they differ, 2 a file is missing or cannot be read or parsed
+    /// as DICOM, or the comparison fails; 64 stays the ArgumentParser usage error.
+    static let exitIdentical: Int32 = 0
+    static let exitDifferent: Int32 = 1
+    static let exitTrouble: Int32 = 2
+
+    /// Reads and parses one input; any failure is reported on stderr and ends with exit 2.
+    static func load(_ path: String) throws -> DICOMFile {
+        guard FileManager.default.fileExists(atPath: path) else {
+            throw trouble("File not found: \(path)")
+        }
+        do {
+            return try DICOMFile.read(from: try Data(contentsOf: URL(fileURLWithPath: path)))
+        } catch {
+            throw trouble("Cannot read \(path) as DICOM: \(error)")
+        }
+    }
+
+    static func trouble(_ message: String) -> ExitCode {
+        FileHandle.standardError.write(Data("dicom-diff: error: \(message)\n".utf8))
+        return ExitCode(exitTrouble)
+    }
+
     mutating func run() throws {
-        // Validate files exist
-        guard FileManager.default.fileExists(atPath: file1) else {
-            throw ValidationError("File not found: \(file1)")
-        }
-
-        guard FileManager.default.fileExists(atPath: file2) else {
-            throw ValidationError("File not found: \(file2)")
-        }
-
-        // Read DICOM files
-        let data1 = try Data(contentsOf: URL(fileURLWithPath: file1))
-        let data2 = try Data(contentsOf: URL(fileURLWithPath: file2))
-
-        let dicomFile1 = try DICOMFile.read(from: data1)
-        let dicomFile2 = try DICOMFile.read(from: data2)
+        let dicomFile1 = try Self.load(file1)
+        let dicomFile2 = try Self.load(file2)
 
         if verbose {
             print("Comparing: \(URL(fileURLWithPath: file1).lastPathComponent)")
@@ -94,7 +108,12 @@ struct DICOMDiff: ParsableCommand {
             showIdentical: showIdentical
         )
 
-        let result = try comparer.compare()
+        let result: DICOMKit.ComparisonResult
+        do {
+            result = try comparer.compare()
+        } catch {
+            throw Self.trouble("Comparison failed: \(error)")
+        }
 
         // Output results via the shared DICOMKit renderer
         let report = ComparisonReport(
@@ -108,7 +127,7 @@ struct DICOMDiff: ParsableCommand {
 
         // Exit with appropriate code
         if result.hasDifferences {
-            throw ExitCode(1)
+            throw ExitCode(Self.exitDifferent)
         }
     }
 
