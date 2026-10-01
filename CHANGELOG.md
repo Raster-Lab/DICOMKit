@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-convert option contract verified against DICOM 2026a (2026-10-01)
+
+- **dicom-convert** `--transfer-syntax` also accepts the PS3.6 Table A-1 keywords of the catalog targets it
+  did not know (DeflatedExplicitVRLittleEndian, JPEGBaseline8Bit, JPEGExtended12Bit, JPEG2000MCLossless,
+  JPEG2000MC, JPEGXLJPEGRecompression, HTJ2KLosslessRPCL); the help says that `JPEG2000Lossless`,
+  `HTJ2KLossless` and `JPEGXLLossless` keep their catalog meaning (reversible encode into .91 / .203 / .112,
+  not the Table A-1 .90 / .201 / .110). **Behaviour change:** `--window-width` below 1 is refused (PS3.3
+  C.11.2.1.2.1), as are `--quality` outside 1-100 and a negative `--frame`. README: target list, 0-based
+  frames, real exit codes, `--strip-private` described as top-level private elements (not de-identification),
+  the non-existent "export all frames" example removed. New test target `dicom-convertTests` (8 tests).
+
 ### Fixed — dicom-j2k DICOM boundary verified against DICOM 2026a (2026-10-01)
 
 - **dicom-j2k** finds each frame through the Extended / Basic Offset Table (or SOC-delimited fragments),

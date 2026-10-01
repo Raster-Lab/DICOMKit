@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — 13 options classified against PS3.6 2026a Table A-1 (--transfer-syntax: 25 catalog targets, 21 UIDs; A-1 keywords 11 match, 3 name another UID (P-item), 7 added in TransferSyntaxKeywords.swift), PS3.3 C.11.2.1.2.1 (--window-width ≥ 1, now enforced), C.7.6.16 (--frame 0-based, P-item), PS3.5 7.8 (--strip-private, engine deferred), PS3.10 7.1 (--force); DICOM output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4 (engine findings deferred)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -37,7 +38,7 @@ struct DICOMConvert: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Output file or directory path")
     var output: String
     
-    @Option(name: .long, help: "\(DICOMConverter.transferSyntaxOptionHelp)")
+    @Option(name: .long, help: "\(TransferSyntaxKeywords.optionHelp)")
     var transferSyntax: String?
     
     @Option(name: .long, help: "Output format for image export: png, jpeg, tiff, dicom (default: dicom)")
@@ -49,10 +50,10 @@ struct DICOMConvert: AsyncParsableCommand {
     @Flag(name: .long, help: "Apply window/level during export")
     var applyWindow: Bool = false
     
-    @Option(name: .long, help: "Window center value")
+    @Option(name: .long, help: "Window center value (Window Center (0028,1050))")
     var windowCenter: Double?
     
-    @Option(name: .long, help: "Window width value")
+    @Option(name: .long, help: "Window width value (Window Width (0028,1051), at least 1)")
     var windowWidth: Double?
     
     @Option(name: .long, help: "Export specific frame number (0-indexed)")
@@ -64,12 +65,29 @@ struct DICOMConvert: AsyncParsableCommand {
     @Flag(name: .long, help: "Strip private tags during conversion")
     var stripPrivate: Bool = false
     
-    @Flag(name: .long, help: "Validate output after conversion")
-    var validate: Bool = false
+    // Spelled `--validate`; the property has another name so the command can declare
+    // ArgumentParser's `validate()` hook.
+    @Flag(name: .customLong("validate"), help: "Validate output after conversion")
+    var validateOutput: Bool = false
     
     @Flag(name: .long, help: "Force parsing of files without DICM prefix")
     var force: Bool = false
     
+    mutating func validate() throws {
+        // Documented range of --quality.
+        guard (1...100).contains(quality) else {
+            throw ValidationError("--quality must be between 1 and 100")
+        }
+        // PS3.3 2026a C.11.2.1.2.1: "Window Width (0028,1051) shall always be greater than
+        // or equal to 1."
+        if let width = windowWidth, width < 1 {
+            throw ValidationError("--window-width must be at least 1 (Window Width (0028,1051), PS3.3 C.11.2.1.2.1)")
+        }
+        if let f = frame, f < 0 {
+            throw ValidationError("--frame is a 0-based frame index and must be 0 or more")
+        }
+    }
+
     mutating func run() async throws {
         let inputURL = URL(fileURLWithPath: inputPath)
         let outputURL = URL(fileURLWithPath: output)
@@ -166,7 +184,7 @@ struct DICOMConvert: AsyncParsableCommand {
         }
         
         // Validate if requested
-        if validate && format == .dicom {
+        if validateOutput && format == .dicom {
             let outputData = try Data(contentsOf: output)
             _ = try DICOMFile.read(from: outputData, force: false)
         }
@@ -229,7 +247,7 @@ struct DICOMConvert: AsyncParsableCommand {
         // Single source of truth: the shared DICOMConverter target catalog (DICOMKit).
         // Resolve the full encoding (UID + intent) so `…-lossless` names encode reversibly
         // into the general UID and `…-lossy` names carry the lossy provenance.
-        guard let encoding = DICOMConverter.resolveTargetEncoding(name) else {
+        guard let encoding = TransferSyntaxKeywords.resolve(name) else {
             throw ValidationError(DICOMConverter.unknownTargetMessage(name))
         }
         return encoding

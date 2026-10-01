@@ -1334,6 +1334,15 @@ let package = Package(
                 .copy("Fixtures")
             ]
         ),
+        // dicom-convert: --transfer-syntax Table A-1 keywords, --window-width per PS3.3 C.11.2.1.2.1.
+        .testTarget(
+            name: "dicom-convertTests",
+            dependencies: [
+                "dicom-convert", "DICOMKit", "DICOMCore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Tests/dicom-convertTests"
+        ),
         // dicom-compress: codec / syntax help rows pinned to PS3.6 2026a Table A-1 (D9).
         .testTarget(
             name: "dicom-compressTests",
