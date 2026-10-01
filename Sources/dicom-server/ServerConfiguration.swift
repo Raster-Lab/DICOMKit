@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — carries no DICOM-standard data (AE title, port, paths, connection limits, allow/block lists and the TLS switch are configuration plumbing; maxPDUSize is the PS3.8 Maximum Length value, whose use is recorded as D-DICOM-SERVER-8)
 import Foundation
 
 /// Configuration for the DICOM Server

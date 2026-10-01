@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — 16 UID literals are registered in PS3.6 2026a Table A-1 and the 15 names written next to them match it (8 wrong SOP Class names corrected; 3 shortened names — Verification, Implicit VR Little Endian, Explicit VR Big Endian — completed to the full A-1 Name, including "(Retired)"); A-ASSOCIATE-RJ result/source/reason 1/1/3 and 2/2/1 and presentation-context results 0/3/4 match PS3.8 2026a Tables 9-21 / 9-18; the 5 accepted Storage SOP Classes are in PS3.4 2026a Table B.5-1 (5 of 179); C-MOVE / C-GET final statuses 0000 / B000 match Tables C.4-2 / C.4-3; unknown Move Destination, C-GET role negotiation, missing Query/Retrieve Level and PDU length handling are D-DICOM-SERVER-4..8
 import Foundation
 import DICOMCore
 import DICOMNetwork
@@ -311,18 +312,18 @@ actor ServerSession {
     private func isSupportedSOPClass(_ uid: String) -> Bool {
         // Support common storage SOP Classes and verification
         let supportedClasses: Set<String> = [
-            "1.2.840.10008.1.1", // Verification
+            "1.2.840.10008.1.1", // Verification SOP Class
             "1.2.840.10008.5.1.4.1.1.2", // CT Image Storage
             "1.2.840.10008.5.1.4.1.1.4", // MR Image Storage
-            "1.2.840.10008.5.1.4.1.1.1", // CR Image Storage
+            "1.2.840.10008.5.1.4.1.1.1", // Computed Radiography Image Storage
             "1.2.840.10008.5.1.4.1.1.7", // Secondary Capture Image Storage
-            "1.2.840.10008.5.1.4.1.1.128", // PET Image Storage
-            "1.2.840.10008.5.1.4.1.2.1.1", // Patient Root Q/R - FIND
-            "1.2.840.10008.5.1.4.1.2.2.1", // Study Root Q/R - FIND
-            "1.2.840.10008.5.1.4.1.2.1.2", // Patient Root Q/R - MOVE
-            "1.2.840.10008.5.1.4.1.2.2.2", // Study Root Q/R - MOVE
-            "1.2.840.10008.5.1.4.1.2.1.3", // Patient Root Q/R - GET
-            "1.2.840.10008.5.1.4.1.2.2.3", // Study Root Q/R - GET
+            "1.2.840.10008.5.1.4.1.1.128", // Positron Emission Tomography Image Storage
+            "1.2.840.10008.5.1.4.1.2.1.1", // Patient Root Query/Retrieve Information Model - FIND
+            "1.2.840.10008.5.1.4.1.2.2.1", // Study Root Query/Retrieve Information Model - FIND
+            "1.2.840.10008.5.1.4.1.2.1.2", // Patient Root Query/Retrieve Information Model - MOVE
+            "1.2.840.10008.5.1.4.1.2.2.2", // Study Root Query/Retrieve Information Model - MOVE
+            "1.2.840.10008.5.1.4.1.2.1.3", // Patient Root Query/Retrieve Information Model - GET
+            "1.2.840.10008.5.1.4.1.2.2.3", // Study Root Query/Retrieve Information Model - GET
         ]
         return supportedClasses.contains(uid)
     }
@@ -331,8 +332,8 @@ actor ServerSession {
         // Prefer explicit VR little endian, then implicit VR
         let preferredOrder: [String] = [
             "1.2.840.10008.1.2.1", // Explicit VR Little Endian
-            "1.2.840.10008.1.2",   // Implicit VR Little Endian
-            "1.2.840.10008.1.2.2", // Explicit VR Big Endian
+            "1.2.840.10008.1.2",   // Implicit VR Little Endian: Default Transfer Syntax for DICOM
+            "1.2.840.10008.1.2.2", // Explicit VR Big Endian (Retired)
         ]
         
         for syntax in preferredOrder {

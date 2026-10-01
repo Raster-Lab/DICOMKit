@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — compared with PS3.10 2026a 7.1: storeFile writes the bare data set with no preamble, DICM prefix or File Meta Information (D-DICOM-SERVER-7); otherwise directory-layout plumbing
 import Foundation
 import DICOMCore
 import DICOMKit

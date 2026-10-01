@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — options: 24 options of start/status/stop/stats compared (contract rows in DICOMCLI_STANDARD_IMPLEMENTATION.md); the Query/Retrieve Level names in the help are PS3.4 2026a Tables C.6.1-1 / C.6.2-1 (PATIENT, STUDY, SERIES, IMAGE; 'Instance' corrected); default port 11112 is the registered port of PS3.8 2026a 9.1.1 (104 is the well-known one); the C-ECHO status printed by `status` is rendered by DICOMNetwork.DIMSEStatus. The target is excluded from Package.swift and does not compile (D-DICOM-SERVER-1), so nothing here is exercised by a test
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -14,7 +15,7 @@ struct DICOMServer: AsyncParsableCommand {
             
             Supported DICOM Services:
             - C-ECHO: Verification service
-            - C-FIND: Query service (Patient/Study/Series/Instance levels)
+            - C-FIND: Query service (PATIENT/STUDY/SERIES/IMAGE levels)
             - C-STORE: Storage service with automatic indexing
             - C-MOVE: Retrieval service
             - C-GET: Direct retrieval service

@@ -10,7 +10,7 @@ A lightweight DICOM PACS server supporting C-ECHO, C-FIND, C-STORE, C-MOVE, and 
 
 ### DICOM Services (Phase A+B+C Complete)
 - **C-ECHO**: Verification service for testing connectivity ✅
-- **C-FIND**: Query service supporting Patient, Study, Series, and Instance levels ✅
+- **C-FIND**: Query service supporting the PATIENT, STUDY, SERIES and IMAGE Query/Retrieve Levels (PS3.4 Tables C.6.1-1 / C.6.2-1) ✅
 - **C-STORE**: Storage service with automatic file organization and metadata indexing ✅
 - **C-MOVE**: Retrieval service for moving DICOM instances to remote destinations ✅
   - Full network transfer implementation using DICOMNetwork's StorageService
@@ -18,7 +18,7 @@ A lightweight DICOM PACS server supporting C-ECHO, C-FIND, C-STORE, C-MOVE, and 
   - Support for host:port:aeTitle destination string format
   - Error handling and status tracking
 - **C-GET**: Direct retrieval service for streaming DICOM instances ✅
-  - Full C-STORE sub-operations on same association
+  - C-STORE sub-operations on the same association (the C-STORE-RSP is not yet awaited, so a sub-operation counts as Completed once its request is sent)
   - DICOM file parsing and dataset extraction
   - Presentation context management
 
@@ -45,7 +45,7 @@ A lightweight DICOM PACS server supporting C-ECHO, C-FIND, C-STORE, C-MOVE, and 
 ### Server Features
 - Configurable Application Entity Title
 - Access control with AE Title whitelist/blacklist
-- Query/Retrieve at all levels (Patient, Study, Series, Instance)
+- Query/Retrieve at all levels (PATIENT, STUDY, SERIES, IMAGE)
 - Multi-threaded connection handling (Phase B)
 - Support for multiple transfer syntaxes
 - Comprehensive logging
@@ -304,6 +304,11 @@ The server is organized into several key components:
 - TLS/SSL encryption (Phase D documentation complete, implementation in v1.5+)
 
 ## Testing
+
+> **Build status (2026-10-01):** the `dicom-server` executable target is commented out in
+> `Package.swift` ("Phase 1 scope") because the sources no longer compile against the current
+> DICOMNetwork API, and `Tests/DICOMToolsTests/DICOMServerTests.swift` is compiled by no target.
+> The command below runs nothing until the target is re-enabled.
 
 Run tests:
 ```bash

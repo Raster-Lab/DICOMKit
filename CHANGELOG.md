@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-server verified against DICOM 2026a (2026-10-01)
+
+- **dicom-server** (target still excluded from `Package.swift`; it does not compile against the
+  current DICOMNetwork API): C-FIND response elements now take their VR from the data
+  dictionary (PS3.6 2026a Table 6-1) — Patient ID, Patient's Name, Study ID, Accession Number,
+  Study Description and Series Description were written as CS. The SOP Class and Transfer
+  Syntax names beside the accepted UIDs are the PS3.6 Table A-1 names; help and README name the
+  Query/Retrieve Levels PATIENT/STUDY/SERIES/IMAGE (PS3.4 Tables C.6.1-1 / C.6.2-1).
+
 ### Fixed — dicom-print and dicom-printscp verified against DICOM 2026a (2026-10-01)
 
 - **dicom-print:** `send --medium` offers `mammo-clear-film` and `mammo-blue-film` (MAMMO CLEAR

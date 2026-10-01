@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — C-FIND matching compared with PS3.4 2026a C.2.2.2 and Tables C.6-1..C.6-5: 9 of the 15 Required/Unique keys are matched; wildcard on UI keys, case-insensitive wildcard, no List of UID or Range Matching and fixed response identifiers are D-DICOM-SERVER-2/3; the 11 DICOMMetadata attribute fields name PS3.6 2026a Table 6-1 keywords
 import Foundation
 import DICOMCore
 import DICOMKit
