@@ -465,6 +465,12 @@ extension DICOMFile {
     public func rescale(_ storedValue: Double) -> Double {
         dataSet.rescale(storedValue)
     }
+
+    /// Applies the modality transformation of frame `frameIndex` (0-based), using that frame's
+    /// Pixel Value Transformation functional group (PS3.3 2026a C.7.6.16.2.9; D197).
+    public func rescale(_ storedValue: Double, frameIndex: Int?) -> Double {
+        dataSet.rescale(storedValue, frameIndex: frameIndex)
+    }
     
     // MARK: - SOP Class Helpers
     

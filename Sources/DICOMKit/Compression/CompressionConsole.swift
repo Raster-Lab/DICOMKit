@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — transfer syntax names via DICOMCore
+// NEMA-verified: 2026a, checked 2026-10-01 — transfer syntax names via DICOMCore; ratio lines in the N:1 form of PS3.3 2026a C.7.6.1.1.5.2 and the "Samples per Pixel" label of PS3.6 2026a Table 6-1 (0028,0002) (D183)
 // CompressionConsole.swift
 // DICOMKit
 //
@@ -80,13 +80,20 @@ public enum CompressionConsole {
 
     // MARK: - Phase ratio/time lines (shared)
 
-    /// Shared "<Phase> ratio: N.N%" builder — the output size relative to the input
-    /// size for a phase (below 100% = smaller; above = larger). `phase` is
-    /// "Compression" or "Decompression". Returns "" when `inputSize` is 0.
+    /// Shared "<Phase> ratio: …" builder, written as a ratio in the form PS3.3 2026a
+    /// C.7.6.1.1.5.2 uses for Lossy Image Compression Ratio (0028,2112): "the numerator of an
+    /// implicit ratio in which the denominator is always one", e.g. "30:1" (D183; was the output
+    /// size as a percentage of the input). A compression phase prints uncompressed : compressed
+    /// = input / output ":1"; a decompression phase prints "1:" output / input (the input is the
+    /// compressed side). Sizes are whole-file byte counts. Returns "" when either size is 0.
     private static func ratioLine(phase: String, inputSize: Int, outputSize: Int) -> String {
-        guard inputSize > 0 else { return "" }
-        let ratio = Double(outputSize) / Double(inputSize) * 100.0
-        return "\(phase) ratio: \(String(format: "%.1f%%", ratio))\n"
+        guard inputSize > 0, outputSize > 0 else { return "" }
+        if phase == "Decompression" {
+            let ratio = Double(outputSize) / Double(inputSize)
+            return "\(phase) ratio: 1:\(String(format: "%.2f", ratio))\n"
+        }
+        let ratio = Double(inputSize) / Double(outputSize)
+        return "\(phase) ratio: \(String(format: "%.2f", ratio)):1\n"
     }
 
     /// Shared "<Phase> time:  <elapsed>" builder. The trailing double space aligns the
@@ -174,8 +181,8 @@ public enum CompressionConsole {
         "Compressed: \(input) → \(output)\n"
     }
 
-    /// Size-ratio line for the compression phase: output size relative to input size
-    /// (below 100% = smaller). Returns "" when `inputSize` is 0.
+    /// Ratio line for the compression phase: input size / output size as "N:1" (PS3.3 2026a
+    /// C.7.6.1.1.5.2 notation). Returns "" when a size is 0.
     public static func compressRatioLine(inputSize: Int, outputSize: Int) -> String {
         ratioLine(phase: "Compression", inputSize: inputSize, outputSize: outputSize)
     }
@@ -237,9 +244,8 @@ public enum CompressionConsole {
         "Decompressed: \(input) → \(output)\n"
     }
 
-    /// Size-expansion ratio line for a decompress run: the uncompressed output
-    /// relative to the compressed input (above 100% = larger). Returns "" when
-    /// `inputSize` is 0.
+    /// Ratio line for a decompress run: compressed input : uncompressed output as "1:N"
+    /// (PS3.3 2026a C.7.6.1.1.5.2 notation, compressed side first). Returns "" when a size is 0.
     public static func decompressRatioLine(inputSize: Int, outputSize: Int) -> String {
         ratioLine(phase: "Decompression", inputSize: inputSize, outputSize: outputSize)
     }
@@ -321,7 +327,7 @@ public enum CompressionConsole {
         }
         if let ba = info.bitsAllocated { lines.append("Bits Allocated: \(ba)") }
         if let bs = info.bitsStored { lines.append("Bits Stored: \(bs)") }
-        if let spp = info.samplesPerPixel { lines.append("Samples Per Pixel: \(spp)") }
+        if let spp = info.samplesPerPixel { lines.append("Samples per Pixel: \(spp)") }
         if let pi = info.photometricInterpretation { lines.append("Photometric Interpretation: \(pi)") }
         if let nf = info.numberOfFrames { lines.append("Number of Frames: \(nf)") }
         return lines.joined(separator: "\n") + "\n"

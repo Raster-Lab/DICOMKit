@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — decompress/batch --syntax accept only the native PS3.5 2026a A.1 / A.2 / A.5 targets (explicit-le, implicit-le, deflate; retired A.3 big endian and every encapsulated A-1 UID refused, exit 1, P-COMPRESS-SYNTAX); info --json adds the 9 PS3.6 2026a Table 6-1 keyword keys (P-COMPRESS-JSON); the 25 codec/syntax help rows (alias → UID → name) diffed by script against PS3.6 2026a Table A-1 and the engine codec table: 24 match, 1 fixed (.4.110 is "JPEG XL Lossless", D9), now pinned by dicom-compressTests; JPEG Extended 8/12-bit per PS3.5 2026a Table 8.2.1-1; the cited PS3.5 A.4.4 / A.4.12 section titles confirmed; 21 options classified (input contract); compressed / decompressed output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4, 8.2.14, 10.18.1 (engine findings deferred)
+// NEMA-verified: 2026a, checked 2026-10-01 — decompress/batch --syntax accept only the native PS3.5 2026a A.1 / A.2 / A.5 targets (explicit-le, implicit-le, deflate) and the retired A.3 explicit-be (engine byte-swaps per PS3.5 7.3, D206); every encapsulated A-1 UID refused, exit 1, P-COMPRESS-SYNTAX; info --json adds the 9 PS3.6 2026a Table 6-1 keyword keys (P-COMPRESS-JSON); the 25 codec/syntax help rows (alias → UID → name) diffed by script against PS3.6 2026a Table A-1 and the engine codec table: 24 match, 1 fixed (.4.110 is "JPEG XL Lossless", D9), now pinned by dicom-compressTests; JPEG Extended 8/12-bit per PS3.5 2026a Table 8.2.1-1; the cited PS3.5 A.4.4 / A.4.12 section titles confirmed; 21 options classified (input contract); compressed / decompressed output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4, 8.2.14, 10.18.1 (engine findings deferred)
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -189,13 +189,14 @@ extension DICOMCompress {
             discussion: """
                 Decompress compressed DICOM images to a native (uncompressed) transfer syntax.
                 
-                Target syntaxes (native, PS3.5 A.1, A.2, A.5):
+                Target syntaxes (native, PS3.5 A.1, A.2, A.5; A.3 retired):
                   explicit-le   Explicit VR Little Endian (default)
                   implicit-le   Implicit VR Little Endian
                   deflate       Deflated Explicit VR Little Endian
+                  explicit-be   Explicit VR Big Endian (Retired) — for legacy readers only;
+                                PS3.5 A.3 retired it in 2006 (described in PS3.5 2016b)
                 
-                Refused (exit 1): every compressed codec name (use `compress`), and
-                explicit-be — Explicit VR Big Endian is retired (PS3.5 A.3) and not written.
+                Refused (exit 1): every compressed codec name (use `compress`).
                 
                 Examples:
                   dicom-compress decompress compressed.dcm --output uncompressed.dcm
@@ -209,7 +210,7 @@ extension DICOMCompress {
         @Option(name: .shortAndLong, help: "Output DICOM file path")
         var output: String
 
-        @Option(name: .shortAndLong, help: "Native target syntax: explicit-le (default), implicit-le, deflate")
+        @Option(name: .shortAndLong, help: "Native target syntax: explicit-le (default), implicit-le, deflate, explicit-be (retired)")
         var syntax: String = "explicit-le"
 
         @Flag(name: .shortAndLong, help: "Show verbose output")
@@ -349,7 +350,7 @@ extension DICOMCompress {
         @Option(name: .shortAndLong, help: "Quality: maximum, high, medium, low, or a value 0.0-1.0")
         var quality: String?
 
-        @Option(name: .shortAndLong, help: "Native target syntax for decompression: explicit-le (default), implicit-le, deflate")
+        @Option(name: .shortAndLong, help: "Native target syntax for decompression: explicit-le (default), implicit-le, deflate, explicit-be (retired)")
         var syntax: String = "explicit-le"
 
         @Flag(name: .shortAndLong, help: "Process subdirectories recursively")
@@ -467,15 +468,16 @@ extension DICOMCompress {
 
 /// `decompress --syntax` / `batch --syntax`: only native Transfer Syntaxes are targets
 /// (P-COMPRESS-SYNTAX). PS3.6 2026a Table A-1 names, PS3.5 2026a A.1 (Implicit VR Little
-/// Endian), A.2 (Explicit VR Little Endian), A.5 (Deflated Explicit VR Little Endian).
-/// Explicit VR Big Endian (A.3, retired) is not written: the engine serializer does not
-/// byte-swap values. Every other name — the compressed codecs included — is refused with
-/// exit 1.
+/// Endian), A.2 (Explicit VR Little Endian), A.5 (Deflated Explicit VR Little Endian), and
+/// the retired A.3 Explicit VR Big Endian (accepted again since the engine writer byte-swaps
+/// values per PS3.5 2026a 7.3, D206). Every other name — the compressed codecs included — is
+/// refused with exit 1.
 enum NativeTargetSyntax {
     static let accepted: [(name: String, syntax: TransferSyntax)] = [
         ("explicit-le", .explicitVRLittleEndian),
         ("implicit-le", .implicitVRLittleEndian),
         ("deflate", .deflatedExplicitVRLittleEndian),
+        ("explicit-be", .explicitVRBigEndian),
     ]
 
     /// A refused `--syntax` value. Not a `ValidationError`, so the command exits 1.
@@ -488,10 +490,6 @@ enum NativeTargetSyntax {
         let lower = name.trimmingCharacters(in: .whitespaces).lowercased()
         if let hit = accepted.first(where: { $0.name == lower }) { return hit.syntax }
         let allowed = accepted.map(\.name).joined(separator: ", ")
-        if ["explicit-be", "explicit-vr-be", "big-endian", "evbe"].contains(lower) {
-            throw Refused(description: "--syntax \(name): Explicit VR Big Endian (1.2.840.10008.1.2.2) "
-                + "is retired (PS3.5 2026a A.3) and not written by dicom-compress. Native targets: \(allowed)")
-        }
         if let codec = CompressionManager.transferSyntax(for: lower) {
             throw Refused(description: "--syntax \(name) names \(codec.uid), an encapsulated (compressed) "
                 + "Transfer Syntax (PS3.6 2026a Table A-1); decompression writes native Pixel Data "

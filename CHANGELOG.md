@@ -19,6 +19,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   builder marker and test messages no longer call it Type 2; behaviour unchanged (written zero length when unknown,
   which PS3.5 7.4.5 permits).
 
+### Fixed — deferred rows, codec batch b6a (2026-10-01, DICOM 2026a)
+
+- **Lossy compression creates a new instance** (D184, D192; PS3.3 2026a C.7.6.1.1.5: "if the predecessor was a
+  DICOM image, then the Image shall receive a new SOP Instance UID"): `dicom-compress` / `CompressionManager` and
+  `dicom-convert` / `DICOMConverter` give every irreversible output a new SOP Instance UID (also written to
+  (0002,0003)), next to Lossy Image Compression "01", Ratio, Method and Image Type DERIVED; the step is appended
+  to Derivation Description (0008,2111) as "Lossy compression <method>, ratio N:1" (C.7.6.1.1.5.2 "should").
+  **Behaviour change**: lossless output keeps the source UID; lossy output never does.
+- **JPEG 2000 / HTJ2K colour labels in `CompressionManager`** (D185, D186, D-KIT-1; PS3.5 2026a 8.2.4, Table
+  8.2.4-1, 8.2.14): a 3-sample encode whose COD has MCT = 1 is labelled YBR_RCT (5-3) or YBR_ICT (9-7) with
+  Planar Configuration 0 (was RGB); decompressing YBR_RCT / YBR_ICT to native relabels RGB (was left YBR_*).
+- **YBR_FULL → JPEG 2000 / HTJ2K** (D-CORE-3; PS3.5 2026a 8.2.4: "No other Value of Photometric Interpretation
+  than YBR_RCT or YBR_ICT is permitted when SGcod Multiple component transformation type is 1"): J2KSwift always
+  applies the colour transform to 3 components, so a lossy encode converts YBR_FULL to RGB first (PS3.3 C.7.6.3.1.2
+  equations, new `YBRFullConversion`) and labels YBR_ICT, in `TransferSyntaxConverter` and `CompressionManager`.
+  **Behaviour change**: a reversible (lossless) J2K / HTJ2K encode of YBR_FULL is refused, since the conversion
+  rounds and MCT 0 cannot be written (was a codestream with MCT = 1 under YBR_FULL).
+- **JPEG colour is YCbCr 4:2:2 labelled YBR_FULL_422** (D190 colour half, D-CORE-2; PS3.5 2026a Table 8.2.1-1
+  allows a 3-sample JPEG Baseline stream only as YBR_FULL_422 or RGB): `JLICodec` encodes lossy colour 4:2:2 (was
+  4:4:4 YCbCr under RGB) and `TransferSyntaxConverter` / `CompressionManager` label it YBR_FULL_422 with Planar
+  Configuration 0 from the frame header's sampling factors (new `JPEGInterchangeFormat.frameComponents(in:)`,
+  `isHorizontally422(_:)`). **Behaviour change**: JPEG Extended (.51) colour is refused (Table 8.2.1-1 has no
+  3-sample .51 row), and `NativeJPEGCodec` (ImageIO, DICOMStudio's benchmark engine) refuses colour — it writes
+  4:2:0 below quality 1.0 and 4:4:4 at 1.0, neither of which has a valid label.
+- **Explicit VR Big Endian values are byte-swapped** (D206; PS3.5 2026a 7.3, A.3 retired): `DICOMWriter` writes
+  every 2-, 4- and 8-byte binary value (US SS OW AT / UL SL FL OF OL / FD OD OV SV UV) in its own byte order when
+  the element's `byteOrder` differs (new `DICOMWriter.byteSwapUnit(for:)`, `DICOMWriter.value(_:vr:from:to:)`), so
+  LE → BE and BE → LE output is correct at any nesting depth; `CompressionManager` encodes a Big Endian source from
+  little-endian samples. `dicom-compress decompress|batch --syntax explicit-be` is accepted again (P-COMPRESS-SYNTAX
+  had refused it because of this defect).
+- **`dicom-compress` File Meta UIDs are even length** (D188; PS3.5 2026a 6.2, 7.1): (0002,0002), (0002,0003),
+  (0002,0010), (0002,0012) are padded with one trailing NULL.
+- **`dicom-convert --strip-private` reaches into Sequence Items** (D191; PS3.5 2026a 7.8.1): Private Data Elements
+  and Private Creators inside Items are removed at any depth and counted.
+- **Per-frame rescale** (D197; PS3.3 2026a C.7.6.16.2.9, Table C.7.6.16-10): new `DataSet.rescale(_:frameIndex:)`
+  and `DICOMFile.rescale(_:frameIndex:)` use the frame's Pixel Value Transformation Sequence; `rescale(_:)` is
+  unchanged (shared / first-frame values). dicom-measure uses the new call.
+- **`dicom-compress` ratio lines** (D183; PS3.3 2026a C.7.6.1.1.5.2): "Compression ratio: 3.03:1" (input / output)
+  and "Decompression ratio: 1:3.03" replace the output-as-percent-of-input figure; info prints "Samples per Pixel"
+  (PS3.6 2026a (0028,0002)).
+
 ### Added — PS3.15 Retain Safe Private and Clean Graphics Options, batch b4 (2026-10-01, DICOM 2026a)
 
 - **`ConfidentialityProfile.Options.retainSafePrivate` (Retain Safe Private Option, 113111)** (D159; PS3.15 2026a

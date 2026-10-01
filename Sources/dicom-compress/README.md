@@ -59,8 +59,9 @@ dicom-compress decompress compressed.dcm --output uncompressed.dcm --syntax impl
 ```
 
 `decompress --syntax` and `batch --syntax` accept only the native targets `explicit-le`,
-`implicit-le` and `deflate` (PS3.5 A.2, A.1, A.5). A compressed codec name (for example
-`jpeg2000`) and the retired `explicit-be` (PS3.5 A.3) are refused with exit 1.
+`implicit-le` and `deflate` (PS3.5 A.2, A.1, A.5), and `explicit-be` — Explicit VR Big Endian,
+retired (PS3.5 A.3), for legacy readers only; values are byte-swapped per PS3.5 7.3. A compressed
+codec name (for example `jpeg2000`) is refused with exit 1.
 
 ### Batch — Process Directories
 

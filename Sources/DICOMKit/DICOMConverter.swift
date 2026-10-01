@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — transfer syntax capabilities via DICOMCore; UID literals, names and PS3.5 citations diffed by Scripts/diff_kit.py against PS3.6 2026a Table A-1 and the PS3.5 text
+// NEMA-verified: 2026a, checked 2026-10-01 — transfer syntax capabilities via DICOMCore; UID literals, names and PS3.5 citations diffed by Scripts/diff_kit.py against PS3.6 2026a Table A-1 and the PS3.5 text; --strip-private recurses into Sequence Items (PS3.5 2026a 7.8.1, D191); lossy output gets a new SOP Instance UID (PS3.3 2026a C.7.6.1.1.5, D192)
 import Foundation
 import DICOMCore
 
@@ -345,13 +345,13 @@ public enum DICOMConverter {
         // Optionally strip private tags.
         var strippedCount = 0
         if stripPrivate {
-            let publicTags = dataSet.tags.filter { !$0.isPrivate }
-            strippedCount = dataSet.tags.count - publicTags.count
+            // Every Sequence Item is a Data Set with its own Private Data Elements and Private
+            // Creators (PS3.5 2026a 7.8.1), so the strip recurses into nested Items (D191).
             var filtered = DataSet()
-            for tag in publicTags {
-                if let element = dataSet[tag] {
-                    filtered[tag] = element
-                }
+            for tag in dataSet.tags {
+                guard let element = dataSet[tag] else { continue }
+                if tag.isPrivate { strippedCount += 1; continue }
+                filtered[tag] = strippingPrivate(element, count: &strippedCount)
             }
             dataSet = filtered
         }
@@ -501,6 +501,26 @@ public enum DICOMConverter {
             isLossless: isLossless,
             strippedPrivateTagCount: strippedCount
         )
+    }
+
+    /// `element` with the Private Data Elements of its Sequence Items removed, at any depth;
+    /// `count` is increased by the number removed.
+    static func strippingPrivate(_ element: DataElement, count: inout Int) -> DataElement {
+        guard let items = element.sequenceItems else { return element }
+        let before = count
+        let newItems: [SequenceItem] = items.map { item in
+            var kept: [Tag: DataElement] = [:]
+            for (tag, child) in item.elements {
+                if tag.isPrivate { count += 1; continue }
+                kept[tag] = strippingPrivate(child, count: &count)
+            }
+            return SequenceItem(elements: kept)
+        }
+        guard count != before else { return element }
+        // DICOMWriter re-encodes a sequence from its Items and recomputes the length, so the
+        // raw `valueData` of the source is not carried.
+        return DataElement(tag: element.tag, vr: element.vr, length: 0, valueData: Data(),
+                           sequenceItems: newItems, byteOrder: element.byteOrder)
     }
 
     /// Re-reads a freshly transcoded encapsulated file, stamps the DICOM Lossy Image Compression

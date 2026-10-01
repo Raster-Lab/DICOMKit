@@ -101,10 +101,15 @@ final class CompressHelpRowsTests: XCTestCase {
         for row in rows { check(row) }
     }
 
-    func test_decompressRows_matchTableA1() {
+    func test_decompressRows_matchTableA1() throws {
         let rows = Self.rows(DICOMCompress.Decompress.configuration.discussion)
-        XCTAssertEqual(rows.map(\.name), ["explicit-le", "implicit-le", "deflate"])
-        for row in rows { check(row) }
+        XCTAssertEqual(rows.map(\.name), ["explicit-le", "implicit-le", "deflate", "explicit-be"])
+        for row in rows where row.name != "explicit-be" { check(row) }
+        // explicit-be is a decompress target only (not a --codec name); Table A-1 2026a:
+        // 1.2.840.10008.1.2.2 "Explicit VR Big Endian (Retired)" (dumped from part06_2026a.xml).
+        let be = try XCTUnwrap(rows.first { $0.name == "explicit-be" })
+        XCTAssertTrue(be.label.hasPrefix("Explicit VR Big Endian (Retired)"), be.label)
+        XCTAssertEqual(try NativeTargetSyntax.resolve("explicit-be").uid, "1.2.840.10008.1.2.2")
     }
 
     func test_jpegXLLosslessOnly_isNamedAsTableA1_D9() {

@@ -789,6 +789,10 @@ let package = Package(
                 // wording (D133, D135, D136, D138, 2026-10-01).
                 "UIDManagerStandardTests.swift",
                 "CompressionManagerXYBTests.swift",
+                // Lossy output new SOP Instance UID, J2K/JPEG colour labels, File Meta UI padding,
+                // Explicit VR Big Endian values, nested --strip-private, per-frame rescale
+                // (D183-D186, D188, D190-D192, D197, D206, 2026-10-01).
+                "DeferredRowsB6aCodecTests.swift",
                 "StructuredReporting/SpatialCoordinatesClosedPolylineTests.swift",
                 "StructuredReporting/CADSRBuilderValueTypeTests.swift",
                 // PS3.3 Table C.17-6 Content Sequence under every SR value type (D31, 2026-09-29).

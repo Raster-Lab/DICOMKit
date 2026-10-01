@@ -381,10 +381,7 @@ struct MeasurementEngine {
     /// present, else Rescale Slope/Intercept of the frame (top level or Pixel Value
     /// Transformation functional group).
     func modalityValue(_ stored: Double, frame: Int = 0) -> Double {
-        if let lut = dataSet.modalityLUTData() {
-            return lut.lookup(Int(stored.rounded()))
-        }
-        return dataSet.rescaleSlope(frameIndex: frame) * stored + dataSet.rescaleIntercept(frameIndex: frame)
+        dataSet.rescale(stored, frameIndex: frame)
     }
 
     /// Whether a modality transform other than identity is present
