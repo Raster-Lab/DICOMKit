@@ -262,6 +262,14 @@ dicom-wado query https://pacs.example.com/dicom-web \
   --format csv > results.csv
 ```
 
+DICOM JSON Model (PS3.18 F.2: tag keys, `vr`, `Value`, PN component objects):
+
+```bash
+dicom-wado query https://pacs.example.com/dicom-web \
+  --patient-name "SMITH*" \
+  --format dicom-json > results.json
+```
+
 ---
 
 ## STOW-RS: Store Operations
@@ -471,21 +479,24 @@ dicom-wado ups https://pacs.example.com/dicom-web \
 
 ### Update Worklist State
 
-Change worklist item state:
+Change worklist item state (Change Workitem State, PS3.18 11.7):
 
 ```bash
 dicom-wado ups https://pacs.example.com/dicom-web \
-  --update 1.2.840.113619.2.xxx \
+  --change-state 1.2.840.113619.2.xxx \
   --state "IN PROGRESS"
 ```
+
+`--update <uid>` is a deprecated alias of `--change-state` (it never performed Update Workitem,
+PS3.18 11.6); it still works and prints a stderr note. Giving both is refused (exit 1).
 
 Valid target states (PS3.18 11.7.1.4, Procedure Step State (0074,1000)):
 - `IN PROGRESS` (`IN_PROGRESS` is also accepted; a Transaction UID is generated when `--transaction-uid` is omitted)
 - `COMPLETED` (requires `--transaction-uid`)
 - `CANCELED` (requires `--transaction-uid`)
 
-`SCHEDULED` is still accepted but is not a Change State target: the command warns, and the
-origin server refuses it (PS3.4 Table CC.1.1-2).
+`SCHEDULED` is refused with exit 1: it is not a Change State target (PS3.18 2026a 11.7.1.4), and
+PS3.4 2026a Table CC.1.1-2 answers a change to SCHEDULED with C303H.
 
 ---
 
@@ -626,6 +637,9 @@ Error: Not Found: <response body, if any>
 
 `--format json` for `query` and `ups` prints a summary array (query: PS3.6 keywords as keys,
 e.g. `"SeriesInstanceUID"`; ups: camelCase keys), not the PS3.18 Annex F DICOM JSON Model.
+`--format dicom-json` for `query` and `ups --search` / `--get` prints the PS3.18 2026a F.2 DICOM
+JSON Model: the objects the server returned, as one top-level array, attributes in ascending tag
+order, Group Length attributes removed (F.2.2).
 `retrieve --metadata --format json` prints the server's DICOM JSON Model as received.
 
 ---

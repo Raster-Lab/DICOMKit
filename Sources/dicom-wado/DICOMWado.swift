@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — options diffed against PS3.18 2026a Tables 9.1.2-1/9.1.2-2/9.4.1-1/9.5.1-1 (WADO-URI: 10 of 19 parameters reachable, the other 9 optional and absent from WADOURIClient), 9.1.2.2.1/8.7.4-1 (7 contentType values, all match), 8.3.4-1 (QIDO: 4 of 7 parameters), 10.6.1-5 (3 levels; 12 of 20 matching keys), 11.3-1 (UPS: 6 of 8 transactions), 11.7.1.4 (3 Change State targets); PS3.3 2026a Tables C.30.1-1 (4 states), C.30.2-1 (3 priorities), C.7-1 (3 sexes): all match; Scripts/diff_cli_web.py
+// NEMA-verified: 2026a, checked 2026-10-01 — options diffed against PS3.18 2026a Tables 9.1.2-1/9.1.2-2/9.4.1-1/9.5.1-1 (WADO-URI: 10 of 19 parameters reachable, the other 9 optional and absent from WADOURIClient), 9.1.2.2.1/8.7.4-1 (7 contentType values, all match), 8.3.4-1 (QIDO: 4 of 7 parameters), 10.6.1-5 (3 levels; 12 of 20 matching keys), 11.3-1 (UPS: 6 of 8 transactions), 11.7.1.4 (3 Change State targets); PS3.3 2026a Tables C.30.1-1 (4 states), C.30.2-1 (3 priorities), C.7-1 (3 sexes): all match; Scripts/diff_cli_web.py; 2026-10-01 P-items: ups --change-state (11.7, --update deprecated alias), SCHEDULED refused (11.7.1.4; PS3.4 Table CC.1.1-2 C303H), query/ups --format dicom-json (PS3.18 F.2.1/F.2.2)
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -537,7 +537,7 @@ struct QueryCommand: AsyncParsableCommand {
     @Option(name: .long, help: "OAuth2 bearer token for authentication")
     var token: String?
     
-    @Option(name: .shortAndLong, help: "Output format: table, json, csv (default: table)")
+    @Option(name: .shortAndLong, help: "Output format: table, json, csv, dicom-json (default: table). dicom-json is the PS3.18 F.2 DICOM JSON Model; json is a tool summary (keyword keys)")
     var format: OutputFormat = .table
     
     @Flag(name: .long, help: "Show verbose output")
@@ -885,8 +885,14 @@ struct UPSCommand: AsyncParsableCommand {
               dicom-wado ups https://server/dicom-web --get <workitem-uid>
               dicom-wado ups https://server/dicom-web --create worklist.json
               dicom-wado ups https://server/dicom-web --create-workitem --label "CT Scan" --patient-name "Doe^Jane" --patient-id PAT001
-              dicom-wado ups https://server/dicom-web --update <uid> --state "IN PROGRESS" --aet MY_AE
-              dicom-wado ups https://server/dicom-web --update <uid> --state COMPLETED --aet MY_AE --transaction-uid <txuid>
+              dicom-wado ups https://server/dicom-web --change-state <uid> --state "IN PROGRESS" --aet MY_AE
+              dicom-wado ups https://server/dicom-web --change-state <uid> --state COMPLETED --aet MY_AE --transaction-uid <txuid>
+              dicom-wado ups https://server/dicom-web --search --format dicom-json
+
+            --change-state performs Change Workitem State (PS3.18 11.7); --update is its
+            deprecated alias. A change to SCHEDULED is refused (PS3.18 11.7.1.4; PS3.4
+            Table CC.1.1-2, C303H). --format dicom-json prints the PS3.18 F.2 DICOM JSON
+            Model the server returned; --format json is a tool summary with camelCase keys.
               dicom-wado ups https://server/dicom-web --subscribe --workitem-uid <uid> --aet MY_AE
               dicom-wado ups https://server/dicom-web --unsubscribe --workitem-uid <uid> --aet MY_AE
             """
@@ -907,7 +913,10 @@ struct UPSCommand: AsyncParsableCommand {
     @Flag(name: .customLong("create-workitem"), help: "Create a new worklist item from command-line options")
     var createWorkitemFlag: Bool = false
     
-    @Option(name: .long, help: "Update worklist item UID")
+    @Option(name: .customLong("change-state"), help: "Change Workitem State (PS3.18 11.7) of the workitem with this UID; use with --state")
+    var changeState: String?
+
+    @Option(name: .long, help: "Deprecated alias of --change-state (it performs Change Workitem State, PS3.18 11.7, not Update Workitem, 11.6)")
     var update: String?
     
     @Flag(name: .long, help: "Subscribe to workitem events (requires --workitem-uid and --aet)")
@@ -919,7 +928,7 @@ struct UPSCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Local Application Entity Title for subscribe/unsubscribe")
     var aet: String?
     
-    @Option(name: .long, help: "New Procedure Step State for update: IN PROGRESS, COMPLETED, CANCELED (PS3.18 11.7.1.4); IN_PROGRESS is accepted for IN PROGRESS")
+    @Option(name: .long, help: "New Procedure Step State for --change-state: IN PROGRESS, COMPLETED, CANCELED (PS3.18 11.7.1.4); IN_PROGRESS is accepted for IN PROGRESS")
     var state: String?
     
     @Option(name: .long, help: "Transaction UID (0008,1195) for state changes (required for COMPLETED/CANCELED; auto-generated for IN PROGRESS, PS3.18 11.7.1.4)")
@@ -1000,16 +1009,18 @@ struct UPSCommand: AsyncParsableCommand {
     @Option(name: .long, help: "OAuth2 bearer token for authentication")
     var token: String?
     
-    @Option(name: .shortAndLong, help: "Output format: table, json, csv (default: table)")
+    @Option(name: .shortAndLong, help: "Output format: table, json, csv, dicom-json (default: table). dicom-json is the PS3.18 F.2 DICOM JSON Model; json is a tool summary (camelCase keys)")
     var format: OutputFormat = .table
     
     @Flag(name: .long, help: "Show verbose output")
     var verbose: Bool = false
 
     func validate() throws {
-        if let s = state, WADOOptionRules.upsState(s) == nil {
-            throw ValidationError("Invalid state: \(s). Valid states: IN PROGRESS (or IN_PROGRESS), COMPLETED, CANCELED (PS3.18 11.7.1.4)")
+        // PS3.18 2026a 11.7.1.4 / PS3.4 Table CC.1.1-2: SCHEDULED and unknown states are refused (exit 1).
+        if let s = state {
+            _ = try WADOOptionRules.changeStateTarget(s)
         }
+        _ = try WADOOptionRules.changeStateWorkitem(changeState: changeState, update: update)
     }
 
     func run() async throws {
@@ -1033,14 +1044,17 @@ struct UPSCommand: AsyncParsableCommand {
             try await createWorkitemFromJSON(client: client, jsonFile: jsonFile)
         } else if createWorkitemFlag {
             try await createWorkitemFromOptions(client: client)
-        } else if let uid = update {
+        } else if let uid = try WADOOptionRules.changeStateWorkitem(changeState: changeState, update: update) {
+            if changeState == nil {
+                fprintln(WADOOptionRules.updateDeprecationNote, to: .standardError)
+            }
             try await updateWorkitem(client: client, uid: uid)
         } else if subscribe {
             try await subscribeToWorkitem(client: client)
         } else if unsubscribe {
             try await unsubscribeFromWorkitem(client: client)
         } else {
-            throw ValidationError("Specify an operation: --search, --get, --create, --create-workitem, --update, --subscribe, or --unsubscribe")
+            throw ValidationError("Specify an operation: --search, --get, --create, --create-workitem, --change-state, --subscribe, or --unsubscribe")
         }
     }
     
@@ -1059,6 +1073,16 @@ struct UPSCommand: AsyncParsableCommand {
 
         if verbose {
             fprintln("Searching worklist items...")
+        }
+
+        if format == .dicomJSON {
+            // PS3.18 F.2: the DICOM JSON Model objects as the server returned them.
+            let objects = try await client.searchWorkitemsDICOMJSON(query: query)
+            print(DICOMJSONModelFormatter.format(objects))
+            if verbose {
+                fprintln("\nFound \(objects.count) worklist item(s)")
+            }
+            return
         }
 
         let results = try await client.searchWorkitems(query: query)
@@ -1082,6 +1106,14 @@ struct UPSCommand: AsyncParsableCommand {
         // the SAME renderer --search uses, so get and search share one output pipeline and
         // the CLI Workshop's in-app get cannot drift. retrieveWorkitemResult returns the
         // WorkitemResult the formatter consumes (mirrors the package's UPS --format contract).
+        if format == .dicomJSON {
+            // PS3.18 F.2: the DICOM JSON Model object as the server returned it.
+            print(DICOMJSONModelFormatter.format([try await client.retrieveWorkitem(uid: uid)]))
+            if verbose {
+                fprintln("\nRetrieved worklist item \(uid)")
+            }
+            return
+        }
         let result = try await client.retrieveWorkitemResult(uid: uid)
         print(UPSResultFormatter().format([result], format: format.asUPS))
 
@@ -1238,18 +1270,12 @@ struct UPSCommand: AsyncParsableCommand {
     
     private func updateWorkitem(client: DICOMwebClient, uid: String) async throws {
         guard let stateString = state else {
-            throw ValidationError("--state is required for update operations")
+            throw ValidationError("--state is required for --change-state")
         }
         
         // Procedure Step State (0074,1000), PS3.3 Table C.30.1-1; "IN PROGRESS" and IN_PROGRESS both accepted.
-        guard let newState = WADOOptionRules.upsState(stateString) else {
-            throw ValidationError("Invalid state: \(stateString). Valid states: IN PROGRESS (or IN_PROGRESS), COMPLETED, CANCELED (PS3.18 11.7.1.4)")
-        }
-        if !WADOOptionRules.changeStateTargets.contains(newState) {
-            fprintln("Warning: \(newState.rawValue) is not a Change State target: PS3.18 11.7.1.4 allows "
-                + "IN PROGRESS, COMPLETED or CANCELED, and PS3.4 Table CC.1.1-2 refuses a change to SCHEDULED",
-                to: .standardError)
-        }
+        // SCHEDULED is refused: PS3.18 2026a 11.7.1.4, PS3.4 2026a Table CC.1.1-2 (C303H).
+        let newState = try WADOOptionRules.changeStateTarget(stateString)
         
         // Determine transaction UID:
         // - IN_PROGRESS: auto-generate if not provided (server returns one in response)
@@ -1390,13 +1416,16 @@ enum OutputFormat: String, ExpressibleByArgument {
     case table
     case json
     case csv
+    /// The PS3.18 2026a F.2 DICOM JSON Model (tag keys, `vr`, `Value`), additive (P-QUERY-JSON).
+    case dicomJSON = "dicom-json"
 
     /// Bridges the CLI's `--format` to the shared `QIDOResultFormatter` (DICOMWeb).
     /// The cases line up 1:1, so the rawValue maps directly (table is the fallback).
     var asQIDO: QIDOOutputFormat { QIDOOutputFormat(rawValue: rawValue) ?? .table }
 
     /// Bridges the CLI's `--format` to the shared `UPSResultFormatter` (DICOMWeb).
-    /// The cases line up 1:1, so the rawValue maps directly (table is the fallback).
+    /// table/json/csv line up 1:1; dicom-json is rendered from the raw DICOM JSON by
+    /// `DICOMJSONModelFormatter` before this is reached (table is the fallback).
     var asUPS: UPSOutputFormat { UPSOutputFormat(rawValue: rawValue) ?? .table }
 }
 

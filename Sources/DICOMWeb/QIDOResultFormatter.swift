@@ -9,8 +9,12 @@ import Foundation
 /// `--format table` and emitted a verbose per-record dump instead of the CLI's table).
 public enum QIDOOutputFormat: String, Sendable, CaseIterable {
     case table
+    /// A tool summary keyed by PS3.6 keyword (not the DICOM JSON Model).
     case json
     case csv
+    /// The PS3.18 2026a F.2 DICOM JSON Model: the result's attributes as the origin
+    /// server returned them (tag keys, `vr`, `Value`), via `DICOMJSONModelFormatter`.
+    case dicomJSON = "dicom-json"
 }
 
 /// Renders QIDO-RS study / series / instance results to text. The only QIDO output
@@ -25,6 +29,7 @@ public struct QIDOResultFormatter {
         case .table: return studyTable(studies)
         case .json:  return formatJSON(studies.map(studyDict))
         case .csv:   return studyCSV(studies)
+        case .dicomJSON: return DICOMJSONModelFormatter.format(studies.map(\.attributes))
         }
     }
 
@@ -86,6 +91,7 @@ public struct QIDOResultFormatter {
         case .table: return seriesTable(series)
         case .json:  return formatJSON(series.map(seriesDict))
         case .csv:   return seriesCSV(series)
+        case .dicomJSON: return DICOMJSONModelFormatter.format(series.map(\.attributes))
         }
     }
 
@@ -139,6 +145,7 @@ public struct QIDOResultFormatter {
         case .table: return instanceTable(instances)
         case .json:  return formatJSON(instances.map(instanceDict))
         case .csv:   return instanceCSV(instances)
+        case .dicomJSON: return DICOMJSONModelFormatter.format(instances.map(\.attributes))
         }
     }
 

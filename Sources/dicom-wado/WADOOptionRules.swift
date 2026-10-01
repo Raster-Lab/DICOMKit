@@ -108,6 +108,38 @@ enum WADOOptionRules {
     /// (PS3.18 11.7.1.4: "IN PROGRESS", "COMPLETED", or "CANCELED").
     static let changeStateTargets: [UPSState] = [.inProgress, .completed, .canceled]
 
+    /// The Procedure Step State a Change Workitem State request (`--change-state`, or the
+    /// deprecated `--update`) sends. PS3.18 2026a 11.7.1.4 allows only "IN PROGRESS",
+    /// "COMPLETED" or "CANCELED"; PS3.4 2026a Table CC.1.1-2 answers a change to SCHEDULED
+    /// with C303H (or C307H). SCHEDULED and unknown values are refused (exit 1).
+    static func changeStateTarget(_ raw: String) throws -> UPSState {
+        guard let state = upsState(raw) else {
+            throw WADORefusal("Invalid state: \(raw). Valid states: IN PROGRESS (or IN_PROGRESS), COMPLETED, "
+                + "CANCELED (PS3.18 2026a 11.7.1.4)")
+        }
+        guard changeStateTargets.contains(state) else {
+            throw WADORefusal("\(state.rawValue) is not a Change Workitem State target: PS3.18 2026a 11.7.1.4 "
+                + "allows IN PROGRESS, COMPLETED or CANCELED, and PS3.4 2026a Table CC.1.1-2 refuses a change "
+                + "to SCHEDULED (C303H)")
+        }
+        return state
+    }
+
+    /// The workitem whose state `ups` changes: `--change-state <uid>` (canonical, PS3.18
+    /// 11.7 Change Workitem State) or the deprecated alias `--update <uid>`. Both → refused.
+    static func changeStateWorkitem(changeState: String?, update: String?) throws -> String? {
+        if changeState != nil && update != nil {
+            throw WADORefusal("--change-state and --update are the same operation (PS3.18 2026a 11.7 "
+                + "Change Workitem State); --update is a deprecated alias. Use --change-state only")
+        }
+        return changeState ?? update
+    }
+
+    /// Stderr note printed when the deprecated `--update` is used.
+    static let updateDeprecationNote =
+        "Note: --update is deprecated; use --change-state (it performs Change Workitem State, "
+        + "PS3.18 2026a 11.7, not Update Workitem, 11.6)"
+
     /// `--filter-state` in the spelling `UPSQuery.workitemSearch` accepts (it does not
     /// take the standard "IN PROGRESS"); other values pass through unchanged so the
     /// shared builder still rejects them.
@@ -129,4 +161,13 @@ enum WADOOptionRules {
             resourceTimeout: max(defaults.resourceTimeout, t),
             operationTimeout: max(defaults.operationTimeout, t))
     }
+}
+
+/// A refusal of an option value by the standard; ArgumentParser reports it as
+/// "Error: <message>" and exits 1 (not the 64 of a usage error).
+struct WADORefusal: Error, LocalizedError, CustomStringConvertible, Equatable {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var description: String { message }
+    var errorDescription: String? { message }
 }

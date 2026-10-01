@@ -1394,6 +1394,39 @@ extension DICOMwebClient {
     
     // MARK: - UPS-RS Methods (Unified Procedure Step)
     
+    /// Searches for workitems and returns the matches as the DICOM JSON Model objects
+    /// the origin server sent (PS3.18 F.2), unparsed — for `--format dicom-json`.
+    ///
+    /// - Parameter query: The UPS query parameters
+    /// - Returns: One DICOM JSON Model object per matching workitem (empty if none)
+    /// - Throws: DICOMwebError on failure
+    ///
+    /// Reference: PS3.18 Section 11.9 - Search Transaction; Annex F.2
+    public func searchWorkitemsDICOMJSON(query: UPSQuery = UPSQuery()) async throws -> [[String: Any]] {
+        let url = urlBuilder.searchWorkitemsURL(parameters: query.toParameters())
+        let request = HTTPClient.Request(
+            url: url,
+            method: .get,
+            headers: ["Accept": DICOMMediaType.dicomJSON.description]
+        )
+        let response: HTTPClient.Response
+        do {
+            response = try await httpClient.execute(request)
+        } catch let error as DICOMwebError {
+            if case .notFound = error {
+                return []
+            }
+            throw error
+        }
+        if response.body.isEmpty {
+            return []
+        }
+        guard let jsonArray = try? JSONSerialization.jsonObject(with: response.body) as? [[String: Any]] else {
+            throw DICOMwebError.invalidJSON(reason: "Expected JSON array of workitem objects")
+        }
+        return jsonArray
+    }
+
     /// Searches for workitems matching the query
     ///
     /// - Parameter query: The UPS query parameters

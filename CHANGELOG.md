@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — CLI P-items, webprint batch (approved 2026-10-01, DICOM 2026a)
+
+- **`dicom-wado ups --change-state <uid>`** is the canonical name of Change Workitem State (PS3.18 2026a
+  11.7); **`--update`** stays as a **deprecated** alias (help says so, stderr note on use; giving both is
+  refused with exit 1) (P-WADO-UPS-UPDATE).
+- **`dicom-wado ups --state SCHEDULED`** is now **refused with exit 1** (it only warned): PS3.18 2026a
+  11.7.1.4 allows IN PROGRESS, COMPLETED or CANCELED, and PS3.4 2026a Table CC.1.1-2 answers a change to
+  SCHEDULED with C303H (P-WADO-UPS-STATE).
+- **`dicom-wado query` / `ups --search` / `ups --get` `--format dicom-json`** (new, additive) prints the
+  PS3.18 2026a F.2 DICOM JSON Model the server returned (one top-level array, attributes in ascending tag
+  order, Group Length removed); `--format json` is unchanged. DICOMWeb adds `QIDOOutputFormat.dicomJSON`,
+  `DICOMJSONModelFormatter` and `DICOMwebClient.searchWorkitemsDICOMJSON(query:)` (P-QUERY-JSON for dicom-wado).
+
 ### Changed — CLI P-items, pixel batch (approved 2026-10-01, DICOM 2026a)
 
 - **`dicom-anon --profile` default is now `ps315`** (P-ANON-PROFILE), the PS3.15 2026a Basic Application Level

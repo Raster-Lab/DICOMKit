@@ -121,6 +121,80 @@ final class WADOOptionRulesTests: XCTestCase {
         XCTAssertFalse(WADOOptionRules.changeStateTargets.contains(.scheduled))
     }
 
+    // MARK: - P-WADO-UPS-STATE: SCHEDULED refused (PS3.18 2026a 11.7.1.4; PS3.4 Table CC.1.1-2 C303H)
+
+    func testChangeToScheduledIsRefusedWithExit1() {
+        XCTAssertThrowsError(try WADOOptionRules.changeStateTarget("SCHEDULED")) { error in
+            XCTAssertTrue(error is WADORefusal)                      // exit 1, not the 64 of a usage error
+            XCTAssertTrue("\(error)".contains("PS3.18 2026a 11.7.1.4"))
+            XCTAssertTrue("\(error)".contains("Table CC.1.1-2"))
+        }
+        XCTAssertThrowsError(try WADOOptionRules.changeStateTarget("DONE")) { XCTAssertTrue($0 is WADORefusal) }
+        XCTAssertEqual(try WADOOptionRules.changeStateTarget("IN PROGRESS"), .inProgress)
+        XCTAssertEqual(try WADOOptionRules.changeStateTarget("completed"), .completed)
+        XCTAssertEqual(try WADOOptionRules.changeStateTarget("CANCELED"), .canceled)
+        XCTAssertThrowsError(try UPSCommand.parse(["http://h/rs", "--change-state", "1.2.3", "--state", "SCHEDULED"]))
+        XCTAssertThrowsError(try UPSCommand.parse(["http://h/rs", "--update", "1.2.3", "--state", "SCHEDULED"]))
+        // ArgumentParser maps a non-ValidationError thrown from validate() to exit 1.
+        do {
+            _ = try UPSCommand.parse(["http://h/rs", "--change-state", "1.2.3", "--state", "SCHEDULED"])
+            XCTFail("SCHEDULED accepted")
+        } catch {
+            XCTAssertEqual(UPSCommand.exitCode(for: error), .failure)
+        }
+    }
+
+    // MARK: - P-WADO-UPS-UPDATE: --change-state canonical, --update deprecated alias (PS3.18 11.7)
+
+    func testChangeStateIsCanonicalAndUpdateIsADeprecatedAlias() throws {
+        let canonical = try UPSCommand.parse(["http://h/rs", "--change-state", "1.2.3", "--state", "IN PROGRESS"])
+        XCTAssertEqual(canonical.changeState, "1.2.3")
+        XCTAssertEqual(try WADOOptionRules.changeStateWorkitem(changeState: canonical.changeState,
+                                                               update: canonical.update), "1.2.3")
+        let alias = try UPSCommand.parse(["http://h/rs", "--update", "1.2.3", "--state", "IN PROGRESS"])
+        XCTAssertEqual(try WADOOptionRules.changeStateWorkitem(changeState: alias.changeState, update: alias.update), "1.2.3")
+        XCTAssertThrowsError(try UPSCommand.parse(["http://h/rs", "--change-state", "1", "--update", "1",
+                                                   "--state", "COMPLETED"])) { error in
+            XCTAssertEqual(UPSCommand.exitCode(for: error), .failure)
+        }
+        XCTAssertTrue(WADOOptionRules.updateDeprecationNote.contains("deprecated"))
+        let help = UPSCommand.helpMessage().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        XCTAssertTrue(help.contains("--change-state <change-state>"))
+        XCTAssertTrue(help.contains("Deprecated alias of --change-state"))
+    }
+
+    // MARK: - P-QUERY-JSON for dicom-wado: --format dicom-json (PS3.18 2026a F.2)
+
+    func testDICOMJSONFormatIsAcceptedByQueryAndUPS() throws {
+        XCTAssertEqual(try QueryCommand.parse(["http://h/rs", "--format", "dicom-json"]).format, .dicomJSON)
+        XCTAssertEqual(try UPSCommand.parse(["http://h/rs", "--search", "--format", "dicom-json"]).format, .dicomJSON)
+        XCTAssertEqual(OutputFormat.dicomJSON.asQIDO, .dicomJSON)
+        XCTAssertEqual(try QueryCommand.parse(["http://h/rs", "--format", "json"]).format, .json)  // unchanged
+    }
+
+    func testDICOMJSONModelIsTheRawResultSortedWithoutGroupLength() throws {
+        let study = QIDOStudyResult(attributes: [
+            "0020000D": ["vr": "UI", "Value": ["1.2.3"]],
+            "00100010": ["vr": "PN", "Value": [["Alphabetic": "DOE^JANE"]]],
+            "00080000": ["vr": "UL", "Value": [12]],              // Group Length: excluded (F.2.2)
+            "00081110": ["vr": "SQ", "Value": [["00080000": ["vr": "UL", "Value": [4]],
+                                                  "00081150": ["vr": "UI", "Value": ["1.2.840.10008.3.1.2.3.1"]]]]],
+        ])
+        let text = QIDOResultFormatter().formatStudies([study], format: .dicomJSON)
+        let parsed = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [[String: Any]])
+        XCTAssertEqual(parsed.count, 1)                                         // F.2.1 top-level array
+        XCTAssertEqual(Set(parsed[0].keys), ["0020000D", "00100010", "00081110"])
+        let pn = (parsed[0]["00100010"] as? [String: Any])?["Value"] as? [[String: String]]
+        XCTAssertEqual(pn?.first?["Alphabetic"], "DOE^JANE")                    // PN component object
+        let item = ((parsed[0]["00081110"] as? [String: Any])?["Value"] as? [[String: Any]])?.first
+        XCTAssertEqual(item.map { Set($0.keys) }, ["00081150"])
+        // F.2.2: ascending lexicographic order of the tag names
+        let order = ["\"00081110\"", "\"00100010\"", "\"0020000D\""].compactMap { text.range(of: $0)?.lowerBound }
+        XCTAssertEqual(order.count, 3)
+        XCTAssertEqual(order, order.sorted())
+        XCTAssertEqual(DICOMJSONModelFormatter.format([]), "[]")
+    }
+
     func testFilterStateInProgressReachesTheSharedSearchBuilder() throws {
         XCTAssertEqual(WADOOptionRules.searchFilterState("IN PROGRESS"), "IN_PROGRESS")
         XCTAssertEqual(WADOOptionRules.searchFilterState("SCHEDULED"), "SCHEDULED")
@@ -134,7 +208,7 @@ final class WADOOptionRulesTests: XCTestCase {
         XCTAssertTrue(help.contains("HIGH, MEDIUM, LOW (PS3.3 Table C.30.2-1"))
         XCTAssertTrue(help.contains("IN PROGRESS, COMPLETED, CANCELED (PS3.18 11.7.1.4)"))
         XCTAssertTrue(help.contains("M, F, O (PS3.3 Table C.7-1)"))
-        XCTAssertTrue(help.contains("table, json, csv"))
+        XCTAssertTrue(help.contains("table, json, csv, dicom-json"))
     }
 
     // MARK: - Store exit status, --timeout
