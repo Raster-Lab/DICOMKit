@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — help and checks cite PS3.5 2026a 9.1, 9.2.2 and B.2; --root is validated (UIDRootRule) and the default root is UIDGenerator.defaultRoot; lookup prints the PS3.6 2026a Table A-1 names (465 of 465 match, 2 unregistered Fragmentable HEVC entries by decision) and --type filters every Table A-1 UID Type (UIDOptions.swift); regenerate replaces top-level UI values that are not Table A-1 UIDs (compared with PS3.15 Table E.1-1: 53 UI rows, action U except Annotation Group UID D; sequence items are not remapped, deferred)
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -16,6 +17,7 @@ struct DICOMUID: ParsableCommand {
               dicom-uid generate
               dicom-uid generate --count 5 --type study
               dicom-uid generate --root 1.2.826.0.1.3680043.9.1234
+              dicom-uid generate --uuid
               dicom-uid validate 1.2.840.10008.1.2.1
               dicom-uid validate --file study.dcm
               dicom-uid lookup 1.2.840.10008.1.2.1
@@ -36,8 +38,11 @@ extension DICOMUID {
         static let configuration = CommandConfiguration(
             abstract: "Generate new DICOM UIDs",
             discussion: """
-                Creates one or more unique DICOM UIDs. Optionally specify a UID type
-                (study, series, instance) or a custom root.
+                Creates one or more unique DICOM UIDs (PS3.5 9.1). Optionally specify a UID
+                type (study, series, instance) or your organisation's registered root
+                (PS3.5 9.2.2); the default root is DICOMKit's \(UIDGenerator.defaultRoot).
+                --uuid makes UUID derived UIDs, 2.25.<UUID as a decimal integer> (PS3.5 B.2),
+                which need no registered root.
                 
                 Examples:
                   dicom-uid generate
@@ -45,17 +50,21 @@ extension DICOMUID {
                   dicom-uid generate --type study
                   dicom-uid generate --root 1.2.826.0.1.3680043.9.1234
                   dicom-uid generate --count 3 --type series --json
+                  dicom-uid generate --uuid --count 2
                 """
         )
 
-        @Option(name: .shortAndLong, help: "Number of UIDs to generate (default: 1)")
+        @Option(name: .shortAndLong, help: "Number of UIDs to generate, 1 to 1000")
         var count: Int = 1
 
-        @Option(name: .shortAndLong, help: "UID type: study, series, instance, or generic (default)")
+        @Option(name: .shortAndLong, help: "UID type: study, series, instance (alias sop), or generic (default); typed UIDs add arc .1, .2 or .3 under the root")
         var type: String?
 
-        @Option(name: .shortAndLong, help: "Custom UID root prefix")
+        @Option(name: .shortAndLong, help: ArgumentHelp("UID root: your organisation's registered root (PS3.5 9.2.2), digits and single dots (9.1); default \(UIDGenerator.defaultRoot)"))
         var root: String?
+
+        @Flag(name: .long, help: "Generate UUID derived UIDs, 2.25.<UUID as decimal> (PS3.5 B.2); not combined with --root or --type")
+        var uuid: Bool = false
 
         @Flag(name: .long, help: "Output as JSON array")
         var json: Bool = false
@@ -70,14 +79,24 @@ extension DICOMUID {
             if let type = type {
                 let validTypes = ["study", "series", "instance", "sop", "generic"]
                 if !validTypes.contains(type.lowercased()) {
-                    throw ValidationError("Invalid type '\(type)'. Valid types: study, series, instance, generic")
+                    throw ValidationError("Invalid type '\(type)'. Valid types: study, series, instance (alias sop), generic")
                 }
+            }
+            if uuid && (root != nil || type != nil) {
+                throw ValidationError("--uuid makes 2.25.<UUID> UIDs (PS3.5 B.2) and cannot be combined with --root or --type")
+            }
+            if let root {
+                let typed = ["study", "series", "instance", "sop"].contains(type?.lowercased() ?? "")
+                let problems = UIDRootRule.problems(root: root, typed: typed)
+                if !problems.isEmpty { throw ValidationError(problems.joined(separator: "\n")) }
             }
         }
 
         mutating func run() throws {
             let manager = UIDManager()
-            let uids = manager.generateUIDs(count: count, root: root, type: type)
+            let uids = uuid
+                ? (0..<count).map { _ in UUIDDerivedUID.make() }
+                : manager.generateUIDs(count: count, root: root, type: type)
 
             if json {
                 print(try UIDConsole.generatedJSON(uids: uids), terminator: "")
@@ -96,8 +115,11 @@ extension DICOMUID {
         static let configuration = CommandConfiguration(
             abstract: "Validate DICOM UIDs for compliance",
             discussion: """
-                Check UIDs against DICOM PS3.5 Section 9 rules: max 64 characters,
-                digits and periods only, no leading zeros, no consecutive periods, etc.
+                Check UIDs against DICOM PS3.5 9.1: at most 64 characters, numeric
+                components separated by ".", no leading zero in a component other than "0".
+                The engine also rejects a UID with a single component, which 9.1 does not
+                state. UUID derived UIDs (2.25.<decimal>, PS3.5 B.2) are valid UIDs.
+                --file checks the top-level UI elements of the data set.
                 
                 Examples:
                   dicom-uid validate 1.2.840.10008.1.2.1
@@ -113,7 +135,7 @@ extension DICOMUID {
         @Option(name: .long, help: "Validate all UIDs in a DICOM file")
         var file: String?
 
-        @Flag(name: .long, help: "Check UIDs against the DICOM registry")
+        @Flag(name: .long, help: "Also print the PS3.6 Table A-1 name of registered UIDs")
         var checkRegistry: Bool = false
 
         @Flag(name: .long, help: "Output as JSON")
@@ -161,14 +183,17 @@ extension DICOMUID {
         static let configuration = CommandConfiguration(
             abstract: "Look up UIDs in the DICOM registry",
             discussion: """
-                Search the DICOM UID registry for Transfer Syntaxes, SOP Classes,
-                and other well-known UIDs.
+                Search the DICOM UID registry, PS3.6 Table A-1 (Transfer Syntaxes, SOP
+                Classes, Meta SOP Classes, Well-known SOP Instances, LDAP OIDs, Coding
+                Schemes, Application Context Names, Service Classes, Application Hosting
+                Models, Mapping Resources, Synchronization Frames of Reference).
                 
                 Examples:
                   dicom-uid lookup 1.2.840.10008.1.2.1
                   dicom-uid lookup 1.2.840.10008.5.1.4.1.1.2
                   dicom-uid lookup --list-all
                   dicom-uid lookup --list-all --type transfer-syntax
+                  dicom-uid lookup --list-all --type well-known-sop-instance
                   dicom-uid lookup --search "CT"
                 """
         )
@@ -179,7 +204,7 @@ extension DICOMUID {
         @Flag(name: .long, help: "List all known UIDs")
         var listAll: Bool = false
 
-        @Option(name: .long, help: "Filter by type: transfer-syntax, sop-class")
+        @Option(name: .long, help: ArgumentHelp("Filter by PS3.6 Table A-1 UID Type: \(LookupTypeFilter.valueList)"))
         var type: String?
 
         @Option(name: .long, help: "Search UIDs by name keyword")
@@ -216,15 +241,11 @@ extension DICOMUID {
 
                 // Filter by type
                 if let typeFilter = type {
-                    switch typeFilter.lowercased() {
-                    case "transfer-syntax", "transfersyntax":
-                        entries = dictionary.transferSyntaxes
-                    case "sop-class", "sopclass":
-                        entries = dictionary.sopClasses
-                    default:
-                        fprintln(UIDConsole.unknownTypeFilterLine(typeFilter))
+                    guard let filtered = LookupTypeFilter.entries(for: typeFilter) else {
+                        fprintln("Unknown type filter '\(typeFilter)'. Valid types (PS3.6 Table A-1 UID Type): \(LookupTypeFilter.valueList)")
                         throw ExitCode.failure
                     }
+                    entries = filtered
                 }
 
                 // Filter by search term
@@ -265,9 +286,12 @@ extension DICOMUID {
         static let configuration = CommandConfiguration(
             abstract: "Regenerate UIDs in DICOM files",
             discussion: """
-                Replace UIDs in DICOM files with new unique identifiers. Well-known UIDs
-                (Transfer Syntaxes, SOP Classes) are preserved. Use --maintain-relationships
-                to ensure consistent UID mapping across files in a study.
+                Replace UIDs in DICOM files with new unique identifiers. Every top-level
+                UI value that is not a PS3.6 Table A-1 UID (Transfer Syntax, SOP Class, ...)
+                is replaced. UIDs inside sequence items, e.g. Referenced SOP Instance UID
+                (0008,1155), are not remapped, so references between the files are not kept
+                (compare PS3.15 Table E.1-1, action U). Use --maintain-relationships to map
+                the same old UID to the same new UID across files in a study.
                 
                 Examples:
                   dicom-uid regenerate file.dcm
@@ -284,7 +308,7 @@ extension DICOMUID {
         @Option(name: .shortAndLong, help: "Output file or directory path")
         var output: String?
 
-        @Option(name: .shortAndLong, help: "Custom UID root prefix")
+        @Option(name: .shortAndLong, help: ArgumentHelp("UID root for the new UIDs: your organisation's registered root (PS3.5 9.2.2); default \(UIDGenerator.defaultRoot)"))
         var root: String?
 
         @Flag(name: .long, help: "Maintain UID relationships across files (same old UID maps to same new UID)")
@@ -302,6 +326,10 @@ extension DICOMUID {
         mutating func validate() throws {
             if inputs.isEmpty {
                 throw ValidationError("At least one input file is required")
+            }
+            if let root {
+                let problems = UIDRootRule.problems(root: root, typed: false)
+                if !problems.isEmpty { throw ValidationError(problems.joined(separator: "\n")) }
             }
         }
 

@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   indexed file names are not valid File IDs. README: SPACE is not allowed in a File-set ID, File ID
   example without `.dcm`, the 2026a File-set Consistency Flag text. New `dicom-dcmdirTests`.
 
+- **dicom-uid** `generate` / `regenerate` reject a `--root` that is not a PS3.5 9.1 UID (it crashed the
+  generator) or that leaves no room for the unique suffix within 64 characters (the generator cut the
+  suffix off and returned the same UID every time); new `generate --uuid` makes UUID derived UIDs
+  `2.25.<decimal UUID>` (PS3.5 B.2); `lookup --type` filters every PS3.6 Table A-1 UID Type
+  (meta-sop-class, well-known-sop-instance, ldap-oid, coding-scheme, application-context-name,
+  service-class, application-hosting-model, mapping-resource, synchronization-frame-of-reference added
+  to transfer-syntax and sop-class). Help names the default root and PS3.5 9.1 / 9.2.2, and states what
+  `regenerate` replaces (top-level UI values that are not Table A-1 UIDs; sequence items are not
+  remapped). README synced. New `dicom-uidTests`.
+
 ### Fixed — dicom-study, dicom-archive, dicom-export verified against DICOM 2026a (2026-10-01)
 
 - **dicom-study** help names what `organize --pattern descriptive` is built from (Patient's Name,

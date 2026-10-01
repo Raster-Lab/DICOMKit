@@ -6,7 +6,7 @@ DICOM UID generation, validation, and management tool.
 
 - **Generate** new DICOM UIDs with custom roots and types
 - **Validate** UIDs against DICOM PS3.5 Section 9 compliance rules
-- **Look up** well-known UIDs (Transfer Syntaxes, SOP Classes) in the DICOM registry
+- **Look up** UIDs registered in PS3.6 Table A-1 (filter with `--type`: transfer-syntax, sop-class, meta-sop-class, well-known-sop-instance, ldap-oid, coding-scheme, application-context-name, service-class, application-hosting-model, mapping-resource, synchronization-frame-of-reference)
 - **Regenerate** UIDs in DICOM files while maintaining hierarchical relationships
 - **Export** old→new UID mappings to JSON for tracking
 
@@ -21,8 +21,13 @@ dicom-uid generate
 # Generate 5 study UIDs
 dicom-uid generate --count 5 --type study
 
-# Generate with custom root
+# Generate with your organisation's registered root (PS3.5 9.2.2); the default is
+# DICOMKit's root 1.2.826.0.1.3680043.10.511.4. A root that is not a valid UID, or is
+# too long to leave room for the unique suffix within 64 characters, is rejected.
 dicom-uid generate --root 1.2.826.0.1.3680043.9.1234
+
+# UUID derived UIDs, 2.25.<UUID as a decimal integer> (PS3.5 B.2)
+dicom-uid generate --uuid --count 3
 
 # Output as JSON
 dicom-uid generate --count 3 --json
@@ -79,14 +84,22 @@ dicom-uid regenerate study/*.dcm --output new/ --export-map mapping.json
 dicom-uid regenerate file.dcm --dry-run --verbose
 ```
 
-## UID Validation Rules (PS3.5 Section 9)
+## UID Validation Rules (PS3.5 9.1)
 
 - Maximum 64 characters
 - Only digits (0-9) and periods (.)
 - No leading or trailing periods
 - No consecutive periods
 - No leading zeros in components (except "0" itself)
-- At least 2 components
+- At least 2 components (an extra check of the engine; PS3.5 9.1 does not state it)
+
+## Regeneration scope
+
+`regenerate` replaces every top-level UI value that is not a PS3.6 Table A-1 UID. UIDs
+inside sequence items (for example Referenced SOP Instance UID (0008,1155) in Referenced
+Image Sequence) are not remapped, and UI attributes that PS3.15 Table E.1-1 does not
+list for replacement (for example Coding Scheme UID (0008,010C)) are replaced too; see the
+deferred findings in DICOMCLI_STANDARD_IMPLEMENTATION.md.
 
 ## Version
 
