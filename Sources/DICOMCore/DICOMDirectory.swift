@@ -488,6 +488,10 @@ extension DICOMDirectory {
         
         /// Number of image records
         public let imageCount: Int
+
+        /// Number of records that reference a SOP Instance (IMAGE, SR DOCUMENT, PRESENTATION,
+        /// RT DOSE, ENCAP DOC, HANGING PROTOCOL, …; PS3.3 Table F.4-1)
+        public var instanceRecordCount: Int = 0
         
         /// Total number of all records
         public let totalRecordCount: Int
@@ -505,7 +509,7 @@ extension DICOMDirectory {
     public func statistics() -> Statistics {
         let allRecords = self.allRecords()
         
-        return Statistics(
+        var stats = Statistics(
             patientCount: records(ofType: .patient).count,
             studyCount: records(ofType: .study).count,
             seriesCount: records(ofType: .series).count,
@@ -514,6 +518,8 @@ extension DICOMDirectory {
             activeRecordCount: allRecords.filter { $0.isActive }.count,
             inactiveRecordCount: allRecords.filter { !$0.isActive }.count
         )
+        stats.instanceRecordCount = allRecords.filter { $0.referencedSOPInstanceUID != nil }.count
+        return stats
     }
 }
 

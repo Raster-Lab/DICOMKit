@@ -79,7 +79,7 @@ dicom-dcmdir dump DICOMDIR --format text --verbose
 
 - `--check-files`: Verify that every Referenced File ID (0004,1500) names a file in the File-set (PS3.10 8.6)
 
-`validate` also checks the File-set ID (PS3.10 8.1, 8.5) and every Referenced File ID (at most 8 components of 1 to 8 characters A-Z, 0-9, _; PS3.10 8.2, 8.5; each File referenced by at most one record, PS3.3 Table F.3-3) and names the clause each failure breaks. `create` refuses (lists in the summary, and exits 1 when nothing is left) a file whose path relative to the input directory is not a valid File ID (name the files e.g. `DIR00001/IMG00001`, or use `--copy-to`), a SOP Class or Transfer Syntax the chosen profile's PS3.11 table does not list (e.g. STD-GEN-CD: Explicit VR Little Endian only, Table D.3-1; -JPEG profiles add JPEG Lossless SV1 / Baseline / Extended, -J2K profiles JPEG 2000, Tables H.3-1, J.3-1, M.3-1), and a second file with an already indexed SOP Instance UID. Every instance gets its own IMAGE record.
+`validate` also checks the File-set ID (PS3.10 8.1, 8.5) and every Referenced File ID (at most 8 components of 1 to 8 characters A-Z, 0-9, _; PS3.10 8.2, 8.5; each File referenced by at most one record, PS3.3 Table F.3-3) and names the clause each failure breaks. `create` refuses (lists in the summary, and exits 1 when nothing is left) a file whose path relative to the input directory is not a valid File ID (name the files e.g. `DIR00001/IMG00001`, or use `--copy-to`), a SOP Class or Transfer Syntax the chosen profile's PS3.11 table does not list (e.g. STD-GEN-CD: Explicit VR Little Endian only, Table D.3-1; -JPEG profiles add JPEG Lossless SV1 / Baseline / Extended, -J2K profiles JPEG 2000, Tables H.3-1, J.3-1, M.3-1), a second file with an already indexed SOP Instance UID, an instance that breaks the profile's image attribute values (e.g. STD-XA1K Rows / Columns up to 1024, STD-CTMR High Bit = Bits Stored - 1, STD-US Photometric Interpretation / Transfer Syntax pairs; PS3.11 Tables A.3-3, B.3-3, B.3-4, C.3-2, E.3-3 to E.3-6, K.3-3, K.3-4, L.4-1, L.4-2), an MPEG instance without Number of Frames, a SOP Class PS3.3 gives no Directory Record Type (Procedure Protocol, Protocol Approval) and an instance without a Type 1 key of its record (e.g. an SR without Completion Flag). Every instance gets its own record, of the type PS3.3 F.5 gives its SOP Class (IMAGE, SR DOCUMENT, KEY OBJECT DOC, PRESENTATION, WAVEFORM, ENCAP DOC, RT DOSE, …; HANGING PROTOCOL, PALETTE, IMPLANT and INVENTORY at the root) with that record's Type 1 / 2 keys (Tables F.5-1 to F.5-49). A STUDY without Study ID gets its ordinal, a SERIES without Series Number and a record without Instance Number theirs; a missing Study Date / Time comes from the Series, Acquisition or Content Date / Time, else 19000101 / 000000 (PS3.11 D.3.3.1: the File-set Creator supplies them).
 - `--detailed`: Show detailed validation output including record statistics
 
 ### Dump Command
@@ -163,7 +163,7 @@ File-set Consistency Flag (0004,1212) is written as 0000H. PS3.3 2026a Table F.3
 ## Limitations
 
 - **Extract command** is not yet implemented
-- Only supports standard directory record types (PATIENT, STUDY, SERIES, IMAGE)
+- PRIVATE directory records are neither written nor read (PS3.3 F.6.1 lets a reader skip them)
 - Icon images are not currently supported
 
 ## See Also

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table F.3-3, Table F.4-1 and F.6.1: unknown and PRIVATE record types are skipped, not fatal (D14); the profile is an assumption, no attribute carries it (D15)
+// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a Table F.3-3, Table F.4-1 and F.6.1: unknown and PRIVATE record types are skipped, not fatal (D14); every Series-level record type of Table F.4-1 is kept under its SERIES and HANGING PROTOCOL / PALETTE / IMPLANT* / INVENTORY at the root (D232); the profile is an assumption, no attribute carries it (D15)
 import Foundation
 import DICOMCore
 
@@ -99,8 +99,11 @@ public struct DICOMDIRReader {
         // For simplicity in this initial implementation, we'll build a flat structure
         // and assume proper hierarchy based on record types
         
-        // Build hierarchy: PATIENT -> STUDY -> SERIES -> IMAGE
+        // Build hierarchy: PATIENT -> STUDY -> SERIES -> instance records, plus the other
+        // root-level records (PS3.3 2026a Table F.4-1)
         var patients: [DirectoryRecord] = []
+        var otherRoots: [DirectoryRecord] = []
+        let seriesLevelTypes = (DirectoryRecordType.series.allowedChildTypes ?? []).subtracting([.private])
         var currentPatient: DirectoryRecord?
         var currentStudy: DirectoryRecord?
         var currentSeries: DirectoryRecord?
@@ -148,15 +151,20 @@ public struct DICOMDIRReader {
                 }
                 currentSeries = record
                 
-            case .image, .presentation, .srDocument, .waveform, .rtDose, .rtStructureSet, .rtPlan:
-                // Add to current series
-                    if var series = currentSeries {
+            case let type where seriesLevelTypes.contains(type):
+                // Every Table F.4-1 record type of the Series Directory Entity (IMAGE, RT DOSE,
+                // KEY OBJECT DOC, ENCAP DOC, RT TREAT RECORD, SPECTROSCOPY, RAW DATA, …)
+                if var series = currentSeries {
                     series.addChild(record)
                     currentSeries = series
                 }
-                
+
+            case let type where DirectoryRecordType.rootLevelTypes.contains(type) && type != .private:
+                // HANGING PROTOCOL, PALETTE, IMPLANT, IMPLANT ASSY, IMPLANT GROUP, INVENTORY
+                otherRoots.append(record)
+
             default:
-                // Handle other record types
+                // PRIVATE and retired record types are skipped (PS3.3 F.6.1)
                 break
             }
         }
@@ -172,7 +180,7 @@ public struct DICOMDIRReader {
             patients.append(patient)
         }
         
-        return patients
+        return patients + otherRoots
     }
     
     /// Parse a single directory record from a SequenceItem

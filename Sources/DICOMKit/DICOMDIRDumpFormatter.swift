@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — --verbose record keys are labelled "(gggg,eeee) <PS3.6 2026a Table 6-1 / 8-1 Attribute Name>" from DICOMDictionary (D128); the File-set Consistency Flag (0004,1212) is printed under its PS3.6 name with the PS3.3 2026a Table F.3-3 Enumerated Value text (0000H "no known inconsistencies"; FFFFH "shall never be present")
+// NEMA-verified: 2026a, checked 2026-10-01 — non-IMAGE instance records (Table F.4-1) named with their Instance Number and File ID and counted as "Other instance records" (D230); --verbose record keys are labelled "(gggg,eeee) <PS3.6 2026a Table 6-1 / 8-1 Attribute Name>" from DICOMDictionary (D128); the File-set Consistency Flag (0004,1212) is printed under its PS3.6 name with the PS3.3 2026a Table F.3-3 Enumerated Value text (0000H "no known inconsistencies"; FFFFH "shall never be present")
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -116,7 +116,8 @@ public enum DICOMDIRDumpFormatter {
             if let seriesDesc = record.attribute(for: .seriesDescription)?.stringValue {
                 name += " - \(seriesDesc)"
             }
-        case .image:
+        case let type where type == .image || record.referencedSOPInstanceUID != nil:
+            // IMAGE and the other instance records (SR DOCUMENT, PRESENTATION, …; Table F.4-1)
             if let instanceNum = record.attribute(for: .instanceNumber)?.stringValue {
                 name += " #\(instanceNum)"
             }
@@ -164,6 +165,9 @@ public enum DICOMDIRDumpFormatter {
         out += "  Studies: \(stats.studyCount)\n"
         out += "  Series: \(stats.seriesCount)\n"
         out += "  Images: \(stats.imageCount)\n"
+        if stats.instanceRecordCount > stats.imageCount {
+            out += "  Other instance records: \(stats.instanceRecordCount - stats.imageCount)\n"
+        }
         out += "  Total records: \(stats.totalRecordCount)\n\n"
         if verbose {
             out += "All Records:\n"

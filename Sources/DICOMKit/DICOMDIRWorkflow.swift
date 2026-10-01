@@ -294,6 +294,9 @@ public enum DICOMDIRWorkflow {
         s += "  Studies: \(stats.studyCount)\n"
         s += "  Series: \(stats.seriesCount)\n"
         s += "  Images: \(stats.imageCount)\n"
+        if stats.instanceRecordCount > stats.imageCount {
+            s += "  Other instance records: \(stats.instanceRecordCount - stats.imageCount)\n"
+        }
         s += "\n"
         s += "Output: \(outputPath)\n"
         return s
@@ -432,6 +435,9 @@ public enum DICOMDIRWorkflow {
         s += "  Studies: \(stats.studyCount)\n"
         s += "  Series: \(stats.seriesCount)\n"
         s += "  Images: \(stats.imageCount)\n"
+        if stats.instanceRecordCount > stats.imageCount {
+            s += "  Other instance records: \(stats.instanceRecordCount - stats.imageCount)\n"
+        }
         s += "\n"
         s += "Output: \(outputPath)\n"
         return s
@@ -457,6 +463,9 @@ public enum DICOMDIRWorkflow {
         s += "  Studies: \(stats.studyCount)\n"
         s += "  Series: \(stats.seriesCount)\n"
         s += "  Images: \(stats.imageCount)\n"
+        if stats.instanceRecordCount > stats.imageCount {
+            s += "  Other instance records: \(stats.instanceRecordCount - stats.imageCount)\n"
+        }
         s += "  Total records: \(stats.totalRecordCount)\n"
         s += "  Active records: \(stats.activeRecordCount)\n"
         s += "  Inactive records: \(stats.inactiveRecordCount)\n"

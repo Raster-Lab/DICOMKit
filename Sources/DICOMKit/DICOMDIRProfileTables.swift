@@ -5,6 +5,9 @@
 // and DICOM PS3.4 2026a - Service Class Specifications. Do not hand-edit: fix the generator and regenerate.
 //
 // NEMA-verified: 2026a, checked 2026-10-01 — every non-Basic-Directory row of PS3.11 2026a Tables A.3-1 (1), B.3-1 (5), C.3-1 (6), D.3-1 (1), E.3-1 (10), G.3-1 (1), H.3-1 (6), I.3-1 (1), J.3-1 (6), K.3-1 (4), L.3-1 (1), L.3-2 (2), M.3-1 (10), N.3-1 (3) (57 rows) and the 9 SOP Classes of PS3.4 2026a Table GG.3-1, generated from the DocBook; `generate_dicomdir_profile_rules.py --check` re-verifies it.
+// Image attribute rows of Tables A.3-3, B.3-3, B.3-4, E.3-3, E.3-4, E.3-5, E.3-6, K.3-3, L.4-1, K.3-4, L.4-2 (47 rows) and the 5 Photometric Interpretation rows of Table C.3-2 copied verbatim.
+
+import DICOMCore
 
 extension DICOMDIRProfileRules {
     /// One row of a PS3.11 "SOP Classes and Transfer Syntaxes" table (the Basic Directory
@@ -111,6 +114,92 @@ extension DICOMDIRProfileRules {
             TableRow(iod: "Multi-frame Composite IODs for which a Media Storage SOP Class is defined in PS3.4", sopClassUID: nil, multiFrameOnly: true, transferSyntaxUID: "1.2.840.10008.1.2.4.105", fsc: "Defined in Conformance Statement", fsr: "Mandatory for all SOP Classes defined in Conformance Statement"),
             TableRow(iod: "Multi-frame Composite IODs for which a Media Storage SOP Class is defined in PS3.4", sopClassUID: nil, multiFrameOnly: true, transferSyntaxUID: "1.2.840.10008.1.2.4.106", fsc: "Defined in Conformance Statement", fsr: "Mandatory for all SOP Classes defined in Conformance Statement"),
         ],
+    ]
+
+    /// PS3.11 2026a "Required Image Attribute Values" tables: Attribute, Tag, Value (verbatim).
+    static let imageAttributeValueTables: [String: [(name: String, tag: Tag, value: String)]] = [
+        "A.3-3": [
+            ("Modality", Tag(group: 0x0008, element: 0x0060), "XA"),
+            ("Rows", Tag(group: 0x0028, element: 0x0010), "512 (see below)"),
+            ("Columns", Tag(group: 0x0028, element: 0x0011), "512 (see below)"),
+            ("Bits Allocated", Tag(group: 0x0028, element: 0x0100), "8"),
+            ("Bits Stored", Tag(group: 0x0028, element: 0x0101), "8"),
+        ],
+        "B.3-3": [
+            ("Modality", Tag(group: 0x0008, element: 0x0060), "XA"),
+            ("Rows", Tag(group: 0x0028, element: 0x0010), "up to 1024 (see below)"),
+            ("Columns", Tag(group: 0x0028, element: 0x0011), "up to 1024 (see below)"),
+            ("Bits Stored", Tag(group: 0x0028, element: 0x0101), "8, 10, and 12 bits only"),
+        ],
+        "B.3-4": [
+            ("Rows", Tag(group: 0x0028, element: 0x0010), "up to 1024 (see below)"),
+            ("Columns", Tag(group: 0x0028, element: 0x0011), "up to 1024 (see below)"),
+            ("Samples per Pixel", Tag(group: 0x0028, element: 0x0002), "1"),
+            ("Photometric Interpretation", Tag(group: 0x0028, element: 0x0004), "MONOCHROME2"),
+            ("Bits Allocated", Tag(group: 0x0028, element: 0x0100), "8 bits only"),
+            ("Bits Stored", Tag(group: 0x0028, element: 0x0101), "8 bits only"),
+            ("High Bit", Tag(group: 0x0028, element: 0x0102), "7"),
+            ("Pixel Representation", Tag(group: 0x0028, element: 0x0103), "0000H (unsigned)"),
+        ],
+        "E.3-3": [
+            ("Modality", Tag(group: 0x0008, element: 0x0060), "CT"),
+            ("Photometric Interpretation", Tag(group: 0x0028, element: 0x0004), "MONOCHROME2"),
+        ],
+        "E.3-4": [
+            ("Modality", Tag(group: 0x0008, element: 0x0060), "MR"),
+            ("Photometric Interpretation", Tag(group: 0x0028, element: 0x0004), "MONOCHROME2"),
+            ("Bits Stored", Tag(group: 0x0028, element: 0x0101), "8, 12 to 16"),
+            ("High Bit", Tag(group: 0x0028, element: 0x0102), "Bits Stored (0028,0101) - 1"),
+        ],
+        "E.3-5": [
+            ("Samples Per Pixel", Tag(group: 0x0028, element: 0x0002), "1"),
+            ("Photometric Interpretation", Tag(group: 0x0028, element: 0x0004), "MONOCHROME2"),
+            ("Bits Allocated", Tag(group: 0x0028, element: 0x0100), "8 or 16"),
+            ("Bits Stored", Tag(group: 0x0028, element: 0x0101), "Bits Allocated (0028,0100)"),
+            ("High Bit", Tag(group: 0x0028, element: 0x0102), "Bits Stored (0028,0101) - 1"),
+        ],
+        "E.3-6": [
+            ("Samples Per Pixel", Tag(group: 0x0028, element: 0x0002), "1"),
+            ("Photometric Interpretation", Tag(group: 0x0028, element: 0x0004), "PALETTE COLOR"),
+            ("Bits Allocated", Tag(group: 0x0028, element: 0x0100), "8"),
+            ("Bits Stored", Tag(group: 0x0028, element: 0x0101), "8"),
+            ("High Bit", Tag(group: 0x0028, element: 0x0102), "7"),
+        ],
+        "K.3-3": [
+            ("Bits Allocated", Tag(group: 0x0028, element: 0x0100), "If Bits Stored (0028,0101) is 8, then 8; otherwise 16."),
+            ("Bits Stored", Tag(group: 0x0028, element: 0x0101), "8, 10, 12 or 16"),
+        ],
+        "L.4-1": [
+            ("Bits Allocated", Tag(group: 0x0028, element: 0x0100), "If Bits Stored (0028,0101) is 8, then 8; otherwise 16."),
+            ("Bits Stored", Tag(group: 0x0028, element: 0x0101), "8, 10, 12 or 16"),
+        ],
+    ]
+
+    /// PS3.11 2026a "Required Image Attribute Types" tables: Attribute, Tag, Type.
+    static let imageAttributeTypeTables: [String: [(name: String, tag: Tag, type: String)]] = [
+        "K.3-4": [
+            ("Institution Name", Tag(group: 0x0008, element: 0x0080), "2"),
+            ("Manufacturer's Model Name", Tag(group: 0x0008, element: 0x1090), "2"),
+            ("Detector ID", Tag(group: 0x0018, element: 0x700A), "2"),
+            ("Detector Manufacturer Name", Tag(group: 0x0018, element: 0x702A), "2"),
+            ("Detector Manufacturer's Model Name", Tag(group: 0x0018, element: 0x702B), "2"),
+        ],
+        "L.4-2": [
+            ("Institution Name", Tag(group: 0x0008, element: 0x0080), "2"),
+            ("Manufacturer's Model Name", Tag(group: 0x0008, element: 0x1090), "2"),
+            ("Detector ID", Tag(group: 0x0018, element: 0x700A), "2"),
+            ("Detector Manufacturer Name", Tag(group: 0x0018, element: 0x702A), "2"),
+            ("Detector Manufacturer's Model Name", Tag(group: 0x0018, element: 0x702B), "2"),
+        ],
+    ]
+
+    /// PS3.11 2026a Table C.3-2: Photometric Interpretation -> Transfer Syntax UIDs.
+    static let ultrasoundPhotometricTransferSyntaxes: [String: [String]] = [
+        "MONOCHROME2": ["1.2.840.10008.1.2.1", "1.2.840.10008.1.2.5"],
+        "RGB": ["1.2.840.10008.1.2.1", "1.2.840.10008.1.2.5"],
+        "PALETTE COLOR": ["1.2.840.10008.1.2.1", "1.2.840.10008.1.2.5"],
+        "YBR_FULL": ["1.2.840.10008.1.2.5"],
+        "YBR_FULL_422": ["1.2.840.10008.1.2.1", "1.2.840.10008.1.2.4.50"],
     ]
 
     /// PS3.4 2026a Table GG.3-1 (Non-Patient Object Storage): Media Storage SOP Classes per PS3.4 I.4.

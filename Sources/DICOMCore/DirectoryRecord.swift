@@ -170,7 +170,7 @@ public enum DirectoryRecordType: String, Sendable, Codable {
     case mrdr = "MRDR"
 
     /// Whether this value was retired from (0004,1430) (PS3.3 Table F.3-3).
-    var isRetired: Bool {
+    public var isRetired: Bool {
         switch self {
         case .overlay, .modalityLUT, .voiLUT, .curve, .topic, .visit, .results, .interpretation,
              .studyComponent, .storedPrint, .hl7StructuredDocument,
@@ -182,14 +182,14 @@ public enum DirectoryRecordType: String, Sendable, Codable {
     }
 
     /// Record types allowed directly under the root (PS3.3 Table F.4-1, Root Directory Entity).
-    static let rootLevelTypes: Set<DirectoryRecordType> = [
+    public static let rootLevelTypes: Set<DirectoryRecordType> = [
         .patient, .hangingProtocol, .palette, .implant, .implantAssy, .implantGroup, .inventory, .private,
     ]
 
     /// Record types allowed at the next lower level (PS3.3 Table F.4-1). PRIVATE may appear
     /// under any record type, and PRIVATE may contain any record type. Returns nil when the
     /// Standard no longer defines the hierarchy (retired values, and `ROOT`).
-    var allowedChildTypes: Set<DirectoryRecordType>? {
+    public var allowedChildTypes: Set<DirectoryRecordType>? {
         switch self {
         case .patient:
             return [.study, .private]

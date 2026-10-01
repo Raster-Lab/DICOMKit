@@ -14,6 +14,10 @@ Conformance Statement"), and the FSC / FSR requirement text verbatim. Which prof
 which table, and how the "-JPEG / -J2K profiles", "Disallowed for CD" and MPEG qualifiers
 apply, is code in DICOMDIRProfileRules.swift. `nonPatientStorageUIDs` is PS3.4 Table GG.3-1
 (PS3.4 I.4: these are Media Storage SOP Classes too).
+The per-profile image attribute tables (A.3-3, B.3-3, B.3-4, E.3-3 to E.3-6, K.3-3, L.4-1: Value
+column verbatim; K.3-4, L.4-2: specialized Type) and the Photometric Interpretation / Transfer Syntax
+pairs of Table C.3-2 are copied too; DICOMDIRProfileRules parses the Value text and applies each table
+to the instances its section names.
 With --check the existing Swift file is compared and the script exits 1 on a difference.
 """
 import argparse
@@ -29,6 +33,9 @@ OUT = "Sources/DICOMKit/DICOMDIRProfileTables.swift"
 TABLES = ["A.3-1", "B.3-1", "C.3-1", "D.3-1", "E.3-1", "G.3-1", "H.3-1", "I.3-1",
           "J.3-1", "K.3-1", "L.3-1", "L.3-2", "M.3-1", "N.3-1"]
 BASIC_DIRECTORY = "1.2.840.10008.1.3.10"
+VALUE_TABLES = ["A.3-3", "B.3-3", "B.3-4", "E.3-3", "E.3-4", "E.3-5", "E.3-6", "K.3-3", "L.4-1"]
+TYPE_TABLES = ["K.3-4", "L.4-2"]
+TAG = re.compile(r"^\(([0-9A-Fa-f]{4}),([0-9A-Fa-f]{4})\)$")
 UID = re.compile(r"^\d+(\.\d+)+$")
 
 
@@ -79,7 +86,14 @@ def render(p11, p4, date):
         + ", ".join(f"{k} ({v})" for k, v in counts.items())
         + f" ({total} rows) and the {len(gg)} SOP Classes of PS3.4 2026a Table GG.3-1, generated from the DocBook; "
         + "`generate_dicomdir_profile_rules.py --check` re-verifies it.")
+    nvalues = sum(len(list(p11.rows(p11.table(t)))) for t in VALUE_TABLES + TYPE_TABLES)
+    c32 = list(p11.rows(p11.table("C.3-2")))
+    lines.append(
+        f"// Image attribute rows of Tables {', '.join(VALUE_TABLES + TYPE_TABLES)} ({nvalues} rows) and the "
+        f"{len(c32)} Photometric Interpretation rows of Table C.3-2 copied verbatim.")
     lines += [
+        "",
+        "import DICOMCore",
         "",
         "extension DICOMDIRProfileRules {",
         "    /// One row of a PS3.11 \"SOP Classes and Transfer Syntaxes\" table (the Basic Directory",
@@ -110,6 +124,44 @@ def render(p11, p4, date):
                 f"multiFrameOnly: {'true' if mf else 'false'}, transferSyntaxUID: {swift_str(ts)}, "
                 f"fsc: {swift_str(fsc)}, fsr: {swift_str(fsr)}),")
         lines.append("        ],")
+    lines += [
+        "    ]",
+        "",
+        "    /// PS3.11 2026a \"Required Image Attribute Values\" tables: Attribute, Tag, Value (verbatim).",
+        "    static let imageAttributeValueTables: [String: [(name: String, tag: Tag, value: String)]] = [",
+    ]
+    def tag_of(cell, label):
+        m = TAG.match(cell.strip())
+        if not m:
+            raise SystemExit(f"{label}: unexpected Tag cell {cell!r}")
+        return f"Tag(group: 0x{m.group(1).upper()}, element: 0x{m.group(2).upper()})"
+    for label in VALUE_TABLES:
+        lines.append(f"        {swift_str(label)}: [")
+        for r in p11.rows(p11.table(label)):
+            lines.append(f"            ({swift_str(r[0])}, {tag_of(r[1], label)}, {swift_str(r[2])}),")
+        lines.append("        ],")
+    lines += [
+        "    ]",
+        "",
+        "    /// PS3.11 2026a \"Required Image Attribute Types\" tables: Attribute, Tag, Type.",
+        "    static let imageAttributeTypeTables: [String: [(name: String, tag: Tag, type: String)]] = [",
+    ]
+    for label in TYPE_TABLES:
+        lines.append(f"        {swift_str(label)}: [")
+        for r in p11.rows(p11.table(label)):
+            lines.append(f"            ({swift_str(r[0])}, {tag_of(r[1], label)}, {swift_str(r[2])}),")
+        lines.append("        ],")
+    lines += [
+        "    ]",
+        "",
+        "    /// PS3.11 2026a Table C.3-2: Photometric Interpretation -> Transfer Syntax UIDs.",
+        "    static let ultrasoundPhotometricTransferSyntaxes: [String: [String]] = [",
+    ]
+    for r in c32:
+        uids = [u.strip() for u in r[2].split("|")]
+        if not all(UID.match(u) for u in uids):
+            raise SystemExit(f"C.3-2: unexpected Transfer Syntax UID cell {r[2]!r}")
+        lines.append(f"        {swift_str(r[0])}: [{', '.join(swift_str(u) for u in uids)}],")
     lines += [
         "    ]",
         "",

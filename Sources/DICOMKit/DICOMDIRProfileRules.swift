@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — File-set Creator conformance rules: the SOP Class / Transfer Syntax rows of PS3.11 2026a Tables A.3-1, B.3-1, C.3-1, D.3-1, E.3-1, G.3-1, H.3-1, I.3-1, J.3-1, K.3-1, L.3-1, L.3-2, M.3-1, N.3-1 (57 rows, generated: DICOMDIRProfileTables.swift) mapped to the 64 identifiers of Tables A.1-1 to N.1-1; "Composite IODs for which a Media Storage SOP Class is defined in PS3.4" = PS3.4 2026a Table B.5-1 (170) + Table GG.3-1 (9) per PS3.4 I.4; File ID rules of PS3.10 2026a 8.2 (1-8 components of 1-8 characters) and 8.5 (A-Z, 0-9, _)
+// NEMA-verified: 2026a, checked 2026-10-01 — File-set Creator conformance rules: the SOP Class / Transfer Syntax rows of PS3.11 2026a Tables A.3-1, B.3-1, C.3-1, D.3-1, E.3-1, G.3-1, H.3-1, I.3-1, J.3-1, K.3-1, L.3-1, L.3-2, M.3-1, N.3-1 (57 rows, generated: DICOMDIRProfileTables.swift) mapped to the 64 identifiers of Tables A.1-1 to N.1-1; "Composite IODs for which a Media Storage SOP Class is defined in PS3.4" = PS3.4 2026a Table B.5-1 (170) + Table GG.3-1 (9) per PS3.4 I.4; File ID rules of PS3.10 2026a 8.2 (1-8 components of 1-8 characters) and 8.5 (A-Z, 0-9, _); "Multi-frame Composite IODs" rows admit only instances with Number of Frames (D233)
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -12,9 +12,10 @@ import DICOMDictionary
 /// File-set that breaks it is not written. Profiles PS3.11 does not define (private
 /// identifiers, ``DICOMDIRProfile/none``) are not checked.
 ///
-/// Not checked here: the per-profile image attribute values (e.g. PS3.11 Tables A.3-3,
-/// B.3-3, C.3-2, E.3-3 to E.3-6, K.3-3) and, for the MPEG rows, that the SOP Class is a
-/// multi-frame one (an MPEG Transfer Syntax only encodes multi-frame Pixel Data anyway).
+/// The per-profile image attribute values (PS3.11 Tables A.3-3, B.3-3, B.3-4, C.3-2, E.3-3 to
+/// E.3-6, K.3-3, K.3-4, L.4-1, L.4-2) are checked by ``imageAttributeProblems(in:sopClassUID:transferSyntaxUID:profile:)``;
+/// a row for "Multi-frame Composite IODs" only admits an instance with Number of Frames
+/// (``refusal(sopClassUID:transferSyntaxUID:profile:isMultiFrame:)``).
 public enum DICOMDIRProfileRules {
 
     /// Why an instance or File ID cannot go into the File-set.
@@ -28,6 +29,12 @@ public enum DICOMDIRProfileRules {
         case nonConformantFileID(fileID: [String], problems: [String])
         /// Another Directory Record already references this SOP Instance.
         case duplicateSOPInstance(sopInstanceUID: String, fileID: [String])
+        /// PS3.3 2026a F.5 defines no Directory Record Type for this SOP Class.
+        case noDirectoryRecordType(sopClassUID: String)
+        /// A Type 1 key of the record has no value in the instance and cannot be assigned.
+        case missingRecordKey(recordType: String, key: String, tag: String, table: String)
+        /// The instance breaks the profile's image attribute values (PS3.11 2026a).
+        case imageAttributeValues(sopClassUID: String, profile: String, problems: [String])
 
         public var description: String {
             switch self {
@@ -43,6 +50,12 @@ public enum DICOMDIRProfileRules {
                 return "File ID \(fileID.joined(separator: "\\")) is not a conformant File ID: \(problems.joined(separator: "; ")) [PS3.10 2026a 8.2, 8.5; PS3.3 Table F.3-3 Referenced File ID (0004,1500)]"
             case let .duplicateSOPInstance(uid, fileID):
                 return "SOP Instance \(uid) is already referenced by File ID \(fileID.joined(separator: "\\")); a SOP Instance is indexed once [PS3.3 2026a Table F.3-3 Referenced SOP Instance UID in File (0004,1511)]"
+            case let .noDirectoryRecordType(sop):
+                return "SOP Class \(DICOMDIRProfileRules.named(sop)) has no Directory Record Type; refused [PS3.3 2026a F.4 Table F.4-1, F.5]"
+            case let .missingRecordKey(recordType, key, tag, table):
+                return "\(recordType) record: Type 1 key \(key) \(tag) has no value in the instance and cannot be supplied [PS3.3 2026a Table \(table); PS3.11 2026a D.3.3.1]"
+            case let .imageAttributeValues(sop, profile, problems):
+                return "SOP Class \(DICOMDIRProfileRules.named(sop)) instance breaks \(profile): \(problems.joined(separator: "; ")) [PS3.11 2026a]"
             }
         }
     }
@@ -108,10 +121,18 @@ public enum DICOMDIRProfileRules {
     /// nil: no restriction (PS3.11 leaves it to the Conformance Statement, or the profile is
     /// not a PS3.11 one). An empty set: the profile does not admit this SOP Class at all.
     public static func allowedTransferSyntaxes(sopClassUID: String, profile: DICOMDIRProfile) -> Set<String>? {
+        allowedTransferSyntaxes(sopClassUID: sopClassUID, profile: profile, isMultiFrame: nil)
+    }
+
+    /// As ``allowedTransferSyntaxes(sopClassUID:profile:)``; with `isMultiFrame == false` the
+    /// rows for "Multi-frame Composite IODs" (the MPEG Transfer Syntaxes) are left out.
+    public static func allowedTransferSyntaxes(sopClassUID: String, profile: DICOMDIRProfile,
+                                               isMultiFrame: Bool?) -> Set<String>? {
         guard let label = tableLabel(for: profile), let rows = tables[label] else { return nil }
         var allowed = Set<String>()
         for row in rows where applies(row, table: label, to: profile.rawValue)
-            && admits(row, sopClassUID: sopClassUID, profileID: profile.rawValue) {
+            && admits(row, sopClassUID: sopClassUID, profileID: profile.rawValue)
+            && !(row.multiFrameOnly && isMultiFrame == false) {
             guard let ts = row.transferSyntaxUID else { return nil }
             allowed.insert(ts)
         }
@@ -122,8 +143,16 @@ public enum DICOMDIRProfileRules {
     /// or nil when the profile admits it.
     public static func refusal(sopClassUID: String, transferSyntaxUID: String,
                                profile: DICOMDIRProfile) -> Refusal? {
+        refusal(sopClassUID: sopClassUID, transferSyntaxUID: transferSyntaxUID, profile: profile, isMultiFrame: nil)
+    }
+
+    /// As ``refusal(sopClassUID:transferSyntaxUID:profile:)``; `isMultiFrame` (the instance has
+    /// Number of Frames (0028,0008)) decides the "Multi-frame Composite IODs" rows; nil: unknown.
+    public static func refusal(sopClassUID: String, transferSyntaxUID: String,
+                               profile: DICOMDIRProfile, isMultiFrame: Bool?) -> Refusal? {
         guard let label = tableLabel(for: profile),
-              let allowed = allowedTransferSyntaxes(sopClassUID: sopClassUID, profile: profile) else { return nil }
+              let allowed = allowedTransferSyntaxes(sopClassUID: sopClassUID, profile: profile,
+                                                    isMultiFrame: isMultiFrame) else { return nil }
         if allowed.isEmpty {
             return .sopClassNotInProfile(sopClassUID: sopClassUID, profile: profile.rawValue, table: label)
         }

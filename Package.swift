@@ -787,6 +787,8 @@ let package = Package(
                 // PS3.11 profile tables, PS3.10 8.2/8.5 File IDs, one record per instance,
                 // PS3.6 names in dump (D70, D128, D129, D131, 2026-10-01).
                 "DICOMDIRConformanceTests.swift",
+                // PS3.3 2026a F.5 record types and keys, F.3-3, F.4-1; PS3.11 image attribute values (D229-D233, 2026-10-01).
+                "DICOMDIRRecordKeysTests.swift",
                 // PS3.15 Table E.1-1 UID set incl. sequence items, PS3.5 9.1, PS3.6 Table A-1
                 // wording (D133, D135, D136, D138, 2026-10-01).
                 "UIDManagerStandardTests.swift",
