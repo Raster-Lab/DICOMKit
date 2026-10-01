@@ -323,7 +323,7 @@ final class ExportRoundTripTests: XCTestCase {
     // Oracle: buildEXIFMetadata maps each DICOM field into its documented EXIF/TIFF dictionary key
     // (deterministic, lossless mapping), and export-with-metadata still produces a readable JPEG.
     func testEmbedMetadataMappingAndExport() throws {
-        // makeGrayscale8 sets PatientName "RoundTrip^Patient" (TIFF/ImageDescription) and Modality "CT" (EXIF/Software).
+        // makeGrayscale8 sets PatientName "RoundTrip^Patient" (TIFF/ImageDescription) and Modality "CT" (EXIF/UserComment, D126).
         let file = makeGrayscale8(rows: 16, cols: 16)
 
         // Semantic oracle on the built dictionary: fields land in the mapped dictionary/key verbatim.
@@ -332,7 +332,7 @@ final class ExportRoundTripTests: XCTestCase {
         let tiffBuilt = try XCTUnwrap(built[kCGImagePropertyTIFFDictionary as String] as? [String: Any])
         XCTAssertEqual(tiffBuilt["ImageDescription"] as? String, "RoundTrip^Patient")
         let exifBuilt = try XCTUnwrap(built[kCGImagePropertyExifDictionary as String] as? [String: Any])
-        XCTAssertEqual(exifBuilt["Software"] as? String, "CT")
+        XCTAssertEqual(exifBuilt["UserComment"] as? String, "Modality=CT")
 
         // Export with that metadata must still write a valid, readable JPEG of the right size.
         let pd = try XCTUnwrap(file.pixelData())

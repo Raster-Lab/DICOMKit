@@ -103,15 +103,16 @@ dicom-export bulk input_dir/ --output output_dir/ --organize-by series --recursi
 
 ## Supported EXIF Field Mappings
 
-`--exif-fields` takes these PS3.6 keywords (case-insensitive); other keywords are ignored.
+`--exif-fields` takes these PS3.6 keywords (case-insensitive); any other keyword is reported with a warning and not embedded.
 
 | DICOM Field | EXIF/TIFF Tag |
 |---|---|
 | PatientName | TIFF:ImageDescription |
-| StudyDate | EXIF:DateTimeOriginal |
-| Modality | EXIF:Software |
+| PatientID | EXIF:UserComment (`PatientID=<value>`) |
+| StudyDate | EXIF:DateTimeOriginal, `YYYY:MM:DD HH:MM:SS` from Study Date (DA, PS3.5 Table 6.2-1) and Study Time (TM); blank time when Study Time is absent; not written when Study Date is not a DA value |
+| Modality | EXIF:UserComment (`Modality=<value>`) |
 | StudyDescription | TIFF:DocumentName |
-| SeriesDescription | EXIF:UserComment |
+| SeriesDescription | EXIF:UserComment (`SeriesDescription=<value>`) |
 | InstitutionName | TIFF:Artist |
 | Manufacturer | TIFF:Make |
 | ManufacturerModelName | TIFF:Model |

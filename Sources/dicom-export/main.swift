@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — option help names the PS3.6 2026a attributes it reads (Window Center (0028,1050), Window Width (0028,1051), VOI LUT Function (0028,1056), VOI LUT Sequence (0028,3010), Patient's Name (0010,0010), Study / Series Instance UID, the 9 --exif-fields keywords, all match Table 6-1); frames are selected by Frame number from 1 (--frame-number, --start-frame-number, --end-frame-number; PS3.3 Table 10-3 "The first Frame shall be denoted as Frame number 1"), the 0-based --frame / --start-frame / --end-frame are deprecated (P-EXPORT-1); bulk patient folders are keyed on Patient ID (0010,0020) + Issuer of Patient ID (0010,0021) (PS3.3 Table C.7-1 / 10-18, P-EXPORT-2); --apply-window on contact-sheet / bulk is deprecated (P-EXPORT-3); PNG/JPEG/TIFF/GIF outputs are non-DICOM plumbing; every subcommand renders through ExportFrames (PS3.4 N.2 chain)
+// NEMA-verified: 2026a, checked 2026-10-01 — option help names the PS3.6 2026a attributes it reads (Window Center (0028,1050), Window Width (0028,1051), VOI LUT Function (0028,1056), VOI LUT Sequence (0028,3010), Patient's Name (0010,0010), Study / Series Instance UID, the 10 --exif-fields keywords, all match Table 6-1; StudyDate DA → Exif DateTimeOriginal per PS3.5 Table 6.2-1 DA/TM, D126); frames are selected by Frame number from 1 (--frame-number, --start-frame-number, --end-frame-number; PS3.3 Table 10-3 "The first Frame shall be denoted as Frame number 1"), the 0-based --frame / --start-frame / --end-frame are deprecated (P-EXPORT-1); bulk patient folders are keyed on Patient ID (0010,0020) + Issuer of Patient ID (0010,0021) (PS3.3 Table C.7-1 / 10-18, P-EXPORT-2); --apply-window on contact-sheet / bulk is deprecated (P-EXPORT-3); PNG/JPEG/TIFF/GIF outputs are non-DICOM plumbing; every subcommand renders through ExportFrames (PS3.4 N.2 chain)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -83,7 +83,7 @@ extension DICOMExport {
         @Flag(name: .long, help: "Embed DICOM metadata as EXIF/TIFF tags")
         var embedMetadata: Bool = false
 
-        @Option(name: .long, help: "Comma-separated PS3.6 keywords to embed: PatientName, StudyDate, Modality, StudyDescription, SeriesDescription, InstitutionName, Manufacturer, ManufacturerModelName, StationName (default: PatientName,StudyDate,Modality,StudyDescription,Manufacturer)")
+        @Option(name: .long, help: "Comma-separated PS3.6 keywords to embed: PatientName, PatientID, StudyDate, Modality, StudyDescription, SeriesDescription, InstitutionName, Manufacturer, ManufacturerModelName, StationName (default: PatientName,StudyDate,Modality,StudyDescription,Manufacturer). StudyDate (DA) is written as Exif DateTimeOriginal with StudyTime; PatientID, Modality and SeriesDescription go to Exif UserComment as Keyword=value")
         var exifFields: String?
 
         @Flag(name: .long, help: ArgumentHelp(stringLiteral: "Use --window-center/--window-width (LINEAR, PS3.3 C.11.2.1.2.1). Without it the file's VOI is applied: Window Center (0028,1050) and Window Width (0028,1051), else VOI LUT Sequence (0028,3010), else the full pixel range"))
@@ -164,6 +164,9 @@ extension DICOMExport {
             var metadata: CFDictionary? = nil
             if embedMetadata {
                 let fields = exifFields?.split(separator: ",").map(String.init)
+                for field in DICOMImageExporter.unsupportedEXIFFields(fields ?? []) {
+                    FileHandle.standardError.write(Data("warning: --exif-fields '\(field)' has no EXIF/TIFF mapping and is not embedded (supported: \(DICOMImageExporter.supportedEXIFFields.joined(separator: ", ")))\n".utf8))
+                }
                 metadata = DICOMImageExporter.buildEXIFMetadata(from: dicomFile, fields: fields)
             }
 

@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Content Creator's Name is Type 3** (D222; PS3.3 2026a Table 10.9.3-1 via Table 10-12): comments, the GSPS
   builder marker and test messages no longer call it Type 2; behaviour unchanged (written zero length when unknown,
   which PS3.5 7.4.5 permits).
+- **EXIF export** (D126; PS3.5 2026a Table 6.2-1 DA / TM): `DICOMImageExporter` converts Study Date (DA) with Study
+  Time (TM) to Exif DateTimeOriginal "YYYY:MM:DD HH:MM:SS" (blank time without Study Time; a value that is not a DA
+  is not written; was the raw YYYYMMDD). Patient ID, Modality and Series Description go to Exif UserComment as
+  `Keyword=value` entries joined by "; " (Patient ID was read and dropped; Modality went to an Exif "Software" key).
+  New `supportedEXIFFields`, `unsupportedEXIFFields(_:)`, `exifDateTime(fromDA:tm:)`; `dicom-export single` warns
+  for an `--exif-fields` keyword it cannot embed. **Behaviour change**: Series Description's UserComment is now
+  `SeriesDescription=<value>`.
 
 ### Fixed — deferred rows, codec batch b6a (2026-10-01, DICOM 2026a)
 

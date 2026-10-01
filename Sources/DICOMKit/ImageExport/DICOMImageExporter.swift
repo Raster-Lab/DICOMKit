@@ -1,5 +1,6 @@
 // NEMA-verified: 2026a, checked 2026-09-30 — monochrome export applies the PS3.4 2026a N.2 chain (GrayscaleDisplayPipeline): Modality LUT Sequence or this frame's rescale, then the window in modality units (PS3.3 C.11.2.1.2.1) or the VOI LUT Sequence (C.11.2.1.1), then INVERSE for MONOCHROME1 (C.7.6.3.1.2) (D65); full-range and identity fallbacks per C.11.2.1.2.1 (D66)
 // NEMA-verified: 2026a, checked 2026-09-29 — window and rescale per PS3.3 2026a C.11.2.1.2 and C.11.1.1.2
+// NEMA-verified: 2026a, checked 2026-10-01 — EXIF export: Study Date read as DA and Study Time as TM per PS3.5 2026a Table 6.2-1 and converted to Exif DateTimeOriginal (non-DA values not written); Patient ID / Modality / Series Description into Exif UserComment as PS3.6 keyword=value (D126)
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -80,14 +81,30 @@ public enum DICOMImageExporter {
 
     // MARK: - EXIF metadata
 
+    /// The PS3.6 keywords `--exif-fields` accepts (case-insensitive), in help order.
+    public static let supportedEXIFFields: [String] = [
+        "PatientName", "PatientID", "StudyDate", "Modality", "StudyDescription", "SeriesDescription",
+        "InstitutionName", "Manufacturer", "ManufacturerModelName", "StationName",
+    ]
+
+    /// The requested keywords that `buildEXIFMetadata` cannot embed (not in ``supportedEXIFFields``).
+    public static func unsupportedEXIFFields(_ fields: [String]) -> [String] {
+        let known = Set(supportedEXIFFields.map { $0.lowercased() })
+        return fields.filter { !known.contains($0.trimmingCharacters(in: .whitespaces).lowercased()) }
+    }
+
     /// Maps DICOM field names to EXIF/TIFF dictionary keys.
+    ///
+    /// Patient ID (0010,0020), Modality (0008,0060) and Series Description (0008,103E) have no
+    /// EXIF/TIFF tag of their own: they share Exif UserComment as `<PS3.6 keyword>=<value>`
+    /// entries (D126; Modality used to go to an Exif "Software" key, which is a TIFF tag that
+    /// the exporter overwrites, and Patient ID was read but dropped).
     public static func mapDICOMFieldToEXIF(_ field: String) -> (dictionary: String, key: String)? {
-        switch field.lowercased() {
+        switch field.trimmingCharacters(in: .whitespaces).lowercased() {
         case "patientname": return ("tiff", "ImageDescription")
         case "studydate": return ("exif", "DateTimeOriginal")
-        case "modality": return ("exif", "Software")
+        case "modality", "patientid", "seriesdescription": return ("exif", "UserComment")
         case "studydescription": return ("tiff", "DocumentName")
-        case "seriesdescription": return ("exif", "UserComment")
         case "institutionname": return ("tiff", "Artist")
         case "manufacturer": return ("tiff", "Make")
         case "manufacturermodelname": return ("tiff", "Model")
@@ -98,7 +115,7 @@ public enum DICOMImageExporter {
 
     /// Retrieves a DICOM field value from a DICOMFile by field name.
     public static func getDICOMFieldValue(_ file: DICOMFile, field: String) -> String? {
-        switch field.lowercased() {
+        switch field.trimmingCharacters(in: .whitespaces).lowercased() {
         case "patientname": return file.dataSet.string(for: .patientName)
         case "patientid": return file.dataSet.string(for: .patientID)
         case "studydate": return file.dataSet.string(for: .studyDate)
@@ -113,11 +130,50 @@ public enum DICOMImageExporter {
         }
     }
 
+    /// Exif DateTimeOriginal text "YYYY:MM:DD HH:MM:SS" from a DICOM DA value (YYYYMMDD,
+    /// PS3.5 2026a Table 6.2-1) and an optional TM value (HHMMSS.FFFFFF, unspecified MM / SS
+    /// taken as 00, fraction dropped). Returns nil when `da` is not 8 digits or names no
+    /// Gregorian date. Without a usable TM the time is written as blanks ("  :  :  "), Exif's
+    /// spelling of an unknown value, rather than an invented midnight.
+    public static func exifDateTime(fromDA da: String, tm: String? = nil) -> String? {
+        let date = da.trimmingCharacters(in: .whitespaces)
+        guard date.count == 8, date.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+        let digits = Array(date)
+        let year = String(digits[0..<4]), month = String(digits[4..<6]), day = String(digits[6..<8])
+        var components = DateComponents()
+        components.year = Int(year); components.month = Int(month); components.day = Int(day)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        guard let m = components.month, let d = components.day, (1...12).contains(m), d >= 1,
+              let probe = calendar.date(from: components),
+              calendar.component(.day, from: probe) == d, calendar.component(.month, from: probe) == m else {
+            return nil
+        }
+        var timeText = "  :  :  "
+        if let tm {
+            let whole = tm.trimmingCharacters(in: .whitespaces).split(separator: ".", maxSplits: 1).first.map(String.init) ?? ""
+            if [2, 4, 6].contains(whole.count), whole.allSatisfy({ $0.isASCII && $0.isNumber }) {
+                let t = Array(whole)
+                let hh = String(t[0..<2])
+                let mm = t.count >= 4 ? String(t[2..<4]) : "00"
+                let ss = t.count >= 6 ? String(t[4..<6]) : "00"
+                if let h = Int(hh), let mi = Int(mm), let se = Int(ss), h <= 23, mi <= 59, se <= 60 {
+                    timeText = "\(hh):\(mm):\(ss)"
+                }
+            }
+        }
+        return "\(year):\(month):\(day) \(timeText)"
+    }
+
     #if canImport(CoreGraphics)
     /// Builds EXIF/TIFF metadata dictionaries from a DICOM file.
+    ///
+    /// Study Date (0008,0020) is converted from DA to Exif DateTimeOriginal with Study Time
+    /// (0008,0030) (``exifDateTime(fromDA:tm:)``); a value that is not a DA is not written.
     public static func buildEXIFMetadata(from file: DICOMFile, fields: [String]?) -> CFDictionary {
         var tiffDict: [String: Any] = [:]
         var exifDict: [String: Any] = [:]
+        var userComment: [String] = []
 
         let fieldsToEmbed = fields ?? ["PatientName", "StudyDate", "Modality", "StudyDescription", "Manufacturer"]
 
@@ -126,11 +182,22 @@ public enum DICOMImageExporter {
                   let mapping = mapDICOMFieldToEXIF(field) else {
                 continue
             }
-            if mapping.dictionary == "tiff" {
+            let keyword = supportedEXIFFields.first { $0.lowercased() == field.trimmingCharacters(in: .whitespaces).lowercased() } ?? field
+            switch (mapping.dictionary, mapping.key) {
+            case ("exif", "DateTimeOriginal"):
+                if let text = exifDateTime(fromDA: value, tm: file.dataSet.string(for: .studyTime)) {
+                    exifDict[mapping.key] = text
+                }
+            case ("exif", "UserComment"):
+                userComment.append("\(keyword)=\(value)")
+            case ("tiff", _):
                 tiffDict[mapping.key] = value
-            } else {
+            default:
                 exifDict[mapping.key] = value
             }
+        }
+        if !userComment.isEmpty {
+            exifDict["UserComment"] = userComment.joined(separator: "; ")
         }
 
         tiffDict["Software"] = "DICOMKit dicom-export v\(toolVersion)"
