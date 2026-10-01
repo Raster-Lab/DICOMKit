@@ -37,10 +37,10 @@ dicom-pixedit file.dcm --output edited.dcm --mask-region 0,0,200,50 --invert --v
 |---|---|
 | `--output` | Output DICOM file path (required) |
 | `--mask-region` | Region to mask as `x,y,width,height` (0-based column, row) |
-| `--fill-value` | Stored value for masked samples (default: 0); clamped, with a warning, to the range of Bits Stored (0028,0101) and Pixel Representation (0028,0103) |
+| `--fill-value` | Stored value for masked samples (default: 0); must lie in the range of Bits Stored (0028,0101) and Pixel Representation (0028,0103) (PS3.3 C.7.6.3.1), otherwise the tool exits 1 and writes nothing (until 2026-10-01 it was clamped with a warning; P-PIXEDIT-RANGE) |
 | `--crop` | Crop region as `x,y,width,height` (0-based column, row) |
 | `--window-center` | Window Center (0028,1050) in Modality LUT output units (e.g. HU for CT) |
-| `--window-width` | Window Width (0028,1051) in the same units; at least 1 (PS3.3 C.11.2.1.2) |
+| `--window-width` | Window Width (0028,1051) in the same units; at least 1 (PS3.3 C.11.2.1.2), otherwise the tool exits 1 (a width in (0,1) was raised to 1 with a warning until 2026-10-01; P-PIXEDIT-RANGE) |
 | `--apply-window` | Bake the window into the stored values (PS3.3 C.11.2.1.2 linear function) |
 | `--invert` | Invert stored values across the Bits Stored range |
 | `-v, --verbose` | Show verbose output |

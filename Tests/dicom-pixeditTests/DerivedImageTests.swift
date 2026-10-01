@@ -122,17 +122,47 @@ final class DerivedImageTests: XCTestCase {
                        "dicom-pixedit: window center 40 width 400 baked into the stored values")
     }
 
-    func testFillValueClampedToBitsStoredRange() {
+    func testFillValueOutsideBitsStoredRangeIsRefused() {
         XCTAssertEqual(DerivedImage.storedRange(bitsStored: 12, signed: false), 0...4095)
         XCTAssertEqual(DerivedImage.storedRange(bitsStored: 12, signed: true), -2048...2047)
         XCTAssertEqual(DerivedImage.storedRange(bitsStored: 8, signed: false), 0...255)
-        let high = DerivedImage.clampFill(9000, to: 0...4095)
-        XCTAssertEqual(high.value, 4095)
-        XCTAssertNotNil(high.warning)
-        let ok = DerivedImage.clampFill(0, to: 0...4095)
-        XCTAssertEqual(ok.value, 0)
-        XCTAssertNil(ok.warning)
-        XCTAssertEqual(DerivedImage.clampFill(-5000, to: -2048...2047).value, -2048)
+        XCTAssertNotNil(DerivedImage.fillValueViolation(9000, range: 0...4095))
+        XCTAssertNotNil(DerivedImage.fillValueViolation(-1, range: 0...4095))
+        XCTAssertNil(DerivedImage.fillValueViolation(0, range: 0...4095))
+        XCTAssertNil(DerivedImage.fillValueViolation(4095, range: 0...4095))
+        XCTAssertNotNil(DerivedImage.fillValueViolation(-5000, range: -2048...2047))
+        XCTAssertNil(DerivedImage.fillValueViolation(-2048, range: -2048...2047))
+    }
+
+    /// PS3.3 2026a C.11.2.1.2: Window Width shall always be >= 1.
+    func testWindowWidthBelowOneIsRefused() {
+        for width in [0.5, 0, -10, .nan] { XCTAssertNotNil(DerivedImage.windowWidthViolation(width), "\(width)") }
+        for width in [1.0, 400] { XCTAssertNil(DerivedImage.windowWidthViolation(width), "\(width)") }
+    }
+
+    /// P-PIXEDIT-RANGE end to end: exit 1 (a non-usage error), no output file.
+    func testOutOfRangeValuesStopTheRunWithoutOutput() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pixedit-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let input = dir.appendingPathComponent("ct.dcm")
+        try ctFile().write(to: input)
+        for args in [["--mask-region", "0,0,2,2", "--fill-value", "4096"],
+                     ["--mask-region", "0,0,2,2", "--fill-value=-1"],
+                     ["--apply-window", "--window-center", "40", "--window-width", "0.5"],
+                     ["--apply-window", "--window-center", "40", "--window-width=0"]] {
+            let out = dir.appendingPathComponent("out.dcm")
+            var command = try XCTUnwrap(DICOMPixedit.parseAsRoot([input.path, "--output", out.path] + args) as? DICOMPixedit)
+            XCTAssertThrowsError(try command.run(), "\(args)") { error in
+                XCTAssertTrue(error is ValidationError, "\(args): \(error)")   // CLI type, exit 1
+            }
+            XCTAssertFalse(FileManager.default.fileExists(atPath: out.path), "\(args)")
+        }
+        let out = dir.appendingPathComponent("ok.dcm")
+        var command = try XCTUnwrap(DICOMPixedit.parseAsRoot(
+            [input.path, "--output", out.path, "--mask-region", "0,0,2,2", "--fill-value", "4095"]) as? DICOMPixedit)
+        try command.run()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: out.path))
     }
 
     func testSuccessiveEditsAppendSourceItemsAndDescriptions() throws {

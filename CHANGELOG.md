@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `dicom-anon --profile ps315`. They had used the legacy `basic` list and `--profile strict`, a profile that does not
   exist. The sensitive-file step uses `--profile ps315 --clean-pixel-data`, the PS3.15 E.3.1 Clean Pixel Data
   Option. The `dicom-script` README examples now match the templates.
+- **`dicom-image` refuses values the written VR cannot hold** (P-IMAGE-VR): a `--study-uid`/`--series-uid` that
+  breaks PS3.5 2026a Section 9, a `--patient-id`/`--study-description`/`--series-description` or
+  `--patient-name` component group over 64 characters or with a backslash, and a `--series-number`/
+  `--instance-number` outside the IS range (PS3.5 Table 6.2-1) now exit 1 and write nothing. Before, they were
+  written with a warning.
+- **`dicom-pixedit` refuses out-of-range values** (P-PIXEDIT-RANGE): a `--fill-value` outside the Bits Stored /
+  Pixel Representation range (PS3.3 2026a C.7.6.3.1) and an `--apply-window` `--window-width` below 1
+  (C.11.2.1.2) now exit 1 and write nothing. Before, the fill value was clamped with a warning, a width in (0,1)
+  was raised to 1, and a width of 0 or less went to the engine unchecked.
 
 ### Changed — CLI P-items, derived batch (approved 2026-10-01, DICOM 2026a)
 

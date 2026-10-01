@@ -1,4 +1,5 @@
 import XCTest
+import ArgumentParser
 import DICOMCore
 import DICOMKit
 @testable import dicom_image
@@ -27,11 +28,11 @@ final class SCOutputTests: XCTestCase {
         XCTAssertNil(SCOutput.conversionType(""))
     }
 
-    func testValueWarningsFollowPS35Table621() {
-        XCTAssertTrue(SCOutput.valueWarnings(
+    func testValueViolationsFollowPS35Table621() {
+        XCTAssertTrue(SCOutput.valueViolations(
             patientName: "DOE^JOHN", patientID: "P1", studyDescription: "d", seriesDescription: nil,
             studyUID: "1.2.840.10008.1", seriesUID: "1.2.3", seriesNumber: 1, instanceNumber: 1).isEmpty)
-        let w = SCOutput.valueWarnings(
+        let w = SCOutput.valueViolations(
             patientName: String(repeating: "A", count: 65), patientID: String(repeating: "9", count: 65),
             studyDescription: "a\\b", seriesDescription: nil,
             studyUID: "1.02.3", seriesUID: "1..2", seriesNumber: Int(Int32.max) + 1, instanceNumber: Int(Int32.min))
@@ -106,6 +107,31 @@ final class SCOutputTests: XCTestCase {
         XCTAssertEqual(file.fileMetaInformation.string(for: .mediaStorageSOPInstanceUID),
                        ds.string(for: .sopInstanceUID), "PS3.10 Table 7.1-1")
         XCTAssertEqual(ds.string(for: .specificCharacterSet), "ISO_IR 192")
+    }
+
+    /// P-IMAGE-VR: a value the VR cannot hold is refused with exit 1 and nothing is written.
+    func testInvalidValuesAreRefusedWithExitOneAndNoOutput() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sc-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let png = dir.appendingPathComponent("in.png")
+        try writeRGBPNG(to: png, width: 4, height: 4)
+        for bad in [["--study-uid", "1.02.3"], ["--series-uid", "1..2"],
+                    ["--patient-id", String(repeating: "9", count: 65)], ["--study-description", "a\\b"],
+                    ["--patient-name", String(repeating: "A", count: 65)],
+                    ["--series-number", "2147483648"], ["--instance-number=-2147483649"]] {
+            let out = dir.appendingPathComponent("out-\(bad[0].prefix(18)).dcm")
+            var command = try XCTUnwrap(DICOMImage.parseAsRoot([png.path, "--output", out.path] + bad) as? DICOMImage)
+            XCTAssertThrowsError(try command.run(), "\(bad)") { error in
+                XCTAssertEqual((error as? ExitCode)?.rawValue, 1, "\(bad)")
+            }
+            XCTAssertFalse(FileManager.default.fileExists(atPath: out.path), "\(bad) wrote output")
+        }
+        let good = dir.appendingPathComponent("good.dcm")
+        var command = try XCTUnwrap(DICOMImage.parseAsRoot(
+            [png.path, "--output", good.path, "--study-uid", "1.2.3", "--patient-name", "DOE^JOHN", "--patient-id", "P1"]) as? DICOMImage)
+        try command.run()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: good.path))
     }
 
     private func writeRGBPNG(to url: URL, width: Int, height: Int) throws {

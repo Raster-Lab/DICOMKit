@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — derived-image rules of PS3.3 2026a C.7.6.1.1.2 (Image Type Value 1 DERIVED; a new SOP Instance UID when pixel data change), C.12.4 General Reference Module Table C.12-10 (Derivation Description ST, Source Image Sequence with Table 10-3 items, Purpose of Reference DCM 121322 from CID 7202; CID 7203 has no code for mask/crop/window/invert, so no Derivation Code Sequence), C.7.6.2.1.1 Equation C.7.6.2.1-1 (Image Position (Patient) after a crop), C.11.2.1.2 window in Modality LUT output units (width >= 1), PS3.5 Table 6.2-1 (ST 1024 chars, DS 16 bytes), PS3.10 Table 7.1-1 (0002,0003), (0002,0012), (0002,0013)
+// NEMA-verified: 2026a, checked 2026-10-01 — derived-image rules of PS3.3 2026a C.7.6.1.1.2 (Image Type Value 1 DERIVED; a new SOP Instance UID when pixel data change), C.12.4 General Reference Module Table C.12-10 (Derivation Description ST, Source Image Sequence with Table 10-3 items, Purpose of Reference DCM 121322 from CID 7202; CID 7203 has no code for mask/crop/window/invert, so no Derivation Code Sequence), C.7.6.2.1.1 Equation C.7.6.2.1-1 (Image Position (Patient) after a crop), C.11.2.1.2 window in Modality LUT output units (width >= 1, smaller refused), --fill-value outside the C.7.6.3.1 stored range refused (P-PIXEDIT-RANGE), PS3.5 Table 6.2-1 (ST 1024 chars, DS 16 bytes), PS3.10 Table 7.1-1 (0002,0003), (0002,0012), (0002,0013)
 import Foundation
 import DICOMCore
 import DICOMKit
@@ -30,13 +30,21 @@ enum DerivedImage {
         return storedRange(bitsStored: stored, signed: signed)
     }
 
-    /// Clamps a `--fill-value` into the stored range; returns a warning when it moved.
-    static func clampFill(_ value: Int, to range: ClosedRange<Int>) -> (value: Int, warning: String?) {
-        let clamped = min(max(value, range.lowerBound), range.upperBound)
-        guard clamped != value else { return (value, nil) }
-        return (clamped, "warning: --fill-value \(value) is outside the stored range "
-                + "\(range.lowerBound)...\(range.upperBound) given by Bits Stored (0028,0101) and "
-                + "Pixel Representation (0028,0103); using \(clamped)")
+    /// A refusal when `--fill-value` lies outside the stored range (P-PIXEDIT-RANGE,
+    /// approved 2026-10-01: it was clamped with a warning); nil when it fits.
+    static func fillValueViolation(_ value: Int, range: ClosedRange<Int>) -> String? {
+        guard !range.contains(value) else { return nil }
+        return "--fill-value \(value) is outside the stored range \(range.lowerBound)...\(range.upperBound) "
+            + "given by Bits Stored (0028,0101) and Pixel Representation (0028,0103) (PS3.3 C.7.6.3.1)"
+    }
+
+    /// A refusal when `--window-width` is below 1 (P-PIXEDIT-RANGE): PS3.3 2026a
+    /// C.11.2.1.2 "Window Width (0028,1051) shall always be greater than or equal to 1"
+    /// (it was raised to 1 with a warning, and a width <= 0 went to the engine).
+    static func windowWidthViolation(_ width: Double) -> String? {
+        guard !(width >= 1) else { return nil }
+        return "--window-width \(width) is below 1; Window Width (0028,1051) shall always be greater than "
+            + "or equal to 1 (PS3.3 C.11.2.1.2)"
     }
 
     /// Window Center/Width (0028,1050/1051) are in the output units of the Modality

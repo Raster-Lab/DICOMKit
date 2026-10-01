@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — output diffed against PS3.3 2026a Table A.8-1 (Secondary Capture Image IOD): all Type 1/2 attributes of the 9 M modules present (27 grayscale, 28 colour incl. Planar Configuration 1C; Tables C.7-1, C.7-3, C.7-5a, C.8-24, C.7.10.1-1, C.7-9, C.7-11a/c, C.8-25, C.12-1); 16 options: --modality via ModalityOptionValidator (C.7.3.1.1.1, 97 terms), --conversion-type Table C.8-24 (8 terms), SOP Class name/UID per PS3.4 Table B.5-1 and PS3.6 Table A-1, help names per PS3.6 Table 6-1 (see SCOutput.swift)
+// NEMA-verified: 2026a, checked 2026-10-01 — output diffed against PS3.3 2026a Table A.8-1 (Secondary Capture Image IOD): all Type 1/2 attributes of the 9 M modules present (27 grayscale, 28 colour incl. Planar Configuration 1C; Tables C.7-1, C.7-3, C.7-5a, C.8-24, C.7.10.1-1, C.7-9, C.7-11a/c, C.8-25, C.12-1); 16 options: value options refused (exit 1) when PS3.5 2026a Table 6.2-1 / Section 9 forbids them (P-IMAGE-VR); --modality via ModalityOptionValidator (C.7.3.1.1.1, 97 terms), --conversion-type Table C.8-24 (8 terms), SOP Class name/UID per PS3.4 Table B.5-1 and PS3.6 Table A-1, help names per PS3.6 Table 6-1 (see SCOutput.swift)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -28,6 +28,10 @@ struct DICOMImage: ParsableCommand {
             extraction and batch conversion.
 
             Supported formats: JPEG, PNG, TIFF, BMP, GIF (depends on platform support)
+
+            Values the written VR cannot hold (PS3.5 Table 6.2-1: LO and PN over 64
+            characters or with a backslash, IS outside -2^31..2^31-1, a UID breaking PS3.5
+            Section 9) are refused with exit status 1 and nothing is written.
 
             Examples:
               # Convert JPEG to DICOM
@@ -63,22 +67,22 @@ struct DICOMImage: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output file or directory path")
     var output: String?
 
-    @Option(name: .long, help: "Patient's Name (0010,0010), PN, e.g. 'DOE^JOHN'")
+    @Option(name: .long, help: "Patient's Name (0010,0010), PN, e.g. 'DOE^JOHN' (at most 64 characters per component group, no backslash)")
     var patientName: String?
 
-    @Option(name: .long, help: "Patient ID (0010,0020), LO")
+    @Option(name: .long, help: "Patient ID (0010,0020), LO (at most 64 characters, no backslash)")
     var patientId: String?
 
-    @Option(name: .long, help: "Study Description (0008,1030), LO")
+    @Option(name: .long, help: "Study Description (0008,1030), LO (at most 64 characters, no backslash)")
     var studyDescription: String?
 
-    @Option(name: .long, help: "Series Description (0008,103E), LO")
+    @Option(name: .long, help: "Series Description (0008,103E), LO (at most 64 characters, no backslash)")
     var seriesDescription: String?
 
-    @Option(name: .long, help: "Study Instance UID (0020,000D) (generated if not provided)")
+    @Option(name: .long, help: "Study Instance UID (0020,000D), UI per PS3.5 Section 9 (generated if not provided)")
     var studyUid: String?
 
-    @Option(name: .long, help: "Series Instance UID (0020,000E) (generated if not provided)")
+    @Option(name: .long, help: "Series Instance UID (0020,000E), UI per PS3.5 Section 9 (generated if not provided)")
     var seriesUid: String?
 
     @Option(name: .long, help: "Series Number (0020,0011), IS (written empty if not provided; Type 2)")
@@ -114,12 +118,17 @@ struct DICOMImage: ParsableCommand {
             throw ValidationError("--conversion-type '\(conversionType ?? "")' is not a Defined Term of PS3.3 Table C.8-24 "
                 + "(\(ConversionType.definedTerms.joined(separator: ", ")))")
         }
-        for warning in SCOutput.valueWarnings(
+        // P-IMAGE-VR: a value the written VR cannot hold is refused (exit 1), not written.
+        let violations = SCOutput.valueViolations(
             patientName: patientName, patientID: patientId,
             studyDescription: studyDescription, seriesDescription: seriesDescription,
             studyUID: studyUid, seriesUID: seriesUid,
-            seriesNumber: seriesNumber, instanceNumber: instanceNumber) {
-            FileHandle.standardError.write(Data((warning + "\n").utf8))
+            seriesNumber: seriesNumber, instanceNumber: instanceNumber)
+        if !violations.isEmpty {
+            for line in violations {
+                FileHandle.standardError.write(Data(("Error: " + line + "\n").utf8))
+            }
+            throw ExitCode.failure
         }
         guard FileManager.default.fileExists(atPath: input) else {
             throw ValidationError("Input path not found: \(input)")

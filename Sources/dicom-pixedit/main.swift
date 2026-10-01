@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — 10 options: --fill-value clamped to the Bits Stored / Pixel Representation range (PS3.3 2026a C.7.6.3.1), --window-center/--window-width in Modality LUT output units (C.11.2.1.2, Rescale Slope/Intercept C.11.1), output marked as a Derived Image (C.7.6.1.1.2, Table C.12-10; see DerivedImage.swift); --output/--verbose/<input> are plumbing
+// NEMA-verified: 2026a, checked 2026-10-01 — 10 options: --fill-value outside the Bits Stored / Pixel Representation range (PS3.3 2026a C.7.6.3.1) and --window-width < 1 (C.11.2.1.2) refused with exit 1 (P-PIXEDIT-RANGE), --window-center/--window-width in Modality LUT output units (C.11.2.1.2, Rescale Slope/Intercept C.11.1), output marked as a Derived Image (C.7.6.1.1.2, Table C.12-10; see DerivedImage.swift); --output/--verbose/<input> are plumbing
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -51,7 +51,7 @@ struct DICOMPixedit: ParsableCommand {
     @Option(name: .long, help: "Mask region x,y,width,height (0-based column, row) - sets every sample in it to --fill-value")
     var maskRegion: String?
     
-    @Option(name: .long, help: "Stored value for masked samples (default: 0); clamped to the range of Bits Stored (0028,0101) and Pixel Representation (0028,0103)")
+    @Option(name: .long, help: "Stored value for masked samples (default: 0); must lie in the range of Bits Stored (0028,0101) and Pixel Representation (0028,0103) (PS3.3 C.7.6.3.1), else exit 1")
     var fillValue: Int?
     
     @Option(name: .long, help: "Crop region x,y,width,height (0-based column, row); Rows/Columns and Image Position (Patient) are updated")
@@ -60,7 +60,7 @@ struct DICOMPixedit: ParsableCommand {
     @Option(name: .long, help: "Window Center (0028,1050) for --apply-window, in Modality LUT output units (e.g. HU for CT; PS3.3 C.11.2.1.2)")
     var windowCenter: Double?
     
-    @Option(name: .long, help: "Window Width (0028,1051) for --apply-window, in Modality LUT output units")
+    @Option(name: .long, help: "Window Width (0028,1051) for --apply-window, in Modality LUT output units; at least 1 (PS3.3 C.11.2.1.2), else exit 1")
     var windowWidth: Double?
     
     @Flag(name: .long, help: "Bake the window (PS3.3 C.11.2.1.2 linear function) into the stored pixel values")
@@ -89,9 +89,10 @@ struct DICOMPixedit: ParsableCommand {
         
         if let maskRegionStr = maskRegion {
             let region = try editor.parseRegion(maskRegionStr)
-            let (fill, warning) = DerivedImage.clampFill(
-                fillValue ?? 0, to: DerivedImage.storedRange(of: source.dataSet))
-            if let warning { fprintln(warning) }
+            let fill = fillValue ?? 0
+            if let refusal = DerivedImage.fillValueViolation(fill, range: DerivedImage.storedRange(of: source.dataSet)) {
+                throw ValidationError(refusal)
+            }
             operations.append(.mask(x: region.x, y: region.y, width: region.width, height: region.height, fillValue: fill))
             described.append(operations[operations.count - 1])
         }
@@ -106,12 +107,9 @@ struct DICOMPixedit: ParsableCommand {
             guard let center = windowCenter, let requestedWidth = windowWidth else {
                 throw ValidationError("--apply-window requires both --window-center and --window-width")
             }
-            var width = requestedWidth
-            if width > 0, width < 1 {
-                // PS3.3 C.11.2.1.2: Window Width (0028,1051) shall always be greater than or
-                // equal to 1. The engine already treats any width <= 1 as the threshold case.
-                fprintln("warning: --window-width \(width) is below 1 (PS3.3 C.11.2.1.2); using 1")
-                width = 1
+            let width = requestedWidth
+            if let refusal = DerivedImage.windowWidthViolation(width) {
+                throw ValidationError(refusal)
             }
             let stored = DerivedImage.storedWindow(
                 center: center, width: width,

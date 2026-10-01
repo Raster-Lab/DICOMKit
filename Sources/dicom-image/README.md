@@ -125,8 +125,10 @@ Each page becomes a separate DICOM instance in the same series.
 - `--conversion-type <term>` - Conversion Type (0008,0064): DV, DI, DF, WSD, SD, SI, DRW or SYN
   (PS3.3 Table C.8-24; default WSD = Workstation; e.g. SI for a scanned image, DRW for a drawing)
 
-Values that the written VR cannot hold (a UID that breaks PS3.5 9.1, LO/PN over 64 characters,
-an Instance/Series Number outside the IS range) are written as given with a warning on stderr.
+Values that the written VR cannot hold (PS3.5 Table 6.2-1 and Section 9: a UID that breaks
+PS3.5 9.1, LO/PN over 64 characters or containing a backslash, an Instance/Series Number outside
+the IS range -2^31..2^31-1) are refused: the tool exits with status 1 and writes nothing. (Until
+2026-10-01 they were written as given with a warning; P-IMAGE-VR.)
 
 ### Processing Options
 
