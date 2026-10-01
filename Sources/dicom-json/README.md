@@ -1,15 +1,15 @@
 # dicom-json
 
-Convert between DICOM and JSON formats using the DICOM JSON Model (PS3.18 Section F).
+Convert between DICOM and JSON formats using the DICOM JSON Model (PS3.18 Annex F).
 
 ## Description
 
-`dicom-json` is a command-line tool for converting DICOM files to JSON format and back. It implements the DICOM JSON Model as specified in PS3.18 Section F, providing interoperability with DICOMweb services and other JSON-based tools.
+`dicom-json` is a command-line tool for converting DICOM files to JSON format and back. It implements the DICOM JSON Model as specified in PS3.18 Annex F, providing interoperability with DICOMweb services and other JSON-based tools.
 
 ## Features
 
 - **Bidirectional Conversion**: Convert DICOM → JSON and JSON → DICOM
-- **DICOM JSON Model**: Full compliance with PS3.18 Section F
+- **DICOM JSON Model**: PS3.18 Annex F (attribute objects in ascending tag order, F.2.2; empty attributes kept as `{"vr": ...}`, F.2.5)
 - **DICOMweb Format**: Support for DICOMweb JSON format
 - **Bulk Data Handling**: Inline binary data or URI references
 - **Pretty Printing**: Human-readable JSON output
@@ -66,7 +66,7 @@ Configure inline binary threshold:
 # Inline binary data up to 2KB
 dicom-json file.dcm --output file.json --inline-threshold 2048
 
-# Always use bulk data URIs
+# Every OB/OD/OF/OL/OV/OW/UN value as a BulkDataURI (needs --bulk-data-url)
 dicom-json file.dcm --output file.json --inline-threshold 0 --bulk-data-url "http://example.com/bulk"
 ```
 
@@ -102,14 +102,12 @@ dicom-json file.dcm --output file.json --verbose
 | `-o, --output <path>` | Output file path (default: input with .json or .dcm extension) |
 | `-r, --reverse` | Convert from JSON to DICOM |
 | `-p, --pretty` | Pretty-print JSON output |
-| `--no-sort-keys` | Don't sort JSON keys alphabetically (default: keys are sorted) |
-| `--format <format>` | JSON format: standard or dicomweb (default: standard) |
-| `--include-empty` | Include empty values in JSON |
-| `--inline-threshold <bytes>` | Inline binary data up to this size (default: 1024) |
-| `--bulk-data-url <url>` | Base URL for bulk data URIs |
-| `--stream` | Use streaming for large files |
-| `--metadata-only` | Only include metadata (exclude pixel data) |
-| `--filter-tag <tag>` | Filter tags by name or hex (can be used multiple times) |
+| `--no-sort-keys` | Don't order attribute objects by tag (default: ordered; unordered output breaks PS3.18 F.2.2) |
+| `--include-empty` / `--no-include-empty` | Keep attributes with an empty Value Field as `{"vr": ...}` (default: on, PS3.18 F.2.5) / drop them |
+| `--inline-threshold <bytes>` | With `--bulk-data-url`: OB/OD/OF/OL/OV/OW/UN values longer than this become a BulkDataURI (default: 1024; 0: all of them). Without `--bulk-data-url` they are all InlineBinary |
+| `--bulk-data-url <url>` | Base URL for BulkDataURI values (PS3.18 F.2.6): `<url>/<GGGGEEEE>` |
+| `--metadata-only` | Omit Pixel Data (7FE0,0010); other bulk data is kept (not the PS3.18 10.4.1.1.2 Metadata resource) |
+| `--filter-tag <tag>` | Keep only this attribute: PS3.6 keyword, `GGGG,EEEE` or `GGGGEEEE` (can be used multiple times) |
 | `--verbose` | Show detailed timing and statistics |
 | `--version` | Show version information |
 | `--help` | Show help message |
@@ -161,7 +159,7 @@ dicom-json large-study.dcm --output large-study.json \
 
 ## JSON Format
 
-The tool outputs DICOM JSON format as specified in PS3.18 Section F. Each DICOM tag is represented as:
+The tool outputs DICOM JSON format as specified in PS3.18 Annex F. Each DICOM tag is represented as:
 
 ```json
 {
@@ -199,7 +197,7 @@ Or:
 {
   "7FE00010": {
     "vr": "OB",
-    "BulkDataURI": "http://example.com/bulk/1.2.3.4.5"
+    "BulkDataURI": "http://example.com/bulk/7FE00010"
   }
 }
 ```
@@ -211,7 +209,7 @@ Typical conversion times on modern hardware:
 - Small image (512×512, ~500KB): 10-50ms
 - Medium image (1024×1024, ~2MB): 50-200ms
 - Large image (2048×2048, ~8MB): 200-500ms
-- CT series (100 slices, ~100MB): 2-5s with streaming
+- CT series (100 slices, ~100MB): 2-5s
 
 ## Error Handling
 
@@ -237,7 +235,7 @@ The tool provides clear error messages for common issues:
 
 ## References
 
-- DICOM PS3.18 Section F - DICOM JSON Model
+- DICOM PS3.18 Annex F - DICOM JSON Model
 - DICOM PS3.5 - Data Structures and Encoding
 - DICOMweb Standard (QIDO-RS, WADO-RS, STOW-RS)
 

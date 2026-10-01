@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-json verified against DICOM 2026a (2026-10-01)
+
+- **dicom-json**: an attribute with an empty Value Field is now kept as `{"vr": ...}` by default,
+  as PS3.18 2026a F.2.5 requires ("shall be preserved"). `--include-empty` still parses, and the
+  new `--no-include-empty` drops such attributes as the old default did. `--filter-tag` also
+  accepts the eight-character attribute name of F.2.2 (`00100020`) and `(0010,0020)`. Help and
+  README now say that `--no-sort-keys` output breaks the F.2.2 ascending order, that
+  `--inline-threshold` acts only with `--bulk-data-url` (URI `<url>/<GGGGEEEE>`), and that
+  `--metadata-only` omits only Pixel Data (7FE0,0010), so it is not the PS3.18 Metadata
+  resource. The README rows for the removed `--format` / `--stream` options are deleted.
+  Tests: `dicom-jsonTests`.
+
 ### Fixed — dicom-gateway verified against DICOM 2026a (2026-10-01)
 
 - **dicom-gateway** `hl7-to-dicom` / `fhir-to-dicom`: Patient's Name follows the PN component

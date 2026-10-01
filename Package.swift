@@ -413,6 +413,13 @@ let package = Package(
             dependencies: ["dicom-gateway", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-gatewayTests"
         ),
+        // dicom-json / dicom-xml: option defaults pinned to PS3.18 2026a Annex F and PS3.19 2026a
+        // Table A.1.5-2 (DICOMCLI_STANDARD_IMPLEMENTATION.md).
+        .testTarget(
+            name: "dicom-jsonTests",
+            dependencies: ["dicom-json", "DICOMWeb", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-jsonTests"
+        ),
         .testTarget(
             name: "dicom-printTests",
             dependencies: [

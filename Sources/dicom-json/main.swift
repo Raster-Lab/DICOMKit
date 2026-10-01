@@ -5,13 +5,19 @@ import DICOMCore
 import DICOMWeb
 import DICOMDictionary
 
+// NEMA-verified: 2026a, checked 2026-10-01 — options read against PS3.18 2026a F.2.2 (ascending attribute order,
+// 8-hex attribute names), F.2.5 (empty attribute kept as "vr" only), F.2.6 / F.2.7 (BulkDataURI, InlineBinary),
+// 10.4.1.1.2 / 10.4.3.3.2 (Metadata resource); 11 options; output validated by script against Table F.2.3-1 (34 VRs)
+
 struct DICOMJson: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-json",
         abstract: "Convert between DICOM and JSON formats",
         discussion: """
             Converts DICOM files to JSON format (DICOM JSON Model, PS3.18 Annex F)
-            and vice versa, with bulk data handling.
+            and vice versa, with bulk data handling. Attribute objects are named by
+            the eight-character uppercase hexadecimal tag and ordered by it (F.2.2);
+            an attribute with an empty Value Field is kept as {"vr": ...} (F.2.5).
 
             Examples:
               dicom-json file.dcm --output file.json
@@ -33,7 +39,9 @@ struct DICOMJson: ParsableCommand {
     @Flag(name: .shortAndLong, help: "Pretty-print JSON output")
     var pretty: Bool = false
 
-    @Flag(name: .long, help: "Don't sort JSON keys alphabetically")
+    // PS3.18 F.2.2: "Attribute objects ... shall be ordered by their property name in ascending
+    // lexicographic (alphabetic) order", so output written with this flag is not conformant.
+    @Flag(name: .long, help: "Don't order attribute objects by tag (the output then breaks the PS3.18 F.2.2 ascending order)")
     var noSortKeys: Bool = false
 
     // NOTE: the former --format standard|dicomweb and --stream flags were
@@ -41,19 +49,22 @@ struct DICOMJson: ParsableCommand {
     // DICOMweb PS3.18 JSON model, and no streaming path exists), so they were
     // silently inert on every surface.
 
-    @Flag(name: .long, help: "Include empty values in JSON")
-    var includeEmpty: Bool = false
+    // PS3.18 F.2.5: an attribute present but empty "shall be preserved" with no Value,
+    // BulkDataURI or InlineBinary, so keeping it is the default; --no-include-empty drops it.
+    @Flag(name: .long, inversion: .prefixedNo,
+          help: "Keep attributes with an empty Value Field as {\"vr\": ...} (PS3.18 F.2.5)")
+    var includeEmpty: Bool = true
 
-    @Option(name: .long, help: "Inline binary data up to this size (bytes, 0 to always use URIs)")
+    @Option(name: .long, help: "With --bulk-data-url: OB/OD/OF/OL/OV/OW/UN values longer than this many bytes become a BulkDataURI (0: all of them); without it every such value is InlineBinary (PS3.18 F.2.6, F.2.7)")
     var inlineThreshold: Int = 1024
 
-    @Option(name: .long, help: "Base URL for bulk data URIs")
+    @Option(name: .long, help: "Base URL for BulkDataURI values (PS3.18 F.2.6); the URI is <url>/<GGGGEEEE>")
     var bulkDataURL: String?
 
-    @Flag(name: .long, help: "Only include metadata (exclude pixel data)")
+    @Flag(name: .long, help: "Omit Pixel Data (7FE0,0010); other bulk data is kept (this is not the PS3.18 10.4.1.1.2 Metadata resource)")
     var metadataOnly: Bool = false
 
-    @Option(name: .long, help: "Filter tags by name or group (can be used multiple times)")
+    @Option(name: .long, help: "Keep only this attribute: PS3.6 keyword, GGGG,EEEE or GGGGEEEE (can be used multiple times)")
     var filterTag: [String] = []
 
     @Flag(name: .long, help: "Verbose output")
@@ -73,7 +84,7 @@ struct DICOMJson: ParsableCommand {
         let options = DataExchangeWorkflow.Options(
             reverse: reverse, pretty: pretty, includeEmpty: includeEmpty,
             inlineThreshold: inlineThreshold, bulkDataURL: bulkDataURL,
-            metadataOnly: metadataOnly, filterTags: filterTag, verbose: verbose,
+            metadataOnly: metadataOnly, filterTags: Self.normalizedFilterTags(filterTag), verbose: verbose,
             sortKeys: !noSortKeys
         )
 
@@ -107,6 +118,19 @@ struct DICOMJson: ParsableCommand {
         for line in DataExchangeWorkflow.completionLines(
             outputSize: Int64(result.data.count), verbose: verbose) {
             print(line)
+        }
+    }
+
+    /// Accepts the eight-character tag (the F.2.2 attribute name, e.g. `00100020`) and
+    /// `(GGGG,EEEE)` besides the keyword and `GGGG,EEEE` forms the shared workflow resolves.
+    static func normalizedFilterTags(_ specs: [String]) -> [String] {
+        specs.map { spec in
+            var s = spec.trimmingCharacters(in: .whitespaces)
+            if s.hasPrefix("("), s.hasSuffix(")") { s = String(s.dropFirst().dropLast()) }
+            if s.count == 8, s.allSatisfy(\.isHexDigit) {
+                return "\(s.prefix(4)),\(s.suffix(4))"
+            }
+            return s.contains(",") ? s : spec
         }
     }
 }
