@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of grouping them under "UNKNOWN". dicom-study prints one `warning: skipped …` line per file on stderr;
   `StudyOrganizer` logs `Missing Series Instance UID (0020,000E)` and leaves the file in place instead of filing it
   under `UNKNOWN_SERIES`.
+- **ArchiveStore matches query keys per PS3.4 2026a C.2.2.2** (D120, D121): new public `ArchiveMatching`.
+  Patient ID and Modality wild cards are case-sensitive (C.2.2.2.4: "case sensitive, except for Attributes with a
+  PN VR"); Patient's Name stays case-insensitive. Study Instance UID (query) and Study / Series Instance UID
+  (export) take a backslash-separated List of UIDs (C.2.2.2.2). Study Date takes `YYYYMMDD`, `YYYYMMDD-YYYYMMDD`,
+  `-YYYYMMDD` or `YYYYMMDD-` (DA Range Matching, C.2.2.2.5.1, inclusive). dicom-archive no longer warns that ranges
+  and UID lists match exactly; it warns only for a Study Date that is neither a DA value nor a DA range.
+- **Study modality is Modalities in Study** (D122, D209): the query table and text print Modalities in Study
+  (0008,0061), the distinct Modality values of all the study's series (`CT\PT`), instead of the first imported
+  instance's Modality. `ArchiveStudy.modality` is deprecated (use `modalitiesInStudy`); the index keeps writing
+  the `modality` key.
+- **Archive labels are PS3.6 names** (D123): query table / text print Patient's Name, Study Instance UID, Study
+  Description, Modalities in Study, Number of Study Related Series / Instances; list table prints Number of Patient
+  Related Studies / Series / Instances (PS3.6 2026a Table 6-1); "Images" (which counted every instance) is gone;
+  stats names each SOP Class UID from PS3.6 Table A-1.
+- **Patients are keyed on Patient ID + Issuer of Patient ID (0010,0021)** (D124; PS3.4 Tables C.6-1 / C.6-5): new
+  `ArchivePatient.issuerOfPatientID` (index key `issuerOfPatientID`, query JSON `IssuerOfPatientID`, shown in
+  list tree and query text); files with an empty or absent Patient ID (Type 2) are also keyed on Patient's Name,
+  so different unidentified patients are no longer merged into one "UNKNOWN" patient. Older indexes load.
 
 ### Fixed — deferred rows, network batch (2026-10-01, DICOM 2026a)
 
