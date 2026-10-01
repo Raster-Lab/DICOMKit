@@ -46,13 +46,12 @@ final class DerivedImageTests: XCTestCase {
         return try file.write()
     }
 
-    private func run(_ ops: [PixelOperation], described: [PixelOperation]? = nil) throws -> DICOMFile {
-        let input = try ctFile()
-        let (edited, _) = try PixelEditor(verbose: false).processData(input, operations: ops)
-        let derived = DerivedImage.markDerived(edited: try DICOMFile.read(from: edited),
-                                               source: try DICOMFile.read(from: input),
-                                               operations: ops, described: described, newUID: "1.2.3.4.6")
-        return try DICOMFile.read(from: derived.write())
+    /// The CLI's engine call: a Derived Image with the "dicom-pixedit" description prefix.
+    private func run(_ ops: [PixelOperation], input: Data? = nil, newUID: String = "1.2.3.4.6") throws -> DICOMFile {
+        let (edited, _) = try PixelEditor(verbose: false).processData(
+            try input ?? ctFile(), operations: ops,
+            derivation: PixelEditDerivation(sopInstanceUID: newUID, descriptionPrefix: "dicom-pixedit"))
+        return try DICOMFile.read(from: edited)
     }
 
     func testEditedImageIsADerivedImageWithANewUID() throws {
@@ -82,12 +81,14 @@ final class DerivedImageTests: XCTestCase {
     }
 
     func testImageTypeAddedWhenAbsentAndDescriptionCapped() throws {
-        var ds = DataSet()
+        var file = try DICOMFile.read(from: ctFile())
+        var ds = file.dataSet
+        ds.remove(tag: .imageType)
         ds.setString(String(repeating: "x", count: 1020), for: .derivationDescription, vr: .ST)
-        let file = DICOMFile(fileMetaInformation: DataSet(), dataSet: ds)
-        let out = DerivedImage.markDerived(edited: file, source: file, operations: [.invert], newUID: "1.2.9")
+        file = DICOMFile(fileMetaInformation: file.fileMetaInformation, dataSet: ds)
+        let out = try run([.invert], input: file.write())
         XCTAssertEqual(out.dataSet.strings(for: .imageType), ["DERIVED", "SECONDARY"])
-        XCTAssertEqual(out.dataSet.string(for: .derivationDescription)?.count, DerivedImage.stMaximumLength)
+        XCTAssertEqual(out.dataSet.string(for: .derivationDescription)?.count, 1024)
     }
 
     func testCropMovesImagePositionPatient() throws {
@@ -102,17 +103,8 @@ final class DerivedImageTests: XCTestCase {
     }
 
     func testWindowIsTakenInModalityLUTOutputUnits() throws {
-        // CT window 40/400 HU with Rescale Intercept −1024: stored center 1064, width 400.
-        let w = DerivedImage.storedWindow(center: 40, width: 400, slope: 1, intercept: -1024)
-        XCTAssertEqual(w.center, 1064, accuracy: 1e-9)
-        XCTAssertEqual(w.width, 400, accuracy: 1e-9)
-        // Slope 2: thresholds c − 0.5 ± (w − 1)/2 map exactly through y = 2x + b.
-        let s = DerivedImage.storedWindow(center: 100.5, width: 201, slope: 2, intercept: 0)
-        XCTAssertEqual(s.center - 0.5 - (s.width - 1) / 2, (100.5 - 0.5 - 100) / 2, accuracy: 1e-9)
-        XCTAssertEqual(s.center - 0.5 + (s.width - 1) / 2, (100.5 - 0.5 + 100) / 2, accuracy: 1e-9)
-
-        let out = try run([.windowLevel(center: w.center, width: w.width)],
-                          described: [.windowLevel(center: 40, width: 400)])
+        // CT window 40/400 HU with Rescale Intercept −1024, given in HU to the engine.
+        let out = try run([.windowLevel(center: 40, width: 400)])
         let px = try XCTUnwrap(out.dataSet[.pixelData]?.valueData)
         func sample(_ i: Int) -> Int { Int(px[2 * i]) | Int(px[2 * i + 1]) << 8 }
         // Stored 900 = −124 HU: (−124 − 39.5)/399 + 0.5 = 0.0902 of 4095 → 369.
@@ -167,10 +159,30 @@ final class DerivedImageTests: XCTestCase {
 
     func testSuccessiveEditsAppendSourceItemsAndDescriptions() throws {
         let first = try run([.invert])
-        let second = DerivedImage.markDerived(edited: first, source: first, operations: [.invert], newUID: "1.2.3.4.7")
+        let second = try run([.invert], input: first.write(), newUID: "1.2.3.4.7")
         let items = try XCTUnwrap(second.dataSet.sequence(for: .sourceImageSequence))
         XCTAssertEqual(items.map { $0[.referencedSOPInstanceUID]?.stringValue }, [sourceUID, "1.2.3.4.6"])
         XCTAssertEqual(second.dataSet.string(for: .derivationDescription),
                        "dicom-pixedit: pixel values inverted; dicom-pixedit: pixel values inverted")
+    }
+
+    /// The CLI end to end: the written file is the engine's Derived Image.
+    func testCommandWritesADerivedImage() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pixedit-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let input = dir.appendingPathComponent("ct.dcm")
+        try ctFile().write(to: input)
+        let out = dir.appendingPathComponent("out.dcm")
+        var command = try XCTUnwrap(DICOMPixedit.parseAsRoot(
+            [input.path, "--output", out.path, "--crop", "2,1,5,4"]) as? DICOMPixedit)
+        try command.run()
+        let ds = try DICOMFile.read(from: Data(contentsOf: out)).dataSet
+        XCTAssertNotEqual(ds.string(for: .sopInstanceUID), sourceUID)
+        XCTAssertEqual(ds.strings(for: .imageType)?.first, "DERIVED")
+        XCTAssertEqual(ds.string(for: .derivationDescription), "dicom-pixedit: cropped to x=2 y=1 5x4")
+        XCTAssertEqual(ds.sequence(for: .sourceImageSequence)?.count, 1)
+        let p = try XCTUnwrap(ds.decimalStrings(for: .imagePositionPatient)).map(\.value)
+        XCTAssertEqual(p[0], -98.6, accuracy: 1e-9)
     }
 }

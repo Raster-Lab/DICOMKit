@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "1.1.6" (General Equipment, U in Table A.8-1, describes the original equipment and is no longer written); an EXIF
   UserComment / ImageDescription copied to Study Description is cut to 64 characters with `\` → `/` and control
   characters → space. DICOMStudio's conversion gets all three; dicom-image's own ISO_IR 192 step stays (idempotent).
+- **`PixelEditor.processData` output is a Derived Image; window in Modality LUT units; crop geometry; stored range;
+  lossy flag; PALETTE COLOR and padding** (D169–D174; PS3.3 2026a C.7.6.1.1.2, Table C.12-10, C.11.2.1.2,
+  C.7.6.2.1.1, C.9.2, C.7.6.3.1, C.7.6.1.1.5, C.7.6.3.1.5, C.7.5.1.1.2; PS3.10 Table 7.1-1): new parameter
+  `derivation: PixelEditDerivation? = PixelEditDerivation()` (also on `processFile`) — new SOP Instance UID and
+  (0002,0003), Image Type Value 1 DERIVED, Derivation Description "<prefix>: <steps>", a Source Image Sequence Item
+  with Purpose of Reference DCM 121322 (CID 7202), Smallest/Largest (Image) Pixel Value removed, Implementation Class
+  UID / Version Name of DICOMKit; `nil` keeps the source identity (PixelRedactor passes `nil`). `.windowLevel`
+  center/width are now Modality LUT output units (Rescale per frame or the Modality LUT Sequence) and a width below 1
+  throws `invalidWindowWidth`; `.crop` moves Image Position (Patient) at the top level and in the Plane Position
+  Sequence of the functional groups, and Overlay Origin (60xx,0050); every written sample (mask fill included) is
+  clamped to Bits Stored / Pixel Representation; decoding a lossy source sets Lossy Image Compression "01" and the
+  Method when absent; window/invert of PALETTE COLOR throw the new `PixelEditError.notApplicableToPaletteColor`;
+  Pixel Padding Value / Range Limit follow invert and window, or are removed when a window maps padding onto image
+  values. dicom-pixedit now calls the engine with prefix "dicom-pixedit" and no longer marks or translates itself.
 
 ### Fixed — deferred rows, dump / info / tags / diff engines, batch b4 (2026-10-01, DICOM 2026a)
 

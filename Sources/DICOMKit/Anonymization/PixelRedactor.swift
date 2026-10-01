@@ -89,7 +89,10 @@ public struct PixelRedactor {
             PixelOperation.mask(x: $0.x, y: $0.y, width: $0.width, height: $0.height,
                                 fillValue: fillValue ?? 0)
         }
-        let (maskedData, _) = try editor.processData(fileData, operations: operations)
+        // derivation: nil — redaction keeps the instance identity and must not write a
+        // Source Image Sequence naming the identified original (the de-identification
+        // profile decides the UIDs).
+        let (maskedData, _) = try editor.processData(fileData, operations: operations, derivation: nil)
 
         // Re-read so the attestation is written onto the masked result.
         var file = try DICOMFile.read(from: maskedData)

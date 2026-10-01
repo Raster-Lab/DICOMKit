@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — 10 options: --fill-value outside the Bits Stored / Pixel Representation range (PS3.3 2026a C.7.6.3.1) and --window-width < 1 (C.11.2.1.2) refused with exit 1 (P-PIXEDIT-RANGE), --window-center/--window-width in Modality LUT output units (C.11.2.1.2, Rescale Slope/Intercept C.11.1), output marked as a Derived Image (C.7.6.1.1.2, Table C.12-10; see DerivedImage.swift); --output/--verbose/<input> are plumbing
+// NEMA-verified: 2026a, checked 2026-10-01 — 10 options: --fill-value outside the Bits Stored / Pixel Representation range (PS3.3 2026a C.7.6.3.1) and --window-width < 1 (C.11.2.1.2) refused with exit 1 (P-PIXEDIT-RANGE), --window-center/--window-width in Modality LUT output units (C.11.2.1.2, Rescale Slope/Intercept C.11.1), output marked as a Derived Image (C.7.6.1.1.2, Table C.12-10; done by the DICOMKit PixelEditor engine, D169-D174); --output/--verbose/<input> are plumbing
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -83,7 +83,6 @@ struct DICOMPixedit: ParsableCommand {
         let inputData = try Data(contentsOf: URL(fileURLWithPath: input))
         let source = try DICOMFile.read(from: inputData)
         var operations: [PixelOperation] = []
-        var described: [PixelOperation] = []   // as given (window in output units)
 
         let editor = PixelEditor(verbose: verbose, log: { fprintln($0) })
         
@@ -94,13 +93,11 @@ struct DICOMPixedit: ParsableCommand {
                 throw ValidationError(refusal)
             }
             operations.append(.mask(x: region.x, y: region.y, width: region.width, height: region.height, fillValue: fill))
-            described.append(operations[operations.count - 1])
         }
         
         if let cropStr = crop {
             let region = try editor.parseRegion(cropStr)
             operations.append(.crop(x: region.x, y: region.y, width: region.width, height: region.height))
-            described.append(operations[operations.count - 1])
         }
         
         if applyWindow {
@@ -111,16 +108,12 @@ struct DICOMPixedit: ParsableCommand {
             if let refusal = DerivedImage.windowWidthViolation(width) {
                 throw ValidationError(refusal)
             }
-            let stored = DerivedImage.storedWindow(
-                center: center, width: width,
-                slope: source.dataSet.rescaleSlope(), intercept: source.dataSet.rescaleIntercept())
-            operations.append(.windowLevel(center: stored.center, width: stored.width))
-            described.append(.windowLevel(center: center, width: width))
+            // Modality LUT output units (C.11.2.1.2); the engine applies Rescale / LUT.
+            operations.append(.windowLevel(center: center, width: width))
         }
         
         if invert {
             operations.append(.invert)
-            described.append(.invert)
         }
         
         guard !operations.isEmpty else {
@@ -133,11 +126,12 @@ struct DICOMPixedit: ParsableCommand {
             }
         }
 
-        let (edited, _) = try editor.processData(inputData, operations: operations)
-        let derived = DerivedImage.markDerived(
-            edited: try DICOMFile.read(from: edited), source: source,
-            operations: operations, described: described, newUID: UIDGenerator.generateUID().value)
-        try derived.write().write(to: URL(fileURLWithPath: output))
+        // The engine writes a Derived Image (new SOP Instance UID, Image Type DERIVED,
+        // Derivation Description "dicom-pixedit: …", Source Image Sequence).
+        let (edited, _) = try editor.processData(
+            inputData, operations: operations,
+            derivation: PixelEditDerivation(descriptionPrefix: "dicom-pixedit"))
+        try edited.write(to: URL(fileURLWithPath: output))
         if verbose {
             fprintln(PixelEditConsole.writtenLine(path: URL(fileURLWithPath: output).path))
         }
