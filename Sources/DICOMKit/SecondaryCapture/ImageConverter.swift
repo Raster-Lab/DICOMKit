@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — SC Image IOD (Table A.8-1) Type 1/2 attributes written: Patient C.7-1, General Study C.7-3, General Series C.7-5a, General Image C.7-9, Image Pixel C.7-11a, SC Equipment C.8-24 (Conversion Type), SC Image C.8-25 (Nominal Scanned Pixel Spacing); VRs per PS3.6 Table 6-1
+// NEMA-verified: 2026a, checked 2026-10-01 — SC Image IOD (Table A.8-1) Type 1/2 attributes written: Patient C.7-1, General Study C.7-3, General Series C.7-5a, General Image C.7-9, Image Pixel C.7-11a, SC Equipment C.8-24 (Conversion Type; converter identity in Secondary Capture Device Manufacturer / Model Name / Software Versions (0018,1016/1018/1019) per the C.8.6.1 scenario table, General Equipment (U) not written), SC Image C.8-25 (Nominal Scanned Pixel Spacing); Specific Character Set ISO_IR 192 for non-ASCII text (Table C.12-1 1C, C.12-5); EXIF text in Study Description cut to LO (64 chars, no backslash or control characters, PS3.5 Table 6.2-1); VRs per PS3.6 Table 6-1
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -163,7 +163,7 @@ public enum ImageConverter {
         dataSet.setString(metadata.studyUID, for: .studyInstanceUID, vr: .UI)
         if let studyDesc = metadata.studyDescription {
             dataSet.setString(studyDesc, for: .studyDescription, vr: .LO)
-        } else if let exifDesc = extractEXIFDescription(from: exifMetadata) {
+        } else if let exifDesc = extractEXIFDescription(from: exifMetadata).flatMap(longStringValue) {
             dataSet.setString(exifDesc, for: .studyDescription, vr: .LO)
         }
         let now = Date()
@@ -181,13 +181,18 @@ public enum ImageConverter {
         }
         dataSet.setString(metadata.seriesNumber.map(String.init) ?? "", for: .seriesNumber, vr: .IS)
 
-        // General Equipment Module (Table C.7-8, U)
-        dataSet.setString("DICOMKit", for: .manufacturer, vr: .LO)
-        dataSet.setString("dicom-image CLI", for: .manufacturerModelName, vr: .LO)
-        dataSet.setString("1.1.6", for: .softwareVersions, vr: .LO)
-
-        // SC Equipment Module (Table C.8-24): Conversion Type Type 1
+        // SC Equipment Module (Table C.8-24): Conversion Type Type 1. The converter is
+        // the Secondary Capture Device (0018,1016/1018/1019, Type 3); the General
+        // Equipment Module (U in Table A.8-1) describes the equipment that created the
+        // original image (C.8.6.1 scenario table), which is unknown here, so it is
+        // not written.
         dataSet.setString(metadata.conversionType.standardTerm, for: .conversionType, vr: .CS)
+        dataSet.setString(secondaryCaptureDeviceManufacturer,
+                          for: Self.secondaryCaptureDeviceManufacturerTag, vr: .LO)
+        dataSet.setString(secondaryCaptureDeviceModelName,
+                          for: Self.secondaryCaptureDeviceManufacturerModelNameTag, vr: .LO)
+        dataSet.setString(DICOMFile.implementationVersionName,
+                          for: Self.secondaryCaptureDeviceSoftwareVersionsTag, vr: .LO)
 
         // General Image Module (Table C.7-9): Instance Number Type 2, Patient
         // Orientation Type 2C (required: the SC IOD carries no Image Orientation
@@ -223,8 +228,44 @@ public enum ImageConverter {
             addEXIFMetadataToDICOM(exif: exif, dataSet: &dataSet)
         }
 
+        // Text is written as UTF-8: Specific Character Set (0008,0005) is Type 1C,
+        // required when a value is not ASCII (Table C.12-1; ISO_IR 192, Table C.12-5).
+        dataSet.setUTF8SpecificCharacterSetIfNeeded()
+
         return dataSet
     }
+    #endif
+
+    // MARK: - SC Equipment identity (PS3.3 2026a Table C.8-24)
+
+    /// Secondary Capture Device Manufacturer (0018,1016), LO (PS3.6 Table 6-1).
+    static let secondaryCaptureDeviceManufacturerTag = Tag(group: 0x0018, element: 0x1016)
+    /// Secondary Capture Device Manufacturer's Model Name (0018,1018), LO.
+    static let secondaryCaptureDeviceManufacturerModelNameTag = Tag(group: 0x0018, element: 0x1018)
+    /// Secondary Capture Device Software Versions (0018,1019), LO, VM 1-n.
+    static let secondaryCaptureDeviceSoftwareVersionsTag = Tag(group: 0x0018, element: 0x1019)
+
+    /// The device that converts the image: this library (the same value whether the
+    /// dicom-image CLI or DICOMStudio runs the conversion).
+    static let secondaryCaptureDeviceManufacturer = "DICOMKit"
+    static let secondaryCaptureDeviceModelName = "DICOMKit ImageConverter"
+
+    /// A Long String (LO) value made from free text such as an EXIF description:
+    /// control characters become spaces, the backslash (the value delimiter) becomes
+    /// "/", and the result is trimmed and cut to 64 characters (PS3.5 2026a Table
+    /// 6.2-1, LO). Nil when nothing printable is left.
+    static func longStringValue(_ text: String) -> String? {
+        let cleaned = String(text.unicodeScalars.map { scalar -> Character in
+            if scalar == "\\" { return "/" }
+            if scalar.properties.generalCategory == .control { return " " }
+            return Character(scalar)
+        })
+        let trimmed = cleaned.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        return String(String(trimmed.prefix(64)).trimmingCharacters(in: .whitespaces))
+    }
+
+    #if canImport(CoreGraphics)
 
     // MARK: - Pixel / format helpers
 

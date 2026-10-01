@@ -144,3 +144,62 @@ final class ImageConverterColorTests: XCTestCase {
         XCTAssertEqual(ds.string(for: .seriesNumber), "4")
     }
 }
+
+/// PS3.3 2026a rules ImageConverter applies itself since 2026-10-01 (D166-D168), so
+/// DICOMStudio's conversion matches dicom-image.
+final class ImageConverterStandardTests: XCTestCase {
+
+    private func grayPNG() throws -> URL {
+        let provider = CGDataProvider(data: Data([0, 128, 255, 64]) as CFData)!
+        let image = CGImage(
+            width: 2, height: 2, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: 2,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ImageConverterStandardTests-\(UUID().uuidString).png")
+        let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+        return url
+    }
+
+    private func convert(patientName: String) throws -> DataSet {
+        let url = try grayPNG()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let metadata = ImageConverter.Metadata(
+            patientName: patientName, patientID: "12345",
+            studyUID: ImageConverter.generateUID(), seriesUID: ImageConverter.generateUID(), instanceNumber: 1)
+        return try DICOMFile.read(from: ImageConverter.secondaryCaptureData(
+            imageURL: url, metadata: metadata, useExif: false)).dataSet
+    }
+
+    /// D166: Specific Character Set (0008,0005) Type 1C, ISO_IR 192 (Tables C.12-1, C.12-5).
+    func testNonASCIITextGetsISOIR192() throws {
+        let ds = try convert(patientName: "Müller^Jörg")
+        XCTAssertEqual(ds.string(for: .specificCharacterSet), "ISO_IR 192")
+        XCTAssertEqual(ds.string(for: .patientName), "Müller^Jörg")
+        XCTAssertNil(try convert(patientName: "DOE^John")[.specificCharacterSet], "ASCII needs no 1C value")
+    }
+
+    /// D167: the converter is the Secondary Capture Device (Table C.8-24); General
+    /// Equipment describes the equipment that created the original image (C.8.6.1).
+    func testConverterIdentityIsTheSecondaryCaptureDevice() throws {
+        let ds = try convert(patientName: "DOE^John")
+        XCTAssertEqual(ds.string(for: Tag(group: 0x0018, element: 0x1016)), "DICOMKit")
+        XCTAssertEqual(ds.string(for: Tag(group: 0x0018, element: 0x1018)), "DICOMKit ImageConverter")
+        XCTAssertEqual(ds.string(for: Tag(group: 0x0018, element: 0x1019)), DICOMFile.implementationVersionName)
+        XCTAssertNil(ds[.manufacturer])
+        XCTAssertNil(ds[.manufacturerModelName])
+        XCTAssertNil(ds[.softwareVersions])
+        XCTAssertEqual(ds.string(for: .conversionType), "WSD")
+    }
+
+    /// D168: EXIF text written to Study Description is a valid LO (PS3.5 Table 6.2-1:
+    /// 64 characters, no backslash, no control characters).
+    func testEXIFDescriptionIsALongString() {
+        XCTAssertEqual(ImageConverter.longStringValue("Scan\\2\nfront\u{0}"), "Scan/2 front")
+        XCTAssertEqual(ImageConverter.longStringValue(String(repeating: "é", count: 80))?.count, 64)
+        XCTAssertNil(ImageConverter.longStringValue(" \u{0}\u{0} "))
+    }
+}

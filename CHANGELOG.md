@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, pixel / video / document batch (2026-10-01, DICOM 2026a)
+
+- **`ImageConverter` writes Specific Character Set, the SC device identity and valid EXIF text** (D166, D167, D168;
+  PS3.3 2026a Tables C.12-1, C.12-5, C.8-24 and the C.8.6.1 scenario table; PS3.5 Table 6.2-1): (0008,0005)
+  `ISO_IR 192` when a text value is not ASCII; the converter is recorded as Secondary Capture Device Manufacturer /
+  Model Name / Software Versions (0018,1016/1018/1019: "DICOMKit", "DICOMKit ImageConverter",
+  `DICOMFile.implementationVersionName`) instead of General Equipment Manufacturer "DICOMKit" / "dicom-image CLI" /
+  "1.1.6" (General Equipment, U in Table A.8-1, describes the original equipment and is no longer written); an EXIF
+  UserComment / ImageDescription copied to Study Description is cut to 64 characters with `\` → `/` and control
+  characters → space. DICOMStudio's conversion gets all three; dicom-image's own ISO_IR 192 step stays (idempotent).
+
 ### Fixed — deferred rows, dump / info / tags / diff engines, batch b4 (2026-10-01, DICOM 2026a)
 
 - **`HexDumper` annotates the right bytes at any offset** (D144; PS3.10 2026a 7.1): the element walk skips the
