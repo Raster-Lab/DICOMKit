@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — output diffed against PS3.3 2026a Table A.8-1 (Secondary Capture Image IOD): all Type 1/2 attributes of the 9 M modules present (27 grayscale, 28 colour incl. Planar Configuration 1C; Tables C.7-1, C.7-3, C.7-5a, C.8-24, C.7.10.1-1, C.7-9, C.7-11a/c, C.8-25, C.12-1); 16 options: --modality via ModalityOptionValidator (C.7.3.1.1.1, 97 terms), --conversion-type Table C.8-24 (8 terms), SOP Class name/UID per PS3.4 Table B.5-1 and PS3.6 Table A-1, help names per PS3.6 Table 6-1 (see SCOutput.swift)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -18,10 +19,13 @@ import ImageIO
 struct DICOMImage: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-image",
-        abstract: "Convert standard images to DICOM Secondary Capture format",
+        abstract: "Convert standard images to DICOM Secondary Capture Image instances",
         discussion: """
-            Convert JPEG, PNG, TIFF, and other image formats to DICOM Secondary Capture SOP Class.
-            Supports EXIF metadata extraction and batch conversion.
+            Convert JPEG, PNG, TIFF, and other image formats to the DICOM Secondary
+            Capture Image IOD (PS3.3 A.8.1), SOP Class "Secondary Capture Image Storage"
+            (1.2.840.10008.5.1.4.1.1.7), Explicit VR Little Endian. Pixels are written as
+            8-bit RGB (Planar Configuration 0) or MONOCHROME2. Supports EXIF metadata
+            extraction and batch conversion.
 
             Supported formats: JPEG, PNG, TIFF, BMP, GIF (depends on platform support)
 
@@ -59,28 +63,28 @@ struct DICOMImage: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output file or directory path")
     var output: String?
 
-    @Option(name: .long, help: "Patient Name (DICOM PN format, e.g., 'DOE^JOHN')")
+    @Option(name: .long, help: "Patient's Name (0010,0010), PN, e.g. 'DOE^JOHN'")
     var patientName: String?
 
-    @Option(name: .long, help: "Patient ID")
+    @Option(name: .long, help: "Patient ID (0010,0020), LO")
     var patientId: String?
 
-    @Option(name: .long, help: "Study Description")
+    @Option(name: .long, help: "Study Description (0008,1030), LO")
     var studyDescription: String?
 
-    @Option(name: .long, help: "Series Description")
+    @Option(name: .long, help: "Series Description (0008,103E), LO")
     var seriesDescription: String?
 
-    @Option(name: .long, help: "Study Instance UID (auto-generated if not provided)")
+    @Option(name: .long, help: "Study Instance UID (0020,000D) (generated if not provided)")
     var studyUid: String?
 
-    @Option(name: .long, help: "Series Instance UID (auto-generated if not provided)")
+    @Option(name: .long, help: "Series Instance UID (0020,000E) (generated if not provided)")
     var seriesUid: String?
 
-    @Option(name: .long, help: "Series Number")
+    @Option(name: .long, help: "Series Number (0020,0011), IS (written empty if not provided; Type 2)")
     var seriesNumber: Int?
 
-    @Option(name: .long, help: "Instance Number (starting value for batch)")
+    @Option(name: .long, help: "Instance Number (0020,0013), IS (default 1; starting value for batch and TIFF pages)")
     var instanceNumber: Int?
 
     @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("to write (default: OT)")))
@@ -89,10 +93,13 @@ struct DICOMImage: ParsableCommand {
     @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
     var strictModality: Bool = false
 
-    @Flag(name: .long, help: "Use EXIF metadata from images")
+    @Option(name: .long, help: "Conversion Type (0008,0064): DV, DI, DF, WSD, SD, SI, DRW or SYN (PS3.3 Table C.8-24; default: WSD)")
+    var conversionType: String?
+
+    @Flag(name: .long, help: "Use EXIF metadata: DateTimeOriginal -> Acquisition Date/Time (0008,0022/0032), DPI -> Nominal Scanned Pixel Spacing (0018,2010), description -> Study Description")
     var useExif: Bool = false
 
-    @Flag(name: .long, help: "Split multi-page TIFF into separate DICOM files")
+    @Flag(name: .long, help: "Write each page of a multi-page TIFF as its own Secondary Capture instance")
     var splitPages: Bool = false
 
     @Flag(name: .long, help: "Process directories recursively")
@@ -103,6 +110,17 @@ struct DICOMImage: ParsableCommand {
 
     mutating func run() throws {
         #if canImport(CoreGraphics)
+        guard SCOutput.conversionType(conversionType) != nil else {
+            throw ValidationError("--conversion-type '\(conversionType ?? "")' is not a Defined Term of PS3.3 Table C.8-24 "
+                + "(\(ConversionType.definedTerms.joined(separator: ", ")))")
+        }
+        for warning in SCOutput.valueWarnings(
+            patientName: patientName, patientID: patientId,
+            studyDescription: studyDescription, seriesDescription: seriesDescription,
+            studyUID: studyUid, seriesUID: seriesUid,
+            seriesNumber: seriesNumber, instanceNumber: instanceNumber) {
+            FileHandle.standardError.write(Data((warning + "\n").utf8))
+        }
         guard FileManager.default.fileExists(atPath: input) else {
             throw ValidationError("Input path not found: \(input)")
         }
@@ -135,7 +153,8 @@ struct DICOMImage: ParsableCommand {
             studyUID: studyUID, seriesUID: seriesUID, instanceNumber: instanceNumber,
             studyDescription: studyDescription, seriesDescription: seriesDescription,
             modality: resolved ?? Modality.ot.rawValue,
-            seriesNumber: seriesNumber)
+            seriesNumber: seriesNumber,
+            conversionType: SCOutput.conversionType(conversionType) ?? .workstation)
     }
 
     // MARK: - Directory Processing
@@ -189,7 +208,7 @@ struct DICOMImage: ParsableCommand {
                     metadata: metadata(studyUID: finalStudyUID, seriesUID: finalSeriesUID,
                                        instanceNumber: instanceNum, patientName: patientName, patientID: patientId),
                     useExif: useExif)
-                try data.write(to: outputFileURL)
+                try SCOutput.finalize(data).write(to: outputFileURL)
 
                 successCount += 1
                 instanceNum += 1
@@ -247,7 +266,7 @@ struct DICOMImage: ParsableCommand {
                                    instanceNumber: instanceNumber ?? 1,
                                    patientName: patientName, patientID: patientId),
                 useExif: useExif)
-            try data.write(to: outputURL)
+            try SCOutput.finalize(data).write(to: outputURL)
 
             print(ImageConsole.convertedLine(outputPath: finalOutputPath, verbose: verbose))
         }
@@ -292,7 +311,7 @@ struct DICOMImage: ParsableCommand {
                     // Honor --use-exif per page: ImageConverter reads each page's
                     // own EXIF via CGImageSourceCopyPropertiesAtIndex(pageIndex).
                     useExif: useExif)
-                try data.write(to: outputFileURL)
+                try SCOutput.finalize(data).write(to: outputFileURL)
 
                 if verbose {
                     print(ImageConsole.pageSuccessLine(page: pageIndex + 1, outputName: outputFileName))

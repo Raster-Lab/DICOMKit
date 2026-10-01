@@ -429,6 +429,13 @@ let package = Package(
             dependencies: ["dicom-merge", "DICOMKit", "DICOMCore", "DICOMDictionary"],
             path: "Tests/dicom-mergeTests"
         ),
+        // dicom-image / dicom-pixedit: Secondary Capture IOD (PS3.3 A.8.1) and Derived Image
+        // (PS3.3 C.7.6.1.1.2, C.12.4) output pinned to 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
+        .testTarget(
+            name: "dicom-imageTests",
+            dependencies: ["dicom-image", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-imageTests"
+        ),
         // dicom-gateway: the DICOM side of the HL7 v2 / FHIR mappings (PN, DA, TM, Patient's
         // Sex, UIDs) pinned to PS3.3 / PS3.5 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(

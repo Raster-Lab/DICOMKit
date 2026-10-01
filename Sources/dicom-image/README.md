@@ -4,7 +4,7 @@ Convert standard images (JPEG, PNG, TIFF, BMP, GIF) to DICOM Secondary Capture f
 
 ## Overview
 
-`dicom-image` is a command-line tool for converting standard image formats to DICOM Secondary Capture SOP Class (1.2.840.10008.5.1.4.1.1.7). It supports EXIF metadata extraction, batch conversion, and multi-page TIFF handling.
+`dicom-image` is a command-line tool for converting standard image formats to the DICOM Secondary Capture Image IOD, SOP Class "Secondary Capture Image Storage" (1.2.840.10008.5.1.4.1.1.7; PS3.4 Table B.5-1). It supports EXIF metadata extraction, batch conversion, and multi-page TIFF handling.
 
 ## Features
 
@@ -67,9 +67,10 @@ dicom-image photo.jpg --output capture.dcm \
 ```
 
 EXIF metadata mapping:
-- **Date/Time Original** → Acquisition Date/Time
-- **DPI** → Pixel Spacing (converted to mm/pixel)
-- **Image Description** → Study Description (if not specified)
+- **Date/Time Original** → Acquisition Date (0008,0022) / Acquisition Time (0008,0032)
+- **DPI** → Nominal Scanned Pixel Spacing (0018,2010), mm on the scanned medium (SC Image Module,
+  PS3.3 Table C.8-25) — not Pixel Spacing (0028,0030), which is a distance in the patient
+- **User Comment / Image Description** → Study Description (if `--study-description` is not given)
 
 ### Batch Conversion
 
@@ -119,7 +120,13 @@ Each page becomes a separate DICOM instance in the same series.
 - `--series-uid <uid>` - Series Instance UID (auto-generated if not provided)
 - `--series-number <num>` - Series Number
 - `--instance-number <num>` - Instance Number (starting value for batch operations)
-- `--modality <modality>` - Modality code (default: OT - Other)
+- `--modality <modality>` - Modality (0008,0060), a PS3.3 C.7.3.1.1.1 Defined Term (default: OT); unknown codes warn
+- `--strict-modality` - Reject a `--modality` value that is not a current Defined Term
+- `--conversion-type <term>` - Conversion Type (0008,0064): DV, DI, DF, WSD, SD, SI, DRW or SYN
+  (PS3.3 Table C.8-24; default WSD = Workstation; e.g. SI for a scanned image, DRW for a drawing)
+
+Values that the written VR cannot hold (a UID that breaks PS3.5 9.1, LO/PN over 64 characters,
+an Instance/Series Number outside the IS range) are written as given with a warning on stderr.
 
 ### Processing Options
 
@@ -151,44 +158,26 @@ Note: Platform support varies. CoreGraphics (macOS/iOS) provides the best format
 
 ### DICOM Modules Implemented
 
-1. **SOP Common Module** (M)
-   - SOP Class UID
-   - SOP Instance UID
+Every Type 1 and Type 2 attribute of the mandatory modules of PS3.3 Table A.8-1 (Secondary
+Capture Image IOD) is written:
 
-2. **Patient Module** (M)
-   - Patient Name
-   - Patient ID
+1. **Patient** (C.7.1.1, M): Patient's Name, Patient ID, Patient's Birth Date (empty), Patient's Sex (empty)
+2. **General Study** (C.7.2.1, M): Study Instance UID, Study Date/Time (time of conversion),
+   Referring Physician's Name, Study ID, Accession Number (empty), Study Description (optional)
+3. **General Series** (C.7.3.1, M): Series Instance UID, Modality, Series Number (empty unless given),
+   Series Description (optional)
+4. **General Equipment** (C.7.5.1, U): Manufacturer "DICOMKit", Manufacturer's Model Name, Software Versions
+5. **SC Equipment** (C.8.6.1, M): Conversion Type (`--conversion-type`, default WSD)
+6. **General Acquisition** (C.7.10.1, M): Acquisition Date/Time from EXIF (`--use-exif`)
+7. **General Image** (C.7.6.1, M): Instance Number, Patient Orientation (empty, Type 2C)
+8. **Image Pixel** (C.7.6.3, M): Samples per Pixel 1 or 3, Photometric Interpretation MONOCHROME2 or RGB,
+   Rows, Columns, Bits Allocated 8, Bits Stored 8, High Bit 7, Pixel Representation 0,
+   Planar Configuration 0 (RGB), Pixel Data
+9. **SC Image** (C.8.6.2, M): Nominal Scanned Pixel Spacing from the image DPI (`--use-exif`)
+10. **SOP Common** (C.12.1, M): SOP Class UID, SOP Instance UID (also in Media Storage SOP Instance
+    UID (0002,0003), PS3.10 Table 7.1-1), Specific Character Set "ISO_IR 192" when a text value is not ASCII
 
-3. **Study Module** (M)
-   - Study Instance UID
-   - Study Date
-   - Study Time
-   - Study Description (optional)
-
-4. **Series Module** (M)
-   - Series Instance UID
-   - Modality
-   - Series Description (optional)
-   - Series Number (optional)
-
-5. **General Equipment Module** (U)
-   - Manufacturer: "DICOMKit"
-   - Manufacturer Model Name: "dicom-image CLI"
-   - Software Versions: "1.1.6"
-
-6. **General Image Module** (M)
-   - Instance Number
-
-7. **Image Pixel Module** (M)
-   - Samples Per Pixel (1 or 3)
-   - Photometric Interpretation (MONOCHROME2 or RGB)
-   - Rows, Columns
-   - Bits Allocated: 8
-   - Bits Stored: 8
-   - High Bit: 7
-   - Pixel Representation: 0 (unsigned)
-   - Planar Configuration: 0 (for RGB)
-   - Pixel Data
+Images with more than 8 bits per sample (e.g. 16-bit PNG) are reduced to 8 bits; alpha is composited on white.
 
 Reference: **PS3.3 A.8.1 - Secondary Capture Image IOD**
 

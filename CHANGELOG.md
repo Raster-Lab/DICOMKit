@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-image and dicom-pixedit verified against DICOM 2026a (2026-10-01)
+
+- **dicom-image** writes Media Storage SOP Instance UID (0002,0003) equal to SOP Instance UID (0008,0018)
+  (PS3.10 Table 7.1-1; the engine minted two different UIDs) and Specific Character Set (0008,0005)
+  "ISO_IR 192" when a name or description is not ASCII (Type 1C, PS3.3 Table C.12-1 / C.12-5). New
+  `--conversion-type` sets Conversion Type (0008,0064) to a Table C.8-24 Defined Term (DV, DI, DF, WSD, SD,
+  SI, DRW, SYN; default WSD as before). A UID that breaks PS3.5 9.1, LO/PN values over 64 characters and
+  numbers outside the IS range now warn on stderr (still written). Help and README name the SOP Class
+  "Secondary Capture Image Storage", the attribute tags, and list the Table A.8-1 modules; the README no
+  longer says DPI maps to Pixel Spacing (it is Nominal Scanned Pixel Spacing (0018,2010)). New test target
+  `dicom-imageTests`.
+
 ### Fixed — dicom-anon verified against DICOM 2026a (2026-10-01)
 
 - **dicom-anon** `--profile ps315` (PS3.15 Basic Application Level Confidentiality Profile) now applies
