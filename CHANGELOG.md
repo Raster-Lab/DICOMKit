@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compares level_identification the right way round (High in MP@ML is a violation, Low is not). `VideoProbe`
   recognises a raw MPEG-2 stream (sequence header 00 00 01 B3) before the H.264 search, which took slice 0x07 for an
   SPS. `Video.toDataSet` writes `ISO_IR 192` for non-ASCII text.
+- **Encapsulated Document Length and Specific Character Set** (D181, D182; PS3.3 2026a Table C.24-2, Tables C.12-1,
+  C.12-5): `EncapsulatedDocument.toDataSet` writes (0042,0015) with the unpadded byte count and `ISO_IR 192` for
+  non-ASCII text (also in `buildDataSet`); `EncapsulatedDocumentParser` cuts the value to (0042,0015) when it is one
+  less than the value length (new `documentStream(_:in:)`), so an odd-length document no longer gains a 0x00 and
+  `metadataReport()` shows the real size. dicom-pdf's own steps stay (idempotent).
 
 ### Fixed — deferred rows, DICOMweb data exchange (2026-10-01, DICOM 2026a)
 

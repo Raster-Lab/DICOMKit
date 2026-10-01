@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — every Type 1/2 attribute of the Mandatory modules of PS3.3 2026a Tables A.45.1-1 (PDF), A.45.2-1 (CDA), A.85.1-1 (STL), A.85.2-1 (OBJ), A.85.3-1 (MTL): C.7-1, C.7-3, C.24-1, C.7-8, C.8-24 (Conversion Type Defined Terms), C.7-8b, C.7-6, C.35.1-1 (CID 7063), C.24-2, C.12-1; MIME/Modality Enumerated Values A.45.1.4.1, A.45.2.4, A.85.x.4.2/.3; VRs PS3.6 Table 6-1
+// NEMA-verified: 2026a, checked 2026-10-01 — Encapsulated Document Length (0042,0015) UL written with the unpadded byte count (Table C.24-2) (D182); Specific Character Set ISO_IR 192 when a text value is not ASCII (Table C.12-1 Type 1C, C.12-5) (D182); every Type 1/2 attribute of the Mandatory modules of PS3.3 2026a Tables A.45.1-1 (PDF), A.45.2-1 (CDA), A.85.1-1 (STL), A.85.2-1 (OBJ), A.85.3-1 (MTL): C.7-1, C.7-3, C.24-1, C.7-8, C.8-24 (Conversion Type Defined Terms), C.7-8b, C.7-6, C.35.1-1 (CID 7063), C.24-2, C.12-1; MIME/Modality Enumerated Values A.45.1.4.1, A.45.2.4, A.85.x.4.2/.3; VRs PS3.6 Table 6-1
 //
 // EncapsulatedDocumentBuilder.swift
 // DICOMKit
@@ -537,6 +537,9 @@ public final class EncapsulatedDocumentBuilder {
             dataSet.setString(conversionType ?? Self.defaultConversionType, for: .conversionType, vr: .CS)
         }
 
+        // Specific Character Set: the rows added here may hold non-ASCII text too.
+        dataSet.setUTF8SpecificCharacterSetIfNeeded()
+
         return dataSet
     }
 }
@@ -601,12 +604,18 @@ extension EncapsulatedDocument {
         dataSet.setString(documentTitle ?? "", for: .documentTitle, vr: .ST)               // Type 2
         dataSet.setString(mimeType, for: .mimeTypeOfEncapsulatedDocument, vr: .LO)         // Type 1
 
-        // Document data as OB (Type 1)
+        // Document data as OB (Type 1); DICOMWriter pads an odd length with 0x00.
         dataSet[.encapsulatedDocument] = DataElement.data(
             tag: .encapsulatedDocument,
             vr: .OB,
             data: documentData
         )
+        // Encapsulated Document Length (Type 3): "the length of the Encapsulated
+        // Document stream, not including any trailing padding" (Table C.24-2), so a
+        // reader can drop the padding byte of an odd-length document.
+        dataSet[EncapsulatedDocumentParser.encapsulatedDocumentLengthTag] = DataElement.uint32(
+            tag: EncapsulatedDocumentParser.encapsulatedDocumentLengthTag,
+            value: UInt32(clamping: documentData.count))
 
         // Concept Name Code Sequence (Type 2: "Zero or one Item shall be included")
         if let conceptNameCode = conceptNameCode {
@@ -638,6 +647,10 @@ extension EncapsulatedDocument {
             }
             dataSet.setSequence(items, for: .sourceInstanceSequence)
         }
+
+        // Text is written as UTF-8: Specific Character Set (0008,0005) is Type 1C,
+        // required when a value is not ASCII (Table C.12-1; ISO_IR 192, Table C.12-5).
+        dataSet.setUTF8SpecificCharacterSetIfNeeded()
 
         return dataSet
     }

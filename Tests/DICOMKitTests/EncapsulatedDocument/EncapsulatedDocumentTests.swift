@@ -860,3 +860,54 @@ final class EncapsulatedDocumentTests: XCTestCase {
         return dataSet
     }
 }
+
+/// PS3.3 2026a Table C.24-2 (Encapsulated Document Length) and Table C.12-1 (Specific
+/// Character Set) in the shared builder and parser (D181, D182).
+final class EncapsulatedDocumentLengthTests: XCTestCase {
+
+    private let lengthTag = Tag(group: 0x0042, element: 0x0015)
+    private let oddPDF = Data("%PDF-1.4\n%%EOF".utf8)   // 14 bytes … made odd below
+
+    private func builder(_ data: Data) -> EncapsulatedDocumentBuilder {
+        EncapsulatedDocumentBuilder(documentData: data, mimeType: "application/pdf", documentType: .pdf,
+                                    studyInstanceUID: "1.2.3", seriesInstanceUID: "1.2.3.4")
+    }
+
+    /// D182 + D181: the length "not including any trailing padding" is written, and the
+    /// parser returns the document without the padding byte DICOM adds to an odd length.
+    func testOddLengthDocumentRoundTripsWithoutThePaddingByte() throws {
+        let document = oddPDF + Data("\n".utf8)   // 15 bytes
+        let dataSet = try builder(document).buildDataSet()
+        XCTAssertEqual(dataSet.uint32(for: lengthTag), 15)
+
+        let file = DICOMFile.create(dataSet: dataSet, sopClassUID: EncapsulatedDocument.encapsulatedPDFStorageUID,
+                                    transferSyntaxUID: "1.2.840.10008.1.2.1")
+        let read = try DICOMFile.read(from: file.write()).dataSet
+        XCTAssertEqual(read[.encapsulatedDocument]?.valueData.count, 16, "value padded to even length")
+        let parsed = try EncapsulatedDocumentParser.parse(from: read)
+        XCTAssertEqual(parsed.documentData, document)
+        XCTAssertTrue(parsed.metadataReport().contains("Size: 15 bytes"), parsed.metadataReport())
+    }
+
+    /// Without (0042,0015) (Type 3) the stored value is returned unchanged.
+    func testDocumentWithoutLengthIsReturnedAsStored() {
+        var dataSet = DataSet()
+        dataSet.setString("x", for: .patientName, vr: .PN)
+        let value = Data([1, 2, 3, 0])
+        XCTAssertEqual(EncapsulatedDocumentParser.documentStream(value, in: dataSet), value)
+        dataSet[lengthTag] = DataElement.uint32(tag: lengthTag, value: 3)
+        XCTAssertEqual(EncapsulatedDocumentParser.documentStream(value, in: dataSet), Data([1, 2, 3]))
+        dataSet[lengthTag] = DataElement.uint32(tag: lengthTag, value: 1)
+        XCTAssertEqual(EncapsulatedDocumentParser.documentStream(value, in: dataSet), value,
+                       "a length that is neither VL nor VL-1 is not trusted")
+    }
+
+    /// D182: Specific Character Set ISO_IR 192 when a value is not ASCII (Tables C.12-1, C.12-5).
+    func testNonASCIITextGetsISOIR192() throws {
+        let utf8 = try builder(oddPDF).setPatientName("Müller^Jörg").setDocumentTitle("Befund für Jörg").buildDataSet()
+        XCTAssertEqual(utf8.string(for: .specificCharacterSet), "ISO_IR 192")
+        XCTAssertNil(try builder(oddPDF).setPatientName("DOE^John").buildDataSet()[.specificCharacterSet])
+        let plain = try builder(oddPDF).setPatientName("Müller^Jörg").build().toDataSet()
+        XCTAssertEqual(plain.string(for: .specificCharacterSet), "ISO_IR 192")
+    }
+}
