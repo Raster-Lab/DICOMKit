@@ -33,7 +33,7 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 |---|---|---|---|
 | Carried rows | 4 | D9, D29, D44, D56 — CLI halves of findings opened by earlier reports | ✅ D9, D29, D44, D56 CLI halves closed 2026-10-01 (D9, D29, D56 DICOMStudio halves remain open) |
 | G1 Network | 14 tools | input/output contract vs PS3.7 Annex C, PS3.4 C.4/C.6/K/F/H, PS3.18 | ✅ 14 of 14 contracts done 2026-10-01; open: dicom-server repair (D94–D102, does not compile), dicom-cloud excluded from Package.swift (no build) |
-| G2 File and media | 14 tools | contract vs PS3.5, PS3.10, PS3.11 Annex H, PS3.18 F, PS3.19 A | ⏳ in progress (started 2026-10-01) |
+| G2 File and media | 14 tools | contract vs PS3.5, PS3.10, PS3.11 Annex H, PS3.18 F, PS3.19 A | ✅ 14 of 14 contracts done 2026-10-01 |
 | G3 Encoding and pixel | 8 tools | contract vs PS3.5 8.2 / 10, PS3.6 A-1, PS3.3 C.7.6.3 / C.11.2, PS3.15 E | ⏳ not started |
 | G4 Derived objects | 6 tools | contract vs PS3.3 C.8.20 / C.17, PS3.16 TIDs and CIDs | ⏳ not started |
 
@@ -53,6 +53,11 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | 2026-10-01 | G1 server, gateway | server: PS3.6 A-1 names, PS3.4 B.5-1, C.2.2.2, C.4-2/C.4-3, C.6-x key tables, PS3.8, PS3.10 7.1 (options matched 2, plumbing 22); gateway: PS3.3 Table C.7-1, PS3.5 6.2 PN/DA/TM, PS3.4 K.6-1 (matched 1, wrong 3 fixed, plumbing 29); HL7/FHIR are not NEMA and were not checked | `d9cd70b`: 8 SOP Class names to A-1, 6 of 19 C-FIND response VRs wrong (CS) now from the dictionary, IMAGE level named; `95dcd11`: PN component order and multi-script groups, DA/TM, Sex M/F/O, UID checks, Issuer of Patient ID, DICOMKit UID root, ADT type sent as "ADT^AA01" fixed; D94–D104 opened (dicom-server does not compile: D99, High; stored files lack File Meta: D102, High) | `dicom-gatewayTests` 14 pass; dicom-server not buildable (excluded target), checked by script only |
 | 2026-10-01 | G1 wado, jpip, cloud | wado: PS3.18 Sections 8, 9, 10, 11 and Annex F (diff_web checks re-run via `Scripts/diff_cli_web.py`: 0 fails; matched 52, wrong 6, missing 9, extra 3, plumbing 18); jpip: PS3.6 A-1 JPIP syntaxes, PS3.3 Pixel Data Provider URL (wrong 2 fixed, plumbing 15); cloud: no DICOM-standard data (plumbing 19) | `39da529`: `--content-type` rejects unrequestable values, frame/limit/offset validated, "IN PROGRESS" accepted, `--transfer-syntax`/`--anonymize`/`--rows`/`--columns`/`--fuzzy-matching` added, `--timeout` honoured, `store` exits 1 if any file failed; `827f021`: .4.204/.4.205 HTJ2K JPIP listed, (0028,7FE0) named, PS3.5 A.6/A.7/A.11/A.12 cited; `b7a11a4` README profile; P-WADO-UPS-STATE, P-WADO-UPS-UPDATE | `dicom-wadoTests` 15/15, `dicom-jpipTests` 6/6 |
 | 2026-10-01 | G1 close | `swift build` (all products) and the G1 test targets: dicom-ai, -video, -wado, -jpip, -query, -send, -gateway, -print, -printscp, QueryRetrieveCLIStandardTests, MWLMPPSCLIEndToEndTests, MPPSDataSetConformanceTests, WorklistQueryKeysTests | — | build exit 0; XCTest 78 executed, 0 failures |
+| 2026-10-01 | G2 json, xml | PS3.18 F.2.2/F.2.5/F.2.6/F.2.7, 10.4.1.1.2; PS3.19 Tables A.1.5-1/A.1.5-2 and the A.1.6 schema (xmllint); diff_web JSON/XML checks 0 fails; real conversions validated by script; JSON round trip equal by pydicom. Each tool: matched 2, wrong 1, missing 1, extra 2, plumbing 5 | `78214e8`, `4a428da`: **behaviour change** — empty attributes are now kept by default (F.2.5 "shall be preserved"; Table A.1.5-2), `--no-include-empty` restores the old output; `--filter-tag` accepts GGGGEEEE and (GGGG,EEEE); P-JSON-NO-SORT-KEYS, P-XML-NO-KEYWORDS; D110–D115 (D112 High: `--reverse` writes File Meta SOP UIDs that differ from the data set) | dicom-jsonTests 4/4, dicom-xmlTests 4/4 (run in a scratch package: the repo build was broken at that moment by the in-progress dicom-server repair) |
+| 2026-10-01 | G2 study, archive, export | hierarchy and identifying attributes PS3.3 C.7.1.1/C.7.2.1/C.7.3.1, PS3.4 C.6 key tables and C.2.2.2 matching, PS3.3 C.11.2 VOI, C.7.6.3.1.2, C.7.6.6, Burned In Annotation, frame-rate attributes (0008,2144)/(0018,0040)/(0018,1063). study matched 3, plumbing 17; archive matched 10, plumbing 20; export matched 12, wrong 2, missing 2 (fixed), plumbing 25 | `b91e7b2` help; `d46affe` archive warns that date ranges and UID lists are matched as exact strings; `104202f` **behaviour change**: contact-sheet and animate now render through the single-image window/rescale path, animate fps defaults from (0008,2144) else (0018,0040) else (0018,1063) instead of 10, Burned In Annotation YES warns; P-EXPORT-1..3, P-STUDY-1, P-ARCHIVE-1; D116–D127 | StudyHelpTests 3, ArchiveQueryKeysTests 6, ExportStandardTests 12: 21 pass |
+| 2026-10-01 | G2 dcmdir, uid, validate | dcmdir: PS3.10 8.1/8.2/8.5/8.6, PS3.3 Table F.3-3 (matched 3, wrong 3, missing 1); uid: PS3.5 9.1, B.2, PS3.6 Table A-1 465 rows (matched 5, wrong 5, missing 2, extra 1); validate: Table A-1 keywords/UIDs, 81 printed Type/table citations vs part03, 79 match (wrong 4, missing 1) | `a45fd45`: `validate` checks File-set ID / File ID rules with clause names, `--check-files` really checks, conformant default File-set ID — **behaviour change**: `validate` exits 1 on DICOMDIRs built from `*.dcm` names; `788f620`: malformed `--root` no longer crashes, too-long root no longer repeats one UID, `generate --uuid` (2.25), `lookup --type` covers every A-1 type; `606ef6d`: `--iod` accepts A-1 keywords/UIDs, `--level` help corrected; P-DCMDIR-FSID, P-UID-TYPE; D128–D143 (High: D129 DICOMDIR builder indexes only the first image of each series and first series of each study; D135 `regenerate` leaves nested Referenced SOP Instance UIDs; D137 (0002,0003) ≠ new SOP Instance UID) | 16 new tests pass |
+| 2026-10-01 | G2 dump, info, tags | PS3.6 names/keywords/VRs for a CT fixture 31/31; PS3.3 C.7.3.1.1.1 Modality terms (79 current, 18 retired excluded); PS3.5 Table 6.2-1 value limits; PS3.10 Table 7.1-1. dump matched 4, plumbing 6; info matched 1, wrong 1 (fixed), missing 1 (deferred), plumbing 3; tags matched 3, wrong 3 (fixed), plumbing 6 | `e27aa9f` dump: keywords in `--tag`/`--highlight`, negative `--length` crash and `--bytes-per-line 0` hang refused; `ee2ce1f` info: documented `--tag PatientName` example selected nothing, now matches; `b091aa5` tags: `--set` wrote "512 " as text into US, put group 0002 elements in the Data Set (file read back empty), wrote bad DA and over-length PN — now writes the dictionary VR, enforces Table 6.2-1, refuses groups 0002/FFFE/unused (new `TagEditRules.swift`); D144–D150 (D-TAGS-1 High: DICOMKit `TagEditor` keeps the old behaviour, so the Studio Workshop does too) | dump 3, info 2, tags 13: 18/18 pass |
+| 2026-10-01 | G2 diff, split, merge | PS3.3 C.7.6.6, C.7.6.16, C.7.6.16.1.2, C.7.6.17; PS3.6 Tables A-1 and 6-1; PS3.5 7.1. diff matched 2, wrong 1, missing 1, plumbing 6; split matched 11, wrong 1, plumbing 6; merge matched 8, plumbing 6 | `2c5428c` diff: `--ignore-tag` accepts (gggg,eeee) and ggggeeee, `--tolerance` help says per byte; `00ba2a3` (restored by `2ef9d28`, `f663f84` after a concurrent commit reverted it) split: `--frames` documented as 0-based (README called it "the DICOM convention"), A-1/6-1 names; `2ef9d28` merge: `--format` help names the A-1 SOP Class, README corrected (Enhanced output exists; inconsistent inputs exit 1); P-DIFF-1, P-SPLIT-1; D151–D154 | 4/4 per tool; round-trip tests and SplitMergeWorkshopCLIParityTests pass against rebuilt release binaries |
 | 2026-10-01 | Scaffold | `Scripts/diff_cli.py`: surface extractor (1,042 options), generic DICOMKit literal checks re-run per tool, transfer-syntax-name and documented-default checks; this report | — | — |
 
 ---
@@ -76,6 +81,17 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | P-BIN | Film Destination supports BIN_1 and BIN_2 only; the standard defines BIN_i with no maximum. Proposal: accept any `BIN_<n>` through the shared DICOMPrintKit enum | PEND | PS3.3 2026a C.13.1 Film Destination |
 | P-WADO-UPS-STATE | `dicom-wado ups --state SCHEDULED` only warns; PS3.18 11.7.1.4 does not allow a change to SCHEDULED. Proposal: reject it | PEND | PS3.18 2026a 11.7.1.4 |
 | P-WADO-UPS-UPDATE | `dicom-wado ups --update` performs Change State; proposal: add `--change-state` as the canonical name and keep `--update` as an alias | PEND | PS3.18 2026a 11.7 |
+| P-JSON-NO-SORT-KEYS | `dicom-json --no-sort-keys` produces JSON whose attributes are not in ascending tag order, which PS3.18 F.2.2 requires. Proposal: deprecate the flag (warn on use) | PEND | PS3.18 2026a F.2.2 |
+| P-XML-NO-KEYWORDS | `dicom-xml --no-keywords` omits the `keyword` attribute that PS3.19 Table A.1.5-2 requires for standard attributes. Proposal: deprecate the flag | PEND | PS3.19 2026a Table A.1.5-2 |
+| P-EXPORT-1 | dicom-export frame numbers are 0-based; DICOM frame numbers are 1-based (PS3.3 C.7.6.6, Referenced Frame Number). Proposal: accept 1-based numbers, keep 0-based behind a flag for one release | PEND | PS3.3 2026a C.7.6.6 |
+| P-EXPORT-2 | `dicom-export bulk` keys the patient folder on Patient's Name; proposal: Patient ID (plus Issuer when present) | PEND | PS3.3 2026a Table C.7-1 |
+| P-EXPORT-3 | `--apply-window` on `contact-sheet` and `bulk` is now a no-op (the stored window is always applied). Proposal: deprecate | PEND | — |
+| P-STUDY-1 | dicom-study CSV/JSON keys to PS3.6 keywords | PEND | PS3.6 2026a Table 6-1 |
+| P-ARCHIVE-1 | dicom-archive study-level `modality` → `modalitiesInStudy`; `seriesCount` / `imageCount` → the PS3.6 count keywords (NumberOfStudyRelatedSeries / …Instances) | PEND | PS3.6 2026a Table 6-1; PS3.4 Table C.6-5 |
+| P-DCMDIR-FSID | `dicom-dcmdir create --file-set-id` only warns on an ID that breaks PS3.10 8.5 (≤16 chars of the File ID character set); proposal: reject it | PEND | PS3.10 2026a 8.5; PS3.3 Table F.3-3 |
+| P-UID-TYPE | `dicom-uid lookup` prints tool wording for the UID type ("Well-Known UID", …); proposal: print the PS3.6 Table A-1 UID Type text, which changes the JSON `type` value | PEND | PS3.6 2026a Table A-1 |
+| P-DIFF-1 | `dicom-diff` exits 1 both when files differ and when a file cannot be read; proposal: exit 2 for errors | PEND | — |
+| P-SPLIT-1 | `dicom-split --frames` takes 0-based indices; frames are numbered from 1 (PS3.3 C.7.6.16.1.2). Proposal: 1-based, with the Studio Workshop following (same decision as P-EXPORT-1) | PEND | PS3.3 2026a C.7.6.16.1.2 |
 | P-AUDIO-SOURCE-PER-TRACK | `VideoWorkflow.Metadata.audioChannelSource` (DICOMKit, `VideoWorkflow.swift:133`, `audioChannels(for:metadata:)`) is one Source applied to every audio track, so `--audio-channel-source` is single-valued. Proposal: add `audioChannelSources: [VideoAudioChannel.Source]?` to `Metadata` (one per track) and let the CLI option repeat | PEND | PS3.3 2026a Table C.7-13 (one (003A,0300) Item per channel, each with its own (003A,0208)) |
 
 ---
@@ -136,6 +152,51 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | D107 | DICOMWeb | `UPSQuery.workitemSearch` (Sources/DICOMWeb/UPS/UPSQuery.swift:611) | rejects the standard term "IN PROGRESS" (accepts only IN_PROGRESS/INPROGRESS); PS3.3 Table C.30.1-1 (Tool normalises before calling.) | see the tool section | Low | ⏳ Open |
 | D108 | DICOMWeb | `WADOURIClient` | 9 optional WADO-URI parameters (charset, annotation, imageAnnotation, imageQuality, region, windowCenter, windowWidth, presentationUID, presentationSeriesUID) and 8 Rendered Media Types (image/jxl, video/mp4, video/H265, text/*, application/pdf) not requestable; PS3.18 Tables 9.4.1-1, 9.5.1-1, 8.7.4-1. Low (optional). | PS3.18 2026a Section 9 | Low | ⏳ Open |
 | D109 | DICOMCore | `TransferSyntax.isJPIP` (Sources/DICOMCore/TransferSyntax.swift:1087) returns false for 1.2.840.10008.1.2.4.204 / .205 (JPIP HTJ2K Referenced [Deflate], PS3.5 A.11 / A.12, PS3.6 Table A-1), so `DICOMJPIPClient.jpipURI` (DICOMKit/DICOMJPIPClient.swift:335) throws notAJPIPTransferSyntax for them; the .204 doc comment (TransferSyntax.swift:581) says "the Pixel Data is a URI reference" (A.11 | Pixel Data absent, (0028,7FE0)) | see the tool section | Medium | ⏳ Open |
+| D110 | DICOMWeb | `DICOMJSONEncoder.encodeElement` (Sources/DICOMWeb/DICOMJSONEncoder.swift:159) and `DICOMXMLEncoder` (Sources/DICOMWeb/DICOMXMLEncoder.swift:188) | The BulkDataURI is `<base>/<GGGGEEEE>` regardless of nesting, so the same tag in two sequence items, or at two levels, gets one URI for different values. PS3.18 F.2.6 / PS3.19 Table A.1.5-2: the URI references that element's own Bulk Data. Low. | see the tool section | Low | ⏳ Open |
+| D111 | DICOMWeb | `DataExchangeWorkflow.encode` (Sources/DICOMWeb/DataExchangeWorkflow.swift:154-156) | `metadataOnly` removes only (7FE0,0010) at the top level. Float Pixel Data (7FE0,0008), Double Float Pixel Data (7FE0,0009), Encapsulated Document (0042,0011), waveform and overlay data stay inline (seen: a 2048-byte OB was inlined). PS3.18 10.4.1.1.2 / 10.4.3.3.2 define Metadata as all attributes with the bulk data omitted or replaced by a BulkDataURI. Low (the help now says what the flag does). | see the tool section | Low | ⏳ Open |
+| D112 | DICOMWeb | `DataExchangeWorkflow.decode` (Sources/DICOMWeb/DataExchangeWorkflow.swift:216-217) | `DICOMFile.create` is called without `sopClassUID:` / `sopInstanceUID:`, so a reverse-converted file gets Media Storage SOP Class UID 1.2.840.10008.5.1.4.1.1.7 and a freshly generated Media Storage SOP Instance UID. Seen: a CT (0008,0016) 1.2.840.10008.5.1.4.1.1.2 with (0002,0002) .1.1.7, and (0002,0003) ≠ (0008,0018). This breaks PS3.10 Table 7.1-1 ("Uniquely identifies the SOP Class / SOP Instance associated with the Data Set"). It affects dicom-json and dicom-xml `--reverse`. High. | see the tool section | High | ⏳ Open |
+| D113 | DICOMWeb | `DataExchangeWorkflow.decode` (DataExchangeWorkflow.swift:204-209) | The decoder runs with `fetchBulkData: false`, so an attribute that carries a BulkDataURI (JSON) or BulkData (XML) is written to the PS3.10 file as a zero-length element, with no warning (seen: the OB and OW values were lost on round trip). PS3.18 F.2.6 / PS3.19 A.1.5-2: the value is retrievable, not empty. Medium. | see the tool section | Medium | ⏳ Open |
+| D114 | DICOMStudio |  | Workshop `CLIWorkshopViewModel.swift:1258` builds `includeEmpty` from `paramValue("include-empty") == "true"`, and `CLIWorkshopHelpers.swift:2847` / `:2920` offer only `--include-empty`. The app default is still "drop", so it now differs from the CLI default (on, PS3.18 F.2.5 / PS3.19 A.1.5-2), and it has no `--no-include-empty`. Low. | see the tool section | Low | ⏳ Open |
+| D115 | DICOMWeb | `DICOMXMLEncoder` (Sources/DICOMWeb/DICOMXMLEncoder.swift:199, `where !value.isEmpty`) | An empty value of a multi-valued PN is skipped, so the numbers come out as 1, 3. `DICOMXMLDecoder` then collapses the gap and the value is lost on round trip; seen: (0010,1001) "A^B\\C^D^E^Dr^Jr" comes back with 2 values. PS3.19 Table A.1.5-2: PersonName number runs "monotonically increasing from 1 by 1". The A.1.6 schema allows an empty `<PersonName number="2"/>`. Low. | see the tool section | Low | ⏳ Open |
+| D116 | DICOMKit | Sources/DICOMKit/Study/StudyManager.swift:235-249 (renderSummary), 289-291 (renderStats) | Labels are not PS3.6 names: "Study UID", "Patient Name", "Description" (study and series), "Number", "Series Count", "Total Instances", "Instances" | PS3.6 Table 6-1; PS3.4 C.6-2 / C.6-3 | Low | ⏳ Open |
+| D117 | DICOMKit | Sources/DICOMKit/Study/StudyOrganizer.swift:113-118, 126 | `--pattern descriptive` series folder `<Series Number>_<Modality>_<Series Description>` is not unique: two series with equal values (Series Number is Type 2; absent → "0") share a folder and the second copy fails "already exists" at `<n>.dcm`. Key the folder on (or suffix it with) Series Instance UID | PS3.4 Table C.6-3 (Series Instance UID U); PS3.3 Table C.7-5a (Series Number Type 2) | Medium | ⏳ Open |
+| D118 | DICOMKit | Sources/DICOMKit/Study/StudyManager.swift:165-166; StudyOrganizer.swift:77 | Files without Series Instance UID / SOP Instance UID (Type 1) are merged under "UNKNOWN"/"UNKNOWN_SERIES" instead of being reported | PS3.3 Table C.7-5a; C.12-1 | Low | ⏳ Open |
+| D119 | DICOMKit | Sources/DICOMKit/Study/StudyManager.swift:1, StudyOrganizer.swift:1 | Markers say "carries no DICOM-standard data", but the files read 13 attributes, group by the Q/R unique keys and build names from 6 attributes; the marker claim should name what was compared | DICOMCORE method, "The marker" | Low | ⏳ Open |
+| D120 | DICOMKit | Sources/DICOMKit/Archive/ArchiveStore.swift:83-87 | `wildcardMatch` upper-cases pattern and value for every key; Patient ID (LO) wild cards must be case-sensitive (now documented as tool-specific in help and README) | PS3.4 C.2.2.2.4 | Low | ⏳ Open |
+| D121 | DICOMKit | ArchiveStore.swift:461, 466, 677 | No List of UID Matching or DA Range Matching for Study Instance UID / Study Date (the CLI now warns) | PS3.4 C.2.2.2.2, C.2.2.2.5.1 | Low | ⏳ Open |
+| D122 | DICOMKit | ArchiveStore.swift:416-423 (makeStudy), 496, 527, 548 | The study record's `modality` is the first imported instance's Modality and is shown as the study's Modality; a multi-modality study (e.g. PET/CT, MR + SR) is misreported. Should be Modalities in Study (0008,0061): the distinct series Modality values, recomputed on import | PS3.4 Tables C.6-2 / C.6-5; PS3.6 (0008,0061) CS 1-n | Medium | ⏳ Open |
+| D123 | DICOMKit | ArchiveStore.swift:484, 544-550, 612, 887-893 | Labels "Patient Name", "Description", "Series", "Images", "Studies" are not PS3.6 names (Patient's Name, Study Description, Number of Study Related Series / Instances, Number of Patient Related Studies); "Images" counts every instance; "SOP Classes:" prints UIDs without their Table A-1 names | PS3.6 Table 6-1, Table A-1 | Low | ⏳ Open |
+| D124 | DICOMKit | ArchiveStore.swift:289-290, 425 | Patients keyed on Patient ID alone: Issuer of Patient ID (0010,0021) ignored, and every file with an empty/absent Patient ID (Type 2) merges into one "UNKNOWN" patient whose Patient's Name is the first file's | PS3.4 Tables C.6-1 / C.6-5 (Issuer of Patient ID); PS3.3 Table C.7-1 | Low | ⏳ Open |
+| D125 | DICOMKit | ArchiveStore.swift:1 | Marker says "carries no DICOM-standard data (SQLite-backed index)": the index is JSON, and the file implements C-FIND-like matching and the Q/R hierarchy; the marker should name what was compared | DICOMCORE method, "The marker" | Low | ⏳ Open |
+| D126 | DICOMKit | Sources/DICOMKit/ImageExport/DICOMImageExporter.swift:84-111 | `--exif-fields PatientID` is read (getDICOMFieldValue) but has no EXIF mapping and is dropped silently; Study Date (DA YYYYMMDD) is written unconverted into Exif DateTimeOriginal ("YYYY:MM:DD HH:MM:SS"); Modality goes to an Exif "Software" key | PS3.5 Table 6.2-1 DA (DICOM side only) | Low | ⏳ Open |
+| D127 | DICOMStudio | `CLIWorkshopViewModel.swift:4410, 4557-4562, 4620-4628` | The CLI Workshop still copies the contact-sheet and animate render paths that dicom-export now routes through the shared window/rescale path | see the dicom-export section | Low | ⏳ Open (DICOMStudio) |
+| D128 | DICOMKit | `Sources/DICOMKit/DICOMDIRDumpFormatter.swift:60-63, 158-161, 45, 141` | `--verbose` record attributes printed as bare tags, no PS3.6 attribute names; "Consistent" label instead of File-set Consistency Flag | PS3.6 Table 6-1; PS3.3 F.3-3 | Low | ⏳ Open |
+| D129 | DICOMKit | `Sources/DICOMKit/DICOMDIRWriter.swift:346-395` (`DICOMDirectory.Builder.addFile`) | `DirectoryRecord` is a struct: when the series (or study) already exists, the copy that receives the new IMAGE (or SERIES) is never written back, so only the first image of each series and the first series of each study are indexed. Fixture: 2 distinct SOP Instances in one series → "Files processed: 3/3 … Images: 1". `DcmdirRoundTripTests` works around it with one patient per file | PS3.3 F.4, Table F.4-1, F.5.3/F.5.4 | High: DICOMDIR silently omits instances | ⏳ Open |
+| D130 | DICOMCore | `Sources/DICOMCore/DICOMDirectory.swift:619-630` | `validate(checkFileExistence:)` is a placeholder (only rejects an empty path) — CLI now checks on disk | PS3.10 8.6 | Medium | ⏳ Open |
+| D131 | DICOMKit | `Sources/DICOMKit/DICOMDIRWorkflow.swift:166-172` | FSC writes the raw relative path as File ID (lower case, `.dcm`, >8 chars); an FSC should assign conformant File IDs | PS3.10 8.2, 8.5 | Medium | ⏳ Open |
+| D132 | DICOMStudio | Workshop dcmdir executor | lacks the CLI's new validate rules and File-set ID default (parity) | PS3.10 8.x | Low | ⏳ Open |
+| D133 | DICOMKit | `UIDManager.swift:137-140, 155-176` | "Must have at least 2 components" is not a PS3.5 9.1 rule; messages don't cite 9.1; `validateFileUIDs` checks top-level elements only | PS3.5 9.1 | Low | ⏳ Open |
+| D134 | DICOMKit | `UIDManager.swift:317-330` (`uidTypeDescription`) | "Well-Known UID" / "Application Context" / folded "DICOM UIDs as a Coding Scheme" differ from Table A-1 UID Type (21 UIDs) | PS3.6 Table A-1 | Low (JSON value change → P-UID-TYPE) | ⏳ Open |
+| D135 | DICOMKit | `Sources/DICOMKit/UIDManagement/UIDManager.swift:213` (`regenerateData`), `:289` (preview) | walks `dataSet.allElements` (top level only): Referenced SOP Instance UID (0008,1155) in Referenced / Source Image Sequence kept the OLD UID after regenerating both files → references dangle; same for (3006,0024) etc. | PS3.15 Table E.1-1 (0008,1155) U, (3006,0024) U | High | ⏳ Open |
+| D136 | DICOMKit | `UIDManager.swift:407-413` (`UIDConsole.lookupNotFoundLine`, `unknownTypeFilterLine`) | not-found text says "Transfer Syntax or SOP Class"; filter list has 2 values (CLI no longer uses it; Studio does) | PS3.6 Table A-1 | Low | ⏳ Open |
+| D137 | DICOMKit | `UIDManager.swift:251-254` | `DICOMFile.create(dataSet:sopClassUID:)` without `sopInstanceUID:` writes a fresh Media Storage SOP Instance UID (0002,0003) ≠ the new SOP Instance UID (fixture: …511.4.3.1790835791361393… vs …511.4.1790835791360376…) | PS3.10 Table 7.1-1 (0002,0003) "Uniquely identifies the SOP Instance associated with the Data Set"; PS3.15 E.1-1 U | High | ⏳ Open |
+| D138 | DICOMKit | `UIDManager.swift:219-222` | criterion "value not in Table A-1" also replaces UIDs that are not instance identifiers: Coding Scheme UID (0008,010C) 2.16.840.1.113883.6.96 was replaced in the fixture; also Context Group Extension Creator UID, Mapping Resource UID, private SOP Class UIDs, Referenced SOP Class UID values not in A-1 (37 UI attributes not in E.1-1) | PS3.15 Table E.1-1 (U set) | Medium | ⏳ Open |
+| D139 | DICOMCore | `Sources/DICOMCore/UIDGenerator.swift:84-88, 113-116, 75-81` | force-unwrap crash on a malformed root; truncation to 64 cuts the unique suffix (identical UIDs). CLI guards now | PS3.5 9.1, 9.2.2 | Medium | ⏳ Open |
+| D140 | DICOMKit | `DICOMValidator.swift:825` | GSPS/PCPS: Content Creator's Name (0070,0084) required as Type 2 "[C.11.10 … (Table 10-12)]"; in 2026a it is Type 3 in Content Creator Macro Table 10.9.3-1, included by Table 10-12 → false error on every presentation state without it | PS3.3 Tables 10-12, 10.9.3-1, C.11.10-1 | Medium | ⏳ Open |
+| D141 | DICOMKit | `DICOMValidator.swift` IOD validators' `iod` names | message prefixes "CR Image Storage", "US Image Storage", "GSPS", "Pseudo-Color PS", "Key Object Selection Document", "Structured Report" are not PS3.6 Table A-1 names | PS3.6 Table A-1 | Low | ⏳ Open |
+| D142 | DICOMKit | `Sources/DICOMKit/Validation/DICOMValidator.swift:148-240` | level 2 checks no VR maximum length / repertoire except DA, TM, UI and CS lowercase (warning only, though outside the CS repertoire), and no VM: LO 70, SH 20, CS 20, DS 19, IS 13, PN 70 all pass; "Person Name has more than 3 components" means component groups; DA/TM errors reported twice (validateValueFormat + validateDatesAndTimes) | PS3.5 Table 6.2-1, 6.2.1; PS3.6 Table 6-1 VM | Medium | ⏳ Open |
+| D143 | DICOMKit | `DICOMValidator.swift:894` | KOS/SR root Concept Name Code Sequence printed as "Type 1 … (Table C.17-5, Root Content Item)"; Table C.17-5 gives Type 1C (condition) | PS3.3 Table C.17-5; PS3.5 7.4.2 | Low | ⏳ Open |
+| D144 | DICOMKit | Sources/DICOMKit/HexDumper.swift:186 | `buildTagPositionMap` always skips 132 bytes when the data is longer than 132, without checking "DICM" at 128 and regardless of `startOffset`: with `--offset` > 0 (and the Workshop equivalent) `--annotate` / `--highlight` are lost or misplaced; a file without preamble (`--force`) is misannotated | PS3.10 7.1, Table 7.1-1 | medium | ⏳ Open |
+| D145 | DICOMKit | Sources/DICOMKit/HexDumper.swift:203-207 | (FFFE,xxxx) is stepped over with no position entry, so Item / Item Delimitation Item / Sequence Delimitation Item are never annotated; defined-length Items are skipped whole (their elements are not annotated) while undefined-length Items are descended | PS3.5 7.5; PS3.6 Table 6-1 | low | ⏳ Open |
+| D146 | DICOMKit | Sources/DICOMKit/MetadataPresenter.swift:117,191,214; HexDumper.swift:44; TagEditing/TagEditor.swift:147 | Private Creator Data Elements (gggg,0010-00FF) print "Unknown" / no name | PS3.5 7.8.1 | low | ⏳ Open |
+| D147 | DICOMKit | Sources/DICOMKit/MetadataPresenter.swift:76-92, 142-156 | `--statistics` prints the Transfer Syntax UID and SOP Class UID without their Table A-1 names (UIDDictionary has them) | PS3.6 Table A-1 | low | ⏳ Open |
+| D148 | DICOMKit | Sources/DICOMKit/MetadataPresenter.swift:108-112, 181-185, 250-253 | the tag filter matches the PS3.6 name or tag text but never the keyword (DICOMStudio's Workshop still affected; the CLI now adds the keyword's tag) | PS3.6 Table 6-1 keywords | medium | ⏳ Open |
+| D149 | DICOMKit | Sources/DICOMKit/MetadataPresenter.swift:195-197 | JSON `value` is omitted for binary VRs (US, UL, FL, FD, AT, …) though text/CSV render them | PS3.5 Table 6.2-1 | low | ⏳ Open |
+| D150 | DICOMKit | Sources/DICOMKit/TagEditing/TagEditor.swift:124-139 (sets), 83-95 / 110-121 | `applyChanges` writes `setString` under the existing-or-first dictionary VR for any VR (binary VRs get text bytes: Rows=512 → US "512 "), applies no Table 6.2-1 limits, and puts group 0002 into the Data Set (unreadable file); deletes/copies of group 0002 are not refused. The CLI now runs `--set` and the refusals itself (Sources/dicom-tags/TagEditRules.swift); DICOMStudio's Workshop still uses the engine — move these rules into TagEditor | PS3.5 Table 6.2-1; PS3.10 7.1; PS3.6 Table 6-1 | high | ⏳ Open |
+| D151 | DICOMCore | Sources/DICOMCore/Tag.swift:29 | `isPrivate` = any odd group; PS3.5 7.1 excludes 0001, 0003, 0005, 0007, FFFF from Private Data Elements (7.8.1: those groups shall not be used) | PS3.5 2026a 7.1, 7.8.1 | low | ⏳ Open |
+| D152 | DICOMKit | Sources/DICOMKit/Comparison/DICOMComparer.swift:66, 141-158 | `ignorePrivate` applies only to top-level elements; private elements inside sequence items still make the parent SQ differ | PS3.5 2026a 7.8 | low | ⏳ Open |
+| D153 | DICOMKit | Sources/DICOMKit/Comparison/DICOMComparer.swift:160-199; ComparisonReport.swift:56-60 | Pixel Data compared byte by byte: `--tolerance`, max/mean and "Different pixels" are per byte, not per sample (16-bit pixel cells, PS3.5 8.1.1); encapsulated data compared as compressed bytes (PS3.5 8.2, A.4) | PS3.5 2026a 8.1.1, 8.2 | medium | ⏳ Open |
+| D154 | DICOMStudio | Sources/DICOMStudio/Components/CLIWorkshopHelpers.swift:2520 | Workshop help for dicom-split `--frames` ("Frame selection (ranges/list)") does not say the values are 0-based indices | PS3.3 2026a C.7.6.16.1.2 | low | ⏳ Open |
 
 ### Rows handed to DICOMStudio
 
@@ -1220,7 +1281,806 @@ no DICOMweb endpoint, no transfer syntax, no de-identification and no SOP Class 
 
 ## G2 File and media
 
-Not started.
+### dicom-json (G2, PS3.18 2026a Annex F)
+
+Files: main.swift (B2). The tool carries no encoder: the whole pipeline is the shared `DataExchangeWorkflow` (DICOMWeb), which drives
+`DICOMJSONEncoder` / `DICOMJSONDecoder` / `DICOMJSONWriter`. Commit `78214e8`.
+
+**Evidence (by script, 2026a DocBook)**
+- `Scripts/diff_web.py` checks re-run over the engines (`<scratch>/jx_diffweb.py`): Table F.2.3-1 VR → JSON type, encoder 34/34 and decoder 34/34; F.2.2-F.2.7 object layout 6/6; 0 fails. The tool sources contain no VR or layout code (they call only `DataExchangeWorkflow`), so the checks have nothing to match there.
+- F.2.2, F.2.5, F.2.6, F.2.7, 10.4.1.1.2, 10.4.3.3.2 dumped by `<scratch>/jx_sect.py`. Key sentences: F.2.2 "Attribute objects ... shall be ordered by their property name in ascending lexicographic (alphabetic) order"; F.2.5 "If an attribute is present in DICOM but empty (i.e., Value Length is 0), it shall be preserved in the DICOM JSON attribute object containing no "Value", "BulkDataURI" or "InlineBinary""; 10.4.1.1.2 Metadata "includes only the DICOM Data Set (without Bulk Data), and in particular does not include any Group 0002"; 10.4.3.3.2 the payload "shall ... contain all Attributes", and the origin server may replace the Value Field of DS, FL, FD, IS, LT, OB, OD, OF, OL, OV, OW, SL, SS, ST, SV, UC, UL, UN, US, UT and UV with a Bulk Data URI.
+- Real conversions (the fixture `Tests/DICOMStudioTests/Fixtures/syn-ct.dcm` plus a pydicom-built file with an empty SH/PN/SQ, a multi-valued CS and PN with an empty value, a 3-group PN, a sequence with an empty item, a private block (0009,0010)/(0009,1001 LO)/(0009,1002 UN), FD, AT, 2048-byte OB and OW) validated by `<scratch>/jx_validate.py`. It checks Table F.2.3-1 types per VR (extracted), 8-hex uppercase names, ascending order at every level, Group Length absent, at most one of Value/BulkDataURI/InlineBinary, InlineBinary only on binary VRs, PN members, null for empty values, AT form, and F.2.5 empties. Before the fix: default output 3 violations (3 empty attributes dropped); after: 32 attribute objects, 0 violations. `--no-sort-keys`: 2 order violations (top level and item level), as expected. Cross-check: JSON → DICOM → pydicom compares equal on every element (29/29) when the JSON came from the default (now include-empty) conversion.
+
+**Counts: matched 2, wrong 1, missing 1, extra 2, plumbing 5** (11 rows; wrong and missing fixed).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default (std) | Default (code) | Verdict |
+|---|---|---|---|---|---|---|---|
+| `<input>` | PS3.10 file (forward) / DICOM JSON document (reverse) | PS3.10 7.1; PS3.18 F.2 | — | path | — | — | plumbing |
+| `-o, --output` | output path | — | — | path; default `<input>.json` / `.dcm` | — | — | plumbing |
+| `-r, --reverse` | JSON → PS3.10; TS from (0002,0010) else 1.2.840.10008.1.2.1 | PS3.18 F.2; PS3.6 Table A-1 | — | flag | — | false | plumbing |
+| `-p, --pretty` | whitespace | RFC 8259 (F.2) | — | flag | — | false | plumbing |
+| `--no-sort-keys` | attribute-object order | PS3.18 F.2.2 | ascending lexicographic order only | flag → unordered (also inside items) | ordered | ordered | extra (non-conformant; help now says so; P-JSON-NO-SORT-KEYS) |
+| `--include-empty` | empty attribute = `{"vr"}` only | PS3.18 F.2.5 "shall be preserved" | always kept | `--include-empty` / `--no-include-empty` (added) | kept | was dropped → kept | wrong → fixed |
+| `--inline-threshold` | InlineBinary vs BulkDataURI (OB/OD/OF/OL/OV/OW/UN) | PS3.18 F.2.2, F.2.6, F.2.7 | either form; at most one | bytes; acts only with `--bulk-data-url` (0 = every value to URI); without it all InlineBinary | — | 1024 | match (help said "0 to always use URIs" without the URL condition; corrected) |
+| `--bulk-data-url` | BulkDataURI | PS3.18 F.2.6 → PS3.19 Table A.1.5-2 | URI of the Bulk Data | `<url>/<GGGGEEEE>` | — | none | match (help corrected; D110 for nested items) |
+| `--metadata-only` | drop Pixel Data | PS3.18 10.4.1.1.2 / 10.4.3.3.2 Metadata resource | all attributes; bulk data replaced by BulkDataURI | removes (7FE0,0010) only; other bulk data stays inline | — | false | extra (tool convention, not the Metadata resource; help corrected; D111) |
+| `--filter-tag` | attribute selection | PS3.6 Table 6-1 keyword; PS3.18 F.2.2 name | — | keyword, `GGGG,EEEE`; added `GGGGEEEE` (the F.2.2 attribute name), `(GGGG,EEEE)` | — | none | missing → fixed (help said "by name or group"; group was never accepted) |
+| `--verbose` | console timing lines | — | — | flag | — | false | plumbing |
+
+**Output contract**
+
+| Field | DICOM source | Encoding (standard) | Encoding (code) | Verdict |
+|---|---|---|---|---|
+| attribute name | tag | F.2.2: 8 uppercase hex | `%04X%04X` | match (32/32 objects) |
+| `vr` | PS3.6 VR | F.2.3 / Table F.2.3-1 (34 VRs) | `element.vr.rawValue` | match |
+| `Value` | Value Field | Table F.2.3-1 types; null for empty values (F.2.5); `{}` for an empty item | as standard | match |
+| PN `Alphabetic` / `Ideographic` / `Phonetic` | PN groups | F.2.2, non-empty groups only | as standard | match (3-group name validated) |
+| `InlineBinary` | OB/OD/OF/OL/OV/OW/UN Value Field | F.2.7, one Base64 string | as standard | match |
+| `BulkDataURI` | Bulk Data | F.2.6 | `<url>/<GGGGEEEE>` | match (D110) |
+| Group Length (gggg,0000) | — | F.2.2 shall not be included | excluded | match |
+| private elements | PS3.5 7.8.1 | F.2.2 Note | gggg10ee + creator (0009,0010) kept | match |
+| empty attribute | VL 0 | F.2.5 `{"vr"}` | was dropped by default → kept | wrong → fixed |
+| console lines (Input/Output/Mode, Read/Parsed/Encoded/Wrote, "✓ Conversion complete") | — | — | `DataExchangeWorkflow` | plumbing |
+| exit codes | — | — | 0; 64 usage / file not found / "Invalid tag"; 1 parse or write errors | plumbing |
+
+**Fixed (`78214e8`, 4 tests in new target `dicom-jsonTests`)**: `--include-empty` default on per F.2.5 with `--no-include-empty` added (the old spelling still parses); `--filter-tag` accepts `GGGGEEEE` and `(GGGG,EEEE)`; help for `--no-sort-keys`, `--inline-threshold`, `--bulk-data-url`, `--metadata-only` and `--filter-tag` states the standard behaviour. README: the removed `--format` / `--stream` rows deleted, BulkDataURI example `.../7FE00010` (was a UID, which the code never writes), "Section F" changed to "Annex F", option rows synced.
+
+**P-items**
+- P-JSON-NO-SORT-KEYS: `--no-sort-keys` can only produce JSON that breaks PS3.18 F.2.2. Proposal: deprecate it (keep it parsing and print a stderr warning), then remove it. Not implemented.
+
+**Deferred findings**
+- D111: DICOMWeb `DataExchangeWorkflow.encode` (Sources/DICOMWeb/DataExchangeWorkflow.swift:154-156). `metadataOnly` removes only (7FE0,0010) at the top level. Float Pixel Data (7FE0,0008), Double Float Pixel Data (7FE0,0009), Encapsulated Document (0042,0011), waveform and overlay data stay inline (seen: a 2048-byte OB was inlined). PS3.18 10.4.1.1.2 / 10.4.3.3.2 define Metadata as all attributes with the bulk data omitted or replaced by a BulkDataURI. Low (the help now says what the flag does).
+- D110: DICOMWeb `DICOMJSONEncoder.encodeElement` (Sources/DICOMWeb/DICOMJSONEncoder.swift:159) and `DICOMXMLEncoder` (Sources/DICOMWeb/DICOMXMLEncoder.swift:188). The BulkDataURI is `<base>/<GGGGEEEE>` regardless of nesting, so the same tag in two sequence items, or at two levels, gets one URI for different values. PS3.18 F.2.6 / PS3.19 Table A.1.5-2: the URI references that element's own Bulk Data. Low.
+- D112: DICOMWeb `DataExchangeWorkflow.decode` (Sources/DICOMWeb/DataExchangeWorkflow.swift:216-217). `DICOMFile.create` is called without `sopClassUID:` / `sopInstanceUID:`, so a reverse-converted file gets Media Storage SOP Class UID 1.2.840.10008.5.1.4.1.1.7 and a freshly generated Media Storage SOP Instance UID. Seen: a CT (0008,0016) 1.2.840.10008.5.1.4.1.1.2 with (0002,0002) .1.1.7, and (0002,0003) ≠ (0008,0018). This breaks PS3.10 Table 7.1-1 ("Uniquely identifies the SOP Class / SOP Instance associated with the Data Set"). It affects dicom-json and dicom-xml `--reverse`. High.
+- D113: DICOMWeb `DataExchangeWorkflow.decode` (DataExchangeWorkflow.swift:204-209). The decoder runs with `fetchBulkData: false`, so an attribute that carries a BulkDataURI (JSON) or BulkData (XML) is written to the PS3.10 file as a zero-length element, with no warning (seen: the OB and OW values were lost on round trip). PS3.18 F.2.6 / PS3.19 A.1.5-2: the value is retrievable, not empty. Medium.
+- D114 (DICOMStudio): Workshop `CLIWorkshopViewModel.swift:1258` builds `includeEmpty` from `paramValue("include-empty") == "true"`, and `CLIWorkshopHelpers.swift:2847` / `:2920` offer only `--include-empty`. The app default is still "drop", so it now differs from the CLI default (on, PS3.18 F.2.5 / PS3.19 A.1.5-2), and it has no `--no-include-empty`. Low.
+
+**Marker**: main.swift "// NEMA-verified: 2026a, checked 2026-10-01 — options read against PS3.18 2026a F.2.2 (ascending attribute order, 8-hex attribute names), F.2.5 (empty attribute kept as "vr" only), F.2.6 / F.2.7 (BulkDataURI, InlineBinary), 10.4.1.1.2 / 10.4.3.3.2 (Metadata resource); 11 options; output validated by script against Table F.2.3-1 (34 VRs)". check_nema_markers 1/1.
+
+**For Scripts/diff_cli.py (orchestrator)**: optional check: run `<scratch>/jx_validate.py` (Annex F / A.1.5-2 validator) over a fresh conversion of a fixture.
+
+**Tests**: `swift build --product dicom-json` ok. In the repo, `swift test --filter` could not link the bundle because another agent's uncommitted dicom-server target did not compile (ServerSession.swift:1146). The same sources and test files were run in a scratch harness package (`<scratch>/jxpkg`, symlinked sources, repo DICOMKit as a path dependency): dicom-jsonTests 4/4 and dicom-xmlTests 4/4 passed.
+
+### dicom-xml (G2, PS3.19 2026a Annex A.1)
+
+Files: main.swift (B2). There is no encoder in the tool: it runs the shared `DataExchangeWorkflow` (DICOMWeb), which drives
+`DICOMXMLEncoder` / `DICOMXMLDecoder`. Commit `4a428da`.
+
+**Evidence (by script, 2026a DocBook)**
+- `Scripts/diff_web.py` `check_xml_model` re-run over the engines: Table A.1.5-2 / A.1.6 elements, attributes and the 34 schema VRs, 54/54, 0 fails. The tool sources hold no XML-model code.
+- Tables A.1.5-1 and A.1.5-2 dumped by `nema_docbook.py table`, plus the cell text of the `Value`, `>>uri` and `InlineBinary` rows. Key rules: keyword is "Required unless the DICOM Data Element is unknown to the host"; there is a DicomAttribute "corresponding to each DICOM Attribute"; an empty value inside a multi-valued field is written `<Value number="2"></Value>`, and a zero-length Value Field has "no Infoset Value elements at all"; PersonName / Value / Item `number` runs "monotonically increasing ... from 1 by 1"; BulkData `uri` is "Required if the NativeDicomModel was returned in response to a Studies Service Retrieve (WADO-RS) Retrieve Metadata request. Shall not be present otherwise", and `uuid` is required when there is no uri; xml:space="preserve" "shall be included" (A.1.5-1).
+- Schema: the A.1.6 RELAX NG Compact text was extracted from the DocBook by script (`<scratch>/jx_native.rnc`), converted with rnc2rng, and every output was validated with `xmllint --relaxng`. Result: 7/7 outputs validate (default, empties kept, `--no-keywords`, `--bulk-data-url`, `--metadata-only`, `--inline-threshold 0`, fixture) once `xml:space` is stripped. The normative schema does not declare the `xml:space` attribute that Table A.1.5-1 requires, so every conformant document fails the schema as published; this is a defect in the standard, recorded as a verification note.
+- Script validation (`<scratch>/jx_validate.py`): tag pattern, schema VR list, keyword equal to the PS3.6 Table 6-1 keyword (5263 keywords loaded; 0 mismatches), privateCreator on private elements only, private tag in gggg00ee form (0009,1001 → `00090001 privateCreator="ACME 1.0"`), number runs 1..n, BulkData uri/uuid exclusivity, and empties kept. Before the fix, the default output had 4 violations (3 empty attributes dropped, plus D115). After: 32 DicomAttributes, 1 violation (D115, engine). `--no-keywords` gives 29 keyword violations, as expected.
+
+**Counts: matched 2, wrong 1, missing 1, extra 2, plumbing 5** (11 rows; wrong and missing fixed).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default (std) | Default (code) | Verdict |
+|---|---|---|---|---|---|---|---|
+| `<input>` | PS3.10 file / Native DICOM Model document | PS3.10 7.1; PS3.19 A.1 | — | path | — | — | plumbing |
+| `-o, --output` | output path | — | — | path; default `<input>.xml` / `.dcm` | — | — | plumbing |
+| `-r, --reverse` | XML → PS3.10; TS from (0002,0010) else 1.2.840.10008.1.2.1 | PS3.19 A.1; PS3.6 Table A-1 | — | flag | — | false | plumbing |
+| `-p, --pretty` | indentation (xml:space="preserve" still written) | PS3.19 Table A.1.5-1 | — | flag | — | false | plumbing |
+| `--no-keywords` | `keyword` attribute | PS3.19 Table A.1.5-2 (C: required unless unknown) | present for every PS3.6 element | flag omits it | present | present | extra (non-conformant; help now says so; P-XML-NO-KEYWORDS) |
+| `--include-empty` | zero-length attribute as DicomAttribute without Value | PS3.19 Table A.1.5-2 | kept | `--include-empty` / `--no-include-empty` (added) | kept | was dropped → kept | wrong → fixed |
+| `--inline-threshold` | InlineBinary vs BulkData (OB/OD/OF/OL/OV/OW/UN) | PS3.19 Table A.1.5-2 | either | bytes; acts only with `--bulk-data-url` (0 = all BulkData) | — | 1024 | match (help corrected) |
+| `--bulk-data-url` | BulkData `uri` | PS3.19 Table A.1.5-2 `>>uri` / `>>uuid` | uri only in a WADO-RS Retrieve Metadata response, else uuid | `<url>/<GGGGEEEE>`; uuid not offered | — | none | match (help states the uri condition; D110) |
+| `--metadata-only` | drop Pixel Data | PS3.18 10.4.1.1.2 / 10.4.3.3.2 | — | (7FE0,0010) only | — | false | extra (tool convention; help corrected; D111) |
+| `--filter-tag` | attribute selection | PS3.6 Table 6-1; PS3.19 A.1.5-2 tag form | — | keyword, `GGGG,EEEE`; added `GGGGEEEE`, `(GGGG,EEEE)` | — | none | missing → fixed (help said "group") |
+| `--verbose` | console timing lines | — | — | flag | — | false | plumbing |
+
+**Output contract**
+
+| Field | DICOM source | Encoding (standard) | Encoding (code) | Verdict |
+|---|---|---|---|---|
+| root `NativeDicomModel`, namespace, xml:space | — | A.1.6 namespace; A.1.5-1 xml:space="preserve" | as standard | match |
+| `DicomAttribute@tag` | tag | `[0-9A-F]{8}`; private gggg00ee | as standard | match |
+| `@vr` | PS3.6 VR | A.1.6 list (34) | `vr.rawValue` | match |
+| `@keyword` | PS3.6 keyword | A.1.5-2 C | DICOMDictionary keyword | match (0 mismatches against Table 6-1) |
+| `@privateCreator` | (gggg,00xx) value | A.1.5-2 C | as standard | match |
+| `Value@number` | values | 1..n by 1; empty value is an empty element | as standard | match |
+| `PersonName@number` + Alphabetic/Ideographic/Phonetic, FamilyName..NameSuffix | PN | 1..n by 1 | an empty PN value is skipped, giving 1,3 | wrong (engine, D115) |
+| `Item@number` | SQ items | 1..n by 1 | as standard | match |
+| `InlineBinary` / `BulkData@uri` | binary VRs | A.1.5-2 | uri only (no uuid form) | match (uri condition noted) |
+| empty attribute | VL 0 | DicomAttribute without children | was dropped by default → kept | wrong → fixed |
+| console lines, exit codes | — | — | as dicom-json | plumbing |
+
+**Fixed (`4a428da`, 4 tests in new target `dicom-xmlTests`)**: `--include-empty` is on by default and `--no-include-empty` is added. `--filter-tag` also accepts `GGGGEEEE` and `(GGGG,EEEE)`. Help text corrected for `--no-keywords`, `--inline-threshold`, `--bulk-data-url`, `--metadata-only` and `--filter-tag`. README: "Native DICOM Model (PS3.19 Annex A.1)" (was "DICOM Native XML Model"), xml:space added to the example, option rows synced.
+
+**P-items**
+- P-XML-NO-KEYWORDS: `--no-keywords` can only produce XML that breaks PS3.19 Table A.1.5-2. Proposal: deprecate it with a stderr warning, then remove it. Not implemented.
+
+**Deferred findings**
+- D115: DICOMWeb `DICOMXMLEncoder` (Sources/DICOMWeb/DICOMXMLEncoder.swift:199, `where !value.isEmpty`). An empty value of a multi-valued PN is skipped, so the numbers come out as 1, 3. `DICOMXMLDecoder` then collapses the gap and the value is lost on round trip; seen: (0010,1001) "A^B\\C^D^E^Dr^Jr" comes back with 2 values. PS3.19 Table A.1.5-2: PersonName number runs "monotonically increasing from 1 by 1". The A.1.6 schema allows an empty `<PersonName number="2"/>`. Low.
+- D111 to D113 (DataExchangeWorkflow metadata-only, BulkDataURI collisions, File Meta SOP UIDs on reverse, BulkData written as zero-length on reverse) apply to dicom-xml as well; see dicom-json.
+- D114 (Studio Workshop include-empty default) also covers the dicom-xml form (CLIWorkshopHelpers.swift:2920).
+
+**Verification note**: the PS3.19 2026a A.1.6 RELAX NG schema does not declare `xml:space`, which Table A.1.5-1 requires ("shall be included"). Strict schema validation therefore needs the attribute stripped or declared; this is a defect in the standard, not in DICOMKit.
+
+**Marker**: main.swift "// NEMA-verified: 2026a, checked 2026-10-01 — options read against PS3.19 2026a Table A.1.5-1 / A.1.5-2 (keyword required for PS3.6 elements, DicomAttribute per attribute, empty Value Field, BulkData uri/uuid, InlineBinary); 11 options; output validated by script and by xmllint against the A.1.6 RELAX NG schema (34 VRs)". check_nema_markers 1/1.
+
+**Tests**: `swift build --product dicom-xml` ok. In the repo, `swift test --filter` could not link the bundle because another agent's uncommitted dicom-server target did not compile (ServerSession.swift:1146). The same sources and test files were run in a scratch harness package (`<scratch>/jxpkg`, symlinked sources, repo DICOMKit as a path dependency): dicom-jsonTests 4/4 and dicom-xmlTests 4/4 passed.
+
+### dicom-study (G2) — 2026-10-01
+
+Bucket: B2 (help only; the CLI is a thin adapter — scanning, grouping, organize naming, every printed
+label and JSON/CSV key live in DICOMKit `Sources/DICOMKit/Study/StudyManager.swift` and
+`StudyOrganizer.swift`, which were not changed: engine findings are deferred below). Evidence scripts
+(scratch/reports): `g2sae_std.py` (PS3.4 Tables C.6-1..C.6-5 key types, PS3.6 Table 6-1 rows for 37
+attributes, PS3.3 Tables C.7-1/C.7-3/C.7-5a/C.7-9), `g2sae_checks.py` (every "Name (gggg,eeee)" in the
+tool's Swift + README vs Table 6-1: 9 matched, 0 wrong; engine JSON keys vs PS3.6 keywords),
+`diff_cli.py --tool dicom-study` (0 FAIL; extractor lists commands ['dicom-study'] only — the
+`extension DICOMStudy { struct Organize … }` subcommands are not split out; harmless, noted).
+
+#### Input contract (20 options)
+
+| Option | Concept | 2026a ref | Standard values | Code | Verdict |
+|---|---|---|---|---|---|
+| organize `<input>`, --output, --copy, --verbose | paths, copy/move, output | PS3.10 7.1 (DICM test) | — | — | plumbing (4) |
+| organize --pattern | folder names; grouping by Study / Series unique keys | PS3.4 C.6-2 / C.6-3 (Study Instance UID, Series Instance UID: U); PS3.6 Table 6-1 | — | `descriptive` = <Patient's Name>_<Study Description>_<last 8 of Study Instance UID>/<Series Number>_<Modality>_<Series Description>/<n>.dcm; `uid` = <Study Instance UID>/<Series Instance UID>; help said only "'descriptive' or 'uid'", now names the 7 attributes | match |
+| summary `<path>`, --format (table/json/csv), --verbose | — | — | — | — | plumbing (3) |
+| check `<path>`, --report, --verbose | — | — | — | — | plumbing (3) |
+| check --expected-series | Number of Study Related Series (0020,1206) | PS3.4 C.6-2; PS3.6 6-1 | count | distinct Series Instance UIDs | match |
+| check --expected-instances | Number of Series Related Instances (0020,1209) | PS3.4 C.6-3; PS3.6 6-1 | count | instances per series | match |
+| stats `<path>`, --detailed, --format | — | — | — | — | plumbing (3) |
+| compare `<path1>`, `<path2>`, --format, --verbose | — | — | — | — | plumbing (4) |
+
+Counts: matched 3, wrong 0, missing 0, extra 0, plumbing 17.
+
+#### Output contract (DICOMKit StudyReport / StudyOrganizer — engine)
+
+| Item | 2026a ref | Standard | Code | Verdict |
+|---|---|---|---|---|
+| Grouping keys | PS3.4 C.6-2 / C.6-3 / C.6-4 (U) | Study Instance UID, Series Instance UID, SOP Instance UID | same; series compared by Series Instance UID in `compare` | match |
+| summary JSON keys (StudyMetadata 7, SeriesMetadata 4, InstanceMetadata 2 of 4) | PS3.6 keywords | lowerCamel of keyword | studyInstanceUID, studyDate, studyTime, studyDescription, patientName, patientID, accessionNumber, seriesInstanceUID, seriesNumber, seriesDescription, modality, sopInstanceUID, instanceNumber | match (13); filePath, fileSize plumbing |
+| summary CSV header | PS3.6 keywords | StudyInstanceUID, NumberOfStudyRelatedSeries, NumberOfStudyRelatedInstances | `StudyUID`, `SeriesCount`, `InstanceCount` (StudyDate, PatientName, PatientID match) | tool-specific (P-STUDY-1) |
+| summary table labels | PS3.6 Table 6-1 | Study Instance UID, Patient's Name, Study Description, Series Number, Series Description, Number of Study Related Series / Instances, Number of Series Related Instances | "Study UID", "Patient Name", "Description", "Number", "Series Count", "Total Instances", "Instances" ("Study Date", "Patient ID", "Modality" match) | wrong label text (engine, D116) |
+| stats / compare JSON keys | — | — | studyUID, seriesCount, totalInstances, … (17 keys, none a keyword) | tool-specific (P-STUDY-1) |
+| stats "Modalities:" | PS3.3 C.7-5a Modality (series level) | — | series counted per Modality | match |
+| check gaps | PS3.3 Table C.7-9 Instance Number "A number that identifies this image", Type 2 | no contiguity rule | gaps reported as missing | tool-specific heuristic (now said in help) |
+| organize descriptive series folder | PS3.4 C.6-3 (Series Instance UID is the unique key) | — | <Series Number>_<Modality>_<Series Description> can collide | engine bug (D117) |
+| verbose "Missing StudyInstanceUID" | PS3.6 keyword | StudyInstanceUID | same | match |
+| Exit codes | — | — | thrown StudyError → 1; `check` exits 0 even when incomplete | plumbing |
+
+#### Commit / tests
+b91e7b2 `docs(cli): dicom-study help names the PS3.6 2026a attributes of organize --pattern, …; dicom-studyTests` — main.swift (help, discussion, marker), StudyManager.swift (marker), README (naming patterns, gap heuristic), Package.swift `dicom-studyTests` (own hunk only, staged from HEAD), Tests/dicom-studyTests/StudyHelpTests.swift, CHANGELOG bullet.
+`swift build --product dicom-study`: OK. `swift test --filter StudyHelpTests`: 3 tests, 0 failures. `check_nema_markers.py Sources/dicom-study`: 2/2. `diff_cli.py --tool dicom-study`: 0 FAIL.
+
+#### Deferred findings
+| ID | File:line | Problem | Ref | Severity |
+|---|---|---|---|---|
+| D116 | Sources/DICOMKit/Study/StudyManager.swift:235-249 (renderSummary), 289-291 (renderStats) | Labels are not PS3.6 names: "Study UID", "Patient Name", "Description" (study and series), "Number", "Series Count", "Total Instances", "Instances" | PS3.6 Table 6-1; PS3.4 C.6-2 / C.6-3 | Low |
+| D117 | Sources/DICOMKit/Study/StudyOrganizer.swift:113-118, 126 | `--pattern descriptive` series folder `<Series Number>_<Modality>_<Series Description>` is not unique: two series with equal values (Series Number is Type 2; absent → "0") share a folder and the second copy fails "already exists" at `<n>.dcm`. Key the folder on (or suffix it with) Series Instance UID | PS3.4 Table C.6-3 (Series Instance UID U); PS3.3 Table C.7-5a (Series Number Type 2) | Medium |
+| D118 | Sources/DICOMKit/Study/StudyManager.swift:165-166; StudyOrganizer.swift:77 | Files without Series Instance UID / SOP Instance UID (Type 1) are merged under "UNKNOWN"/"UNKNOWN_SERIES" instead of being reported | PS3.3 Table C.7-5a; C.12-1 | Low |
+| D119 | Sources/DICOMKit/Study/StudyManager.swift:1, StudyOrganizer.swift:1 | Markers say "carries no DICOM-standard data", but the files read 13 attributes, group by the Q/R unique keys and build names from 6 attributes; the marker claim should name what was compared | DICOMCORE method, "The marker" | Low |
+
+P-items:
+- **P-STUDY-1** — summary CSV header `StudyUID,…,SeriesCount,InstanceCount` and stats/compare JSON keys `studyUID`, `seriesCount`, `totalInstances` (DICOMKit StudyReport / Statistics, shared with DICOMStudio) → PS3.6 keywords `StudyInstanceUID`, `NumberOfStudyRelatedSeries`, `NumberOfStudyRelatedInstances` (JSON: lowerCamel). Keep the old keys until approved.
+
+Marker (main.swift): `// NEMA-verified: 2026a, checked 2026-10-01 — help names the hierarchy keys of PS3.4 2026a Tables C.6-2 / C.6-3 / C.6-4 (Study Instance UID (0020,000D), Series Instance UID (0020,000E), SOP Instance UID (0008,0018) are the unique keys) and the PS3.6 Table 6-1 names of the 8 attributes used for folder names and checks (…); all match. Labels and JSON/CSV keys are printed by DICOMKit StudyReport (deferred, …)`; StudyManager.swift: `… thin adapters over DICOMKit StudyScanner / StudyReport; the file itself carries no DICOM-standard data (paths, error text, printing)`.
+
+### dicom-archive (G2) — 2026-10-01
+
+Bucket: B2. The CLI is a thin adapter over DICOMKit `Sources/DICOMKit/Archive/ArchiveStore.swift`
+(index model, matching, every printed label and JSON key), which was not changed: engine findings are
+deferred below. Evidence scripts (scratch/reports): `g2sae_std.py match` (PS3.4 C.2.2.2.1, .1.1, .1.2,
+.1.3, .2, .4, .5 text), `g2sae_std.py levels` (PS3.4 Tables C.6-1..C.6-5), `g2sae_std.py dict` (PS3.6
+Table 6-1 rows), `g2sae_checks.py` (names next to tags in Swift + README: 30 matched, 0 wrong; JSON keys
+of ArchiveInstance/Series/Study/Patient/QueryResult vs PS3.6 keywords), `diff_cli.py --tool
+dicom-archive` (0 FAIL).
+
+Matching, from the 2026a text: Wild Card Matching (C.2.2.2.4) — "* shall match any sequence of
+characters (including a zero length value) and ? shall match any single character. This matching is
+case sensitive, except for Attributes with a PN VR"; List of UID Matching (C.2.2.2.2) — backslash
+list; Range Matching of DA (C.2.2.2.5.1) — "<date1> - <date2>", "- <date1>", "<date1> -".
+
+#### Input contract (30 options)
+
+| Option | Concept | 2026a ref | Standard values | Code | Verdict |
+|---|---|---|---|---|---|
+| init --path, --force | archive dir | — | — | — | plumbing (2) |
+| import `<files>`, --archive, --recursive, --verbose | PS3.10 files | PS3.10 7.1 | — | — | plumbing (4) |
+| import --skip-duplicates | dedup on SOP Instance UID (0008,0018) | PS3.4 C.6-4 (U) | instance unique key | duplicates always skipped; flag only stops counting them as errors | match |
+| query --archive, --format | — | — | — | table, json, text | plumbing (2) |
+| query --patient-name | Patient's Name (0010,0010), Wild Card Matching | PS3.4 C.2.2.2.4; C.6-1 (R) | * ?; PN case handling implementation dependent | * ?, case-insensitive | match |
+| query --patient-id | Patient ID (0010,0020) LO, Wild Card Matching | PS3.4 C.2.2.2.4; C.6-1 (U) | * ?; case-sensitive | * ?, case-insensitive (README "Limitations" said so; help now too) | match, documented deviation (D120) |
+| query --study-uid | Study Instance UID (0020,000D) | PS3.4 C.2.2.2.1 / C.2.2.2.2; C.6-2 (U) | single UID or backslash list | one UID, exact; list matched nothing → now warned | match (list: warned) |
+| query --modality | Modality (0008,0060) of any series = Modalities in Study (0008,0061) | PS3.4 C.6-2 / C.6-5 (Modalities in Study O); PS3.3 C.7.3.1.1.1 | Defined Terms | ModalityOptionValidator (DICOMCore, verified); exact, upper-cased; help now names the semantics | match |
+| query --strict-modality | reject non-Defined-Term | PS3.3 C.7.3.1.1.1 | — | flag | match |
+| query --study-date | Study Date (0008,0020) DA | PS3.4 C.2.2.2.1.3, C.2.2.2.5; PS3.5 Table 6.2-1 | YYYYMMDD or range | exact string; range / non-DA matched nothing → now warned | match (range: warned) |
+| list --archive, --format, --show-instances | — | — | — | tree, table, json | plumbing (3) |
+| export --archive, --output, --flatten, --verbose | — | — | — | — | plumbing (4) |
+| export --study-uid / --series-uid | Study / Series Instance UID | PS3.4 C.6-2 / C.6-3 (U) | — | one UID, exact; list warned | match (2) |
+| export --patient-id | Patient ID (0010,0020) | PS3.4 C.6-1 (U) | — | exact, no wild cards (help now says so) | match |
+| check --archive, --verify-files, --verbose | — | PS3.10 7.1 | — | — | plumbing (3) |
+| stats --archive, --format | — | — | — | text, json | plumbing (2) |
+
+Counts: matched 10, wrong 0, missing 0, extra 0, plumbing 20. (The two "matched nothing in silence"
+rows were fixed with a warning, not with range/list matching, which is engine work: D121.)
+
+#### Output contract (DICOMKit ArchiveStore — engine)
+
+| Item | 2026a ref | Standard | Code | Verdict |
+|---|---|---|---|---|
+| Storage path data/<Patient ID>/<Study Instance UID>/<Series Instance UID>/<SOP Instance UID>.dcm | PS3.4 C.6-1..C.6-4 unique keys | — | same | match |
+| Index / query JSON keys | PS3.6 keywords | lowerCamel | patientName, patientID, studyInstanceUID, studyDate, studyDescription, accessionNumber, seriesInstanceUID, seriesNumber, seriesDescription, modality, sopInstanceUID, sopClassUID, instanceNumber | match (13 keyword keys) |
+| study-level `modality` (index, query JSON/table/text) | PS3.4 C.6-2 / C.6-5: study level carries Modalities in Study (0008,0061), CS 1-n | all series modalities | Modality of the first instance imported | wrong (engine, D122; key P-ARCHIVE-1) |
+| query JSON `seriesCount`, `imageCount`; table "Series", "Images" | PS3.6: Number of Study Related Series / Instances | — | counts are right; names not PS3.6, "Images" counts non-image instances too | tool-specific (P-ARCHIVE-1, D123) |
+| query table "Patient Name", "Description" | PS3.6 Patient's Name, Study Description | — | — | wrong label text (D123) |
+| stats "SOP Classes:" | PS3.6 Table A-1 | UID + name | UID only | tool-specific (D123) |
+| `creationDate` (index, stats JSON) | — | collides with PS3.6 keyword CreationDate but is the archive's own ISO 8601 time | — | plumbing |
+| Errors | — | — | ArchiveError → ValidationError, exit 64; other errors exit 1 | plumbing |
+
+#### Commit / tests
+d46affe `fix(cli): dicom-archive warns on Study Date ranges and UID lists it matches exactly (PS3.4 2026a C.2.2.2.5 / C.2.2.2.2); …; dicom-archiveTests` — new Sources/dicom-archive/QueryKeys.swift, main.swift (help, discussion, warnings, marker), README (matching section, options, study `modality`), Package.swift `dicom-archiveTests` (own hunk only), Tests/dicom-archiveTests/ArchiveQueryKeysTests.swift, CHANGELOG bullet.
+`swift build --product dicom-archive`: OK. `swift test --filter ArchiveQueryKeysTests`: 6 tests, 0 failures. `check_nema_markers.py Sources/dicom-archive`: 2/2. `diff_cli.py --tool dicom-archive`: 0 FAIL.
+
+#### Deferred findings
+| ID | File:line | Problem | Ref | Severity |
+|---|---|---|---|---|
+| D120 | Sources/DICOMKit/Archive/ArchiveStore.swift:83-87 | `wildcardMatch` upper-cases pattern and value for every key; Patient ID (LO) wild cards must be case-sensitive (now documented as tool-specific in help and README) | PS3.4 C.2.2.2.4 | Low |
+| D122 | ArchiveStore.swift:416-423 (makeStudy), 496, 527, 548 | The study record's `modality` is the first imported instance's Modality and is shown as the study's Modality; a multi-modality study (e.g. PET/CT, MR + SR) is misreported. Should be Modalities in Study (0008,0061): the distinct series Modality values, recomputed on import | PS3.4 Tables C.6-2 / C.6-5; PS3.6 (0008,0061) CS 1-n | Medium |
+| D121 | ArchiveStore.swift:461, 466, 677 | No List of UID Matching or DA Range Matching for Study Instance UID / Study Date (the CLI now warns) | PS3.4 C.2.2.2.2, C.2.2.2.5.1 | Low |
+| D123 | ArchiveStore.swift:484, 544-550, 612, 887-893 | Labels "Patient Name", "Description", "Series", "Images", "Studies" are not PS3.6 names (Patient's Name, Study Description, Number of Study Related Series / Instances, Number of Patient Related Studies); "Images" counts every instance; "SOP Classes:" prints UIDs without their Table A-1 names | PS3.6 Table 6-1, Table A-1 | Low |
+| D124 | ArchiveStore.swift:289-290, 425 | Patients keyed on Patient ID alone: Issuer of Patient ID (0010,0021) ignored, and every file with an empty/absent Patient ID (Type 2) merges into one "UNKNOWN" patient whose Patient's Name is the first file's | PS3.4 Tables C.6-1 / C.6-5 (Issuer of Patient ID); PS3.3 Table C.7-1 | Low |
+| D125 | ArchiveStore.swift:1 | Marker says "carries no DICOM-standard data (SQLite-backed index)": the index is JSON, and the file implements C-FIND-like matching and the Q/R hierarchy; the marker should name what was compared | DICOMCORE method, "The marker" | Low |
+
+P-items:
+- **P-ARCHIVE-1** — JSON keys (ArchiveStudy in archive_index.json, query JSON): study-level `modality` → `modalitiesInStudy` (array, PS3.6 keyword ModalitiesInStudy); query `seriesCount` / `imageCount` → `numberOfStudyRelatedSeries` / `numberOfStudyRelatedInstances`. Changes the on-disk index format (needs a reader for old indexes) and DICOMStudio. Keep the old keys until approved.
+
+Marker (main.swift): `// NEMA-verified: 2026a, checked 2026-10-01 — option help names the PS3.6 2026a Table 6-1 attributes each key matches (…; all match) and how it matches against PS3.4 C.2.2.2 (wild cards * ?, case-insensitive: tool-specific for LO; no range or UID-list matching, warned); labels and JSON keys are printed by DICOMKit ArchiveStore (deferred, …)`; QueryKeys.swift: `… the archive's query and export keys against PS3.4 2026a C.2.2.2 (Single Value, List of UID C.2.2.2.2, Wild Card C.2.2.2.4, Range C.2.2.2.5 matching) and the Q/R key tables C.6-1 / C.6-2 / C.6-3 / C.6-5; the 7 attribute names and tags in the help match PS3.6 Table 6-1; matching that is not DICOM's is documented as tool-specific`.
+
+### dicom-export (G2) — 2026-10-01
+
+Bucket: B2. Rendering engine (DICOMImageExporter.renderFrameForExport → GrayscaleDisplayPipeline,
+PS3.4 N.2) is verified in DICOMKit (D65/D66/D67) and was not changed; only what the CLI passes and
+prints was checked. PNG / JPEG / TIFF / GIF and EXIF/TIFF tags are not NEMA standards — plumbing.
+Evidence scripts (scratch/reports): `g2sae_std.py modules` (PS3.3 Tables C.7-9, C.7-13, C.7-14,
+C.11-2b, C.11.6-1), `g2sae_std.py render` (C.11.2.1.2.1, C.11.2.1.3 — LINEAR, SIGMOID, LINEAR_EXACT —
+C.11.6.1.2 IDENTITY / INVERSE, C.7.6.6.1.1, C.7.6.5.1.1 "the first Frame number is one", C.7.6.3.1.2:
+14 photometric terms), `g2sae_std.py dict`, `g2sae_checks.py` (names next to tags in Swift + README: 54
+matched, 0 wrong; the 9 `--exif-fields` names are PS3.6 keywords and equal the engine's 9 mapped
+fields), `diff_cli.py --tool dicom-export` (0 FAIL).
+
+#### Input contract (38 options + 3 concept rows)
+
+| Option | Concept | 2026a ref | Standard values | Code | Verdict |
+|---|---|---|---|---|---|
+| single `<input>`, --output, --format, --quality | file, PNG/JPEG/TIFF | PS3.10 7.1 | — | png, jpeg, tiff; 1-100 | plumbing (4) |
+| single --embed-metadata | attributes → EXIF/TIFF | — | — | flag | plumbing |
+| single --exif-fields | attribute keywords | PS3.6 Table 6-1 | keywords | 9 keywords, all PS3.6; help gave 3 examples, now lists all 9 | match |
+| single / animate --apply-window | explicit window instead of the file's VOI | PS3.3 C.11.2.1.2.1 (LINEAR) | — | single: file VOI by default (Window Center/Width + VOI LUT Function, else VOI LUT Sequence, else full range), flag gates explicit values; animate: see below | match (single) |
+| single / animate --window-center, --window-width | Window Center (0028,1050) / Window Width (0028,1051), modality units | PS3.3 C.11.2.1.2.1 (width >= 1) | after Modality LUT / rescale | passed to the N.2 chain in modality units; help said "Window center value", now names the attributes and units | match (4) |
+| single --frame | frame selection | PS3.3 C.7.6.5.1.1 (first Frame number is one); C.7.6.6 | 1..Number of Frames | 0-based index, validated; help said "0-indexed", now "DICOM frame number - 1" | match, documented (P-EXPORT-1) |
+| contact-sheet `<inputs>`, --output, --columns, --thumbnail-size, --spacing, --format, --quality, --labels | grid, image | — | — | — | plumbing (8) |
+| contact-sheet --apply-window | VOI of thumbnails | PS3.3 C.11.2.1.2.1; PS3.4 N.2 | window after the rescale | `tryRenderFrameWithStoredWindow`: the HU window applied to stored values (CT 40/400 with intercept -1024 → wrong picture), single-valued DS only; default full-range auto | **wrong → fixed** (renderFrameForExport; flag kept as a no-op like bulk) |
+| animate `<input>`, --output, --loop-count, --scale | — | — | — | — | plumbing (4) |
+| animate --fps | display frame rate | PS3.3 Table C.7-13: Recommended Display Frame Rate (0008,2144), Cine Rate (0018,0040), Frame Time (0018,1063) msec (C.7.6.5.1.1) | from the file | fixed 10 | **missing → fixed** (default (0008,2144) > (0018,0040) > 1000/(0018,1063) > 10; `--fps` optional) |
+| animate --apply-window | explicit window | PS3.3 C.11.2.1.2.1; PS3.4 N.2 | window in modality units | `determineWindowSettings` stored-unit window + `tryRenderFrame(window:)` (wrong for slope != 1, Modality LUT Sequence ignored); default per-frame auto window | **wrong → fixed** (renderFrameForExport, as single) |
+| animate --start-frame, --end-frame | frame range | PS3.3 C.7.6.5.1.1 | 1-based | 0-based, end inclusive, clamped; help now says so | match, documented (2) (P-EXPORT-1) |
+| bulk `<input>`, --output, --format, --quality, --recursive, --embed-metadata, --verbose | — | — | — | — | plumbing (7) |
+| bulk --organize-by | folders from Patient's Name (0010,0010) / Study Instance UID / Series Instance UID | PS3.4 C.6-1..C.6-3 (Patient ID is the patient unique key) | — | flat, patient, study, series; help now names the attributes | match (P-EXPORT-2 for the patient key) |
+| bulk --apply-window | — | — | — | no effect (file VOI always); help now says so | plumbing |
+| (burned-in annotation) | Burned In Annotation (0028,0301) | PS3.3 Table C.7-9, C.7.6.1: Enumerated Values YES, NO | warn when YES | none | **missing → fixed** (stderr warning in all 4 subcommands) |
+| (voi-lut-function) | VOI LUT Function (0028,1056) | PS3.3 C.11.2.1.3: LINEAR, LINEAR_EXACT, SIGMOID | — | not an option; the file's value is honoured by the engine; explicit windows LINEAR | match |
+| (presentation-lut-shape) | Presentation LUT Shape (2050,0020) | PS3.3 C.11.6.1.2: IDENTITY, INVERSE | INVERSE for MONOCHROME1 (C.7.6.3.1.2) | engine: INVERSE for MONOCHROME1 else IDENTITY | match |
+
+Counts: matched 12, wrong 2 (fixed), missing 2 (fixed), extra 0, plumbing 25.
+
+#### Output contract
+
+| Item | 2026a ref | Standard | Code | Verdict |
+|---|---|---|---|---|
+| Photometric handling (MONOCHROME1 inversion, PALETTE COLOR, RGB/YBR) | PS3.3 C.7.6.3.1.2 | — | engine (PixelDataRenderer / GrayscaleDisplayPipeline), now the same call in all 4 subcommands | match (delegated) |
+| "Exported:", "Contact sheet exported:", "Animated GIF exported: … (N frames, X fps)", bulk lines | — | — | ExportConsole (DICOMKit); fps now the resolved rate | plumbing |
+| Burned In Annotation warning (stderr) | PS3.3 Table C.7-9 | YES / NO | "warning: <file>: Burned In Annotation (0028,0301) is YES — …"; bulk/contact-sheet: one count line | match (new) |
+| EXIF mapping (9 keywords) | PS3.6 keywords | — | PatientName→TIFF ImageDescription, StudyDate→Exif DateTimeOriginal, Modality→Exif "Software", … | plumbing; D126 |
+| Errors / exit codes | — | — | "Invalid frame N. File has M frames (0-(M-1))"; thrown → exit 1 | plumbing |
+
+#### Commit / tests
+104202f `fix(cli): dicom-export contact-sheet and animate render through the PS3.4 N.2 chain like single/bulk; animate default fps from Recommended Display Frame Rate / Cine Rate / Frame Time (PS3.3 2026a Table C.7-13); Burned In Annotation (0028,0301) YES warning; 0-based frame index and PS3.6 names in help; dicom-exportTests` — new Sources/dicom-export/ExportStandard.swift (CineFrameRate, BurnedInAnnotation, ExportFrames), main.swift, README, Package.swift `dicom-exportTests` (own hunk only), Tests/dicom-exportTests/ExportStandardTests.swift, CHANGELOG bullets.
+`swift build --product dicom-export`: OK. `swift test --filter ExportStandardTests`: 12 tests, 0 failures (incl. contact-sheet frame == single export and != the old stored-window render for a CT with intercept -1024). `check_nema_markers.py Sources/dicom-export`: 2/2. `diff_cli.py --tool dicom-export`: 0 FAIL.
+
+#### Deferred findings
+| ID | File:line | Problem | Ref | Severity |
+|---|---|---|---|---|
+| D126 | Sources/DICOMKit/ImageExport/DICOMImageExporter.swift:84-111 | `--exif-fields PatientID` is read (getDICOMFieldValue) but has no EXIF mapping and is dropped silently; Study Date (DA YYYYMMDD) is written unconverted into Exif DateTimeOriginal ("YYYY:MM:DD HH:MM:SS"); Modality goes to an Exif "Software" key | PS3.5 Table 6.2-1 DA (DICOM side only) | Low |
+| D127 (to DICOMStudio) | Sources/DICOMStudio/ViewModels/CLIWorkshopViewModel.swift:4410, 4557-4562, 4620-4628 | The CLI Workshop mirror of `dicom-export` still uses fps 10 by default, `tryRenderFrameWithStoredWindow` for contact-sheet and a stored-unit window for animate: it now differs from the CLI and repeats the two fixed bugs; no Burned In Annotation warning | PS3.4 N.2; PS3.3 C.11.2.1.2.1, Table C.7-13, C.7-9 | Medium |
+
+P-items:
+- **P-EXPORT-1** — frame selection is 0-based (`single --frame`, `animate --start-frame/--end-frame`, error text "0-(M-1)"); PS3.3 C.7.6.5.1.1 numbers the first Frame 1. Proposal: accept DICOM frame numbers (e.g. `--frame-number`, `--start-frame-number`, `--end-frame-number`, 1-based) and deprecate the 0-based options. Now documented in help/README as "DICOM frame number - 1".
+- **P-EXPORT-2** — `bulk --organize-by patient|study|series` names the patient folder from Patient's Name (0010,0010); the patient-level unique key is Patient ID (0010,0020) (PS3.4 Table C.6-1, U), so two patients with one name merge and one patient with name variants splits. Proposal: key on Patient ID (DICOMImageExporter.buildOrganizedPath signature + folder layout change, shared with DICOMStudio).
+- **P-EXPORT-3** — `contact-sheet --apply-window` and `bulk --apply-window` have no effect (the file's VOI is always applied); deprecate or give them explicit `--window-center/--window-width`.
+
+Marker (ExportStandard.swift): `// NEMA-verified: 2026a, checked 2026-10-01 — the DICOM inputs dicom-export reads: the cine rate attributes of the Cine Module, PS3.3 2026a Table C.7-13 (Recommended Display Frame Rate (0008,2144), Cine Rate (0018,0040), Frame Time (0018,1063) in msec, C.7.6.5.1.1; 3 rows, names and tags match PS3.6 Table 6-1), Burned In Annotation (0028,0301) Enumerated Values YES / NO of PS3.3 Table C.7-9 / C.7.6.1; the frame render goes through DICOMImageExporter.renderFrameForExport (PS3.4 N.2 chain, verified in DICOMKit)`; main.swift: `… option help names the PS3.6 2026a attributes it reads (…, the 9 --exif-fields keywords, all match Table 6-1); frames are 0-based indexes (frame number - 1, PS3.3 C.7.6.5.1.1 numbers the first Frame 1); PNG/JPEG/TIFF/GIF outputs are non-DICOM plumbing; every subcommand renders through ExportFrames (PS3.4 N.2 chain)`.
+
+CHANGELOG ([Unreleased], section "Fixed — dicom-study, dicom-archive, dicom-export verified against DICOM 2026a (2026-10-01)"): 5 bullets, committed with the three tools.
+
+### dicom-dcmdir (G2) — commit `a45fd45`
+
+Compared: PS3.10 2026a 8.1 (File-set ID 0-16 chars), 8.2 (File ID 1-8 components of 1-8 chars), 8.5 (A-Z, 0-9, _), 8.6 (DICOMDIR, no File outside the File-set) — section text dumped by script; PS3.3 2026a Table F.4-1 (35 Directory Record Type terms; `DirectoryRecordType` raw values diffed by script: 35/35 match, 16 retired terms + internal ROOT extra by design), Tables F.3-2 / F.3-3 (File-set ID (0004,1130), File-set Consistency Flag (0004,1212) "The Value FFFFH shall never be present", Referenced File ID (0004,1500) "max 8 components, each 1 to 8 characters … referenced by at most one Directory Record", Referenced SOP Instance UID in File (0004,1511)); PS3.11 profile identifiers (done in ca2bd29, D29; D70 enforcement already filed). Tool run end-to-end on a 3-file fixture folder (create / validate / dump tree,text,json / --check-files). `Scripts/diff_cli.py --tool dicom-dcmdir`: 11 checks ok, 0 FAIL (16 options found; extractor needed no change).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default (std) | Default (code) | Verdict |
+|---|---|---|---|---|---|---|---|
+| `create <input-directory>` | File-set root; File IDs = relative paths | PS3.10 8.1, 8.2, 8.6 | File IDs 1-8 comps × 1-8 chars A-Z 0-9 _ | any directory; any file names | — | — | match (now warns when indexed names are not valid File IDs) |
+| `create -o, --output` | reserved File ID DICOMDIR | PS3.10 8.6 | `DICOMDIR` in the File-set root | path | — | `<input>/DICOMDIR` | plumbing |
+| `create --file-set-id` | File-set ID (0004,1130) | PS3.10 8.1, 8.5; PS3.3 Table F.3-2 | 0-16 chars A-Z 0-9 _ (Type 2) | any string | — | was raw dir name (e.g. lowercase `media`) | wrong → fixed: default upper-cased, other chars `_`, cut to 16; explicit invalid value warns (P-DCMDIR-FSID to reject) |
+| `create --profile` | Application Profile | PS3.11 Tables A.1-1 … N.1-1 | 64 identifiers | DICOMDIRProfile | — | STD-GEN-CD | match (ca2bd29) |
+| `create --recursive/--no-recursive` | discovery | — | — | flag | — | on | plumbing |
+| `create --strict` | Part 10 read | PS3.10 7.1 | — | flag | — | off | plumbing |
+| `create --verbose` | output | — | — | flag | — | off | plumbing |
+| `validate <dicomdir-path>` | DICOMDIR / File-set folder | PS3.10 8.6 | — | path | — | — | plumbing |
+| `validate --check-files` | Referenced File ID exists in File-set | PS3.10 8.6; PS3.3 Table F.3-3 | — | flag | — | off | wrong → fixed (engine check only rejected empty paths; CLI now stats every File ID) |
+| `validate --detailed` | records by (0004,1430) | PS3.3 Table F.4-1 | 35 terms | flag | — | off | match |
+| (validate rules) | File-set ID, File ID, duplicate File ID, hierarchy, duplicate SOP Instance — each naming its clause | PS3.10 8.1/8.2/8.5/8.6; PS3.3 F.3-2, F.3-3, F.4-1; PS3.5 9.1 | — | — | — | — | missing → fixed |
+| `dump <dicomdir-path>` | DICOMDIR | PS3.10 8.6 | — | path | — | — | plumbing |
+| `dump -f, --format` | output | — | — | tree, json, text | — | tree | plumbing |
+| `dump --verbose` | record keys | PS3.3 F.5 key tables | attribute names | prints `(gggg,eeee): value` only | — | off | wrong (engine formatter, D128) |
+| `update <dicomdir-path>` | FSU role | PS3.10 8.3 | — | path | — | — | plumbing |
+| `update --add` | files to add | PS3.10 8.3, 8.6 | inside File-set | path | — | — | plumbing |
+| `update --verbose` | output | — | — | flag | — | off | plumbing |
+
+**Output contract**
+
+| Output | Standard | Verdict |
+|---|---|---|
+| Record labels `PATIENT`, `STUDY`, `SERIES`, `IMAGE`, … (tree/text/`--detailed`) | PS3.3 Table F.4-1 Directory Record Type terms (35) | match |
+| `File-set ID:` / `ID:` | PS3.6 name "File-set ID" (0004,1130) | match |
+| `Consistent: true/Yes` | File-set Consistency Flag (0004,1212) | label not the PS3.6 name (low, D128) |
+| `Profile:` | no attribute carries it (PS3.11; D15 documented) | match (documented assumption) |
+| validate failure lines `❌ … [PS3.10 8.2, 8.5; PS3.3 Table F.3-3 Referenced File ID (0004,1500)]`, `[PS3.3 F.4, Table F.4-1]`, `[PS3.10 8.6 …]`, `[PS3.5 9.1 …]` | clause per rule | new (fixed: errors used to print "The operation couldn't be completed") |
+| JSON keys `fileSetID profile isConsistent statistics{patients studies series images} recordCount` | tool-defined (no PS3.18 F model claimed) | extra/tool-defined |
+| Exit codes 0 ok; 1 read/validation failure (now also File ID / File-set ID violations); 64 usage | — | plumbing |
+
+Counts (17 rows): matched 3, wrong 3 (2 fixed, 1 deferred), missing 1 (fixed), extra 0, plumbing 10.
+
+Changed: `Sources/dicom-dcmdir/FileSetRules.swift` (new), `main.swift`, `README.md` (SPACE not allowed in a File-set ID; File ID example without `.dcm`; 2026a Consistency Flag text; removed "update not implemented"; references PS3.3 Annex F / PS3.4 Annex I / PS3.10 8), new test target `dicom-dcmdirTests` (7 tests), CHANGELOG bullet. Behaviour change: `validate` exits 1 for a DICOMDIR whose File IDs are not PS3.10 8.2/8.5 conformant (e.g. ones `create` builds from `*.dcm` names; `create` now warns about that).
+
+Tests: `swift test --filter FileSetRulesTests` 7/7 pass; `swift build --product dicom-dcmdir` ok; `check_nema_markers.py Sources/dicom-dcmdir` exit 0 (2 files).
+
+Deferred:
+| ID | Module | file:line | Problem | Ref | Severity |
+|---|---|---|---|---|---|
+| D129 | DICOMKit | `Sources/DICOMKit/DICOMDIRWriter.swift:346-395` (`DICOMDirectory.Builder.addFile`) | `DirectoryRecord` is a struct: when the series (or study) already exists, the copy that receives the new IMAGE (or SERIES) is never written back, so only the first image of each series and the first series of each study are indexed. Fixture: 2 distinct SOP Instances in one series → "Files processed: 3/3 … Images: 1". `DcmdirRoundTripTests` works around it with one patient per file | PS3.3 F.4, Table F.4-1, F.5.3/F.5.4 | High: DICOMDIR silently omits instances |
+| D130 | DICOMCore | `Sources/DICOMCore/DICOMDirectory.swift:619-630` | `validate(checkFileExistence:)` is a placeholder (only rejects an empty path) — CLI now checks on disk | PS3.10 8.6 | Medium |
+| D128 | DICOMKit | `Sources/DICOMKit/DICOMDIRDumpFormatter.swift:60-63, 158-161, 45, 141` | `--verbose` record attributes printed as bare tags, no PS3.6 attribute names; "Consistent" label instead of File-set Consistency Flag | PS3.6 Table 6-1; PS3.3 F.3-3 | Low |
+| D131 | DICOMKit | `Sources/DICOMKit/DICOMDIRWorkflow.swift:166-172` | FSC writes the raw relative path as File ID (lower case, `.dcm`, >8 chars); an FSC should assign conformant File IDs | PS3.10 8.2, 8.5 | Medium |
+| D132 | DICOMStudio | Workshop dcmdir executor | lacks the CLI's new validate rules and File-set ID default (parity) | PS3.10 8.x | Low |
+
+P-items: **P-DCMDIR-FSID** — reject (instead of warn about) an explicit `--file-set-id` outside PS3.10 8.1/8.5 (accepted-value change).
+
+Markers: `main.swift` (2nd line) `// NEMA-verified: 2026a, checked 2026-10-01 — create derives the default File-set ID per PS3.10 2026a 8.1/8.5 and warns on File IDs outside 8.2/8.5; validate reports each failure with its PS3.10 8.1, 8.2, 8.5, 8.6 / PS3.3 Table F.3-2, F.3-3, F.4-1 clause and --check-files tests every Referenced File ID (0004,1500) on disk (8.6); dump record labels are the 35 Directory Record Type terms of PS3.3 Table F.4-1 (DICOMCore.DirectoryRecordType)`; `FileSetRules.swift` `// NEMA-verified: 2026a, checked 2026-10-01 — File ID and File-set ID rules of PS3.10 2026a 8.1 …, 8.2 …, 8.5 …, 8.6 …; PS3.3 2026a Table F.3-2 …, Table F.3-3 … and Table F.4-1 …; every rule text extracted from the DocBook by script`.
+
+### dicom-uid (G2) — commit `788f620`
+
+Compared: PS3.5 2026a 9.1 (UID encoding rules), 9.2.2 (privately defined UIDs on a registered root), B.2 (UUID derived UID) — section text dumped by script; PS3.6 2026a Table A-1 (465 rows: `lookup --list-all --json` diffed by script — names 465/465 match, 2 extra unregistered Fragmentable HEVC entries by decision (DICOMCore P2); UID Type labels 444 match, 21 wrong); PS3.6 Table 6-1 UI attributes (92, 10 retired) and PS3.15 2026a Table E.1-1 (via `generate_confidentiality_profile.rows`: 53 rows are UI attributes, all action U except Annotation Group UID (006A,0003) D; U also for (0002,0003), (0004,1511), (0000,1001), and X/Z/U* for Referenced / Source Image Sequence) against `regenerate` run on two linked fixtures (ref_b references ref_a in Referenced Image Sequence and Source Image Sequence). Default root `UIDGenerator.defaultRoot` = 1.2.826.0.1.3680043.10.511.4 (DICOMKit's own root, 28 chars; generated UIDs ≤ 54 chars, PS3.5 9.1 valid). `Scripts/diff_cli.py --tool dicom-uid`: 11 checks ok, 0 FAIL (21 options with the new `--uuid`).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default (std) | Default (code) | Verdict |
+|---|---|---|---|---|---|---|---|
+| `generate -c, --count` | number of UIDs | — | — | 1-1000 | — | 1 | plumbing (help no longer prints the default twice) |
+| `generate -t, --type` | DICOMKit arc .1/.2/.3 under the root | PS3.5 9.1 (no component semantics) | — | study, series, instance, sop, generic | — | generic | match (sop alias now in help) |
+| `generate -r, --root` | UID root | PS3.5 9.1, 9.2.2 | registered root; numeric comps, no leading zero; root + suffix ≤ 64 | any string | org root | 1.2.826.0.1.3680043.10.511.4 | wrong → fixed: malformed root crashed (exit 133); root > 38/40 chars returned the same UID for every `--count` |
+| `generate --uuid` | UUID derived UID | PS3.5 B.2 | `2.25.` + decimal UUID (≤ 39 digits) | flag | — | off | missing → added |
+| `generate --json` | output | — | — | flag | — | off | plumbing |
+| `validate <uids>` | UID syntax | PS3.5 9.1 | ≤ 64, numeric comps, no leading zero | engine rules | — | — | match (+1 extra engine rule "at least 2 components", D133) |
+| `validate --file` | UI elements of a file | PS3.5 9.1; PS3.6 VR UI | all UI elements | top-level only | — | — | wrong (engine, D133) |
+| `validate --check-registry` | Table A-1 name | PS3.6 Table A-1 | — | flag | — | off | match |
+| `validate --json` | output | — | — | flag | — | off | plumbing |
+| `lookup <uid>` | name, UID Type | PS3.6 Table A-1 | 465 rows | UIDDictionary | — | — | names match 465/465; Type labels wrong for 21 (engine, D134) |
+| `lookup --list-all` | registry listing | PS3.6 Table A-1 | 465 | 467 (2 unregistered by decision) | — | — | match |
+| `lookup --type` | UID Type filter | PS3.6 Table A-1 "UID Type" (12 values) | 12 | was transfer-syntax, sop-class | — | — | missing → fixed (11 values; DICOM UIDs as a Coding Scheme folded into coding-scheme by UIDType) |
+| `lookup --search` | text search | — | — | string | — | — | plumbing |
+| `lookup --json` | output | — | — | flag | — | off | plumbing |
+| `regenerate <inputs>` | UIDs replaced | PS3.15 Table E.1-1 (U); PS3.10 Table 7.1-1 (0002,0003) | U rows incl. nested references; (0002,0003) = SOP Instance UID | every top-level UI value not in Table A-1 | — | — | wrong (engine, D135/2/3) — help/README now state the scope |
+| `regenerate -o, --output` | output | — | — | path | — | in place | plumbing |
+| `regenerate -r, --root` | UID root | PS3.5 9.1, 9.2.2 | as generate | any string | — | default root | wrong → fixed |
+| `regenerate --maintain-relationships` | same old → same new | PS3.15 Table E.1-1 (action U) | — | flag (forced for > 1 file) | — | off | match (top-level only, D135) |
+| `regenerate --export-map` | mapping JSON | — | — | path | — | — | plumbing |
+| `regenerate -v, --verbose` | output | — | — | flag | — | off | plumbing |
+| `regenerate --dry-run` | preview | — | — | flag | — | off | plumbing |
+
+**Output contract**
+
+| Output | Standard | Verdict |
+|---|---|---|
+| `UID: / Name: / Type:` and listing `uid  name  (type)`; JSON `uid name type` | PS3.6 Table A-1 UID Value / UID Name / UID Type | names match 465/465; type text: 444 match; "Well-Known UID" ×19 ≠ "Well-known SOP Instance", "Application Context" ×1 ≠ "Application Context Name", "Coding Scheme" ×1 for "DICOM UIDs as a Coding Scheme" (D134, P-UID-TYPE) |
+| validate `✅/❌ uid`, `- reason`; JSON `uid valid errors registryName` | PS3.5 9.1 | match; reasons don't cite 9.1 (D133) |
+| mapping JSON `oldUID newUID tagName tagHex`; `tagName` = PS3.6 keyword for 5 tags (SOPInstanceUID, SOPClassUID, StudyInstanceUID, SeriesInstanceUID, InstanceCreatorUID), else `(gggg,eeee)` | PS3.6 Table 6-1 keywords | match (5/5) |
+| "UID not found in DICOM registry (not a standard Transfer Syntax or SOP Class UID)" | registry is all of Table A-1 | wrong text (engine, D136) |
+| unknown `--type`: now lists the 11 Table A-1 values | PS3.6 Table A-1 | fixed |
+| `--root` errors name the PS3.5 9.1 rule | PS3.5 9.1 | new |
+| Exit codes 0; 1 invalid UID / not found / unknown filter; 64 usage (was 133 crash on a bad root) | — | plumbing (fixed crash) |
+
+Counts (21 rows): matched 5, wrong 5 (2 fixed, 3 deferred), missing 2 (fixed), extra 1 (engine rule inside a matched row), plumbing 9.
+
+Changed: `Sources/dicom-uid/UIDOptions.swift` (new: `UIDRootRule`, `UUIDDerivedUID`, `LookupTypeFilter`), `main.swift` (root validation in `generate`/`regenerate` `validate()`, `--uuid`, `--type` filters, help text), `README.md`, new test target `dicom-uidTests` (5 tests), CHANGELOG bullet.
+
+Tests: `swift test --filter UIDOptionsTests` 5/5 pass (incl. 2^128-1 → 39-digit 2.25 UID, RFC 4122 example UUID, 20 distinct UIDs on the longest allowed root); `check_nema_markers.py Sources/dicom-uid` exit 0.
+
+Deferred:
+| ID | Module | file:line | Problem | Ref | Severity |
+|---|---|---|---|---|---|
+| D135 | DICOMKit | `Sources/DICOMKit/UIDManagement/UIDManager.swift:213` (`regenerateData`), `:289` (preview) | walks `dataSet.allElements` (top level only): Referenced SOP Instance UID (0008,1155) in Referenced / Source Image Sequence kept the OLD UID after regenerating both files → references dangle; same for (3006,0024) etc. | PS3.15 Table E.1-1 (0008,1155) U, (3006,0024) U | High |
+| D137 | DICOMKit | `UIDManager.swift:251-254` | `DICOMFile.create(dataSet:sopClassUID:)` without `sopInstanceUID:` writes a fresh Media Storage SOP Instance UID (0002,0003) ≠ the new SOP Instance UID (fixture: …511.4.3.1790835791361393… vs …511.4.1790835791360376…) | PS3.10 Table 7.1-1 (0002,0003) "Uniquely identifies the SOP Instance associated with the Data Set"; PS3.15 E.1-1 U | High |
+| D138 | DICOMKit | `UIDManager.swift:219-222` | criterion "value not in Table A-1" also replaces UIDs that are not instance identifiers: Coding Scheme UID (0008,010C) 2.16.840.1.113883.6.96 was replaced in the fixture; also Context Group Extension Creator UID, Mapping Resource UID, private SOP Class UIDs, Referenced SOP Class UID values not in A-1 (37 UI attributes not in E.1-1) | PS3.15 Table E.1-1 (U set) | Medium |
+| D139 | DICOMCore | `Sources/DICOMCore/UIDGenerator.swift:84-88, 113-116, 75-81` | force-unwrap crash on a malformed root; truncation to 64 cuts the unique suffix (identical UIDs). CLI guards now | PS3.5 9.1, 9.2.2 | Medium |
+| D134 | DICOMKit | `UIDManager.swift:317-330` (`uidTypeDescription`) | "Well-Known UID" / "Application Context" / folded "DICOM UIDs as a Coding Scheme" differ from Table A-1 UID Type (21 UIDs) | PS3.6 Table A-1 | Low (JSON value change → P-UID-TYPE) |
+| D136 | DICOMKit | `UIDManager.swift:407-413` (`UIDConsole.lookupNotFoundLine`, `unknownTypeFilterLine`) | not-found text says "Transfer Syntax or SOP Class"; filter list has 2 values (CLI no longer uses it; Studio does) | PS3.6 Table A-1 | Low |
+| D133 | DICOMKit | `UIDManager.swift:137-140, 155-176` | "Must have at least 2 components" is not a PS3.5 9.1 rule; messages don't cite 9.1; `validateFileUIDs` checks top-level elements only | PS3.5 9.1 | Low |
+
+P-items: **P-UID-TYPE** — print the PS3.6 Table A-1 UID Type text ("Well-known SOP Instance", "Application Context Name", "DICOM UIDs as a Coding Scheme") in lookup output and the JSON `type` value (shared `UIDManager.uidTypeDescription`, also DICOMStudio).
+
+Markers: `main.swift` `// NEMA-verified: 2026a, checked 2026-10-01 — help and checks cite PS3.5 2026a 9.1, 9.2.2 and B.2; --root is validated (UIDRootRule) and the default root is UIDGenerator.defaultRoot; lookup prints the PS3.6 2026a Table A-1 names (465 of 465 match, 2 unregistered Fragmentable HEVC entries by decision) and --type filters every Table A-1 UID Type (UIDOptions.swift); regenerate replaces top-level UI values that are not Table A-1 UIDs (compared with PS3.15 Table E.1-1: 53 UI rows, action U except Annotation Group UID D; sequence items are not remapped, deferred)`; `UIDOptions.swift` `// NEMA-verified: 2026a, checked 2026-10-01 — --root is checked against PS3.5 2026a 9.1 (…) and must leave room for the generated suffix; --uuid builds the UUID derived UID of PS3.5 B.2 (…); lookup --type covers all 12 UID Type values of PS3.6 2026a Table A-1 (465 rows dumped by script; …)`.
+
+### dicom-validate (G2) — commit `606ef6d`
+
+Compared: the tool's own output, run at `--level 4 --detailed` on 10 pydicom fixtures (one near-empty instance per supported IOD: CT, MR, CR, US, SC, GSPS, PCPS, Comprehensive SR, KOS; plus `vr_limits.dcm` with LO 70, SH 20, CS 20/lowercase, DS 19, IS 13, PN 70, 4 PN groups, bad DA/TM/UI). Every "Missing Type T attribute N [PS3.3 S Title (Table L); PS3.5 7.4.x]" line was parsed and checked by script (`scratch/g2/check_validate_out.py`) against PS3.3 2026a: section S exists and its title contains the printed module name, Table L is the module's table or a macro it includes (followed recursively), N is a row of L (or of a table L includes) with Type T, and 7.4.x is the PS3.5 7.4 subsection for Type T. 81 distinct messages: 79 match, 2 wrong. IOD prefixes vs PS3.6 Table A-1 names: 3 match, 6 not A-1 names. VR forms printed vs PS3.5 2026a Table 6.2-1 (dumped by script): DA "YYYYMMDD" and TM "HHMMSS.FFFFFF" match; UI 64 (not printed, enforced) matches; no maximum-length or repertoire check exists for the other VRs, and no VM check (none reported on `vr_limits.dcm`). `--iod` values vs Table A-1 keywords. `Scripts/diff_cli.py --tool dicom-validate`: 11 checks ok, 0 FAIL (7 UID literals in IODOption match Table A-1).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default (std) | Default (code) | Verdict |
+|---|---|---|---|---|---|---|---|
+| `<input-path>` | Part 10 file / directory | PS3.10 7.1 | — | path | — | — | plumbing |
+| `--level` | validation depth | PS3.10 Table 7.1-1; PS3.5 Table 6.2-1, 9.1; PS3.3 IOD/module tables; PS3.5 7.4.1-7.4.4 | — | 1-5 | — | 3 | wrong → fixed (help said "2=Tags/VR/VM"; level 2 checks VR vs dictionary and DA/TM/UI forms only) |
+| `--iod` | IOD / SOP Class | PS3.6 Table A-1 keywords; PS3.3 Annex A | keyword or UID | engine names: ct/mr/cr/ultrasound/sc/gsps/sr/kos, `CRImageStorage`, `USImageStorage`, `GrayscaleSoftcopyPresentationState`, … | — | from (0008,0016) | wrong → fixed: Table A-1 keywords `ComputedRadiographyImageStorage`, `UltrasoundImageStorage`, `GrayscaleSoftcopyPresentationStateStorage`, `PseudoColorSoftcopyPresentationStateStorage`, SR/KOS keywords and UIDs reported "IOD validation not implemented"; now mapped (IODOption), plus `US` |
+| `--detailed` | output | — | — | flag | — | off | plumbing |
+| `--recursive` | directory walk | — | — | flag | — | off | plumbing |
+| `-f, --format` | output | — | — | text, json | — | text | plumbing |
+| `-o, --output` | report path | — | — | path | — | stdout | plumbing |
+| `--strict` | warnings → exit 2 | — | — | flag | — | off | plumbing |
+| `--force` | no DICM prefix | PS3.10 7.1 | — | flag | — | off | plumbing |
+
+**Output contract**
+
+| Output | Standard | Verdict |
+|---|---|---|
+| `<IOD>: Missing Type 1/1C/2/2C attribute <name> [PS3.3 <sect> <module> (Table <x>); PS3.5 7.4.n]` | PS3.3 2026a module/macro tables; PS3.5 7.4.1-7.4.4 | 81 distinct: 79 match; 2 wrong (D140, -3) |
+| IOD prefixes `CT Image Storage`, `MR Image Storage`, `Secondary Capture Image Storage` / `CR Image Storage`, `US Image Storage`, `GSPS`, `Pseudo-Color PS`, `Key Object Selection Document`, `Structured Report` | PS3.6 Table A-1 names | 3 match, 6 wrong (D141) |
+| `Invalid date format … (expected YYYYMMDD)`, `Invalid time format … (expected HHMMSS.FFFFFF)`, UID ≤ 64 | PS3.5 Table 6.2-1 DA, TM, UI | match 3 |
+| max lengths / repertoires AE 16, AS 4, CS 16, DS 16, DT 26, IS 12, LO 64, LT 10240, PN 64 per group, SH 16, ST 1024, TM 14; VM | PS3.5 Table 6.2-1; PS3.6 Table 6-1 VM | missing (engine, D142) |
+| `Code String should be uppercase` (warning); `Person Name has more than 3 components` | PS3.5 Table 6.2-1 CS repertoire; 6.2.1 component groups | wrong wording/level (D142) |
+| `Missing required File Meta Information element: …` (6 Type 1 elements) | PS3.10 Table 7.1-1 | match (engine-verified 2026-09-29) |
+| JSON keys `totalFiles validFiles invalidFiles totalErrors totalWarnings files[filePath isValid errorCount warningCount errors[message tag] warnings[…]]`; tag `(gggg,eeee)` | tool-defined; PS3.5 7.1 tag notation | extra/tool-defined; tag notation match |
+| Exit 0 valid; 1 errors; 2 warnings with `--strict`; 64 usage | — | plumbing |
+
+Counts (12 rows): matched 0 rows fully (3 value forms match inside the VR row), wrong 4 (2 fixed, 2 deferred), missing 1 (deferred), extra 0, plumbing 7. Value-level: citations 79/81, IOD labels 3/9, VR forms 3 matched / 11 VR limits + VM missing.
+
+Changed: `Sources/dicom-validate/IODOption.swift` (new), `DICOMValidate.swift` (`--iod` mapped through IODOption, `--level` / `--iod` help), `README.md` (Table A-1 IOD names, Pseudo-Color and KOS listed, no VM / deprecated-tag claims, level descriptions), new test target `dicom-validateTests` (4 tests), CHANGELOG bullet.
+
+Tests: `swift test --filter IODOptionTests` 4/4 pass; `check_nema_markers.py Sources/dicom-validate` exit 0.
+
+Deferred:
+| ID | Module | file:line | Problem | Ref | Severity |
+|---|---|---|---|---|---|
+| D142 | DICOMKit | `Sources/DICOMKit/Validation/DICOMValidator.swift:148-240` | level 2 checks no VR maximum length / repertoire except DA, TM, UI and CS lowercase (warning only, though outside the CS repertoire), and no VM: LO 70, SH 20, CS 20, DS 19, IS 13, PN 70 all pass; "Person Name has more than 3 components" means component groups; DA/TM errors reported twice (validateValueFormat + validateDatesAndTimes) | PS3.5 Table 6.2-1, 6.2.1; PS3.6 Table 6-1 VM | Medium |
+| D140 | DICOMKit | `DICOMValidator.swift:825` | GSPS/PCPS: Content Creator's Name (0070,0084) required as Type 2 "[C.11.10 … (Table 10-12)]"; in 2026a it is Type 3 in Content Creator Macro Table 10.9.3-1, included by Table 10-12 → false error on every presentation state without it | PS3.3 Tables 10-12, 10.9.3-1, C.11.10-1 | Medium |
+| D143 | DICOMKit | `DICOMValidator.swift:894` | KOS/SR root Concept Name Code Sequence printed as "Type 1 … (Table C.17-5, Root Content Item)"; Table C.17-5 gives Type 1C (condition) | PS3.3 Table C.17-5; PS3.5 7.4.2 | Low |
+| D141 | DICOMKit | `DICOMValidator.swift` IOD validators' `iod` names | message prefixes "CR Image Storage", "US Image Storage", "GSPS", "Pseudo-Color PS", "Key Object Selection Document", "Structured Report" are not PS3.6 Table A-1 names | PS3.6 Table A-1 | Low |
+
+P-items: none.
+
+Marker: `DICOMValidate.swift` `// NEMA-verified: 2026a, checked 2026-10-01 — printed Type / PS3.3 module-table / PS3.5 7.4.1-7.4.4 citations run on 10 fixtures and diffed against PS3.3 2026a (81 distinct messages: 79 match, 2 wrong in the engine, deferred); --iod takes PS3.6 Table A-1 keywords and UIDs (IODOption.swift); --level help states what level 2 checks (PS3.5 Table 6.2-1 DA, TM, UI forms; no length or VM checks, deferred)`; `IODOption.swift` `// NEMA-verified: 2026a, checked 2026-10-01 — --iod accepts the PS3.6 2026a Table A-1 keyword or UID of the 7 image / presentation-state SOP Classes and every SR SOP Class (DICOMCore.SRDocumentType) that DICOMValidator implements; the 7 UID literals below match Table A-1 (diff_cli.py uid check); the engine's own short names stay accepted`.
+
+Scripts for the orchestrator (candidates for Scripts/diff_cli.py): `scratch/g2/check_validate_out.py` (output citation diff against PS3.3, follows macro includes), `scratch/g2/check_uid_lookup.py` (lookup output vs Table A-1 names/types), `scratch/g2/check_uid_regen.py` (UI attributes vs E.1-1), fixtures `scratch/g2/mkfx.py`.
+
+### dicom-dump (G2 File and media) — verified 2026-10-01
+
+Files: `Sources/dicom-dump/main.swift` (B2). Engine: `DICOMKit/HexDumper.swift` (deferred; its VR lists already carry a 2026a marker for Table 6.2-1 / 7.1-1).
+
+Evidence (script): `--annotate --verbose` of the CT fixture vs PS3.6 2026a Tables 6-1/7-1: (keyword, VR) 31/31 match; `--tag` header name/VR per PS3.6; layout per PS3.10 Table 7.1-1 (File Preamble 128 bytes, "DICM", group 0002). Observed: `--offset 0x84 --length 300 --annotate` printed no annotations and `--highlight` found nothing (D144); `--length=-5` traps; `--bytes-per-line 0` never advances.
+
+#### Input contract
+| Option | DICOM concept | 2026a reference | Standard | Code accepts | Default std / code | Verdict |
+|---|---|---|---|---|---|---|
+| `<file-path>` | DICOM File | PS3.10 7.1 | — | path | — | plumbing |
+| `--tag` | Data Element Tag | PS3.5 7.1.1; PS3.6 Tables 6-1/7-1 | (gggg,eeee), keyword | (gggg,eeee) / gggg,eeee / ggggeeee + keyword exact (added) | — | match |
+| `--highlight` | Data Element Tag | same | same | same | — | match |
+| `--offset` | byte offset | — | — | decimal / 0x hex | 0 | plumbing |
+| `--length` | bytes | — | — | ≥ 0 (now checked) | 65,536 cap | plumbing (fixed) |
+| `--bytes-per-line` | line width | — | — | ≥ 1 (now checked) | 16 | plumbing (fixed) |
+| `--no-color` | — | — | — | flag | off | plumbing |
+| `--annotate` | tag / VR / length / keyword | PS3.5 7.1.2, Table 6.2-1; PS3.6 | — | flag | off (README said on; fixed) | match |
+| `--force` | file without "DICM" | PS3.10 7.1 | — | flag | off | plumbing |
+| `--verbose` | VR, Value Length (undefined = FFFFFFFFH) | PS3.5 7.1.1, 7.1.2 | — | `VR=XX Len=N` / `Len=undefined` | off | match |
+
+#### Output contract
+| Output | 2026a reference | Code | Verdict |
+|---|---|---|---|
+| `← (gggg,eeee) [VR=XX Len=N] Keyword` | PS3.6 Tables 6-1/7-1; PS3.5 6.2-1 | 31/31 | match |
+| `Tag: (gggg,eeee)  Name  VR=XX  Length=N` / `Value:` | PS3.6; PS3.5 7.1 | name + VR form value | match |
+| Item / Item Delimitation Item / Sequence Delimitation Item | PS3.5 7.5; PS3.6 (FFFE,E000/E00D/E0DD) | not labelled | missing (engine, D145) |
+| Annotations with `--offset` > 0 | PS3.10 7.1 | lost / misplaced | wrong (engine, D144) |
+| Private Creator name | PS3.5 7.8.1 | "Unknown" / no keyword | missing (engine, D146) |
+| Exit codes | — | 0 ok; 1 error (file/tag not found, bad tag, range); 64 usage | plumbing |
+
+Counts: matched 4, wrong 0, missing 0, extra 0, plumbing 6 (input; 2 plumbing bugs fixed); output matched 2, wrong 1, missing 2 (all deferred).
+
+README fixed: `--annotate` default (off), keyword form, sequence example (`--annotate --verbose`, FFFE items not labelled), offset limitation, element-walk description (34 VR codes of Table 6.2-1, 4-byte-length VRs of Table 7.1-1).
+Tests: new target `dicom-dumpTests` (Tests/dicom-dumpTests/DumpTagArgumentTests.swift: hex forms, keywords exact, range checks).
+Marker: `// NEMA-verified: 2026a, checked 2026-10-01 — --tag/--highlight accept (gggg,eeee) or a PS3.6 2026a Table 6-1/7-1 keyword (exact); … 31/31; layout follows PS3.10 7.1 …`.
+P-items: none.
+
+#### Deferred findings (G2 dump/info/tags; orchestrator numbers them)
+| ID | Module | file:line | Problem | Standard | Severity |
+|---|---|---|---|---|---|
+| D144 | DICOMKit | Sources/DICOMKit/HexDumper.swift:186 | `buildTagPositionMap` always skips 132 bytes when the data is longer than 132, without checking "DICM" at 128 and regardless of `startOffset`: with `--offset` > 0 (and the Workshop equivalent) `--annotate` / `--highlight` are lost or misplaced; a file without preamble (`--force`) is misannotated | PS3.10 7.1, Table 7.1-1 | medium |
+| D145 | DICOMKit | Sources/DICOMKit/HexDumper.swift:203-207 | (FFFE,xxxx) is stepped over with no position entry, so Item / Item Delimitation Item / Sequence Delimitation Item are never annotated; defined-length Items are skipped whole (their elements are not annotated) while undefined-length Items are descended | PS3.5 7.5; PS3.6 Table 6-1 | low |
+| D146 | DICOMKit | Sources/DICOMKit/MetadataPresenter.swift:117,191,214; HexDumper.swift:44; TagEditing/TagEditor.swift:147 | Private Creator Data Elements (gggg,0010-00FF) print "Unknown" / no name | PS3.5 7.8.1 | low |
+| D147 | DICOMKit | Sources/DICOMKit/MetadataPresenter.swift:76-92, 142-156 | `--statistics` prints the Transfer Syntax UID and SOP Class UID without their Table A-1 names (UIDDictionary has them) | PS3.6 Table A-1 | low |
+| D148 | DICOMKit | Sources/DICOMKit/MetadataPresenter.swift:108-112, 181-185, 250-253 | the tag filter matches the PS3.6 name or tag text but never the keyword (DICOMStudio's Workshop still affected; the CLI now adds the keyword's tag) | PS3.6 Table 6-1 keywords | medium |
+| D149 | DICOMKit | Sources/DICOMKit/MetadataPresenter.swift:195-197 | JSON `value` is omitted for binary VRs (US, UL, FL, FD, AT, …) though text/CSV render them | PS3.5 Table 6.2-1 | low |
+| D150 | DICOMKit | Sources/DICOMKit/TagEditing/TagEditor.swift:124-139 (sets), 83-95 / 110-121 | `applyChanges` writes `setString` under the existing-or-first dictionary VR for any VR (binary VRs get text bytes: Rows=512 → US "512 "), applies no Table 6.2-1 limits, and puts group 0002 into the Data Set (unreadable file); deletes/copies of group 0002 are not refused. The CLI now runs `--set` and the refusals itself (Sources/dicom-tags/TagEditRules.swift); DICOMStudio's Workshop still uses the engine — move these rules into TagEditor | PS3.5 Table 6.2-1; PS3.10 7.1; PS3.6 Table 6-1 | high |
+
+Commit: e27aa9f. Tests: `swift test --filter dicom_dumpTests` 3/3 passed.
+
+### dicom-info (G2 File and media) — verified 2026-10-01
+
+Files: `Sources/dicom-info/main.swift` (B2). Engine: `DICOMKit/MetadataPresenter.swift` (deferred).
+
+Evidence (script): dicom-info text output of the CT fixture vs PS3.6 2026a Tables 6-1/7-1: (tag, name, VR) 31/31 match (Pixel Data OW within "OB or OW"). Help example `--tag PatientName --tag StudyDate` selected nothing (the presenter matches the PS3.6 name "Patient's Name" or tag text, not the keyword).
+
+#### Input contract
+| Option | DICOM concept | 2026a reference | Standard | Code accepts | Default std / code | Verdict |
+|---|---|---|---|---|---|---|
+| `<file-path>` | DICOM File | PS3.10 7.1 | — | path | — | plumbing |
+| `-f/--format` | output format | — (JSON is not PS3.18 F and does not claim it) | — | text, json, csv | — / text | plumbing |
+| `-t/--tag` | Attribute selection | PS3.6 Tables 6-1/7-1 | keyword, name, tag | name substring, tag text, + keyword exact (added) | — | wrong → fixed |
+| `--show-private` | Private Data Elements | PS3.5 7.8, 7.8.1 | odd groups | odd groups | off | match |
+| `--statistics` | Transfer Syntax UID / SOP Class UID / Modality | PS3.10 Table 7.1-1; PS3.6 Table A-1 | UID + name | UID only | off | missing (engine, D147) |
+| `--force` | file without preamble/"DICM" | PS3.10 7.1 | — | flag | off | plumbing |
+
+#### Output contract
+| Output | 2026a reference | Code | Verdict |
+|---|---|---|---|
+| `=== File Meta Information ===` / `=== Main Data Set ===` | PS3.10 7.1 | as shown | match |
+| `(gggg,eeee) Name VR=XX value` | PS3.6 Tables 6-1/7-1 | 31/31 | match |
+| DA/TM/DT values | PS3.5 Table 6.2-1 | stored VR form (20200101, 120000) | match |
+| CSV `Tag,Name,VR,Value` | — | — | plumbing |
+| JSON `fileMetaInformation`, `dataSet`, `tag`, `name`, `vr`, `value`, `statistics.{transferSyntax,sopClass,modality,j2k_*}` | not PS3.18 F (not claimed) | `value` absent for binary VRs | plumbing; D149 |
+| Private Creator name | PS3.5 7.8.1 | "Unknown" | missing (engine, D146) |
+| Exit codes | — | 0 ok; 1 not readable as DICOM; 64 file not found / bad option | plumbing |
+
+Counts: matched 1, wrong 1 (fixed), missing 1 (deferred), extra 0, plumbing 3 (input); output matched 3, missing 1, plumbing 3.
+
+Tests: new target `dicom-infoTests` (Tests/dicom-infoTests/InfoTagFilterTests.swift: keyword → tag term; help example selects Study Date and Patient's Name through the shared presenter).
+Marker: `// NEMA-verified: 2026a, checked 2026-10-01 — --tag accepts PS3.6 2026a Table 6-1/7-1 keywords exactly …; printed (tag, name, VR) of a CT fixture match PS3.6 Table 6-1/7-1 31/31; …`.
+P-items: none.
+
+Commit: ee2ce1f. Tests: `swift test --filter dicom_infoTests` 2/2 passed.
+
+### dicom-tags (G2 File and media) — verified 2026-10-01
+
+Files: `Sources/dicom-tags/main.swift` (B2), `Sources/dicom-tags/TagEditRules.swift` (new, A). Engine: `DICOMKit/TagEditing/TagEditor.swift` (deferred).
+
+Evidence (script): PS3.5 2026a Table 6.2-1 dumped (34 VRs; Length-of-Value and Character-Repertoire columns) → `g2/vr62.tsv`; PS3.6 Tables 6-1 (5,263 rows) / 7-1 (22 rows); PS3.10 7.1 sentence "Data Elements with a group of 0002 shall not be used in Data Sets other than within the File Meta Information"; PS3.5 7.5 (Item names), 7.8 / 7.8.1 (unused groups; Private Creator LO, VM 1, default repertoire), 6.2.1 (three PN component groups). README keyword table: 17/17 (keyword, tag, VR) match PS3.6 Table 6-1. `--list-modalities` vs PS3.3 C.7.3.1.1.1: 79/79 current Defined Terms, 18 retired not listed (as the listing says); display names are DICOMKit's own (9 differ from the standard's meaning text; documented in Modality.swift).
+
+Observed before the fix (CT fixture): `--set Rows=512` wrote US with bytes "512 " (value read back 12597\8242); `--set TransferSyntaxUID=…` put (0002,0010) in the Data Set and the file read back with an empty Data Set; `--set StudyDate=2020-01-01` wrote a 10-byte DA; a 70-character PN was written; `--delete 0002,0010` said "not present, skipped".
+
+#### Input contract
+| Option | DICOM concept | 2026a reference | Standard | Code accepts | Default std / code | Verdict |
+|---|---|---|---|---|---|---|
+| `<input>` | DICOM File | PS3.10 7.1 | — | path | — | plumbing |
+| `--list-modalities` | Modality (0008,0060) Defined Terms | PS3.3 C.7.3.1.1.1 | 79 current + 18 retired | lists 79 current | — | match |
+| `-o/--output` | output path | — | — | path | — / overwrite input | plumbing |
+| `--set` | Attribute value | PS3.6 Table 6-1; PS3.5 Table 6.2-1; PS3.10 7.1; PS3.5 7.8.1 | keyword exact or (gggg,eeee); dictionary VR; VR value limits | Keyword=Value / GGGG,EEEE=Value; dictionary VR; length/repertoire/IS range/PN groups checked; US/SS/UL/SL/FL/FD encoded; AT/O*/SQ/SV/UV/UN refused; group 0002, FFFE, 0001/3/5/7/FFFF refused | — | wrong → fixed |
+| `--delete` | remove Attribute | PS3.6 keywords; PS3.10 7.1 | Data Set has no group 0002 | keyword / GGGG,EEEE; group 0002 refused | — | wrong → fixed |
+| `--delete-private` | Private Data Elements | PS3.5 7.8, 7.8.1 | odd groups | odd groups | off / off | match |
+| `--copy-from` | source file | PS3.10 7.1 | — | path | — | plumbing |
+| `--tags` | Attributes to copy | PS3.6 keywords; PS3.10 7.1 | — | comma list; group 0002 refused | — / all source tags | wrong → fixed |
+| `-v/--verbose`, `--dry-run` | — | — | — | flags | off | plumbing |
+
+#### Output contract
+| Output | 2026a reference | Code | Verdict |
+|---|---|---|---|
+| `SET/DELETE/COPY (gggg,eeee) Name …`, `N change(s) applied.`, `Dry run complete — no files modified.`, `Output written to: …` | PS3.6 Table 6-1 names | shared TagEditConsole + same label for --set | match |
+| Private Creator label | PS3.5 7.8.1 | bare `(0009,0010)` | missing (engine, D146) |
+| Written VR | PS3.6 Table 6-1 VR | dictionary VR (existing if one of the alternatives) | match (was existing-or-first) |
+| Exit codes | — | 0 ok; 1 refused edit / file not found / no operation; 64 missing input | plumbing (README updated) |
+
+Counts: matched 3, wrong 3 (fixed), missing 0, extra 0, plumbing 6 (input); output matched 3, missing 1 (deferred).
+
+Tests: new target `dicom-tagsTests` (Tests/dicom-tagsTests/TagEditRulesTests.swift, 13 tests: Table 6.2-1 limits and repertoires pinned, refusals, writeVR, Rows=512 → US 00 02, order/skip lines, dry-run, Private Creator, keyword exactness, help).
+Marker: `// NEMA-verified: 2026a, checked 2026-10-01 — tag specifiers resolve PS3.6 2026a Table 6-1/7-1 keywords exactly …` (main.swift) and `… Value length / character-repertoire limits of the 34 VRs dumped from PS3.5 2026a Table 6.2-1 …` (TagEditRules.swift).
+
+Deferred: D150 (below). P-items: none.
+
+Commit: b091aa5. Tests: `swift test --filter dicom_tagsTests` 13/13 passed.
+
+Note for the orchestrator: `swift test --filter dicom-xxxTests` (hyphen) matches no test under the Swift Build backend (each target is its own .xctest bundle; test ids use the module name `dicom_xxxTests`) — use the underscore form.
+
+### dicom-diff (G2) — verified 2026-10-01
+
+Mostly plumbing: the comparison engine (`DICOMKit/Comparison/DICOMComparer.swift`, `ComparisonReport.swift`) was
+verified in the DICOMKit pass (2026-09-29); the CLI adds option parsing and help. Evidence:
+`<scratch>/g2sm_checks.py` (PS3.6 Table 6-1 names/keywords in help and README: all match),
+`<scratch>/g2sm_grep.py` (PS3.5 7.1 / 7.8.1 private-group text, PS3.10 7.1 title), `diff_cli.py --tool dicom-diff` (all ok).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed (standard) | Code accepts | Default std / code | Verdict |
+|---|---|---|---|---|---|---|
+| `<file1>` `<file2>` | PS3.10 files | PS3.10 7.1 | — | paths; group 0002 not compared | — | plumbing |
+| `--format` | report rendering | — | — | text, json, summary | — / text | plumbing |
+| `--ignore-tag` | Data Element Tag or keyword | PS3.6 Table 6-1 (Tag, Keyword); PS3.5 7.1.1 | `(gggg,eeee)`, keyword | was `gggg,eeee` + keyword; now also `(gggg,eeee)` (as the report prints it) and `ggggeeee` | — | missing → fixed (additive) |
+| `--ignore-private` | Private Data Elements | PS3.5 7.1 (odd group, not 0001/0003/0005/0007/FFFF), 7.8.1 | — | odd group, top level only | — / off | match (D151, D152) |
+| `--compare-pixels` | Pixel Data (7FE0,0010) | PS3.6 Table 6-1; PS3.5 8.1.1 / 8.2 | — | byte-wise | — / off | match (help reworded) |
+| `--tolerance` | per-byte difference tolerance | PS3.5 8.1.1 | — | Double | — / 0 | wrong help → fixed ("pixel value" → bytes, not sample values; D153) |
+| `--quick` | metadata only | — | — | flag | off | plumbing |
+| `--show-identical` | list identical elements | — | — | flag | off | plumbing |
+| `--verbose` | — | — | — | flag | off | plumbing |
+
+matched 2, wrong 1, missing 1, extra 0, plumbing 6
+
+**Output contract**
+
+| Output | Standard | Verdict |
+|---|---|---|
+| text `[(gggg,eeee)] <Name>: value` | PS3.6 Table 6-1 Tag notation + Name (DataElementDictionary, verified) | match |
+| `<Binary data, N bytes>` for OB/OD/OF/OL/OV/OW/UN | PS3.5 Table 6.2-1 (D5, DICOMKit pass) | match |
+| `<Sequence with N items>` | SQ, PS3.5 7.5 | match |
+| `Pixel Data: IDENTICAL/DIFFERENT` | PS3.6 name Pixel Data | match |
+| `Max difference` / `Different pixels: N / M` | counts bytes, not samples | wrong — engine, D153 |
+| JSON `files.file1/file2`, `summary.totalTags/differences/hasDifferences`, `onlyInFile1/2[].tag/value`, `modified[].tag/tagName/value1/value2`, `pixelData.*` | tool keys, not PS3.18 Annex F; `tag` = `(gggg,eeee)`, `tagName` = PS3.6 Name ("Unknown" when unlisted) | plumbing / match |
+| exit 0 identical, 1 different **or unreadable file**, 64 usage | — | plumbing (P-DIFF-1) |
+
+**Changes** (`Sources/dicom-diff/main.swift`, `README.md`): `--ignore-tag` parser (now `static func parseTag`) also
+accepts `(gggg,eeee)` and `ggggeeee` (old `gggg,eeee` incl. short hex and keywords kept); help for `--ignore-tag`,
+`--ignore-private`, `--compare-pixels`, `--tolerance`, `--quick` names the PS3.5/PS3.6 concepts; README documents the
+tag forms, byte-wise tolerance, group 0002 not compared, top-level-only private filtering, exit 1 for unreadable files.
+Test target `dicom-diffTests` (`Tests/dicom-diffTests/IgnoreTagParsingTests.swift`, 4 tests).
+
+**P-items**
+- P-DIFF-1: exit 1 means both "files differ" and "a file could not be read"; propose exit 2 for errors (as diff/cmp). Not implemented (exit-code contract change).
+
+**Deferred findings**
+
+| ID | Module | file:line | Problem | Standard | Severity |
+|---|---|---|---|---|---|
+| D151 | DICOMCore | Sources/DICOMCore/Tag.swift:29 | `isPrivate` = any odd group; PS3.5 7.1 excludes 0001, 0003, 0005, 0007, FFFF from Private Data Elements (7.8.1: those groups shall not be used) | PS3.5 2026a 7.1, 7.8.1 | low |
+| D153 | DICOMKit | Sources/DICOMKit/Comparison/DICOMComparer.swift:160-199; ComparisonReport.swift:56-60 | Pixel Data compared byte by byte: `--tolerance`, max/mean and "Different pixels" are per byte, not per sample (16-bit pixel cells, PS3.5 8.1.1); encapsulated data compared as compressed bytes (PS3.5 8.2, A.4) | PS3.5 2026a 8.1.1, 8.2 | medium |
+| D152 | DICOMKit | Sources/DICOMKit/Comparison/DICOMComparer.swift:66, 141-158 | `ignorePrivate` applies only to top-level elements; private elements inside sequence items still make the parent SQ differ | PS3.5 2026a 7.8 | low |
+
+**Marker**: `// NEMA-verified: 2026a, checked 2026-10-01 — --ignore-tag accepts the Tag notation of PS3.6 2026a Table 6-1 ((gggg,eeee), also gggg,eeee / ggggeeee; PS3.5 7.1.1) and Table 6-1 keywords; --ignore-private is the odd-group rule of PS3.5 7.1/7.8; the 10 options otherwise carry no DICOM-standard data (comparison engine verified in DICOMKit/Comparison)`
+
+**Commit**: 2c5428c (adds the `dicom-diffTests` target to Package.swift and the CHANGELOG section "Fixed — dicom-diff, dicom-split, dicom-merge verified against DICOM 2026a").
+**Tests**: `dicom-diffTests` 4/4 pass; `DICOMRoundTripTests.Diff*` pass; `diff_cli.py --tool dicom-diff` 0 wrong; `check_nema_markers.py Sources/dicom-diff` 0 without.
+
+### dicom-split (G2) — verified 2026-10-01
+
+The splitting engine (`DICOMKit/Splitting`, `DICOMKit/Multiframe`: SOP Class map 37 UIDs vs PS3.6 Table A-1,
+concatenation per C.7.6.16, flattening per C.7.6.16) was verified in the DICOMKit pass (2026-09-29). This pass checks
+the CLI surface. Evidence (by script, `<scratch>/g2sm_std.py`, `g2sm_checks.py`, `g2sm_sop.py`, `g2sm_grep.py`):
+PS3.6 Table 6-1 rows for 38 attributes the options act on (Instance Number, Stack ID, In-Stack Position Number,
+Temporal Position Index, Concatenation UID, In-concatenation Number, Concatenation Frame Offset Number, …);
+PS3.3 section titles C.7.6.6, C.7.6.16, C.7.6.16.1.2, C.7.6.16.2.2, C.7.6.17, 7.5.1, A.70-A.72;
+PS3.3 C.7.6.16.1.2 "Frames are implicitly numbered starting from 1" and Table 10-3 Referenced Frame Number
+"The first Frame shall be denoted as Frame number 1"; PS3.5 8.2 / A.4 Basic Offset Table text;
+SOP Class phrases in help + README: 33 exact Table A-1 names, 5 slash-abbreviated lists ("Enhanced CT / MR / PET …")
+whose members are Table A-1 names; split conversions in help checked against the 13 `.convert` entries of
+MultiframeSOPClassMap. `diff_cli.py --tool dicom-split`: all ok (6 defaults matched).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed / code accepts | Default std / code | Verdict |
+|---|---|---|---|---|---|
+| `<input>` | multi-frame file(s) | PS3.10 7.1; PS3.3 C.7.6.6 Number of Frames > 1 | path | — | plumbing |
+| `--output` | output directory | — | path | . | plumbing |
+| `--frames` | frames to extract | PS3.3 C.7.6.16.1.2 (1-based Frame numbers); Table 10-3 | 0-based indices `1,3,5-10` | all | wrong → help/README fixed (help said "Frame numbers", README called 0-based "the DICOM convention"); 1-based = P-SPLIT-1 |
+| `--format` | output container | — | dicom, png, jpeg, tiff | dicom | plumbing |
+| `--apply-window` | VOI window | PS3.3 C.11.2.1.2 | flag | off | match |
+| `--window-center` | Window Center (0028,1050) | PS3.3 C.11.2.1.2 | Double | stored value | match |
+| `--window-width` | Window Width (0028,1051) | PS3.3 C.11.2.1.2 | Double | stored value | match |
+| `--pattern` | file naming | PS3.6 Table 6-1 (Instance Number, Stack ID, Modality, Series Number) | {number}/{number:04d} (0-based index), {instance}, {stack}, {modality}, {series} | `<base>_frame_NNNN` | match (help names the attributes) |
+| `--target` | SOP Class of outputs | PS3.6 Table A-1; PS3.3 A.38, A.70-A.72 | auto, same, classic | auto | match (help/discussion now use Table A-1 names) |
+| `--pixel-handling` | encapsulated frames | PS3.5 8.2, A.4; Table A-1 Explicit VR Little Endian | preserve, decode | preserve | match |
+| `--private-groups` | private Sequences in functional group items | PS3.3 C.7.6.16 | flatten, keep, drop | flatten | match |
+| `--instance-number` | Instance Number (0020,0013) | PS3.3 C.7.6.1; C.7.6.16.2.2 In-Stack Position Number (0020,9057) | frame (1-based Frame number), instack, original | frame | match (help names the attributes) |
+| `--split-by` | series per Frame Content value | PS3.3 C.7.6.16.2.2 Stack ID (0020,9056), Temporal Position Index (0020,9128) | none, stack, temporal | none | match (help names the attributes) |
+| `--new-series` | Series Instance UID (0020,000E) | PS3.3 C.7.3.1 | flag | off | match |
+| `--frames-per` | Concatenation parts | PS3.3 7.5.1; C.7.6.16 (Concatenation UID, In-concatenation Number / Total Number, Concatenation Frame Offset Number, SOP Instance UID of Concatenation Source) | Int >= 1 | — | match |
+| `--random-uids` | random vs derived UIDs | PS3.5 9.1 | flag | off (derived) | plumbing |
+| `-r` / `-v` | — | — | flags | off | plumbing |
+
+matched 11, wrong 1, missing 0, extra 0, plumbing 6
+
+**Output contract**
+
+| Output | Standard | Verdict |
+|---|---|---|
+| written SOP Class per source (13 conversions, 16 same-class, 3 refused) | PS3.6 Table A-1 (MultiframeSOPClassMap, DICOMKit pass) | match |
+| Instance Number = 1-based Frame number (`frame`) | PS3.3 C.7.6.16.1.2 | match |
+| console lines (SplitConsole: plan, skipped, "Split complete! Processed/extracted/skipped/failed") | SOP Class names per Table A-1 (DICOMKit pass) | match |
+| file names `<base>_frame_NNNN.<ext>` (0-based) | — | plumbing |
+| exit 0 (skips are not failures), 1 frame extraction failed, 64 usage | — | plumbing (README fixed: said 1 for "file not found", which is 64) |
+
+**Changes** (`Sources/dicom-split/DICOMSplit.swift`, `README.md`): discussion uses Table A-1 names (CT Image Storage,
+MR Image Storage, Positron Emission Tomography Image Storage, X-Ray Angiographic / X-Ray Radiofluoroscopic Image Storage,
+Ultrasound (Multi-frame) Image Storage, Secondary Capture Image Storage) and "Shared and Per-Frame Functional Groups
+Sequences"; states that `--frames` is 0-based (index 0 = Frame number 1); help of `--frames`, `--pattern`, `--target`,
+`--pixel-handling`, `--private-groups`, `--instance-number`, `--split-by`, `--new-series` names the PS3.6 attributes;
+README: "0-based is the DICOM convention" corrected, all 18 options listed, supported SOP Classes by Table A-1 name,
+exit codes. Test target `dicom-splitTests` (`Tests/dicom-splitTests/SplitOptionHelpTests.swift`, 4 tests).
+
+**P-items**
+- P-SPLIT-1: `--frames` takes 0-based indices while PS3.3 C.7.6.16.1.2 / Table 10-3 number frames from 1. Proposal: accept 1-based Frame numbers (new option `--frame-numbers`, or switch `--frames` with a deprecation period; Studio Workshop must follow). Not implemented.
+
+**Deferred findings**
+
+| ID | Module | file:line | Problem | Standard | Severity |
+|---|---|---|---|---|---|
+| D154 | DICOMStudio | Sources/DICOMStudio/Components/CLIWorkshopHelpers.swift:2520 | Workshop help for dicom-split `--frames` ("Frame selection (ranges/list)") does not say the values are 0-based indices | PS3.3 2026a C.7.6.16.1.2 | low |
+
+**Marker**: `// NEMA-verified: 2026a, checked 2026-10-01 — help names checked by script: 9 SOP Class names quoted in full and 2 abbreviated lists (Enhanced CT/MR/PET/XA/XRF, Legacy Converted Enhanced CT/MR/PET) against PS3.6 2026a Table A-1, 7 attribute names/tags (Instance Number, Stack ID, In-Stack Position Number, Temporal Position Index, Series Instance UID, Shared/Per-Frame Functional Groups Sequence) against Table 6-1; --frames is a 0-based index (Frame number 1 = index 0, PS3.3 C.7.6.16.1.2); Explicit VR Little Endian per Table A-1`
+
+**Commits**: 00ba2a3 (split), reverted by the concurrent dicom-dump commit e27aa9f (built on a stale tree: it also dropped the `dicom-splitTests` target and the CHANGELOG bullet), re-applied in 2ef9d28 (Package.swift target + CHANGELOG bullet, with merge) and f663f84 (sources, README, test). HEAD now equals 00ba2a3 for every split file.
+**Tests**: `dicom-splitTests` 4/4 pass; `SplitMergeWorkshopCLIParityTests` (against freshly built release binaries) pass; `DICOMRoundTripTests.(Split|Enhanced|SharedConsole)*` pass (1 corpus test skipped, corpus absent); `diff_cli.py --tool dicom-split` 0 wrong; markers 0 without.
+
+### dicom-merge (G2) — verified 2026-10-01
+
+The merge engine (`DICOMKit/Merging`, `DICOMKit/Multiframe`) was verified in the DICOMKit pass (2026-09-29/30). This
+pass checks the CLI surface. Evidence by script (`<scratch>/g2sm_checks.py`, `g2sm_std.py`, `g2sm_sop.py`):
+`--format` → `MergeFormat.enhancedSOPClassUID` → PS3.6 Table A-1: 10 of 10 values match UID and name (enhanced-xa /
+enhanced-xrf flagged by the tokenizer only: Table A-1 names are "Enhanced XA/XRF Image Storage"; standard/auto carry
+no UID); `--sort-by` raw values vs PS3.6 Table 6-1 keywords: 3 of 3 (InstanceNumber (0020,0013),
+ImagePositionPatient (0020,0032), AcquisitionTime (0008,0032)); attribute names in help/README: 29 PS3.6 names,
+all exact after the fix ("Samples Per Pixel" → "Samples per Pixel", "Image Position Patient" → "Image Position
+(Patient)"); PS3.3 A.70-A.72, C.7.6.16, C.7.6.17 titles; PS3.5 A.4 Basic Offset Table text. `diff_cli.py --tool
+dicom-merge`: all ok (5 defaults matched).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed / code accepts | Default std / code | Verdict |
+|---|---|---|---|---|---|
+| `<inputs>` | single-frame files | PS3.10 7.1 | paths | — | plumbing |
+| `-o, --output` | output path | — | path | required | plumbing |
+| `--format` | SOP Class of the merged object | PS3.6 Table A-1; PS3.3 A.38, A.70-A.72 | standard, auto, enhanced-ct/-mr/-pet/-xa/-xrf, legacy-converted-ct/-mr/-pet, sc-multiframe (Single Bit / Grayscale Byte / Grayscale Word / True Color by Bits Allocated, Samples per Pixel), us-multiframe | standard | match (discussion now lists the Table A-1 class per value) |
+| `--pixel-handling` | encapsulated frames | PS3.5 8.2, A.4; Table A-1 Explicit VR Little Endian | preserve, decode | preserve | match |
+| `--make-stacks` | Stack ID (0020,9056) per Image Orientation (Patient) (0020,0037) | PS3.3 C.7.6.16.2.2 | flag | off | match |
+| `--temporal-position` | Temporal Position Index (0020,9128) | PS3.3 C.7.6.16.2.2 | flag; from Trigger Time, Temporal Position Identifier, Acquisition Time | off | match (help listed 2 of the 3 sources) |
+| `--new-series` | Series Instance UID (0020,000E) | PS3.3 C.7.3.1 | flag | off | match |
+| `--allow-any-source` | skip source SOP Class check | PS3.6 Table A-1 | flag | off | plumbing |
+| `--level` | grouping of inputs | PS3.3 C.7.2.1 / C.7.3.1 (Study / Series Instance UID) | file, series, study | file | match (tool grouping, not a Q/R level) |
+| `--sort-by` | frame order key | PS3.6 Table 6-1 keywords | InstanceNumber, ImagePositionPatient, AcquisitionTime, none | InstanceNumber | match |
+| `--order` | direction | — | ascending, descending | ascending | plumbing |
+| `--validate` | identity consistency | PS3.6 Table 6-1 | flag (Study/Series Instance UID, Modality, Frame of Reference UID) | off | match (help now names them) |
+| `-r` / `-v` | — | — | flags | off | plumbing |
+
+matched 8, wrong 0, missing 0, extra 0, plumbing 6
+
+**Output contract**
+
+| Output | Standard | Verdict |
+|---|---|---|
+| merged SOP Class, Number of Frames (0028,0008), Instance Number 1, functional groups, Frame Content, Multi-frame Dimension | PS3.3 C.7.6.6, C.7.6.16, C.7.6.17 (DICOMKit pass) | match |
+| error "Inconsistent (gggg,eeee): …" / "Inconsistent TransferSyntaxUID" | PS3.6 Table 6-1 Tag notation / keyword (0002,0010) | match |
+| console lines (MergeConsole) | carries no standard data (DICOMKit pass) | plumbing |
+| exit 0, 1 merge failure, 64 usage | — | plumbing (README fixed: claimed 64 for inconsistent inputs; verified by run: 1) |
+
+**Changes** (`Sources/dicom-merge/DICOMMerge.swift`, `README.md`): discussion names the Shared and Per-Frame
+Functional Groups Sequences, Frame Content Macro, Multi-frame Dimension Module, the Table A-1 class of every
+`--format` value; "Legacy Converted Enhanced MR (Sup 157)" → "Legacy Converted Enhanced MR Image Storage (PS3.3
+A.71)"; help of `--pixel-handling`, `--make-stacks`, `--temporal-position`, `--new-series`, `--level`, `--sort-by`,
+`--validate` names the PS3.6 attributes with tags. README was stale (said Enhanced output "not yet implemented",
+listed 4 of 12 formats, 8 of 14 options, wrong exit code for inconsistent inputs, "Samples Per Pixel",
+"Image Position Patient"): rewritten to the current behaviour with a `--format` → Table A-1 table.
+Test target `dicom-mergeTests` (`Tests/dicom-mergeTests/MergeOptionTermsTests.swift`, 4 tests).
+
+**P-items**: none.
+
+**Deferred findings**: none new.
+
+**Marker**: `// NEMA-verified: 2026a, checked 2026-10-01 — --format: 10 SOP Classes match PS3.6 2026a Table A-1 (UID and name); --sort-by: 3 values are PS3.6 Table 6-1 keywords; help pairs 7 attribute names with their Table 6-1 tags; it names the PS3.3 2026a Multi-frame Functional Groups / Frame Content / Multi-frame Dimension modules and A.70-A.72 Legacy Converted IODs; Basic Offset Table per PS3.5 A.4`
+
+**Commit**: 2ef9d28 (also carries the dicom-split Package.swift target and CHANGELOG bullet that e27aa9f dropped).
+**Tests**: `dicom-mergeTests` 4/4 pass; `SplitMergeWorkshopCLIParityTests` (release binaries rebuilt) pass; `DICOMRoundTripTests.(Merge|Enhanced)*` pass; `diff_cli.py --tool dicom-merge` 0 wrong; markers 0 without.
+
 
 ## G3 Encoding and pixel
 
@@ -1235,5 +2095,6 @@ Not started.
 ## Verification notes
 
 - `Tests/DICOMToolsTests/` (DICOMQRTests, DICOMRetrieveTests, DICOMDcmdirTests, DICOMAITests, …) is compiled by no target: `DICOMToolsTests` is commented out in Package.swift, so those tests have never run. New per-tool test targets (`dicom-queryTests`, `dicom-sendTests`, `dicom-aiTests`, `dicom-videoTests`) are being added as tools are verified; migrating the orphaned files is a follow-up.
+- PS3.19 2026a A.1.6 schema does not declare `xml:space`, which Table A.1.5-1 requires on PersonName components; DICOMKit output validates with xmllint only after stripping it. This is a defect in the standard's schema, not in DICOMKit (found 2026-10-01, dicom-xml).
 - Nothing in this report is from memory; every row cites the table it was diffed against, or is labelled
   "not checked".
