@@ -467,8 +467,11 @@ public struct TransferSyntaxConverter: Sendable {
             TransferSyntax.htj2kLossy.uid
         ]
 
-        // J2K Part 1 → HTJ2K
-        if j2kPart1UIDs.contains(source.uid) && htj2kUIDs.contains(target.uid) {
+        // J2K Part 1 → HTJ2K. Not to HTJ2K Lossless RPCL (.202): the coefficient re-encode keeps
+        // the source's progression, layers and decomposition levels, which PS3.5 2026a 10.18.1
+        // constrains (RPCL, base resolution ≤ 64, TLM), so .202 is always written by the encoder.
+        if j2kPart1UIDs.contains(source.uid) && htj2kUIDs.contains(target.uid)
+            && target.uid != TransferSyntax.htj2kRPCLLossless.uid {
             return true
         }
         // HTJ2K → J2K Part 1
@@ -800,6 +803,16 @@ public struct TransferSyntaxConverter: Sendable {
             }
         }
         
+        // JPEG 2000 / HTJ2K decoders invert the Part 1 multi-component transformation, so the
+        // native samples are RGB: "If color components are converted from YBR_ICT or YBR_RCT to
+        // RGB during decompression and Native re-encoding, the Photometric Interpretation will be
+        // changed to RGB" (PS3.5 2026a 8.2.4; 8.2.14 for HTJ2K). YBR_RCT / YBR_ICT are not valid
+        // for native Pixel Data (PS3.3 C.7.6.3.1.2).
+        if source.isJPEG2000 {
+            outputElements = Self.replacingPhotometricInterpretation(
+                in: outputElements, when: ["YBR_RCT", "YBR_ICT"], with: "RGB")
+        }
+
         // The JPEG (ImageIO) decoder converts YCbCr to RGB, so a decoded JPEG Baseline /
         // Extended colour image must be relabelled. YBR_FULL_422 in particular is only
         // valid for encapsulated JPEG and must never label native pixel data
@@ -873,6 +886,7 @@ public struct TransferSyntaxConverter: Sendable {
         
         // Build output elements, applying bit-depth reduction when necessary
         var outputElements: [DataElement] = []
+        var firstCodestream: Data?
         
         for element in elements {
             if element.tag == .pixelData && !element.isEncapsulated {
@@ -918,6 +932,8 @@ public struct TransferSyntaxConverter: Sendable {
                     configuration: effectiveCompressionConfiguration
                 )
                 
+                firstCodestream = compressedFrames.first
+                
                 // Create new encapsulated pixel data element
                 let newElement = DataElement(
                     tag: element.tag,
@@ -959,6 +975,28 @@ public struct TransferSyntaxConverter: Sendable {
             }
         }
         
+        // JPEG 2000 / HTJ2K: the codestream decides Photometric Interpretation. With the Part 1
+        // multi-component transformation (COD SGcod MCT = 1) "the DICOM Attribute Photometric
+        // Interpretation (0028,0004) shall be YBR_RCT" (reversible) or "YBR_ICT" (irreversible),
+        // and Planar Configuration "shall be set to 0" (PS3.5 2026a 8.2.4, Table 8.2.4-1; 8.2.14,
+        // Table 8.2.14-1 for HTJ2K).
+        if target.isJPEG2000, let codestream = firstCodestream,
+           let style = J2KCodestreamInspector.codingStyle(in: codestream), style.componentCount == 3 {
+            // Only RGB samples are relabelled: the transformation is defined on RGB (ISO/IEC
+            // 15444-1 Annex G). A J2KSwift encode of YBR_FULL samples also sets MCT = 1, which no
+            // Photometric Interpretation describes; that limitation is reported, not hidden.
+            if style.multipleComponentTransform == 1 {
+                outputElements = Self.replacingPhotometricInterpretation(
+                    in: outputElements, when: ["RGB"], with: style.reversibleWavelet ? "YBR_RCT" : "YBR_ICT")
+            }
+            outputElements = outputElements.map { element in
+                guard element.tag == .planarConfiguration else { return element }
+                var zero = UInt16(0).littleEndian
+                let value = Data(bytes: &zero, count: 2)
+                return DataElement(tag: element.tag, vr: .US, length: 2, valueData: value)
+            }
+        }
+
         // Write elements in target transfer syntax (Explicit VR Little Endian for encapsulated)
         let writer = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
         var outputData = Data()
@@ -975,6 +1013,23 @@ public struct TransferSyntaxConverter: Sendable {
         return outputData
     }
     
+    /// Replaces the value of Photometric Interpretation (0028,0004) with `newValue` (padded to an
+    /// even length) when its current value is in `values` (`nil`: whatever it is).
+    static func replacingPhotometricInterpretation(
+        in elements: [DataElement], when values: Set<String>?, with newValue: String
+    ) -> [DataElement] {
+        elements.map { element in
+            guard element.tag == .photometricInterpretation else { return element }
+            let current = String(data: element.valueData, encoding: .ascii)?
+                .trimmingCharacters(in: .whitespaces.union(.controlCharacters)) ?? ""
+            if let values, !values.contains(current) { return element }
+            guard current != newValue else { return element }
+            let padded = newValue.count % 2 == 0 ? newValue : newValue + " "
+            let data = Data(padded.utf8)
+            return DataElement(tag: element.tag, vr: .CS, length: UInt32(data.count), valueData: data)
+        }
+    }
+
     /// Rescales 16-bit pixel data to 8-bit using window/level from the dataset.
     ///
     /// Applies the Rescale Slope/Intercept and Window Center/Width from the dataset

@@ -174,7 +174,8 @@ public struct JLICodec: ImageCodec, ImageEncoder, Sendable {
                                      data: interleaved, isSigned: descriptor.isSigned)
             let cfg = encoderConfiguration(descriptor: descriptor, configuration: configuration,
                                            pixelFormat: pixelFormat)
-            return Data(try JLIEncoder().encode(image, configuration: cfg))
+            // JLISwift writes a JFIF APP0 segment; PS3.5 2026a 8.2.1 recommends it be absent (D190).
+            return JPEGInterchangeFormat.removingJFIFSegments(Data(try JLIEncoder().encode(image, configuration: cfg)))
         } catch {
             throw DICOMError.parsingFailed("JLISwift encode failed: \(error)")
         }

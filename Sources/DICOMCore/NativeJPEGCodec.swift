@@ -92,8 +92,9 @@ public struct NativeJPEGCodec: ImageCodec, ImageEncoder, Sendable {
         // Create CGImage from raw pixel data
         let cgImage = try createCGImage(from: frameData, descriptor: descriptor)
         
-        // Encode to JPEG
-        return try encodeToJPEG(cgImage, configuration: configuration)
+        // Encode to JPEG. ImageIO writes a JFIF APP0 segment; PS3.5 2026a 8.2.1 recommends it
+        // be absent from DICOM encapsulated JPEG (D190).
+        return JPEGInterchangeFormat.removingJFIFSegments(try encodeToJPEG(cgImage, configuration: configuration))
     }
     
     // MARK: - Private Decoding Helpers

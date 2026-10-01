@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, DICOMCore batch a2 (2026-10-01, DICOM 2026a)
+
+- **`TransferSyntax.isJPIP` covers JPIP HTJ2K Referenced (.204) and JPIP HTJ2K Referenced Deflate (.205)** (D109;
+  PS3.5 2026a A.11, A.12; PS3.6 Table A-1), so `DICOMJPIPClient.jpipURI` reads their Pixel Data Provider URL
+  (0028,7FE0) instead of throwing `notAJPIPTransferSyntax`. dicom-jpip drops its own .204/.205 fallback.
+- **`DICOMDirectory.validate(checkFileExistence:fileSetRoot:)` checks Referenced File IDs on disk** (D130;
+  PS3.10 2026a 8.6): with the new `fileSetRoot` (the directory that holds the DICOMDIR) every Referenced File ID
+  (0004,1500) must name an existing regular file inside the File-set, else `missingReferencedFile(<File ID>)`;
+  `.`/`..` components are rejected. Without a root the call behaves as before.
+- **`UIDGenerator` no longer crashes or repeats UIDs** (D139; PS3.5 2026a 9.1, B.2): a root that breaks the 9.1
+  rules or leaves no room for the suffix within 64 characters now yields a UUID derived UID (`2.25.<UUID as a
+  decimal integer>`) instead of a force-unwrap crash or a truncated, identical UID. New `UIDGenerator.isUsableRoot(_:)`
+  and `UIDGenerator.uuidDerivedUID(_:)`.
+- **`Tag.isPrivate` excludes groups 0001, 0003, 0005, 0007 and FFFF** (D151; PS3.5 2026a 7.1: Private Data
+  Elements have "an odd Group Number that is not 0001, 0003, 0005, 0007, or FFFF"; 7.8.1: those "shall not be
+  used"). New `Tag.isOddGroup` (the old parity test) and `Tag.unusableOddGroups`; the Basic Profile engine
+  (`ConfidentialityEngine`) and `TagEditor`'s delete-private pass use `isOddGroup`, so such elements are still removed.
+- **`TransferSyntax.displayName` is the PS3.6 2026a Table A-1 UID Name** (D176), verbatim for all 63 rows (e.g.
+  "MPEG2 Main Profile / Main Level", "JPEG 2000 Image Compression (Lossless Only)", "Explicit VR Big Endian
+  (Retired)"); the former abbreviations are the new `shortName`. `SelectableEncoding.displayName` is the A-1 name
+  plus "(lossless)" / "(lossy)" for the either-intent UIDs (.91, .93, .203); `SelectableEncoding.shortName` keeps
+  the old picker label. `PixelDataError.transferSyntaxName` is the A-1 name. Every tool line that prints a transfer
+  syntax name (dicom-video, dicom-j2k, dicom-compress, conversion diagnostics, …) now shows the standard's name.
+- **HTJ2K Lossless RPCL (.202) codestreams meet PS3.5 2026a 10.18.1** (D187): the encoder is given enough
+  decomposition levels for a base resolution ≤ 64, the main header gets a TLM marker segment, and the COD
+  progression order is set to RPCL when the packet sequence is provably identical (one quality layer, default
+  precincts — what J2KSwift writes; J2KSwift itself always writes LRCP). J2K → .202 no longer takes the
+  coefficient fast path. New `J2KCodestreamInspector.codingStyle(in:)`, `htj2kRPCLViolations(in:rows:columns:)`,
+  `minimumDecompositionLevelsForRPCL(rows:columns:)` and `conformingToHTJ2KRPCL(_:)`. Verified bit-exact with
+  OpenJPH, OpenJPEG, Kakadu and Grok.
+- **JPEG output carries no JFIF APP0 segment** (D190; PS3.5 2026a 8.2.1: "it is recommended that it be absent"):
+  `JLICodec` and `NativeJPEGCodec` strip it. New `JPEGInterchangeFormat.removingJFIFSegments(_:)`.
+- **JPEG 2000 / HTJ2K Photometric Interpretation follows the codestream** (D193; PS3.5 2026a 8.2.4, Table 8.2.4-1,
+  8.2.14): `TransferSyntaxConverter` labels RGB encoded with the multi-component transformation (COD MCT = 1)
+  YBR_RCT (5-3) or YBR_ICT (9-7) with Planar Configuration 0, and relabels YBR_RCT / YBR_ICT to RGB after
+  decoding to native.
+
 ### Fixed — deferred rows, SR / script / JP3D batch (2026-10-01, DICOM 2026a)
 
 - **SR NUM without a value (D194)**: `SRDocumentParser` no longer reads a NUM whose Measured Value Sequence (0040,A300) is empty as 0.0 in lenient mode; `numericValues` stays empty and `value` is nil (PS3.3 2026a Table C.18.1-1: Type 2, "Zero or one Item"; C.18.1: "may be empty to convey ... a measurement whose value is unknown or missing"). `SRDocumentSerializer` writes a NUM with no value as an empty Measured Value Sequence instead of an empty Numeric Value.
