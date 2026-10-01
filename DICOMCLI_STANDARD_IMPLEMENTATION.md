@@ -65,6 +65,8 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | 2026-10-01 | G3 video, pdf | video: PS3.6 A-1 video syntaxes, PS3.5 8.2.5–8.2.12 limits stated in help, PS3.3 A.32.5–A.32.7, Table C.7-13 (40 rows: matched 20, wrong 3, extra 1, plumbing 16); pdf: Encapsulated PDF IOD A.45.1, C.24.2 Encapsulated Document Module, SC Equipment (25 rows: matched 13, wrong 1, missing 5, plumbing 6), scripted round trip 26/26 attributes, 10/10 value checks | `cfc81d9f` video: warnings for non-Enumerated modality, sex, malformed birth date, unregistered HEVC UIDs; four `VideoConsole.Help` strings corrected (text only); `3c739850` pdf: Encapsulated Document Length written and used on extraction (odd-length PDFs round-trip byte for byte), Specific Character Set ISO_IR 192 for non-ASCII, `--conversion-type`, `--burned-in-annotation`, `--hl7-instance-identifier` (CDA can now be encapsulated); P-VIDEO-MODALITY-ENUMERATED, P-VIDEO-SEX-ENUMERATED, P-VIDEO-TS-REGISTERED; D176–D182 | dicom-videoTests 18/18, VideoConsoleParityTests 60/60, dicom-pdfTests 7/7 |
 | 2026-10-01 | G3 compress, convert, j2k | PS3.5 A.4 (fragments, BOT/EOT), 8.2.x; PS3.6 A-1 (7 j2k help names, 10 transcode targets); PS3.3 C.7.6.1.1.5 lossy attributes, C.7.6.1.1.2, C.7.6.3, C.11.2.1.2.1. compress matched 2, extra 2, plumbing 17; convert matched 3, wrong 1, missing 1, plumbing 8; j2k matched 5, wrong 4, plumbing 24 | `363fd82c` j2k: multi-fragment frames, YBR_RCT/YBR_ICT when the codestream uses a colour transform, lossy output gets Lossy Image Compression/Ratio/Method, DERIVED and a new SOP Instance UID, `roi` writes a derived single-frame image, `--quality` reaches the encoder; **behaviour change** `validate` exits 2 on read error (as documented); `d944a32e` compress: help rows pinned by test, README codec table; `55f7fc75` convert: 7 missing A-1 keywords accepted, refuses window width < 1, quality outside 1–100, negative frame; P-CONVERT-TS-KEYWORDS, P-CONVERT-FRAME, P-CONVERT-EXIT, P-COMPRESS-SYNTAX, P-COMPRESS-JSON, P-J2K-FRAME, P-J2K-PART2, P-J2K-JSON; D183–D193 (High: D184–D186, D192, D193 — lossy output keeps the source SOP Instance UID; J2K colour output labelled RGB; decompressed J2K stays YBR_RCT/ICT) | dicom_j2kTests 79/79 (26 new), dicom_compressTests 3/3, dicom_convertTests 8/8 |
 | 2026-10-01 | G3 close | `swift build` (all products) and every CLI test bundle (all `dicom_*Tests` targets plus QueryRetrieveCLIStandardTests, MWLMPPSCLIEndToEndTests, SplitMergeWorkshopCLIParityTests, VideoConsoleParityTests); `diff_cli.py` G1, G2, G3 rerun with the UID-in-text check: 0 FAIL | — | build exit 0; XCTest 356 executed, 0 failures; Swift Testing 81 passed |
+| 2026-10-01 | G4 report | renders SR only; PS3.3 C.17.3 value types (16) and relationship types (7), Table 8.8-1 coded entries, C.17.2 flags, Content Template Sequence, PS3.6 A-1 SR SOP Class names (20/20); an Extensible SR fixture using every value and relationship type rendered in text/JSON/Markdown/HTML and diffed by script: 75 labels matched, 0 wrong. matched 4, wrong 3, missing 4 (all fixed), plumbing 14 | `89c3ed93`: 10 value types printed `[Content]` and children of non-CONTAINER items were dropped — fixed in every format; CODE as (value, scheme, "meaning"); units by Code Meaning; completion/verification/preliminary flags and root template shown; JSON adds `value_type`, flag keys, `content_template` (no key changed); HTML escaped; **behaviour change**: a non-SR input is refused naming its SOP Class (was an empty report, exit 0); P-REPORT-TEMPLATE, P-REPORT-SUMMARY; D194–D196 | dicom_reportTests 10/10 |
+| 2026-10-01 | G4 measure | PS3.3 10.7.1, C.7.6.2.1.1 Pixel Spacing, Tables C.8-2/C.8-71 Imager Pixel Spacing, Nominal Scanned Pixel Spacing, C.7.6.16.2.1 Pixel Measures, C.8.5.5 US Regions, Table C.18.6-1 ROI pixel inclusion, C.11.1 Modality LUT and Rescale Type; PS3.16 unit CIDs; 22 tag literals and 22 citations match. matched 10, wrong 7 (fixed), missing 2 (1 fixed; SUV not offered), plumbing 7. Correction: 2026a 10.7.1.3 has no "UI shall indicate" rule for detector-plane spacing; the wording is in Tables C.8-2/C.8-71 | `0fbc334f`: spacing from Pixel Spacing / Pixel Measures / US region / Imager Pixel Spacing (labelled detector plane) / Nominal Scanned, else pixels with a warning (was mm at an assumed 1 mm/pixel); angles in mm space; ROI by pixel centre; Bits Stored mask; Modality LUT applied (was ignored); HU only when Rescale Type is HU or absent on CT; `--frame` range-checked; output adds `spacing_source` and JSON `unit_ucum`; P-MEASURE-FRAME, P-MEASURE-UNIT; D197 | dicom_measureTests 17/17 |
 | 2026-10-01 | Scaffold | `Scripts/diff_cli.py`: surface extractor (1,042 options), generic DICOMKit literal checks re-run per tool, transfer-syntax-name and documented-default checks; this report | — | — |
 
 ---
@@ -112,6 +114,10 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | P-COMPRESS-SYNTAX | `dicom-compress decompress --syntax` / `batch --syntax` accept every codec name (`--syntax jpeg2000` writes encapsulated .91). Proposal: accept only native targets, as help and error text already say | PEND | PS3.5 2026a A.1, A.2 |
 | P-COMPRESS-JSON / P-J2K-JSON | `info --json` (and dicom-j2k info/validate/benchmark/compare) keys are tool camelCase. Proposal: PS3.6 keywords where a DICOM attribute is meant | PEND | PS3.6 2026a Table 6-1 |
 | P-J2K-PART2 | `dicom-j2k transcode --target j2k-part2-*` writes a Part 1 codestream (Rsiz 0, no MCT) under .92 / .93, while the engine refuses Part 2 encodes. Proposal: refuse the three targets as the engine does, or confirm a Part 1 codestream is acceptable | PEND | PS3.5 2026a A.4.4 |
+| P-REPORT-TEMPLATE | `dicom-report --template` is a styling preset, not a PS3.16 template, and silently falls back to "default" for any unknown value (including `--template 1500`). Proposal: reject unknown values, or rename to `--style` with `--template` kept as an alias | PEND | PS3.16 2026a (TID numbering) |
+| P-REPORT-SUMMARY | `dicom-report --include-summary` is accepted but has no effect. Proposal: make it control the summary sections, or deprecate it | PEND | — |
+| P-MEASURE-FRAME | `dicom-measure --frame` is 0-based; frames are numbered from 1. Proposal: a 1-based `--frame-number` (decide with P-EXPORT-1, P-SPLIT-1, P-CONVERT-FRAME, P-J2K-FRAME) | PEND | PS3.3 2026a C.7.6.6 |
+| P-MEASURE-UNIT | `dicom-measure` text/JSON `unit` prints symbols (`mm²`, `°`); JSON now also carries `unit_ucum`. Proposal: make `unit` the UCUM code and add `um` | PEND | PS3.16 2026a CID 7460–7462, CID 82 |
 | P-AUDIO-SOURCE-PER-TRACK | `VideoWorkflow.Metadata.audioChannelSource` (DICOMKit, `VideoWorkflow.swift:133`, `audioChannels(for:metadata:)`) is one Source applied to every audio track, so `--audio-channel-source` is single-valued. Proposal: add `audioChannelSources: [VideoAudioChannel.Source]?` to `Metadata` (one per track) and let the CLI option repeat | PEND | PS3.3 2026a Table C.7-13 (one (003A,0300) Item per channel, each with its own (003A,0208)) |
 
 ---
@@ -256,6 +262,10 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | D191 | DICOMKit | Sources/DICOMKit/DICOMConverter.swift:340-352 | `stripPrivate` filters the top-level Data Set only; a Private Creator and Private Data Element inside a Sequence Item survive (fixture priv.dcm: (0011,0010)/(0011,1001) in Referenced Image Sequence) | PS3.5 2026a 7.8.1 (Items are self-contained Data Sets with their own Private Data Elements) | Medium | ⏳ Open |
 | D192 | DICOMKit | Sources/DICOMKit/DICOMConverter.swift:488-491 (applyLossyProvenance) | A lossy convert records (0028,2110/2112/2114) and DERIVED but keeps the SOP Instance UID (c_lossy.dcm, c_jpeg.dcm) | PS3.3 2026a C.7.6.1.1.5 | High | ⏳ Open |
 | D193 | DICOMCore | Sources/DICOMCore/TransferSyntaxConverter.swift:791-826 | J2K → native keeps PI YBR_RCT / YBR_ICT over RGB samples (only XYB and JPEG YBR are relabelled); RGB → J2K leaves PI RGB with COD MCT = 1 | PS3.5 2026a 8.2, 8.2.4, Table 8.2.4-1 | High | ⏳ Open |
+| D194 | DICOMKit | Sources/DICOMKit/StructuredReporting/SRDocumentParser.swift:489 | NUM with an empty Measured Value Sequence (Type 2, zero items allowed) is parsed as value 0.0 in the default lenient mode, so renderers print a fabricated "0" measurement | PS3.3 2026a Table C.18.1-1 | Medium | ⏳ Open |
+| D195 | DICOMKit | Sources/DICOMKit/StructuredReporting/SRDocumentParser.swift:499 | Numeric Value Qualifier Code Sequence (0040,A301) is never read (`qualifier: nil`), although `NumericValueQualifier(code:)` exists | PS3.3 2026a Table C.18.1-1; PS3.16 CID 42 | Medium | ⏳ Open |
+| D196 | DICOMKit | Sources/DICOMKit/StructuredReporting/SRDocumentSerializer.swift:898 | Referenced Waveform Channels (0040,A0B0), Type 1C, is not written for WAVEFORM items ("can be added if needed"), so channel references are lost on round-trip | PS3.3 2026a Table C.18.5-1, C.18.5.1.1 | Low | ⏳ Open |
+| D197 | DICOMKit | Sources/DICOMKit/DataSet+PixelData.swift:476 (also DICOMFile+PixelData.swift:465) | `rescale(_:)` takes no frame index and calls `rescaleSlope()`/`rescaleIntercept()` without one, so a Per-frame Pixel Value Transformation Sequence (0028,9145) is ignored for every frame but the first; dicom-measure works around it with `rescaleSlope(frameIndex:)` | PS3.3 2026a Table C.7.6.16-10, Table C.8-126 | Low | ⏳ Open |
 
 ### Rows handed to DICOMStudio
 
@@ -2773,7 +2783,147 @@ Deferred findings: none new for dicom-j2k itself; the .202 encoder gap is D187 (
 
 ## G4 Derived objects
 
-Not started.
+### dicom-measure (G4)
+
+Commands: dicom-measure, distance, area, angle, roi, hu, pixel · files: MeasurementEngine.swift, main.swift (README.md surface) · commit `0fbc334f`
+
+**Standard extracted by script** (scratch/meas/: `sect.py`, `grep_para.py`, `nema_docbook.py table`): PS3.3 2026a 10.7.1.1–10.7.1.3 and Table 10-10 (Basic Pixel Spacing Calibration Macro; GEOMETRY / FIDUCIAL); Table C.7.6.16-2 (Pixel Measures, 3 rows); every table row for (0018,1164) / (0018,2010) / (0028,0A02/0A04) / (0018,6024/602C) (Tables C.8-2, C.8-17, C.8-25, C.8-25b, C.8-27, C.8-71, C.8-77, C.8.19.6-4); C.8.5.5.1.1/.14/.15/.17 (Physical Units: 13 Enumerated Values, 0003H cm; Region Location inclusive pixel indices); Table C.11-1b and C.11.1.1.2 (9 Defined Terms: OD HU US MGML Z_EFF ED EDW HU_MOD PCT); Table C.8-3 (CT Rescale Type "Required if the Rescale Type is not HU"); Tables C.8-126, C.7.6.16-10; Table C.7-14 and C.7.6.6.1.1; 10.2/10.3 ("The first Frame shall be denoted as Frame number 1"); C.10.5.1.2 and Table C.18.6-1 Graphic Data ("(column,row) … TLHC of the TLHC pixel is 0.0\0.0, the BRHC of the TLHC pixel is 1.0\1.0"); PS3.6 Table 6-1 rows for the 28 tags used; PS3.16 CID 7460 (cm, mm, um), CID 7461 (cm2, mm2, um2), CID 7181 ([hnsf'U] Hounsfield Unit + 23 others), CID 83 ([hnsf'U]), CID 7183 (deg Degree). No CID 82 table exists in 2026a; "[in_i]" and any pixel unit are in no PS3.16 table.
+
+**Correction to the brief:** PS3.3 2026a 10.7.1.3 carries no "UI shall indicate detector plane" rule (dumped in full: Value order + positive values only); the detector-plane definition is in Tables C.8-2 / C.8-71 ("measured at the front plane of the … detector housing"). The tool now labels it anyway (`spacing_note`). The tool writes no DICOM object (no SR, no GSPS), so CID 7469/7470/7472 and the Graphic Type terms do not apply; `--ellipse cx,cy,rx,ry` is not the C.10.5.1.2 ELLIPSE 4-point form and is not encoded anywhere.
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default (std) | Default (code) | Verdict |
+|---|---|---|---|---|---|---|---|
+| `<file-path>` | PS3.10 file | PS3.10 7.1 | — | path | — | — | plumbing |
+| `-o, --output` | output file | — | — | path | — | stdout | plumbing |
+| `-f, --format` | report format | — | — | text, json, csv | — | text | plumbing |
+| `--unit` | length / area unit | PS3.3 10.7.1.3 (mm); PS3.16 CID 7460, 7461 | cm, mm, um / cm2, mm2, um2 | mm, cm, inches, pixels | — | mm | wrong → fixed (mm was printed at an assumed 1 mm/pixel when no spacing existed; now pixels + warning) |
+| `--force` | no preamble / DICM | PS3.10 7.1 | — | flag | — | false | plumbing |
+| `--verbose` | — | — | — | flag (now stderr) | — | false | plumbing |
+| `distance --p1/--p2` | point (column,row) | Table C.18.6-1; 10.7.1.3 | column\row, 0,0 = TLHC of TLHC pixel | x,y; dx × column spacing, dy × row spacing | — | — | match (help fixed) ×2 |
+| `area --polygon` | polygon | Table C.18.6-1 | ≥ 3 points | ≥ 3 x,y | — | [] | match |
+| `area --ellipse` | ellipse | C.10.5.1.2 | (ELLIPSE = 4 axis endpoints) | cx,cy,rx,ry | — | — | match (not an encoding) |
+| `angle --vertex` | angle | Table C.18.6-1; 10.7.1.3 | — | x,y; angle was in the pixel grid, now in mm space | — | — | wrong → fixed |
+| `angle --p1/--p2` | arm endpoints | Table C.18.6-1 | — | x,y | — | — | match ×2 |
+| `roi --rect` | rectangle | Table C.18.6-1 | pixel (c,r) = [c,c+1)×[r,r+1) | pixels whose centres are inside | — | — | match |
+| `roi --polygon` | polygon ROI | Table C.18.6-1 | as above | was pixel-corner test, now centre | — | [] | wrong → fixed |
+| `roi --circle` | circle ROI | C.10.5.1.2 CIRCLE; Table C.18.6-1 | as above | was pixel-corner test, now centre | — | — | wrong → fixed |
+| `roi --statistics` | Modality LUT output stats | C.11.1, C.11.1.1.2 | LUT Sequence xor Rescale | Modality LUT Sequence was ignored; now applied; `value_unit` | — | false | wrong → fixed |
+| `roi --histogram` | — | — | — | flag | — | false | plumbing |
+| `roi --bins` | — | — | — | 2…65536 | — | 256 | plumbing |
+| `hu --point` | CT number | Table C.8-3; C.11.1.1.2 | HU when Rescale Type HU / absent on CT | was always labelled HU; now HU only then, else the Rescale Type + warning | — | — | wrong → fixed |
+| `hu --rect` | mean CT number | C.11.1 | — | x,y,w,h | — | — | match |
+| `hu --statistics` | ROI stats | C.11.1 | — | flag | — | false | match |
+| `pixel --point` | stored value → modality output | PS3.5 8.1.1; C.11.1 | Bits Stored / High Bit / sign from High Bit | raw cell was read (no mask, sign from cell width, RGB read as gray, compressed unsupported); now `PixelData`, Samples per Pixel 1 only | — | — | wrong → fixed |
+| `pixel --frame` | frame | 10.3; C.7.6.6.1.1 | Frame numbers from 1, ≤ Number of Frames | 0-based index, now range-checked | 1 | 0 | match (0-based by design, P-MEASURE-FRAME) |
+| (spacing source) | calibration attribute | 10.7.1.1–3; Table C.7.6.16-2; C.8.5.5; Tables C.8-2, C.8-71, C.8-25 | PS → Pixel Measures → US Region (cm) → Imager PS (detector plane) → Nominal Scanned PS | only Pixel Spacing was read; 4 sources added | — | — | missing → fixed |
+| (suv) | SUV | PS3.16 CID 85 (DICOMKit `SUVCalculator`, P-SUV) | — | not offered; the CLI passes nothing to SUVCalculator | — | — | missing (not offered) |
+
+Counts: matched 10, wrong 7 (all fixed), missing 2 (1 fixed, 1 not offered), extra 0, plumbing 7 (24 options + 2 concept rows).
+
+**Output contract**
+
+| Field | DICOM source | Encoding (standard) | Encoding (code) | Verdict |
+|---|---|---|---|---|
+| JSON `type`, `description`, `value`, `p1`, `p2`, `vertex`, `point`, `shape`, `center`, `radii`, `vertices` | — | — | tool keys (not PS3.18 F) | plumbing |
+| JSON `unit` / text unit `mm`, `cm` | CID 7460 | UCUM mm, cm | mm, cm | match |
+| `mm²`, `cm²` | CID 7461 | UCUM mm2, cm2 | display symbol; code in `unit_ucum`/`area_unit_ucum` | match (display) |
+| `°` | CID 7183 | UCUM deg | display; `unit_ucum` deg | match (display) |
+| `HU` | CID 7181 / CID 83; Table C.8-3 | UCUM [hnsf'U] | was printed for any modality; now only for HU output units, `unit_ucum` [hnsf'U] | wrong → fixed |
+| `in`, `in²`, `px`, `px²` | — | no PS3.16 code | display only, no `unit_ucum` | extra (non-DICOM units) |
+| `px` for an uncalibrated image | 10.7.1.1 | no spacing ⇒ no physical unit | was `mm` | wrong → fixed |
+| JSON `unit_ucum`, `area_unit_ucum` (new) | CID 7460/7461/7181/7183 | UCUM code | codes above | match (added) |
+| JSON/text `spacing_source` (new) | PS3.6 Table 6-1 keyword | PixelSpacing, PixelMeasuresSequence, SequenceOfUltrasoundRegions, ImagerPixelSpacing, NominalScannedPixelSpacing, none | same 5 + none | match (added) |
+| `spacing_mm` (new) | 10.7.1.3 | row\column | row\column | match (added) |
+| `spacing_note` (new) | Tables C.8-2/C.8-71, C.8-25, 10.7.1.2 | front plane of detector housing / scanned media / Calibration Type | same | match (added) |
+| ROI JSON `roi`, `pixel_count`, `area`, `area_unit`, `mean`, `std_dev`, `min`, `max`, `histogram[lower,upper,count]` | — | — | tool keys | plumbing |
+| ROI JSON `value_unit` (new) | Rescale Type / Modality LUT Type | C.11.1.1.2 Defined Terms | value as stored | match (added) |
+| labels `Image`, `Bits`, `Rescale`, `Warning`, `Output written to` | — | — | stderr / stdout | plumbing |
+| exit codes | — | — | 0 ok; 1 error; 64 validation (ArgumentParser) | plumbing |
+
+**Findings fixed** (all in `Sources/dicom-measure`, tests in `Tests/dicom-measureTests/MeasureStandardTests.swift`, 17 tests): spacing source chain (5 sources, `spacing_source`); uncalibrated → pixels instead of assumed mm; angle in physical space; Modality LUT applied; Bits Stored/High Bit/sign via `PixelData` (and compressed data decoded via `DICOMFile.pixelData()`); HU label only for HU output units; C.18.6-1 coordinates (floor sampling, negative coordinates out of bounds, pixel-centre ROI membership); frame range check; Samples per Pixel ≠ 1 refused; verbose to stderr; help/README document all of it.
+
+**Open (tool, not fixed):** with no spacing, Pixel Aspect Ratio (0028,0034) ≠ 1:1 is not applied to pixel distances (Low); Pixel Spacing Calibration Description (0028,0A04) is not printed (only Calibration Type).
+
+**P-items**
+- P-MEASURE-FRAME: `--frame` is a 0-based index; PS3.3 2026a 10.3 numbers Frames from 1. Proposal: add `--frame-number` (1-based) and deprecate `--frame` (kept; help now states the mapping and the range is checked).
+- P-MEASURE-UNIT: JSON `unit`/`area_unit` carry display symbols (`mm²`, `°`, `HU`, `in`, `px`). Proposal: make `unit` the PS3.16 UCUM code (now in `unit_ucum`), and add `um` (CID 7460/7461) to `--unit`; `inches` has no PS3.16 code.
+
+**Deferred findings**
+
+| D197 | DICOMKit | Sources/DICOMKit/DataSet+PixelData.swift:476 (also DICOMFile+PixelData.swift:465) | `rescale(_:)` takes no frame index and calls `rescaleSlope()`/`rescaleIntercept()` without one, so a Per-frame Pixel Value Transformation Sequence (0028,9145) is ignored for every frame but the first; dicom-measure works around it with `rescaleSlope(frameIndex:)` | PS3.3 2026a Table C.7.6.16-10, Table C.8-126 | Low | ⏳ Open |
+
+**Markers**
+- MeasurementEngine.swift: `// NEMA-verified: 2026a, checked 2026-10-01 — spacing sources diffed against PS3.3 2026a 10.7.1.1-10.7.1.3, Table 10-10, Table C.7.6.16-2, Tables C.8-2/C.8-71 (Imager Pixel Spacing), C.8-25 (Nominal Scanned Pixel Spacing), C.8-17 with C.8.5.5.1.14/.15/.17 (13 Physical Units values; cm used); 11 Tag literals match PS3.6 2026a Table 6-1 (name and keyword); output units per C.11.1.1.2 (9 Defined Terms) and Table C.8-3; coordinates per Table C.18.6-1; UCUM codes per PS3.16 2026a CID 7460 (3), CID 7461 (3), CID 7181/83 [hnsf'U], CID 7183 deg`
+- main.swift: `// NEMA-verified: 2026a, checked 2026-10-01 — option help and output keys diffed against PS3.3 2026a 10.7.1.3 (spacing Value order), Table C.18.6-1 (column,row; 0,0 = TLHC of the TLHC pixel), 10.3 (first Frame is Frame number 1; --frame stays a 0-based index, P-MEASURE-FRAME), C.11.1.1.2 (output units); spacing_source values are PS3.6 2026a Table 6-1 keywords (5); unit_ucum values per PS3.16 2026a CID 7460/7461/7181/7183`
+
+**Checks:** `swift build --product dicom-measure` ok; `swift test --filter dicom_measureTests` 17/17 pass; `diff_cli.py --tool dicom-measure` 0 wrong (Table 6-1 tag literals 22 matched, citations 22 matched); `check_nema_markers.py Sources/dicom-measure` 2/2. diff_cli extractor: no change needed (it lists all 24 options; duplicate names across subcommands are keyed `distance --p1` etc. in the contract).
+
+
+## dicom-report (G4) — renders SR documents to text/HTML/JSON/Markdown (PDF not implemented)
+
+The tool renders SR only; it does not create SR. Files: `Sources/dicom-report/main.swift`, `ReportGenerator.swift` (+ README.md). No SR `.dcm` fixture exists under Tests/ (only `Tests/DICOMStudioTests/Fixtures/syn-ct.dcm`), so `dicom-reportTests` builds an Extensible SR fixture (all 16 Value Types, all 7 Relationship Types, root TID 1500 DCMR, COMPLETE/UNVERIFIED/FINAL) through `SRDocumentSerializer` + `DICOMFile.create`. Setting `DICOM_REPORT_FIXTURE_DIR` writes it to disk; the CLI was then run on it in 4 formats, and `scratch/report/diff_report_labels.py` diffed the printed labels against the DocBook.
+
+Compared (by script): PS3.3 Tables C.17.3-7 (16), C.17.3-8 (7), C.17-2 flag Enumerated Values (3 attributes; names against PS3.6 Table 6-1), C.18.8-1, 8.8-1a; PS3.16 6.1 notation, sect_TID_1500 title, Table D-1 (15 DCM concept names in fixture output); PS3.6 Table A-1 SR SOP Class names (`SRDocumentType.description` = A-1 name less " Storage": 20 of 20; the 4 retired 88.1–88.4 Trial classes map to "Unknown"). Label diff after fix: 75 matched, 0 wrong. `diff_cli.py --tool dicom-report`: 0 wrong (4 citations matched).
+
+### Input contract
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default std | Default code | Verdict |
+|---|---|---|---|---|---|---|---|
+| `<file-path>` | SR Document | PS3.3 C.17.3 / Table C.17-6; PS3.6 A-1 | root Value Type CONTAINER | any file; now refuses a non-CONTAINER root with "Not a Structured Report. SOP Class UID indicates: <A-1 name>" (exit 64) | — | — | wrong → fixed |
+| `-o, --output` | path | — | — | path | — | required | plumbing |
+| `-f, --format` | rendering | — | — | text, html, pdf, json, markdown (pdf throws "requires additional libraries") | — | text | plumbing |
+| `--embed-images` | IMAGE references | Table C.17.3-7 | — | flag | — | false | plumbing |
+| `--image-dir` | path | — | — | path | — | — | plumbing |
+| `--template` | styling preset, NOT a PS3.16 TID | (TIDs come from Content Template Sequence, C.18.8-1) | — | default, cardiology, radiology, oncology; unknown → default silently | — | default | plumbing (P-REPORT-TEMPLATE) |
+| `--title` | overrides root CONTAINER Concept Name | Table C.17.3-7 | — | string | — | — | plumbing |
+| `--logo` / `--footer` | branding | — | — | path / string | — | — | plumbing (2) |
+| `--include-measurements` | NUM table | Table C.18.1-1 | — | flag | — | true | plumbing |
+| `--include-summary` | — | — | — | flag, never read | — | true | plumbing (no effect; P-REPORT-SUMMARY) |
+| `--language` | heading language | — | — | en, es, fr, de; unknown → en silently | — | en | plumbing |
+| `--force` | no DICM preamble | PS3.10 7.1 | — | flag | — | false | plumbing |
+| `--verbose` | diagnostics | — | — | flag | — | false | plumbing |
+
+### Output contract
+
+| Output | 2026a reference | Standard | Before | After | Verdict |
+|---|---|---|---|---|---|
+| JSON `value_type` | PS3.3 Table C.17.3-7 | 16 names | absent | rawValue of ContentItemValueType | missing → added |
+| JSON `relationship_type` | Table C.17.3-8 | 7 names | rawValue | unchanged | match |
+| JSON `document_type`, HTML/MD subtitle, text header (new) | PS3.6 Table A-1 | SOP Class Name | A-1 name less " Storage" | unchanged; text now prints it too | match |
+| `completion_flag` / `verification_flag` / `preliminary_flag` + "Completion Flag:" etc. | Table C.17-2; PS3.6 Table 6-1 names | PARTIAL/COMPLETE; UNVERIFIED/VERIFIED; PRELIMINARY/FINAL | absent | printed in all 4 formats | missing → added |
+| `content_template`, "Content Template: TID 1500 Measurement Report (DCMR)" | Table C.18.8-1; PS3.16 TID title (TemplateRegistry, generated) | Mapping Resource + Template Identifier | absent | printed | missing → added |
+| Document title | root CONTAINER Concept Name | Table C.17.3-7 | codeMeaning | unchanged | match |
+| CODE value | PS3.16 6.1; Table 8.8-1a | (CV, CSD, "CM") | meaning only | triplet; Long/URN Code Value when CV absent; `[CSV]` if version | wrong → fixed |
+| NUM value | Table C.18.1-1; CID 82 | Numeric Value + units | `12.0 millimeter`-style (Double) | `12 mm`: whole numbers without `.0`; units = Code Meaning of (0040,08EA), the same in tree, table and JSON | match (format fixed) |
+| DATE, TIME, UIDREF, PNAME, COMPOSITE, WAVEFORM, SCOORD, SCOORD3D, TCOORD, TABLE | Table C.17.3-7 | a value | `[Content]` | value printed | missing → fixed (10) |
+| Children of non-CONTAINER items | Table C.17-6 | Content Sequence on any item | dropped in all formats, measurement/image/section searches | rendered | wrong → fixed |
+| HTML concept/value text | — | — | unescaped | escaped | fixed (injection) |
+| Exit codes | — | — | 0 success; 1 error; 64 validation | unchanged | plumbing |
+
+Counts: matched 4, wrong 3 (fixed), missing 4 (fixed), extra 0, plumbing 14.
+
+### Findings / P-items
+- P-REPORT-TEMPLATE: `--template` is a presentation preset and falls back to "default" for any unknown value (e.g. `--template 1500` is silently accepted). Proposal: reject unknown values, or rename it to `--style` and keep `--template` as a deprecated alias. PS3.16 TIDs are already shown from the document's Content Template Sequence. Not implemented.
+- P-REPORT-SUMMARY: `--include-summary` is parsed but nothing reads it. Proposal: make it gate the impressions/recommendations sections, or deprecate it. Not implemented. `--language` also falls back to `en` silently.
+- Help text: the discussion says "image embedding planned", but `--embed-images` works for HTML. Left as is; it is not standard data.
+
+### Deferred findings
+| D194 | DICOMKit | Sources/DICOMKit/StructuredReporting/SRDocumentParser.swift:489 | NUM with an empty Measured Value Sequence (Type 2, zero items allowed) is parsed as value 0.0 in the default lenient mode, so renderers print a fabricated "0" measurement | PS3.3 2026a Table C.18.1-1 | Medium | ⏳ Open |
+| D195 | DICOMKit | Sources/DICOMKit/StructuredReporting/SRDocumentParser.swift:499 | Numeric Value Qualifier Code Sequence (0040,A301) is never read (`qualifier: nil`), although `NumericValueQualifier(code:)` exists | PS3.3 2026a Table C.18.1-1; PS3.16 CID 42 | Medium | ⏳ Open |
+| D196 | DICOMKit | Sources/DICOMKit/StructuredReporting/SRDocumentSerializer.swift:898 | Referenced Waveform Channels (0040,A0B0), Type 1C, is not written for WAVEFORM items ("can be added if needed"), so channel references are lost on round-trip | PS3.3 2026a Table C.18.5-1, C.18.5.1.1 | Low | ⏳ Open |
+
+### Marker text
+- ReportGenerator.swift: `// NEMA-verified: 2026a, checked 2026-10-01 — rendered an Extensible SR fixture using all 16 Value Types of PS3.3 2026a Table C.17.3-7 and all 7 Relationship Types of Table C.17.3-8 in text/json/markdown/html and diffed the printed labels by script: 75 matched, 0 wrong (…); before: 10 Value Types printed "[Content]", children of non-CONTAINER items were dropped, no value_type, flags or template were shown`
+- main.swift: `// NEMA-verified: 2026a, checked 2026-10-01 — a non-SR input is refused (root Value Type (0040,A040) must be CONTAINER, PS3.3 2026a C.17.3) with its PS3.6 Table A-1 SOP Class name; --format/--template/… are plumbing (presentation; --template is a styling preset, not a PS3.16 TID)`
+- `check_nema_markers.py Sources/dicom-report`: 2 of 2 marked, exit 0.
+
+### Tests and commit
+- `swift build --product dicom-report`: ok. `swift test --filter dicom_reportTests`: 10 tests, 0 failures (new target `dicom-reportTests`, Tests/dicom-reportTests/SRRenderingTests.swift). The CLI was run on `syn-ct.dcm` and refused it (exit 64).
+- Commit 89c3ed93 `fix(cli): dicom-report …`: Sources/dicom-report/{main.swift, ReportGenerator.swift, README.md}, Tests/dicom-reportTests, the Package.swift hunk (target only) and the CHANGELOG bullet, all committed through a temporary index. The owner's DICOMStudio changes are untouched.
+- diff_cli.py: no change needed. The extractor found all 14 options. Suggestion for the orchestrator: add `scratch/report/diff_report_labels.py` as an SR-render check (it needs the fixture from `DICOM_REPORT_FIXTURE_DIR=… swift test --filter dicom_reportTests/SRRenderingTests/testWritesFixtureWhenAsked`).
+
 
 ---
 
