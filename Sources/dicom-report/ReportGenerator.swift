@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — rendered an Extensible SR fixture using all 16 Value Types of PS3.3 2026a Table C.17.3-7 and all 7 Relationship Types of Table C.17.3-8 in text/json/markdown/html and diffed the printed labels by script: 75 matched, 0 wrong (value_type and relationship_type names, Completion/Verification/Preliminary Flag Enumerated Values and names of Table C.17-2 and PS3.6 Table 6-1, Content Template per Table C.18.8-1 titled as PS3.16 sect_TID_1500, document_type = PS3.6 Table A-1 name less " Storage" for 20 of 20 SR SOP Classes, DCM concept meanings = PS3.16 Table D-1, CODE values as (CV, CSD, "CM") per PS3.16 6.1 and Table 8.8-1a); before: 10 Value Types printed "[Content]", children of non-CONTAINER items were dropped, no value_type, flags or template were shown
+// NEMA-verified: 2026a, checked 2026-10-01 — rendered an Extensible SR fixture using all 16 Value Types of PS3.3 2026a Table C.17.3-7 and all 7 Relationship Types of Table C.17.3-8 in text/json/markdown/html and diffed the printed labels by script: 75 matched, 0 wrong (value_type and relationship_type names, Completion/Verification/Preliminary Flag Enumerated Values and names of Table C.17-2 and PS3.6 Table 6-1, Content Template per Table C.18.8-1 titled as PS3.16 sect_TID_1500, document_type = PS3.6 Table A-1 name less " Storage" for 20 of 20 SR SOP Classes, DCM concept meanings = PS3.16 Table D-1, CODE values as (CV, CSD, "CM") per PS3.16 6.1 and Table 8.8-1a); before: 10 Value Types printed "[Content]", children of non-CONTAINER items were dropped, no value_type, flags or template were shown; WAVEFORM channels printed as (M,C) pairs per C.18.5.1.1 (D225)
 /// Report generation engine for DICOM SR documents
 ///
 /// Converts parsed SR documents into various output formats with support for
@@ -570,8 +570,10 @@ struct ReportGenerator {
         case .waveform:
             guard let waveformItem = item.asWaveform else { return "" }
             var text = "Waveform: \(waveformItem.waveformReference.sopReference.sopInstanceUID)"
-            if let channels = waveformItem.waveformReference.channelNumbers, !channels.isEmpty {
-                text += " channels \(channels.map(String.init).joined(separator: ","))"
+            // Referenced Waveform Channels (0040,A0B0): (M,C) = (Multiplex Group, Channel) pairs,
+            // C = 0 meaning every channel of group M (PS3.3 2026a C.18.5.1.1)
+            if let pairs = waveformItem.waveformReference.referencedChannels, !pairs.isEmpty {
+                text += " channels (M,C) " + pairs.map { "(\($0.multiplexGroup),\($0.channel))" }.joined(separator: " ")
             }
             return text
         case .scoord:

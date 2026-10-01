@@ -195,9 +195,32 @@ final class SRRenderingTests: XCTestCase {
     }
 
     func testWaveformChannelsPrintWhenPresent() throws {
-        // In memory: SRDocumentSerializer does not write Referenced Waveform Channels (D-REPORT-3)
         let text = try render(.text, Self.fixtureDocument())
-        XCTAssertTrue(text.contains("Waveform: 1.2.3.300 channels 1,2"), text)
+        XCTAssertTrue(text.contains("Waveform: 1.2.3.300 channels (M,C) (1,1) (1,2)"), text)
+    }
+
+    /// PS3.3 2026a C.18.5.1.1: each channel is an (M,C) pair; the example "applies to the
+    /// entire first multiplex group and channels 2 and 3 of the third multiplex group" is
+    /// 0001 0000 0003 0002 0003 0003. The multiplex group must be shown, not only C (D225).
+    func testWaveformChannelsPrintTheMultiplexGroupOfEachPair() throws {
+        let reference = WaveformReference(
+            sopReference: ReferencedSOP(sopClassUID: Self.ecg, sopInstanceUID: "1.2.3.301"),
+            referencedChannels: [
+                WaveformChannelReference(multiplexGroup: 1, channel: 0),
+                WaveformChannelReference(multiplexGroup: 3, channel: 2),
+                WaveformChannelReference(multiplexGroup: 3, channel: 3),
+            ])
+        let root = ContainerContentItem(
+            conceptName: Self.dcm("126000", "Imaging Measurement Report"),
+            contentItems: [AnyContentItem(WaveformContentItem(waveformReference: reference, relationshipType: .contains))])
+        let document = SRDocument(
+            sopClassUID: SRDocumentType.extensibleSR.sopClassUID, sopInstanceUID: "1.2.3.9",
+            patientID: "P1", patientName: "Test^Patient", studyInstanceUID: "1.2.3.500",
+            studyDate: "20260930", accessionNumber: "A1",
+            completionFlag: .complete, verificationFlag: .unverified, preliminaryFlag: .final,
+            documentTitle: Self.dcm("126000", "Imaging Measurement Report"), rootContent: root)
+        let text = try render(.text, document)
+        XCTAssertTrue(text.contains("Waveform: 1.2.3.301 channels (M,C) (1,0) (3,2) (3,3)"), text)
     }
 
     func testRefusesADataSetThatIsNotAnSRDocument() throws {

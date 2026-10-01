@@ -4,7 +4,8 @@
 // F.7.2.1.3, F.7.2.2.2; --patient-sex against PS3.3 Table C.2-3 (0010,0040) Enumerated Values (3);
 // --patient-birth-date against PS3.5 Table 6.2-1 DA; --discontinuation-reason examples against PS3.16 CID 9300
 // (6 DCM rows + CID 9301 17 rows, Table D-1); SOP Class UIDs against PS3.6 Table A-1 (3); response status names
-// against PS3.7 Annex C C.4.2-C.5.25 (27 codes) and PS3.4 Table F.7.2-2 (A710). Data-set building, the status
+// worded by DICOMNetwork's DIMSEServiceStatusText (PS3.7 Annex C, PS3.4 Table F.7.2-2; the CLI's own
+// 22-code table removed, D220). Data-set building, the status
 // enum and the console text live in DICOMNetwork (MPPSService, NetworkConsole).
 import Foundation
 import ArgumentParser
@@ -114,58 +115,19 @@ struct DICOMMPPSCommand: AsyncParsableCommand {
 
     /// Prints an SCP warning status to stderr — the operation was performed, but
     /// the SCP coerced or dropped attributes (PS3.7 Annex C).
-    static func reportWarning(_ result: MPPSOperationResult) {
+    static func reportWarning(_ result: MPPSOperationResult, operation: String) {
         if let warning = result.warning {
             FileHandle.standardError.write(Data(
-                "warning: SCP completed the operation with \(describe(warning)) — attributes may have been coerced or dropped\n".utf8))
+                "warning: SCP completed the \(operation) with \(describe(warning, operation: operation)) — attributes may have been coerced or dropped\n".utf8))
         }
     }
 
-    /// DIMSE-N response status names, PS3.7 2026a Annex C (section, code, title) plus the
-    /// MPPS-specific N-SET failure of PS3.4 Table F.7.2-2. `DIMSEStatus.description`
-    /// (DICOMNetwork) names only the C-service codes, so an N-CREATE / N-SET status such as
-    /// 0106H would otherwise print as "Unknown status".
-    static let dimseNStatusNames: [UInt16: String] = [
-        0x0107: "Attribute List warning (PS3.7 C.4.2)",
-        0x0116: "Attribute Value out of range (PS3.7 C.4.3)",
-        0x0122: "Refused: SOP Class not supported (PS3.7 C.5.6)",
-        0x0119: "Class-Instance conflict (PS3.7 C.5.7)",
-        0x0111: "Duplicate SOP Instance (PS3.7 C.5.8)",
-        0x0210: "Duplicate invocation (PS3.7 C.5.9)",
-        0x0115: "Invalid argument value (PS3.7 C.5.10)",
-        0x0106: "Invalid Attribute Value (PS3.7 C.5.11)",
-        0x0117: "Invalid SOP Instance (PS3.7 C.5.12)",
-        0x0120: "Missing Attribute (PS3.7 C.5.13)",
-        0x0121: "Missing Attribute Value (PS3.7 C.5.14)",
-        0x0212: "Mistyped argument (PS3.7 C.5.15)",
-        0x0114: "No such argument (PS3.7 C.5.16)",
-        0x0105: "No such Attribute (PS3.7 C.5.17)",
-        0x0113: "No such Event Type (PS3.7 C.5.18)",
-        0x0112: "No such SOP Instance (PS3.7 C.5.19)",
-        0x0118: "No such SOP Class (PS3.7 C.5.20)",
-        0x0110: "Processing Failure (PS3.7 C.5.21; for N-SET also PS3.4 Table F.7.2-2: Performed Procedure Step Object may no longer be updated, Error ID A710)",
-        0x0213: "Resource limitation (PS3.7 C.5.22)",
-        0x0211: "Unrecognized operation (PS3.7 C.5.23)",
-        0x0123: "No such Action Type (PS3.7 C.5.24)",
-        0x0124: "Refused: Not authorized (PS3.7 C.5.25)",
-    ]
-
-    /// `XXXXH <PS3.7 name>` for a DIMSE-N code, else the DICOMNetwork description.
-    static func describe(_ status: DIMSEStatus) -> String {
-        let code = status.rawValue
-        if let name = dimseNStatusNames[code] {
-            return String(format: "%04XH ", code) + name
-        }
-        return "\(status)"
-    }
-
-    /// Re-throws an MPPS operation failure with the response status named after PS3.7
-    /// Annex C instead of DICOMNetwork's "Store failed: Unknown status (0x0106)".
-    static func rethrowNamed(_ error: Error, operation: String) -> Error {
-        if case DICOMNetworkError.storeFailed(let status) = error {
-            return ValidationError("\(operation) failed: SCP returned \(describe(status))")
-        }
-        return error
+    /// The response status worded by DICOMNetwork's generated tables: PS3.4 Table F.7.2-2
+    /// for an N-SET, else PS3.7 2026a Annex C (MPPS N-CREATE has no specific codes, PS3.4
+    /// F.7.2.1.4), e.g. "Warning (0x0107): Attribute List warning". N-CREATE / N-SET
+    /// failures arrive already worded the same way in `DICOMNetworkError.mppsOperationFailed`.
+    static func describe(_ status: DIMSEStatus, operation: String) -> String {
+        DIMSEServiceStatusText.describe(status, service: operation == "N-SET" ? .mppsNSet : .dimseN)
     }
 
     /// Patient's Sex (0010,0040) Enumerated Values, PS3.3 2026a Table C.2-3: M, F, O.
@@ -331,9 +293,7 @@ extension DICOMMPPSCommand {
             print(NetworkConsole.mppsProgress(isCreate: true), terminator: "")
 
             // Create MPPS
-            let result: MPPSOperationResult
-            do {
-                result = try await DICOMMPPSService.createDetailed(
+            let result = try await DICOMMPPSService.createDetailed(
                 host: serverInfo.host,
                 port: serverInfo.port,
                 callingAE: aet,
@@ -360,11 +320,8 @@ extension DICOMMPPSCommand {
                 referencedStudySOPInstanceUID: referencedStudyUid,
                 specificCharacterSet: specificCharacterSet
                 )
-            } catch {
-                throw DICOMMPPSCommand.rethrowNamed(error, operation: "N-CREATE")
-            }
             let mppsInstanceUID = result.sopInstanceUID
-            DICOMMPPSCommand.reportWarning(result)
+            DICOMMPPSCommand.reportWarning(result, operation: "N-CREATE")
             if result.sopInstanceUIDWasReassigned {
                 FileHandle.standardError.write(Data(
                     "note: SCP assigned MPPS SOP Instance UID \(result.sopInstanceUID) (requested \(result.requestedSOPInstanceUID)); use the assigned UID for the N-SET (PS3.7 10.1.5.1.4)\n".utf8))
@@ -513,9 +470,7 @@ extension DICOMMPPSCommand {
             print(NetworkConsole.mppsProgress(isCreate: false), terminator: "")
 
             // Update MPPS
-            let result: MPPSOperationResult
-            do {
-                result = try await DICOMMPPSService.update(
+            let result = try await DICOMMPPSService.update(
                 host: serverInfo.host,
                 port: serverInfo.port,
                 callingAE: aet,
@@ -533,10 +488,7 @@ extension DICOMMPPSCommand {
                 discontinuationReason: reason,
                 specificCharacterSet: specificCharacterSet
                 )
-            } catch {
-                throw DICOMMPPSCommand.rethrowNamed(error, operation: "N-SET")
-            }
-            DICOMMPPSCommand.reportWarning(result)
+            DICOMMPPSCommand.reportWarning(result, operation: "N-SET")
 
             // Result via the SHARED formatter — preserves the "New Status:" /
             // "Referenced Images:" markers the parity comparator parses.

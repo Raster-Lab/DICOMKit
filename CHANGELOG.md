@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, batch r2 new findings (2026-10-01, DICOM 2026a)
+
+- **`dicom-mpps` status text** (D220; PS3.7 2026a Annex C, PS3.4 2026a Table F.7.2-2): the CLI's own 22-code
+  DIMSE-N name table and its dead `.storeFailed` re-wrap are removed; SCP warnings are worded by DICOMNetwork's
+  `DIMSEServiceStatusText` (e.g. "Warning (0x0107): Attribute List warning", N-SET via Table F.7.2-2) and
+  failures arrive already worded in `DICOMNetworkError.mppsOperationFailed`.
+- **`dicom-report` WAVEFORM channels** (D225; PS3.3 2026a C.18.5.1.1): Referenced Waveform Channels print as
+  (Multiplex Group, Channel) pairs, `channels (M,C) (1,0) (3,2) (3,3)` (was the channel numbers only).
+- **Content Creator's Name is Type 3** (D222; PS3.3 2026a Table 10.9.3-1 via Table 10-12): comments, the GSPS
+  builder marker and test messages no longer call it Type 2; behaviour unchanged (written zero length when unknown,
+  which PS3.5 7.4.5 permits).
+
 ### Added — PS3.15 Retain Safe Private and Clean Graphics Options, batch b4 (2026-10-01, DICOM 2026a)
 
 - **`ConfidentialityProfile.Options.retainSafePrivate` (Retain Safe Private Option, 113111)** (D159; PS3.15 2026a

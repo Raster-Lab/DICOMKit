@@ -15,6 +15,7 @@
 
 import XCTest
 import Foundation
+@testable import DICOMNetwork
 
 #if os(macOS)
 
@@ -212,6 +213,33 @@ final class MWLMPPSCLIEndToEndTests: XCTestCase {
         XCTAssertTrue(help.contains("110507|DCM|Patient did not arrive"))
         XCTAssertFalse(help.contains("110513|DCM|Doctor cancelled procedure"))
         XCTAssertFalse(help.contains("110518"))
+    }
+
+    // MARK: - dicom-mpps response status wording (D220)
+
+    /// The CLI words N-CREATE statuses with DICOMNetwork's DIMSEServiceStatusText
+    /// (PS3.7 2026a Annex C; MPPS N-CREATE has no specific codes, PS3.4 F.7.2.1.4):
+    /// a failure arrives as `mppsOperationFailed`, a warning is printed from the
+    /// same table. Before D220 it kept its own copy of the Annex C names.
+    func testMPPS_createFailureAndWarningAreWordedPerAnnexC() async throws {
+        #if canImport(Network)
+        for (code, expected, failed) in [
+            (UInt16(0x0106), "Failure (0x0106): Invalid Attribute Value", true),
+            (UInt16(0x0107), "Warning (0x0107): Attribute List warning", false),
+        ] {
+            let scp = MockPrintSCP(behavior: MockPrintSCPBehavior(
+                failOn: .nCreateRequest, failStatus: DIMSEStatus.from(code)))
+            try await scp.start()
+            let port = await scp.port
+            let result = try run("dicom-mpps", [
+                "create", "127.0.0.1", "--port", String(port), "--aet", "T",
+                "--study-uid", "1.2.3", "--modality", "CT", "--timeout", "10"])
+            await scp.stop()
+            XCTAssertEqual(result.exitCode != 0, failed, "exit \(result.exitCode): \(result.all)")
+            XCTAssertTrue(result.all.contains(expected), "output: \(result.all)")
+            XCTAssertFalse(result.all.contains("(PS3.7 C.5.11)"), "the CLI's own table is gone")
+        }
+        #endif
     }
 
     func testMPPS_rootHelpNamesTheEnumeratedStatusValues() throws {
