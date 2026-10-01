@@ -67,7 +67,7 @@ public enum DICOMDIRProfileRules {
 
     // MARK: - File IDs (PS3.10 8.2, 8.5)
 
-    /// PS3.10 8.5: File IDs use A-Z, 0-9 and underscore (the CS repertoire without SPACE).
+    /// PS3.10 8.5 (Character Set): File IDs use A-Z, 0-9 and underscore (the CS repertoire without SPACE).
     public static let fileIDCharacters = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
     /// PS3.10 8.2: a File ID has one to eight components.
     public static let maxFileIDComponents = 8

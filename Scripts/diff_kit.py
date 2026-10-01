@@ -328,8 +328,15 @@ def check_typed_reads(rep, p6, files, tags):
     rep.check('PS3.6 Table 6-1: typed reads (uint16/uint32/decimalString/...) match the element VR', matched, wrong)
 
 
-def check_tag_names(rep, p6, files, local_tags):
+def check_tag_names(rep, p6, files, local_tags, p7=None):
+    # PS3.6 Table 6-1 (data elements) plus Table 7-1 (File Meta), Table 8-1 (Directory Structuring)
+    # and, when part 7 is available, PS3.7 Table E.1-1 (command elements, group 0000).
     dic = dw.dictionary(p6)
+    extra = [(p6, '7-1'), (p6, '8-1')] + ([(p7, 'E.1-1')] if p7 is not None else [])
+    for part, label in extra:
+        for row in dw.table_rows(part, label):
+            if len(row) >= 4 and re.fullmatch(r'\([0-9A-Fa-fx]{4},[0-9A-Fa-fx]{4}\)', row[0].strip()):
+                dic.setdefault(row[0].strip('()').replace(',', '').upper(), (row[1], row[2], row[3], row[4] if len(row) > 4 else '', ''))
     matched, wrong = 0, []
 
     def norm(s):
@@ -343,7 +350,7 @@ def check_tag_names(rep, p6, files, local_tags):
                 if m.group(1).upper()[-1] in '13579BDF':      # private group
                     continue
                 if re.match(r'(?i)^(0002|FFFE|60[0-9A-F]{2}|50[0-9A-F]{2})', tag) is None:
-                    wrong.append(f'{fname}:{line_of(src, m.start())}: ({tag[:4]},{tag[4:]}) is not in PS3.6 Table 6-1')
+                    wrong.append(f'{fname}:{line_of(src, m.start())}: ({tag[:4]},{tag[4:]}) is not in PS3.6 Tables 6-1 / 7-1 / 8-1 or PS3.7 Table E.1-1')
                 continue
             line_end = src.find('\n', m.end())
             rest = src[m.end():line_end if line_end > 0 else m.end() + 120]
@@ -695,11 +702,16 @@ def check_waveform_sample_interpretation(rep, p3, files):
 
 
 def check_photometric_terms(rep, p3, files):
-    """String literals compared with Photometric Interpretation must be C.7.6.3.1.2 terms."""
+    """String literals compared with Photometric Interpretation must be C.7.6.3.1.2 terms. In the DICOMDIR
+    sources "PALETTE" is a Directory Record Type (PS3.3 Table F.3-3 Defined Terms), not a photometric term."""
     terms = set(section_terms(p3, 'sect_C.7.6.3.1.2'))
+    record_types = set(attribute_terms(p3, 'Directory Record Type')[2] or [])
     matched, wrong = 0, []
     for fname, src in files.items():
         for m in re.finditer(r'"((?:MONOCHROME|PALETTE|RGB|HSV|ARGB|CMYK|YBR|XYB)[A-Z0-9_ ]*)"', src):
+            if 'DICOMDIR' in fname and m.group(1) in record_types:
+                matched += 1
+                continue
             if m.group(1) in terms or m.group(1) in ('RGB ', 'MONOCHROME') or 'hasPrefix' in src[max(0, m.start() - 30):m.start()]:
                 matched += 1
             else:
@@ -786,8 +798,10 @@ def main():
     args = ap.parse_args()
 
     parts = {}
-    for n in (3, 4, 5, 6, 10, 15, 16):
+    for n in (3, 4, 5, 6, 7, 10, 15, 16):
         path = os.path.join(args.nema, f'part{n:02d}_{args.edition}.xml')
+        if n == 7 and not os.path.exists(path):
+            continue                                   # optional: command elements for tag names
         parts[n] = nd.Part(path)
         sub = parts[n].subtitle
         if args.edition not in sub:
@@ -807,7 +821,7 @@ def main():
         ('coded_concepts', lambda: check_coded_concepts(rep, parts[16], files)),
         ('vr_literals', lambda: check_vr_literals(rep, parts[6], files, tags)),
         ('typed_reads', lambda: check_typed_reads(rep, parts[6], files, tags)),
-        ('tag_names', lambda: check_tag_names(rep, parts[6], files, local_tags)),
+        ('tag_names', lambda: check_tag_names(rep, parts[6], files, local_tags, parts.get(7))),
         ('citations', lambda: check_citations(rep, parts, files)),
         ('sr_value_types', lambda: check_sr_value_types(rep, parts[3], args.core)),
         ('enums', lambda: check_enums(rep, parts, files)),
