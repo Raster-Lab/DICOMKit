@@ -5,13 +5,18 @@ A command-line tool for anonymizing DICOM files to protect patient privacy.
 ## Features
 
 - **Multiple Anonymization Profiles**:
-  - **`ps315`**: the PS3.15 Basic Application Level Confidentiality Profile (every row of
-    PS3.15 Table E.1-1) with the Options selected by the `--retain-*` / `--clean-*` flags;
-    records Patient Identity Removed (0012,0062), De-identification Method (0012,0063) and
-    De-identification Method Code Sequence (0012,0064)
-  - **`basic`, `clinical-trial`, `research`** (legacy, the default is `basic`): fixed attribute
+  - **`ps315`** (the default; **`basic`** is an alias of it): the PS3.15 Basic Application Level
+    Confidentiality Profile (every row of PS3.15 Table E.1-1) with the Options selected by the
+    `--retain-*` / `--clean-*` flags; records Patient Identity Removed (0012,0062),
+    De-identification Method (0012,0063) and De-identification Method Code Sequence (0012,0064)
+  - **`legacy-basic`, `legacy-clinical-trial`, `legacy-research`** (deprecated): fixed attribute
     lists, **not** the PS3.15 Basic Profile and not any PS3.15 Profile + Options set; they record
-    no (0012,0062)
+    no (0012,0062). Each use prints a deprecation note on stderr
+
+> **Changed 2026-10-01 (P-ANON-PROFILE):** the default profile is `ps315`, and `--profile basic`
+> now means the PS3.15 Basic Profile. The attribute list `basic` used to select is
+> `--profile legacy-basic`. `clinical-trial` and `research` are not PS3.15 profile names; they
+> still select `legacy-clinical-trial` / `legacy-research`, with a deprecation note.
   - **Custom**: User-defined tag removal and replacement
 
 - **Anonymization Actions**:
@@ -44,35 +49,36 @@ The executable will be available at `.build/release/dicom-anon`.
 ### Basic Anonymization
 
 ```bash
-# Anonymize a single file with basic profile
-dicom-anon file.dcm --output anon.dcm --profile basic
+# Anonymize a single file with the PS3.15 Basic Profile (the default; same as --profile ps315)
+dicom-anon file.dcm --output anon.dcm
 
 # Preview changes without modifying (dry-run)
-dicom-anon file.dcm --profile basic --dry-run
+dicom-anon file.dcm --dry-run
 ```
 
 ### Date Shifting
 
 ```bash
-# Shift all dates by 100 days
-dicom-anon file.dcm --output anon.dcm --profile basic --shift-dates 100
+# Shift all dates by 100 days (Retain Longitudinal Temporal Information With Modified Dates Option)
+dicom-anon file.dcm --output anon.dcm --retain-modified-dates --shift-dates 100
 ```
 
 ### UID Regeneration
 
 ```bash
-# Regenerate UIDs while preserving references
-dicom-anon file.dcm --output anon.dcm --profile basic --regenerate-uids
+# ps315 always replaces UIDs (Table E.1-1 action U), consistently across files.
+# The deprecated legacy lists replace them only with --regenerate-uids:
+dicom-anon file.dcm --output anon.dcm --profile legacy-basic --regenerate-uids
 ```
 
 ### Batch Processing
 
 ```bash
 # Anonymize entire directory recursively
-dicom-anon input_dir/ --output anon_dir/ --profile clinical-trial --recursive
+dicom-anon input_dir/ --output anon_dir/ --recursive
 
 # With verbose output
-dicom-anon input_dir/ --output anon_dir/ --profile basic --recursive --verbose
+dicom-anon input_dir/ --output anon_dir/ --recursive --verbose
 ```
 
 ### Custom Anonymization
@@ -84,15 +90,15 @@ dicom-anon file.dcm --output anon.dcm --remove 0010,0010 --remove PatientID
 # Replace specific tags with values
 dicom-anon file.dcm --output anon.dcm --replace 0010,0030=19700101
 
-# Keep specific tags from being anonymized
-dicom-anon file.dcm --output anon.dcm --profile basic --keep Modality --keep StudyDescription
+# Keep specific tags from being anonymized (legacy lists only; with ps315 select a --retain-* Option)
+dicom-anon file.dcm --output anon.dcm --profile legacy-basic --keep Modality --keep StudyDescription
 ```
 
 ### Audit Logging
 
 ```bash
 # Generate audit log for compliance
-dicom-anon file.dcm --output anon.dcm --profile basic --audit-log anonymization.log
+dicom-anon file.dcm --output anon.dcm --audit-log anonymization.log
 
 # Review audit log
 cat anonymization.log
@@ -102,15 +108,15 @@ cat anonymization.log
 
 ```bash
 # Create backup before anonymization
-dicom-anon file.dcm --output anon.dcm --profile basic --backup
+dicom-anon file.dcm --output anon.dcm --backup
 
 # Force parsing of non-standard DICOM files
-dicom-anon file.dcm --output anon.dcm --profile basic --force
+dicom-anon file.dcm --output anon.dcm --force
 ```
 
 ## Anonymization Profiles
 
-### `ps315` — PS3.15 Basic Application Level Confidentiality Profile
+### `ps315` (default; alias `basic`) — PS3.15 Basic Application Level Confidentiality Profile
 
 Applies the Basic Profile action (D, Z, X, K, C, U) of every row of PS3.15 Table E.1-1, removes
 private attributes, curve data and overlay data/comments, and replaces UIDs consistently. The
@@ -121,8 +127,8 @@ Options (PS3.15 E.3) and the PS3.16 CID 7050 code each one records in (0012,0064
 | (always) | Basic Application Level Confidentiality Profile | 113100 |
 | `--clean-pixel-data` (all profiles) | Clean Pixel Data Option; sets Burned In Annotation (0028,0301) to NO | 113101 |
 | `--clean-descriptors` | Clean Descriptors Option (the descriptors are kept as they are, **not** cleaned — review them) | 113105 |
-| `--retain-full-dates`, or `--retain-dates` | Retain Longitudinal Temporal Information With Full Dates Option | 113106 |
-| `--retain-modified-dates --shift-dates N`, or `--retain-dates --shift-dates N` | Retain Longitudinal Temporal Information With Modified Dates Option | 113107 |
+| `--retain-full-dates`, or the deprecated `--retain-dates` | Retain Longitudinal Temporal Information With Full Dates Option | 113106 |
+| `--retain-modified-dates --shift-dates N`, or the deprecated `--retain-dates --shift-dates N` | Retain Longitudinal Temporal Information With Modified Dates Option | 113107 |
 | `--retain-characteristics` | Retain Patient Characteristics Option | 113108 |
 | `--retain-device` | Retain Device Identity Option | 113109 |
 | `--retain-uids` | Retain UIDs Option | 113110 |
@@ -134,6 +140,10 @@ Information Options are mutually exclusive (E.3.6). The Option flags act only on
 ps315` (they are refused with the legacy profiles), as do `--allow-burned-in-phi`; `--keep` is
 refused with `ps315`. `--remove` and `--replace` are applied after the Profile.
 
+`--retain-dates` is deprecated (P-ANON-RETAIN-DATES): it selects the Full Dates Option, or the
+Modified Dates Option when `--shift-dates` is given, and prints a deprecation note. Use
+`--retain-full-dates` or `--retain-modified-dates` (PS3.15 E.3.6, two mutually exclusive Options).
+
 `--dry-run` and `--verbose` list each changed attribute with its PS3.6 name and the PS3.15
 Table E.1-1a code; `--audit-log` writes the same list (without values).
 
@@ -141,7 +151,7 @@ Table E.1-1a code; `--audit-log` writes the same list (without values).
 dicom-anon file.dcm --output anon.dcm --profile ps315 --retain-modified-dates --shift-dates -100
 ```
 
-### Basic Profile (legacy `basic`)
+### `legacy-basic` (deprecated; was `basic`)
 
 Not the PS3.15 Basic Profile: of the 647 data-set rows of PS3.15 Table E.1-1 it handles 11.
 Removes or replaces:
@@ -153,16 +163,16 @@ Removes or replaces:
 - Institution Name/Address → Removed
 - Station Name, Device Serial Number → Removed
 
-### Clinical Trial Profile
+### `legacy-clinical-trial` (deprecated; `clinical-trial` still selects it)
 
-Includes Basic Profile plus:
+Not a PS3.15 profile. Includes the `legacy-basic` list plus:
 - Study/Series/Acquisition Dates → Shifted by specified offset
 - Study/Series/Acquisition Times → Removed
 - Preserves intervals between dates
 
-### Research Profile
+### `legacy-research` (deprecated; `research` still selects it)
 
-Minimal anonymization:
+Not a PS3.15 profile. Minimal anonymization:
 - Patient Name → "ANONYMOUS"
 - Patient ID → Hashed value
 - Patient Birth Date → Removed
@@ -170,10 +180,10 @@ Minimal anonymization:
 
 ## Examples
 
-### Example 1: Basic Anonymization
+### Example 1: PS3.15 Basic Profile
 
 ```bash
-dicom-anon patient_scan.dcm --output anon_scan.dcm --profile basic
+dicom-anon patient_scan.dcm --output anon_scan.dcm --profile ps315
 ```
 
 Output:
@@ -184,13 +194,13 @@ Anonymization Summary:
   Failed: 0
 ```
 
-### Example 2: Clinical Trial with Date Shifting
+### Example 2: Basic Profile with modified dates
 
 ```bash
 dicom-anon study/ --output anon_study/ \
-  --profile clinical-trial \
+  --profile ps315 \
+  --retain-modified-dates \
   --shift-dates 90 \
-  --regenerate-uids \
   --recursive \
   --audit-log trial_anon.log \
   --verbose
@@ -202,9 +212,7 @@ dicom-anon study/ --output anon_study/ \
 dicom-anon research.dcm --output anon_research.dcm \
   --remove PatientName \
   --remove PatientID \
-  --replace InstitutionName="Research Site" \
-  --keep StudyDescription \
-  --keep Modality
+  --replace InstitutionName="Research Site"
 ```
 
 ## Security Considerations
@@ -241,7 +249,7 @@ in the table above. Not yet recorded: Longitudinal Temporal Information Modified
 ## Limitations
 
 1. Burned-in text is removed only with `--clean-pixel-data` (region chosen automatically or by `--redact-region`)
-2. Legacy profiles do not remove private tags (they generate warnings); `ps315` removes them
+2. The deprecated legacy-* profiles do not remove private tags (they generate warnings); `ps315` removes them
 3. Sequence anonymization follows main dataset rules
 4. Compressed transfer syntaxes are preserved without modification
 

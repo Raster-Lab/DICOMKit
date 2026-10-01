@@ -123,7 +123,7 @@ dicom-query --patient-id 12345 | dicom-retrieve --output studies/
 dicom-query --patient-name "DOE*" | \
 dicom-retrieve --output studies/ | \
 dicom-validate --level 2 | \
-dicom-anon --profile basic --output anon/
+dicom-anon --profile ps315 --output anon/
 ```
 
 ### Conditional Logic
@@ -240,13 +240,13 @@ OUTPUT_DIR=/data/anonymized
 # Validate input
 dicom-validate ${INPUT_DIR}/*.dcm --level 2
 
-# Anonymize with basic profile
-dicom-anon ${INPUT_DIR}/*.dcm --profile basic --output ${TEMP_DIR}
+# Anonymize with the PS3.15 Basic Application Level Confidentiality Profile
+dicom-anon ${INPUT_DIR}/*.dcm --profile ps315 --output ${TEMP_DIR}
 
 # Check for sensitive files
 if exists ${INPUT_DIR}/sensitive.dcm
-    # Use strict anonymization for sensitive files
-    dicom-anon ${INPUT_DIR}/sensitive.dcm --profile strict --output ${OUTPUT_DIR}
+    # Also blank burned-in text in sensitive files (PS3.15 Clean Pixel Data Option)
+    dicom-anon ${INPUT_DIR}/sensitive.dcm --profile ps315 --clean-pixel-data --output ${OUTPUT_DIR}
 endif
 
 # Move anonymized files

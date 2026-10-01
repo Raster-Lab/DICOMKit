@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — --profile and the Option flags against PS3.15 2026a E.1-E.3 and the 12 Option columns of Table E.1-1 (8 Options offered, 4 not offered by the engine); on a fixture of the 647 data-set rows of Table E.1-1, --profile ps315 matches 647 (5 SQ D rows kept with scrubbed items) and the legacy basic 11, clinical-trial 15, research 1 (documented as not PS3.15); recorded codes match PS3.16 2026a CID 7050 (13 rows); (0002,0003) follows (0008,0018) per PS3.10 2026a 7.1
+// NEMA-verified: 2026a, checked 2026-10-01 — --profile and the Option flags against PS3.15 2026a E.1-E.3 and the 12 Option columns of Table E.1-1 (8 Options offered, 4 not offered by the engine); on a fixture of the 647 data-set rows of Table E.1-1, --profile ps315 matches 647 (5 SQ D rows kept with scrubbed items) (the default; basic is its alias, P-ANON-PROFILE) and the deprecated legacy-basic 11, legacy-clinical-trial 15, legacy-research 1 (documented as not PS3.15); --retain-dates deprecated (P-ANON-RETAIN-DATES, E.3.6); recorded codes match PS3.16 2026a CID 7050 (13 rows); (0002,0003) follows (0008,0018) per PS3.10 2026a 7.1
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -13,14 +13,17 @@ struct DICOMAnon: ParsableCommand {
             Anonymizes DICOM files according to various profiles to protect patient privacy.
             Supports multiple anonymization strategies and batch processing.
 
-            --profile ps315 applies the PS3.15 Basic Application Level Confidentiality
-            Profile (every row of Table E.1-1) and the Options selected with the --retain-*
-            and --clean-* flags, and records Patient Identity Removed (0012,0062),
-            De-identification Method (0012,0063) and De-identification Method Code Sequence
-            (0012,0064). The legacy profiles basic, clinical-trial and research are fixed
-            attribute lists, NOT the PS3.15 Basic Profile: basic removes or replaces 14
-            attributes, clinical-trial adds 8 study/series/acquisition/content dates and
-            times, research handles 3; none of them records (0012,0062).
+            --profile ps315 (the default; basic is an alias of it) applies the PS3.15 Basic
+            Application Level Confidentiality Profile (every row of Table E.1-1) and the
+            Options selected with the --retain-* and --clean-* flags, and records Patient
+            Identity Removed (0012,0062), De-identification Method (0012,0063) and
+            De-identification Method Code Sequence (0012,0064). The deprecated profiles
+            legacy-basic, legacy-clinical-trial and legacy-research are fixed attribute
+            lists, NOT the PS3.15 Basic Profile: legacy-basic removes or replaces 14
+            attributes, legacy-clinical-trial adds 8 study/series/acquisition/content dates
+            and times, legacy-research handles 3; none of them records (0012,0062). In
+            earlier releases basic named the legacy-basic list; clinical-trial and research
+            still select legacy-clinical-trial and legacy-research, with a deprecation note.
 
             --dry-run and --verbose list each changed attribute with its PS3.6 name and
             the PS3.15 Table E.1-1a action code (D, Z, X, C, U).
@@ -29,12 +32,11 @@ struct DICOMAnon: ParsableCommand {
               dicom-anon file.dcm --output anon.dcm --profile ps315
               dicom-anon file.dcm --output anon.dcm --profile ps315 --retain-modified-dates --shift-dates -100
               dicom-anon file.dcm --output anon.dcm --profile ps315 --retain-uids --retain-device
-              dicom-anon file.dcm --output anon.dcm --profile basic
-              dicom-anon file.dcm --output anon.dcm --profile basic --shift-dates 100
-              dicom-anon input_dir/ --output anon_dir/ --profile clinical-trial --recursive
+              dicom-anon input_dir/ --output anon_dir/ --recursive
               dicom-anon file.dcm --output anon.dcm --remove 0010,0010 --replace 0010,0030=19700101
-              dicom-anon file.dcm --profile basic --dry-run
-              dicom-anon file.dcm --output anon.dcm --profile basic --audit-log anonymization.log
+              dicom-anon file.dcm --dry-run
+              dicom-anon file.dcm --output anon.dcm --audit-log anonymization.log
+              dicom-anon file.dcm --output anon.dcm --profile legacy-basic --shift-dates 100
             """,
         version: "1.0.0"
     )
@@ -47,15 +49,17 @@ struct DICOMAnon: ParsableCommand {
     
     @Option(name: .long, help: """
         Anonymization profile: ps315 (PS3.15 Basic Application Level Confidentiality \
-        Profile, Table E.1-1), or the legacy attribute lists basic, clinical-trial, \
-        research (not PS3.15)
+        Profile, Table E.1-1; the default) or its alias basic; deprecated: the legacy \
+        attribute lists legacy-basic, legacy-clinical-trial, legacy-research (not \
+        PS3.15; clinical-trial and research select the last two)
         """)
-    var profile: String = "basic"
+    var profile: String = AnonCLI.defaultProfile
 
     // PS3.15 Annex E Options (E.3); they act only on --profile ps315.
     @Flag(name: .long, help: """
-        PS3.15 Retain Longitudinal Temporal Information With Full Dates Option; with \
-        --shift-dates, ... With Modified Dates Option (--profile ps315)
+        Deprecated: use --retain-full-dates or --retain-modified-dates. PS3.15 Retain \
+        Longitudinal Temporal Information With Full Dates Option; with --shift-dates, \
+        ... With Modified Dates Option (--profile ps315)
         """)
     var retainDates: Bool = false
 
@@ -105,12 +109,12 @@ struct DICOMAnon: ParsableCommand {
 
     @Option(name: .long, help: """
         Number of days to shift dates (preserves intervals). With --profile ps315 this \
-        is the Modified Dates Option and needs --retain-modified-dates or --retain-dates
+        is the Modified Dates Option and needs --retain-modified-dates
         """)
     var shiftDates: Int?
     
     @Flag(name: .long, help: """
-        Regenerate Study, Series and SOP Instance UIDs (legacy profiles). --profile \
+        Regenerate Study, Series and SOP Instance UIDs (legacy-* profiles). --profile \
         ps315 always replaces UIDs (Table E.1-1 action U) unless --retain-uids
         """)
     var regenerateUids: Bool = false
@@ -121,7 +125,7 @@ struct DICOMAnon: ParsableCommand {
     @Option(name: .long, help: "Tags to replace (format: 0010,0010=VALUE or KEYWORD=VALUE)")
     var replace: [String] = []
     
-    @Option(name: .long, help: "Tags to keep (preserve from anonymization; legacy profiles only)")
+    @Option(name: .long, help: "Tags to keep (preserve from anonymization; legacy-* profiles only)")
     var keep: [String] = []
     
     @Flag(name: .long, help: "Process directories recursively")
@@ -164,6 +168,9 @@ struct DICOMAnon: ParsableCommand {
                              regenerateUids: regenerateUids, keep: keep)
         if let notice = AnonCLI.legacyProfileNotice(profile) {
             FileHandle.standardError.write(Data((notice + "\n").utf8))
+        }
+        if retainDates {
+            FileHandle.standardError.write(Data((AnonCLI.retainDatesNotice(shiftDates: shiftDates) + "\n").utf8))
         }
         
         // Parse custom actions
@@ -244,7 +251,7 @@ struct DICOMAnon: ParsableCommand {
         }
     }
     
-    private var isPS315: Bool { profile.lowercased() == "ps315" }
+    private var isPS315: Bool { AnonCLI.resolveProfile(profile)?.isPS315 ?? false }
 
     private var ps315Flags: AnonCLI.PS315Flags {
         AnonCLI.PS315Flags(
@@ -259,20 +266,12 @@ struct DICOMAnon: ParsableCommand {
     }
 
     private func parseProfile() throws -> AnonymizationProfile {
-        switch profile.lowercased() {
-        case "basic":
-            return .basic
-        case "clinical-trial", "clinicaltrial":
-            return .clinicalTrial
-        case "research":
-            return .research
-        case "ps315":
-            // The ps315 path bypasses the legacy engine (see anonymizeFile); this
-            // value is only used to build the shared Anonymizer instance.
-            return .basic
-        default:
+        guard let resolved = AnonCLI.resolveProfile(profile) else {
             throw AnonymizationError.invalidProfile
         }
+        // The ps315 path bypasses the legacy engine (see anonymizeFile); for it this
+        // value is only used to build the shared Anonymizer instance.
+        return resolved.legacyProfile ?? .basic
     }
     
     private func parseCustomActions() throws -> [Tag: AnonymizationAction] {
@@ -498,7 +497,7 @@ enum AnonymizationError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidProfile:
-            return "Invalid anonymization profile"
+            return "Invalid anonymization profile (use ps315, basic, legacy-basic, legacy-clinical-trial or legacy-research)"
         case .fileNotFound:
             return "File not found"
         case .writeError(let msg):

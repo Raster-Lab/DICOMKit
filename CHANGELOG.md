@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — CLI P-items, pixel batch (approved 2026-10-01, DICOM 2026a)
+
+- **`dicom-anon --profile` default is now `ps315`** (P-ANON-PROFILE), the PS3.15 2026a Basic Application Level
+  Confidentiality Profile (every row of Table E.1-1), and **`--profile basic` is an alias of it** (with a stderr
+  note saying so). The fixed attribute lists that `basic`, `clinical-trial` and `research` used to select are kept
+  as `legacy-basic`, `legacy-clinical-trial` and `legacy-research`, deprecated: each use prints a stderr note.
+  `clinical-trial`/`clinicaltrial` and `research` are not PS3.15 profile names; they still select the
+  `legacy-*` lists, with the deprecation note. **Behaviour change:** a run without `--profile`, or with
+  `--profile basic`, now records Patient Identity Removed (0012,0062) = YES and code 113100, replaces UIDs,
+  removes private attributes, refuses `--keep`, needs `--retain-modified-dates` for `--shift-dates`, and refuses
+  files that may have burned-in PHI unless `--clean-pixel-data` or `--allow-burned-in-phi` is given. Use
+  `--profile legacy-basic` for the old output. On the 647-row Table E.1-1 fixture, the default and `basic` give
+  the same result as `ps315`.
+- **`dicom-anon --retain-dates` is deprecated** (P-ANON-RETAIN-DATES). It still selects the Full Dates Option, or
+  the Modified Dates Option with `--shift-dates`. `--help` says "Deprecated", and each use prints a stderr note.
+  Use `--retain-full-dates` or `--retain-modified-dates` (PS3.15 E.3.6).
+- **DICOMKit `TemplateGenerator`** (D202): the `pipeline` and `anonymize` script templates now run
+  `dicom-anon --profile ps315`. They had used the legacy `basic` list and `--profile strict`, a profile that does not
+  exist. The sensitive-file step uses `--profile ps315 --clean-pixel-data`, the PS3.15 E.3.1 Clean Pixel Data
+  Option. The `dicom-script` README examples now match the templates.
+
 ### Changed — CLI P-items, derived batch (approved 2026-10-01, DICOM 2026a)
 
 - **`dicom-viewer --frame`** (0-based index) is **deprecated**: it still works with a stderr note; use

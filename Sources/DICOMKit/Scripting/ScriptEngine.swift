@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (script interpreter)
+// NEMA-verified: 2026a, checked 2026-10-01 — script interpreter, no DICOM-standard data except the templates' dicom-anon --profile ps315 = PS3.15 2026a E.1 Basic Application Level Confidentiality Profile, with --clean-pixel-data = Clean Pixel Data Option (E.3.1) (D202)
 import Foundation
 
 // Shared scripting engine for the `dicom-script` CLI and DICOMStudio. Parser,
@@ -560,8 +560,8 @@ public struct TemplateGenerator {
         # Validate retrieved files
         dicom-validate studies/*.dcm --level 2
 
-        # Anonymize
-        dicom-anon studies/*.dcm --profile basic --output anon/
+        # Anonymize (PS3.15 Basic Application Level Confidentiality Profile)
+        dicom-anon studies/*.dcm --profile ps315 --output anon/
 
         # Archive
         dicom-archive create archive.db --input anon/
@@ -615,12 +615,12 @@ public struct TemplateGenerator {
         INPUT_DIR=/path/to/input
         OUTPUT_DIR=/path/to/anonymized
 
-        # Anonymize with basic profile
-        dicom-anon ${INPUT_DIR}/*.dcm --profile basic --output ${OUTPUT_DIR}
+        # Anonymize with the PS3.15 Basic Application Level Confidentiality Profile
+        dicom-anon ${INPUT_DIR}/*.dcm --profile ps315 --output ${OUTPUT_DIR}
 
-        # Conditional anonymization
+        # Conditional anonymization: also blank burned-in text (PS3.15 Clean Pixel Data Option)
         if exists ${INPUT_DIR}/sensitive.dcm
-            dicom-anon ${INPUT_DIR}/sensitive.dcm --profile strict --output ${OUTPUT_DIR}
+            dicom-anon ${INPUT_DIR}/sensitive.dcm --profile ps315 --clean-pixel-data --output ${OUTPUT_DIR}
         endif
 
         # Validate anonymized files

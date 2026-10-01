@@ -29,8 +29,56 @@ enum AnonCLI {
         }
     }
 
+    /// A `--profile` value resolved to what the run applies (P-ANON-PROFILE).
+    ///
+    /// `ps315` is the default and the PS3.15 2026a E.1 Basic Application Level
+    /// Confidentiality Profile (every row of Table E.1-1); `basic` is an alias of it.
+    /// The three fixed attribute lists that `basic`, `clinical-trial` and `research`
+    /// used to name are kept as `legacy-basic`, `legacy-clinical-trial` and
+    /// `legacy-research`: they are not PS3.15 profiles, and are deprecated.
+    enum Profile: String, CaseIterable, Equatable {
+        case ps315
+        case legacyBasic = "legacy-basic"
+        case legacyClinicalTrial = "legacy-clinical-trial"
+        case legacyResearch = "legacy-research"
+
+        var isPS315: Bool { self == .ps315 }
+
+        /// The legacy engine list; nil for `ps315`, which bypasses the legacy engine.
+        var legacyProfile: AnonymizationProfile? {
+            switch self {
+            case .ps315: return nil
+            case .legacyBasic: return .basic
+            case .legacyClinicalTrial: return .clinicalTrial
+            case .legacyResearch: return .research
+            }
+        }
+    }
+
+    /// The default `--profile`: the PS3.15 Basic Profile.
+    static let defaultProfile = "ps315"
+
+    /// Old spellings and what they now resolve to (P-ANON-PROFILE). `basic` is the
+    /// PS3.15 Basic Profile; `clinical-trial` / `research` are not standard profile
+    /// names, so they keep their legacy lists, deprecated.
+    static let profileAliases: [String: Profile] = [
+        "ps315": .ps315,
+        "basic": .ps315,
+        "legacy-basic": .legacyBasic,
+        "legacy-clinical-trial": .legacyClinicalTrial,
+        "legacy-research": .legacyResearch,
+        "clinical-trial": .legacyClinicalTrial,
+        "clinicaltrial": .legacyClinicalTrial,
+        "research": .legacyResearch,
+    ]
+
+    /// Resolves a `--profile` value (case-insensitive); nil when unknown.
+    static func resolveProfile(_ value: String) -> Profile? {
+        profileAliases[value.trimmingCharacters(in: .whitespaces).lowercased()]
+    }
+
     /// The legacy profile values: fixed attribute lists, not PS3.15 Annex E.
-    static let legacyProfiles: Set<String> = ["basic", "clinical-trial", "clinicaltrial", "research"]
+    static let legacyProfiles: Set<String> = Set(profileAliases.filter { !$0.value.isPS315 }.keys)
 
     /// Rejects option combinations that the command would otherwise ignore silently.
     ///
@@ -41,8 +89,11 @@ enum AnonCLI {
     /// - `--keep` is applied only by the legacy profiles.
     static func validate(profile: String, flags: PS315Flags, shiftDates: Int?,
                          regenerateUids: Bool, keep: [String]) throws {
-        let isPS315 = profile.lowercased() == "ps315"
-        guard isPS315 else {
+        guard let resolved = resolveProfile(profile) else {
+            throw ValidationError("Unknown --profile '\(profile)': use ps315 (or its alias basic), "
+                + "or the deprecated legacy-basic, legacy-clinical-trial, legacy-research")
+        }
+        guard resolved.isPS315 else {
             if !flags.setFlags.isEmpty {
                 throw ValidationError(
                     "PS3.15 Annex E Option flags apply only to --profile ps315: \(flags.setFlags.joined(separator: ", "))")
@@ -85,12 +136,30 @@ enum AnonCLI {
             dateOffsetDays: shiftDates)
     }
 
-    /// Stderr notice for the legacy profiles, which are not PS3.15 Annex E.
+    /// Stderr notice for a `--profile` value: the deprecated legacy lists (which are
+    /// not PS3.15 Annex E), and `basic`, whose meaning changed to the PS3.15 Basic
+    /// Profile. Nil for `ps315`.
     static func legacyProfileNotice(_ profile: String) -> String? {
-        guard legacyProfiles.contains(profile.lowercased()) else { return nil }
-        return "Note: --profile \(profile) is a legacy attribute list, not the PS3.15 Basic Application "
-            + "Level Confidentiality Profile; it records no Patient Identity Removed (0012,0062). "
-            + "Use --profile ps315 for PS3.15 Annex E de-identification."
+        let key = profile.trimmingCharacters(in: .whitespaces).lowercased()
+        guard let resolved = resolveProfile(key) else { return nil }
+        if key == "basic" {
+            return "Note: --profile basic is the PS3.15 Basic Application Level Confidentiality Profile "
+                + "(same as ps315, PS3.15 Table E.1-1). The former basic attribute list is --profile legacy-basic."
+        }
+        guard !resolved.isPS315 else { return nil }
+        var text = "Deprecated: --profile \(profile) "
+        if key != resolved.rawValue { text += "(now \(resolved.rawValue)) " }
+        return text + "is a legacy attribute list, not a PS3.15 Annex E profile; it records no "
+            + "Patient Identity Removed (0012,0062). Use --profile ps315 (PS3.15 Basic Application Level "
+            + "Confidentiality Profile, Table E.1-1)."
+    }
+
+    /// Stderr notice for the deprecated `--retain-dates` (P-ANON-RETAIN-DATES).
+    static func retainDatesNotice(shiftDates: Int?) -> String {
+        "Deprecated: --retain-dates; use --retain-full-dates (Retain Longitudinal Temporal Information With "
+            + "Full Dates Option) or --retain-modified-dates with --shift-dates (... With Modified Dates Option), "
+            + "PS3.15 E.3.6. This run applies the "
+            + (shiftDates == nil ? "Full Dates" : "Modified Dates") + " Option."
     }
 
     /// A tag given to --remove / --replace / --keep: `gggg,eeee`, `(gggg,eeee)`,

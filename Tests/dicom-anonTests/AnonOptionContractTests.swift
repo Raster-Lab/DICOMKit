@@ -35,8 +35,8 @@ final class AnonOptionContractTests: XCTestCase {
     /// (`--profile basic` matches 11 of the 647 data-set rows of Table E.1-1).
     func testLegacyProfilesAreDocumentedAsNotPS315() {
         XCTAssertTrue(help.contains("NOT the PS3.15 Basic Profile"))
-        XCTAssertTrue(help.contains("ps315 (PS3.15 Basic Application Level Confidentiality Profile, Table E.1-1)"))
-        XCTAssertNotNil(AnonCLI.legacyProfileNotice("basic"))
+        XCTAssertTrue(help.contains("ps315 (PS3.15 Basic Application Level Confidentiality Profile, Table E.1-1; the default)"))
+        XCTAssertNotNil(AnonCLI.legacyProfileNotice("legacy-basic"))
         XCTAssertNotNil(AnonCLI.legacyProfileNotice("clinical-trial"))
         XCTAssertNil(AnonCLI.legacyProfileNotice("ps315"))
     }
@@ -46,12 +46,16 @@ final class AnonOptionContractTests: XCTestCase {
     func testOptionFlagsAreRejectedOnLegacyProfiles() {
         var flags = AnonCLI.PS315Flags()
         flags.retainUids = true
-        XCTAssertThrowsError(try AnonCLI.validate(profile: "basic", flags: flags, shiftDates: nil,
+        XCTAssertThrowsError(try AnonCLI.validate(profile: "legacy-basic", flags: flags, shiftDates: nil,
                                                   regenerateUids: false, keep: []))
         XCTAssertNoThrow(try AnonCLI.validate(profile: "ps315", flags: flags, shiftDates: nil,
                                               regenerateUids: false, keep: []))
-        XCTAssertNoThrow(try AnonCLI.validate(profile: "basic", flags: AnonCLI.PS315Flags(), shiftDates: 10,
+        XCTAssertNoThrow(try AnonCLI.validate(profile: "basic", flags: flags, shiftDates: nil,
+                                              regenerateUids: false, keep: []), "basic is ps315")
+        XCTAssertNoThrow(try AnonCLI.validate(profile: "legacy-basic", flags: AnonCLI.PS315Flags(), shiftDates: 10,
                                               regenerateUids: true, keep: ["Modality"]))
+        XCTAssertThrowsError(try AnonCLI.validate(profile: "strict", flags: AnonCLI.PS315Flags(), shiftDates: nil,
+                                                  regenerateUids: false, keep: []))
     }
 
     /// PS3.15 E.3.6: "Two mutually exclusive Options"; dates are modified by shifting.
@@ -221,5 +225,108 @@ extension AnonOptionContractTests {
         let sop = try XCTUnwrap(file.dataSet.string(for: .sopInstanceUID)?.trimmingCharacters(in: trim))
         XCTAssertNotEqual(sop, "1.2.3.4.5.6.7.8.9")
         XCTAssertEqual(file.fileMetaInformation.string(for: .mediaStorageSOPInstanceUID)?.trimmingCharacters(in: trim), sop)
+    }
+}
+
+// MARK: - P-ANON-PROFILE, P-ANON-RETAIN-DATES (approved 2026-10-01)
+
+extension AnonOptionContractTests {
+
+    /// PS3.15 2026a E.1: the Basic Application Level Confidentiality Profile is the
+    /// default; `basic` names it; the old lists are `legacy-*` (deprecated).
+    func testProfileNamesResolve() throws {
+        XCTAssertEqual(AnonCLI.resolveProfile("ps315"), .ps315)
+        XCTAssertEqual(AnonCLI.resolveProfile("basic"), .ps315)
+        XCTAssertEqual(AnonCLI.resolveProfile("BASIC"), .ps315)
+        XCTAssertEqual(AnonCLI.resolveProfile("legacy-basic"), .legacyBasic)
+        XCTAssertEqual(AnonCLI.resolveProfile("legacy-clinical-trial"), .legacyClinicalTrial)
+        XCTAssertEqual(AnonCLI.resolveProfile("clinical-trial"), .legacyClinicalTrial)
+        XCTAssertEqual(AnonCLI.resolveProfile("clinicaltrial"), .legacyClinicalTrial)
+        XCTAssertEqual(AnonCLI.resolveProfile("legacy-research"), .legacyResearch)
+        XCTAssertEqual(AnonCLI.resolveProfile("research"), .legacyResearch)
+        XCTAssertNil(AnonCLI.resolveProfile("strict"))
+        guard case .basic? = AnonCLI.Profile.legacyBasic.legacyProfile else {
+            return XCTFail("legacy-basic runs the old basic list")
+        }
+        XCTAssertNil(AnonCLI.Profile.ps315.legacyProfile)
+
+        let parsed = try XCTUnwrap(DICOMAnon.parseAsRoot(["in.dcm", "--dry-run"]) as? DICOMAnon)
+        XCTAssertEqual(parsed.profile, "ps315", "the default profile is the PS3.15 Basic Profile")
+    }
+
+    func testDeprecationNotices() {
+        let basic = AnonCLI.legacyProfileNotice("basic") ?? ""
+        XCTAssertTrue(basic.contains("legacy-basic"), "basic says where the old list went")
+        let trial = AnonCLI.legacyProfileNotice("clinical-trial") ?? ""
+        XCTAssertTrue(trial.hasPrefix("Deprecated: --profile clinical-trial (now legacy-clinical-trial)"))
+        XCTAssertTrue((AnonCLI.legacyProfileNotice("legacy-research") ?? "").hasPrefix("Deprecated: --profile legacy-research is"))
+        XCTAssertTrue(help.contains("Deprecated: use --retain-full-dates or --retain-modified-dates"))
+        XCTAssertTrue(AnonCLI.retainDatesNotice(shiftDates: nil).hasSuffix("applies the Full Dates Option."))
+        XCTAssertTrue(AnonCLI.retainDatesNotice(shiftDates: 5).hasSuffix("applies the Modified Dates Option."))
+    }
+
+    private func writeFixture(in dir: URL) throws -> URL {
+        let input = dir.appendingPathComponent("in.dcm")
+        try DICOMFile.create(dataSet: fixture(), sopClassUID: "1.2.840.10008.5.1.4.1.1.7").write().write(to: input)
+        return input
+    }
+
+    /// `--profile basic` (and no --profile) now runs the PS3.15 Basic Profile: it records
+    /// Patient Identity Removed (0012,0062) YES and code 113100; `legacy-basic` does not.
+    func testBasicIsThePS315ProfileAndLegacyBasicIsTheOldList() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("anon-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let input = try writeFixture(in: dir)
+        func output(_ args: [String]) throws -> DataSet {
+            let out = dir.appendingPathComponent("out-\(UUID().uuidString).dcm")
+            try run([input.path, "-o", out.path] + args)
+            return try DICOMFile.read(from: Data(contentsOf: out)).dataSet
+        }
+        for args in [[], ["--profile", "basic"], ["--profile", "ps315"]] {
+            let ds = try output(args)
+            XCTAssertEqual(ds.string(for: Tag(group: 0x0012, element: 0x0062)), "YES", "\(args)")
+            XCTAssertEqual(ds.sequence(for: Tag(group: 0x0012, element: 0x0064))?.first?
+                .string(for: .codeValue)?.trimmingCharacters(in: .whitespaces), "113100", "\(args)")
+            XCTAssertNil(ds[Tag(group: 0x0009, element: 0x1001)], "Table E.1-1: private attributes X")
+        }
+        let legacy = try output(["--profile", "legacy-basic"])
+        XCTAssertNil(legacy[Tag(group: 0x0012, element: 0x0062)])
+        XCTAssertEqual(legacy.string(for: .patientName)?.trimmingCharacters(in: .whitespaces), "ANONYMOUS")
+        // --keep is still a legacy-only option.
+        XCTAssertThrowsError(try output(["--profile", "basic", "--keep", "Modality"]))
+        XCTAssertNoThrow(try output(["--profile", "legacy-basic", "--keep", "Modality"]))
+    }
+
+    /// --retain-dates still works (deprecated): Full Dates without --shift-dates.
+    func testRetainDatesStillSelectsFullDates() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("anon-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let input = try writeFixture(in: dir), out = dir.appendingPathComponent("out.dcm")
+        try run([input.path, "-o", out.path, "--retain-dates"])
+        let ds = try DICOMFile.read(from: Data(contentsOf: out)).dataSet
+        XCTAssertEqual(ds.string(for: .studyDate), "20240315")
+        let codes = (ds.sequence(for: Tag(group: 0x0012, element: 0x0064)) ?? []).compactMap {
+            $0.string(for: .codeValue)?.trimmingCharacters(in: .whitespaces)
+        }
+        XCTAssertEqual(codes, ["113100", "113106"])
+    }
+
+    /// D202: every `dicom-anon` command in the DICOMKit script templates parses and
+    /// names the PS3.15 Basic Profile (`--profile strict` did not exist).
+    func testScriptTemplatesUseExistingProfiles() throws {
+        var seen = 0
+        for name in ["workflow", "pipeline", "query", "archive", "anonymize"] {
+            let template = try TemplateGenerator().generate(templateName: name)
+            for line in template.split(separator: "\n") {
+                let words = line.split(separator: " ").map(String.init)
+                guard words.first == "dicom-anon" else { continue }
+                seen += 1
+                let command = try XCTUnwrap(DICOMAnon.parseAsRoot(Array(words.dropFirst())) as? DICOMAnon, line.description)
+                XCTAssertEqual(AnonCLI.resolveProfile(command.profile), .ps315, "\(name): \(line)")
+            }
+        }
+        XCTAssertEqual(seen, 3)
     }
 }
