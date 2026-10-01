@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `-YYYYMMDD` / `YYYYMMDD-` of PS3.4 C.2.2.2.5. The README now shows the real `--format json` /
   `csv` output (keys are `(GGGG,EEEE)` tag strings, a tool-specific summary rather than the PS3.18
   Annex F DICOM JSON Model) and the real exit codes (0, 1, 64).
+- **dicom-echo** README exit codes corrected (64 for a usage error); no behaviour change.
 
 ### Fixed — remaining DICOMKit deferred findings and verification gaps (2026-09-30)
 

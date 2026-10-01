@@ -120,8 +120,9 @@ Result: All tests PASSED ✓
 
 ## Exit Codes
 
-- `0`: All echo requests succeeded
-- `1`: One or more echo requests failed
+- `0`: All echo requests succeeded (C-ECHO status Success, `0000`)
+- `1`: One or more echo requests failed (a non-Success status per PS3.7 9.1.5.1.4, or a network error)
+- `64`: Invalid arguments (usage error, e.g. `--count 0`)
 
 ## Features
 
