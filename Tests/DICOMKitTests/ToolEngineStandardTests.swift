@@ -217,6 +217,16 @@ final class ToolEngineStandardTests: XCTestCase {
         XCTAssertEqual(try compare(dataSet("A"), dataSet("B"), ignorePrivate: false).differenceCount, 1)
     }
 
+    /// The dicom-diff report names a Private Creator too (PS3.5 7.8.1, D146).
+    func testComparisonReportNamesPrivateCreator() throws {
+        var a = DataSet(), b = DataSet()
+        a.setString("ACME 1.0", for: Tag(group: 0x0009, element: 0x0010), vr: .LO)
+        b.setString("ACME 2.0", for: Tag(group: 0x0009, element: 0x0010), vr: .LO)
+        let text = try ComparisonReport(result: compare(a, b), file1Name: "a", file2Name: "b", showIdentical: false)
+            .render(format: .text)
+        XCTAssertTrue(text.contains("[(0009,0010)] Private Creator\n"), text)
+    }
+
     private func image(_ values: [UInt16], bitsStored: UInt16 = 16, signed: Bool = false,
                        samples: UInt16 = 1, planar: UInt16 = 0, columns: UInt16? = nil) -> DataSet {
         var ds = DataSet()

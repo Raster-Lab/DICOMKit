@@ -187,7 +187,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   encapsulated Pixel Data are stepped over.
 - **Private Creator Data Elements are named "Private Creator"** (D146; PS3.5 2026a 7.8.1: (gggg,0010-00FF), gggg
   odd) instead of "Unknown" / no name in `MetadataPresenter` (dicom-info text, JSON, CSV), `HexDumper` (`--tag`
-  header, annotations) and `TagEditor` change lines.
+  header, annotations), `TagEditor` change lines and the dicom-diff report (`ComparisonReport`).
 - **`MetadataPresenter --statistics` names the UIDs** (D147; PS3.6 2026a Table A-1): text prints
   `Transfer Syntax: 1.2.840.10008.1.2.1 (Explicit VR Little Endian)` and the SOP Class likewise; JSON keeps
   `transferSyntax` / `sopClass` and adds `transferSyntaxName` / `sopClassName`.
