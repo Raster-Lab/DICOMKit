@@ -1,5 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-10-01 — createSegmentationObject diffed against PS3.3 2026a Table C.8.20-4 (14 rows) and Table C.8.20-2 (16 rows): the hand-built DataSet wrote 5 of the 30 rows and omitted 10 Type 1/1C rows that apply (Image Type, Photometric Interpretation, Lossy Image Compression, Segmentation Type, Segment Sequence, Segment Number, Segment Label, Segment Algorithm Type, Segment Algorithm Name, Segmented Property Category/Type Code Sequences) plus the Pixel Data element and the PS3.10 File Meta Information; it now routes through Segmentation.buildDataSet (D37d) and DICOMFile.create, every segment carrying one Category (CID 7150) and one Type (CID 7151) Item; the 9 attributes it writes outside those tables are in the Patient, General Study, General Series, Image Pixel and SOP Common Modules of Table A.51-1; Enhanced General Equipment Type 1 rows added (Table A.51-1, M)
-// NEMA-verified: 2026a, checked 2026-10-01 — classify/detect --format dicom-sr: the hand-built Comprehensive SR (title 129007/129008 DCM not in PS3.16 Table D-1; (121072, DCM) is "Impressions", retired; (121191, DCM) is "Referenced Segment"; confidence 0-1 written in %; no template) replaced by a TID 1500 Measurement Report from MeasurementReportBuilder, validated by TemplateValidator against PS3.16 2026a TID 1500/1501/300/301/320/1600/4019 (rows 1, 5, 6, 6b, 9; 1501 rows 1-3, 10, 12; 4019 rows 1-2): 7 concepts and units checked against Table D-1 and TID 4006 row 6 / TID 4104 row 12 / TID 4127 row 8 ((111012, DCM, "Certainty of Finding"), (%, UCUM, "Percent"), 0-100), $ImagePurpose (121112, DCM) from CID 7552; Content Template Sequence per PS3.3 Table C.18.8-1; enhance: Image Type per C.7.6.1.1.2, Source Image Sequence / Derivation Description per Table C.12-10 with CID 7202 (121322, DCM); GSPS through GrayscalePresentationStateBuilder (Table A.33.1-1); SR, enhance and SEG written as PS3.10 files
+// NEMA-verified: 2026a, checked 2026-10-01 — classify/detect --format dicom-sr: the hand-built Comprehensive SR (title 129007/129008 DCM not in PS3.16 Table D-1; (121072, DCM) is "Impressions", retired; (121191, DCM) is "Referenced Segment"; confidence 0-1 written in %; no template) replaced by a TID 1500 Measurement Report from MeasurementReportBuilder, validated by TemplateValidator against PS3.16 2026a TID 1500/1501/300/301/320/1600/4019 (rows 1, 5, 6, 6b, 9; 1501 rows 1-3, 10, 12; 4019 rows 1-2): 7 concepts and units checked against Table D-1 and TID 4006 row 6 / TID 4104 row 12 / TID 4127 row 8 ((111012, DCM, "Certainty of Finding"), (%, UCUM, "Percent"), 0-100), $ImagePurpose (121112, DCM) from CID 7552; Content Template Sequence per PS3.3 Table C.18.8-1 (row 6b and the root template written by MeasurementReportBuilder.withAlgorithmIdentification since 2026-10-01, D199); enhance: Image Type per C.7.6.1.1.2, Source Image Sequence / Derivation Description per Table C.12-10 with CID 7202 (121322, DCM); GSPS through GrayscalePresentationStateBuilder (Table A.33.1-1); SR, enhance and SEG written as PS3.10 files
 import Foundation
 import DICOMKit
 import DICOMCore
@@ -21,15 +21,6 @@ struct AIDICOMOutputGenerator {
     /// Concept names and units of the SR content tree, with their PS3.16 2026a Table D-1 /
     /// template meanings
     enum SRConcept {
-        /// (126010, DCM, "Imaging Measurements") — TID 1500 row 6
-        static let imagingMeasurements = CodedConcept(
-            codeValue: "126010", codingSchemeDesignator: "DCM", codeMeaning: "Imaging Measurements")
-        /// (111001, DCM, "Algorithm Name") — TID 4019 row 1
-        static let algorithmName = CodedConcept(
-            codeValue: "111001", codingSchemeDesignator: "DCM", codeMeaning: "Algorithm Name")
-        /// (111003, DCM, "Algorithm Version") — TID 4019 row 2
-        static let algorithmVersion = CodedConcept(
-            codeValue: "111003", codingSchemeDesignator: "DCM", codeMeaning: "Algorithm Version")
         /// (121071, DCM, "Finding") — the TEXT of TID 1501 row 12 ($QualType is not bound
         /// by TID 1500 row 9) that carries the model's class label, which has no code
         static let finding = CodedConcept(
@@ -159,10 +150,11 @@ struct AIDICOMOutputGenerator {
             frameNumbers: frames > 1 ? [frameIndex + 1] : nil)
     }
 
-    /// Builds the TID 1500 document through `MeasurementReportBuilder`, adds the rows that
-    /// builder has no API for (TID 1500 row 6b → TID 4019; the root's Content Template
-    /// Sequence, PS3.3 Table C.18.8-1), serializes it, and fills the Type 2 Patient, General
-    /// Study and General Equipment attributes the serializer leaves out (Table A.35.3-1).
+    /// Builds the TID 1500 document through `MeasurementReportBuilder`, with TID 1500 row 6b
+    /// → TID 4019 (`withAlgorithmIdentification`; the builder also writes the root's Content
+    /// Template Sequence, PS3.3 Table C.18.8-1, since D199), serializes it, and copies the
+    /// Type 2 Patient and General Study attributes from the source image and Manufacturer
+    /// (Table A.35.3-1; the serializer writes them empty when unknown since D198).
     private static func measurementReport(
         groups: [MeasurementGroupData],
         sourceDataSet: DataSet,
@@ -176,6 +168,9 @@ struct AIDICOMOutputGenerator {
             .withImagingMeasurementReportTitle()
             .withCompletionFlag(.complete)
             .withVerificationFlag(.unverified)
+            .withAlgorithmIdentification(CADAlgorithmIdentification(
+                name: modelName,
+                version: algorithmVersion.isEmpty ? unknownAlgorithmVersion : algorithmVersion))
         if let image {
             builder = builder.addImageLibraryEntry(
                 sopClassUID: image.sopReference.sopClassUID,
@@ -185,10 +180,7 @@ struct AIDICOMOutputGenerator {
         for group in groups {
             builder = builder.addMeasurementGroup(group)
         }
-        let document = withAlgorithmIdentification(
-            try builder.build(),
-            name: modelName,
-            version: algorithmVersion.isEmpty ? unknownAlgorithmVersion : algorithmVersion)
+        let document = try builder.build()
 
         var dataSet = try SRDocumentSerializer().serialize(document: document)
         for (tag, vr) in Self.patientAndStudyAttributes {
@@ -196,60 +188,6 @@ struct AIDICOMOutputGenerator {
         }
         dataSet.setString("DICOMKit", for: .manufacturer, vr: .LO)
         return dataSet
-    }
-
-    /// TID 1500 row 6b: HAS CONCEPT MOD, INCLUDE TID 4019 — rows 1 and 2, TEXT (111001, DCM,
-    /// "Algorithm Name") and TEXT (111003, DCM, "Algorithm Version"), both M — as the first
-    /// children of the Imaging Measurements container (row 6), which is written even with no
-    /// Measurement Group because row 6 is MC "IF Row 10 and Row 12 are absent". The root gets
-    /// Content Template Sequence (DCMR, 1500).
-    static func withAlgorithmIdentification(_ document: SRDocument, name: String, version: String) -> SRDocument {
-        let algorithm = [
-            AnyContentItem(TextContentItem(conceptName: SRConcept.algorithmName, textValue: name, relationshipType: .hasConceptMod)),
-            AnyContentItem(TextContentItem(conceptName: SRConcept.algorithmVersion, textValue: version, relationshipType: .hasConceptMod)),
-        ]
-        var items = document.rootContent.contentItems
-        if let index = items.firstIndex(where: { $0.conceptName == SRConcept.imagingMeasurements }),
-           let container = items[index].asContainer {
-            items[index] = AnyContentItem(ContainerContentItem(
-                conceptName: container.conceptName,
-                continuityOfContent: container.continuityOfContent,
-                contentItems: algorithm + container.contentItems,
-                relationshipType: container.relationshipType))
-        } else {
-            items.append(AnyContentItem(ContainerContentItem(
-                conceptName: SRConcept.imagingMeasurements,
-                continuityOfContent: .separate,
-                contentItems: algorithm,
-                relationshipType: .contains)))
-        }
-        let root = document.rootContent
-        return SRDocument(
-            sopClassUID: document.sopClassUID,
-            sopInstanceUID: document.sopInstanceUID,
-            patientID: document.patientID,
-            patientName: document.patientName,
-            studyInstanceUID: document.studyInstanceUID,
-            studyDate: document.studyDate,
-            studyTime: document.studyTime,
-            accessionNumber: document.accessionNumber,
-            seriesInstanceUID: document.seriesInstanceUID,
-            seriesNumber: document.seriesNumber,
-            modality: document.modality,
-            contentDate: document.contentDate,
-            contentTime: document.contentTime,
-            instanceNumber: document.instanceNumber,
-            completionFlag: document.completionFlag,
-            verificationFlag: document.verificationFlag,
-            preliminaryFlag: document.preliminaryFlag,
-            verifyingObservers: document.verifyingObservers,
-            documentTitle: document.documentTitle,
-            rootContent: ContainerContentItem(
-                conceptName: root.conceptName,
-                continuityOfContent: root.continuityOfContent,
-                contentItems: items,
-                templateIdentifier: "1500",
-                mappingResource: "DCMR"))
     }
 
     /// Wraps a data set in a PS3.10 file: preamble, "DICM", File Meta Information whose Media

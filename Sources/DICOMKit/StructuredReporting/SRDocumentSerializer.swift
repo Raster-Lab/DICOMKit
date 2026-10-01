@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-30 — SR Document Series Module per PS3.3 2026a Table C.17-1 (Modality SR, Table C.17.6-1 KO; Referenced PPS Sequence Type 2), SR Document General Module per Table C.17-2 (Type 1 Instance Number, Completion/Verification Flag, Content Date/Time; Verifying Observer Sequence Type 1C when VERIFIED, absent otherwise per PS3.5 7.4.2, Item attributes A075/A027/A030 Type 1 and A088 Type 2; Performed Procedure Code Sequence Type 2), Code Sequence Macro per Table 8.8-1a (exactly one of Code Value / Long Code Value / URN Code Value), TABLE cells per Table C.18.10-1 (IS or SV integer cells), SCOORD3D (3006,0024) per Table C.18.9-1; Content Sequence (0040,A730) nested in every value type per Table C.17-6 (D31)
+// NEMA-verified: 2026a, checked 2026-10-01 — Patient (Table C.7-1: 4 Type 2 rows), General Study (Table C.7-3: Study Instance UID Type 1 and 5 Type 2 rows) and General Equipment (Table C.7-8: Manufacturer Type 2) Modules written per PS3.3 2026a Table A.35.3-1, zero length when unknown (D198); NUM with no value: empty Measured Value Sequence plus Numeric Value Qualifier Code Sequence per Table C.18.1-1 (D194, D195); Referenced Waveform Channels (0040,A0B0) US (M,C) pairs per Table C.18.5-1 / C.18.5.1.1 (D196)
 /// DICOM Structured Reporting Document Serializer
 ///
 /// Converts SRDocument objects to DICOM DataSet format for storage.
@@ -36,6 +37,9 @@ public struct SRDocumentSerializer: Sendable {
     
     /// Creates a new SR document serializer
     public init() {}
+
+    /// Referenced Waveform Channels (0040,A0B0), US, VM 2-2n (PS3.6 2026a Table 6-1)
+    static let referencedWaveformChannelsTag = Tag(group: 0x0040, element: 0xA0B0)
     
     // MARK: - Public API
     
@@ -54,6 +58,9 @@ public struct SRDocumentSerializer: Sendable {
         
         // Add General Study Module
         addGeneralStudyModule(to: &dataSet, document: document)
+
+        // Add General Equipment Module
+        addGeneralEquipmentModule(to: &dataSet, document: document)
         
         // Add SR Document Series Module (PS3.3 Table C.17-1; every A.35.x SR IOD except
         // Key Object Selection / Rendition Selection, which carry Table C.17.6-1)
@@ -86,32 +93,29 @@ public struct SRDocumentSerializer: Sendable {
         )
     }
     
-    // MARK: - Patient Module
-    
-    private func addPatientModule(to dataSet: inout DataSet, document: SRDocument) {
-        // Patient Name (0010,0010)
-        if let patientName = document.patientName {
-            dataSet[.patientName] = DataElement.string(
-                tag: .patientName,
-                vr: .PN,
-                value: patientName
-            )
-        }
-        
-        // Patient ID (0010,0020)
-        if let patientID = document.patientID {
-            dataSet[.patientID] = DataElement.string(
-                tag: .patientID,
-                vr: .LO,
-                value: patientID
-            )
-        }
+    // MARK: - Patient Module (PS3.3 Table C.7-1)
+
+    /// Writes a Type 2 attribute: its value, or zero length when the document has none
+    /// (PS3.5 7.4.1: a Type 2 attribute "shall be present ... with a zero length if the
+    /// Value is unknown")
+    private func setType2(_ value: String?, tag: Tag, vr: VR, in dataSet: inout DataSet) {
+        dataSet[tag] = DataElement.string(tag: tag, vr: vr, value: value ?? "")
     }
-    
-    // MARK: - General Study Module
-    
+
+    private func addPatientModule(to dataSet: inout DataSet, document: SRDocument) {
+        // Patient's Name (0010,0010), Patient ID (0010,0020), Patient's Birth Date
+        // (0010,0030), Patient's Sex (0010,0040): all Type 2 in PS3.3 2026a Table C.7-1
+        setType2(document.patientName, tag: .patientName, vr: .PN, in: &dataSet)
+        setType2(document.patientID, tag: .patientID, vr: .LO, in: &dataSet)
+        setType2(document.patientBirthDate, tag: .patientBirthDate, vr: .DA, in: &dataSet)
+        setType2(document.patientSex, tag: .patientSex, vr: .CS, in: &dataSet)
+    }
+
+    // MARK: - General Study Module (PS3.3 Table C.7-3)
+
     private func addGeneralStudyModule(to dataSet: inout DataSet, document: SRDocument) {
-        // Study Instance UID (0020,000D)
+        // Study Instance UID (0020,000D), Type 1. Documents built without one (the
+        // builders generate one) are written without it rather than with a fabricated UID.
         if let studyInstanceUID = document.studyInstanceUID {
             dataSet[.studyInstanceUID] = DataElement.string(
                 tag: .studyInstanceUID,
@@ -119,33 +123,21 @@ public struct SRDocumentSerializer: Sendable {
                 value: studyInstanceUID
             )
         }
-        
-        // Study Date (0008,0020)
-        if let studyDate = document.studyDate {
-            dataSet[.studyDate] = DataElement.string(
-                tag: .studyDate,
-                vr: .DA,
-                value: studyDate
-            )
-        }
-        
-        // Study Time (0008,0030)
-        if let studyTime = document.studyTime {
-            dataSet[.studyTime] = DataElement.string(
-                tag: .studyTime,
-                vr: .TM,
-                value: studyTime
-            )
-        }
-        
-        // Accession Number (0008,0050)
-        if let accessionNumber = document.accessionNumber {
-            dataSet[.accessionNumber] = DataElement.string(
-                tag: .accessionNumber,
-                vr: .SH,
-                value: accessionNumber
-            )
-        }
+
+        // Study Date (0008,0020), Study Time (0008,0030), Referring Physician's Name
+        // (0008,0090), Study ID (0020,0010), Accession Number (0008,0050): Type 2
+        setType2(document.studyDate, tag: .studyDate, vr: .DA, in: &dataSet)
+        setType2(document.studyTime, tag: .studyTime, vr: .TM, in: &dataSet)
+        setType2(document.referringPhysicianName, tag: .referringPhysicianName, vr: .PN, in: &dataSet)
+        setType2(document.studyID, tag: .studyID, vr: .SH, in: &dataSet)
+        setType2(document.accessionNumber, tag: .accessionNumber, vr: .SH, in: &dataSet)
+    }
+
+    // MARK: - General Equipment Module (PS3.3 Table C.7-8)
+
+    private func addGeneralEquipmentModule(to dataSet: inout DataSet, document: SRDocument) {
+        // Manufacturer (0008,0070), Type 2; the module is M in every SR IOD (e.g. Table A.35.3-1)
+        setType2(document.manufacturer, tag: .manufacturer, vr: .LO, in: &dataSet)
     }
     
     // MARK: - SR Document Series Module (PS3.3 Table C.17-1)
@@ -767,6 +759,25 @@ public struct SRDocumentSerializer: Sendable {
     
     /// Adds numeric content item elements using Measured Value Sequence
     private func addNumericElements(to elements: inout [DataElement], item: NumericContentItem) throws {
+        // Numeric Value Qualifier Code Sequence (0040,A301), Type 1C (PS3.3 2026a Table
+        // C.18.1-1): "Qualification of Numeric Value ... or reason for absence of Measured
+        // Value Sequence (0040,A300) Item", one Item from CID 42; "Required if Measured
+        // Value Sequence (0040,A300) is empty"
+        if let qualifier = item.numericValueQualifier {
+            elements.append(try createCodeSequenceElement(
+                tag: .numericValueQualifierCodeSequence,
+                code: qualifier.code.concept
+            ))
+        }
+
+        // Measured Value Sequence (0040,A300), Type 2, "Zero or one Item": with no value
+        // (unknown, missing, or a measurement / calculation failure, C.18.1) the Sequence
+        // is written empty, "neither the value nor the units will be sent"
+        guard !item.numericValues.isEmpty else {
+            elements.append(createSequenceElement(tag: .measuredValueSequence, items: []))
+            return
+        }
+
         // Create Measured Value Sequence
         var measuredValueElements: [DataElement] = []
         
@@ -895,7 +906,18 @@ public struct SRDocumentSerializer: Sendable {
             value: waveformItem.waveformReference.sopReference.sopInstanceUID
         ))
         
-        // Referenced Waveform Channels (can be added if needed)
+        // Referenced Waveform Channels (0040,A0B0), US, Type 1C (PS3.3 2026a Table
+        // C.18.5-1): the (M,C) pairs of C.18.5.1.1, written since 2026-10-01 (D196)
+        if let channels = waveformItem.waveformReference.referencedChannels, !channels.isEmpty {
+            let values = channels.flatMap { [UInt16(clamping: $0.multiplexGroup), UInt16(clamping: $0.channel)] }
+            let data = DICOMWriter().serializeUInt16s(values)
+            elements.append(DataElement(
+                tag: Self.referencedWaveformChannelsTag,
+                vr: .US,
+                length: UInt32(data.count),
+                valueData: data
+            ))
+        }
         
         let sequenceItem = SequenceItem(elements: elements)
         return createSequenceElement(tag: .referencedSOPSequence, items: [sequenceItem])

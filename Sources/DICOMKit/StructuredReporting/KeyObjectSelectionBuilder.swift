@@ -427,7 +427,10 @@ public struct KeyObjectSelectionBuilder: Sendable {
             verificationFlag: verificationFlag,
             preliminaryFlag: nil,
             documentTitle: finalDocumentTitle,
-            rootContent: rootContainer
+            rootContent: rootContainer,
+            patientBirthDate: patientBirthDate,
+            patientSex: patientSex,
+            referringPhysicianName: referringPhysicianName
         )
         
         return document

@@ -561,7 +561,10 @@ public struct MammographyCADSRBuilder: Sendable {
             verificationFlag: verificationFlag,
             preliminaryFlag: nil,
             documentTitle: documentTitle,
-            rootContent: rootContainer
+            rootContent: rootContainer,
+            patientBirthDate: patientBirthDate,
+            patientSex: patientSex,
+            referringPhysicianName: referringPhysicianName
         )
 
         return document

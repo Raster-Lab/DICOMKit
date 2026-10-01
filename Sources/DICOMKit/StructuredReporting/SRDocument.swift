@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-30 — Completion, Verification and Preliminary Flag terms match PS3.3 2026a Table C.17-2; Verifying Observer Sequence (0040,A073) Item attributes and types (A075 Type 1, A088 Type 2, A027 Type 1, A030 Type 1) match Table C.17-2, tags and VRs PS3.6 Table 6-1; the tree walk descends into the Content Sequence of every value type (Table C.17-6, D31)
+// NEMA-verified: 2026a, checked 2026-10-01 — Type 2 Patient's Birth Date, Patient's Sex (PS3.3 2026a Table C.7-1), Referring Physician's Name, Study ID (Table C.7-3) and Manufacturer (Table C.7-8) carried for the SR IODs' M modules (Table A.35.3-1) (D198)
 /// DICOM Structured Reporting Document
 ///
 /// Represents a parsed DICOM SR document with its content tree.
@@ -40,6 +41,12 @@ public struct SRDocument: Sendable, Equatable {
     
     /// Patient Name (0010,0010)
     public let patientName: String?
+
+    /// Patient's Birth Date (0010,0030), Type 2 in the Patient Module (PS3.3 2026a Table C.7-1)
+    public let patientBirthDate: String?
+
+    /// Patient's Sex (0010,0040), Type 2 in the Patient Module (PS3.3 2026a Table C.7-1)
+    public let patientSex: String?
     
     // MARK: - Study Information
     
@@ -54,6 +61,19 @@ public struct SRDocument: Sendable, Equatable {
     
     /// Accession Number (0008,0050)
     public let accessionNumber: String?
+
+    /// Referring Physician's Name (0008,0090), Type 2 in the General Study Module
+    /// (PS3.3 2026a Table C.7-3)
+    public let referringPhysicianName: String?
+
+    /// Study ID (0020,0010), Type 2 in the General Study Module (PS3.3 2026a Table C.7-3)
+    public let studyID: String?
+
+    // MARK: - Equipment Information
+
+    /// Manufacturer (0008,0070), Type 2 in the General Equipment Module (PS3.3 2026a
+    /// Table C.7-8), which every SR IOD includes as M (e.g. Table A.35.3-1)
+    public let manufacturer: String?
     
     // MARK: - Series Information
     
@@ -135,6 +155,11 @@ public struct SRDocument: Sendable, Equatable {
     ///     when `verificationFlag` is `.verified` (PS3.3 Table C.17-2)
     ///   - documentTitle: Optional document title
     ///   - rootContent: The root container content item
+    ///   - patientBirthDate: Patient's Birth Date (0010,0030), Type 2
+    ///   - patientSex: Patient's Sex (0010,0040), Type 2
+    ///   - referringPhysicianName: Referring Physician's Name (0008,0090), Type 2
+    ///   - studyID: Study ID (0020,0010), Type 2
+    ///   - manufacturer: Manufacturer (0008,0070), Type 2
     public init(
         sopClassUID: String,
         sopInstanceUID: String,
@@ -155,9 +180,19 @@ public struct SRDocument: Sendable, Equatable {
         preliminaryFlag: PreliminaryFlag? = nil,
         verifyingObservers: [VerifyingObserver] = [],
         documentTitle: CodedConcept? = nil,
-        rootContent: ContainerContentItem
+        rootContent: ContainerContentItem,
+        patientBirthDate: String? = nil,
+        patientSex: String? = nil,
+        referringPhysicianName: String? = nil,
+        studyID: String? = nil,
+        manufacturer: String? = nil
     ) {
         self.sopClassUID = sopClassUID
+        self.patientBirthDate = patientBirthDate
+        self.patientSex = patientSex
+        self.referringPhysicianName = referringPhysicianName
+        self.studyID = studyID
+        self.manufacturer = manufacturer
         self.sopInstanceUID = sopInstanceUID
         self.patientID = patientID
         self.patientName = patientName
@@ -187,6 +222,51 @@ public struct SRDocument: Sendable, Equatable {
     /// - Parameter observers: The Verifying Observer Sequence Items
     /// - Returns: The same document with `verifyingObservers` replaced
     public func withVerifyingObservers(_ observers: [VerifyingObserver]) -> SRDocument {
+        replacing(verifyingObservers: observers)
+    }
+
+    /// A copy of this document with the given Type 2 Patient (PS3.3 2026a Table C.7-1),
+    /// General Study (Table C.7-3) and General Equipment (Table C.7-8) attributes; a `nil`
+    /// argument keeps the current value
+    public func withPatientStudyAndEquipment(
+        patientName: String? = nil,
+        patientID: String? = nil,
+        patientBirthDate: String? = nil,
+        patientSex: String? = nil,
+        studyDate: String? = nil,
+        studyTime: String? = nil,
+        referringPhysicianName: String? = nil,
+        studyID: String? = nil,
+        accessionNumber: String? = nil,
+        manufacturer: String? = nil
+    ) -> SRDocument {
+        SRDocument(
+            sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID,
+            patientID: patientID ?? self.patientID, patientName: patientName ?? self.patientName,
+            studyInstanceUID: studyInstanceUID, studyDate: studyDate ?? self.studyDate,
+            studyTime: studyTime ?? self.studyTime,
+            accessionNumber: accessionNumber ?? self.accessionNumber,
+            seriesInstanceUID: seriesInstanceUID, seriesNumber: seriesNumber, modality: modality,
+            contentDate: contentDate, contentTime: contentTime, instanceNumber: instanceNumber,
+            completionFlag: completionFlag, verificationFlag: verificationFlag,
+            preliminaryFlag: preliminaryFlag, verifyingObservers: verifyingObservers,
+            documentTitle: documentTitle, rootContent: rootContent,
+            patientBirthDate: patientBirthDate ?? self.patientBirthDate,
+            patientSex: patientSex ?? self.patientSex,
+            referringPhysicianName: referringPhysicianName ?? self.referringPhysicianName,
+            studyID: studyID ?? self.studyID,
+            manufacturer: manufacturer ?? self.manufacturer)
+    }
+
+    /// A copy of this document with the given root CONTAINER (same title)
+    public func withRootContent(_ root: ContainerContentItem) -> SRDocument {
+        replacing(rootContent: root)
+    }
+
+    private func replacing(
+        verifyingObservers newObservers: [VerifyingObserver]? = nil,
+        rootContent newRoot: ContainerContentItem? = nil
+    ) -> SRDocument {
         SRDocument(
             sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID,
             patientID: patientID, patientName: patientName,
@@ -195,8 +275,11 @@ public struct SRDocument: Sendable, Equatable {
             seriesInstanceUID: seriesInstanceUID, seriesNumber: seriesNumber, modality: modality,
             contentDate: contentDate, contentTime: contentTime, instanceNumber: instanceNumber,
             completionFlag: completionFlag, verificationFlag: verificationFlag,
-            preliminaryFlag: preliminaryFlag, verifyingObservers: observers,
-            documentTitle: documentTitle, rootContent: rootContent)
+            preliminaryFlag: preliminaryFlag, verifyingObservers: newObservers ?? verifyingObservers,
+            documentTitle: documentTitle, rootContent: newRoot ?? rootContent,
+            patientBirthDate: patientBirthDate, patientSex: patientSex,
+            referringPhysicianName: referringPhysicianName, studyID: studyID,
+            manufacturer: manufacturer)
     }
 
     // MARK: - Content Tree Helpers

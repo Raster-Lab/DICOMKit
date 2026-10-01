@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-30 — SR Document Series / General Module attributes per PS3.3 2026a Tables C.17-1 and C.17-2 (incl. Verifying Observer Sequence (0040,A073) Items); Code Sequence Macro reading (one of Code Value / Long Code Value / URN Code Value, Coding Scheme Designator 1C) per Table 8.8-1a; TABLE cells per Table C.18.10-1; SCOORD3D (3006,0024) per Table C.18.9-1; content module tags per PS3.6 Table 6-1; the NUM qualifier gap is recorded; Content Sequence (0040,A730) read under every value type per Table C.17-6 (D31)
+// NEMA-verified: 2026a, checked 2026-10-01 — NUM: an empty Measured Value Sequence (Type 2, zero or one Item, PS3.3 2026a Table C.18.1-1 / C.18.1) stays without a value (D194) and Numeric Value Qualifier Code Sequence (0040,A301) is read against CID 42 = CID 43 + CID 44, 12 codes compared (D195); Referenced Waveform Channels (0040,A0B0) read as (M,C) pairs per C.18.5.1.1 (D196); Type 2 Patient's Birth Date / Sex (Table C.7-1), Referring Physician's Name / Study ID (Table C.7-3) and Manufacturer (Table C.7-8) read, zero length as unknown (D198)
 /// DICOM Structured Reporting Document Parser
 ///
 /// Parses DICOM SR data sets into the content item tree model.
@@ -105,15 +106,22 @@ public struct SRDocumentParser: Sendable {
         let sopClassUID = try extractRequiredString(from: dataSet, tag: .sopClassUID, description: "SOP Class UID")
         let sopInstanceUID = try extractRequiredString(from: dataSet, tag: .sopInstanceUID, description: "SOP Instance UID")
         
-        // Extract optional patient information
-        let patientID = dataSet.string(for: .patientID)
-        let patientName = dataSet.string(for: .patientName)
+        // Patient Module (PS3.3 2026a Table C.7-1) and General Study Module (Table C.7-3):
+        // the Type 2 attributes are read as nil when absent or zero length (value unknown)
+        let patientID = type2String(dataSet, .patientID)
+        let patientName = type2String(dataSet, .patientName)
+        let patientBirthDate = type2String(dataSet, .patientBirthDate)
+        let patientSex = type2String(dataSet, .patientSex)
         
-        // Extract optional study information
         let studyInstanceUID = dataSet.string(for: .studyInstanceUID)
-        let studyDate = dataSet.string(for: .studyDate)
-        let studyTime = dataSet.string(for: .studyTime)
-        let accessionNumber = dataSet.string(for: .accessionNumber)
+        let studyDate = type2String(dataSet, .studyDate)
+        let studyTime = type2String(dataSet, .studyTime)
+        let accessionNumber = type2String(dataSet, .accessionNumber)
+        let referringPhysicianName = type2String(dataSet, .referringPhysicianName)
+        let studyID = type2String(dataSet, .studyID)
+
+        // General Equipment Module (Table C.7-8): Manufacturer (0008,0070), Type 2
+        let manufacturer = type2String(dataSet, .manufacturer)
         
         // Extract optional series information
         let seriesInstanceUID = dataSet.string(for: .seriesInstanceUID)
@@ -159,8 +167,19 @@ public struct SRDocumentParser: Sendable {
             preliminaryFlag: preliminaryFlag,
             verifyingObservers: verifyingObservers,
             documentTitle: documentTitle,
-            rootContent: rootContent
+            rootContent: rootContent,
+            patientBirthDate: patientBirthDate,
+            patientSex: patientSex,
+            referringPhysicianName: referringPhysicianName,
+            studyID: studyID,
+            manufacturer: manufacturer
         )
+    }
+
+    /// The value of a Type 2 attribute, or nil when it is absent or zero length
+    private func type2String(_ dataSet: DataSet, _ tag: Tag) -> String? {
+        guard let value = dataSet.string(for: tag), !value.isEmpty else { return nil }
+        return value
     }
 
     /// Reads the Verifying Observer Sequence (0040,A073) Items (PS3.3 2026a Table C.17-2)
@@ -486,17 +505,24 @@ public struct SRDocumentParser: Sendable {
             measurementUnits = try? parseCodedConceptFromItem(item, tag: .measurementUnitsCodeSequence)
         }
         
-        // If no values found, use 0.0 as placeholder in lenient mode
-        if numericValues.isEmpty && configuration.validationLevel != .strict {
-            numericValues = [0.0]
-        }
+        // An empty Measured Value Sequence (0040,A300) is allowed: Type 2, "Zero or one
+        // Item" (PS3.3 2026a Table C.18.1-1), and C.18.1 says it "may be empty to convey the
+        // concept of a measurement whose value is unknown or missing, or a measurement or
+        // calculation failure". The value stays absent (`numericValues` empty, `value` nil);
+        // until 2026-10-01 (D194) the lenient parser fabricated 0.0.
+
+        // Numeric Value Qualifier Code Sequence (0040,A301), Type 1C: "Required if Measured
+        // Value Sequence (0040,A300) is empty", one Item from CID 42 (CIDs 43 and 44).
+        // Read since 2026-10-01 (D195); a code outside CID 42 leaves the qualifier nil.
+        let qualifier = (try? parseCodedConceptFromItem(item, tag: .numericValueQualifierCodeSequence))
+            .flatMap { NumericValueQualifier(code: $0) }
         
         return AnyContentItem(NumericContentItem(
             conceptName: conceptName,
             values: numericValues,
             units: measurementUnits,
             floatingPointValues: floatingPointValues,
-            qualifier: nil,
+            qualifier: qualifier,
             relationshipType: relationshipType,
             observationDateTime: observationDateTime,
             observationUID: observationUID
@@ -703,18 +729,20 @@ public struct SRDocumentParser: Sendable {
             ))
         }
         
-        // Parse channel numbers if present (from Referenced Waveform Channels)
-        // Tag (0040,A0B0) - Referenced Waveform Channels is US VM: 2-2n
-        var channelNumbers: [Int]?
-        if let refSOPSeq = item[.referencedSOPSequence]?.sequenceItems?.first {
-            let referencedWaveformChannels = Tag(group: 0x0040, element: 0xA0B0)
-            if let channelData = refSOPSeq[referencedWaveformChannels]?.uint16Values {
-                // Each pair is (multiplex group, channel number), extract channel numbers
-                channelNumbers = stride(from: 1, to: channelData.count, by: 2).map { Int(channelData[$0]) }
+        // Referenced Waveform Channels (0040,A0B0), US, VM 2-2n, Type 1C (PS3.3 2026a
+        // Table C.18.5-1): (M,C) pairs of Multiplex Group Number and Channel Number
+        // (C.18.5.1.1). Both halves are kept in `referencedChannels`; `channelNumbers` keeps
+        // the C values as before.
+        var referencedChannels: [WaveformChannelReference]?
+        if let refSOPSeq = item[.referencedSOPSequence]?.sequenceItems?.first,
+           let channelData = refSOPSeq[SRDocumentSerializer.referencedWaveformChannelsTag]?.uint16Values,
+           channelData.count >= 2 {
+            referencedChannels = stride(from: 0, to: channelData.count - 1, by: 2).map {
+                WaveformChannelReference(multiplexGroup: Int(channelData[$0]), channel: Int(channelData[$0 + 1]))
             }
         }
         
-        let waveformRef = WaveformReference(sopReference: sopRef, channelNumbers: channelNumbers)
+        let waveformRef = WaveformReference(sopReference: sopRef, referencedChannels: referencedChannels)
         
         return AnyContentItem(WaveformContentItem(
             conceptName: conceptName,

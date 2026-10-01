@@ -1,5 +1,6 @@
 // NEMA-verified: 2026a, checked 2026-09-29 — content tree rows (relationship, value type, concept name, nesting) per PS3.16 2026a Tables TID 1500, TID 1204, TID 1600/1601/1602, TID 1501, TID 1502 and TID 300; TID 1204 row 2 and TID 1501 row 7 nested in the parent CODE's Content Sequence per PS3.3 Table C.17-6 (D31); CID 7021 titles (126000-126003) per Table CID 7021; concept meanings per Table D-1.
 // NEMA-verified: 2026a, checked 2026-09-30 — P-MGC: TID 1501 rows 6-8 (row 8 Topographical modifier nested under the Finding Site), rows 10c/10d (SCOORD with its SELECTED FROM IMAGE child) and rows 11/11b; TID 300 rows 1/1b → TID 301 rows 2-7 and 13 → TID 320 rows 1, 3, 4 and 6 nested under the NUM; row, relationship, value type, concept name, VM and requirement compared by script against the PS3.16 2026a DocBook tables. TID 301 rows 8-12 and 14-19, TID 320 rows 2 and 5 (by-reference) and TID 1501 rows 3a, 5, 9-9d, 10f-10h are not written.
+// NEMA-verified: 2026a, checked 2026-10-01 — D199: root Content Template Sequence (DCMR, 1500) per PS3.3 2026a Table C.18.8-1; TID 1500 rows 3 (→ TID 1001 row 1 → TID 1002 rows 1-3 → TID 1003 rows 1-2 / TID 1004 rows 1-5), 6b and 12b and TID 1501 row 9b (→ TID 4019 rows 1, 2, 2b, 3, 4), row 6 MC "IF Row 10 and Row 12 are absent"; 14 concept meanings compared with PS3.16 2026a Table D-1; Patient's Birth Date / Sex and Referring Physician's Name passed to SRDocument (D198)
 /// TID 1500 Measurement Report Builder
 ///
 /// Provides a specialized fluent API for creating DICOM TID 1500 Measurement Report
@@ -152,6 +153,17 @@ public struct MeasurementReportBuilder: Sendable {
     
     /// Concept name of each entry in `qualitativeEvaluations`, by index.
     public private(set) var qualitativeEvaluationConceptNames: [CodedConcept] = []
+
+    // MARK: - Observation Context and Algorithm Identification
+
+    /// TID 1500 row 3 → TID 1001 row 1 → TID 1002: the observers, in order
+    public private(set) var observers: [MeasurementReportObserver] = []
+
+    /// TID 1500 row 6b → TID 4019, under the Imaging Measurements container
+    public private(set) var imagingMeasurementsAlgorithm: CADAlgorithmIdentification?
+
+    /// TID 1500 row 12b → TID 4019, under the Qualitative Evaluations container
+    public private(set) var qualitativeEvaluationsAlgorithm: CADAlgorithmIdentification?
     
     // MARK: - Initialization
     
@@ -486,6 +498,42 @@ public struct MeasurementReportBuilder: Sendable {
         return copy
     }
     
+    // MARK: - Observation Context (TID 1001) and Algorithm Identification (TID 4019)
+
+    /// Adds an observer: TID 1500 row 3 (HAS OBS CONTEXT, INCLUDE TID 1001) → TID 1001 row 1
+    /// → TID 1002 (rows 1-3 → TID 1003 Person or TID 1004 Device). Observers are written in
+    /// the order they are added, after TID 1204 and before Procedure reported (row 4).
+    /// - Parameter observer: A person or a device observer
+    /// - Returns: Updated builder
+    public func addObserver(_ observer: MeasurementReportObserver) -> MeasurementReportBuilder {
+        var copy = self
+        copy.observers.append(observer)
+        return copy
+    }
+
+    /// Sets TID 1500 row 6b: HAS CONCEPT MOD, INCLUDE TID 4019 (Algorithm Identification)
+    /// under the Imaging Measurements container. Row 6 is then written even with no
+    /// Measurement Group when the report has no Qualitative Evaluations (row 6 is MC "IF Row
+    /// 10 and Row 12 are absent").
+    /// - Parameter algorithm: TID 4019 rows 1 (Algorithm Name), 2 (Algorithm Version), 2b,
+    ///   3 and 4
+    /// - Returns: Updated builder
+    public func withAlgorithmIdentification(_ algorithm: CADAlgorithmIdentification) -> MeasurementReportBuilder {
+        var copy = self
+        copy.imagingMeasurementsAlgorithm = algorithm
+        return copy
+    }
+
+    /// Sets TID 1500 row 12b: HAS CONCEPT MOD, INCLUDE TID 4019 under the Qualitative
+    /// Evaluations container (written only when there are qualitative evaluations)
+    /// - Parameter algorithm: The algorithm that produced the qualitative evaluations
+    /// - Returns: Updated builder
+    public func withQualitativeEvaluationsAlgorithmIdentification(_ algorithm: CADAlgorithmIdentification) -> MeasurementReportBuilder {
+        var copy = self
+        copy.qualitativeEvaluationsAlgorithm = algorithm
+        return copy
+    }
+
     // MARK: - Build
     
     /// Builds the TID 1500 Measurement Report document
@@ -529,6 +577,11 @@ public struct MeasurementReportBuilder: Sendable {
             )))
         }
 
+        // TID 1500 row 3: HAS OBS CONTEXT, INCLUDE TID 1001 → row 1 → TID 1002 per observer
+        for observer in observers {
+            rootContentItems.append(contentsOf: observer.observerContextItems())
+        }
+
         // TID 1500 row 4: HAS CONCEPT MOD CODE (121058, DCM, "Procedure reported"), 1-n
         for procedure in proceduresReported {
             rootContentItems.append(AnyContentItem(CodeContentItem(
@@ -544,13 +597,16 @@ public struct MeasurementReportBuilder: Sendable {
         }
 
         // TID 1500 row 6: CONTAINS CONTAINER (126010, DCM, "Imaging Measurements");
-        // row 9: ">>" CONTAINS, INCLUDE TID 1501, 1-n
-        if !measurementGroups.isEmpty {
+        // row 6b: ">>" HAS CONCEPT MOD, INCLUDE TID 4019; row 9: ">>" CONTAINS, INCLUDE
+        // TID 1501, 1-n. With an algorithm and no Qualitative Evaluations the container is
+        // written without groups, as row 6 is MC "IF Row 10 and Row 12 are absent".
+        if !measurementGroups.isEmpty || (imagingMeasurementsAlgorithm != nil && qualitativeEvaluations.isEmpty) {
+            let algorithmItems = imagingMeasurementsAlgorithm.map { Self.algorithmIdentificationItems($0) } ?? []
             let measurementGroupItems = buildMeasurementGroupItems()
             let imagingMeasurementsContainer = ContainerContentItem(
                 conceptName: Self.imagingMeasurementsConcept,
                 continuityOfContent: .separate,
-                contentItems: measurementGroupItems,
+                contentItems: algorithmItems + measurementGroupItems,
                 relationshipType: .contains
             )
             rootContentItems.append(AnyContentItem(imagingMeasurementsContainer))
@@ -567,10 +623,12 @@ public struct MeasurementReportBuilder: Sendable {
                     relationshipType: .contains
                 ))
             }
+            // Row 12b: ">>" HAS CONCEPT MOD, INCLUDE TID 4019
+            let algorithmItems = qualitativeEvaluationsAlgorithm.map { Self.algorithmIdentificationItems($0) } ?? []
             let evaluationsContainer = ContainerContentItem(
                 conceptName: Self.qualitativeEvaluationsConcept,
                 continuityOfContent: .separate,
-                contentItems: evaluationItems,
+                contentItems: algorithmItems + evaluationItems,
                 relationshipType: .contains
             )
             rootContentItems.append(AnyContentItem(evaluationsContainer))
@@ -579,11 +637,16 @@ public struct MeasurementReportBuilder: Sendable {
         // Determine document title (default to Imaging Measurement Report)
         let finalDocumentTitle = documentTitle ?? MeasurementReportDocumentTitle.imagingMeasurementReport
         
-        // Create the root container
+        // Create the root container (TID 1500 row 1). Content Template Sequence (0040,A504)
+        // with Mapping Resource DCMR and Template Identifier 1500: Type 1C, required when the
+        // content was built from a template (PS3.3 2026a Table C.18.8-1); written since
+        // 2026-10-01 (D199)
         let rootContent = ContainerContentItem(
             conceptName: finalDocumentTitle,
             continuityOfContent: .separate,
-            contentItems: rootContentItems
+            contentItems: rootContentItems,
+            templateIdentifier: Self.templateIdentifier,
+            mappingResource: "DCMR"
         )
         
         return SRDocument(
@@ -605,11 +668,41 @@ public struct MeasurementReportBuilder: Sendable {
             verificationFlag: verificationFlag,
             preliminaryFlag: preliminaryFlag,
             documentTitle: finalDocumentTitle,
-            rootContent: rootContent
+            rootContent: rootContent,
+            patientBirthDate: patientBirthDate,
+            patientSex: patientSex,
+            referringPhysicianName: referringPhysicianName
         )
     }
     
     // MARK: - Build Helpers
+
+    /// Template Identifier (0040,DB00) of the root: TID 1500
+    public static let templateIdentifier = "1500"
+
+    /// TID 4019 rows 1 (TEXT Algorithm Name, M), 2 (TEXT Algorithm Version, M), 2b (TEXT
+    /// Algorithm Manufacturer), 3 (TEXT Algorithm Parameters, 1-n) and 4 (CODE Algorithm
+    /// Family), with the HAS CONCEPT MOD relationship of TID 1500 rows 6b, 10b and 12b and
+    /// TID 1501 row 9b. Concepts per PS3.16 2026a TID 4019 / Table D-1.
+    static func algorithmIdentificationItems(_ algorithm: CADAlgorithmIdentification) -> [AnyContentItem] {
+        func dcm(_ value: String, _ meaning: String) -> CodedConcept {
+            CodedConcept(codeValue: value, codingSchemeDesignator: "DCM", codeMeaning: meaning)
+        }
+        var items: [AnyContentItem] = [
+            AnyContentItem(TextContentItem(conceptName: dcm("111001", "Algorithm Name"), textValue: algorithm.name, relationshipType: .hasConceptMod)),
+            AnyContentItem(TextContentItem(conceptName: dcm("111003", "Algorithm Version"), textValue: algorithm.version, relationshipType: .hasConceptMod)),
+        ]
+        if let manufacturer = algorithm.manufacturer {
+            items.append(AnyContentItem(TextContentItem(conceptName: dcm("122405", "Algorithm Manufacturer"), textValue: manufacturer, relationshipType: .hasConceptMod)))
+        }
+        for parameter in algorithm.parameters {
+            items.append(AnyContentItem(TextContentItem(conceptName: dcm("111002", "Algorithm Parameters"), textValue: parameter, relationshipType: .hasConceptMod)))
+        }
+        if let family = algorithm.family {
+            items.append(AnyContentItem(CodeContentItem(conceptName: dcm("111000", "Algorithm Family"), conceptCode: family, relationshipType: .hasConceptMod)))
+        }
+        return items
+    }
     
     // MARK: Concept names (PS3.16 2026a Table D-1 meanings)
 
@@ -839,6 +932,11 @@ public struct MeasurementReportBuilder: Sendable {
                 ))
             }
 
+            // Row 9b → TID 4019
+            if let algorithm = group.algorithmIdentification {
+                groupItems.append(contentsOf: Self.algorithmIdentificationItems(algorithm))
+            }
+
             // Rows 10-12
             for content in group.contents {
                 groupItems.append(content.toContentItem())
@@ -1002,6 +1100,10 @@ public struct MeasurementGroupData: Sendable {
     
     /// Content items (measurements, coordinates, etc.)
     public let contents: [MeasurementGroupContent]
+
+    /// TID 1501 row 9b: HAS CONCEPT MOD, INCLUDE TID 4019 (Algorithm Identification) for
+    /// this group (added 2026-10-01, D199)
+    public var algorithmIdentification: CADAlgorithmIdentification?
     
     /// Creates a measurement group data structure
     public init(
@@ -1508,5 +1610,54 @@ public enum MeasurementGroupContentHelper {
     ) -> MeasurementGroupContent {
         .spatialCoordinatesOnImage(conceptName: nil, graphicType: graphicType, graphicData: graphicData,
                                    sourceImage: sourceImage)
+    }
+}
+
+
+// MARK: - Observer Context (TID 1002)
+
+/// One observer of a Measurement Report: TID 1500 row 3 → TID 1001 row 1 → TID 1002
+/// (PS3.16 2026a), every item HAS OBS CONTEXT at the root
+public enum MeasurementReportObserver: Sendable, Equatable {
+    /// TID 1002 row 2 → TID 1003: row 1 PNAME (121008, DCM, "Person Observer Name"), M;
+    /// row 2 TEXT (121009, DCM, "Person Observer's Organization Name"), U. TID 1002 row 1
+    /// (Observer Type) is left out, as it defaults to (121006, DCM, "Person").
+    case person(name: String, organizationName: String? = nil)
+
+    /// TID 1002 row 1 CODE (121005, DCM, "Observer Type") = (121007, DCM, "Device"), then
+    /// row 3 → TID 1004: row 1 UIDREF (121012, DCM, "Device Observer UID"), M; rows 2-5
+    /// TEXT (121013 Name, 121014 Manufacturer, 121015 Model Name, 121016 Serial Number), U
+    case device(uid: String, name: String? = nil, manufacturer: String? = nil, modelName: String? = nil, serialNumber: String? = nil)
+
+    /// The TID 1002 content items, relationship HAS OBS CONTEXT
+    func observerContextItems() -> [AnyContentItem] {
+        func dcm(_ value: String, _ meaning: String) -> CodedConcept {
+            CodedConcept(codeValue: value, codingSchemeDesignator: "DCM", codeMeaning: meaning)
+        }
+        func text(_ value: String, _ meaning: String, _ text: String) -> AnyContentItem {
+            AnyContentItem(TextContentItem(conceptName: dcm(value, meaning), textValue: text, relationshipType: .hasObsContext))
+        }
+        switch self {
+        case let .person(name, organizationName):
+            var items = [AnyContentItem(PersonNameContentItem(
+                conceptName: dcm("121008", "Person Observer Name"), personName: name, relationshipType: .hasObsContext))]
+            if let organizationName {
+                items.append(text("121009", "Person Observer's Organization Name", organizationName))
+            }
+            return items
+        case let .device(uid, name, manufacturer, modelName, serialNumber):
+            var items = [
+                AnyContentItem(CodeContentItem(
+                    conceptName: dcm("121005", "Observer Type"), conceptCode: dcm("121007", "Device"),
+                    relationshipType: .hasObsContext)),
+                AnyContentItem(UIDRefContentItem(
+                    conceptName: dcm("121012", "Device Observer UID"), uidValue: uid, relationshipType: .hasObsContext)),
+            ]
+            if let name { items.append(text("121013", "Device Observer Name", name)) }
+            if let manufacturer { items.append(text("121014", "Device Observer Manufacturer", manufacturer)) }
+            if let modelName { items.append(text("121015", "Device Observer Model Name", modelName)) }
+            if let serialNumber { items.append(text("121016", "Device Observer Serial Number", serialNumber)) }
+            return items
+        }
     }
 }

@@ -315,20 +315,59 @@ public struct ImageReference: Sendable, Equatable, Hashable {
     }
 }
 
+/// One (M,C) pair of Referenced Waveform Channels (0040,A0B0) (PS3.3 2026a C.18.5.1.1):
+/// the Item number of Waveform Sequence (5400,0100) in the referenced object (the Multiplex
+/// Group Number) and the Item number of Channel Definition Sequence (003A,0200) within that
+/// group (the Channel Number). Channel 0 means all channels of the multiplex group.
+public struct WaveformChannelReference: Sendable, Equatable, Hashable {
+    /// Multiplex Group Number (1-based Item number of Waveform Sequence (5400,0100))
+    public let multiplexGroup: Int
+
+    /// Channel Number (1-based Item number of Channel Definition Sequence (003A,0200)), or
+    /// 0 for every channel of the multiplex group
+    public let channel: Int
+
+    public init(multiplexGroup: Int, channel: Int) {
+        self.multiplexGroup = multiplexGroup
+        self.channel = channel
+    }
+}
+
 /// Reference to waveform data with optional channel specification
+/// (Waveform Reference Macro, PS3.3 2026a Table C.18.5-1)
 public struct WaveformReference: Sendable, Equatable, Hashable {
     /// The SOP reference
     public let sopReference: ReferencedSOP
     
-    /// Optional channel numbers
+    /// The Channel Numbers (the C halves) of `referencedChannels`, or the channel numbers
+    /// given to ``init(sopReference:channelNumbers:)``
     public let channelNumbers: [Int]?
+
+    /// Referenced Waveform Channels (0040,A0B0) as (M,C) pairs (C.18.5.1.1), Type 1C:
+    /// "Required if the Referenced SOP Instance is a Waveform that contains multiple Channels
+    /// and the reference does not apply to all Channels of all Multiplex Groups". When the
+    /// reference was made with ``init(sopReference:channelNumbers:)`` the pairs are in
+    /// multiplex group 1.
+    public let referencedChannels: [WaveformChannelReference]?
     
     /// Creates a waveform reference
     /// - Parameters:
     ///   - sopReference: The SOP reference
-    ///   - channelNumbers: Optional channel numbers
+    ///   - channelNumbers: Optional channel numbers, all in multiplex group 1
     public init(sopReference: ReferencedSOP, channelNumbers: [Int]? = nil) {
         self.sopReference = sopReference
         self.channelNumbers = channelNumbers
+        self.referencedChannels = channelNumbers.map { $0.map { WaveformChannelReference(multiplexGroup: 1, channel: $0) } }
+    }
+
+    /// Creates a waveform reference with (M,C) channel pairs (PS3.3 2026a C.18.5.1.1)
+    /// - Parameters:
+    ///   - sopReference: The SOP reference
+    ///   - referencedChannels: Referenced Waveform Channels (0040,A0B0) pairs, or nil when
+    ///     the reference applies to all channels of all multiplex groups
+    public init(sopReference: ReferencedSOP, referencedChannels: [WaveformChannelReference]?) {
+        self.sopReference = sopReference
+        self.channelNumbers = referencedChannels.map { $0.map(\.channel) }
+        self.referencedChannels = referencedChannels
     }
 }
