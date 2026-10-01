@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — the 7 UID/name rows of the help diffed by script against PS3.6 2026a Table A-1 (7 wrong names fixed) and the 10 transcode target rows (alias → UID → intent, 10 match); 33 options classified (input contract); frame lookup, Photometric Interpretation, lossy provenance, derived-image and .202 handling moved to J2KDICOMBoundary.swift (PS3.5 A.4.4, 8.2.4, 8.2.14, 10.18.1; PS3.3 C.7.6.1.1.2, C.7.6.1.1.5); --quality now reaches the encoder; validate exits 2 on read errors as documented
+// NEMA-verified: 2026a, checked 2026-10-01 — P-items: --frame-number (1-based, PS3.3 2026a C.7.6.6) on info/validate/roi/benchmark/compare, 0-based --frame deprecated, labels "Frame number N"; --json adds PS3.6 2026a Table 6-1 keys TransferSyntaxUID / NumberOfFrames (camelCase keys deprecated); the 3 j2k-part2-* targets refused (PS3.5 2026a A.4.4, exit 1); JPEG2000Lossless / HTJ2KLossless select their Table A-1 UIDs .90 / .201 (note printed). Earlier: the 7 UID/name rows of the help diffed by script against PS3.6 2026a Table A-1 (7 wrong names fixed) and the 10 transcode target rows (alias → UID → intent, 10 match); 33 options classified (input contract); frame lookup, Photometric Interpretation, lossy provenance, derived-image and .202 handling moved to J2KDICOMBoundary.swift (PS3.5 A.4.4, 8.2.4, 8.2.14, 10.18.1; PS3.3 C.7.6.1.1.2, C.7.6.1.1.5); --quality now reaches the encoder; validate exits 2 on read errors as documented
 // main.swift — dicom-j2k
 // JPEG 2000 / HTJ2K codestream operations on DICOM files.
 //
@@ -40,7 +40,7 @@ struct DICOMJ2K: ParsableCommand {
               dicom-j2k transcode j2k.dcm --output htj2k.dcm --target htj2k-lossless
               dicom-j2k transcode htj2k.dcm --output j2k.dcm --target j2k-lossless
               dicom-j2k reduce input.dcm --output small.dcm --levels 3 --layers 4
-              dicom-j2k roi input.dcm --output roi.dcm --frame 0 --region 0,0,256,256
+              dicom-j2k roi input.dcm --output roi.dcm --frame-number 1 --region 0,0,256,256
               dicom-j2k benchmark scan.dcm
               dicom-j2k benchmark scan.dcm --iterations 20
               dicom-j2k compare ref.dcm test.dcm
@@ -77,14 +77,14 @@ private func loadDICOM(at path: String) throws -> DICOMFile {
     }
 }
 
-/// The J2K codestream of one frame (0-based). A frame may span several fragments
+/// The J2K codestream of one frame (0-based index = Frame number − 1). A frame may span several fragments
 /// (PS3.5 A.4.4); the mapping is in `J2KDICOMBoundary.frameCodestreams`.
 @available(macOS 10.15, *)
 private func j2kCodestream(from dicom: DICOMFile, frameIndex: Int = 0) throws -> Data {
     do {
         return try J2KDICOMBoundary.frameCodestream(of: dicom, frame: frameIndex)
     } catch let error as J2KDICOMBoundary.FrameError {
-        throw ValidationError("No JPEG 2000 codestream for frame \(frameIndex): \(error)")
+        throw ValidationError("No JPEG 2000 codestream for Frame number \(frameIndex + 1): \(error)")
     }
 }
 
@@ -196,15 +196,21 @@ extension DICOMJ2K {
                 Examples:
                   dicom-j2k info scan.dcm
                   dicom-j2k info scan.dcm --json
-                  dicom-j2k info scan.dcm --frame 2
+                  dicom-j2k info scan.dcm --frame-number 2
+
+                --json keys: TransferSyntaxUID and NumberOfFrames are the PS3.6 Table 6-1
+                keywords; transferSyntaxUID and totalFrames are deprecated (same values).
+                frameNumber is the Frame number (from 1); frame is the deprecated 0-based index.
                 """
         )
 
         @Argument(help: "Input DICOM file path")
         var input: String
 
-        @Option(name: .long, help: "Frame index (0-based, default 0)")
-        var frame: Int = 0
+        @OptionGroup var frameSelection: FrameSelection
+
+        /// 0-based index of the selected frame.
+        var frame: Int { frameSelection.index }
 
         @Flag(name: .long, help: "Output as JSON")
         var json: Bool = false
@@ -213,6 +219,7 @@ extension DICOMJ2K {
         var verbose: Bool = false
 
         mutating func run() throws {
+            frameSelection.warnIfDeprecated()
             let dicom = try loadDICOM(at: input)
             let tsUID = dicom.transferSyntaxUID
 
@@ -238,7 +245,7 @@ extension DICOMJ2K {
             print("=========================")
             print("File:             \(input)")
             print("Transfer Syntax:  \(tsLabel(tsUID))")
-            print("Frame:            \(frame) of \(dicom.numberOfFrames ?? 1)")
+            print("Frame number:     \(frame + 1) of \(dicom.numberOfFrames ?? 1)")
             print("Codestream Size:  \(ByteCountFormatter.string(fromByteCount: Int64(codestream.count), countStyle: .file))")
             print("")
             print("Image Geometry")
@@ -282,6 +289,7 @@ extension DICOMJ2K {
                 "transferSyntaxUID": tsUID as Any,
                 "transferSyntaxDescription": tsLabel(tsUID),
                 "frame": frame,
+                "frameNumber": frame + 1,
                 "totalFrames": dicom.numberOfFrames ?? 1,
                 "codestreamBytes": codestream.count,
                 "width": image.width,
@@ -293,6 +301,8 @@ extension DICOMJ2K {
                 "pixelCount": image.pixelCount,
                 "aspectRatio": image.aspectRatio
             ]
+            dict.merge(J2KJSONKeys.keywordFields(transferSyntaxUID: tsUID,
+                                                 numberOfFrames: dicom.numberOfFrames ?? 1)) { $1 }
             if image.isTiled {
                 dict["tileWidth"] = image.tileWidth
                 dict["tileHeight"] = image.tileHeight
@@ -338,15 +348,21 @@ extension DICOMJ2K {
 
                 Examples:
                   dicom-j2k validate scan.dcm
-                  dicom-j2k validate scan.dcm --frame 0 --strict
+                  dicom-j2k validate scan.dcm --frame-number 1 --strict
+
+                --json keys: TransferSyntaxUID is the PS3.6 Table 6-1 keyword;
+                transferSyntaxUID is deprecated (same value). frameNumber is the Frame number
+                (from 1); frame is the deprecated 0-based index.
                 """
         )
 
         @Argument(help: "Input DICOM file path")
         var input: String
 
-        @Option(name: .long, help: "Frame index (0-based, default 0)")
-        var frame: Int = 0
+        @OptionGroup var frameSelection: FrameSelection
+
+        /// 0-based index of the selected frame.
+        var frame: Int { frameSelection.index }
 
         @Flag(name: .long, help: "Treat warnings as errors (strict mode)")
         var strict: Bool = false
@@ -355,6 +371,7 @@ extension DICOMJ2K {
         var json: Bool = false
 
         mutating func run() throws {
+            frameSelection.warnIfDeprecated()
             // Exit 2 when the file, its transfer syntax or the frame cannot be read, as the
             // discussion documents (exit 1 is reserved for codestream violations).
             let dicom: DICOMFile
@@ -388,20 +405,22 @@ extension DICOMJ2K {
             let isValid = allViolations.isEmpty && (strict ? interopWarnings.isEmpty : true)
 
             if json {
-                let out: [String: Any] = [
+                var out: [String: Any] = [
                     "file": input,
                     "frame": frame,
+                    "frameNumber": frame + 1,
                     "transferSyntaxUID": tsUID as Any,
                     "valid": isValid,
                     "violations": allViolations,
                     "interoperabilityWarnings": interopWarnings
                 ]
+                out.merge(J2KJSONKeys.keywordFields(transferSyntaxUID: tsUID, numberOfFrames: nil)) { $1 }
                 if let data = try? JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys]),
                    let str = String(data: data, encoding: .utf8) {
                     print(str)
                 }
             } else {
-                print("Validation: \(input) (frame \(frame))")
+                print("Validation: \(input) (Frame number \(frame + 1))")
                 print("Transfer Syntax: \(tsLabel(tsUID))")
                 print("")
                 if allViolations.isEmpty {
@@ -438,19 +457,26 @@ extension DICOMJ2K {
                 the specified target transfer syntax. The DICOM dataset is preserved
                 bit-for-bit except for the pixel data element and transfer syntax UID.
 
-                Target transfer syntax values (the general .91/.93/.203 UIDs carry either a
+                Target transfer syntax values (the general .91/.203 UIDs carry either a
                 lossy or a lossless codestream per PS3.5 A.4.4; "-lossless-only" selects the
                 distinct reversible-only UID):
                   j2k-lossy                 JPEG 2000, lossy          (1.2.840.10008.1.2.4.91)
                   j2k-lossless              JPEG 2000, lossless       (1.2.840.10008.1.2.4.91)
                   j2k-lossless-only         JPEG 2000 Lossless Only   (1.2.840.10008.1.2.4.90)
-                  j2k-part2-lossy           JPEG 2000 Part 2, lossy   (1.2.840.10008.1.2.4.93)
-                  j2k-part2-lossless        JPEG 2000 Part 2, lossless(1.2.840.10008.1.2.4.93)
-                  j2k-part2-lossless-only   JPEG 2000 Part 2 Lossless Only (1.2.840.10008.1.2.4.92)
                   htj2k-lossy               HTJ2K, lossy              (1.2.840.10008.1.2.4.203)
                   htj2k-lossless            HTJ2K, lossless           (1.2.840.10008.1.2.4.203)
                   htj2k-lossless-only       HTJ2K Lossless Only       (1.2.840.10008.1.2.4.201)
                   htj2k-rpcl-lossless-only  HTJ2K Lossless Only, RPCL (1.2.840.10008.1.2.4.202)
+
+                Refused (exit 1) — .92 / .93 specify the JPEG 2000 Part 2 multiple component
+                transformation extensions (PS3.5 A.4.4), which the encoder does not write:
+                  j2k-part2-lossy           JPEG 2000 Part 2, lossy   (1.2.840.10008.1.2.4.93)
+                  j2k-part2-lossless        JPEG 2000 Part 2, lossless(1.2.840.10008.1.2.4.93)
+                  j2k-part2-lossless-only   JPEG 2000 Part 2 Lossless Only (1.2.840.10008.1.2.4.92)
+
+                A PS3.6 Table A-1 keyword selects its Table A-1 UID: JPEG2000Lossless now means
+                .90 and HTJ2KLossless .201 (a note is printed); the reversible encode into .91 /
+                .203 is JPEG2000Reversible / HTJ2KReversible (or j2k-lossless / htj2k-lossless).
 
                 Examples:
                   dicom-j2k transcode j2k.dcm --output htj2k.dcm --target htj2k-lossless
@@ -465,7 +491,7 @@ extension DICOMJ2K {
         @Option(name: .shortAndLong, help: "Output DICOM file path")
         var output: String
 
-        @Option(name: .shortAndLong, help: "Target transfer syntax (e.g. j2k-lossy, j2k-lossless, j2k-lossless-only, htj2k-lossy, htj2k-lossless, htj2k-lossless-only, htj2k-rpcl-lossless-only)")
+        @Option(name: .shortAndLong, help: "Target transfer syntax (j2k-lossy, j2k-lossless, j2k-lossless-only, htj2k-lossy, htj2k-lossless, htj2k-lossless-only, htj2k-rpcl-lossless-only; the j2k-part2-* targets are refused, PS3.5 A.4.4)")
         var target: String
 
         @Option(name: .shortAndLong, help: "Encoding quality 0.0–1.0 (ignored for lossless targets)")
@@ -480,8 +506,13 @@ extension DICOMJ2K {
             guard let enc = TransferSyntax.parseEncoding(target), enc.transferSyntax.isJPEG2000 else {
                 throw ValidationError(
                     "Invalid target '\(target)'. Valid values: j2k-lossy, j2k-lossless, "
-                    + "j2k-lossless-only, j2k-part2-lossy, j2k-part2-lossless, j2k-part2-lossless-only, "
-                    + "htj2k-lossy, htj2k-lossless, htj2k-lossless-only, htj2k-rpcl-lossless-only")
+                    + "j2k-lossless-only, htj2k-lossy, htj2k-lossless, htj2k-lossless-only, "
+                    + "htj2k-rpcl-lossless-only")
+            }
+            // P-J2K-PART2: .92 / .93 are the Part 2 multi-component extensions; refused as the
+            // engine refuses them (exit 1, not a usage error).
+            if let reason = Self.part2RefusalReason(enc.transferSyntax) {
+                throw TargetRefused(description: reason)
             }
             guard (0.0...1.0).contains(quality) else {
                 throw ValidationError("Quality must be between 0.0 and 1.0")
@@ -489,6 +520,9 @@ extension DICOMJ2K {
         }
 
         mutating func run() throws {
+            if let note = TransferSyntax.reassignedKeywordNote(for: target) {
+                FileHandle.standardError.write(Data((note + "\n").utf8))
+            }
             let dicom = try loadDICOM(at: input)
             let srcUID = dicom.transferSyntaxUID
             guard isJ2KTransferSyntax(srcUID) else {
@@ -566,7 +600,79 @@ extension DICOMJ2K {
             }
         }
 
+        /// The refusal text for a JPEG 2000 Part 2 target (.92 / .93), `nil` for any other.
+        /// PS3.5 2026a A.4.4: these UIDs specify the Part 2 (Annex J) multiple component
+        /// transformation extensions; the encoder writes Part 1 codestreams only.
+        static func part2RefusalReason(_ syntax: TransferSyntax) -> String? {
+            guard syntax.isJPEG2000Part2 else { return nil }
+            let engine = J2KRoutePlanner.unsupportedEncodeReason(transferSyntaxUID: syntax.uid)
+                ?? "\(syntax.uid) encoding is not supported."
+            return "Target refused: \(syntax.uid) specifies the JPEG 2000 Part 2 multiple component "
+                + "transformation extensions (PS3.5 2026a A.4.4), which dicom-j2k does not write. " + engine
+        }
     }
+}
+
+/// A refused `--target`. Not a `ValidationError`, so the command exits 1.
+struct TargetRefused: LocalizedError, CustomStringConvertible {
+    let description: String
+    var errorDescription: String? { description }
+}
+
+// MARK: - JSON keys (PS3.6 Table 6-1)
+
+/// The PS3.6 2026a Table 6-1 keyword keys of the `--json` outputs (P-J2K-JSON), added next to
+/// the deprecated camelCase keys (`transferSyntaxUID`, `totalFrames`), which keep their values:
+/// TransferSyntaxUID (0002,0010) and NumberOfFrames (0028,0008).
+enum J2KJSONKeys {
+    static func keywordFields(transferSyntaxUID: String?, numberOfFrames: Int?) -> [String: Any] {
+        var fields: [String: Any] = ["TransferSyntaxUID": transferSyntaxUID as Any]
+        if let n = numberOfFrames { fields["NumberOfFrames"] = n }
+        return fields
+    }
+}
+
+// MARK: - Frame selection (PS3.3 C.7.6.6)
+
+/// `--frame-number` (1-based, PS3.3 2026a C.7.6.6: "The first Frame shall be denoted as Frame
+/// number 1") and the deprecated 0-based `--frame` (P-J2K-FRAME). Both at once exits 1.
+struct FrameSelection: ParsableArguments {
+    @Option(name: .long, help: "Frame number, numbered from 1 (PS3.3 C.7.6.6; default 1)")
+    var frameNumber: Int?
+
+    @Option(name: .long, help: "deprecated: 0-based index; use --frame-number")
+    var frame: Int?
+
+    mutating func validate() throws {
+        if let n = frameNumber, n < 1 {
+            throw ValidationError("--frame-number must be 1 or more (PS3.3 C.7.6.6: the first Frame is Frame number 1)")
+        }
+        if let f = frame, f < 0 {
+            throw ValidationError("--frame is a 0-based index and must be 0 or more")
+        }
+        if frame != nil && frameNumber != nil {
+            throw FrameSelectionConflict()
+        }
+    }
+
+    /// 0-based index: --frame-number − 1, else the deprecated --frame, else the first frame.
+    var index: Int { frameNumber.map { $0 - 1 } ?? frame ?? 0 }
+
+    /// The one-line stderr deprecation note when --frame was used.
+    static let deprecationNote =
+        "warning: --frame is deprecated (0-based index); use --frame-number (numbered from 1, PS3.3 C.7.6.6)"
+
+    func warnIfDeprecated() {
+        if frame != nil { FileHandle.standardError.write(Data((Self.deprecationNote + "\n").utf8)) }
+    }
+}
+
+/// `--frame` and `--frame-number` given together. Not a `ValidationError`, so exit 1.
+struct FrameSelectionConflict: LocalizedError, CustomStringConvertible {
+    var description: String {
+        "--frame (deprecated, 0-based) and --frame-number (numbered from 1) cannot be used together"
+    }
+    var errorDescription: String? { description }
 }
 
 // MARK: - reduce
@@ -703,7 +809,7 @@ extension DICOMJ2K {
                 --region x,y,width,height   Crop rectangle in pixels (origin at top-left).
 
                 Examples:
-                  dicom-j2k roi input.dcm --output roi.dcm --frame 0 --region 0,0,256,256
+                  dicom-j2k roi input.dcm --output roi.dcm --frame-number 1 --region 0,0,256,256
                   dicom-j2k roi input.dcm --output roi.dcm --region 128,128,512,512
                 """
         )
@@ -714,8 +820,10 @@ extension DICOMJ2K {
         @Option(name: .shortAndLong, help: "Output DICOM file path")
         var output: String
 
-        @Option(name: .long, help: "Frame index (0-based, default 0)")
-        var frame: Int = 0
+        @OptionGroup var frameSelection: FrameSelection
+
+        /// 0-based index of the selected frame.
+        var frame: Int { frameSelection.index }
 
         @Option(name: .long, help: "Region of interest: x,y,width,height")
         var region: String
@@ -740,6 +848,7 @@ extension DICOMJ2K {
         }
 
         mutating func run() throws {
+            frameSelection.warnIfDeprecated()
             let parts = region.split(separator: ",").compactMap { Int($0) }
             let roiX = parts[0], roiY = parts[1], roiW = parts[2], roiH = parts[3]
 
@@ -825,7 +934,7 @@ extension DICOMJ2K {
             // SOP Instance UID (PS3.3 C.7.6.1.1.2).
             let sourceSOP = dicom.dataSet.string(for: .sopInstanceUID) ?? "unknown"
             J2KDICOMBoundary.appendDerivationDescription(
-                "Region \(roiX),\(roiY),\(roiW),\(roiH) of frame \(frame) (0-based) of \(sourceSOP)",
+                "Region \(roiX),\(roiY),\(roiW),\(roiH) of Frame number \(frame + 1) of \(sourceSOP)",
                 to: &newDataSet)
             J2KDICOMBoundary.markDerived(&newDataSet, meta: &newMeta)
 
@@ -835,7 +944,7 @@ extension DICOMJ2K {
             try outData.write(to: outputURL)
 
             if verbose {
-                print("ROI \(roiW)×\(roiH) from frame \(frame) written to: \(output)")
+                print("ROI \(roiW)×\(roiH) from Frame number \(frame + 1) written to: \(output)")
             } else {
                 print("ROI extracted to: \(output)")
             }
@@ -860,14 +969,19 @@ extension DICOMJ2K {
                   dicom-j2k benchmark scan.dcm
                   dicom-j2k benchmark scan.dcm --iterations 50
                   dicom-j2k benchmark scan.dcm --json
+
+                --json keys: frameNumber is the Frame number (from 1); frame is the deprecated
+                0-based index.
                 """
         )
 
         @Argument(help: "Input DICOM file path")
         var input: String
 
-        @Option(name: .long, help: "Frame index (0-based, default 0)")
-        var frame: Int = 0
+        @OptionGroup var frameSelection: FrameSelection
+
+        /// 0-based index of the selected frame.
+        var frame: Int { frameSelection.index }
 
         @Option(name: .long, help: "Number of decode iterations (default 10)")
         var iterations: Int = 10
@@ -885,6 +999,7 @@ extension DICOMJ2K {
         }
 
         mutating func run() throws {
+            frameSelection.warnIfDeprecated()
             let dicom = try loadDICOM(at: input)
             guard isJ2KTransferSyntax(dicom.transferSyntaxUID) else {
                 throw ValidationError(
@@ -904,6 +1019,7 @@ extension DICOMJ2K {
                 let out: [String: Any] = [
                     "file": input,
                     "frame": frame,
+                    "frameNumber": frame + 1,
                     "iterations": iterations,
                     "codestreamBytes": codestream.count,
                     "averageMs": result.averageTime * 1000,
@@ -918,7 +1034,7 @@ extension DICOMJ2K {
                     print(str)
                 }
             } else {
-                print("Benchmark: \(input) (frame \(frame))")
+                print("Benchmark: \(input) (Frame number \(frame + 1))")
                 print("Transfer Syntax: \(tsLabel(dicom.transferSyntaxUID))")
                 print("Codestream: \(ByteCountFormatter.string(fromByteCount: Int64(codestream.count), countStyle: .file))")
                 print("Iterations: \(iterations)")
@@ -952,7 +1068,10 @@ extension DICOMJ2K {
                 Examples:
                   dicom-j2k compare ref.dcm test.dcm
                   dicom-j2k compare ref.dcm test.dcm --json
-                  dicom-j2k compare ref.dcm test.dcm --frame 3
+                  dicom-j2k compare ref.dcm test.dcm --frame-number 3
+
+                --json keys: frameNumber is the Frame number (from 1); frame is the deprecated
+                0-based index.
                 """
         )
 
@@ -962,13 +1081,16 @@ extension DICOMJ2K {
         @Argument(help: "Test DICOM file")
         var test: String
 
-        @Option(name: .long, help: "Frame index (0-based, default 0)")
-        var frame: Int = 0
+        @OptionGroup var frameSelection: FrameSelection
+
+        /// 0-based index of the selected frame.
+        var frame: Int { frameSelection.index }
 
         @Flag(name: .long, help: "Output as JSON")
         var json: Bool = false
 
         mutating func run() throws {
+            frameSelection.warnIfDeprecated()
             let refDICOM = try loadDICOM(at: reference)
             let tstDICOM = try loadDICOM(at: test)
 
@@ -980,7 +1102,7 @@ extension DICOMJ2K {
                 do {
                     pixels = try file.pixelData(frame: frame)
                 } catch {
-                    throw ValidationError("Cannot extract frame \(frame) from the \(name) file: \(error)")
+                    throw ValidationError("Cannot extract Frame number \(frame + 1) from the \(name) file: \(error)")
                 }
                 guard let values = pixels.pixelValues(forFrame: 0) else {
                     throw ValidationError("Cannot extract pixel data from \(name) file.")
@@ -1011,6 +1133,7 @@ extension DICOMJ2K {
                     "reference": reference,
                     "test": test,
                     "frame": frame,
+                    "frameNumber": frame + 1,
                     "pixelCount": refPixels.count,
                     "mse": mse,
                     "mae": mae,
@@ -1022,7 +1145,7 @@ extension DICOMJ2K {
                     print(str)
                 }
             } else {
-                print("Comparison: \(reference) vs \(test) (frame \(frame))")
+                print("Comparison: \(reference) vs \(test) (Frame number \(frame + 1))")
                 print("")
                 print(String(format: "  MSE:  %.4f", mse))
                 print(String(format: "  MAE:  %.4f", mae))
@@ -1090,7 +1213,7 @@ extension DICOMJ2K {
                 case "${prev}" in
                     info|validate|benchmark|compare) COMPREPLY=($(compgen -f -- "${cur}")); return 0;;
                     transcode|reduce|roi) COMPREPLY=($(compgen -f -- "${cur}")); return 0;;
-                    --target) COMPREPLY=($(compgen -W "j2k-lossy j2k-lossless j2k-lossless-only j2k-part2-lossy j2k-part2-lossless j2k-part2-lossless-only htj2k-lossy htj2k-lossless htj2k-lossless-only htj2k-rpcl-lossless-only" -- "${cur}")); return 0;;
+                    --target) COMPREPLY=($(compgen -W "j2k-lossy j2k-lossless j2k-lossless-only htj2k-lossy htj2k-lossless htj2k-lossless-only htj2k-rpcl-lossless-only" -- "${cur}")); return 0;;
                     completions) COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}")); return 0;;
                     *) COMPREPLY=($(compgen -W "${cmds} ${opts}" -- "${cur}")); return 0;;
                 esac

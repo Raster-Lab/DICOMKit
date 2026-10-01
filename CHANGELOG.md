@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PhotometricInterpretation`, `NumberOfFrames` (a JSON number) and `LossyImageCompression`; the camelCase keys
   are deprecated and keep their values. Shared: `CompressionConsole.infoJSON` / new `infoKeywordFields`,
   `CompressionInfo.lossyImageCompression` (DICOMKit), so the Studio Workshop output matches.
+- **`dicom-j2k --frame-number`** on info / validate / roi / benchmark / compare (P-J2K-FRAME): 1-based (PS3.3 2026a
+  C.7.6.6); `--frame` (0-based) is deprecated (help, stderr note; both together exit 1). Output says
+  "Frame number N" (info printed "Frame: 0 of N"); roi's Derivation Description names the Frame number.
+- **`dicom-j2k --json`** (P-J2K-JSON) adds `TransferSyntaxUID` (info, validate) and `NumberOfFrames` (info), the
+  PS3.6 2026a Table 6-1 keywords, and `frameNumber`; `transferSyntaxUID`, `totalFrames` and the 0-based `frame`
+  are deprecated and keep their values.
+- **`dicom-j2k transcode` refuses the `j2k-part2-*` targets** (P-J2K-PART2) with exit 1: .92 / .93 specify the
+  JPEG 2000 Part 2 multiple component transformation extensions (PS3.5 2026a A.4.4) and the tool wrote a Part 1
+  codestream under them; the engine already refused Part 2 encodes. `--help` lists them as refused.
 
 ### Changed — CLI P-items, webprint batch (approved 2026-10-01, DICOM 2026a)
 

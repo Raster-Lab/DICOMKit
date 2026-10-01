@@ -29,7 +29,14 @@ Part of DICOMKit, powered by J2KSwift v3.2.0.
 | `1.2.840.10008.1.2.4.203` | High-Throughput JPEG 2000 Image Compression |
 
 Names as in PS3.6 2026a Table A-1. `.91`, `.93` and `.203` carry either a lossless or a lossy
-codestream (PS3.5 A.4.4).
+codestream (PS3.5 A.4.4). `.92` / `.93` are read; `transcode` refuses them as targets
+(`j2k-part2-*`, exit 1): they specify the JPEG 2000 Part 2 multiple component transformation
+extensions (PS3.5 A.4.4), which the encoder does not write.
+
+`--target` also takes a PS3.6 Table A-1 keyword, which selects its Table A-1 UID:
+`JPEG2000Lossless` is .90 and `HTJ2KLossless` .201 (changed 2026-10-01, a note is printed);
+the reversible encode into .91 / .203 is `JPEG2000Reversible` / `HTJ2KReversible`
+(or `j2k-lossless` / `htj2k-lossless`).
 
 ## Examples
 
@@ -52,10 +59,10 @@ dicom-j2k transcode htj2k.dcm --output j2k.dcm --target j2k-lossless
 # Re-encode losslessly with 3 decomposition levels and 4 quality layers
 dicom-j2k reduce input.dcm --output small.dcm --levels 3 --layers 4
 
-# Extract ROI from frame 0, region x=0,y=0,w=256,h=256
-dicom-j2k roi input.dcm --output roi.dcm --frame 0 --region 0,0,256,256
+# Extract ROI from Frame number 1, region x=0,y=0,w=256,h=256
+dicom-j2k roi input.dcm --output roi.dcm --frame-number 1 --region 0,0,256,256
 
-# Benchmark decoding of frame 0
+# Benchmark decoding of Frame number 1
 dicom-j2k benchmark ct.dcm
 
 # Benchmark with custom iterations
@@ -87,7 +94,12 @@ dicom-j2k completions zsh > ~/.zsh/completions/_dicom-j2k
 
 ## Notes
 
-- Frame indexes (`--frame`) are 0-based.
+- Frames are selected with `--frame-number`, numbered from 1 (PS3.3 C.7.6.6: "The first Frame
+  shall be denoted as Frame number 1"); output says "Frame number N". `--frame` (0-based index)
+  is **deprecated**, prints a note, and exits 1 when given with `--frame-number`.
+- `--json` keys: `TransferSyntaxUID` and `NumberOfFrames` (PS3.6 Table 6-1 keywords) and
+  `frameNumber` (from 1) were added; `transferSyntaxUID`, `totalFrames` and the 0-based `frame`
+  are **deprecated** and keep their old values.
 - HTJ2K Lossy (`.203`) is partially validated; some entropy-coder edge cases may return
   errors. Use lossless (`.201`) for archival.
 

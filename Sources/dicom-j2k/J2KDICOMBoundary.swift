@@ -24,7 +24,7 @@ enum J2KDICOMBoundary {
                     + "Offset Table is absent or inconsistent and the fragments do not start "
                     + "with a JPEG 2000 SOC marker (PS3.5 A.4)."
             case .frameOutOfRange(let frame, let count):
-                return "Frame \(frame) is out of range (Number of Frames is \(count); frames are indexed from 0)."
+                return "Frame number \(frame + 1) is out of range (Number of Frames is \(count); the first Frame is Frame number 1, PS3.3 C.7.6.6)."
             }
         }
     }

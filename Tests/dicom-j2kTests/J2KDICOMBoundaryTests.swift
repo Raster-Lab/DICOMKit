@@ -452,3 +452,133 @@ struct HelpTextTests {
         #expect(throws: ExitCode(2)) { try cmd.run() }
     }
 }
+
+// MARK: - P-items (2026-10-01): P-J2K-FRAME, P-J2K-JSON, P-J2K-PART2, P-CONVERT-TS-KEYWORDS
+
+@Suite("dicom-j2k P-items: Frame number, JSON keys, Part 2 targets, Table A-1 keywords")
+struct J2KPItemTests {
+
+    // PS3.3 2026a C.7.6.6: "The first Frame shall be denoted as Frame number 1".
+    @Test("--frame-number is 1-based on every subcommand that selects a frame")
+    func frameNumber() throws {
+        #expect(try DICOMJ2K.InfoCommand.parse(["a.dcm", "--frame-number", "2"]).frame == 1)
+        #expect(try DICOMJ2K.ValidateCommand.parse(["a.dcm", "--frame-number", "1"]).frame == 0)
+        #expect(try DICOMJ2K.BenchmarkCommand.parse(["a.dcm", "--frame-number", "3"]).frame == 2)
+        #expect(try DICOMJ2K.CompareCommand.parse(["a.dcm", "b.dcm", "--frame-number", "4"]).frame == 3)
+        #expect(try DICOMJ2K.ROICommand.parse(["a.dcm", "-o", "o.dcm", "--region", "0,0,1,1", "--frame-number", "2"]).frame == 1)
+        // Deprecated 0-based --frame keeps its meaning; default is the first frame.
+        #expect(try DICOMJ2K.InfoCommand.parse(["a.dcm", "--frame", "2"]).frame == 2)
+        #expect(try DICOMJ2K.InfoCommand.parse(["a.dcm"]).frame == 0)
+    }
+
+    @Test("--frame with --frame-number exits 1; --frame-number 0 is a usage error")
+    func frameConflict() {
+        do {
+            _ = try DICOMJ2K.InfoCommand.parse(["a.dcm", "--frame", "0", "--frame-number", "1"])
+            Issue.record("expected a refusal")
+        } catch {
+            #expect(DICOMJ2K.InfoCommand.exitCode(for: error) == .failure)
+        }
+        do {
+            _ = try DICOMJ2K.InfoCommand.parse(["a.dcm", "--frame-number", "0"])
+            Issue.record("expected a refusal")
+        } catch {
+            #expect(DICOMJ2K.InfoCommand.exitCode(for: error) == .validationFailure)
+        }
+    }
+
+    @Test("--help marks --frame deprecated")
+    func frameHelp() {
+        for help in [DICOMJ2K.InfoCommand.helpMessage(), DICOMJ2K.ValidateCommand.helpMessage(),
+                     DICOMJ2K.ROICommand.helpMessage(), DICOMJ2K.BenchmarkCommand.helpMessage(),
+                     DICOMJ2K.CompareCommand.helpMessage()] {
+            #expect(help.contains("--frame-number"))
+            #expect(help.contains("deprecated: 0-based index; use --frame-number"))
+        }
+    }
+
+    @Test("roi --frame-number: Derivation Description names the Frame number")
+    func roiFrameNumber() throws {
+        let (url, _) = try j2kLosslessOnlyFile(rgb: false, frames: 3)
+        let out = tempURL("roi-fn.dcm")
+        defer { try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: out) }
+        var cmd = try DICOMJ2K.ROICommand.parse([url.path, "-o", out.path, "--frame-number", "2", "--region", "8,4,16,12"])
+        try cmd.run()
+        let ds = try DICOMFile.read(from: Data(contentsOf: out)).dataSet
+        #expect(ds.string(for: .derivationDescription)?.contains("of Frame number 2 of") == true)
+        // Same crop as the deprecated --frame 1 (roiEndToEnd).
+        #expect(ds.strings(for: .imagePositionPatient)?.compactMap { Double($0) } == [12, 22, 30])
+    }
+
+    @Test("An out-of-range frame is reported as a Frame number")
+    func outOfRange() {
+        let text = "\(J2KDICOMBoundary.FrameError.frameOutOfRange(3, 3))"
+        #expect(text.contains("Frame number 4"))
+        #expect(text.contains("Frame number 1"))
+    }
+
+    // PS3.6 2026a Table 6-1 (dumped from part06_2026a.xml): (0002,0010) TransferSyntaxUID,
+    // (0028,0008) NumberOfFrames.
+    @Test("JSON keyword keys are the PS3.6 Table 6-1 keywords")
+    func jsonKeys() {
+        let fields = J2KJSONKeys.keywordFields(transferSyntaxUID: "1.2.840.10008.1.2.4.90", numberOfFrames: 3)
+        #expect(Set(fields.keys) == ["TransferSyntaxUID", "NumberOfFrames"])
+        #expect(fields["TransferSyntaxUID"] as? String == "1.2.840.10008.1.2.4.90")
+        #expect(fields["NumberOfFrames"] as? Int == 3)
+        #expect(Set(J2KJSONKeys.keywordFields(transferSyntaxUID: "1.2", numberOfFrames: nil).keys) == ["TransferSyntaxUID"])
+        #expect(DICOMJ2K.InfoCommand.configuration.discussion.contains("deprecated"))
+        #expect(DICOMJ2K.ValidateCommand.configuration.discussion.contains("deprecated"))
+    }
+
+    // PS3.5 2026a A.4.4: .92 / .93 specify the Part 2 (Annex J) multiple component
+    // transformation extensions; the encoder writes Part 1 only.
+    @Test("The three j2k-part2-* targets are refused with exit 1 and listed as refused")
+    func part2Refused() throws {
+        for target in ["j2k-part2-lossy", "j2k-part2-lossless", "j2k-part2-lossless-only", "JPEG2000MC", "JPEG2000MCLossless"] {
+            do {
+                _ = try DICOMJ2K.TranscodeCommand.parse(["a.dcm", "-o", "o.dcm", "-t", target])
+                Issue.record("\(target) accepted")
+            } catch {
+                #expect(DICOMJ2K.TranscodeCommand.exitCode(for: error) == .failure, "\(target)")
+                #expect("\(error)".contains("PS3.5 2026a A.4.4") || DICOMJ2K.TranscodeCommand.message(for: error).contains("A.4.4"), "\(target)")
+            }
+        }
+        for target in ["j2k-lossy", "j2k-lossless", "j2k-lossless-only", "htj2k-lossy", "htj2k-lossless",
+                       "htj2k-lossless-only", "htj2k-rpcl-lossless-only"] {
+            #expect(throws: Never.self) { _ = try DICOMJ2K.TranscodeCommand.parse(["a.dcm", "-o", "o.dcm", "-t", target]) }
+        }
+        let help = DICOMJ2K.TranscodeCommand.configuration.discussion
+        let refused = try #require(help.range(of: "Refused (exit 1)"))
+        for row in ["j2k-part2-lossy", "j2k-part2-lossless ", "j2k-part2-lossless-only"] {
+            let at = try #require(help.range(of: "  " + row))
+            #expect(at.lowerBound > refused.lowerBound, "\(row) listed as refused")
+        }
+        #expect(DICOMJ2K.TranscodeCommand.part2RefusalReason(.jpeg2000Part2) != nil)
+        #expect(DICOMJ2K.TranscodeCommand.part2RefusalReason(.jpeg2000Part2Lossless) != nil)
+        for ts: TransferSyntax in [.jpeg2000, .jpeg2000Lossless, .htj2kLossless, .htj2kRPCLLossless, .htj2kLossy] {
+            #expect(DICOMJ2K.TranscodeCommand.part2RefusalReason(ts) == nil)
+        }
+    }
+
+    // PS3.6 2026a Table A-1 keywords (dumped): JPEG2000Lossless .90, JPEG2000 .91,
+    // HTJ2KLossless .201, HTJ2KLosslessRPCL .202, HTJ2K .203, JPEGXLLossless .110, JPEGXL .112.
+    @Test("--target Table A-1 keywords select their Table A-1 UID; …Reversible keeps the old meaning")
+    func tableA1Keywords() throws {
+        let a1: [String: String] = [
+            "JPEG2000Lossless": "1.2.840.10008.1.2.4.90", "JPEG2000": "1.2.840.10008.1.2.4.91",
+            "HTJ2KLossless": "1.2.840.10008.1.2.4.201", "HTJ2KLosslessRPCL": "1.2.840.10008.1.2.4.202",
+            "HTJ2K": "1.2.840.10008.1.2.4.203", "JPEGXLLossless": "1.2.840.10008.1.2.4.110",
+            "JPEGXL": "1.2.840.10008.1.2.4.112",
+        ]
+        for (keyword, uid) in a1 {
+            #expect(TransferSyntax.parseEncoding(keyword)?.transferSyntax.uid == uid, "\(keyword)")
+        }
+        for (name, uid) in ["JPEG2000Reversible": "1.2.840.10008.1.2.4.91", "HTJ2KReversible": "1.2.840.10008.1.2.4.203",
+                            "JPEGXLReversible": "1.2.840.10008.1.2.4.112"] {
+            let enc = try #require(TransferSyntax.parseEncoding(name), "\(name)")
+            #expect(enc.transferSyntax.uid == uid && enc.intent == .lossless, "\(name)")
+        }
+        #expect(TransferSyntax.reassignedKeywordNote(for: "JPEG2000Lossless")?.contains("1.2.840.10008.1.2.4.90") == true)
+        #expect(TransferSyntax.reassignedKeywordNote(for: "j2k-lossless") == nil)
+    }
+}
