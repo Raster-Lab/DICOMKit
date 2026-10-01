@@ -1,14 +1,29 @@
 import Foundation
 import DICOMCore
-// NEMA-verified: 2026a, checked 2026-09-28 — carries no DICOM-standard data (display column lists only)
+import DICOMDictionary
+// NEMA-verified: 2026a, checked 2026-10-01 — the 18 table column labels are the PS3.6 2026a Table 6-1 Attribute Names of the attributes shown (19 rows dumped by Scripts/nema_docbook.py; Columns × Rows names two), P-QUERY-COLUMNS; --csv-keywords headers are Table 6-1 Keywords via DICOMDictionary; dicom-json builds the PS3.18 2026a F.2 element list (UTF-8 / ISO_IR 192 per F.2, VR from Table 6-1, SQ as UN InlineBinary) for DICOMWeb's encoder (P-QUERY-JSON)
 
 /// Output renderings shared by the dicom-query CLI and DICOMStudio's in-app query,
 /// so both produce identical text for the same C-FIND results.
 public enum QueryOutputFormat: String, Sendable, CaseIterable {
     case table
+    /// Tool summary: `{"(GGGG,EEEE)": "value"}` per result (not PS3.18).
     case json
     case csv
     case compact
+    /// The PS3.18 F.2 DICOM JSON Model (`"00100010": {"vr": "PN", "Value": [...]}`).
+    /// Rendering needs a DICOM JSON encoder (DICOMWeb's `DICOMJSONEncoder`), passed
+    /// to ``DICOMQueryResultFormatter/init(format:level:csvHeader:dicomJSONEncoder:)``.
+    case dicomJSON = "dicom-json"
+}
+
+/// What the CSV header row names each column by.
+public enum QueryCSVHeader: String, Sendable, CaseIterable {
+    /// `(GGGG,EEEE)` — the header written since the first release (default).
+    case tag
+    /// The PS3.6 Table 6-1 Keyword (e.g. `PatientName`); a tag without a
+    /// keyword (private, unknown) keeps its `(GGGG,EEEE)` form.
+    case keyword
 }
 
 /// Renders C-FIND results to text. This is the SINGLE formatter used by both the
@@ -17,18 +32,35 @@ public enum QueryOutputFormat: String, Sendable, CaseIterable {
 public struct DICOMQueryResultFormatter {
     public let format: QueryOutputFormat
     public let level: QueryLevel
+    /// CSV header style (``QueryCSVHeader/tag`` unless asked otherwise).
+    public let csvHeader: QueryCSVHeader
+    /// Encodes one element list per result as a PS3.18 F.2 JSON array; required
+    /// for ``QueryOutputFormat/dicomJSON``. DICOMNetwork does not depend on
+    /// DICOMWeb, so callers pass e.g.
+    /// `{ try DICOMJSONEncoder(configuration: .init(prettyPrinted: true)).encodeMultiple($0) }`.
+    public let dicomJSONEncoder: (([[DataElement]]) throws -> Data)?
 
     public init(format: QueryOutputFormat, level: QueryLevel) {
+        self.init(format: format, level: level, csvHeader: .tag, dicomJSONEncoder: nil)
+    }
+
+    /// With a CSV header style and a DICOM JSON encoder (added 2026-10-01).
+    public init(format: QueryOutputFormat, level: QueryLevel,
+                csvHeader: QueryCSVHeader,
+                dicomJSONEncoder: (([[DataElement]]) throws -> Data)? = nil) {
         self.format = format
         self.level = level
+        self.csvHeader = csvHeader
+        self.dicomJSONEncoder = dicomJSONEncoder
     }
 
     public func format(results: [GenericQueryResult]) -> String {
         switch format {
-        case .table:   return formatTable(results)
-        case .json:    return formatJSON(results)
-        case .csv:     return formatCSV(results)
-        case .compact: return formatCompact(results)
+        case .table:     return formatTable(results)
+        case .json:      return formatJSON(results)
+        case .csv:       return formatCSV(results)
+        case .compact:   return formatCompact(results)
+        case .dicomJSON: return formatDICOMJSON(results)
         }
     }
 
@@ -44,98 +76,77 @@ public struct DICOMQueryResultFormatter {
         }
     }
 
-    private func formatPatientTable(_ results: [GenericQueryResult]) -> String {
-        var output = ""
-        output += String(repeating: "─", count: 100) + "\n"
-        output += padRight("Patient Name", 30) + " "
-        output += padRight("Patient ID", 15) + " "
-        output += padRight("Birth Date", 12) + " "
-        output += padRight("Sex", 5) + " "
-        output += padRight("Studies", 8) + "\n"
-        output += String(repeating: "─", count: 100) + "\n"
-        for result in results {
-            let patient = result.toPatientResult()
-            output += padRight(patient.patientName ?? "", 30) + " "
-            output += padRight(patient.patientID ?? "", 15) + " "
-            output += padRight(formatDate(patient.patientBirthDate), 12) + " "
-            output += padRight(patient.patientSex ?? "", 5) + " "
-            output += padRight(patient.numberOfPatientRelatedStudies.map(String.init) ?? "", 8) + "\n"
+    /// Column labels are the PS3.6 2026a Table 6-1 Attribute Names of the
+    /// attributes shown (P-QUERY-COLUMNS); a column is at least as wide as its
+    /// label, and the rules span the whole row.
+    private func renderTable(_ columns: [(label: String, width: Int)], rows: [[String]], total: String) -> String {
+        let widths = columns.map { max($0.width, $0.label.count) }
+        let ruleWidth = widths.reduce(0, +) + widths.count - 1
+        let rule = String(repeating: "─", count: ruleWidth) + "\n"
+        func line(_ cells: [String]) -> String {
+            zip(cells, widths).map { padRight($0.0, $0.1) }.joined(separator: " ") + "\n"
         }
-        output += String(repeating: "─", count: 100) + "\n"
-        output += "Total: \(results.count) patient(s)\n"
+        var output = rule
+        output += line(columns.map(\.label))
+        output += rule
+        for row in rows { output += line(row) }
+        output += rule
+        output += total + "\n"
         return output
+    }
+
+    private func formatPatientTable(_ results: [GenericQueryResult]) -> String {
+        let rows = results.map { result -> [String] in
+            let patient = result.toPatientResult()
+            return [patient.patientName ?? "", patient.patientID ?? "", formatDate(patient.patientBirthDate),
+                    patient.patientSex ?? "", patient.numberOfPatientRelatedStudies.map(String.init) ?? ""]
+        }
+        return renderTable([("Patient's Name", 30), ("Patient ID", 15), ("Patient's Birth Date", 12),
+                            ("Patient's Sex", 5), ("Number of Patient Related Studies", 8)],
+                           rows: rows, total: "Total: \(results.count) patient(s)")
     }
 
     private func formatStudyTable(_ results: [GenericQueryResult]) -> String {
-        var output = ""
-        output += String(repeating: "─", count: 120) + "\n"
-        output += padRight("Patient Name", 25) + " "
-        output += padRight("Patient ID", 12) + " "
-        output += padRight("Date", 12) + " "
-        output += padRight("Description", 30) + " "
-        output += padRight("Modalities", 12) + " "
-        output += padRight("Series", 8) + "\n"
-        output += String(repeating: "─", count: 120) + "\n"
-        for result in results {
+        let rows = results.map { result -> [String] in
             let study = result.toStudyResult()
-            output += padRight(study.patientName ?? "", 25) + " "
-            output += padRight(study.patientID ?? "", 12) + " "
-            output += padRight(formatDate(study.studyDate), 12) + " "
-            output += padRight(study.studyDescription ?? "", 30) + " "
-            output += padRight(study.modalitiesInStudy ?? "", 12) + " "
-            output += padRight(study.numberOfStudyRelatedSeries.map(String.init) ?? "", 8) + "\n"
+            return [study.patientName ?? "", study.patientID ?? "", formatDate(study.studyDate),
+                    study.studyDescription ?? "", study.modalitiesInStudy ?? "",
+                    study.numberOfStudyRelatedSeries.map(String.init) ?? ""]
         }
-        output += String(repeating: "─", count: 120) + "\n"
-        output += "Total: \(results.count) study(ies)\n"
-        return output
+        return renderTable([("Patient's Name", 25), ("Patient ID", 12), ("Study Date", 12),
+                            ("Study Description", 30), ("Modalities in Study", 12),
+                            ("Number of Study Related Series", 8)],
+                           rows: rows, total: "Total: \(results.count) study(ies)")
     }
 
     private func formatSeriesTable(_ results: [GenericQueryResult]) -> String {
-        var output = ""
-        output += String(repeating: "─", count: 100) + "\n"
-        output += padRight("Series Number", 15) + " "
-        output += padRight("Modality", 10) + " "
-        output += padRight("Description", 40) + " "
-        output += padRight("Date", 12) + " "
-        output += padRight("Instances", 10) + "\n"
-        output += String(repeating: "─", count: 100) + "\n"
-        for result in results {
+        let rows = results.map { result -> [String] in
             let series = result.toSeriesResult()
-            output += padRight(series.seriesNumber.map(String.init) ?? "", 15) + " "
-            output += padRight(series.modality ?? "", 10) + " "
-            output += padRight(series.seriesDescription ?? "", 40) + " "
-            output += padRight(formatDate(series.seriesDate), 12) + " "
-            output += padRight(series.numberOfSeriesRelatedInstances.map(String.init) ?? "", 10) + "\n"
+            return [series.seriesNumber.map(String.init) ?? "", series.modality ?? "",
+                    series.seriesDescription ?? "", formatDate(series.seriesDate),
+                    series.numberOfSeriesRelatedInstances.map(String.init) ?? ""]
         }
-        output += String(repeating: "─", count: 100) + "\n"
-        output += "Total: \(results.count) series\n"
-        return output
+        return renderTable([("Series Number", 15), ("Modality", 10), ("Series Description", 40),
+                            ("Series Date", 12), ("Number of Series Related Instances", 10)],
+                           rows: rows, total: "Total: \(results.count) series")
     }
 
     private func formatInstanceTable(_ results: [GenericQueryResult]) -> String {
-        var output = ""
-        output += String(repeating: "─", count: 100) + "\n"
-        output += padRight("Instance Number", 17) + " "
-        output += padRight("SOP Class", 30) + " "
-        output += padRight("Dimensions", 15) + " "
-        output += padRight("Frames", 8) + "\n"
-        output += String(repeating: "─", count: 100) + "\n"
-        for result in results {
+        let rows = results.map { result -> [String] in
             let instance = result.toInstanceResult()
-            output += padRight(instance.instanceNumber.map(String.init) ?? "", 17) + " "
-            output += padRight(shortenUID(instance.sopClassUID), 30) + " "
             let dimensions: String
             if let rows = instance.rows, let cols = instance.columns {
                 dimensions = "\(cols)×\(rows)"
             } else {
                 dimensions = ""
             }
-            output += padRight(dimensions, 15) + " "
-            output += padRight(instance.numberOfFrames.map(String.init) ?? "1", 8) + "\n"
+            return [instance.instanceNumber.map(String.init) ?? "", shortenUID(instance.sopClassUID),
+                    dimensions, instance.numberOfFrames.map(String.init) ?? "1"]
         }
-        output += String(repeating: "─", count: 100) + "\n"
-        output += "Total: \(results.count) instance(s)\n"
-        return output
+        // "Columns × Rows": the value is printed columns first (width × height).
+        return renderTable([("Instance Number", 17), ("SOP Class UID", 30), ("Columns × Rows", 15),
+                            ("Number of Frames", 8)],
+                           rows: rows, total: "Total: \(results.count) instance(s)")
     }
 
     // MARK: - JSON
@@ -168,7 +179,7 @@ public struct DICOMQueryResultFormatter {
         guard !results.isEmpty else { return "" }
         var output = ""
         let columns = results[0].attributes.keys.sorted { $0.description < $1.description }
-        output += columns.map { escapeCSV($0.description) }.joined(separator: ",") + "\n"
+        output += columns.map { escapeCSV(csvHeaderName($0)) }.joined(separator: ",") + "\n"
         for result in results {
             let characterSet = result.specificCharacterSet
             let row = columns.map { tag -> String in
@@ -180,6 +191,29 @@ public struct DICOMQueryResultFormatter {
             output += row.joined(separator: ",") + "\n"
         }
         return output
+    }
+
+    /// `(GGGG,EEEE)`, or the PS3.6 Table 6-1 Keyword with `.keyword`.
+    private func csvHeaderName(_ tag: Tag) -> String {
+        guard csvHeader == .keyword,
+              let keyword = DataElementDictionary.lookup(tag: tag)?.keyword, !keyword.isEmpty else {
+            return tag.description
+        }
+        return keyword
+    }
+
+    // MARK: - DICOM JSON (PS3.18 F.2)
+
+    private func formatDICOMJSON(_ results: [GenericQueryResult]) -> String {
+        guard let encoder = dicomJSONEncoder else {
+            return "error: --format dicom-json needs a DICOM JSON encoder (DICOMWeb.DICOMJSONEncoder)\n"
+        }
+        do {
+            let data = try encoder(results.map { $0.dicomJSONElements() })
+            return (String(data: data, encoding: .utf8) ?? "[]") + "\n"
+        } catch {
+            return "error: DICOM JSON encoding failed: \(error)\n"
+        }
     }
 
     // MARK: - Compact
@@ -246,5 +280,39 @@ public struct DICOMQueryResultFormatter {
             return "\"" + string.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
         return string
+    }
+}
+
+// MARK: - DICOM JSON element list
+
+public extension GenericQueryResult {
+    /// The response attributes as data elements for a PS3.18 F.2 DICOM JSON
+    /// encoder (DICOMWeb's `DICOMJSONEncoder`).
+    ///
+    /// - VR: the first VR of the attribute's PS3.6 Table 6-1 row (C-FIND
+    ///   responses may be Implicit VR); attributes the dictionary does not know
+    ///   (private, unknown) are UN.
+    /// - Text values are decoded with the response's Specific Character Set
+    ///   (0008,0005) and re-encoded as UTF-8, and (0008,0005) is written as
+    ///   `ISO_IR 192`: "The default character repertoire shall be UTF-8 /
+    ///   ISO_IR 192" (PS3.18 F.2).
+    /// - A sequence (SQ) value is kept as its raw bytes under VR UN (InlineBinary,
+    ///   PS3.18 F.2.7): the response's transfer syntax is not retained here.
+    /// - Group Length (gggg,0000) is left to the encoder, which omits it.
+    func dicomJSONElements() -> [DataElement] {
+        let characterSet = specificCharacterSet
+        return attributes.keys.sorted().map { tag -> DataElement in
+            let raw = attributes[tag] ?? Data()
+            var vr = DataElementDictionary.lookup(tag: tag)?.vr.first ?? .UN
+            var value = raw
+            if tag == .specificCharacterSet {
+                value = Data("ISO_IR 192".utf8)
+            } else if vr == .SQ {
+                vr = .UN
+            } else if vr.characterRepertoire != nil {
+                value = Data(QueryResultDecoding.decodeString(raw, specificCharacterSet: characterSet).utf8)
+            }
+            return DataElement(tag: tag, vr: vr, length: UInt32(value.count), valueData: value)
+        }
     }
 }

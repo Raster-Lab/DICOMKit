@@ -228,11 +228,17 @@ public struct NegotiatedAssociation: Sendable {
     public func isSCPRoleAccepted(for sopClassUID: String) -> Bool {
         negotiatedRoles(for: sopClassUID).requestorIsSCP
     }
+
+    /// The acceptor's SOP Class Extended Negotiation answer for a SOP Class
+    /// (PS3.7 D.3.3.5), or nil when it returned none (Service Class default).
+    public func acceptedExtendedNegotiation(for sopClassUID: String) -> SOPClassExtendedNegotiation? {
+        acceptPDU.extendedNegotiation(for: sopClassUID)
+    }
 }
 
 #if canImport(Network)
 import Network
-// NEMA-verified: 2026a, checked 2026-09-28 — release, abort and ARTIM behaviour compared with PS3.8 2026a Table 9-10 (AR-2/AR-4 on A-RELEASE-RQ, AR-8/AR-9/AR-3 on collision, AA-1 on local timeout) and §7.2.2; maximum length per Annex D.1 (0 = unlimited)
+// NEMA-verified: 2026a, checked 2026-09-28 — release, abort and ARTIM behaviour compared with PS3.8 2026a Table 9-10 (AR-2/AR-4 on A-RELEASE-RQ, AR-8/AR-9/AR-3 on collision, AA-1 on local timeout) and §7.2.2; maximum length per Annex D.1 (0 = unlimited); 2026-10-01: request(…extendedNegotiations:) proposes PS3.7 D.3.3.5 sub-items
 
 /// DICOM Association for Service Class User (SCU) operations
 ///
@@ -348,9 +354,26 @@ public final class Association: @unchecked Sendable {
     ///   - roleSelections: SCP/SCU Role Selections to propose (PS3.7 D.3.3.4).
     ///     Required when this side must receive requests on the association,
     ///     e.g. C-STORE sub-operations of a C-GET.
+    ///   - extendedNegotiations: SOP Class Extended Negotiation sub-items to
+    ///     propose (PS3.7 D.3.3.5), e.g. relational-retrieval for a Query/Retrieve
+    ///     SOP Class (PS3.4 C.5.2.1). The acceptor's answers are in
+    ///     `NegotiatedAssociation.acceptPDU.extendedNegotiations`.
     public func request(
         presentationContexts: [PresentationContext],
         roleSelections: [SCPSCURoleSelection] = []
+    ) async throws -> NegotiatedAssociation {
+        try await request(presentationContexts: presentationContexts,
+                          roleSelections: roleSelections,
+                          extendedNegotiations: [])
+    }
+
+    /// Requests an association proposing SOP Class Extended Negotiation
+    /// sub-items as well (PS3.7 D.3.3.5; added 2026-10-01). See
+    /// ``request(presentationContexts:roleSelections:)``.
+    public func request(
+        presentationContexts: [PresentationContext],
+        roleSelections: [SCPSCURoleSelection] = [],
+        extendedNegotiations: [SOPClassExtendedNegotiation]
     ) async throws -> NegotiatedAssociation {
         // Ensure we're in idle state
         guard state == .idle else {
@@ -382,7 +405,8 @@ public final class Association: @unchecked Sendable {
             implementationClassUID: configuration.implementationClassUID,
             implementationVersionName: configuration.implementationVersionName,
             userIdentity: configuration.userIdentity,
-            roleSelections: roleSelections
+            roleSelections: roleSelections,
+            extendedNegotiations: extendedNegotiations
         )
         
         if Task.isCancelled {

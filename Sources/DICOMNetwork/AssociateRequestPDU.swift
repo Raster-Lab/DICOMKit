@@ -1,5 +1,5 @@
 import Foundation
-// NEMA-verified: 2026a, checked 2026-09-28 — A-ASSOCIATE-RQ layout compared with PS3.8 2026a Tables 9-11..9-16 and Annex D.1-1; Application Context Name per PS3.7 A.2.1; Implementation Class UID / Version Name limits per PS3.7 Tables D.3-1/D.3-3 and PS3.5 UI (enforced)
+// NEMA-verified: 2026a, checked 2026-09-28 — A-ASSOCIATE-RQ layout compared with PS3.8 2026a Tables 9-11..9-16 and Annex D.1-1; Application Context Name per PS3.7 A.2.1; Implementation Class UID / Version Name limits per PS3.7 Tables D.3-1/D.3-3 and PS3.5 UI (enforced); 2026-10-01: SOP Class Extended Negotiation sub-items (56H) encoded per PS3.7 Table D.3-11
 
 /// A-ASSOCIATE-RQ PDU (Association Request)
 ///
@@ -51,6 +51,11 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
     ///
     /// Reference: PS3.7 Section D.3.3.4 - SCP/SCU Role Selection Negotiation
     public let roleSelections: [SCPSCURoleSelection]
+
+    /// Proposed SOP Class Extended Negotiation sub-items (optional)
+    ///
+    /// Reference: PS3.7 Section D.3.3.5 - SOP Class Extended Negotiation
+    public let extendedNegotiations: [SOPClassExtendedNegotiation]
     
     /// DICOM Application Context Name UID
     ///
@@ -81,6 +86,29 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         roleSelections: [SCPSCURoleSelection] = []
     ) {
         self.init(
+            calledAETitle: calledAETitle, callingAETitle: callingAETitle,
+            presentationContexts: presentationContexts, maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            userIdentity: userIdentity, applicationContextName: applicationContextName,
+            roleSelections: roleSelections, extendedNegotiations: [])
+    }
+
+    /// Creates an A-ASSOCIATE-RQ PDU proposing SOP Class Extended Negotiation
+    /// sub-items (PS3.7 D.3.3.5, Table D.3-11; added 2026-10-01).
+    public init(
+        calledAETitle: AETitle,
+        callingAETitle: AETitle,
+        presentationContexts: [PresentationContext],
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String,
+        implementationVersionName: String? = nil,
+        userIdentity: UserIdentity? = nil,
+        applicationContextName: String = dicomApplicationContextName,
+        roleSelections: [SCPSCURoleSelection] = [],
+        extendedNegotiations: [SOPClassExtendedNegotiation]
+    ) {
+        self.init(
             protocolVersion: 1,
             calledAETitle: calledAETitle,
             callingAETitle: callingAETitle,
@@ -90,7 +118,8 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
             implementationVersionName: implementationVersionName,
             userIdentity: userIdentity,
             applicationContextName: applicationContextName,
-            roleSelections: roleSelections
+            roleSelections: roleSelections,
+            extendedNegotiations: extendedNegotiations
         )
     }
     
@@ -108,7 +137,8 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         implementationVersionName: String? = nil,
         userIdentity: UserIdentity? = nil,
         applicationContextName: String = dicomApplicationContextName,
-        roleSelections: [SCPSCURoleSelection] = []
+        roleSelections: [SCPSCURoleSelection] = [],
+        extendedNegotiations: [SOPClassExtendedNegotiation] = []
     ) {
         self.protocolVersion = protocolVersion
         self.calledAETitle = calledAETitle
@@ -120,6 +150,7 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         self.userIdentity = userIdentity
         self.applicationContextName = applicationContextName
         self.roleSelections = roleSelections
+        self.extendedNegotiations = extendedNegotiations
     }
     
     /// Whether the Protocol-version is acceptable to this implementation
@@ -306,6 +337,11 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         // SCP/SCU Role Selection Sub-Items (optional, PS3.7 D.3.3.4)
         for role in roleSelections {
             subItems.append(role.encode())
+        }
+
+        // SOP Class Extended Negotiation Sub-Items (optional, PS3.7 D.3.3.5)
+        for negotiation in extendedNegotiations {
+            subItems.append(negotiation.encode())
         }
         
         // User Identity Sub-Item (optional)

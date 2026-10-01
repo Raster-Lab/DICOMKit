@@ -1,5 +1,5 @@
 import Foundation
-// NEMA-verified: 2026a, checked 2026-09-28 — decoder compared with PS3.8 2026a Tables 9-11..9-26 and PS3.7 Tables D.3-1..D.3-15 (item types 0x10-0x59; 0x53/0x56/0x57 skipped as §9.3.1 permits; Protocol-version preserved for the bit-0 test)
+// NEMA-verified: 2026a, checked 2026-09-28 — decoder compared with PS3.8 2026a Tables 9-11..9-26 and PS3.7 Tables D.3-1..D.3-15 (item types 0x10-0x59; 0x53/0x57 skipped as §9.3.1 permits; 0x56 SOP Class Extended Negotiation decoded per Table D.3-11 (2026-10-01); Protocol-version preserved for the bit-0 test)
 
 /// PDU Decoder for parsing DICOM network PDUs from binary data
 ///
@@ -143,6 +143,7 @@ public enum PDUDecoder {
         var implementationVersionName: String?
         var userIdentity: UserIdentity?
         var roleSelections: [SCPSCURoleSelection] = []
+        var extendedNegotiations: [SOPClassExtendedNegotiation] = []
         
         while offset < data.endIndex {
             guard offset + 4 <= data.endIndex else { break }
@@ -174,6 +175,7 @@ public enum PDUDecoder {
                 implementationVersionName = userInfo.implementationVersionName
                 userIdentity = userInfo.userIdentity
                 roleSelections = userInfo.roleSelections
+                extendedNegotiations = userInfo.extendedNegotiations
                 
             default:
                 break // Unknown item type, skip
@@ -190,7 +192,8 @@ public enum PDUDecoder {
             implementationVersionName: implementationVersionName,
             userIdentity: userIdentity,
             applicationContextName: applicationContextName,
-            roleSelections: roleSelections
+            roleSelections: roleSelections,
+            extendedNegotiations: extendedNegotiations
         )
     }
     
@@ -240,6 +243,7 @@ public enum PDUDecoder {
         var userIdentity: UserIdentity?
         var userIdentityServerResponse: UserIdentityServerResponse?
         var roleSelections: [SCPSCURoleSelection] = []
+        var extendedNegotiations: [SOPClassExtendedNegotiation] = []
     }
     
     private static func decodeUserInformationFull(from data: Data) throws -> UserInformationResult {
@@ -269,6 +273,10 @@ public enum PDUDecoder {
             case SCPSCURoleSelection.subItemType: // SCP/SCU Role Selection (PS3.7 D.3.3.4)
                 if let role = try? SCPSCURoleSelection.decode(from: subItemData) {
                     result.roleSelections.append(role)
+                }
+            case SOPClassExtendedNegotiation.subItemType: // SOP Class Extended Negotiation (PS3.7 D.3.3.5)
+                if let negotiation = try? SOPClassExtendedNegotiation.decode(from: subItemData) {
+                    result.extendedNegotiations.append(negotiation)
                 }
             case 0x55: // Implementation Version Name
                 result.implementationVersionName = String(data: subItemData, encoding: .ascii)
@@ -403,6 +411,7 @@ public enum PDUDecoder {
         var implementationVersionName: String?
         var userIdentityServerResponse: UserIdentityServerResponse?
         var roleSelections: [SCPSCURoleSelection] = []
+        var extendedNegotiations: [SOPClassExtendedNegotiation] = []
         
         while offset < data.endIndex {
             guard offset + 4 <= data.endIndex else { break }
@@ -433,6 +442,7 @@ public enum PDUDecoder {
                 implementationVersionName = userInfo.implementationVersionName
                 userIdentityServerResponse = userInfo.userIdentityServerResponse
                 roleSelections = userInfo.roleSelections
+                extendedNegotiations = userInfo.extendedNegotiations
                 
             default:
                 break
@@ -449,7 +459,8 @@ public enum PDUDecoder {
             implementationClassUID: implementationClassUID,
             implementationVersionName: implementationVersionName,
             userIdentityServerResponse: userIdentityServerResponse,
-            roleSelections: roleSelections
+            roleSelections: roleSelections,
+            extendedNegotiations: extendedNegotiations
         )
     }
     

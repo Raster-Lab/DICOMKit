@@ -1,6 +1,6 @@
 import Foundation
 import DICOMCore
-// NEMA-verified: 2026a, checked 2026-09-28 — A-ASSOCIATE-RJ reason texts now taken from AssociateRejectPDU (PS3.8 2026a Table 9-21); no other standard data beyond display labels
+// NEMA-verified: 2026a, checked 2026-10-01 — A-ASSOCIATE-RJ reason texts taken from AssociateRejectPDU (PS3.8 2026a Table 9-21); C-STORE warning lines and the summary Warnings count per PS3.4 2026a Table B.2-1 via DIMSEServiceStatusText (P-SEND-SUMMARY); retrieve header Priority per PS3.7 Tables 9.3-9 / 9.3-6 and relational-retrieval per PS3.4 Table C.5-3; MWL JSON PS3.6 keyword keys (P-MWL-JSON-KEYS); other text is display labels
 
 /// Shared console rendering for the network CLIs (`dicom-query`, `dicom-send`,
 /// `dicom-retrieve`, `dicom-qr`) AND the DICOMStudio CLI Workshop in-process
@@ -147,15 +147,37 @@ public enum NetworkConsole {
         return " ❌ \(error ?? "Unknown error")\n"
     }
 
+    /// The line printed after a ``sendFileResultSuffix(success:rtt:error:)`` when
+    /// the C-STORE response was in the Warning class of PS3.4 Table B.2-1
+    /// (B000 / B006 / B007, or another Bxxx): the SCP stored the instance but
+    /// reports a deviation. Worded per Table B.2-1 via ``DIMSEServiceStatusText``.
+    public static func sendFileWarningLine(status: DIMSEStatus) -> String {
+        "    ⚠️ Stored with warning: \(status.description(for: .cStore))\n"
+    }
+
     /// A dry-run listing line: `  [i/total] name (size)`.
     public static func sendDryRunLine(index: Int, total: Int, filename: String, size: Int) -> String {
         "  [\(index)/\(total)] \(filename) (\(formatBytes(size)))\n"
     }
 
+    /// The transfer summary. `succeeded` counts every stored instance, including
+    /// those stored with a Warning status; `warnings` is how many of them got a
+    /// Warning-class C-STORE response (PS3.4 Table B.2-1) and is shown as its own
+    /// line only when non-zero, so a run without warnings renders as before.
     public static func sendSummary(total: Int, succeeded: Int, failed: Int, bytes: Int, duration: TimeInterval) -> String {
+        sendSummary(total: total, succeeded: succeeded, failed: failed, bytes: bytes, duration: duration, warnings: 0)
+    }
+
+    /// ``sendSummary(total:succeeded:failed:bytes:duration:)`` with the Warning
+    /// count (P-SEND-SUMMARY, 2026-10-01).
+    public static func sendSummary(total: Int, succeeded: Int, failed: Int, bytes: Int, duration: TimeInterval,
+                                   warnings: Int) -> String {
         var out = "\n" + rule("Transfer Summary")
         out += field("Total files:", "\(total)")
         out += field("Succeeded:", "\(succeeded)")
+        if warnings > 0 {
+            out += field("Warnings:", "\(warnings) (stored; PS3.4 Table B.2-1 Warning class)")
+        }
         out += field("Failed:", "\(failed)")
         out += field("Bytes sent:", formatBytes(bytes))
         out += field("Duration:", formatDuration(duration))
@@ -181,6 +203,28 @@ public enum NetworkConsole {
         output: String, hierarchical: Bool, timeout: Int,
         transferSyntax: String?
     ) -> String {
+        retrieveHeader(method: method, host: host, port: port, callingAE: callingAE, calledAE: calledAE,
+                       moveDestination: moveDestination, level: level,
+                       studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID,
+                       output: output, hierarchical: hierarchical, timeout: timeout,
+                       transferSyntax: transferSyntax, priority: nil, relationalRetrieval: false)
+    }
+
+    /// The retrieve header with the requested Priority (0000,0700) (shown when
+    /// non-nil) and the relational-retrieval proposal (shown when true); added
+    /// 2026-10-01 for dicom-retrieve --priority / --relational-retrieve.
+    public static func retrieveHeader(
+        method: String,
+        host: String, port: UInt16,
+        callingAE: String, calledAE: String,
+        moveDestination: String?,
+        level: String,
+        studyUID: String, seriesUID: String?, instanceUID: String?,
+        output: String, hierarchical: Bool, timeout: Int,
+        transferSyntax: String?,
+        priority: DIMSEPriority?,
+        relationalRetrieval: Bool
+    ) -> String {
         var out = rule("DICOM Retrieve (\(method))")
         out += field("Server:", "\(host):\(port)")
         out += field("Calling AE Title:", callingAE)
@@ -197,6 +241,11 @@ public enum NetworkConsole {
         if let ts = transferSyntax, !ts.isEmpty {
             out += field("Transfer Syntax:", transferSyntaxDisplay(ts, isCMove: method == "C-MOVE"))
         }
+        // Printed only when set, so a default (MEDIUM, baseline) run renders as before.
+        // Priority (0000,0700): PS3.7 Tables 9.3-9 / 9.3-6; relational-retrieval:
+        // PS3.4 Table C.5-3 byte 1.
+        if let priority { out += field("Priority:", "\(priority) (\(String(format: "%04X", priority.rawValue))H)") }
+        if relationalRetrieval { out += field("Ext. Negotiation:", "relational-retrieval (PS3.4 C.5.2.1)") }
         out += "\n"
         return out
     }
@@ -496,6 +545,22 @@ public enum NetworkConsole {
         return out
     }
 
+    /// PS3.6 2026a Table 6-1 keyword → the abbreviated key `mwlJSON` emitted
+    /// before 2026-10-01 (still emitted, deprecated). Sequences are written as
+    /// arrays of item objects keyed by the item attributes' keywords.
+    public static let mwlJSONKeywordKeys: [(keyword: String, legacyKey: String)] = [
+        ("ScheduledProcedureStepStartDate", "SPSStartDate"),            // (0040,0002)
+        ("ScheduledProcedureStepStartTime", "SPSStartTime"),            // (0040,0003)
+        ("ScheduledProcedureStepStatus", "SPSStatus"),                  // (0040,0020)
+        ("ScheduledProcedureStepID", "SPSID"),                          // (0040,0009)
+        ("ScheduledProcedureStepDescription", "SPSDescription"),        // (0040,0007)
+        ("ScheduledProcedureStepLocation", "SPSLocation"),              // (0040,0011)
+        ("ScheduledPerformingPhysicianName", "ScheduledPerformingPhysician"), // (0040,0006)
+        ("RequestedProcedureCodeSequence", "RequestedProcedureCode"),   // (0032,1064)
+        ("ScheduledProtocolCodeSequence", "ScheduledProtocolCodes"),    // (0040,0008)
+        ("ReferencedStudySequence", "ReferencedStudySOPInstanceUID"),   // (0008,1110) > (0008,1150)/(0008,1155)
+    ]
+
     /// The worklist items as a pretty-printed JSON array. The keys (notably
     /// `StudyInstanceUID` / `SPSID` / `AccessionNumber`) are the contract the
     /// CLI-parity MWL comparator parses, so both sides emit them identically from here.
@@ -546,6 +611,23 @@ public enum NetworkConsole {
             if let v = item.requestingPhysician               { jsonItem["RequestingPhysician"] = v }
             if let v = item.referencedStudies.first?.sopInstanceUID { jsonItem["ReferencedStudySOPInstanceUID"] = v }
             if let v = item.scheduledPerformingPhysicianName  { jsonItem["ScheduledPerformingPhysician"] = v }
+            // P-MWL-JSON-KEYS: the same values under their PS3.6 2026a Table 6-1
+            // keywords. The ten abbreviated keys above are kept, with unchanged
+            // values, for existing parsers (deprecated; see dicom-mwl README).
+            for (keyword, legacy) in Self.mwlJSONKeywordKeys where jsonItem[legacy] != nil {
+                switch keyword {
+                case "RequestedProcedureCodeSequence":
+                    jsonItem[keyword] = [jsonItem[legacy]!]
+                case "ScheduledProtocolCodeSequence":
+                    jsonItem[keyword] = jsonItem[legacy]
+                case "ReferencedStudySequence":
+                    jsonItem[keyword] = item.referencedStudies.map {
+                        ["ReferencedSOPClassUID": $0.sopClassUID, "ReferencedSOPInstanceUID": $0.sopInstanceUID]
+                    }
+                default:
+                    jsonItem[keyword] = jsonItem[legacy]
+                }
+            }
             jsonItems.append(jsonItem)
         }
         let data = (try? JSONSerialization.data(withJSONObject: jsonItems,

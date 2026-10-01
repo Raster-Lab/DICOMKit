@@ -1,5 +1,5 @@
 import Foundation
-// NEMA-verified: 2026a, checked 2026-09-28 — A-ASSOCIATE-AC layout compared with PS3.8 2026a Tables 9-17..9-20 (a Transfer Syntax sub-item is now present in every Presentation Context item, Table 9-18) and PS3.7 Tables D.3-2/D.3-4 (length limits enforced)
+// NEMA-verified: 2026a, checked 2026-09-28 — A-ASSOCIATE-AC layout compared with PS3.8 2026a Tables 9-17..9-20 (a Transfer Syntax sub-item is now present in every Presentation Context item, Table 9-18) and PS3.7 Tables D.3-2/D.3-4 (length limits enforced); 2026-10-01: SOP Class Extended Negotiation answers (56H) per PS3.7 Table D.3-11 / D.3.3.5
 
 /// A-ASSOCIATE-AC PDU (Association Accept)
 ///
@@ -46,6 +46,13 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
     /// Per PS3.7 D.3.3.4.2 the acceptor answers each proposed role selection;
     /// a missing answer means the default roles apply for that SOP Class.
     public let roleSelections: [SCPSCURoleSelection]
+
+    /// SOP Class Extended Negotiation answers of the acceptor (optional)
+    ///
+    /// Per PS3.7 D.3.3.5 the acceptor returns the sub-item only for SOP Classes
+    /// whose extended negotiation was offered; a missing answer means the
+    /// Service Class default applies.
+    public let extendedNegotiations: [SOPClassExtendedNegotiation]
     
     /// Creates an A-ASSOCIATE-AC PDU
     public init(
@@ -60,6 +67,30 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
         userIdentityServerResponse: UserIdentityServerResponse? = nil,
         roleSelections: [SCPSCURoleSelection] = []
     ) {
+        self.init(
+            protocolVersion: protocolVersion, calledAETitle: calledAETitle, callingAETitle: callingAETitle,
+            applicationContextName: applicationContextName, presentationContexts: presentationContexts,
+            maxPDUSize: maxPDUSize, implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            userIdentityServerResponse: userIdentityServerResponse,
+            roleSelections: roleSelections, extendedNegotiations: [])
+    }
+
+    /// Creates an A-ASSOCIATE-AC PDU answering SOP Class Extended Negotiation
+    /// sub-items (PS3.7 D.3.3.5, Table D.3-11; added 2026-10-01).
+    public init(
+        protocolVersion: UInt16 = 1,
+        calledAETitle: AETitle,
+        callingAETitle: AETitle,
+        applicationContextName: String = AssociateRequestPDU.dicomApplicationContextName,
+        presentationContexts: [AcceptedPresentationContext],
+        maxPDUSize: UInt32,
+        implementationClassUID: String,
+        implementationVersionName: String? = nil,
+        userIdentityServerResponse: UserIdentityServerResponse? = nil,
+        roleSelections: [SCPSCURoleSelection] = [],
+        extendedNegotiations: [SOPClassExtendedNegotiation]
+    ) {
         self.protocolVersion = protocolVersion
         self.calledAETitle = calledAETitle
         self.callingAETitle = callingAETitle
@@ -70,6 +101,7 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
         self.implementationVersionName = implementationVersionName
         self.userIdentityServerResponse = userIdentityServerResponse
         self.roleSelections = roleSelections
+        self.extendedNegotiations = extendedNegotiations
     }
     
     /// Encodes the PDU for network transmission
@@ -222,6 +254,11 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
         for role in roleSelections {
             subItems.append(role.encode())
         }
+
+        // SOP Class Extended Negotiation Sub-Items (optional, PS3.7 D.3.3.5)
+        for negotiation in extendedNegotiations {
+            subItems.append(negotiation.encode())
+        }
         
         // User Identity Server Response Sub-Item (optional)
         if let serverResponse = userIdentityServerResponse {
@@ -238,6 +275,11 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
         return item
     }
     
+    /// The SOP Class Extended Negotiation answer for a SOP Class, if the acceptor sent one
+    public func extendedNegotiation(for sopClassUID: String) -> SOPClassExtendedNegotiation? {
+        extendedNegotiations.first { $0.sopClassUID == sopClassUID }
+    }
+
     /// The role selection answer for a SOP Class, if the acceptor sent one
     public func roleSelection(for sopClassUID: String) -> SCPSCURoleSelection? {
         roleSelections.first { $0.sopClassUID == sopClassUID }

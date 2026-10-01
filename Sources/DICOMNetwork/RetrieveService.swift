@@ -1,7 +1,7 @@
 import Foundation
 import DICOMCore
 import DICOMDictionary
-// NEMA-verified: 2026a, checked 2026-09-28 — C-MOVE/C-GET fields per PS3.7 2026a Tables 9.3-6..9.3-11, status per PS3.4 Tables C.4-2/C.4-3; identifier order per PS3.5 §7.1 and charset per PS3.4 C.4.2.1.4.1; storage contexts batched per PS3.8 §9.3.2.2 (D21); UIDs registered in PS3.6 Table A-1
+// NEMA-verified: 2026a, checked 2026-09-28 — C-MOVE/C-GET fields per PS3.7 2026a Tables 9.3-6..9.3-11, status per PS3.4 Tables C.4-2/C.4-3; identifier order per PS3.5 §7.1 and charset per PS3.4 C.4.2.1.4.1; storage contexts batched per PS3.8 §9.3.2.2 (D21); UIDs registered in PS3.6 Table A-1; 2026-10-01: Priority (0000,0700) LOW 0002H / MEDIUM 0000H / HIGH 0001H from RetrieveConfiguration per PS3.7 Tables 9.3-9 / 9.3-6 (3 of 3), relational-retrieval proposed per PS3.4 C.5.2.1 / C.5.3.1 Tables C.5-3 / C.5-4 (2 bytes) with the above-level keys relaxed per C.4.2.2.2.1 / C.4.3.2.2.1
 
 // MARK: - Retrieve Tags
 
@@ -214,6 +214,18 @@ public struct RetrieveConfiguration: Sendable, Hashable {
     
     /// User identity for authentication (optional)
     public let userIdentity: UserIdentity?
+
+    /// Priority (0000,0700) of the C-MOVE-RQ / C-GET-RQ: LOW 0002H, MEDIUM 0000H,
+    /// HIGH 0001H (PS3.7 2026a Tables 9.3-9 / 9.3-6). Default MEDIUM.
+    public let priority: DIMSEPriority
+
+    /// SOP Class Extended Negotiation to propose for the retrieval SOP Class
+    /// (PS3.4 C.5.2.1 / C.5.3.1, Table C.5-3), or nil for none (baseline
+    /// behaviour). With relational-retrieval requested, an identifier may omit
+    /// the Unique Keys of the levels above the retrieve level
+    /// (PS3.4 C.4.2.2.2.1 / C.4.3.2.2.1); if the SCP then turns relational-retrieval
+    /// down, such a request is not sent and the operation throws.
+    public let extendedNegotiation: RetrieveExtendedNegotiation?
     
     /// Default Implementation Class UID for DICOMKit
     public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
@@ -242,6 +254,31 @@ public struct RetrieveConfiguration: Sendable, Hashable {
         informationModel: QueryRetrieveInformationModel = .studyRoot,
         userIdentity: UserIdentity? = nil
     ) {
+        self.init(callingAETitle: callingAETitle, calledAETitle: calledAETitle, timeout: timeout,
+                  maxPDUSize: maxPDUSize, implementationClassUID: implementationClassUID,
+                  implementationVersionName: implementationVersionName, informationModel: informationModel,
+                  userIdentity: userIdentity, priority: .medium, extendedNegotiation: nil)
+    }
+
+    /// Creates a retrieve configuration with an explicit Priority and, optionally,
+    /// a SOP Class Extended Negotiation (added 2026-10-01; the initializer above
+    /// keeps its signature).
+    ///
+    /// - Parameters:
+    ///   - priority: Priority (0000,0700) of the request (PS3.7 Tables 9.3-9 / 9.3-6)
+    ///   - extendedNegotiation: SOP Class Extended Negotiation to propose (default: none, PS3.4 C.5.2.1)
+    public init(
+        callingAETitle: AETitle,
+        calledAETitle: AETitle,
+        timeout: TimeInterval = 60,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String = defaultImplementationClassUID,
+        implementationVersionName: String? = defaultImplementationVersionName,
+        informationModel: QueryRetrieveInformationModel = .studyRoot,
+        userIdentity: UserIdentity? = nil,
+        priority: DIMSEPriority,
+        extendedNegotiation: RetrieveExtendedNegotiation? = nil
+    ) {
         self.callingAETitle = callingAETitle
         self.calledAETitle = calledAETitle
         self.timeout = timeout
@@ -253,6 +290,8 @@ public struct RetrieveConfiguration: Sendable, Hashable {
         self.tlsConfiguration = nil
 #endif
         self.userIdentity = userIdentity
+        self.priority = priority
+        self.extendedNegotiation = extendedNegotiation
     }
 
 #if canImport(Network)
@@ -268,6 +307,28 @@ public struct RetrieveConfiguration: Sendable, Hashable {
         tlsConfiguration: TLSConfiguration?,
         userIdentity: UserIdentity? = nil
     ) {
+        self.init(callingAETitle: callingAETitle, calledAETitle: calledAETitle, timeout: timeout,
+                  maxPDUSize: maxPDUSize, implementationClassUID: implementationClassUID,
+                  implementationVersionName: implementationVersionName, informationModel: informationModel,
+                  tlsConfiguration: tlsConfiguration, userIdentity: userIdentity,
+                  priority: .medium, extendedNegotiation: nil)
+    }
+
+    /// Creates a retrieve configuration with an exact TLS transport policy, an
+    /// explicit Priority and, optionally, a SOP Class Extended Negotiation.
+    public init(
+        callingAETitle: AETitle,
+        calledAETitle: AETitle,
+        timeout: TimeInterval = 60,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String = defaultImplementationClassUID,
+        implementationVersionName: String? = defaultImplementationVersionName,
+        informationModel: QueryRetrieveInformationModel = .studyRoot,
+        tlsConfiguration: TLSConfiguration?,
+        userIdentity: UserIdentity? = nil,
+        priority: DIMSEPriority,
+        extendedNegotiation: RetrieveExtendedNegotiation? = nil
+    ) {
         self.callingAETitle = callingAETitle
         self.calledAETitle = calledAETitle
         self.timeout = timeout
@@ -277,6 +338,8 @@ public struct RetrieveConfiguration: Sendable, Hashable {
         self.informationModel = informationModel
         self.tlsConfiguration = tlsConfiguration
         self.userIdentity = userIdentity
+        self.priority = priority
+        self.extendedNegotiation = extendedNegotiation
     }
 
     /// Builds the exact association configuration used by retrieve operations.
@@ -879,14 +942,18 @@ public enum DICOMRetrieveService {
         onProgress: (@Sendable (RetrieveProgress) -> Void)?
     ) async throws -> RetrieveResult {
         
-        // Validate the identifier against the information model (PS3.4 C.4.2.1.4.1)
-        try validateRetrieveKeys(keys, informationModel: configuration.informationModel)
+        // Validate the identifier against the information model (PS3.4 C.4.2.1.4.1);
+        // with relational-retrieval requested the above-level keys may be absent
+        // (PS3.4 C.4.2.2.2.1) — checked again once the SCP has answered.
+        try validateRetrieveKeys(keys, informationModel: configuration.informationModel,
+                                 relationalRetrieval: configuration.extendedNegotiation?.relationalRetrieval == true)
         
         // Create association configuration
         let associationConfig = configuration.associationConfiguration(host: host, port: port)
         
         // Create association
         let association = Association(configuration: associationConfig)
+        let moveSOPClassUID = configuration.informationModel.moveSOPClassUID
         
         // Create presentation context for C-MOVE
         let presentationContext = try PresentationContext(
@@ -899,14 +966,22 @@ public enum DICOMRetrieveService {
         )
         
         do {
-            // Establish association
-            let negotiated = try await association.request(presentationContexts: [presentationContext])
+            // Establish association (PS3.4 C.5.2: optionally one SOP Class
+            // Extended Negotiation Sub-Item for the retrieval SOP Class)
+            let negotiated = try await association.request(
+                presentationContexts: [presentationContext],
+                extendedNegotiations: configuration.extendedNegotiation.map { [$0.subItem(for: moveSOPClassUID)] } ?? []
+            )
             
             // Verify that the SOP Class was accepted
             guard negotiated.isContextAccepted(1) else {
                 try await association.abort()
                 throw DICOMNetworkError.sopClassNotSupported(configuration.informationModel.moveSOPClassUID)
             }
+
+            try await requireRelationalRetrievalIfNeeded(
+                keys: keys, configuration: configuration, negotiated: negotiated,
+                sopClassUID: moveSOPClassUID, association: association)
             
             // Get the accepted transfer syntax
             let acceptedTransferSyntax = negotiated.acceptedTransferSyntax(forContextID: 1) 
@@ -921,6 +996,7 @@ public enum DICOMRetrieveService {
                 moveDestination: moveDestination,
                 transferSyntax: acceptedTransferSyntax,
                 sopClassUID: configuration.informationModel.moveSOPClassUID,
+                priority: configuration.priority,
                 onProgress: onProgress
             )
             
@@ -945,17 +1021,18 @@ public enum DICOMRetrieveService {
         moveDestination: String,
         transferSyntax: String,
         sopClassUID: String,
+        priority: DIMSEPriority = .medium,
         onProgress: (@Sendable (RetrieveProgress) -> Void)?
     ) async throws -> RetrieveResult {
         // Build the retrieve identifier data set
         let identifierData = buildRetrieveIdentifier(keys: keys, transferSyntax: transferSyntax)
         
-        // Create C-MOVE request
+        // Create C-MOVE request (Priority (0000,0700), PS3.7 Table 9.3-9)
         let request = CMoveRequest(
             messageID: 1,
             affectedSOPClassUID: sopClassUID,
             moveDestination: moveDestination,
-            priority: .medium,
+            priority: priority,
             presentationContextID: presentationContextID
         )
         
@@ -1074,8 +1151,10 @@ public enum DICOMRetrieveService {
         AsyncStream { continuation in
             let producer = Task {
                 do {
-                    // Validate the identifier against the information model (PS3.4 C.4.2.1.4.1)
-                    try validateRetrieveKeys(keys, informationModel: configuration.informationModel)
+                    // Validate the identifier against the information model (PS3.4 C.4.2.1.4.1);
+                    // relational-retrieval relaxes the above-level keys (PS3.4 C.4.3.2.2.1)
+                    try validateRetrieveKeys(keys, informationModel: configuration.informationModel,
+                                             relationalRetrieval: configuration.extendedNegotiation?.relationalRetrieval == true)
 
                     var batches = storageContextBatches(storageSopClasses)
                     if batches.isEmpty { batches = [[]] }
@@ -1195,10 +1274,13 @@ public enum DICOMRetrieveService {
         // willing to receive as a C-STORE sub-operation.
         let roleSelections = proposedStorageUIDs.map { SCPSCURoleSelection.both($0) }
 
-        // Establish association
+        // Establish association (PS3.4 C.5.3: optionally one SOP Class
+        // Extended Negotiation Sub-Item for the retrieval SOP Class)
+        let getSOPClassUID = configuration.informationModel.getSOPClassUID
         let negotiated = try await association.request(
             presentationContexts: presentationContexts,
-            roleSelections: roleSelections
+            roleSelections: roleSelections,
+            extendedNegotiations: configuration.extendedNegotiation.map { [$0.subItem(for: getSOPClassUID)] } ?? []
         )
 
         // Verify that the C-GET SOP Class was accepted
@@ -1208,6 +1290,10 @@ public enum DICOMRetrieveService {
                 configuration.informationModel.getSOPClassUID
             )
         }
+
+        try await requireRelationalRetrievalIfNeeded(
+            keys: keys, configuration: configuration, negotiated: negotiated,
+            sopClassUID: getSOPClassUID, association: association)
 
         // Storage contexts usable for C-STORE sub-operations: when the SCP
         // answered the role selection (PS3.7 D.3.3.4.2) only contexts whose
@@ -1235,6 +1321,7 @@ public enum DICOMRetrieveService {
             keys: keys,
             transferSyntax: acceptedTransferSyntax,
             sopClassUID: configuration.informationModel.getSOPClassUID,
+            priority: configuration.priority,
             negotiated: negotiated,
             usableStorageContextIDs: usableStorageContextIDs,
             continuation: continuation
@@ -1253,6 +1340,7 @@ public enum DICOMRetrieveService {
         keys: RetrieveKeys,
         transferSyntax: String,
         sopClassUID: String,
+        priority: DIMSEPriority = .medium,
         negotiated: NegotiatedAssociation,
         usableStorageContextIDs: Set<UInt8>? = nil,
         continuation: AsyncStream<GetEvent>.Continuation
@@ -1260,11 +1348,11 @@ public enum DICOMRetrieveService {
         // Build the retrieve identifier data set
         let identifierData = buildRetrieveIdentifier(keys: keys, transferSyntax: transferSyntax)
         
-        // Create C-GET request
+        // Create C-GET request (Priority (0000,0700), PS3.7 Table 9.3-6)
         let request = CGetRequest(
             messageID: 1,
             affectedSOPClassUID: sopClassUID,
-            priority: .medium,
+            priority: priority,
             presentationContextID: presentationContextID
         )
         
@@ -1387,7 +1475,8 @@ public enum DICOMRetrieveService {
     /// - Throws: `DICOMNetworkError.invalidState` naming the missing key.
     static func validateRetrieveKeys(
         _ keys: RetrieveKeys,
-        informationModel: QueryRetrieveInformationModel
+        informationModel: QueryRetrieveInformationModel,
+        relationalRetrieval: Bool = false
     ) throws {
         guard informationModel.supportsLevel(keys.level) else {
             throw DICOMNetworkError.invalidState(
@@ -1395,6 +1484,13 @@ public enum DICOMRetrieveService {
             )
         }
         let level = keys.level.rawValue
+        if relationalRetrieval {
+            // PS3.4 C.4.2.2.2.1 / C.4.3.2.2.1: relational-retrieve removes the
+            // requirement for Unique Keys of the levels above the retrieve level;
+            // the retrieve level's own Unique Key is still needed.
+            try validateRetrieveLevelUniqueKey(keys, informationModel: informationModel)
+            return
+        }
         if informationModel == .patientRoot {
             guard keys.value(for: .patientID) != nil else {
                 throw DICOMNetworkError.invalidState(
@@ -1423,6 +1519,65 @@ public enum DICOMRetrieveService {
                     "An IMAGE-level retrieve requires Series Instance UID (0020,000E) (PS3.4 C.4.2.1.4.1)"
                 )
             }
+        }
+    }
+
+    /// The retrieve level's own Unique Key (PS3.4 C.4.2.2.1: Patient ID at
+    /// PATIENT, Study / Series / SOP Instance UID below).
+    static func validateRetrieveLevelUniqueKey(
+        _ keys: RetrieveKeys,
+        informationModel: QueryRetrieveInformationModel
+    ) throws {
+        let uniqueKey: Tag
+        switch keys.level {
+        case .patient: uniqueKey = .patientID
+        case .study:   uniqueKey = .studyInstanceUID
+        case .series:  uniqueKey = .seriesInstanceUID
+        case .image:   uniqueKey = .sopInstanceUID
+        }
+        guard keys.value(for: uniqueKey) != nil else {
+            throw DICOMNetworkError.invalidState(
+                "A \(keys.level.rawValue)-level retrieve requires the Unique Key of that level \(uniqueKey) (PS3.4 C.4.2.2.1)"
+            )
+        }
+    }
+
+    /// Whether the identifier relies on relational-retrieval, i.e. omits a
+    /// Unique Key of a level above the retrieve level (PS3.4 C.4.2.2.2.1).
+    static func identifierNeedsRelationalRetrieval(
+        _ keys: RetrieveKeys,
+        informationModel: QueryRetrieveInformationModel
+    ) -> Bool {
+        (try? validateRetrieveKeys(keys, informationModel: informationModel)) == nil
+    }
+
+    /// After association negotiation: when the identifier omits above-level
+    /// Unique Keys and the SCP did not accept relational-retrieval (no
+    /// sub-item returned, or byte 1 = 0 — PS3.4 C.5.2.1, Table C.5-4), the
+    /// request is not sent; the association is released and the error names
+    /// the missing key.
+    private static func requireRelationalRetrievalIfNeeded(
+        keys: RetrieveKeys,
+        configuration: RetrieveConfiguration,
+        negotiated: NegotiatedAssociation,
+        sopClassUID: String,
+        association: Association
+    ) async throws {
+        guard let proposed = configuration.extendedNegotiation, proposed.relationalRetrieval,
+              identifierNeedsRelationalRetrieval(keys, informationModel: configuration.informationModel) else {
+            return
+        }
+        let inEffect = RetrieveExtendedNegotiation.negotiated(
+            proposed: proposed,
+            accepted: negotiated.acceptPDU.extendedNegotiations,
+            sopClassUID: sopClassUID)
+        guard inEffect.relationalRetrieval else {
+            try? await association.release()
+            throw DICOMNetworkError.invalidState(
+                "The SCP did not accept relational-retrieval for \(sopClassUID) (PS3.4 C.5.2.1, Table C.5-4), "
+                + "so the identifier must carry the Unique Keys of the levels above \(keys.level.rawValue) "
+                + "(PS3.4 C.4.2.2.1)"
+            )
         }
     }
 
