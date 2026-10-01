@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-ai SR, enhance and GSPS output verified against DICOM 2026a (2026-10-01)
+
+- **`dicom-ai classify|detect --format dicom-sr`** writes a PS3.16 TID 1500 Measurement Report built by
+  `MeasurementReportBuilder` instead of a hand-built Comprehensive SR whose title codes (129007 / 129008,
+  DCM) are not in PS3.16 Table D-1, whose confidence used (121072, DCM), which is "Impressions" (retired),
+  and whose image reference used (121191, DCM) "Referenced Segment". The report has the title
+  (126000, DCM, "Imaging Measurement Report") (CID 7021), an Image Library with the source image, an
+  Imaging Measurements container carrying TID 4019 Algorithm Name (111001) and Algorithm Version (111003),
+  and one Measurement Group per prediction/detection (Tracking Identifier / UID, the label as TEXT
+  (121071, DCM, "Finding"), and NUM (111012, DCM, "Certainty of Finding") in (%, UCUM, "Percent") with
+  value 0-100, was 0-1 labelled percent) inferred from the source IMAGE or, for a detection, from the
+  bounding-box SCOORD POLYLINE selected from it. The root carries Content Template Sequence DCMR/1500
+  (PS3.3 Table C.18.8-1); the Type 2 Patient, General Study and General Equipment attributes are written.
+  The output is now a PS3.10 file (preamble + File Meta Information), as is the `enhance` output.
+- **New option `--algorithm-version`** (classify, detect, segment, enhance; used by dicom-sr): the Algorithm Version written
+  in the SR (TID 4019 row 2, M). Default: the CoreML model's version metadata, else `unknown`.
+- **`dicom-ai enhance`** writes a derived image of the source SOP Class that keeps the source's other
+  attributes (it kept 12), with Image Type DERIVED\SECONDARY (PS3.3 C.7.6.1.1.2), a new SOP Instance and
+  Series Instance UID, Derivation Description and a Source Image Sequence Item with Purpose of Reference
+  (121322, DCM, "Source image for image processing operation") (CID 7202); a multi-frame source keeps only
+  the processed frame.
+- **`dicom-ai segment`** writes the model file name as Segment Algorithm Name (was the fixed text
+  "AI Model"). The GSPS generator (no subcommand calls it yet) now goes through
+  `GrayscalePresentationStateBuilder`. 6 new tests in `dicom-aiTests`.
+
 ### Fixed — dicom-report SR rendering verified against DICOM 2026a (2026-10-01)
 
 - **dicom-report** prints a value for every Value Type of PS3.3 Table C.17.3-7: DATE, TIME, UIDREF, PNAME,
