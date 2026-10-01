@@ -1,5 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-10-01 — the --profile help and error text name only identifiers from PS3.11 2026a Tables A.1-1, B.1-1, C.1-1, D.1-1, E.1-1, G.1-1, H.1-1 to N.1-1 (64 identifiers extracted by script; STD-GEN-DVD and STD-GEN-USB are family headings, not identifiers, D29); the accepted values are those of DICOMCore.DICOMDIRProfile
-// NEMA-verified: 2026a, checked 2026-10-01 — create derives the default File-set ID per PS3.10 2026a 8.1/8.5 and warns on File IDs outside 8.2/8.5; validate reports each failure with its PS3.10 8.1, 8.2, 8.5, 8.6 / PS3.3 Table F.3-2, F.3-3, F.4-1 clause and --check-files tests every Referenced File ID (0004,1500) on disk (8.6); dump record labels are the 35 Directory Record Type terms of PS3.3 Table F.4-1 (DICOMCore.DirectoryRecordType)
+// NEMA-verified: 2026a, checked 2026-10-01 — create derives the default File-set ID per PS3.10 2026a 8.1/8.5; File IDs outside 8.2/8.5 and SOP Classes / Transfer Syntaxes outside the profile's PS3.11 2026a table are refused by the engine (D70, D131), --copy-to assigns conformant File IDs, no DICOMDIR is written when every file is refused (PS3.11 D.3.3); validate reports each failure with its PS3.10 8.1, 8.2, 8.5, 8.6 / PS3.3 Table F.3-2, F.3-3, F.4-1 clause and --check-files tests every Referenced File ID (0004,1500) on disk (8.6); dump record labels are the 35 Directory Record Type terms of PS3.3 Table F.4-1 (DICOMCore.DirectoryRecordType)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -70,6 +70,9 @@ extension DICOMDCMDIR {
         @Flag(name: .long, help: "Include only valid DICOM files")
         var strict: Bool = false
         
+        @Option(name: .long, help: "Copy the files into a new File-set in this folder under File IDs the tool assigns, DICOM\\PTnnnnnn\\STnnnnnn\\SEnnnnnn\\IMnnnnnn (PS3.10 8.2, 8.5), and write the DICOMDIR there (default output: <folder>/DICOMDIR). Without it, files are indexed in place and a path that is not a PS3.10 File ID (e.g. img1.dcm) is refused")
+        var copyTo: String?
+        
         @Flag(name: .long, help: "Verbose output")
         var verbose: Bool = false
         
@@ -90,7 +93,15 @@ extension DICOMDCMDIR {
             // directory (or a trailing-slash path), the DICOMDIR is written INSIDE it;
             // writing onto a directory path otherwise fails ("couldn't be saved in the
             // folder …"). Default: a DICOMDIR inside the input directory.
-            let outputPath = DICOMDIRWorkflow.resolvedDICOMDIRPath(output ?? (inputDirectory + "/DICOMDIR"))
+            let copyRoot = copyTo.map { URL(fileURLWithPath: $0) }
+            let outputPath = DICOMDIRWorkflow.resolvedDICOMDIRPath(
+                output ?? ((copyTo ?? inputDirectory) + "/DICOMDIR"))
+            // The File IDs are relative to the DICOMDIR's folder (PS3.10 8.6): with --copy-to
+            // the DICOMDIR goes in the root of the new File-set.
+            if let copyRoot, URL(fileURLWithPath: outputPath).deletingLastPathComponent().standardizedFileURL.path
+                != copyRoot.standardizedFileURL.path {
+                throw ValidationError("With --copy-to the DICOMDIR is written in that folder (PS3.10 8.6); omit --output or use --output \(copyRoot.path)/DICOMDIR")
+            }
             
             // Determine file-set ID
             let fsID: String
@@ -134,10 +145,22 @@ extension DICOMDCMDIR {
             do {
                 result = try DICOMDIRWorkflow.buildDirectory(
                     fromFilesIn: inputURL, recursive: recursive, strict: strict,
-                    fileSetID: fsID, profile: dicomProfile,
+                    fileSetID: fsID, profile: dicomProfile, copyingInto: copyRoot,
                     verbose: verbose, progress: { print($0, terminator: "") })
             } catch DICOMDIRWorkflow.WorkflowError.noDICOMFiles {
                 throw ValidationError("No DICOM files found in directory: \(inputDirectory)")
+            }
+
+            // Every file refused (PS3.10 8.2/8.5 File ID, PS3.11 profile table, duplicate
+            // instance): a DICOMDIR without directory records is not written (PS3.11 D.3.3).
+            guard result.processed > 0 else {
+                var message = "Error: no file could be indexed; no DICOMDIR written\n"
+                for failure in result.failures { message += "  \(failure.file): \(failure.reason)\n" }
+                if copyTo == nil {
+                    message += "Use --copy-to <folder> to copy the files into a new File-set under conformant File IDs (PS3.10 8.2, 8.5)\n"
+                }
+                FileHandle.standardError.write(Data(message.utf8))
+                throw ExitCode.failure
             }
 
             // Write to file (creating intermediate directories so a fresh --output
@@ -150,14 +173,8 @@ extension DICOMDCMDIR {
             // Print the shared summary block.
             print(DICOMDIRWorkflow.renderCreateSummary(result, outputPath: outputPath), terminator: "")
 
-            // File IDs are the file paths relative to the input directory; PS3.10 8.2/8.5
-            // limit them to 8 components of 8 characters from A-Z, 0-9, _.
-            let badIDs = result.directory.allRecords().compactMap(\.referencedFileID)
-                .filter { !FileSetRules.fileIDViolations($0).isEmpty }
-            if let first = badIDs.first {
-                FileHandle.standardError.write(Data(("Warning: \(badIDs.count) File ID(s) do not conform to PS3.10 8.2/8.5 "
-                    + "(at most 8 components of 1-8 characters A-Z, 0-9, _), e.g. \(first.joined(separator: "\\")); "
-                    + "rename the files before writing them to media\n").utf8))
+            if result.failed > 0 {
+                FileHandle.standardError.write(Data("Warning: \(result.failed) file(s) not indexed (listed in the summary)\n".utf8))
             }
         }
     }

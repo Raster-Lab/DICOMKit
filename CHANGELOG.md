@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, DICOMDIR batch (2026-10-01, DICOM 2026a)
+
+- **`DICOMDirectory.Builder` indexes every instance** (D129; PS3.3 2026a F.4, Table F.4-1): a second image of a
+  series, or a second series of a study, used to be added to a copy of the (value-type) record that was never written
+  back, so only the first image per series and the first series per study were indexed. Every instance now gets its
+  own IMAGE record, records keep the order the files were added (was dictionary order), and a second file with an
+  already indexed SOP Instance UID is refused.
+- **The Application Profile is enforced** (D70; PS3.11 2026a Tables A.3-1, B.3-1, C.3-1, D.3-1, E.3-1, G.3-1, H.3-1,
+  I.3-1, J.3-1, K.3-1, L.3-1, L.3-2, M.3-1, N.3-1, generated into `DICOMDIRProfileTables.swift` by the new
+  `Scripts/generate_dicomdir_profile_rules.py`): `addFile` throws `DICOMDIRProfileRules.Refusal` naming the table
+  when the profile does not list the SOP Class or Transfer Syntax — e.g. STD-GEN-CD / -DVD-RAM / -BD admit Explicit
+  VR Little Endian only, -JPEG profiles add JPEG Lossless SV1 / Baseline / Extended, -J2K profiles JPEG 2000, MPEG
+  profiles their one MPEG syntax; the general profiles admit the Media Storage SOP Classes of PS3.4 Tables B.5-1 and
+  GG.3-1 only. Behaviour change: an Implicit VR or compressed file is no longer indexed under the default STD-GEN-CD.
+- **File IDs follow PS3.10 8.2 / 8.5** (D131): `addFile` refuses a Referenced File ID that is not 1-8 components of
+  1-8 characters A-Z, 0-9, _ (in-place `create` of `img1.dcm` is refused; the summary lists each refused file and
+  why). New `DICOMDIRWorkflow.buildDirectory(..., copyingInto:)` and `dicom-dcmdir create --copy-to <folder>` copy
+  the files into a new File-set under assigned File IDs `DICOM\PTnnnnnn\STnnnnnn\SEnnnnnn\IMnnnnnn`. `create` exits 1
+  and writes no DICOMDIR when every file is refused (PS3.11 D.3.3). `CreateResult` / `UpdateResult` gain `failures`.
+- **`dicom-dcmdir dump --verbose` labels record keys with their PS3.6 names** (D128): `(0010,0020) Patient ID: …`
+  instead of `(0010,0020): …`; "Consistent: true" / "Yes" is now `File-set Consistency Flag: 0000H (no known
+  inconsistencies)` (PS3.3 2026a Table F.3-3) in tree, text and the validate report. JSON keys are unchanged.
+
 ### Fixed — deferred rows, DICOMweb client and console output (2026-10-01, DICOM 2026a)
 
 - **QIDO table labels are PS3.6 names** (D105): `QIDOResultFormatter` tables say Study Instance UID, Patient's Name,

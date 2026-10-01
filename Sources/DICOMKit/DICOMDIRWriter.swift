@@ -1,4 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a F.3.2.2 offsets and Table F.3-3 record keys; Implementation Class UID is no longer the Deflated Transfer Syntax UID; (0002,0000) is computed by DICOMFile.write() (PS3.10 Table 7.1-1)
+// NEMA-verified: 2026a, checked 2026-10-01 — Builder: one IMAGE record per instance under its PATIENT/STUDY/SERIES records (PS3.3 2026a F.4, Table F.4-1; was first image per series, D129); refuses File IDs outside PS3.10 2026a 8.2/8.5 (D131) and SOP Classes / Transfer Syntaxes the profile's PS3.11 2026a table does not list (DICOMDIRProfileRules, D70)
 import Foundation
 import DICOMCore
 
@@ -259,11 +260,21 @@ public struct DICOMDIRWriter {
 
 extension DICOMDirectory {
     /// Builder for constructing DICOMDIR from DICOM files
+    ///
+    /// Every added instance gets its own IMAGE record under its PATIENT / STUDY / SERIES
+    /// records (PS3.3 F.4, Table F.4-1); records keep the order in which they were first
+    /// added. `addFile` refuses (throws ``DICOMDIRProfileRules/Refusal``) a File ID that
+    /// breaks PS3.10 8.2 / 8.5, a SOP Class or Transfer Syntax the profile's PS3.11 table
+    /// does not list, and a SOP Instance that is already indexed.
     public struct Builder {
         private var fileSetID: String
         private var profile: DICOMDIRProfile
         private var specificCharacterSet: String?
-        private var patients: [String: DirectoryRecord] = [:]
+        /// PATIENT records in first-added order (DirectoryRecord is a value type: children
+        /// are always mutated in place through these indices, never through a copy).
+        private var patients: [DirectoryRecord] = []
+        private var patientIndex: [String: Int] = [:]
+        private var indexedInstances: [String: [String]] = [:]
         
         /// Initialize a new DICOMDIR builder
         ///
@@ -279,8 +290,11 @@ extension DICOMDirectory {
         ///
         /// - Parameters:
         ///   - file: DICOM file to add
-        ///   - relativePath: Relative path to the file from DICOMDIR location
-        /// - Throws: DICOMError if file cannot be added
+        ///   - relativePath: Referenced File ID components (PS3.10 8.2: 1-8 components of
+        ///     1-8 characters A-Z, 0-9, _), relative to the DICOMDIR's directory
+        /// - Throws: DICOMError if a record key is missing; DICOMDIRProfileRules.Refusal if
+        ///   the File ID, the SOP Class / Transfer Syntax (PS3.11 profile table) or a
+        ///   duplicate SOP Instance makes the file unfit for this File-set
         public mutating func addFile(_ file: DICOMFile, relativePath: [String]) throws {
             let dataSet = file.dataSet
             
@@ -315,103 +329,83 @@ extension DICOMDirectory {
             }
             let transferSyntaxUID = file.fileMetaInformation.string(for: .transferSyntaxUID) ?? TransferSyntax.explicitVRLittleEndian.uid
             let instanceNumber = dataSet.string(for: .instanceNumber)
-            
-            // Get or create patient record
-            var patient: DirectoryRecord
-            if let existingPatient = patients[patientID] {
-                patient = existingPatient
+
+            // PS3.10 8.2 / 8.5: the Referenced File ID (0004,1500) must be a conformant File ID.
+            let problems = DICOMDIRProfileRules.fileIDProblems(relativePath)
+            guard problems.isEmpty else {
+                throw DICOMDIRProfileRules.Refusal.nonConformantFileID(fileID: relativePath, problems: problems)
+            }
+            // PS3.11: the profile is a conformance claim; refuse what its table does not list.
+            if let refusal = DICOMDIRProfileRules.refusal(
+                sopClassUID: sopClassUID, transferSyntaxUID: transferSyntaxUID, profile: profile) {
+                throw refusal
+            }
+            if let existing = indexedInstances[sopInstanceUID] {
+                throw DICOMDIRProfileRules.Refusal.duplicateSOPInstance(sopInstanceUID: sopInstanceUID, fileID: existing)
+            }
+
+            // PATIENT (root entity) — found or appended.
+            let p: Int
+            if let found = patientIndex[patientID] {
+                p = found
             } else {
-                patient = DirectoryRecord.patient(patientID: patientID, patientName: patientName)
-                patients[patientID] = patient
+                p = patients.count
+                patients.append(DirectoryRecord.patient(patientID: patientID, patientName: patientName))
+                patientIndex[patientID] = p
             }
-            
-            // Find or create study record
-            var study: DirectoryRecord?
-            for (index, child) in patient.children.enumerated() {
-                if child.recordType == .study,
-                   child.attribute(for: .studyInstanceUID)?.stringValue == studyInstanceUID {
-                    study = patient.children[index]
-                    break
-                }
-            }
-            
-            if study == nil {
-                study = DirectoryRecord.study(
+
+            // STUDY under that PATIENT.
+            let s: Int
+            if let found = patients[p].children.firstIndex(where: {
+                $0.recordType == .study && $0.attribute(for: .studyInstanceUID)?.stringValue == studyInstanceUID
+            }) {
+                s = found
+            } else {
+                s = patients[p].children.count
+                patients[p].addChild(DirectoryRecord.study(
                     studyInstanceUID: studyInstanceUID,
                     studyDate: studyDate,
                     studyTime: studyTime,
                     studyDescription: studyDescription
-                )
+                ))
             }
-            
-            // Find or create series record
-            var series: DirectoryRecord?
-            if var currentStudy = study {
-                for (index, child) in currentStudy.children.enumerated() {
-                    if child.recordType == .series,
-                       child.attribute(for: .seriesInstanceUID)?.stringValue == seriesInstanceUID {
-                        series = currentStudy.children[index]
-                        break
-                    }
-                }
-                
-                if series == nil {
-                    series = DirectoryRecord.series(
-                        seriesInstanceUID: seriesInstanceUID,
-                        modality: modality,
-                        seriesNumber: seriesNumber,
-                        seriesDescription: seriesDescription
-                    )
-                }
-                
-                // Create image record
-                let image = DirectoryRecord.image(
-                    referencedFileID: relativePath,
-                    sopClassUID: sopClassUID,
-                    sopInstanceUID: sopInstanceUID,
-                    transferSyntaxUID: transferSyntaxUID,
-                    instanceNumber: instanceNumber
-                )
-                
-                // Add image to series
-                if var currentSeries = series {
-                    currentSeries.addChild(image)
-                    series = currentSeries
-                }
-                
-                // Update study with series
-                if let currentSeries = series {
-                    let seriesExists = currentStudy.children.contains { $0.recordType == .series && $0.attribute(for: .seriesInstanceUID)?.stringValue == seriesInstanceUID }
-                    if !seriesExists {
-                        currentStudy.addChild(currentSeries)
-                    }
-                }
-                
-                study = currentStudy
+
+            // SERIES under that STUDY.
+            let r: Int
+            if let found = patients[p].children[s].children.firstIndex(where: {
+                $0.recordType == .series && $0.attribute(for: .seriesInstanceUID)?.stringValue == seriesInstanceUID
+            }) {
+                r = found
+            } else {
+                r = patients[p].children[s].children.count
+                patients[p].children[s].addChild(DirectoryRecord.series(
+                    seriesInstanceUID: seriesInstanceUID,
+                    modality: modality,
+                    seriesNumber: seriesNumber,
+                    seriesDescription: seriesDescription
+                ))
             }
-            
-            // Update patient with study
-            if let currentStudy = study {
-                let studyExists = patient.children.contains { $0.recordType == .study && $0.attribute(for: .studyInstanceUID)?.stringValue == studyInstanceUID }
-                if !studyExists {
-                    patient.addChild(currentStudy)
-                }
-            }
-            
-            patients[patientID] = patient
+
+            // One IMAGE record per instance, mutated in place (PS3.3 F.4, Table F.4-1).
+            patients[p].children[s].children[r].addChild(DirectoryRecord.image(
+                referencedFileID: relativePath,
+                sopClassUID: sopClassUID,
+                sopInstanceUID: sopInstanceUID,
+                transferSyntaxUID: transferSyntaxUID,
+                instanceNumber: instanceNumber
+            ))
+            indexedInstances[sopInstanceUID] = relativePath
         }
         
         /// Build the final DICOMDIR
         ///
         /// - Returns: Complete DICOMDIR structure
         public func build() -> DICOMDirectory {
-            let rootRecords = Array(patients.values)
-            
             return DICOMDirectory(
                 fileSetID: fileSetID,
                 profile: profile,
                 specificCharacterSet: specificCharacterSet,
-                rootRecords: rootRecords
+                rootRecords: patients
             )
         }
     }

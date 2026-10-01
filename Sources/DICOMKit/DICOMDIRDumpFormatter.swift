@@ -1,6 +1,7 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (text, tree and JSON presentation of a DICOMDirectory)
+// NEMA-verified: 2026a, checked 2026-10-01 — --verbose record keys are labelled "(gggg,eeee) <PS3.6 2026a Table 6-1 / 8-1 Attribute Name>" from DICOMDictionary (D128); the File-set Consistency Flag (0004,1212) is printed under its PS3.6 name with the PS3.3 2026a Table F.3-3 Enumerated Value text (0000H "no known inconsistencies"; FFFFH "shall never be present")
 import Foundation
 import DICOMCore
+import DICOMDictionary
 
 /// Shared renderer for `dicom-dcmdir dump` output.
 ///
@@ -36,13 +37,31 @@ public enum DICOMDIRDumpFormatter {
         }
     }
 
+    // MARK: - Labels
+
+    /// `(gggg,eeee) <Attribute Name>` with the PS3.6 Attribute Name of the tag, or the bare
+    /// tag when the data dictionary does not define it (e.g. a private attribute).
+    public static func attributeLabel(_ tag: Tag) -> String {
+        guard let name = DataElementDictionary.lookup(tag: tag)?.name, !name.isEmpty else {
+            return tag.description
+        }
+        return "\(tag.description) \(name)"
+    }
+
+    /// The File-set Consistency Flag (0004,1212) value with its PS3.3 Table F.3-3 meaning.
+    public static func consistencyFlagText(_ isConsistent: Bool) -> String {
+        isConsistent
+            ? "0000H (no known inconsistencies)"
+            : "FFFFH (retired value; PS3.3 Table F.3-3: shall never be present)"
+    }
+
     // MARK: - Tree
 
     private static func renderTree(_ directory: DICOMDirectory, verbose: Bool) -> String {
         var out = ""
         out += "DICOMDIR: \(directory.fileSetID)\n"
         out += "├─ Profile: \(directory.profile.rawValue)\n"
-        out += "├─ Consistent: \(directory.isConsistent)\n"
+        out += "├─ File-set Consistency Flag: \(consistencyFlagText(directory.isConsistent))\n"
         out += "└─ Records:\n"
         for (index, patient) in directory.rootRecords.enumerated() {
             let isLast = index == directory.rootRecords.count - 1
@@ -60,7 +79,7 @@ public enum DICOMDIRDumpFormatter {
             for (tag, element) in record.attributes.sorted(by: { $0.key < $1.key }) {
                 if let stringValue = element.stringValue {
                     let attrPrefix = isLast ? "    " : "│   "
-                    out += "\(prefix)\(attrPrefix)    \(tag): \(stringValue)\n"
+                    out += "\(prefix)\(attrPrefix)    \(attributeLabel(tag)): \(stringValue)\n"
                 }
             }
         }
@@ -138,7 +157,7 @@ public enum DICOMDIRDumpFormatter {
         out += "====================\n\n"
         out += "File-set ID: \(directory.fileSetID.isEmpty ? "<none>" : directory.fileSetID)\n"
         out += "Profile: \(directory.profile.rawValue)\n"
-        out += "Consistent: \(directory.isConsistent)\n\n"
+        out += "File-set Consistency Flag: \(consistencyFlagText(directory.isConsistent))\n\n"
         let stats = directory.statistics()
         out += "Statistics:\n"
         out += "  Patients: \(stats.patientCount)\n"
@@ -155,9 +174,9 @@ public enum DICOMDIRDumpFormatter {
                 if let filePath = record.referencedFilePath() {
                     out += "File: \(filePath)\n"
                 }
-                for (tag, element) in record.attributes {
+                for (tag, element) in record.attributes.sorted(by: { $0.key < $1.key }) {
                     if let value = element.stringValue {
-                        out += "  \(tag): \(value)\n"
+                        out += "  \(attributeLabel(tag)): \(value)\n"
                     }
                 }
             }

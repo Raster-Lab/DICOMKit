@@ -31,6 +31,9 @@ dicom-dcmdir create study_folder/ \
 
 # Strict mode (only include valid DICOM files)
 dicom-dcmdir create study_folder/ --output DICOMDIR --strict --verbose
+
+# Files named like img1.dcm: copy them into a new File-set with assigned File IDs
+dicom-dcmdir create study_folder/ --copy-to media/
 ```
 
 ### Validate a DICOMDIR
@@ -67,6 +70,7 @@ dicom-dcmdir dump DICOMDIR --format text --verbose
 - `--output, -o <path>`: Output DICOMDIR path (default: DICOMDIR in input directory)
 - `--file-set-id <id>`: File-set ID (0004,1130), up to 16 characters A-Z, 0-9, _ (PS3.10 8.1, 8.5); a value outside these rules is refused with exit 1 (it was written with a warning before 2026-10-01) (default: the directory name upper-cased, other characters replaced by `_`, cut to 16)
 - `--profile <profile>`: PS3.11 Application Profile identifier (default STD-GEN-CD; e.g. STD-GEN-DVD-JPEG, STD-GEN-USB-JPEG). The deprecated spellings STD-GEN-DVD, STD-GEN-USB, STD-GEN-SEC, STD-CTMR-XXXX and STD-US-XXXX are not PS3.11 identifiers; they are still accepted, print a stderr warning, and write STD-GEN-DVD-JPEG, STD-GEN-USB-JPEG, STD-GEN-SEC-CD, STD-CTMR-CD and STD-US-ID-SF-CDR respectively
+- `--copy-to <folder>`: Copy every accepted file into a new File-set in `<folder>` under File IDs the tool assigns, `DICOM\PTnnnnnn\STnnnnnn\SEnnnnnn\IMnnnnnn` (PS3.10 8.2, 8.5), and write `<folder>/DICOMDIR`. Without it the files are indexed where they are, and a file whose path relative to the input directory is not a PS3.10 File ID (e.g. `img1.dcm`) is refused
 - `--recursive`: Recursively scan subdirectories (default: true)
 - `--strict`: Include only valid DICOM files
 - `--verbose`: Verbose output showing progress
@@ -75,7 +79,7 @@ dicom-dcmdir dump DICOMDIR --format text --verbose
 
 - `--check-files`: Verify that every Referenced File ID (0004,1500) names a file in the File-set (PS3.10 8.6)
 
-`validate` also checks the File-set ID (PS3.10 8.1, 8.5) and every Referenced File ID (at most 8 components of 1 to 8 characters A-Z, 0-9, _; PS3.10 8.2, 8.5; each File referenced by at most one record, PS3.3 Table F.3-3) and names the clause each failure breaks. `create` warns when the file names it indexes are not valid File IDs: the File IDs are the paths relative to the input directory, so name the files accordingly (e.g. `DIR00001/IMG00001`).
+`validate` also checks the File-set ID (PS3.10 8.1, 8.5) and every Referenced File ID (at most 8 components of 1 to 8 characters A-Z, 0-9, _; PS3.10 8.2, 8.5; each File referenced by at most one record, PS3.3 Table F.3-3) and names the clause each failure breaks. `create` refuses (lists in the summary, and exits 1 when nothing is left) a file whose path relative to the input directory is not a valid File ID (name the files e.g. `DIR00001/IMG00001`, or use `--copy-to`), a SOP Class or Transfer Syntax the chosen profile's PS3.11 table does not list (e.g. STD-GEN-CD: Explicit VR Little Endian only, Table D.3-1; -JPEG profiles add JPEG Lossless SV1 / Baseline / Extended, -J2K profiles JPEG 2000, Tables H.3-1, J.3-1, M.3-1), and a second file with an already indexed SOP Instance UID. Every instance gets its own IMAGE record.
 - `--detailed`: Show detailed validation output including record statistics
 
 ### Dump Command

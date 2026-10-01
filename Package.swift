@@ -779,6 +779,9 @@ let package = Package(
                 "DICOMWritingTests.swift",
                 "FileMetaMediaStorageUIDTests.swift",
                 "DICOMDIRReaderRecordTypeTests.swift",
+                // PS3.11 profile tables, PS3.10 8.2/8.5 File IDs, one record per instance,
+                // PS3.6 names in dump (D70, D128, D129, D131, 2026-10-01).
+                "DICOMDIRConformanceTests.swift",
                 "CompressionManagerXYBTests.swift",
                 "StructuredReporting/SpatialCoordinatesClosedPolylineTests.swift",
                 "StructuredReporting/CADSRBuilderValueTypeTests.swift",
