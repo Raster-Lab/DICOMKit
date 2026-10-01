@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — 13 options classified against PS3.6 2026a Table A-1 (--transfer-syntax: 25 catalog targets, 21 UIDs; A-1 keywords 11 match, 3 name another UID (P-item), 7 added in TransferSyntaxKeywords.swift), PS3.3 C.11.2.1.2.1 (--window-width ≥ 1, now enforced), C.7.6.16 (--frame 0-based, P-item), PS3.5 7.8 (--strip-private, engine deferred), PS3.10 7.1 (--force); DICOM output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4 (engine findings deferred)
+// NEMA-verified: 2026a, checked 2026-10-01 — 14 options classified against PS3.6 2026a Table A-1 (--transfer-syntax: 25 catalog targets, 21 UIDs; all 21 A-1 keywords select their A-1 UID — JPEG2000Lossless / HTJ2KLossless / JPEGXLLossless now .90 / .201 / .110 with a stderr note, old meaning renamed …Reversible (P-CONVERT-TS-KEYWORDS); 7 keywords added in TransferSyntaxKeywords.swift), PS3.3 C.11.2.1.2.1 (--window-width ≥ 1, now enforced), C.7.6.6 ("The first Frame shall be denoted as Frame number 1": new 1-based --frame-number, 0-based --frame deprecated, P-CONVERT-FRAME), PS3.5 7.8 (--strip-private, engine deferred), PS3.10 7.1 (--force); directory run exits 1 when a file failed (P-CONVERT-EXIT); DICOM output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4 (engine findings deferred)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -22,12 +22,17 @@ struct DICOMConvert: AsyncParsableCommand {
         discussion: """
             Convert DICOM files to different transfer syntaxes or export pixel data to PNG, JPEG, or TIFF.
             Supports both single file and batch directory conversion.
+
+            Frames are numbered from 1 (PS3.3 C.7.6.6); select one with --frame-number.
+            Exit codes: 0 success; 1 a file failed (a directory run exits 1 when any file
+            failed) or --frame and --frame-number were both given; 64 invalid arguments.
             
             Examples:
               dicom-convert file.dcm --output output.dcm --transfer-syntax ExplicitVRLittleEndian
               dicom-convert ct.dcm --output ct.png --apply-window --window-center 40 --window-width 400
               dicom-convert input/ --output output/ --transfer-syntax ExplicitVRLittleEndian --recursive
               dicom-convert xray.dcm --output xray.jpg --format jpeg --quality 95
+              dicom-convert cine.dcm --output frame3.png --frame-number 3
             """,
         version: "1.0.0"
     )
@@ -56,7 +61,10 @@ struct DICOMConvert: AsyncParsableCommand {
     @Option(name: .long, help: "Window width value (Window Width (0028,1051), at least 1)")
     var windowWidth: Double?
     
-    @Option(name: .long, help: "Export specific frame number (0-indexed)")
+    @Option(name: .long, help: "Frame to export, numbered from 1 (PS3.3 C.7.6.6: the first Frame is Frame number 1; default 1)")
+    var frameNumber: Int?
+
+    @Option(name: .long, help: "deprecated: 0-based index; use --frame-number")
     var frame: Int?
     
     @Flag(name: .long, help: "Process directories recursively")
@@ -86,9 +94,26 @@ struct DICOMConvert: AsyncParsableCommand {
         if let f = frame, f < 0 {
             throw ValidationError("--frame is a 0-based frame index and must be 0 or more")
         }
+        if let n = frameNumber, n < 1 {
+            throw ValidationError("--frame-number must be 1 or more (PS3.3 C.7.6.6: the first Frame is Frame number 1)")
+        }
+        // Both spellings at once: refused with exit 1 (not a usage error).
+        if frame != nil && frameNumber != nil {
+            throw FrameSelectionConflict()
+        }
     }
 
+    /// 0-based index of the frame to export: --frame-number − 1, else the deprecated
+    /// 0-based --frame, else the first frame.
+    var frameIndex: Int { frameNumber.map { $0 - 1 } ?? frame ?? 0 }
+
     mutating func run() async throws {
+        if frame != nil {
+            FileHandle.standardError.write(Data("warning: --frame is deprecated (0-based index); use --frame-number (numbered from 1, PS3.3 C.7.6.6)\n".utf8))
+        }
+        if let token = transferSyntax, let note = TransferSyntaxKeywords.meaningChangeNote(for: token) {
+            FileHandle.standardError.write(Data((note + "\n").utf8))
+        }
         let inputURL = URL(fileURLWithPath: inputPath)
         let outputURL = URL(fileURLWithPath: output)
         
@@ -167,6 +192,10 @@ struct DICOMConvert: AsyncParsableCommand {
         }
 
         print(ConvertConsole.batchSummary(succeeded: successCount, total: fileCount, failed: errorCount), terminator: "")
+        // Like dicom-compress batch: a run with any failed file is a failure.
+        if errorCount > 0 {
+            throw ExitCode.failure
+        }
     }
     
     private func convertFile(input: URL, output: URL) throws {
@@ -221,8 +250,11 @@ struct DICOMConvert: AsyncParsableCommand {
         // Extract pixel data
         let pixelData = try dicomFile.tryPixelData()
 
-        let frameIndex = frame ?? 0
+        let frameIndex = self.frameIndex
         guard frameIndex >= 0 && frameIndex < pixelData.descriptor.numberOfFrames else {
+            if let number = frameNumber {
+                throw ConversionError.invalidFrameNumber(number, pixelData.descriptor.numberOfFrames)
+            }
             throw ConversionError.invalidFrame(frameIndex, pixelData.descriptor.numberOfFrames)
         }
 
@@ -282,6 +314,7 @@ enum ExportFormat: String, ExpressibleByArgument {
 enum ConversionError: LocalizedError {
     case noPixelData
     case invalidFrame(Int, Int)
+    case invalidFrameNumber(Int, Int)
     case renderFailed
     case exportFailed
     case unsupportedPlatform
@@ -292,6 +325,8 @@ enum ConversionError: LocalizedError {
             return "No pixel data found in DICOM file"
         case .invalidFrame(let requested, let total):
             return DICOMConverter.invalidFrameMessage(requested: requested, total: total)
+        case .invalidFrameNumber(let requested, let total):
+            return DICOMConverter.invalidFrameNumberMessage(requested: requested, total: total)
         case .renderFailed:
             return "Failed to render pixel data to image"
         case .exportFailed:
@@ -300,4 +335,13 @@ enum ConversionError: LocalizedError {
             return "Image export is not supported on this platform"
         }
     }
+}
+
+/// `--frame` and `--frame-number` given together. Not a `ValidationError`, so the command
+/// exits 1 with this message.
+struct FrameSelectionConflict: LocalizedError, CustomStringConvertible {
+    var description: String {
+        "--frame (deprecated, 0-based) and --frame-number (numbered from 1) cannot be used together"
+    }
+    var errorDescription: String? { description }
 }

@@ -52,8 +52,8 @@ dicom-convert ct.dcm --output ct.png --apply-window --window-center 40 --window-
 ### Multi-frame Images
 
 ```bash
-# Export one frame (0-based index: --frame 5 is the sixth frame); the default is the first
-dicom-convert multiframe.dcm --output frame5.png --frame 5 --format png
+# Export Frame number 5 (frames are numbered from 1, PS3.3 C.7.6.6); the default is Frame number 1
+dicom-convert multiframe.dcm --output frame5.png --frame-number 5 --format png
 ```
 
 ### Batch Conversion
@@ -69,13 +69,14 @@ dicom-convert input_dir/ --output output_dir/ --transfer-syntax ExplicitVRLittle
 ## Options
 
 - `--output, -o <path>`: Output file or directory path (required)
-- `--transfer-syntax <syntax>`: Target transfer syntax: a name from `--help` (e.g. ExplicitVRLittleEndian, JPEG2000Lossy, HTJ2KLosslessOnly), a Transfer Syntax UID, or a PS3.6 Table A-1 keyword (e.g. JPEGBaseline8Bit, HTJ2KLosslessRPCL). `JPEG2000Lossless`, `HTJ2KLossless` and `JPEGXLLossless` select the reversible encode into the general UIDs .91 / .203 / .112; the Table A-1 keywords of the same spelling name .90 / .201 / .110 (use the `…LosslessOnly` names for those). A lossy target records Lossy Image Compression (0028,2110) "01", Ratio, Method and Image Type DERIVED (PS3.3 C.7.6.1.1.5)
+- `--transfer-syntax <syntax>`: Target transfer syntax: a name from `--help` (e.g. ExplicitVRLittleEndian, JPEG2000Lossy, HTJ2KLosslessOnly), a Transfer Syntax UID, or a PS3.6 Table A-1 keyword (e.g. JPEGBaseline8Bit, HTJ2KLosslessRPCL). Every Table A-1 keyword selects its Table A-1 UID. **Changed 2026-10-01:** `JPEG2000Lossless`, `HTJ2KLossless` and `JPEGXLLossless` now select .90 / .201 / .110 (a note is printed on stderr); the reversible encode into the general UIDs .91 / .203 / .112 they used to select is `JPEG2000Reversible`, `HTJ2KReversible`, `JPEGXLReversible` (or the kebab names `jpeg2000-lossless`, `htj2k-lossless`, `jpeg-xl-lossless`). A lossy target records Lossy Image Compression (0028,2110) "01", Ratio, Method and Image Type DERIVED (PS3.3 C.7.6.1.1.5)
 - `--format <format>`: Output format: png, jpeg, tiff, dicom (default: dicom)
 - `--quality <1-100>`: JPEG quality for `--format jpeg` (default: 90; values outside 1-100 are refused)
 - `--apply-window`: Apply window/level during export
 - `--window-center <value>`: Window Center (0028,1050) for export
 - `--window-width <value>`: Window Width (0028,1051) for export; at least 1 (PS3.3 C.11.2.1.2.1)
-- `--frame <index>`: Export one frame, 0-based index (DICOM frame numbers start at 1)
+- `--frame-number <n>`: Export Frame number n; frames are numbered from 1 (PS3.3 C.7.6.6)
+- `--frame <index>`: **Deprecated** 0-based index (`--frame 0` = Frame number 1); prints a deprecation note. Giving both `--frame` and `--frame-number` exits 1
 - `--recursive`: Process directories recursively
 - `--strip-private`: Remove private (odd group) Data Elements of the top-level Data Set
 - `--validate`: Validate output after conversion
@@ -114,7 +115,7 @@ dicom-convert mixed_data/ --output normalized/ --transfer-syntax ExplicitVRLittl
 ## Exit Codes
 
 - `0`: Success
-- `1`: Conversion or export of a single file failed (a directory run reports each failed file and exits 0)
+- `1`: Conversion or export failed — a single file, or any file of a directory run (each failed file is reported); also `--frame` given with `--frame-number`
 - `64`: Invalid arguments, or the input path does not exist
 
 ## Platform Support

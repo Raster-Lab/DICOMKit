@@ -970,11 +970,11 @@ extension TransferSyntax {
             return .explicitVRLittleEndian
         case "explicitvrbigendian", "explicit-vr-be", "big-endian", "evbe":
             return .explicitVRBigEndian
-        case "deflate", "deflated-explicit-vr-le":
+        case "deflate", "deflated-explicit-vr-le", "deflatedexplicitvrlittleendian":
             return .deflatedExplicitVRLittleEndian
-        case "jpeg-baseline", "jpegbaseline", "jpeg":
+        case "jpeg-baseline", "jpegbaseline", "jpeg", "jpegbaseline8bit":
             return .jpegBaseline
-        case "jpeg-extended", "jpegextended":
+        case "jpeg-extended", "jpegextended", "jpegextended12bit":
             return .jpegExtended
         case "jpeg-lossless", "jpeglossless":
             return .jpegLossless
@@ -991,29 +991,30 @@ extension TransferSyntax {
         case "jpeg2000", "jpeg2000-lossy", "j2k", "j2k-lossy":
             return .jpeg2000                 // .91 general
         case "jpeg2000-part2-lossless", "jpeg2000part2lossless", "j2k-part2-lossless",
-             "jpeg2000-part2-lossless-only", "j2k-part2-lossless-only":
+             "jpeg2000-part2-lossless-only", "j2k-part2-lossless-only", "jpeg2000mclossless":
             return .jpeg2000Part2Lossless    // .92 reversible-only
-        case "jpeg2000-part2", "jpeg2000part2", "j2k-part2", "j2k-part2-lossy":
+        case "jpeg2000-part2", "jpeg2000part2", "j2k-part2", "j2k-part2-lossy", "jpeg2000mc":
             return .jpeg2000Part2            // .93 general
         case "htj2k-lossless", "htj2klossless", "htj2k-lossless-only":
             return .htj2kLossless            // .201 reversible-only
-        case "htj2k-rpcl-lossless-only", "htj2k-rpcl", "htj2k-lossless-rpcl", "htj2krpcllossless":
+        case "htj2k-rpcl-lossless-only", "htj2k-rpcl", "htj2k-lossless-rpcl", "htj2krpcllossless",
+             "htj2klosslessrpcl":
             return .htj2kRPCLLossless        // .202 reversible-only (RPCL)
         case "htj2k", "htj2k-lossy", "htj2klossy":
             return .htj2kLossy               // .203 general
-        case "jpeg-ls-lossless", "jpegls-lossless", "jls-lossless":
+        case "jpeg-ls-lossless", "jpegls-lossless", "jls-lossless", "jpeglslossless":
             return .jpegLSLossless
-        case "jpeg-ls", "jpegls", "jls":
+        case "jpeg-ls", "jpegls", "jls", "jpeglsnearlossless":
             return .jpegLSNearLossless
         case "jpeg-xl-lossless", "jpegxl-lossless", "jxl-lossless",
-             "jpeg-xl-lossless-only", "jpegxl-lossless-only", "jxl-lossless-only":
+             "jpeg-xl-lossless-only", "jpegxl-lossless-only", "jxl-lossless-only", "jpegxllossless":
             return .jpegXLLossless           // .110 reversible-only
         case "jpeg-xl-recompression", "jpegxl-recompression",
-             "jpeg-xl-jpeg-recompression", "jxl-recompression":
+             "jpeg-xl-jpeg-recompression", "jxl-recompression", "jpegxljpegrecompression":
             return .jpegXLRecompression
         case "jpeg-xl", "jpegxl", "jxl", "jpeg-xl-lossy", "jxl-lossy":
             return .jpegXL                   // .112 general
-        case "rle", "rle-lossless":
+        case "rle", "rle-lossless", "rlelossless":
             return .rleLossless
         case "jp3d-lossless", "jp3dlossless":
             return .jp3dLossless
@@ -1639,7 +1640,11 @@ extension TransferSyntax {
         // the general UID; `…-lossless-only` selects the distinct reversible-only UID.
         switch normalized {
         // JPEG 2000 — general .91 / lossless-only .90
-        case "jpeg2000-lossless", "jpeg2000lossless", "j2k-lossless",
+        // `JPEG2000Lossless`, `HTJ2KLossless` and `JPEGXLLossless` are PS3.6 2026a Table A-1
+        // keywords of the reversible-only UIDs .90 / .201 / .110, so they fall through to
+        // `parse` below (P-CONVERT-TS-KEYWORDS); the reversible encode INTO the general UID
+        // is spelled `…Reversible` (or the kebab `…-lossless` aliases).
+        case "jpeg2000-lossless", "j2k-lossless", "jpeg2000reversible",
              "jpeg2000-91-lossless", "j2k-91-lossless", "jpeg2000-lossless-91":
             return SelectableEncoding(transferSyntax: .jpeg2000, intent: .lossless)
         case "jpeg2000-lossy", "j2k-lossy", "jpeg2000-91-lossy", "j2k-91-lossy":
@@ -1656,7 +1661,7 @@ extension TransferSyntax {
         case "jpeg2000-part2-lossless-only", "j2k-part2-lossless-only":
             return SelectableEncoding(transferSyntax: .jpeg2000Part2Lossless, intent: .notApplicable)
         // HTJ2K — general .203 / lossless-only .201 / RPCL lossless-only .202
-        case "htj2k-lossless", "htj2klossless", "htj2k-203-lossless", "htj2k-lossless-203":
+        case "htj2k-lossless", "htj2kreversible", "htj2k-203-lossless", "htj2k-lossless-203":
             return SelectableEncoding(transferSyntax: .htj2kLossy, intent: .lossless)
         case "htj2k-lossy", "htj2k-203-lossy":
             return SelectableEncoding(transferSyntax: .htj2kLossy, intent: .lossy)
@@ -1665,7 +1670,7 @@ extension TransferSyntax {
         case "htj2k-rpcl-lossless-only", "htj2k-rpcl", "htj2k-lossless-rpcl", "htj2krpcllossless":
             return SelectableEncoding(transferSyntax: .htj2kRPCLLossless, intent: .notApplicable)
         // JPEG XL — general .112 / lossless-only .110
-        case "jpeg-xl-lossless", "jpegxl-lossless", "jxl-lossless",
+        case "jpeg-xl-lossless", "jpegxl-lossless", "jxl-lossless", "jpegxlreversible",
              "jpeg-xl-112-lossless", "jxl-112-lossless":
             return SelectableEncoding(transferSyntax: .jpegXL, intent: .lossless)
         case "jpeg-xl-lossy", "jxl-lossy", "jpeg-xl-112-lossy", "jxl-112-lossy":
@@ -1684,6 +1689,35 @@ extension TransferSyntax {
         case .losslessOnly, .lossyOnly:
             return SelectableEncoding(transferSyntax: ts, intent: .notApplicable)
         }
+    }
+
+    /// The three PS3.6 2026a Table A-1 keywords whose meaning changed in
+    /// ``parseEncoding(_:)`` (and in `DICOMConverter`'s catalog): keyword → (Table A-1 UID and
+    /// name, the new name of the old meaning, the general UID that name encodes into).
+    ///
+    /// Until 2026-10-01 these keywords selected the reversible encode INTO the general UID
+    /// (.91 / .203 / .112); PS3.6 2026a Table A-1 gives them to the reversible-only UIDs
+    /// .90 / .201 / .110, which they now select (P-CONVERT-TS-KEYWORDS).
+    public static let reassignedTableA1Keywords: [(keyword: String, uid: String, name: String, reversibleName: String, generalUID: String)] = [
+        ("JPEG2000Lossless", "1.2.840.10008.1.2.4.90", "JPEG 2000 Image Compression (Lossless Only)",
+         "JPEG2000Reversible", "1.2.840.10008.1.2.4.91"),
+        ("HTJ2KLossless", "1.2.840.10008.1.2.4.201", "High-Throughput JPEG 2000 Image Compression (Lossless Only)",
+         "HTJ2KReversible", "1.2.840.10008.1.2.4.203"),
+        ("JPEGXLLossless", "1.2.840.10008.1.2.4.110", "JPEG XL Lossless",
+         "JPEGXLReversible", "1.2.840.10008.1.2.4.112"),
+    ]
+
+    /// A one-line note for stderr when `token` is one of ``reassignedTableA1Keywords``
+    /// (case-insensitive), saying it now selects its Table A-1 UID; `nil` otherwise.
+    /// Tools print it for one release after the meaning change.
+    public static func reassignedKeywordNote(for token: String) -> String? {
+        let t = token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let row = reassignedTableA1Keywords.first(where: { $0.keyword.lowercased() == t }) else {
+            return nil
+        }
+        return "note: \(row.keyword) now selects \(row.uid) (\(row.name)), its PS3.6 Table A-1 UID; "
+            + "it used to mean the reversible encode into \(row.generalUID), which is now spelled "
+            + "\(row.reversibleName)."
     }
 }
 

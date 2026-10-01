@@ -1,13 +1,12 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — the 7 keyword → UID rows below are PS3.6 2026a Table A-1 rows (keyword column) whose keyword the shared DICOMConverter catalog does not accept; diffed by script against the 21 target UIDs of the catalog (A-1 keywords: 11 accepted for the same UID, 3 accepted for another UID (P-item), 7 added here)
+// NEMA-verified: 2026a, checked 2026-10-01 — the 7 keyword → UID rows below are PS3.6 2026a Table A-1 rows (keyword column) whose keyword the shared DICOMConverter catalog does not accept; diffed by script against the 21 target UIDs of the catalog (A-1 keywords: 14 accepted by the catalog for the same UID — JPEG2000Lossless / HTJ2KLossless / JPEGXLLossless now select .90 / .201 / .110 (P-CONVERT-TS-KEYWORDS, old meaning renamed …Reversible) — and 7 added here; every accepted A-1 keyword pinned to its A-1 UID by dicom-convertTests)
 import DICOMCore
 import DICOMKit
 
 /// `--transfer-syntax` accepts the shared catalog's names (DICOMConverter) and, in addition,
-/// these PS3.6 2026a Table A-1 keywords. The shared catalog is tried first, so the three
-/// catalog names that are also Table A-1 keywords of another UID keep their meaning
-/// (`JPEG2000Lossless`, `HTJ2KLossless`, `JPEGXLLossless` = reversible encode into .91 / .203 /
-/// .112, see P-CONVERT-TS-KEYWORDS); the Table A-1 meaning of those three is reached with
-/// the `…LosslessOnly` names or the UID.
+/// these PS3.6 2026a Table A-1 keywords. Every Table A-1 keyword the tool accepts selects its
+/// Table A-1 UID: `JPEG2000Lossless`, `HTJ2KLossless` and `JPEGXLLossless` select .90 / .201 /
+/// .110; the reversible encode into the general UIDs .91 / .203 / .112 is spelled
+/// `JPEG2000Reversible`, `HTJ2KReversible`, `JPEGXLReversible` (P-CONVERT-TS-KEYWORDS).
 enum TransferSyntaxKeywords {
 
     /// Table A-1 keyword → Transfer Syntax UID, for catalog targets whose keyword is missing.
@@ -32,12 +31,19 @@ enum TransferSyntaxKeywords {
         return DICOMConverter.resolveTargetEncoding(uid)
     }
 
+    /// The stderr note for a keyword whose meaning changed on 2026-10-01, or `nil`.
+    static func meaningChangeNote(for token: String) -> String? {
+        TransferSyntax.reassignedKeywordNote(for: token)
+    }
+
     /// `--transfer-syntax` help: the catalog names, plus what else is accepted.
     static var optionHelp: String {
         DICOMConverter.transferSyntaxOptionHelp
             + ". Also a Transfer Syntax UID or a PS3.6 Table A-1 keyword ("
-            + additional.keys.sorted().joined(separator: ", ")
-            + "). JPEG2000Lossless, HTJ2KLossless and JPEGXLLossless here select the reversible "
-            + "encode into .91 / .203 / .112; for .90 / .201 / .110 use the …LosslessOnly names."
+            + (additional.keys + TransferSyntax.reassignedTableA1Keywords.map(\.keyword)).sorted()
+                .joined(separator: ", ")
+            + "); every Table A-1 keyword selects its Table A-1 UID. Changed: JPEG2000Lossless, "
+            + "HTJ2KLossless and JPEGXLLossless now select .90 / .201 / .110; the reversible encode "
+            + "into .91 / .203 / .112 is JPEG2000Reversible, HTJ2KReversible, JPEGXLReversible."
     }
 }

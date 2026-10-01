@@ -45,7 +45,7 @@ public enum DICOMConverter {
         /// Lossy Image Compression provenance attributes.
         public let intent: EncodingIntent
         /// CamelCase token emitted in the CLI `--transfer-syntax` help listing
-        /// (e.g. `ExplicitVRLittleEndian`, `JPEG2000Lossless`). Accepted on input.
+        /// (e.g. `ExplicitVRLittleEndian`, `JPEG2000Reversible`). Accepted on input.
         public let cliToken: String
         /// kebab-case alias shown in the app pickers (CLI Workshop + representative parameter
         /// catalog) so every transfer-syntax dropdown reads the same short style as
@@ -116,24 +116,27 @@ public enum DICOMConverter {
         Target(.jpegLosslessSV1,                 cli: "JPEGLosslessSV1",         alias: "jpeg-lossless-sv1"),
         // JPEG 2000 — general .91 (lossy + lossless) + lossless-only .90.
         Target(.jpeg2000, intent: .lossy,        cli: "JPEG2000Lossy",           alias: "jpeg2000-lossy",           extra: ["jpeg2000", "j2k", "j2k-lossy"]),
-        Target(.jpeg2000, intent: .lossless,     cli: "JPEG2000Lossless",        alias: "jpeg2000-lossless",        extra: ["j2k-lossless"]),
-        Target(.jpeg2000Lossless,                cli: "JPEG2000LosslessOnly",    alias: "jpeg2000-lossless-only",   extra: ["j2k-lossless-only"]),
+        // `JPEG2000Lossless` is the PS3.6 2026a Table A-1 keyword of .90, so it is an alias of
+        // the .90 target; the reversible encode into .91 is `JPEG2000Reversible`
+        // (P-CONVERT-TS-KEYWORDS; the same for HTJ2K .201/.203 and JPEG XL .110/.112 below).
+        Target(.jpeg2000, intent: .lossless,     cli: "JPEG2000Reversible",      alias: "jpeg2000-lossless",        extra: ["j2k-lossless"]),
+        Target(.jpeg2000Lossless,                cli: "JPEG2000LosslessOnly",    alias: "jpeg2000-lossless-only",   extra: ["j2k-lossless-only", "jpeg2000lossless"]),
         // JPEG 2000 Part 2 — general .93 (lossy + lossless) + lossless-only .92.
         Target(.jpeg2000Part2, intent: .lossy,   cli: "JPEG2000Part2Lossy",      alias: "jpeg2000-part2-lossy",     extra: ["jpeg2000-part2", "j2k-part2", "j2k-part2-lossy"]),
         Target(.jpeg2000Part2, intent: .lossless, cli: "JPEG2000Part2Lossless",  alias: "jpeg2000-part2-lossless",  extra: ["j2k-part2-lossless"]),
         Target(.jpeg2000Part2Lossless,           cli: "JPEG2000Part2LosslessOnly", alias: "jpeg2000-part2-lossless-only", extra: ["j2k-part2-lossless-only"]),
         // HTJ2K — general .203 (lossy + lossless) + lossless-only .201 + RPCL lossless-only .202.
         Target(.htj2kLossy, intent: .lossy,      cli: "HTJ2KLossy",              alias: "htj2k-lossy",              extra: ["htj2k"]),
-        Target(.htj2kLossy, intent: .lossless,   cli: "HTJ2KLossless",           alias: "htj2k-lossless"),
-        Target(.htj2kLossless,                   cli: "HTJ2KLosslessOnly",       alias: "htj2k-lossless-only"),
+        Target(.htj2kLossy, intent: .lossless,   cli: "HTJ2KReversible",         alias: "htj2k-lossless"),
+        Target(.htj2kLossless,                   cli: "HTJ2KLosslessOnly",       alias: "htj2k-lossless-only",     extra: ["htj2klossless"]),
         Target(.htj2kRPCLLossless,               cli: "HTJ2KRPCLLosslessOnly",   alias: "htj2k-rpcl-lossless-only", extra: ["htj2k-rpcl", "htj2k-lossless-rpcl"]),
         // JPEG-LS
         Target(.jpegLSLossless,                  cli: "JPEGLSLossless",          alias: "jpeg-ls-lossless",        extra: ["jpegls", "jpegls-lossless", "jls-lossless"]),
         Target(.jpegLSNearLossless,              cli: "JPEGLSNearLossless",      alias: "jpeg-ls-near-lossless",   extra: ["jpegls-near"]),
         // JPEG XL — general .112 (lossy VarDCT + lossless Modular) + lossless-only .110 + JPEG recompression .111.
         Target(.jpegXL, intent: .lossy,          cli: "JPEGXLLossy",             alias: "jpeg-xl-lossy",           extra: ["jpeg-xl", "jxl", "jpegxl", "jxl-lossy"]),
-        Target(.jpegXL, intent: .lossless,       cli: "JPEGXLLossless",          alias: "jpeg-xl-lossless",        extra: ["jxl-lossless"]),
-        Target(.jpegXLLossless,                  cli: "JPEGXLLosslessOnly",      alias: "jpeg-xl-lossless-only",   extra: ["jxl-lossless-only"]),
+        Target(.jpegXL, intent: .lossless,       cli: "JPEGXLReversible",        alias: "jpeg-xl-lossless",        extra: ["jxl-lossless"]),
+        Target(.jpegXLLossless,                  cli: "JPEGXLLosslessOnly",      alias: "jpeg-xl-lossless-only",   extra: ["jxl-lossless-only", "jpegxllossless"]),
         Target(.jpegXLRecompression,             cli: "JPEGXLRecompression",     alias: "jpeg-xl-recompression",   extra: ["jxl-recompression", "jpegxl-recompression", "jpeg-xl-jpeg-recompression"]),
         // RLE
         Target(.rleLossless,                     cli: "RLELossless",             alias: "rle-lossless",            extra: ["rle"]),

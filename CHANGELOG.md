@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — CLI P-items, codec batch (approved 2026-10-01, DICOM 2026a)
+
+- **`dicom-convert --transfer-syntax` / `dicom-j2k transcode --target`: PS3.6 Table A-1 keywords mean their
+  Table A-1 UID** (P-CONVERT-TS-KEYWORDS). `JPEG2000Lossless`, `HTJ2KLossless` and `JPEGXLLossless` now select
+  1.2.840.10008.1.2.4.90 / .201 / .110 (PS3.6 2026a Table A-1); until now they selected the reversible encode
+  into the general UIDs .91 / .203 / .112, which is now spelled `JPEG2000Reversible`, `HTJ2KReversible`,
+  `JPEGXLReversible` (the kebab names `jpeg2000-lossless`, `htj2k-lossless`, `jpeg-xl-lossless` are unchanged).
+  Using one of the three keywords prints a one-line stderr note for this release. Shared code: the
+  `DICOMConverter` catalog (DICOMKit) and `TransferSyntax.parseEncoding` (DICOMCore); `TransferSyntax.parse`
+  also accepts every Table A-1 keyword of a target it knows; new `TransferSyntax.reassignedTableA1Keywords` /
+  `reassignedKeywordNote(for:)`.
+- **`dicom-convert --frame-number`** (P-CONVERT-FRAME): new 1-based frame option (PS3.3 2026a C.7.6.6, "The first
+  Frame shall be denoted as Frame number 1"). `--frame` (0-based index) is deprecated: it still works, `--help`
+  says so and it prints a stderr note; giving both exits 1. New `DICOMConverter.invalidFrameNumberMessage`.
+- **`dicom-convert` directory run exits 1 when any file failed** (P-CONVERT-EXIT), as `dicom-compress batch` does;
+  it exited 0.
+
 ### Changed — CLI P-items, webprint batch (approved 2026-10-01, DICOM 2026a)
 
 - **`dicom-wado ups --change-state <uid>`** is the canonical name of Change Workitem State (PS3.18 2026a

@@ -234,6 +234,12 @@ extension DICOMConverter {
         "Frame \(requested) does not exist. The file has \(total) frame\(total == 1 ? "" : "s"), numbered 0 to \(max(total - 1, 0))."
     }
 
+    /// Shared text when an image export asks for a Frame number (1-based, PS3.3 C.7.6.6:
+    /// "The first Frame shall be denoted as Frame number 1") the file does not have.
+    public static func invalidFrameNumberMessage(requested: Int, total: Int) -> String {
+        "Frame number \(requested) does not exist. The file has \(total) frame\(total == 1 ? "" : "s"), numbered 1 to \(max(total, 1))."
+    }
+
     /// Checks that `dicomFile` can be converted to `encoding` and throws a
     /// ``ConversionFailure`` naming the exact mismatch when it cannot.
     ///
