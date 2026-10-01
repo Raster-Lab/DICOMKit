@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   magnification, polarity and Presentation LUT tokens are listed with the term each sends, and the
   term is accepted as an alias. New test target `dicom-printscpTests`.
 
+### Fixed — dicom-cloud checked against DICOM 2026a (2026-10-01)
+
+- **dicom-cloud (docs):** the README's archival example ran `dicom-anon --profile archive`, a
+  profile dicom-anon does not have; it now uses `--profile ps315` (PS3.15 Annex E Basic
+  Application Level Confidentiality Profile), and the `--tags` example notes that object
+  metadata is not de-identified. `sync` help no longer calls the default mode bidirectional.
+  The tool carries no DICOM-standard data (cloud plumbing only); it remains excluded from the
+  package build.
+
 ### Fixed — dicom-jpip verified against DICOM 2026a (2026-10-01)
 
 - **dicom-jpip:** `info --list-syntaxes`, the help and the `uri` error listed 2 of the 4 JPIP
