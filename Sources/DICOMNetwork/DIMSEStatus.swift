@@ -1,5 +1,5 @@
 import Foundation
-// NEMA-verified: 2026a, checked 2026-09-28 — the 16 named codes and their class text-diffed against PS3.7 2026a Annex C and PS3.4 2026a Tables B.2-1, C.4-1..C.4-3, K.4-1, F.7.2-2, F.8.2-2 (Scripts/diff_network.py): 16 of 16 match; unnamed codes classified by range
+// NEMA-verified: 2026a, checked 2026-10-01 — the 16 named codes and their class text-diffed against PS3.7 2026a Annex C and PS3.4 2026a Tables B.2-1, C.4-1..C.4-3, K.4-1, F.7.2-2, F.8.2-2 (Scripts/diff_network.py): 16 of 16 match; `description` uses the 2026a names verbatim (A900 "Error: Data Set does not match SOP Class" per C.4-1 / K.4-1, 0110 "Processing Failure" per PS3.7 C.5.21, A701/A702 "Refused: Out of resources" C.5.5, A801 "Refused: Move Destination unknown" C.5.4, B000/B006/B007 per B.2-1) and names every other code PS3.7 Annex C fixes (24 sections, via DIMSEServiceStatusText) — D73, D79, D82; unnamed codes classified by range
 
 /// DIMSE Status Codes
 ///
@@ -26,8 +26,8 @@ public enum DIMSEStatus: Sendable, Hashable {
     /// Refused - SOP Class not supported (0x0122)
     case refusedSOPClassNotSupported
     
-    /// Error - Identifier/Data does not match SOP Class (0xA900)
-    /// Used for both "identifier does not match" and "data set does not match" conditions
+    /// Error: Data Set does not match SOP Class (0xA900) — PS3.4 Tables C.4-1..C.4-3,
+    /// K.4-1; PS3.7 C.5.2. (The case name predates the 2026a wording.)
     case errorIdentifierDoesNotMatchSOPClass
     
     /// Failed - Unable to process / Error - Cannot understand (0xC000-0xCFFF)
@@ -37,25 +37,26 @@ public enum DIMSEStatus: Sendable, Hashable {
     /// (Modality Worklist) name it "Failed: Unable to process".
     case errorCannotUnderstand(UInt16)
     
-    /// Failed - Unable to process (0x0110)
+    /// Processing Failure (0x0110) — PS3.7 C.5.21. (The case name predates the 2026a wording;
+    /// "Failed: Unable to process" is the Cxxx row of PS3.4 Tables C.4-1..C.4-3 / K.4-1.)
     case failedUnableToProcess
     
-    /// Failed - Duplicate SOP Instance (0x0111)
+    /// Duplicate SOP Instance (0x0111) — PS3.7 C.5.8
     case failedDuplicateSOPInstance
     
-    /// Failed - No such SOP Class (0x0118)
+    /// No such SOP Class (0x0118) — PS3.7 C.5.20
     case failedNoSuchSOPClass
     
-    /// Failed - No such SOP Instance (0x0112)
+    /// No such SOP Instance (0x0112) — PS3.7 C.5.19
     case failedNoSuchSOPInstance
     
-    /// Failed - Resource limitation (0x0213)
+    /// Resource limitation (0x0213) — PS3.7 C.5.22
     case failedResourceLimitation
     
-    /// Failed - Out of resources (0xA701, 0xA702)
+    /// Refused: Out of resources (0xA701, 0xA702) — PS3.4 Tables C.4-2 / C.4-3; PS3.7 C.5.5
     case failedOutOfResources(UInt16)
     
-    /// Failed - Move destination unknown (0xA801)
+    /// Refused: Move Destination unknown (0xA801) — PS3.4 Table C.4-2; PS3.7 C.5.4
     case failedMoveDestinationUnknown
     
     // MARK: - Warning Status
@@ -72,7 +73,10 @@ public enum DIMSEStatus: Sendable, Hashable {
     
     // MARK: - Other/Unknown
     
-    /// Unknown or unmapped status code
+    /// A status code without a case of its own. ``description`` names it from
+    /// PS3.7 Annex C when Annex C fixes the code (e.g. 0x0106 "Invalid Attribute
+    /// Value", 0x0117 "Invalid SOP Instance", 0x0210 "Duplicate invocation");
+    /// use ``description(for:)`` for the service-specific PS3.4 wording.
     case unknown(UInt16)
     
     /// The raw 16-bit status code value
@@ -275,30 +279,33 @@ extension DIMSEStatus: CustomStringConvertible {
         case .refusedSOPClassNotSupported:
             return "Refused: SOP Class not supported (0x0122)"
         case .errorIdentifierDoesNotMatchSOPClass:
-            return "Error: Identifier/Data does not match SOP Class (0xA900)"
+            return "Error: Data Set does not match SOP Class (0xA900)"
         case .errorCannotUnderstand(let code):
             return "Failed: unable to process / cannot understand (Cxxx) (0x\(String(format: "%04X", code)))"
         case .failedUnableToProcess:
-            return "Failed: Unable to process (0x0110)"
+            return "Processing Failure (0x0110)"
         case .failedDuplicateSOPInstance:
-            return "Failed: Duplicate SOP Instance (0x0111)"
+            return "Duplicate SOP Instance (0x0111)"
         case .failedNoSuchSOPClass:
-            return "Failed: No such SOP Class (0x0118)"
+            return "No such SOP Class (0x0118)"
         case .failedNoSuchSOPInstance:
-            return "Failed: No such SOP Instance (0x0112)"
+            return "No such SOP Instance (0x0112)"
         case .failedResourceLimitation:
-            return "Failed: Resource limitation (0x0213)"
+            return "Resource limitation (0x0213)"
         case .failedOutOfResources(let code):
-            return "Failed: Out of resources (0x\(String(format: "%04X", code)))"
+            return "Refused: Out of resources (0x\(String(format: "%04X", code)))"
         case .failedMoveDestinationUnknown:
-            return "Failed: Move destination unknown (0xA801)"
+            return "Refused: Move Destination unknown (0xA801)"
         case .warningCoercionOfDataElements:
-            return "Warning: Coercion of data elements (0xB000)"
+            return "Warning: Coercion of Data Elements (0xB000)"
         case .warningDataSetDoesNotMatchSOPClass:
-            return "Warning: Data set does not match SOP Class (0xB007)"
+            return "Warning: Data Set does not match SOP Class (0xB007)"
         case .warningElementsDiscarded:
-            return "Warning: Elements discarded (0xB006)"
+            return "Warning: Elements Discarded (0xB006)"
         case .unknown(let code):
+            if let general = DIMSEServiceStatusText.annexCRow(for: code) {
+                return "\(general.name) (0x\(String(format: "%04X", code)))"
+            }
             return "Unknown status (0x\(String(format: "%04X", code)))"
         }
     }

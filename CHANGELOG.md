@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, network batch (2026-10-01, DICOM 2026a)
+
+- **DIMSE-N, Modality Worklist, MPPS and Print status names** (D73, D79, D82, D91): `DIMSEServiceStatusText` now
+  carries, generated from the 2026a DocBook and verbatim, PS3.4 Tables K.4-1 (MWL C-FIND), F.7.2-2 (MPPS N-SET,
+  with Error ID A710 "Performed Procedure Step Object may no longer be updated"), F.8.2-2 (MPPS N-GET), the seven
+  Print Management tables H.4.1.2.1.2-1, H.4-4, H.4.2.2.1.2-1, H.4-9, H.4.3.1.2.1.2-1, H.4.3.2.2.1.2-1,
+  H.4.9.2.1.2-1, and the 24 PS3.7 Annex C sections that fix a code (`annexCRow(for:)`, `printRow(for:)`,
+  `describePrintStatus(_:)`, `mppsNSetErrorComment(errorID:)`). `DIMSEStatusService` gains `.mwlFind`, `.mppsNSet`,
+  `.mppsNGet`, `.filmSessionNCreate`, `.filmSessionNAction`, `.filmBoxNCreate`, `.filmBoxNAction`,
+  `.grayscaleImageBoxNSet`, `.colorImageBoxNSet`, `.presentationLUTNCreate` and `.dimseN` (new enum cases: an
+  exhaustive `switch` over `DIMSEStatusService` outside DICOMNetwork needs the new cases or a `default`);
+  `description(for:)` names a code the service table lacks from Annex C. `DIMSEStatus.description` uses the 2026a
+  names: A900 "Error: Data Set does not match SOP Class" (was "Error: Identifier/Data does not match SOP Class"),
+  0110 "Processing Failure" (was "Failed: Unable to process", the Cxxx row of the Q/R tables), A701/A702 "Refused: Out
+  of resources", A801 "Refused: Move Destination unknown", B000/B006/B007 in Table B.2-1 capitalisation, 0111 / 0112
+  / 0118 / 0213 without the invented "Failed:" prefix, and every other Annex C code by its section title instead of
+  "Unknown status" (0105, 0106, 0107, 0113-0117, 0119-0121, 0123, 0124, 0210-0212; 0117 is "Invalid SOP Instance").
+  `DICOMNetworkError.printOperationFailed` words the status per Annex H, e.g. "Failure (0xC603): Failed: Image size is
+  larger than image box size" instead of "Failed: unable to process / cannot understand (Cxxx)".
+- **`PrintSCPStatus.explanation` (Error Comment) is the Annex H / Annex C text** (D93): B604, B605, B609, C603, C605,
+  C613 were paraphrases; C600 / C601 gain the table's "Failed: " prefix; 0117 reads "Invalid SOP Instance", 0119
+  "Class-Instance conflict" (PS3.7 C.5.12 / C.5.7).
+- **MPPS** (D83, D84, D86, D87): N-CREATE / N-SET failures are thrown as the new
+  `DICOMNetworkError.mppsOperationFailed(operation:status:errorComment:errorID:)` ("MPPS N-SET failed: Failure
+  (0x0110): Processing Failure — Error ID A710H: Performed Procedure Step Object may no longer be updated") instead of
+  `storeFailed` ("Store failed: …"; new enum case — exhaustive switches outside DICOMNetwork need it); the N-CREATE
+  data set creates Performed Procedure Step Discontinuation Reason Code Sequence (0040,0281) zero-length so a later
+  N-SET to DISCONTINUED may fill it (PS3.4 F.7.2.1.1 note, F.7.2.1.2); `DICOMMPPSService.validate(_:for: .nCreate)`
+  refuses an empty Modality (0008,0060), Type 1 in Table F.7.2-1 (it was sent empty); the `CODE|SCHEME|MEANING` example
+  is `110513|DCM|Discontinued for unspecified reason` (PS3.16 Table D-1; "Doctor canceled procedure" is 110500) and CID
+  9300 is "Procedure Discontinuation Reason". dicom-mpps' own `.storeFailed` renaming is now unused (left in place).
+
 ### Fixed — File Meta Media Storage UIDs follow the data set (2026-10-01, DICOM 2026a)
 
 - **`DICOMFile.create` takes (0002,0002) / (0002,0003) from the data set** (D175; fixes D112, D137, D165):

@@ -103,7 +103,7 @@ final class QueryRetrieveCLIStandardTests: XCTestCase {
         XCTAssertEqual(DIMSEStatus.from(0xA900).description(for: .cStore),
                        "Failure (0xA900): Error: Data Set does not match SOP Class")
         XCTAssertEqual(DIMSEStatus.from(0xA801).description(for: .cGet),
-                       "Failed: Move destination unknown (0xA801) (not listed in PS3.4 Table C.4-3)")
+                       "Refused: Move Destination unknown (0xA801) (not listed in PS3.4 Table C.4-3)")
         XCTAssertEqual(DIMSEServiceStatusText.subOperationCounts(RetrieveProgress(completed: 3, failed: 1, warning: 2)),
                        "Number of Completed Sub-operations: 3, Number of Failed Sub-operations: 1, Number of Warning Sub-operations: 2")
     }

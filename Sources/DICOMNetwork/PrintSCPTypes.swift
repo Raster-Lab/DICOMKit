@@ -13,7 +13,7 @@
 
 import Foundation
 import DICOMCore
-// NEMA-verified: 2026a, checked 2026-09-28 — the 21 status codes text-diffed against PS3.7 2026a Annex C and PS3.4 2026a Annex H tables (Scripts/diff_network.py): 21 of 21 match; C600/C601 meanings corrected; Image Display Format grammar per PS3.3 C.13.3
+// NEMA-verified: 2026a, checked 2026-10-01 — the 21 status codes text-diffed against PS3.7 2026a Annex C and PS3.4 2026a Annex H tables (Scripts/diff_network.py): 21 of 21 codes match; `explanation` now reads the verbatim Annex H Further Meaning / Annex C title from DIMSEServiceStatusText (19 of 21; 0000 "Success", C000 has no standard name) — D93; Image Display Format grammar per PS3.3 C.13.3
 
 // MARK: - Print SCP Status Codes
 
@@ -87,31 +87,24 @@ public enum PrintSCPStatus: UInt16, Sendable, Hashable, CaseIterable {
         rawValue == 0x0000 || (0xB000...0xBFFF).contains(rawValue)
     }
 
-    /// A short human-readable explanation, used for Error Comment (0000,0902).
+    /// The standard name of the code, used for Error Comment (0000,0902) (which
+    /// the SCP truncates to the 64 characters of LO).
+    ///
+    /// Taken verbatim from ``DIMSEServiceStatusText``: the PS3.4 2026a Annex H
+    /// "Further Meaning" for the B6xx / C6xx codes (B604 and B60A in the Basic
+    /// Film Session N-ACTION wording of Table H.4-4), the PS3.7 2026a Annex C
+    /// section title for the general DIMSE-N codes (0105, 0106, 0110, 0111,
+    /// 0112, 0117 "Invalid SOP Instance", 0119, 0120, 0121, 0122). 0x0000 is
+    /// "Success"; 0xC000 has no Annex H or Annex C name and stays "Unable to
+    /// process" (D93, 2026-10-01: six B6xx/C6xx texts were paraphrases).
     public var explanation: String {
         switch self {
         case .success: return "Success"
-        case .warningMemoryAllocation: return "Memory allocation not supported"
-        case .warningImageDemagnified: return "Image demagnified to fit image box"
-        case .warningMinMaxDensityOutOfRange: return "Requested density outside printer range"
-        case .warningImageCropped: return "Image cropped to fit image box"
-        case .processingFailure: return "Processing failure"
-        case .noSuchSOPInstance: return "No such SOP Instance"
-        case .duplicateSOPInstance: return "Duplicate SOP Instance"
-        case .noSuchAttribute: return "No such attribute"
-        case .invalidAttributeValue: return "Invalid attribute value"
-        case .invalidObjectInstance: return "Invalid object instance"
-        case .classInstanceConflict: return "SOP Class / SOP Instance conflict"
-        case .missingAttribute: return "Missing attribute"
-        case .missingAttributeValue: return "Missing attribute value"
-        case .sopClassNotSupported: return "SOP Class not supported"
         case .unableToProcess: return "Unable to process"
-        case .filmSessionPrinting:
-            return "Film Session SOP Instance hierarchy does not contain Film Box SOP Instances"
-        case .printQueueFull: return "Unable to create Print Job SOP Instance; print queue is full"
-        case .imageLargerThanImageBox: return "Image larger than image box"
-        case .insufficientMemory: return "Insufficient printer memory"
-        case .combinedImageLargerThanImageBox: return "Combined image larger than image box"
+        default:
+            if let (_, row) = DIMSEServiceStatusText.printRow(for: rawValue) { return row.furtherMeaning }
+            if let general = DIMSEServiceStatusText.annexCRow(for: rawValue) { return general.name }
+            return "Status 0x" + String(format: "%04X", rawValue)
         }
     }
 }

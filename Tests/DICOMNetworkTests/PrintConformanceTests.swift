@@ -25,11 +25,11 @@ final class PrintConformanceStatusCodeTests: XCTestCase {
         XCTAssertEqual(PrintSCPStatus.filmSessionPrinting.rawValue, 0xC600)
         XCTAssertEqual(
             PrintSCPStatus.filmSessionPrinting.explanation,
-            "Film Session SOP Instance hierarchy does not contain Film Box SOP Instances")
+            "Failed: Film Session SOP Instance hierarchy does not contain Film Box SOP Instances")
         XCTAssertEqual(PrintSCPStatus.printQueueFull.rawValue, 0xC601)
         XCTAssertEqual(
             PrintSCPStatus.printQueueFull.explanation,
-            "Unable to create Print Job SOP Instance; print queue is full")
+            "Failed: Unable to create Print Job SOP Instance; print queue is full")
     }
 
     /// The codes with no public case: Tables H.4-4 / H.4-9 / H.4.2.2.1.2-1

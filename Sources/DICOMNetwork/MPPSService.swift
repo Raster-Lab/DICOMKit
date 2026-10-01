@@ -1,7 +1,7 @@
 import Foundation
 import DICOMCore
 import DICOMDictionary
-// NEMA-verified: 2026a, checked 2026-09-28 — N-CREATE/N-SET attribute set text-diffed against PS3.4 2026a Table F.7.2-1 (all 23 top-level Type 1/2 attributes emitted; Scripts/diff_network.py); PPS status terms per PS3.3 C.4.14; command sets per PS3.7 Tables 10.3-5, 10.3-9
+// NEMA-verified: 2026a, checked 2026-10-01 — N-CREATE/N-SET attribute set text-diffed against PS3.4 2026a Table F.7.2-1 (all 23 top-level Type 1/2 attributes emitted; Modality 1/1 required non-empty, D87; (0040,0281) created zero-length at N-CREATE per the F.7.2.1.1 note, D86; Scripts/diff_network.py); PPS status terms per PS3.3 C.4.14; command sets per PS3.7 Tables 10.3-5, 10.3-9; N-CREATE / N-SET failures thrown as mppsOperationFailed worded per Table F.7.2-2 / PS3.7 Annex C (D83); CID 9300 / 9301 / Table D-1 names per PS3.16 2026a (D84)
 
 /// SOP Class UID for Modality Performed Procedure Step
 /// Reference: PS3.4 Annex F - Modality Performed Procedure Step SOP Class
@@ -140,7 +140,8 @@ public struct MPPSCodedEntry: Sendable, Hashable {
     }
 
     /// Parses the `CODE|SCHEME|MEANING` text form used by the `dicom-mpps` CLI and
-    /// the CLI Workshop's matching field, e.g. `110513|DCM|Doctor cancelled procedure`.
+    /// the CLI Workshop's matching field, e.g. `110513|DCM|Discontinued for unspecified reason`
+    /// (PS3.16 2026a CID 9301 / Table D-1).
     ///
     /// Shared so the two front-ends cannot disagree on what they accept or on the
     /// message they show when they reject it.
@@ -159,7 +160,7 @@ public struct MPPSCodedEntry: Sendable, Hashable {
 
     /// The message shown when ``parse(_:)`` rejects a value, naming the option it came from.
     public static func parseErrorMessage(option: String) -> String {
-        "\(option) must be CODE|SCHEME|MEANING, e.g. \"110513|DCM|Doctor cancelled procedure\""
+        "\(option) must be CODE|SCHEME|MEANING, e.g. \"110513|DCM|Discontinued for unspecified reason\""
     }
 }
 
@@ -323,7 +324,10 @@ public struct MPPSProcedureStep: Sendable {
 
     /// Performed Procedure Step Discontinuation Reason Code Sequence (0040,0281) —
     /// Type 3 in N-SET, meaningful only when `status` is `.discontinued`. The
-    /// usual codes are CID 9300 "Procedure Discontinuation Reasons" (scheme DCM).
+    /// Baseline CID 9300 "Procedure Discontinuation Reason" (PS3.3 Table C.4-14),
+    /// which includes CID 9301 "Modality PPS Discontinuation Reason", e.g.
+    /// 110513 "Discontinued for unspecified reason", 110500 "Doctor canceled
+    /// procedure" (PS3.16 2026a Table D-1, scheme DCM).
     public let discontinuationReason: MPPSCodedEntry?
 
     /// Forces the Specific Character Set (0008,0005) of the data set; nil (the
@@ -805,6 +809,8 @@ public enum DICOMMPPSService {
     ///   DISCONTINUED, and End Date/Time (0040,0250/0251) are then Type 1.
     /// - COMPLETED requires at least one Performed Series Sequence (0040,0340)
     ///   item (Table F.7.2-1, Type 1 in the final state); DISCONTINUED may have none.
+    /// - N-CREATE requires a non-empty Modality (0008,0060), Type 1 (1/1) in
+    ///   Table F.7.2-1 (since 2026-10-01, D87).
     ///
     /// - Throws: `DICOMNetworkError.invalidState` naming the clause that is violated
     public static func validate(_ step: MPPSProcedureStep, for operation: Operation) throws {
@@ -819,6 +825,12 @@ public enum DICOMMPPSService {
                 throw DICOMNetworkError.invalidState(
                     "MPPS N-CREATE must not carry Performed Procedure Step End Date/Time while IN PROGRESS " +
                     "(PS3.4 F.7.2.1.2, Table F.7.2-1)")
+            }
+            // Modality (0008,0060) is 1/1 at N-CREATE (Table F.7.2-1, Image
+            // Acquisition Results): never sent empty (D87).
+            guard let modality = step.modality?.trimmingCharacters(in: .whitespaces), !modality.isEmpty else {
+                throw DICOMNetworkError.invalidState(
+                    "MPPS N-CREATE requires Modality (0008,0060), Type 1 in PS3.4 Table F.7.2-1")
             }
         case .nSet:
             guard step.status != .inProgress else {
@@ -1031,7 +1043,10 @@ public enum DICOMMPPSService {
             let response = NCreateResponse(commandSet: message.commandSet, presentationContextID: presentationContextID)
             let status = response.status
             guard status.isSuccessOrWarning else {
-                throw DICOMNetworkError.storeFailed(status)
+                // PS3.4 F.7.2.1.4: no MPPS-specific codes; PS3.7 Annex C names (D83)
+                throw DICOMNetworkError.mppsOperationFailed(
+                    operation: "N-CREATE", status: status,
+                    errorComment: message.commandSet.errorComment, errorID: message.commandSet.errorID)
             }
             // PS3.7 10.1.5.1.4: the SCP may assign the SOP Instance UID; if it
             // returns one, that is the instance to use for every later N-SET.
@@ -1096,7 +1111,10 @@ public enum DICOMMPPSService {
             let response = NSetResponse(commandSet: message.commandSet, presentationContextID: presentationContextID)
             let status = response.status
             guard status.isSuccessOrWarning else {
-                throw DICOMNetworkError.storeFailed(status)
+                // PS3.4 Table F.7.2-2 (0110 + Error ID A710) / PS3.7 Annex C (D83)
+                throw DICOMNetworkError.mppsOperationFailed(
+                    operation: "N-SET", status: status,
+                    errorComment: message.commandSet.errorComment, errorID: message.commandSet.errorID)
             }
             return MPPSOperationResult(sopInstanceUID: procedureStep.sopInstanceUID, status: status)
         }
@@ -1106,8 +1124,10 @@ public enum DICOMMPPSService {
     ///
     /// Every Type 1 and Type 2 attribute of the Performed Procedure Step
     /// Relationship, Performed Procedure Step Information and Image Acquisition
-    /// Results modules is emitted (Type 2 as zero-length when unknown), followed
-    /// by the caller's `attributes`. Elements are sorted by tag before encoding
+    /// Results modules is emitted (Type 2 as zero-length when unknown), plus a
+    /// zero-length Performed Procedure Step Discontinuation Reason Code Sequence
+    /// (0040,0281) so the N-SET may fill it (F.7.2.1.1 note), followed by the
+    /// caller's `attributes`. Elements are sorted by tag before encoding
     /// (PS3.5 7.1).
     ///
     /// The Specific Character Set (0008,0005) — Type 1C — is chosen with
@@ -1158,6 +1178,12 @@ public enum DICOMMPPSService {
         let (endDate, endTime) = dateTimeStrings(procedureStep.endDateTime)
         add(0x0040, 0x0250, .DA, endDate)                                         // PPS End Date 2
         add(0x0040, 0x0251, .TM, endTime)                                         // PPS End Time 2
+        // PPS Discontinuation Reason Code Sequence 3/3, created zero-length so a later
+        // N-SET to DISCONTINUED may fill it: "If an SCU wishes to use the PPS
+        // Discontinuation Reason Code Sequence (0040,0281), it must create that
+        // Attribute (zero-length) during N-CREATE" (PS3.4 F.7.2.1.1 note; F.7.2.1.2
+        // "All Attributes shall be created before they can be set") — D86.
+        addSeq(0x0040, 0x0281, encodeEmptySequence(tag: Tag(group: 0x0040, element: 0x0281), explicit: explicit))
 
         // ---- Image Acquisition Results module ----
         add(0x0008, 0x0060, .CS, procedureStep.modality)                          // Modality 1
