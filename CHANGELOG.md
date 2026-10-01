@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--bit-depth` row said 8, 12 or 16 (16 is clamped), and the exit-code table listed 65/66/74, which
   the tool never returns. Tokens, defaults and the values sent are otherwise unchanged. New test
   target `dicom-printTests`.
+- **dicom-printscp:** help named (0018,1020) "Software Version" and (0008,1090) "Manufacturer Model
+  Name"; the PS3.6 2026a names are Software Versions and Manufacturer's Model Name.
+  `--annotation-box` said N-CREATE / N-SET (PS3.4 Table H.4.4.2-1 defines N-SET only);
+  `--push-job-events` now says it sends the Done event (Event Type 3, Table H.4-14), which is what the
+  emulator sends; the capability flags name their SOP Classes and UIDs. `simulate --layout` takes every
+  Image Display Format form of PS3.3 Table C.13-3 (`ROW\…`, `COL\…`, `STANDARD\C,R`, `SLIDE`,
+  `SUPERSLIDE`, `CUSTOM\i`) as `dicom-print --layout` does; `--border-density` / `--empty-density`
+  take a density in hundredths of OD as well as BLACK / WHITE; `--bit-depth` help said 8, 12 or 16
+  (16 was always refused; Bits Stored is 8 or 12, Table C.13-5). Film-size, medium, orientation,
+  magnification, polarity and Presentation LUT tokens are listed with the term each sends, and the
+  term is accepted as an alias. New test target `dicom-printscpTests`.
 
 ### Fixed — dicom-wado verified against DICOM 2026a (2026-10-01)
 
