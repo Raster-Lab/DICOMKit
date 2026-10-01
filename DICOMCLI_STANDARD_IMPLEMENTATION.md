@@ -62,6 +62,7 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | 2026-10-01 | G2 close | `swift build` (all products; owner's uncommitted DICOMStudio edits present and building), release rebuild of dicom-split/dicom-merge, and every CLI test bundle: the 24 per-tool targets (except j2k, G3) plus QueryRetrieveCLIStandardTests, MWLMPPSCLIEndToEndTests, SplitMergeWorkshopCLIParityTests | — | build exit 0; XCTest 247 executed, 0 failures; Swift Testing 2 passed |
 | 2026-10-01 | G3 anon | PS3.15 Annex E (Table E.1-1, 647 rows, one element each on a fixture, diffed per profile by script), E.3.x option names, PS3.16 CID 7050; matched 10, wrong 6 (fixed), missing 6 (2 added, 4 deferred), plumbing 8 | `06717c9`: `ps315` no longer ignores `--remove`/`--replace`/`--keep` and writes a real audit log; `--shift-dates` honoured; PS3.15 option flags honoured on every profile; `--remove`/`--replace` take any PS3.6 keyword; output File Meta (0002,0003) = new SOP Instance UID; `--retain-full-dates`, `--retain-modified-dates` added; `--dry-run`/`--verbose` list each action with its PS3.6 name and E.1-1a code; **behaviour change**: combinations that were silently ignored now exit 1; help/README/stderr say `basic` is not the PS3.15 Basic Profile; P-ANON-PROFILE, P-ANON-RETAIN-DATES; D157–D164 (engine; D158, D162 High) | dicom_anonTests 12/12 |
 | 2026-10-01 | G3 image, pixedit | image: SC Image IOD PS3.3 Table A.8-1, 9 mandatory modules, Table C.8-24 Conversion Type, run on 6 fixtures and diffed by script (every Type 1/2 attribute present); matched 8, wrong 1, missing 3, plumbing 5. pixedit: C.7.6.1.1.2 Image Type, C.7.6.1 Derivation / Source Image Sequence, C.11.2 window in rescaled units, C.7.6.2 Image Position; matched 3, wrong 4, plumbing 3 | `1c9aaba8` image: (0002,0003) now equals (0008,0018), non-ASCII names get Specific Character Set ISO_IR 192, `--conversion-type` (8 terms, default WSD), VR warnings, README DPI → Nominal Scanned Pixel Spacing; `698de5df` pixedit: output is a Derived Image (new SOP Instance UID, DERIVED, Derivation Description, Source Image Sequence), window read in rescaled units (CT 40/400 now HU), crop moves Image Position (Patient), `--fill-value` clamped to Bits Stored; P-IMAGE-VR, P-PIXEDIT-RANGE; deferred engine rows (CLI works around them, Studio still affected) | 11 new tests pass |
+| 2026-10-01 | G3 video, pdf | video: PS3.6 A-1 video syntaxes, PS3.5 8.2.5–8.2.12 limits stated in help, PS3.3 A.32.5–A.32.7, Table C.7-13 (40 rows: matched 20, wrong 3, extra 1, plumbing 16); pdf: Encapsulated PDF IOD A.45.1, C.24.2 Encapsulated Document Module, SC Equipment (25 rows: matched 13, wrong 1, missing 5, plumbing 6), scripted round trip 26/26 attributes, 10/10 value checks | `cfc81d9f` video: warnings for non-Enumerated modality, sex, malformed birth date, unregistered HEVC UIDs; four `VideoConsole.Help` strings corrected (text only); `3c739850` pdf: Encapsulated Document Length written and used on extraction (odd-length PDFs round-trip byte for byte), Specific Character Set ISO_IR 192 for non-ASCII, `--conversion-type`, `--burned-in-annotation`, `--hl7-instance-identifier` (CDA can now be encapsulated); P-VIDEO-MODALITY-ENUMERATED, P-VIDEO-SEX-ENUMERATED, P-VIDEO-TS-REGISTERED; D176–D182 | dicom-videoTests 18/18, VideoConsoleParityTests 60/60, dicom-pdfTests 7/7 |
 | 2026-10-01 | Scaffold | `Scripts/diff_cli.py`: surface extractor (1,042 options), generic DICOMKit literal checks re-run per tool, transfer-syntax-name and documented-default checks; this report | — | — |
 
 ---
@@ -100,6 +101,9 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | P-ANON-RETAIN-DATES | `--retain-dates` is ambiguous between the two E.3.6 options; `--retain-full-dates` / `--retain-modified-dates` were added. Proposal: deprecate `--retain-dates` | PEND | PS3.15 2026a E.3.6 |
 | P-IMAGE-VR | `dicom-image` now warns on invalid UIDs, over-length LO/PN and out-of-range IS values but still writes them. Proposal: reject them | PEND | PS3.5 2026a Table 6.2-1, Section 9 |
 | P-PIXEDIT-RANGE | `dicom-pixedit` now clamps an out-of-range `--fill-value` to the Bits Stored range and raises a window width below 1, with a warning. Proposal: reject instead | PEND | PS3.3 2026a C.7.6.3.1, C.11.2.1.2 |
+| P-VIDEO-MODALITY-ENUMERATED | `dicom-video --modality` other than the IOD's Enumerated Value (ES / GM / XC for the chosen `--type`) now warns but is written. Proposal: refuse | PEND | PS3.3 2026a A.32.5–A.32.7 |
+| P-VIDEO-SEX-ENUMERATED | `--patient-sex` outside M/F/O and a `--patient-birth-date` that is not DA now warn but are written. Proposal: refuse | PEND | PS3.3 2026a Table C.7-1; PS3.5 Table 6.2-1 |
+| P-VIDEO-TS-REGISTERED | the two HEVC "Fragmentable" UIDs the tool accepts are not registered in PS3.6 Table A-1; they now warn. Proposal: refuse | PEND | PS3.6 2026a Table A-1 |
 | P-AUDIO-SOURCE-PER-TRACK | `VideoWorkflow.Metadata.audioChannelSource` (DICOMKit, `VideoWorkflow.swift:133`, `audioChannels(for:metadata:)`) is one Source applied to every audio track, so `--audio-channel-source` is single-valued. Proposal: add `audioChannelSources: [VideoAudioChannel.Source]?` to `Metadata` (one per track) and let the CLI option repeat | PEND | PS3.3 2026a Table C.7-13 (one (003A,0300) Item per channel, each with its own (003A,0208)) |
 
 ---
@@ -226,6 +230,13 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | D173 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:107-128 | decoding a lossy-compressed input writes native pixels without setting Lossy Image Compression "01" (and Method) when the input lacks them | PS3.3 2026a C.7.6.1.1.5 | Low | ⏳ Open |
 | D174 | DICOMKit | Sources/DICOMKit/PixelEditing/PixelEditor.swift:296-345 | window/invert transform PALETTE COLOR indices and leave Pixel Padding Value (0028,0120) untransformed | PS3.3 2026a C.7.6.3.1.5, C.7.5.1.1.2 | Low | ⏳ Open |
 | D175 | DICOMKit | `Sources/DICOMKit/DICOMFile+Write.swift:230` `DICOMFile.create(dataSet:sopClassUID:sopInstanceUID:transferSyntaxUID:)` | Root cause of D112, D137, D162, D165 (and the CLI workarounds in dicom-anon, dicom-image, dicom-json): when `sopInstanceUID` is nil the File Meta gets a freshly generated UID, and `sopClassUID` defaults to Secondary Capture, instead of copying (0008,0018) / (0008,0016) from the data set, so (0002,0003)/(0002,0002) disagree with the data set for every caller that omits them. PS3.10 Table 7.1-1 requires them to equal the SOP Instance / Class UID. Proposed fix (behaviour, no signature change for the instance UID): default to the data set's (0008,0018) when present; for the class UID, the default can only be fixed by making the parameter optional — a P-item for DICOMKit | PS3.10 2026a Table 7.1-1 | High | ⏳ Open (DICOMKit; found 2026-10-01 by correlating four CLI findings) |
+| D176 | DICOMCore | Sources/DICOMCore/TransferSyntax.swift:1332 (`displayName`) | The 16 video transfer syntax names are abbreviations, not the PS3.6 names ("MPEG2 Main Profile @ Main Level" vs "MPEG2 Main Profile / Main Level", "MPEG-4 AVC/H.264 HP @ Level 4.1" vs "MPEG-4 AVC/H.264 High Profile / Level 4.1"; 16/16 differ); dicom-video prints them on the probe/convert "Transfer syntax:" line, in --verbose and violation messages. `UIDDictionary.lookup(uid:)?.name` has the A-1 name | PS3.6 2026a Table A-1 | Low | ⏳ Open |
+| D177 | DICOMKit | Sources/DICOMKit/Video/MP4ContainerParser.swift:32 (`isPermittedByDICOM`); VideoConformanceValidator.swift:113 | MPEG2 MP@ML/MP@HL streams are rejected unless in MP4 or MPEG-TS, citing 8.2.7; 8.2.5 and 8.2.6 say "The container format for the video bit stream is not constrained" (MPEG-TS, PS, ES, PES or MP4) | PS3.5 2026a 8.2.5, 8.2.6 | Low | ⏳ Open |
+| D178 | DICOMKit | Sources/DICOMKit/Video/VideoStreamInfo.swift:98 (`levelDescription`) | MPEG2 level printed as "0.8" (level_indication 8); PS3.5 names the levels "Main Level" / "High Level" | PS3.5 2026a 8.2.5, 8.2.6 | Low | ⏳ Open |
+| D179 | DICOMKit | Sources/DICOMKit/Video/VideoProbe.swift:291 (`probeElementaryStream`) | A raw MPEG-2 elementary stream (.m2v, sequence header 00 00 01 B3) is tried as H.264 first and reported as "H.264/AVC, profile_idc 51, level 12.5, 32x16"; the MPEG2 sequence-header check (line 319) is never reached | PS3.5 2026a 8.2.5 | Medium | ⏳ Open |
+| D180 | DICOMKit | Sources/DICOMKit/Video/VideoBuilder.swift:649 (`toDataSet`) | A non-ASCII --patient-name (or other text) is written as UTF-8 without Specific Character Set (0008,0005) (checked: "Müller^Jörg" read back as "MÃ¼ller^JÃ¶rg") | PS3.3 2026a Table C.12-1 (Type 1C), Table C.12-5 (ISO_IR 192); PS3.5 6.1.2.2 | Medium | ⏳ Open |
+| D181 | DICOMKit | Sources/DICOMKit/EncapsulatedDocument/EncapsulatedDocumentParser.swift:54; EncapsulatedDocumentWorkflow.swift:99 | `documentData` is the padded value; (0042,0015) is ignored, so an odd-length document gains a 0x00 and `metadataReport()` "Size" shows the padded length (dicom-pdf now cuts it itself) | PS3.3 2026a Table C.24-2 (0042,0015) | Low | ⏳ Open |
+| D182 | DICOMKit | Sources/DICOMKit/EncapsulatedDocument/EncapsulatedDocumentBuilder.swift:485 (`buildDataSet`), :560 (`toDataSet`) | Builder writes neither Encapsulated Document Length (0042,0015) nor Specific Character Set (0008,0005) for non-ASCII text (UTF-8 bytes written); dicom-pdf now adds both itself, the DICOMStudio Workshop path does not | PS3.3 2026a Table C.24-2; Table C.12-1 (Type 1C), Table C.12-5 | Low | ⏳ Open |
 
 ### Rows handed to DICOMStudio
 
@@ -2436,6 +2447,144 @@ clamp; successive derivations).
 **Marker**: main.swift `// NEMA-verified: 2026a, checked 2026-10-01 — 10 options: --fill-value clamped to the Bits Stored / Pixel Representation range (PS3.3 2026a C.7.6.3.1), --window-center/--window-width in Modality LUT output units (C.11.2.1.2, Rescale Slope/Intercept C.11.1), output marked as a Derived Image (C.7.6.1.1.2, Table C.12-10; see DerivedImage.swift); --output/--verbose/<input> are plumbing`; DerivedImage.swift `// NEMA-verified: 2026a, checked 2026-10-01 — derived-image rules of PS3.3 2026a C.7.6.1.1.2 (…), C.12.4 General Reference Module Table C.12-10 (…CID 7202 DCM 121322; CID 7203 has no code…), C.7.6.2.1.1 Equation C.7.6.2.1-1, C.11.2.1.2 (width >= 1), PS3.5 Table 6.2-1 (ST 1024, DS 16), PS3.10 Table 7.1-1 (0002,0003), (0002,0012), (0002,0013)`
 
 **Tests**: `dicom-pixeditTests` 6/6 pass; `swift build --product dicom-pixedit` ok; `diff_cli.py --tool dicom-pixedit` 0 wrong; `check_nema_markers.py Sources/dicom-pixedit` 2/2 marked.
+
+### dicom-video (G3) — 2026-10-01
+
+Scope: all 42 option/flag/argument declarations (43 found by `--list-surface`, `-o/--output` counted per subcommand) of `convert`, `probe`, `extract`, `batch`; help text is DICOMKit `VideoConsole.Help`; engine `VideoWorkflow` (verified in the DICOMKIT report, D34/D46/D58–D62) and D56 (`--audio-channel-source`, 8eebfab) not redone.
+
+Compared by script (`<scratch>/vid_checks.py`, ffmpeg-made H.264 High@4.1, HEVC Main / Main 10, MPEG2 MP@ML clips, pydicom dumps):
+- `--transfer-syntax` accepted set (`TransferSyntax.isVideo`) vs PS3.6 2026a Table A-1 MPEG2/MPEG-4/HEVC rows: matched 16, missing 0, **extra 2** (1.2.840.10008.1.2.4.107.1, .108.1 — written into an object without complaint before); the 16 `displayName`s differ from the A-1 names (16/16, "@" for "/", "HP" for "High Profile") → D176.
+- `VideoConsole.Help` names vs PS3.6 2026a Tables 6-1/7-1: 16 rows, matched 15, wrong 1 ("Patient Name" → "Patient's Name", fixed).
+- `--type` → SOP Class UID/name (Table A-1) and Modality (PS3.3 A.32.5.4.1/A.32.6.4.1/A.32.7.4.1 "shall be" ES/GM/XC): 3/3 match; `--modality CT --type photographic` was written as CT silently → now warned.
+- Patient's Sex Enumerated Values M/F/O (Table C.7-1): `--patient-sex X` written silently → warned; `--patient-birth-date 1990-01-01` silently written empty → warned.
+- Written dataset (H.264, HEVC Main, HEVC Main 10, 29.97 fps): Cine Module Table C.7-13 (Frame Time 33.333333 / 33.366667 ms, Cine Rate 30, Recommended Display Frame Rate 30), Frame Increment Pointer (0018,1063) (Table C.7-14), YBR_PARTIAL_420, Bits 8/8/7 and Main 10 16/10/9 (PS3.5 8.2.7, 8.2.10, 8.2.11), Lossy Image Compression Method ISO_14496_10 / ISO_23008_2: all match. Extract returns the MP4 byte-identical (cmp).
+- README limits: Table 8-4 (BD), Pixel Aspect Ratio absent (8.2.7), 8/10-bit, 4:2:0 match the dumped text; container rule extended (8.2.5/8.2.6 leave MPEG2 unconstrained).
+
+Counts (contract, 40 rows): matched 20, wrong 3, missing 0, extra 1, plumbing 16 (wrong/extra now warned; rejecting them is the P-items below).
+
+#### Input contract
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default std | Default code | Verdict |
+|---|---|---|---|---|---|---|---|
+| --patient-name | Patient's Name (0010,0010) | PS3.3 C.7-1 Type 2 | PN | any string | empty | empty | match (help fixed) |
+| --patient-id | Patient ID (0010,0020) | C.7-1 Type 2 | LO | any | empty | empty | match |
+| --patient-birth-date | Patient's Birth Date (0010,0030) | C.7-1 Type 2; PS3.6 DA | YYYYMMDD | any; non-DA written empty | empty | empty | wrong → fixed (warns) |
+| --patient-sex | Patient's Sex (0010,0040) | C.7-1 Type 2, Enumerated M F O | M, F, O | any | empty | empty | wrong → fixed (warns) |
+| --study-uid / --series-uid | (0020,000D) / (0020,000E) | C.7-3 / C.7-5a Type 1; PS3.5 9.1 | UID | any | — | generated | match |
+| --accession-number / --study-id / --referring-physician | (0008,0050) / (0020,0010) / (0008,0090) | C.7-3 Type 2 | SH / SH / PN | any | empty | empty | match |
+| --series-description / --institution-name | (0008,103E) / (0008,0080) | C.7-5a / C.7-8 Type 3 | LO | any | absent | absent | match |
+| --manufacturer | Manufacturer (0008,0070) | C.7-8 Type 2 | LO | any | empty | empty | match |
+| --modality | Modality (0008,0060) | A.32.5.4.1 / A.32.6.4.1 / A.32.7.4.1 | ES / GM / XC per IOD | any (Defined Terms with --strict-modality) | ES/GM/XC | ES/GM/XC | wrong → fixed (warns; help names the rule) |
+| --strict-modality | Modality Defined Terms | C.7.3.1.1.1 | — | flag | — | off | plumbing |
+| --audio-channel-source | (003A,0208) in (003A,0300) | C.7-13; PS3.16 CID 3000 | 6 codes, Extensible | keyword or SCHEME:VALUE[:MEANING] | none | none | match (8eebfab) |
+| convert <input> | bit stream container | PS3.5 8.2.5–8.2.11 | MP4/MPEG-TS (H.264, HEVC); any (MPEG2) | MP4, MPEG-TS | — | — | plumbing (help fixed; D177) |
+| --type | SOP Class / IOD | A.32.5–A.32.7; PS3.6 A-1 | 3 Video IODs | endoscopic, microscopic, photographic | — | endoscopic (note printed) | match |
+| --transfer-syntax | Transfer Syntax UID | PS3.6 A-1; PS3.5 8.2.5–8.2.11 | 16 UIDs | 18 UIDs (+ .107.1, .108.1) | detected | detected | extra (warned) |
+| --frame-rate | Cine Rate / Frame Time / Recommended Display Frame Rate | C.7-13; PS3.5 Tables 8-2, 8-5, 8-7 | per transfer syntax | 0 < fps < 1000, then validated | from stream | from stream | match |
+| --instance-number / --series-number | (0020,0013) / (0020,0011) | C.7-9 / C.7-5a Type 2 | IS | Int | — | 1 / 1 (help = code) | match |
+| --dry-run, --trust-input, --force, -v, -o, probe/extract/batch arguments, --output-dir, --series-mode (IHE EIA), --recursive, --continue-on-error | — | — | — | — | — | — | plumbing |
+| (cine module, FIP, pixel attributes, SOP class, extract frame numbering) | C.7-13, C.7-14, PS3.5 8.2.x | see above | | no option | | | match (n/a for frame numbering: extract returns the whole bit stream) |
+
+#### Output contract
+
+| Output | Concept | 2026a reference | Verdict |
+|---|---|---|---|
+| probe/convert "Container:", "Codec:", "Profile:", "Level:", "Resolution:", "Chroma:", "Bit depth:", "Scan:", "Frame rate:", "Frames:", "Audio tracks:" | bit stream properties (not attribute names); Resolution → Rows/Columns, Frames → Number of Frames | PS3.5 8.2.x | match, except MPEG2 "Level: 0.8" (D178) and raw MPEG2 ES reported as H.264 (D179) |
+| "Transfer syntax:" UID | Transfer Syntax UID | PS3.6 A-1 | match |
+| "Transfer syntax:" name line | A-1 name | PS3.6 A-1 | wrong, engine (`TransferSyntax.displayName`, 16/16) — D176 |
+| "Conformance: OK" / violation lines | PS3.5 8.2.x constraints | PS3.5 Tables 8-1 to 8-8 | match (engine verified) |
+| extract "Wrote <path> (<n> bytes)", Codec / Container / Transfer syntax UID | bit stream recovered unchanged | PS3.5 A.4 | match (cmp identical) |
+| warnings (new) | A.32.x.4.1, C.7-1, DA, A-1 registration | as cited | added |
+| exit codes 0 / 1 / 2 | success / I/O-usage / conformance rejection | tool-defined | plumbing |
+
+#### Changes
+
+- `Sources/dicom-video/OptionConformance.swift` (new): warnings for --modality ≠ ES/GM/XC of the --type, --patient-sex ∉ {M,F,O}, non-DA --patient-birth-date, unregistered --transfer-syntax (via `UIDDictionary.lookup(...).registered`).
+- `Sources/dicom-video/main.swift`: prints them in `convert` and `batch` (object still written; no accepted value removed); marker.
+- `Sources/DICOMKit/Video/VideoConsole.swift` (`VideoConsole.Help`, strings only, no member renamed): "Patient's Name"; modality help names ES/GM/XC per --type; transfer-syntax help names the accepted families; input help says MOV/raw ES are probed but not converted; marker line added.
+- `Sources/dicom-video/README.md`: warnings, `--audio-channel-source`, container note for MPEG2, references A.32.6/A.32.7, Tables 8-1..8-8, 8.2.12, C.7-13.
+- `Tests/dicom-videoTests/OptionConformanceTests.swift` (8 tests).
+- Commit **cfc81d9f** (with CHANGELOG bullet).
+
+Tests: `swift test --filter OptionConformanceTests` 8 passed; `AudioChannelSourceOptionTests` 10 passed (dicom-videoTests 18/18); `VideoConsoleParityTests` 60 passed. `swift build --product dicom-video` ok; `check_nema_markers.py Sources/dicom-video`: 3/3 files.
+
+#### P-items (not implemented)
+
+- **P-VIDEO-MODALITY-ENUMERATED**: refuse `--modality` values other than the IOD's ES/GM/XC (PS3.3 A.32.5.4.1/A.32.6.4.1/A.32.7.4.1), or drop `--modality` for video; today warned.
+- **P-VIDEO-SEX-ENUMERATED**: refuse `--patient-sex` outside M/F/O (PS3.3 Table C.7-1) and a non-DA `--patient-birth-date` instead of writing it empty; today warned.
+- **P-VIDEO-TS-REGISTERED**: refuse `--transfer-syntax 1.2.840.10008.1.2.4.107.1` / `.108.1` (not in PS3.6 Table A-1; DICOMCore keeps them by decision P2) for writing; today warned.
+
+#### Deferred findings
+
+| D176 | DICOMCore | Sources/DICOMCore/TransferSyntax.swift:1332 (`displayName`) | The 16 video transfer syntax names are abbreviations, not the PS3.6 names ("MPEG2 Main Profile @ Main Level" vs "MPEG2 Main Profile / Main Level", "MPEG-4 AVC/H.264 HP @ Level 4.1" vs "MPEG-4 AVC/H.264 High Profile / Level 4.1"; 16/16 differ); dicom-video prints them on the probe/convert "Transfer syntax:" line, in --verbose and violation messages. `UIDDictionary.lookup(uid:)?.name` has the A-1 name | PS3.6 2026a Table A-1 | Low | ⏳ Open |
+| D178 | DICOMKit | Sources/DICOMKit/Video/VideoStreamInfo.swift:98 (`levelDescription`) | MPEG2 level printed as "0.8" (level_indication 8); PS3.5 names the levels "Main Level" / "High Level" | PS3.5 2026a 8.2.5, 8.2.6 | Low | ⏳ Open |
+| D179 | DICOMKit | Sources/DICOMKit/Video/VideoProbe.swift:291 (`probeElementaryStream`) | A raw MPEG-2 elementary stream (.m2v, sequence header 00 00 01 B3) is tried as H.264 first and reported as "H.264/AVC, profile_idc 51, level 12.5, 32x16"; the MPEG2 sequence-header check (line 319) is never reached | PS3.5 2026a 8.2.5 | Medium | ⏳ Open |
+| D177 | DICOMKit | Sources/DICOMKit/Video/MP4ContainerParser.swift:32 (`isPermittedByDICOM`); VideoConformanceValidator.swift:113 | MPEG2 MP@ML/MP@HL streams are rejected unless in MP4 or MPEG-TS, citing 8.2.7; 8.2.5 and 8.2.6 say "The container format for the video bit stream is not constrained" (MPEG-TS, PS, ES, PES or MP4) | PS3.5 2026a 8.2.5, 8.2.6 | Low | ⏳ Open |
+| D180 | DICOMKit | Sources/DICOMKit/Video/VideoBuilder.swift:649 (`toDataSet`) | A non-ASCII --patient-name (or other text) is written as UTF-8 without Specific Character Set (0008,0005) (checked: "Müller^Jörg" read back as "MÃ¼ller^JÃ¶rg") | PS3.3 2026a Table C.12-1 (Type 1C), Table C.12-5 (ISO_IR 192); PS3.5 6.1.2.2 | Medium | ⏳ Open |
+
+Marker text (main.swift): `// NEMA-verified: 2026a, checked 2026-10-01 — input/output contract of all 42 option/flag/argument declarations (4 subcommands) by script: --transfer-syntax accepts the 16 MPEG2/MPEG-4 AVC/HEVC UIDs of PS3.6 2026a Table A-1 plus the 2 unregistered Fragmentable HEVC UIDs (warned, OptionConformance.swift); --type selects the 3 Video IODs of PS3.3 A.32.5-A.32.7 (Modality ES/GM/XC, SOP Class names per Table A-1); --modality/--patient-sex/--patient-birth-date values the IOD forbids are warned (A.32.x.4.1, Table C.7-1, DA); help text is VideoConsole.Help (16 names vs PS3.6 Table 6-1); --audio-channel-source per PS3.16 CID 3000 (AudioChannelSourceOption.swift, 6 rows) into Table C.7-13 (003A,0300)`; OptionConformance.swift and VideoConsole.swift carry their own lines.
+
+Note for the orchestrator: `Scripts/diff_cli.py` does not scan `VideoConsole.Help` (DICOMKit) for the tool's help; the A-1 name/UID check therefore reports 0 rows for dicom-video. `<scratch>/vid_checks.py` does it.
+
+### dicom-pdf (G3) — 2026-10-01
+
+Scope: all 16 declarations found by `--list-surface` (19 after this pass), the Encapsulated PDF IOD (PS3.3 2026a A.45.1, Table A.45.1-1) and its mandatory modules, both directions.
+
+Compared by script (`<scratch>/pdf_rt_diff.py`): a 329-byte (odd) PDF encapsulated with a non-ASCII name and extracted again; the dataset diffed against Tables C.7-1, C.7-3, C.24-1, C.7-8, C.8-24, C.24-2, C.12-1 (Type 1/2 rows, VRs from PS3.6 Table 6-1) plus value checks.
+- Before: 26 Type 1/2 attributes present and right; **3 value checks wrong** — Encapsulated Document Length (0042,0015) absent, Specific Character Set (0008,0005) absent while "Müller^Jörg" was written as UTF-8, extracted PDF 330 bytes (padding 0x00 kept). CDA could not be encapsulated at all (HL7 Instance Identifier Type 1C, no option). Conversion Type and Burned In Annotation fixed at WSD / YES with no option.
+- After: Type 1/2 matched 26, wrong 0, missing 0; value checks 10/10 (SOP Class 1.2.840.10008.5.1.4.1.1.104.1 = Media Storage SOP Class; MIME application/pdf (A.45.1.4.1); Burned In Annotation YES/NO; Conversion Type a C.8-24 term; OB even length; (0042,0015) = document length = VL or VL−1; ISO_IR 192 exactly when text is non-ASCII; extracted bytes identical). CDA round trip identical, (0040,E001) "root^extension" from /ClinicalDocument/id, MIME text/XML (A.45.2.4).
+- Vocabularies: Conversion Type 8 Defined Terms (DV DI DF WSD SD SI DRW SYN, Table C.8-24, dumped) = builder list; Modality default DOC, M3D enforced for STL/OBJ/MTL (A.85.x.4.3, engine); SOP Class UIDs .104.1–.104.5 in README = Table A-1 names.
+
+Counts (contract, 25 rows): matched 13, wrong 1, missing 5, extra 0, plumbing 6 (all wrong/missing fixed).
+
+#### Input contract
+
+| Option | DICOM concept | 2026a reference | Allowed per standard | Code accepts | Default std | Default code | Verdict |
+|---|---|---|---|---|---|---|---|
+| <input>, --output, --recursive, --show-metadata, --verbose, --strict-modality | — | PS3.10 7.1 | — | — | — | — | plumbing |
+| --extract | Encapsulated Document (0042,0011) → file | C.24-2 (0042,0015) "not including any trailing padding" | unpadded bytes | padded value written | — | — | wrong → fixed |
+| --patient-name | Patient's Name (0010,0010) | C.7-1 Type 2 | PN | required string | — | — | match (help fixed; charset fixed) |
+| --patient-id | Patient ID (0010,0020) | C.7-1 Type 2 | LO | required | — | — | match |
+| --title | Document Title (0042,0010) | C.24-2 Type 2 | ST | any | empty | empty | match |
+| --study-uid / --series-uid | (0020,000D) / (0020,000E) | C.7-3 / C.24-1 Type 1 | UID | any | — | generated | match |
+| --modality | Modality (0008,0060) | C.24-1 Type 1 (C.7.3.1.1.1); A.85.x.4.3 M3D | Defined Terms; M3D for 3D | any; M3D enforced for 3D | — | DOC / M3D | match |
+| --series-description | (0008,103E) | C.24-1 Type 3 | LO | any | — | absent | match |
+| --series-number | (0020,0011) | C.24-1 Type 1 | IS | Int | — | 1 | match |
+| --instance-number | (0020,0013) | C.24-2 Type 1 | IS | Int | — | 1 (batch increments) | match |
+| --conversion-type (new) | Conversion Type (0008,0064) | C.8-24 Type 1 | 8 Defined Terms | 8 terms, case-insensitive | — | WSD | missing → added |
+| --burned-in-annotation (new) | Burned In Annotation (0028,0301) | C.24-2 Type 1 | YES, NO | YES, NO | — | YES | missing → added |
+| --hl7-instance-identifier (new) | HL7 Instance Identifier (0040,E001) | C.24-2 Type 1C (CDA) | UID[^Extension] | string; CDA only; single file | — | /ClinicalDocument/id | missing → added |
+| (0042,0015), (0008,0005) | Encapsulated Document Length; Specific Character Set | C.24-2 Type 3; C.12-1 Type 1C, C.12-5 | | | | | missing → fixed |
+| (sop-class), (mime-type), (concept-name-code), (source-instance-sequence) | | A-1; A.45.1.4.1; C.24-2 | | | | | match |
+
+#### Output contract
+
+| Output | Concept | Verdict |
+|---|---|---|
+| "Encapsulated: <path>", "Extracted: <path>", batch "Successful/Failed/Study UID/Series UID/Output directory" | plumbing | plumbing |
+| --show-metadata "Type", "MIME Type", "Size", "SOP Class", "SOP Instance", "Title", "Name", "ID", "Study UID", "Series UID", "Modality", "Series Description", "Series Number", "Instance Number" | shared DICOMKit `metadataReport()`; short labels of C.24-2/C.7-x attributes | match, except "Size" = padded value length (D181) |
+| exit codes: 0 success; 64 usage / ValidationError; 1 other errors; batch exits 0 even when files fail | tool-defined | plumbing |
+
+#### Changes
+
+- `Sources/dicom-pdf/EncapsulationAttributes.swift` (new): (0042,0015) + ISO_IR 192 completion, padding cut on extraction, Conversion Type / Burned In Annotation vocabularies, CDA `/ClinicalDocument/id` reader.
+- `Sources/dicom-pdf/main.swift`: one `encapsulatedDataSet(...)` for single and batch; new options; extraction (single and batch) cut to (0042,0015); help "Patient's Name", "Document Title (0042,0010)", M3D rule; CDA/SD examples; marker.
+- `Sources/dicom-pdf/README.md`: new options, references corrected (A.45 → A.45.1, + A.85, C.24.1/C.24.2, C.8.6.1, C.12.1; "PS3.5 Section 8.2: Transfer Syntax (Explicit VR Little Endian)" → PS3.5 A.2).
+- `Tests/dicom-pdfTests/EncapsulationAttributesTests.swift` (7 tests), new `dicom-pdfTests` target in Package.swift (own hunk only, committed through a temporary index).
+- Commit **3c739850** (with CHANGELOG bullet).
+
+Tests: `swift test --filter EncapsulationAttributesTests` 7 passed. `swift build --product dicom-pdf` ok; `check_nema_markers.py Sources/dicom-pdf`: 2/2 files.
+
+P-items: none (all changes additive).
+
+#### Deferred findings
+
+| D182 | DICOMKit | Sources/DICOMKit/EncapsulatedDocument/EncapsulatedDocumentBuilder.swift:485 (`buildDataSet`), :560 (`toDataSet`) | Builder writes neither Encapsulated Document Length (0042,0015) nor Specific Character Set (0008,0005) for non-ASCII text (UTF-8 bytes written); dicom-pdf now adds both itself, the DICOMStudio Workshop path does not | PS3.3 2026a Table C.24-2; Table C.12-1 (Type 1C), Table C.12-5 | Low | ⏳ Open |
+| D181 | DICOMKit | Sources/DICOMKit/EncapsulatedDocument/EncapsulatedDocumentParser.swift:54; EncapsulatedDocumentWorkflow.swift:99 | `documentData` is the padded value; (0042,0015) is ignored, so an odd-length document gains a 0x00 and `metadataReport()` "Size" shows the padded length (dicom-pdf now cuts it itself) | PS3.3 2026a Table C.24-2 (0042,0015) | Low | ⏳ Open |
+
+Marker text (main.swift): `// NEMA-verified: 2026a, checked 2026-10-01 — input/output contract of all 19 option/flag/argument declarations by script: Encapsulated PDF Storage 1.2.840.10008.5.1.4.1.1.104.1 (PS3.6 2026a Table A-1); a round trip of an odd-length PDF diffed against PS3.3 2026a Tables A.45.1-1, C.7-1, C.7-3, C.24-1, C.7-8, C.8-24, C.24-2, C.12-1 (every Type 1/2 attribute present; (0042,0015) and (0008,0005) added here, padding byte stripped on extraction); --modality default DOC / M3D (C.24-1, A.85.x.4.3); --conversion-type 8 Defined Terms (C.8-24); --burned-in-annotation YES/NO and --hl7-instance-identifier (C.24-2); see EncapsulationAttributes.swift`; EncapsulationAttributes.swift carries its own line.
+
+Note: DICOMStudio CLI Workshop does not yet offer the three new dicom-pdf options (Studio files untouched by rule).
 
 
 ## G4 Derived objects
