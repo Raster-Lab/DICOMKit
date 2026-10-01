@@ -185,8 +185,14 @@ def struct_name_for_var(src, pos):
 
 
 def extract_commands(src):
-    """commandName literals and subcommand lists of a file."""
-    return re.findall(r'commandName:\s*"([^"]+)"', src)
+    """Command names: explicit `commandName:` literals, else the kebab-cased ParsableCommand struct name
+    (ArgumentParser's default)."""
+    out = []
+    for m in re.finditer(r'struct\s+(\w+)\s*:\s*(?:Async)?ParsableCommand\s*\{', src):
+        body = src[m.end():m.end() + 2000]
+        cm = re.search(r'commandName:\s*"([^"]+)"', body.split('\n    }')[0])
+        out.append(cm.group(1) if cm else kebab(m.group(1)))
+    return out
 
 
 def extract_outputs(src, fname):
@@ -261,6 +267,7 @@ def check_generic(rep, parts, tool, files, tags, local_tags):
     """Re-run the DICOMKit literal checks over one tool's sources."""
     uid_files = {n: re.sub(r'hasPrefix\("1\.2\.840\.10008[\d.]*"\)', 'hasPrefix("")', s) for n, s in files.items()}
     dw.check_uids(rep, parts[6], uid_files)
+    check_uids_in_text(rep, parts[6], tool, files)
     dk.check_coded_concepts(rep, parts[16], files)
     dk.check_tag_names(rep, parts[6], files, local_tags)
     dk.check_citations(rep, {n: p for n, p in parts.items() if n in (3, 4, 5, 6, 10, 15, 16)}, files)
@@ -278,6 +285,26 @@ def help_and_label_strings(src):
     for m in re.finditer(r'print\(\s*"((?:[^"\\]|\\.)*?)"', src):
         out.append((m.start(), m.group(1)))
     return out
+
+
+def check_uids_in_text(rep, p6, tool, files):
+    """Every 1.2.840.10008.* UID anywhere in the tool's source (help rows, discussion, README-style strings),
+    not only quoted literals, is registered in PS3.6 Table A-1 (or is a known prefix / root)."""
+    std = dw.uid_registry(p6)
+    matched, unknown, seen = 0, [], set()
+    for fname, src in files.items():
+        for m in re.finditer(r'(?<![\d.])(1\.2\.840\.10008(?:\.\d+)+)(?![\d])', src):
+            uid = m.group(1).rstrip('.')
+            if uid in seen:
+                continue
+            seen.add(uid)
+            if uid in std or any(k.startswith(uid + '.') for k in std):
+                matched += 1
+            else:
+                unknown.append(f'{tool}/{fname}:{src.count(chr(10), 0, m.start()) + 1}: {uid} is not in PS3.6 Table A-1')
+    wrong, pending, deferred = split_pending(unknown)
+    rep.check(f'{tool}: every 1.2.840.10008.* UID in the source (incl. help text) is registered in PS3.6 Table A-1',
+              matched, wrong, pending=pending)
 
 
 def check_transfer_syntax_names(rep, p6, tool, files, options):

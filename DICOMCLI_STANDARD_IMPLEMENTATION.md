@@ -34,7 +34,7 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | Carried rows | 4 | D9, D29, D44, D56 — CLI halves of findings opened by earlier reports | ✅ D9, D29, D44, D56 CLI halves closed 2026-10-01 (D9, D29, D56 DICOMStudio halves remain open) |
 | G1 Network | 14 tools | input/output contract vs PS3.7 Annex C, PS3.4 C.4/C.6/K/F/H, PS3.18 | ✅ 14 of 14 contracts done 2026-10-01; dicom-server repaired (D94–D102 closed, `7bad09d`); dicom-cloud excluded from Package.swift (no build) |
 | G2 File and media | 14 tools | contract vs PS3.5, PS3.10, PS3.11 Annex H, PS3.18 F, PS3.19 A | ✅ 14 of 14 contracts done 2026-10-01 |
-| G3 Encoding and pixel | 8 tools | contract vs PS3.5 8.2 / 10, PS3.6 A-1, PS3.3 C.7.6.3 / C.11.2, PS3.15 E | ⏳ in progress (started 2026-10-01) |
+| G3 Encoding and pixel | 8 tools | contract vs PS3.5 8.2 / 10, PS3.6 A-1, PS3.3 C.7.6.3 / C.11.2, PS3.15 E | ✅ 8 of 8 contracts done 2026-10-01 |
 | G4 Derived objects | 6 tools | contract vs PS3.3 C.8.20 / C.17, PS3.16 TIDs and CIDs | ⏳ not started |
 
 ---
@@ -63,6 +63,7 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | 2026-10-01 | G3 anon | PS3.15 Annex E (Table E.1-1, 647 rows, one element each on a fixture, diffed per profile by script), E.3.x option names, PS3.16 CID 7050; matched 10, wrong 6 (fixed), missing 6 (2 added, 4 deferred), plumbing 8 | `06717c9`: `ps315` no longer ignores `--remove`/`--replace`/`--keep` and writes a real audit log; `--shift-dates` honoured; PS3.15 option flags honoured on every profile; `--remove`/`--replace` take any PS3.6 keyword; output File Meta (0002,0003) = new SOP Instance UID; `--retain-full-dates`, `--retain-modified-dates` added; `--dry-run`/`--verbose` list each action with its PS3.6 name and E.1-1a code; **behaviour change**: combinations that were silently ignored now exit 1; help/README/stderr say `basic` is not the PS3.15 Basic Profile; P-ANON-PROFILE, P-ANON-RETAIN-DATES; D157–D164 (engine; D158, D162 High) | dicom_anonTests 12/12 |
 | 2026-10-01 | G3 image, pixedit | image: SC Image IOD PS3.3 Table A.8-1, 9 mandatory modules, Table C.8-24 Conversion Type, run on 6 fixtures and diffed by script (every Type 1/2 attribute present); matched 8, wrong 1, missing 3, plumbing 5. pixedit: C.7.6.1.1.2 Image Type, C.7.6.1 Derivation / Source Image Sequence, C.11.2 window in rescaled units, C.7.6.2 Image Position; matched 3, wrong 4, plumbing 3 | `1c9aaba8` image: (0002,0003) now equals (0008,0018), non-ASCII names get Specific Character Set ISO_IR 192, `--conversion-type` (8 terms, default WSD), VR warnings, README DPI → Nominal Scanned Pixel Spacing; `698de5df` pixedit: output is a Derived Image (new SOP Instance UID, DERIVED, Derivation Description, Source Image Sequence), window read in rescaled units (CT 40/400 now HU), crop moves Image Position (Patient), `--fill-value` clamped to Bits Stored; P-IMAGE-VR, P-PIXEDIT-RANGE; deferred engine rows (CLI works around them, Studio still affected) | 11 new tests pass |
 | 2026-10-01 | G3 video, pdf | video: PS3.6 A-1 video syntaxes, PS3.5 8.2.5–8.2.12 limits stated in help, PS3.3 A.32.5–A.32.7, Table C.7-13 (40 rows: matched 20, wrong 3, extra 1, plumbing 16); pdf: Encapsulated PDF IOD A.45.1, C.24.2 Encapsulated Document Module, SC Equipment (25 rows: matched 13, wrong 1, missing 5, plumbing 6), scripted round trip 26/26 attributes, 10/10 value checks | `cfc81d9f` video: warnings for non-Enumerated modality, sex, malformed birth date, unregistered HEVC UIDs; four `VideoConsole.Help` strings corrected (text only); `3c739850` pdf: Encapsulated Document Length written and used on extraction (odd-length PDFs round-trip byte for byte), Specific Character Set ISO_IR 192 for non-ASCII, `--conversion-type`, `--burned-in-annotation`, `--hl7-instance-identifier` (CDA can now be encapsulated); P-VIDEO-MODALITY-ENUMERATED, P-VIDEO-SEX-ENUMERATED, P-VIDEO-TS-REGISTERED; D176–D182 | dicom-videoTests 18/18, VideoConsoleParityTests 60/60, dicom-pdfTests 7/7 |
+| 2026-10-01 | G3 compress, convert, j2k | PS3.5 A.4 (fragments, BOT/EOT), 8.2.x; PS3.6 A-1 (7 j2k help names, 10 transcode targets); PS3.3 C.7.6.1.1.5 lossy attributes, C.7.6.1.1.2, C.7.6.3, C.11.2.1.2.1. compress matched 2, extra 2, plumbing 17; convert matched 3, wrong 1, missing 1, plumbing 8; j2k matched 5, wrong 4, plumbing 24 | `363fd82c` j2k: multi-fragment frames, YBR_RCT/YBR_ICT when the codestream uses a colour transform, lossy output gets Lossy Image Compression/Ratio/Method, DERIVED and a new SOP Instance UID, `roi` writes a derived single-frame image, `--quality` reaches the encoder; **behaviour change** `validate` exits 2 on read error (as documented); `d944a32e` compress: help rows pinned by test, README codec table; `55f7fc75` convert: 7 missing A-1 keywords accepted, refuses window width < 1, quality outside 1–100, negative frame; P-CONVERT-TS-KEYWORDS, P-CONVERT-FRAME, P-CONVERT-EXIT, P-COMPRESS-SYNTAX, P-COMPRESS-JSON, P-J2K-FRAME, P-J2K-PART2, P-J2K-JSON; D183–D193 (High: D184–D186, D192, D193 — lossy output keeps the source SOP Instance UID; J2K colour output labelled RGB; decompressed J2K stays YBR_RCT/ICT) | dicom_j2kTests 79/79 (26 new), dicom_compressTests 3/3, dicom_convertTests 8/8 |
 | 2026-10-01 | Scaffold | `Scripts/diff_cli.py`: surface extractor (1,042 options), generic DICOMKit literal checks re-run per tool, transfer-syntax-name and documented-default checks; this report | — | — |
 
 ---
@@ -104,6 +105,12 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | P-VIDEO-MODALITY-ENUMERATED | `dicom-video --modality` other than the IOD's Enumerated Value (ES / GM / XC for the chosen `--type`) now warns but is written. Proposal: refuse | PEND | PS3.3 2026a A.32.5–A.32.7 |
 | P-VIDEO-SEX-ENUMERATED | `--patient-sex` outside M/F/O and a `--patient-birth-date` that is not DA now warn but are written. Proposal: refuse | PEND | PS3.3 2026a Table C.7-1; PS3.5 Table 6.2-1 |
 | P-VIDEO-TS-REGISTERED | the two HEVC "Fragmentable" UIDs the tool accepts are not registered in PS3.6 Table A-1; they now warn. Proposal: refuse | PEND | PS3.6 2026a Table A-1 |
+| P-CONVERT-TS-KEYWORDS | `dicom-convert --transfer-syntax JPEG2000Lossless / HTJ2KLossless / JPEGXLLossless` select the reversible encode into .91 / .203 / .112, but in PS3.6 Table A-1 these keywords name .90 / .201 / .110 (also `TransferSyntax.parseEncoding`). Proposal: make the keywords mean their A-1 UIDs and keep the old meaning under new names (e.g. `JPEG2000Reversible`) | PEND | PS3.6 2026a Table A-1 |
+| P-CONVERT-FRAME / P-J2K-FRAME | `--frame` in dicom-convert and dicom-j2k (info/validate/roi/benchmark/compare) is 0-based; DICOM frames are numbered from 1. Decide together with P-EXPORT-1 and P-SPLIT-1 | PEND | PS3.3 2026a C.7.6.6 |
+| P-CONVERT-EXIT | a dicom-convert directory run exits 0 when files fail (dicom-compress batch exits 1). Proposal: exit 1 | PEND | — |
+| P-COMPRESS-SYNTAX | `dicom-compress decompress --syntax` / `batch --syntax` accept every codec name (`--syntax jpeg2000` writes encapsulated .91). Proposal: accept only native targets, as help and error text already say | PEND | PS3.5 2026a A.1, A.2 |
+| P-COMPRESS-JSON / P-J2K-JSON | `info --json` (and dicom-j2k info/validate/benchmark/compare) keys are tool camelCase. Proposal: PS3.6 keywords where a DICOM attribute is meant | PEND | PS3.6 2026a Table 6-1 |
+| P-J2K-PART2 | `dicom-j2k transcode --target j2k-part2-*` writes a Part 1 codestream (Rsiz 0, no MCT) under .92 / .93, while the engine refuses Part 2 encodes. Proposal: refuse the three targets as the engine does, or confirm a Part 1 codestream is acceptable | PEND | PS3.5 2026a A.4.4 |
 | P-AUDIO-SOURCE-PER-TRACK | `VideoWorkflow.Metadata.audioChannelSource` (DICOMKit, `VideoWorkflow.swift:133`, `audioChannels(for:metadata:)`) is one Source applied to every audio track, so `--audio-channel-source` is single-valued. Proposal: add `audioChannelSources: [VideoAudioChannel.Source]?` to `Metadata` (one per track) and let the CLI option repeat | PEND | PS3.3 2026a Table C.7-13 (one (003A,0300) Item per channel, each with its own (003A,0208)) |
 
 ---
@@ -237,6 +244,17 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | D180 | DICOMKit | Sources/DICOMKit/Video/VideoBuilder.swift:649 (`toDataSet`) | A non-ASCII --patient-name (or other text) is written as UTF-8 without Specific Character Set (0008,0005) (checked: "Müller^Jörg" read back as "MÃ¼ller^JÃ¶rg") | PS3.3 2026a Table C.12-1 (Type 1C), Table C.12-5 (ISO_IR 192); PS3.5 6.1.2.2 | Medium | ⏳ Open |
 | D181 | DICOMKit | Sources/DICOMKit/EncapsulatedDocument/EncapsulatedDocumentParser.swift:54; EncapsulatedDocumentWorkflow.swift:99 | `documentData` is the padded value; (0042,0015) is ignored, so an odd-length document gains a 0x00 and `metadataReport()` "Size" shows the padded length (dicom-pdf now cuts it itself) | PS3.3 2026a Table C.24-2 (0042,0015) | Low | ⏳ Open |
 | D182 | DICOMKit | Sources/DICOMKit/EncapsulatedDocument/EncapsulatedDocumentBuilder.swift:485 (`buildDataSet`), :560 (`toDataSet`) | Builder writes neither Encapsulated Document Length (0042,0015) nor Specific Character Set (0008,0005) for non-ASCII text (UTF-8 bytes written); dicom-pdf now adds both itself, the DICOMStudio Workshop path does not | PS3.3 2026a Table C.24-2; Table C.12-1 (Type 1C), Table C.12-5 | Low | ⏳ Open |
+| D183 | DICOMKit | Sources/DICOMKit/Compression/CompressionConsole.swift:83-89, 324 | "Compression ratio: 12.0%" is output/input size in percent, not the N:1 ratio PS3.3 defines for (0028,2112); info label "Samples Per Pixel" (PS3.6: "Samples per Pixel") | PS3.3 2026a C.7.6.1.1.5.2; PS3.6 2026a Table 6-1 | Low | ⏳ Open |
+| D184 | DICOMKit | Sources/DICOMKit/Compression/CompressionManager.swift:552-591 | Lossy compress records (0028,2110/2112/2114) and DERIVED but keeps the SOP Instance UID and (0002,0003): rgb8.dcm → jpeg, jpeg2000, htj2k, jpeg-ls, jpeg-xl outputs all carry the source UID | PS3.3 2026a C.7.6.1.1.5 ("if the predecessor was a DICOM image, then the Image shall receive a new SOP Instance UID") | High | ⏳ Open |
+| D185 | DICOMKit | Sources/DICOMKit/Compression/CompressionManager.swift:451-530 (encodePixelDataInPlace) | After a JPEG 2000 / HTJ2K encode of a 3-sample image the codestream has COD MCT = 1 (RCT with 5-3, ICT with 9-7) but Photometric Interpretation stays RGB (fixtures out_rgb_jpeg2000/-lossless/htj2k/htj2k-rpcl) | PS3.5 2026a 8.2.4, 8.2.14 ("No other Value of Photometric Interpretation than YBR_RCT or YBR_ICT is permitted when SGcod Multiple component transformation type is 1"), Tables 8.2.4-1, 8.2.14-1 | High | ⏳ Open |
+| D186 | DICOMKit | Sources/DICOMKit/Compression/CompressionManager.swift:593-680 (decodePixelDataInPlace) | Decompressing a YBR_RCT / YBR_ICT JPEG 2000 file writes native RGB samples labelled YBR_RCT / YBR_ICT (only JPEG YBR and XYB are relabelled) | PS3.5 2026a 8.2 (native PI "shall be other than YBR_RCT, YBR_ICT, YBR_PARTIAL_420"), 8.2.4 ("will be changed to RGB") | High | ⏳ Open |
+| D187 | DICOMCore (J2KSwift dependency) | Sources/DICOMCore/J2KRoutePlanner.swift:324-326; J2KSwiftCodec.swift:509-528; .build/checkouts/J2KSwift/Sources/J2KCodec/J2KEncoderPipeline.swift:6454 | 1.2.840.10008.1.2.4.202 output has COD progression LRCP (the encoder always writes 0 whatever `progressionOrder` says) and no TLM marker segment, while the markers claim RPCL is satisfied; seen via dicom-compress `htj2k-rpcl-lossless-only` and dicom-j2k `transcode` (which now warns) | PS3.5 2026a 10.18.1 (RPCL, base resolution ≤ 64, TLM shall be present) | Medium | ⏳ Open |
+| D188 | DICOMKit | Sources/DICOMKit/Compression/CompressionManager.swift:904-933 | File Meta UI values (0002,0002), (0002,0003), (0002,0010) are written with odd length and no trailing NULL (DCMTK: "Length of element (0002,0002) is odd") | PS3.5 2026a 6.2 (UI padding), 7.1 (even Value Length); PS3.10 7.1 | Medium | ⏳ Open |
+| D189 | DICOMKit | Sources/DICOMKit/Compression/CompressionManager.swift:583 | Comment cites "PS3.3 C.7.6.1.1.5.1: shall be set to DERIVED"; that sentence is in C.7.6.1.1.5 (C.7.6.1.1.5.1 is Lossy Image Compression Method) | PS3.3 2026a C.7.6.1.1.5 | Low | ⏳ Open |
+| D190 | DICOMCore | JPEG Baseline encoder (default `.jli` engine, CodecRegistry) | .4.50 colour output carries a JFIF APP0 segment and YCbCr 4:4:4 components while Photometric Interpretation is RGB; PS3.5 recommends JFIF be absent and not relied on, and Table 8.2.1-1 allows YBR_FULL_422 or RGB only | PS3.5 2026a 8.2.1, Table 8.2.1-1 | Low | ⏳ Open |
+| D191 | DICOMKit | Sources/DICOMKit/DICOMConverter.swift:340-352 | `stripPrivate` filters the top-level Data Set only; a Private Creator and Private Data Element inside a Sequence Item survive (fixture priv.dcm: (0011,0010)/(0011,1001) in Referenced Image Sequence) | PS3.5 2026a 7.8.1 (Items are self-contained Data Sets with their own Private Data Elements) | Medium | ⏳ Open |
+| D192 | DICOMKit | Sources/DICOMKit/DICOMConverter.swift:488-491 (applyLossyProvenance) | A lossy convert records (0028,2110/2112/2114) and DERIVED but keeps the SOP Instance UID (c_lossy.dcm, c_jpeg.dcm) | PS3.3 2026a C.7.6.1.1.5 | High | ⏳ Open |
+| D193 | DICOMCore | Sources/DICOMCore/TransferSyntaxConverter.swift:791-826 | J2K → native keeps PI YBR_RCT / YBR_ICT over RGB samples (only XYB and JPEG YBR are relabelled); RGB → J2K leaves PI RGB with COD MCT = 1 | PS3.5 2026a 8.2, 8.2.4, Table 8.2.4-1 | High | ⏳ Open |
 
 ### Rows handed to DICOMStudio
 
@@ -2585,6 +2603,171 @@ P-items: none (all changes additive).
 Marker text (main.swift): `// NEMA-verified: 2026a, checked 2026-10-01 — input/output contract of all 19 option/flag/argument declarations by script: Encapsulated PDF Storage 1.2.840.10008.5.1.4.1.1.104.1 (PS3.6 2026a Table A-1); a round trip of an odd-length PDF diffed against PS3.3 2026a Tables A.45.1-1, C.7-1, C.7-3, C.24-1, C.7-8, C.8-24, C.24-2, C.12-1 (every Type 1/2 attribute present; (0042,0015) and (0008,0005) added here, padding byte stripped on extraction); --modality default DOC / M3D (C.24-1, A.85.x.4.3); --conversion-type 8 Defined Terms (C.8-24); --burned-in-annotation YES/NO and --hl7-instance-identifier (C.24-2); see EncapsulationAttributes.swift`; EncapsulationAttributes.swift carries its own line.
 
 Note: DICOMStudio CLI Workshop does not yet offer the three new dicom-pdf options (Studio files untouched by rule).
+
+### dicom-compress (G3) — verified 2026-10-01
+
+Compared: `diff_cli.py --list-surface` (21 options, 5 subcommands; the extractor lists only `dicom-compress` and `backends` as commands because compress/decompress/info/batch take their names from the struct — noted, not changed); `diff_cli.py --tool dicom-compress` (11 checks ok, 0 FAIL); the 25 codec/syntax help rows (alias → engine UID → PS3.6 2026a Table A-1 name) were diffed by script earlier today (24 match, 1 fixed in `dfc929c`, D9) and are now pinned by `dicom-compressTests`. Output: `compress` with 8 codecs on pydicom RGB / 16-bit fixtures, `decompress` of YBR_RCT / YBR_ICT JPEG 2000, `info` (text, JSON), codestream COD/TLM parsed by script (`scratch/g3c/fx/cod.py`) against PS3.5 2026a 8.2.4 / 8.2.14 / Tables 8.2.4-1, 8.2.14-1 / 10.18.1 and PS3.3 C.7.6.1.1.5 (texts dumped by `sect.py`).
+
+Counts: matched 2, wrong 0, missing 0, extra 2, plumbing 17.
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed (standard) | Code accepts | Default std | Default code | Verdict |
+|---|---|---|---|---|---|---|---|
+| compress `<input>` | PS3.10 file | PS3.10 Table 7.1-1 | — | path | — | — | plumbing |
+| compress `--output` | output PS3.10 file | PS3.10 7.1 | — | path (directory resolved to file) | — | — | plumbing |
+| compress `--codec` | Transfer Syntax UID + intent | PS3.6 Table A-1; PS3.5 A.4.1–A.4.4, A.4.12, Table 8.2.1-1 | Table A-1 UIDs | 23 names → 21 UIDs (25 help rows) | — | required | match (D9 fixed in `dfc929c`; test added) |
+| compress `--quality` | irreversible quality; ratio recorded in (0028,2112) | PS3.3 C.7.6.1.1.5.2 | — | maximum/high/medium/low/0.0–1.0 | — | engine default | plumbing |
+| compress `--verbose`, `--backend` | — | — | — | auto/metal/accelerate/scalar | — | auto | plumbing |
+| decompress `<input>`, `--output`, `--verbose` | — | PS3.10 7.1 | — | — | — | — | plumbing |
+| decompress `--syntax` | native Transfer Syntax | PS3.6 Table A-1; PS3.5 A.1, A.2 | 1.2.840.10008.1.2.1, 1.2.840.10008.1.2 | explicit-le, implicit-le (names match A-1) **and every codec name** (`--syntax jpeg2000` writes encapsulated .91) | — | explicit-le | extra (P-COMPRESS-SYNTAX) |
+| info `<input>`, `--json` | — | — | — | — | — | — | plumbing |
+| batch `<input>`, `--output`, `--decompress`, `--quality`, `--recursive`, `--verbose` | — | — | — | — | — | — | plumbing |
+| batch `--codec` | as compress | PS3.6 Table A-1 | | same table | | | match |
+| batch `--syntax` | as decompress | PS3.6 Table A-1 | | same as decompress | | explicit-le | extra (P-COMPRESS-SYNTAX) |
+| backends `--json` | — | — | — | — | — | — | plumbing |
+
+**Output contract**
+
+| Output | 2026a reference | Code | Verdict |
+|---|---|---|---|
+| info "Transfer Syntax UID", "Bits Allocated", "Bits Stored", "Photometric Interpretation" | PS3.6 Table 6-1 names | as standard | match |
+| info "Samples Per Pixel" | PS3.6 Table 6-1 "Samples per Pixel" | capital P (CompressionConsole, DICOMKit) | wrong (engine, D183) |
+| info "Transfer Syntax" | PS3.6 Table A-1 | engine short display name (DICOMCore policy) + intent for .91/.93/.203/.112 from (0028,2110) | match (policy) |
+| info "Lossless" | PS3.3 C.7.6.1.1.5 | from (0028,2110) for the general UIDs | match |
+| info `--json` keys | PS3.6 keywords | `transferSyntaxUID`, `bitsAllocated`, `samplesPerPixel`, `rows`, … tool camelCase | plumbing (P-COMPRESS-JSON) |
+| compress "Compression ratio: 12.0%" | PS3.3 C.7.6.1.1.5.2 (ratio N:1) | output/input size in % | wrong (engine, D183) |
+| lossy output (0028,2110) "01", (0028,2112) ratio, (0028,2114) ISO_10918_1 / ISO_14495_1 / ISO_15444_1 / ISO_15444_15 / ISO_18181_1, Image Type DERIVED | PS3.3 C.7.6.1.1.5, C.7.6.1.1.5.1 | as standard (5 lossy codecs on fixture) | match |
+| lossy output SOP Instance UID | PS3.3 C.7.6.1.1.5 ("shall receive a new SOP Instance UID") | source UID kept | wrong (engine, D184) |
+| J2K/HTJ2K colour output PI | PS3.5 8.2.4, 8.2.14, Tables 8.2.4-1 / 8.2.14-1 | RGB while COD MCT = 1 | wrong (engine, D185) |
+| decompress of YBR_RCT / YBR_ICT | PS3.5 8.2, 8.2.4 | native RGB samples labelled YBR_RCT / YBR_ICT | wrong (engine, D186) |
+| .202 codestream | PS3.5 10.18.1 | LRCP, no TLM | wrong (codec dependency, D187) |
+| File Meta UI values | PS3.5 6.2, 7.1 | odd length, unpadded | wrong (engine, D188) |
+| exit codes | — | 0 ok, 1 failure (batch: any file failed), 64 invalid arguments | plumbing |
+
+Changes: `d944a32e` docs(cli): new test target `dicom-compressTests` (3 tests: every compress/decompress help row resolves to the UID and intent it shows and uses the Table A-1 name's words; "Lossless Only" only where A-1 has it); README codec table (13 rows, some naming PS3.6 keywords of other UIDs) replaced by the 23 rows with UID, A-1 name, encoding; marker extended. No behaviour change, so no CHANGELOG bullet.
+
+Tests: `swift test --filter dicom_compressTests` 3/3 pass; `swift build --product dicom-compress` ok; `check_nema_markers.py Sources/dicom-compress` 1/1.
+
+Marker (`main.swift`): `// NEMA-verified: 2026a, checked 2026-10-01 — the 25 codec/syntax help rows (alias → UID → name) diffed by script against PS3.6 2026a Table A-1 and the engine codec table: 24 match, 1 fixed (.4.110 is "JPEG XL Lossless", D9), now pinned by dicom-compressTests; JPEG Extended 8/12-bit per PS3.5 2026a Table 8.2.1-1; the cited PS3.5 A.4.4 / A.4.12 section titles confirmed; 21 options classified (input contract); compressed / decompressed output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4, 8.2.14, 10.18.1 (engine findings deferred)`
+
+P-items:
+- **P-COMPRESS-SYNTAX** — `decompress --syntax` / `batch --syntax` accept every codec name (validation calls the full codec table); `--syntax jpeg2000` "decompresses" into encapsulated .91. Proposal: accept only native targets (explicit-le, implicit-le, deflate, retired explicit-be) as the help and the error text already say.
+- **P-COMPRESS-JSON** — `info --json` keys are tool camelCase; proposal: add PS3.6 keywords (TransferSyntaxUID, Rows, Columns, BitsAllocated, BitsStored, SamplesPerPixel, PhotometricInterpretation, LossyImageCompression).
+
+Deferred findings:
+
+| D184 | DICOMKit | Sources/DICOMKit/Compression/CompressionManager.swift:552-591 | Lossy compress records (0028,2110/2112/2114) and DERIVED but keeps the SOP Instance UID and (0002,0003): rgb8.dcm → jpeg, jpeg2000, htj2k, jpeg-ls, jpeg-xl outputs all carry the source UID | PS3.3 2026a C.7.6.1.1.5 ("if the predecessor was a DICOM image, then the Image shall receive a new SOP Instance UID") | High | ⏳ Open |
+| D185 | DICOMKit | Sources/DICOMKit/Compression/CompressionManager.swift:451-530 (encodePixelDataInPlace) | After a JPEG 2000 / HTJ2K encode of a 3-sample image the codestream has COD MCT = 1 (RCT with 5-3, ICT with 9-7) but Photometric Interpretation stays RGB (fixtures out_rgb_jpeg2000/-lossless/htj2k/htj2k-rpcl) | PS3.5 2026a 8.2.4, 8.2.14 ("No other Value of Photometric Interpretation than YBR_RCT or YBR_ICT is permitted when SGcod Multiple component transformation type is 1"), Tables 8.2.4-1, 8.2.14-1 | High | ⏳ Open |
+| D186 | DICOMKit | Sources/DICOMKit/Compression/CompressionManager.swift:593-680 (decodePixelDataInPlace) | Decompressing a YBR_RCT / YBR_ICT JPEG 2000 file writes native RGB samples labelled YBR_RCT / YBR_ICT (only JPEG YBR and XYB are relabelled) | PS3.5 2026a 8.2 (native PI "shall be other than YBR_RCT, YBR_ICT, YBR_PARTIAL_420"), 8.2.4 ("will be changed to RGB") | High | ⏳ Open |
+| D187 | DICOMCore (J2KSwift dependency) | Sources/DICOMCore/J2KRoutePlanner.swift:324-326; J2KSwiftCodec.swift:509-528; .build/checkouts/J2KSwift/Sources/J2KCodec/J2KEncoderPipeline.swift:6454 | 1.2.840.10008.1.2.4.202 output has COD progression LRCP (the encoder always writes 0 whatever `progressionOrder` says) and no TLM marker segment, while the markers claim RPCL is satisfied; seen via dicom-compress `htj2k-rpcl-lossless-only` and dicom-j2k `transcode` (which now warns) | PS3.5 2026a 10.18.1 (RPCL, base resolution ≤ 64, TLM shall be present) | Medium | ⏳ Open |
+| D188 | DICOMKit | Sources/DICOMKit/Compression/CompressionManager.swift:904-933 | File Meta UI values (0002,0002), (0002,0003), (0002,0010) are written with odd length and no trailing NULL (DCMTK: "Length of element (0002,0002) is odd") | PS3.5 2026a 6.2 (UI padding), 7.1 (even Value Length); PS3.10 7.1 | Medium | ⏳ Open |
+| D183 | DICOMKit | Sources/DICOMKit/Compression/CompressionConsole.swift:83-89, 324 | "Compression ratio: 12.0%" is output/input size in percent, not the N:1 ratio PS3.3 defines for (0028,2112); info label "Samples Per Pixel" (PS3.6: "Samples per Pixel") | PS3.3 2026a C.7.6.1.1.5.2; PS3.6 2026a Table 6-1 | Low | ⏳ Open |
+| D189 | DICOMKit | Sources/DICOMKit/Compression/CompressionManager.swift:583 | Comment cites "PS3.3 C.7.6.1.1.5.1: shall be set to DERIVED"; that sentence is in C.7.6.1.1.5 (C.7.6.1.1.5.1 is Lossy Image Compression Method) | PS3.3 2026a C.7.6.1.1.5 | Low | ⏳ Open |
+| D190 | DICOMCore | JPEG Baseline encoder (default `.jli` engine, CodecRegistry) | .4.50 colour output carries a JFIF APP0 segment and YCbCr 4:4:4 components while Photometric Interpretation is RGB; PS3.5 recommends JFIF be absent and not relied on, and Table 8.2.1-1 allows YBR_FULL_422 or RGB only | PS3.5 2026a 8.2.1, Table 8.2.1-1 | Low | ⏳ Open |
+
+### dicom-convert (G3) — verified 2026-10-01
+
+Compared: `diff_cli.py --list-surface` (13 options) and `--tool dicom-convert` (11 checks ok, 0 FAIL); `--transfer-syntax` vocabulary (DICOMConverter catalog, 25 targets → 21 UIDs) diffed by script (`scratch/g3c/diff_convert_ts.py`) against the PS3.6 2026a Table A-1 keyword column: 11 keywords accepted for the same UID, 3 catalog names are A-1 keywords of another UID, 7 A-1 keywords not accepted; PS3.3 2026a C.11.2.1.2.1 / C.11.2.1.2.2 (window), PS3.5 7.8.1 (private elements) dumped by `sect.py`; output run on pydicom fixtures (lossy J2K/JPEG, YBR_RCT/YBR_ICT decode, nested private tags, colour window, batch with a bad file).
+
+Counts: matched 3, wrong 1, missing 1, extra 0, plumbing 8.
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed (standard) | Code accepts | Default std | Default code | Verdict |
+|---|---|---|---|---|---|---|---|
+| `<input-path>` | PS3.10 file / directory | PS3.10 7.1 | — | path (directory needs `--recursive`) | — | — | plumbing |
+| `--output` | output path | — | — | path | — | — | plumbing |
+| `--transfer-syntax` | Transfer Syntax UID + intent | PS3.6 Table A-1 (keyword); PS3.5 A.1–A.4 | A-1 keywords / UIDs of 21 targets | 25 catalog names + UIDs; now + DeflatedExplicitVRLittleEndian, JPEGBaseline8Bit, JPEGExtended12Bit, JPEG2000MCLossless, JPEG2000MC, JPEGXLJPEGRecompression, HTJ2KLosslessRPCL | — | required for `--format dicom` | missing → fixed (7); 3 collisions → P-CONVERT-TS-KEYWORDS |
+| `--format` | DICOM vs raster | — | — | dicom, png, jpeg, tiff | — | dicom | plumbing |
+| `--quality` | JPEG raster quality | — | — | 1–100 (out of range now refused) | — | 90 | plumbing |
+| `--apply-window` | VOI LINEAR | PS3.3 C.11.2.1.2.1 | — | flag (stored window by default) | — | off | plumbing |
+| `--window-center` | Window Center (0028,1050) | PS3.3 C.11.2.1.2.1 | DS | Double | — | stored | match |
+| `--window-width` | Window Width (0028,1051) | PS3.3 C.11.2.1.2.1 "shall always be greater than or equal to 1" | ≥ 1 | any Double (0, 0.5 accepted) → now ≥ 1 | — | stored | wrong → fixed |
+| `--frame` | frame | PS3.3 C.7.6.6 / C.7.6.16 (numbered from 1) | 1…n | 0-based index; negative now refused | — | 0 | match by design (P-CONVERT-FRAME) |
+| `--recursive` | — | — | — | flag | — | off | plumbing |
+| `--strip-private` | Private Data Elements | PS3.5 7.8, 7.8.1 | odd groups, incl. inside items | top-level only (engine) | — | off | match (engine gap D191) |
+| `--validate` | re-read output | PS3.10 7.1 | — | flag (spelling kept; property renamed to allow `validate()`) | — | off | plumbing |
+| `--force` | no preamble/DICM | PS3.10 7.1 | — | flag | — | off | plumbing |
+
+**Output contract**
+
+| Output | 2026a reference | Code | Verdict |
+|---|---|---|---|
+| "Transcoded from <UID> to <UID> (lossless/lossy)" (ConvertConsole) | PS3.6 Table A-1 UIDs | UIDs | match |
+| lossy output (0028,2110/2112/2114), Image Type DERIVED | PS3.3 C.7.6.1.1.5 | set (c_lossy.dcm, c_jpeg.dcm) | match |
+| lossy output SOP Instance UID | PS3.3 C.7.6.1.1.5 | source UID kept | wrong (engine, D192) |
+| J2K encode of RGB / decode of YBR_RCT, YBR_ICT | PS3.5 8.2, 8.2.4 | RGB under MCT 1; native labelled YBR_RCT / YBR_ICT | wrong (engine, D193) |
+| `--strip-private` | PS3.5 7.8.1 | nested (0011,0010)/(0011,1001) kept | wrong (engine, D191) |
+| window on colour export | PS3.3 C.11.2.1.2.2 (no meaning for non-MONOCHROME) | not applied (identical PNG) | match |
+| exit codes | — | 0; 1 single-file failure; 64 bad arguments / missing input; directory run exits 0 with failed files | plumbing (P-CONVERT-EXIT); README listed 1–4, corrected |
+
+Changes: `55f7fc75` fix(cli): `TransferSyntaxKeywords.swift` (7 A-1 keywords, catalog tried first so nothing is shadowed; help names the 3 collisions); `validate()` (window width ≥ 1, quality 1–100, frame ≥ 0); README (target list, 0-based frames, real exit codes, `--strip-private` not de-identification, impossible "export all frames" example removed); CHANGELOG bullet; new test target `dicom-convertTests` (8 tests).
+
+Tests: `swift test --filter dicom_convertTests` 8/8 pass; `swift build --product dicom-convert` ok; `check_nema_markers.py Sources/dicom-convert` 2/2.
+
+Markers: `DICOMConvert.swift` `// NEMA-verified: 2026a, checked 2026-10-01 — 13 options classified against PS3.6 2026a Table A-1 (--transfer-syntax: 25 catalog targets, 21 UIDs; A-1 keywords 11 match, 3 name another UID (P-item), 7 added in TransferSyntaxKeywords.swift), PS3.3 C.11.2.1.2.1 (--window-width ≥ 1, now enforced), C.7.6.16 (--frame 0-based, P-item), PS3.5 7.8 (--strip-private, engine deferred), PS3.10 7.1 (--force); DICOM output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4 (engine findings deferred)`; `TransferSyntaxKeywords.swift` `// NEMA-verified: 2026a, checked 2026-10-01 — the 7 keyword → UID rows below are PS3.6 2026a Table A-1 rows (keyword column) whose keyword the shared DICOMConverter catalog does not accept; diffed by script against the 21 target UIDs of the catalog (A-1 keywords: 11 accepted for the same UID, 3 accepted for another UID (P-item), 7 added here)`
+
+P-items:
+- **P-CONVERT-TS-KEYWORDS** — `JPEG2000Lossless`, `HTJ2KLossless`, `JPEGXLLossless` (DICOMConverter catalog; also `TransferSyntax.parseEncoding` "jpeg2000lossless"/"htj2klossless") select the reversible encode into .91 / .203 / .112, but in PS3.6 Table A-1 these keywords name .90 / .201 / .110. Proposal: deprecate the three catalog spellings (e.g. `JPEG2000Reversible`, `HTJ2KReversible`, `JPEGXLReversible`) and let the A-1 keywords select their A-1 UIDs.
+- **P-CONVERT-FRAME** — `--frame` is a 0-based index; DICOM frames are numbered from 1 (same as P-EXPORT-1 / P-SPLIT-1).
+- **P-CONVERT-EXIT** — a directory run exits 0 when files fail (dicom-compress batch exits 1); proposal: exit 1.
+
+Deferred findings:
+
+| D192 | DICOMKit | Sources/DICOMKit/DICOMConverter.swift:488-491 (applyLossyProvenance) | A lossy convert records (0028,2110/2112/2114) and DERIVED but keeps the SOP Instance UID (c_lossy.dcm, c_jpeg.dcm) | PS3.3 2026a C.7.6.1.1.5 | High | ⏳ Open |
+| D193 | DICOMCore | Sources/DICOMCore/TransferSyntaxConverter.swift:791-826 | J2K → native keeps PI YBR_RCT / YBR_ICT over RGB samples (only XYB and JPEG YBR are relabelled); RGB → J2K leaves PI RGB with COD MCT = 1 | PS3.5 2026a 8.2, 8.2.4, Table 8.2.4-1 | High | ⏳ Open |
+| D191 | DICOMKit | Sources/DICOMKit/DICOMConverter.swift:340-352 | `stripPrivate` filters the top-level Data Set only; a Private Creator and Private Data Element inside a Sequence Item survive (fixture priv.dcm: (0011,0010)/(0011,1001) in Referenced Image Sequence) | PS3.5 2026a 7.8.1 (Items are self-contained Data Sets with their own Private Data Elements) | Medium | ⏳ Open |
+
+### dicom-j2k (G3) — verified 2026-10-01
+
+Compared: `diff_cli.py --list-surface` (33 options, 8 subcommands) and `--tool dicom-j2k` (11 checks ok, 0 FAIL — the generic UID check did not see the help UID rows); the 7 UID/name rows of the help and the 10 `transcode --target` rows diffed by script (`scratch/g3c/diff_j2k_help.py`) against PS3.6 2026a Table A-1: 7 names wrong (fixed), 10 target rows match (alias → UID → intent, now also pinned by a test). DICOM boundary checked by script on pydicom / dicom-compress fixtures (single, 3-frame, 3-frame with 2 fragments per frame with and without Basic Offset Table, RGB) against PS3.5 2026a A.4, A.4.4, 8.2, 8.2.4, 8.2.14, Tables 8.2.4-1 / 8.2.14-1, 10.18.1 and PS3.3 2026a C.7.6.1.1.2, C.7.6.1.1.5, C.7.6.1.1.5.1–2, C.7.6.2.1.1 (all dumped by `nema_docbook.py` / `sect.py`); codestream COD/TLM parsed by script (`scratch/g3c/fx/cod.py`). Codestream internals (ISO/IEC 15444) out of scope.
+
+Counts: matched 5, wrong 4, missing 0, extra 0, plumbing 24.
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed (standard) | Code accepts | Default std | Default code | Verdict |
+|---|---|---|---|---|---|---|---|
+| info / validate / roi / benchmark `--frame` | frame of encapsulated Pixel Data | PS3.5 A.4, A.4.4 (a frame may span fragments; 8.2: not supporting this is non-conformance) | frames 1…n | 0-based; was `fragments[i]` → fragmented frames failed; now EOT → BOT → one per frame → single → SOC | — | 0 | match (lookup fixed; 0-based P-J2K-FRAME) |
+| transcode `--target` | Transfer Syntax UID + intent | PS3.6 Table A-1; PS3.5 A.4.4, 10.18.1 | .90–.93, .201–.203 | 10 names (+ parseEncoding aliases, UIDs) → 7 UIDs, all match | — | required | match (output fixed, see below) |
+| transcode `--quality` | irreversible quality → (0028,2112) | PS3.3 C.7.6.1.1.5.2 | — | 0.0–1.0, was never passed to the encoder (q 0.1/0.5/0.95 gave 270 bytes each) | — | 0.9 | wrong → fixed |
+| reduce `--levels` | decomposition levels (COD) | PS3.5 10.18.1 (.202: base resolution ≤ 64) | ≥ minimum for .202 | 1–10; below the .202 minimum now refused | — | — | wrong → fixed |
+| reduce `--layers` | quality layers | ISO (out of scope) | — | 1–20 | — | — | plumbing |
+| roi `--region` | crop → Rows / Columns, Image Position (Patient) | PS3.3 C.7.6.3, C.7.6.2.1.1 | x, y ≥ 0 | negative origin was accepted; now refused; ≤ 65535 | — | required | wrong → fixed |
+| compare `<test>` (and `<reference>`) | samples per Bits Allocated / Pixel Representation / Samples per Pixel | PS3.3 C.7.6.3 | — | native 16-bit read per byte, colour J2K first component only → "Pixel count mismatch"; now shared pixel pipeline | — | — | wrong → fixed |
+| all other options (paths, `--json`, `--verbose`, `--strict`, `--iterations`, `<shell>`, compare `--frame`) | — | — | — | — | — | — | plumbing (24) |
+
+**Output contract**
+
+| Output | 2026a reference | Before | Now | Verdict |
+|---|---|---|---|---|
+| help UID list (7 rows) | PS3.6 Table A-1 | "JPEG 2000 Lossless Only", "JPEG 2000 (Lossless or Lossy)", "HTJ2K Lossless Only (RPCL)", … | Table A-1 names verbatim | wrong → fixed |
+| transcode target table (10 rows) | PS3.6 Table A-1 | intent glosses of the A-1 names | unchanged | match |
+| PI after transcode / reduce / roi | PS3.5 8.2.4, 8.2.14, Tables 8.2.4-1 / 8.2.14-1 | source PI copied (RGB with MCT 1) | YBR_RCT (MCT, 5-3) / YBR_ICT (MCT, 9-7) / RGB for a YBR source re-encoded without MCT; Planar Configuration 0 | wrong → fixed |
+| lossy transcode provenance | PS3.3 C.7.6.1.1.5, .1, .2 | none | (0028,2110) "01", Ratio / Method (ISO_15444_1, ISO_15444_15) appended, Derivation Description, DERIVED, new SOP Instance UID + (0002,0003) | missing → fixed |
+| roi output | PS3.3 C.7.6.1.1.2, C.7.6.2.1.1, C.7.6.16 | same SOP Instance UID, Number of Frames 3 with 1 fragment, IPP of the full image | new UID, DERIVED, Derivation Description, Number of Frames 1, kept Per-frame FG item, IPP of the crop origin | wrong → fixed |
+| reduce / roi of HTJ2K sources | PS3.5 A.4.4, 8.2.14 | Part 1 codestream under the HTJ2K UID | HTJ2K block coder | wrong → fixed |
+| .202 codestream | PS3.5 10.18.1 | LRCP, no TLM, silent | RPCL + levels requested; warning names what is still missing (encoder, D187) | wrong → warned |
+| (0002,0000) after a meta change | PS3.10 Table 7.1-1 | stale (DCMTK: incorrect value) | recomputed | wrong → fixed |
+| validate exit code | tool contract ("2 = read error") | 64 | 2 | wrong → fixed |
+| info "Transfer Syntax: <name> (<UID>)" | PS3.6 Table A-1 | engine short display name | unchanged (DICOMCore policy) | match (policy) |
+| JSON keys (info, validate, benchmark, compare) | — | tool camelCase; compare `pixelCount` counts samples | unchanged | plumbing (P-J2K-JSON) |
+
+Changes: `363fd82c` fix(cli): `J2KDICOMBoundary.swift` (frame mapping, codestream COD/TLM facts, PI rule, lossy provenance, derived image, ROI geometry, .202 checks); `main.swift` uses it in all subcommands, `--quality` passed to the encoder, validate exit 2, help/abstract/completions corrected, `--backends` example removed; README rewritten (A-1 names, no false "fast-path, no pixel decode" / "nearest-neighbour" / SSIM claims); `dicom-j2kTests` now depends on the tool (26 new tests incl. end-to-end transcode / roi / compare on engine-made fixtures); CHANGELOG bullet.
+
+Tests: `swift test --filter dicom_j2kTests` 79/79 pass (53 existing + 26 new); `swift build --product dicom-j2k` ok; `check_nema_markers.py Sources/dicom-j2k` 2/2.
+
+Markers: `main.swift` `// NEMA-verified: 2026a, checked 2026-10-01 — the 7 UID/name rows of the help diffed by script against PS3.6 2026a Table A-1 (7 wrong names fixed) and the 10 transcode target rows (alias → UID → intent, 10 match); 33 options classified (input contract); frame lookup, Photometric Interpretation, lossy provenance, derived-image and .202 handling moved to J2KDICOMBoundary.swift (PS3.5 A.4.4, 8.2.4, 8.2.14, 10.18.1; PS3.3 C.7.6.1.1.2, C.7.6.1.1.5); --quality now reaches the encoder; validate exits 2 on read errors as documented`; `J2KDICOMBoundary.swift` `// NEMA-verified: 2026a, checked 2026-10-01 — DICOM boundary of the J2K re-encodes: frame → fragment mapping per PS3.5 2026a A.4 / A.4.4 (Extended and Basic Offset Table, one fragment per frame, single frame, SOC-delimited frames); Photometric Interpretation after encode per PS3.5 2026a 8.2.4 / 8.2.14 and Tables 8.2.4-1 / 8.2.14-1 (MCT 1 → YBR_RCT (5-3) or YBR_ICT (9-7), Planar Configuration 0); lossy provenance per PS3.3 2026a C.7.6.1.1.5, C.7.6.1.1.5.1 (ISO_15444_1 / ISO_15444_15 via TransferSyntax), C.7.6.1.1.5.2; derived images per C.7.6.1.1.2 (Image Type Value 1 DERIVED, new SOP Instance UID, PS3.10 Table 7.1-1 (0002,0003)); ROI geometry per C.7.6.2.1.1 and C.7.6.16 (Number of Frames, Per-frame Functional Groups); .202 RPCL / ≤64 base resolution / TLM per PS3.5 2026a 10.18.1`
+
+Notes: `validate` reports violations (exit 1) on a J2KSwift-written .90 codestream (ct16_j2k.dcm) — ISO/IEC 15444 conformance, out of scope, not deferred. Input fixtures from dicom-compress carry the odd-length (0002,0002) of D188; dicom-j2k copies the source meta and does not repair it.
+
+P-items:
+- **P-J2K-FRAME** — `--frame` on info/validate/roi/benchmark/compare is a 0-based index and info prints "Frame: 0 of N"; DICOM frames are numbered from 1 (as P-EXPORT-1 / P-SPLIT-1).
+- **P-J2K-PART2** — `transcode --target j2k-part2-*` writes a Part 1 codestream (Rsiz 0, no Annex J MCT) under .92 / .93, while the engine refuses Part 2 encodes (J2KRoutePlanner.unsupportedEncodeReason). PS3.5 A.4.4 defines .92/.93 as the use of the Part 2 multi-component extensions; proposal: refuse the three targets as the engine does, or confirm that a Part 1 codestream is acceptable.
+- **P-J2K-JSON** — JSON keys are tool camelCase (`transferSyntaxUID`, `totalFrames`, `pixelCount` = sample count); proposal: PS3.6 keywords where a DICOM attribute is meant (TransferSyntaxUID, NumberOfFrames).
+
+Deferred findings: none new for dicom-j2k itself; the .202 encoder gap is D187 (dicom-j2k now warns).
 
 
 ## G4 Derived objects
