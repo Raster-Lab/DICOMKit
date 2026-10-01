@@ -97,7 +97,7 @@ public struct TagEditor {
         // 2. Delete private tags
         if deletePrivate {
             var removed = 0
-            for tag in dataSet.tags where tag.isPrivate {
+            for tag in dataSet.tags where tag.isOddGroup {  // private, and the unusable odd groups (PS3.5 7.8.1)
                 if !dryRun { dataSet.remove(tag: tag) }
                 removed += 1
                 if verbose { descriptions.append("DELETE private tag \(self.label(for: tag))") }

@@ -579,9 +579,23 @@ extension DICOMDirectory {
     
     /// Validate the directory structure
     ///
-    /// - Parameter checkFileExistence: Whether to check if referenced files exist (default: false)
+    /// Checks for duplicate Referenced SOP Instance UIDs, the record hierarchy of PS3.3 Table
+    /// F.4-1 and, with `checkFileExistence`, the Referenced File IDs (0004,1500).
+    ///
+    /// File IDs are relative to the root of the File-set, the directory node that holds the
+    /// DICOMDIR (PS3.10 2026a 8.6: "the File IDs, including the DICOMDIR File IDs, would be
+    /// relative to this directory node path name"), and "The DICOMDIR shall not reference Files
+    /// outside of the File-set to which it belongs". Pass that directory as `fileSetRoot` (for a
+    /// DICOMDIR read from `url`, `url.deletingLastPathComponent()`): every Referenced File ID must
+    /// then name an existing regular file inside it, or ``ValidationError/missingReferencedFile(_:)``
+    /// is thrown with the File ID. Without a `fileSetRoot` a `DICOMDirectory` does not know where
+    /// its File-set is, so only an empty File ID is reported.
+    ///
+    /// - Parameters:
+    ///   - checkFileExistence: Whether to check the Referenced File IDs (default: false)
+    ///   - fileSetRoot: The File-set root directory the File IDs are resolved against (default: nil)
     /// - Throws: ValidationError if validation fails
-    public func validate(checkFileExistence: Bool = false) throws {
+    public func validate(checkFileExistence: Bool = false, fileSetRoot: URL? = nil) throws {
         // Check for duplicate SOP Instance UIDs
         var seenUIDs = Set<String>()
         for record in allRecords() {
@@ -617,15 +631,25 @@ extension DICOMDirectory {
             try validateChildren(of: root)
         }
         
-        // Optionally check file existence
+        // Optionally check the Referenced File IDs against the File-set (PS3.10 8.6)
         if checkFileExistence {
+            let root = fileSetRoot?.standardizedFileURL
             for record in allRecords() {
-                if let filePath = record.referencedFilePath() {
-                    // Note: Actual file existence check would require base path context
-                    // This is a placeholder for the validation logic
-                    if filePath.isEmpty {
-                        throw ValidationError.missingReferencedFile(filePath)
-                    }
+                guard let components = record.referencedFileID, !components.isEmpty else { continue }
+                let fileID = components.joined(separator: "\\")
+                if components.contains(where: { $0.isEmpty }) {
+                    throw ValidationError.missingReferencedFile(fileID)
+                }
+                guard let root else { continue }
+                // A component of "." or ".." (or one carrying a path separator) would leave the
+                // File-set; PS3.10 8.5 allows neither "." nor "/" in a File ID component.
+                if components.contains(where: { $0 == "." || $0 == ".." || $0.contains("/") }) {
+                    throw ValidationError.missingReferencedFile(fileID)
+                }
+                let url = components.reduce(root) { $0.appendingPathComponent($1) }
+                var isDirectory: ObjCBool = false
+                if !FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) || isDirectory.boolValue {
+                    throw ValidationError.missingReferencedFile(fileID)
                 }
             }
         }

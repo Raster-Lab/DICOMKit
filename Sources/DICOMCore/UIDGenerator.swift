@@ -16,6 +16,9 @@ import Foundation
 /// enforces the same rules on the result. §9.2.2 requires a privately defined UID to be
 /// built on an organisation's own registered root; the default root is the library's
 /// private root (arc .4), no longer the OFFIS DCMTK root. No other standard data.
+/// NEMA-verified: 2026a, checked 2026-10-01 — a root that breaks §9.1 or leaves no room for the
+/// suffix within 64 characters yields a UUID derived UID ("2.25." + the UUID as a decimal
+/// integer, Annex B.2) instead of crashing or truncating the unique suffix (D139).
 public struct UIDGenerator: Sendable {
 
     /// Default UID root for generated UIDs.
@@ -58,7 +61,13 @@ public struct UIDGenerator: Sendable {
     /// - timestamp: Unix timestamp in microseconds
     /// - random: Random component for uniqueness
     ///
-    /// Reference: PS3.5 Section 9.1 - UID Encoding Rules
+    /// When that UID cannot be built — the root breaks the PS3.5 9.1 encoding rules (an empty or
+    /// non-numeric component, a leading zero) or leaves too little of the 64 characters for the
+    /// suffix — a UUID derived UID (`2.25.<UUID as a decimal integer>`, PS3.5 B.2) is returned
+    /// instead. Before 2026-10-01 a malformed root crashed (force unwrap) and a long root had its
+    /// unique suffix cut off, so every call returned the same UID (D139).
+    ///
+    /// Reference: PS3.5 Section 9.1 - UID Encoding Rules; Annex B.2 - UUID Derived UID
     ///
     /// - Returns: A new unique DICOMUniqueIdentifier
     public func generate() -> DICOMUniqueIdentifier {
@@ -68,32 +77,13 @@ public struct UIDGenerator: Sendable {
         // Generate random component (0-999999)
         let random = UInt32.random(in: 0..<1_000_000)
         
-        // Build UID ensuring it doesn't exceed 64 characters
-        var uidString = "\(root).\(timestamp).\(random)"
-        
-        // Truncate if necessary to fit within 64 characters
-        if uidString.count > DICOMUniqueIdentifier.maximumLength {
-            uidString = String(uidString.prefix(DICOMUniqueIdentifier.maximumLength))
-            // Ensure it doesn't end with a period
-            while uidString.hasSuffix(".") {
-                uidString = String(uidString.dropLast())
-            }
-        }
-        
-        // This should never fail with our controlled format
-        guard let uid = DICOMUniqueIdentifier.parse(uidString) else {
-            // Fallback: generate a simpler UID
-            let fallbackString = "\(root).\(timestamp)"
-            return DICOMUniqueIdentifier.parse(fallbackString)!
-        }
-        
-        return uid
+        return Self.uid(root: root, suffix: "\(timestamp).\(random)")
     }
     
     /// Generates a unique UID with a specific type suffix
     ///
     /// The generated UID format is:
-    /// `{root}.{type}.{timestamp}.{random}`
+    /// `{root}.{type}.{timestamp}.{random}`; see ``generate()`` for the PS3.5 B.2 fallback.
     ///
     /// - Parameter type: A numeric identifier for the type of object (e.g., 1 for Study, 2 for Series, 3 for Instance)
     /// - Returns: A new unique DICOMUniqueIdentifier
@@ -101,21 +91,50 @@ public struct UIDGenerator: Sendable {
         let timestamp = UInt64(Date().timeIntervalSince1970 * 1_000_000)
         let random = UInt32.random(in: 0..<1_000_000)
         
-        var uidString = "\(root).\(type).\(timestamp).\(random)"
-        
-        if uidString.count > DICOMUniqueIdentifier.maximumLength {
-            uidString = String(uidString.prefix(DICOMUniqueIdentifier.maximumLength))
-            while uidString.hasSuffix(".") {
-                uidString = String(uidString.dropLast())
+        return Self.uid(root: root, suffix: "\(type).\(timestamp).\(random)")
+    }
+
+    /// Whether `root` can prefix generated UIDs: it satisfies the PS3.5 9.1 encoding rules and
+    /// leaves room within the 64 characters for the longest suffix ``generate(type:)`` appends
+    /// (`.<type>.<µs timestamp>.<random>`, at most 28 characters).
+    public static func isUsableRoot(_ root: String) -> Bool {
+        DICOMUniqueIdentifier.parse(root) != nil
+            && root.count + maximumSuffixLength <= DICOMUniqueIdentifier.maximumLength
+    }
+
+    /// `.` + 3-digit type + `.` + 16-digit µs timestamp (until the year 2286) + `.` + 6-digit random.
+    static let maximumSuffixLength = 1 + 3 + 1 + 16 + 1 + 6
+
+    /// A UUID derived UID: the root "2.25." followed by the 128-bit UUID as an unsigned decimal
+    /// integer without leading zeros, at most 39 digits (PS3.5 2026a Annex B.2). Always valid
+    /// under PS3.5 9.1 and at most 44 characters.
+    public static func uuidDerivedUID(_ uuid: UUID = UUID()) -> DICOMUniqueIdentifier {
+        let t = uuid.uuid
+        var bytes = [t.0, t.1, t.2, t.3, t.4, t.5, t.6, t.7, t.8, t.9, t.10, t.11, t.12, t.13, t.14, t.15]
+        var digits: [Character] = []
+        // Repeated division of the big-endian 128-bit value by 10.
+        while bytes.contains(where: { $0 != 0 }) {
+            var remainder = 0
+            for i in 0..<bytes.count {
+                let value = remainder * 256 + Int(bytes[i])
+                bytes[i] = UInt8(value / 10)
+                remainder = value % 10
             }
+            digits.append(Character(String(remainder)))
         }
-        
-        guard let uid = DICOMUniqueIdentifier.parse(uidString) else {
-            let fallbackString = "\(root).\(type).\(timestamp)"
-            return DICOMUniqueIdentifier.parse(fallbackString)!
+        let value = "2.25." + (digits.isEmpty ? "0" : String(digits.reversed()))
+        // Always parses: "2", "25" and a digit string without leading zeros, 44 characters at most.
+        return DICOMUniqueIdentifier.parse(value) ?? "2.25.0"
+    }
+
+    /// `{root}.{suffix}` when it is a valid UID of at most 64 characters, else a UUID derived UID.
+    private static func uid(root: String, suffix: String) -> DICOMUniqueIdentifier {
+        let candidate = "\(root).\(suffix)"
+        if candidate.count <= DICOMUniqueIdentifier.maximumLength,
+           let uid = DICOMUniqueIdentifier.parse(candidate) {
+            return uid
         }
-        
-        return uid
+        return uuidDerivedUID()
     }
     
     /// Generates a Study Instance UID

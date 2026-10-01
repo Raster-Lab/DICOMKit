@@ -145,7 +145,7 @@ public struct ConfidentialityEngine {
                 // the table (e.g. Referring Physician ID Sequence → X).
             }
 
-            let effective = resolveAction(for: tag, vr: element.vr, isPrivate: tag.isPrivate)
+            let effective = resolveAction(for: tag, vr: element.vr, isPrivate: tag.isOddGroup)  // PS3.5 7.8.1: groups 0001-0007/FFFF go too
             guard let action = effective else { continue }
 
             switch action {
