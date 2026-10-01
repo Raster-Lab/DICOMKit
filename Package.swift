@@ -373,6 +373,19 @@ let package = Package(
             dependencies: ["dicom-ai", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-aiTests"
         ),
+        // dicom-video: --audio-channel-source maps PS3.16 CID 3000 into (003A,0300) (D56)
+        .testTarget(
+            name: "dicom-videoTests",
+            dependencies: ["dicom-video", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-videoTests"
+        ),
+        // dicom-query / dicom-send: option values and C-STORE status handling
+        // pinned to PS3.4 / PS3.7 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
+        .testTarget(
+            name: "dicom-queryTests",
+            dependencies: ["dicom-query", "DICOMNetwork", "DICOMCore"],
+            path: "Tests/dicom-queryTests"
+        ),
         .testTarget(
             name: "DICOMKitTests",
             // DICOMDictionary: the presentation-state builders' VRs are asserted

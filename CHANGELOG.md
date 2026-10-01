@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — dicom-video audio Channel Source (D56, 2026-10-01)
+
+- **`dicom-video convert` / `batch --audio-channel-source <value>`:** names the source of the
+  multiplexed audio, which no container records, so each audio track gets a Multiplexed Audio
+  Channels Description Code Sequence (003A,0300) Item whose Channel Source Sequence (003A,0208)
+  carries the code (PS3.3 2026a Table C.7-13, Cine Module). The value is a PS3.16 2026a CID 3000
+  keyword (`voice`, `operators-narrative`, `ambient-room-environment`, `doppler-audio`,
+  `phonocardiogram`, `physiological-audio-signal`; the 6 rows generated from the DocBook) or
+  `SCHEME:VALUE[:MEANING]` for any code, the CID being Extensible (MEANING required for an unlisted
+  code, Code Meaning being Type 1). Without the option the sequence stays empty, as before. One
+  value applies to every audio track (the engine's `Metadata.audioChannelSource` takes one code).
+  New test target `dicom-videoTests`.
+
 ### Fixed — dicom-ai Segmentation output (D44, 2026-10-01)
 
 - **`dicom-ai segment --format dicom-seg` writes a conformant Segmentation object (D44):** the
@@ -32,6 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of the family headings STD-GEN-DVD / STD-GEN-USB (D29); the error lists every identifier
   `DICOMDIRProfile.allStandard` accepts. Accepted values are unchanged (the old spellings remain
   aliases).
+- **dicom-query** `--level` accepts `image`, the Query/Retrieve Level (0008,0052) value of PS3.4
+  2026a Tables C.6.1-1 / C.6.2-1 (IMAGE); `instance` remains accepted as an alias and the value
+  sent on the wire was and is IMAGE. Help, validation messages and the hierarchical-query warning
+  name the level IMAGE instead of INSTANCE. `--study-date` help documents the open ranges
+  `-YYYYMMDD` / `YYYYMMDD-` of PS3.4 C.2.2.2.5. The README now shows the real `--format json` /
+  `csv` output (keys are `(GGGG,EEEE)` tag strings, a tool-specific summary rather than the PS3.18
+  Annex F DICOM JSON Model) and the real exit codes (0, 1, 64).
 
 ### Fixed — remaining DICOMKit deferred findings and verification gaps (2026-09-30)
 
