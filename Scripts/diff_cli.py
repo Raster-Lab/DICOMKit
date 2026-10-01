@@ -80,7 +80,7 @@ DEFERRED = {
 # --- code side: ArgumentParser surface ---------------------------------------------------------
 
 ATTR = re.compile(r'@(Argument|Option|Flag|OptionGroup)\s*(\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\))?\s*'
-                  r'(?:\n\s*)?var\s+(\w+)\s*(?::\s*([^=\n{]+?))?\s*(?:=\s*([^\n]+?))?\s*(?://[^\n]*)?\n', re.S)
+                  r'(?:\n\s*)?var\s+`?(\w+)`?\s*(?::\s*([^=\n{]+?))?\s*(?:=\s*([^\n]+?))?\s*(?://[^\n]*)?\n', re.S)
 HELP = re.compile(r'help:\s*(?:"""(.*?)"""|"((?:[^"\\]|\\.)*)")', re.S)
 CUSTOM = re.compile(r'\.custom(Long|Short)\("([^"]+)"\)')
 INLINE_DEFAULT = re.compile(r'\(default:\s*([^)]*)\)')
@@ -117,14 +117,52 @@ def option_names(kind, attr, var):
     return names or ['--' + kebab(var)]
 
 
+def balanced(src, i):
+    """src[i] == '(' -> index just past the matching ')', skipping string literals."""
+    depth, j, n = 0, i, len(src)
+    while j < n:
+        if src.startswith('"""', j):
+            k = src.find('"""', j + 3)
+            j = (k + 3) if k >= 0 else n
+            continue
+        c = src[j]
+        if c == '"':
+            j += 1
+            while j < n and src[j] != '"':
+                if src[j] == '\\' and j + 1 < n and src[j + 1] == '(':
+                    j = balanced(src, j + 1)
+                    continue
+                j += 2 if src[j] == '\\' else 1
+            j += 1
+            continue
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        j += 1
+    return n
+
+
+DECL = re.compile(r'@(Argument|Option|Flag|OptionGroup)\b')
+VAR = re.compile(r'\s*(?:(?:public|private|internal|fileprivate|lazy)\s+)*var\s+`?(\w+)`?\s*(?::\s*([^=\n{]+?))?\s*(?:=\s*([^\n]+?))?\s*(?://[^\n]*)?\n')
+
+
 def extract_options(src, fname):
     """Every @Argument / @Option / @Flag of a file: kind, names, help, swift type, default, line."""
     out = []
-    for m in ATTR.finditer(src):
-        kind, attr, var, typ, default = m.group(1), m.group(2), m.group(3), (m.group(4) or '').strip(), (m.group(5) or '').strip()
-        if kind == 'OptionGroup':
+    for m in DECL.finditer(src):
+        kind, j = m.group(1), m.end()
+        attr = ''
+        if j < len(src) and src[j] == '(':
+            k = balanced(src, j)
+            attr, j = src[j:k], k
+        v = VAR.match(src, j)
+        if not v or kind == 'OptionGroup':
             continue
-        hm = HELP.search(attr or '')
+        var, typ, default = v.group(1), (v.group(2) or '').strip(), (v.group(3) or '').strip()
+        hm = HELP.search(attr)
         help_text = swift_help(hm.group(1) or hm.group(2) or '') if hm else ''
         if not default and kind == 'Flag':
             default = 'false'

@@ -32,7 +32,7 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | Bucket | Count | Meaning | Status |
 |---|---|---|---|
 | Carried rows | 4 | D9, D29, D44, D56 — CLI halves of findings opened by earlier reports | ✅ D9, D29, D44, D56 CLI halves closed 2026-10-01 (D9, D29, D56 DICOMStudio halves remain open) |
-| G1 Network | 14 tools | input/output contract vs PS3.7 Annex C, PS3.4 C.4/C.6/K/F/H, PS3.18 | ⏳ 7 of 14 done (echo, send, query, retrieve, qr, mwl, mpps) |
+| G1 Network | 14 tools | input/output contract vs PS3.7 Annex C, PS3.4 C.4/C.6/K/F/H, PS3.18 | ✅ 14 of 14 contracts done 2026-10-01; open: dicom-server repair (D94–D102, does not compile), dicom-cloud excluded from Package.swift (no build) |
 | G2 File and media | 14 tools | contract vs PS3.5, PS3.10, PS3.11 Annex H, PS3.18 F, PS3.19 A | ⏳ not started |
 | G3 Encoding and pixel | 8 tools | contract vs PS3.5 8.2 / 10, PS3.6 A-1, PS3.3 C.7.6.3 / C.11.2, PS3.15 E | ⏳ not started |
 | G4 Derived objects | 6 tools | contract vs PS3.3 C.8.20 / C.17, PS3.16 TIDs and CIDs | ⏳ not started |
@@ -49,6 +49,9 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | 2026-10-01 | G1 echo, send, query | echo: PS3.7 9.1.5.1.4, PS3.5 VR AE, PS3.8 9.1.1 (9 options, all plumbing); send: PS3.4 Table B.2-1 (7 rows), PS3.7 Table 9.3-1 priority (matched 2, plumbing 11); query: PS3.4 Tables C.6.1-1/C.6.2-1, C.6-1/-3/-4/-5, C.2.2.2.4/5 (matched 9, wrong 1 fixed, extra 1 documented, plumbing 8) | `0c845da`, `0efff87`, `f24869c`, `695d961`: dicom-send no longer counts A7xx/A9xx/Cxxx C-STORE failures as success (exit 1, retried); `--level image` accepted, IMAGE named in help; README JSON/CSV/exit-code docs corrected; P-QUERY-JSON, P-QUERY-COLUMNS, P-SEND-SUMMARY; D72–D75 opened for DICOMNetwork | `dicom-queryTests` 7, `dicom-sendTests` 6: 13/13 pass; markers 5/5 |
 | 2026-10-01 | G1 retrieve, qr | retrieve: PS3.4 Tables C.4-2/C.4-3 (17 status rows generated), PS3.7 Tables 9.3-7/9.3-10, C.6.1-1 levels, PS3.6 A-1 SOP Class names (matched 6, plumbing 10, 2 n/a); qr: PS3.4 C.6 key tables, C.2.2.2.5 range forms (matched 10, extra 1, plumbing 17) | `1f853e8`, `0b5a61a`, `dd74be3`: final status worded per the tables, counters under PS3.7 names, `--hierarchical` help corrected; dicom-qr `query`/`resume` now exit 1 on failed studies, `resume --timeout` added; P-QR-STATUS-TEXT, P-RETRIEVE-PRIORITY, P-RETRIEVE-EXTNEG, P-QR-STATE-MODALITIES, P-QR-PARALLEL; D76–D78 opened for DICOMNetwork | `QueryRetrieveCLIStandardTests` 6 passed; markers 5/5 |
 | 2026-10-01 | G1 mwl, mpps | PS3.4 Tables K.6-1 (139 rows), K.6-1a, K.4-1, F.7.2-1 (130 rows), F.7.2-2; PS3.3 C.4-10, C.4-14, C.2-3; PS3.7 Annex C (27 codes); PS3.16 CID 9300/9301. mwl matched 10, wrong 1, plumbing 7; mpps matched 23, wrong 2, missing 1, plumbing 8 | `f2db8f9`: `--sps-status` help listed PPS words, now the 5 SPS Defined Terms; `416de5a`: CID 9300 examples had wrong meanings, `create` requires `--modality`, validates sex/birth date, `update --image-uid` no longer silently dropped, N-CREATE/N-SET statuses named per Annex C; P-MWL-JSON-KEYS, P-MPPS-STRICT; D79–D88 | `MWLMPPSCLIEndToEndTests` 16/16; MPPSDataSetConformanceTests 27 and WorklistQueryKeysTests 31 still pass |
+| 2026-10-01 | G1 print, printscp | PS3.4 Annex H and PS3.3 C.13 module tables (Film Session, Film Box, Image Box, Annotation Box, Printer, Print Job, Presentation LUT); print matched 11, wrong 2, missing 2, extra 2, plumbing 24; printscp matched 20, wrong 5, missing 3, plumbing 38 | `ceeb966`: `--medium` adds MAMMO CLEAR/BLUE FILM, help maps each token to the wire value and the wire values are accepted, `--film-size` help lists all 12 IDs, README exit codes corrected; `deb66db`: two attribute names, Annotation Box is N-SET only, `simulate --layout` takes every Image Display Format, numeric densities; P-PRINT-JSON, P-BIN; D89–D93 | dicom-print 9 and dicom-printscp 6 new tests pass |
+| 2026-10-01 | G1 server, gateway | server: PS3.6 A-1 names, PS3.4 B.5-1, C.2.2.2, C.4-2/C.4-3, C.6-x key tables, PS3.8, PS3.10 7.1 (options matched 2, plumbing 22); gateway: PS3.3 Table C.7-1, PS3.5 6.2 PN/DA/TM, PS3.4 K.6-1 (matched 1, wrong 3 fixed, plumbing 29); HL7/FHIR are not NEMA and were not checked | `d9cd70b`: 8 SOP Class names to A-1, 6 of 19 C-FIND response VRs wrong (CS) now from the dictionary, IMAGE level named; `95dcd11`: PN component order and multi-script groups, DA/TM, Sex M/F/O, UID checks, Issuer of Patient ID, DICOMKit UID root, ADT type sent as "ADT^AA01" fixed; D94–D104 opened (dicom-server does not compile: D99, High; stored files lack File Meta: D102, High) | `dicom-gatewayTests` 14 pass; dicom-server not buildable (excluded target), checked by script only |
+| 2026-10-01 | G1 wado, jpip, cloud | wado: PS3.18 Sections 8, 9, 10, 11 and Annex F (diff_web checks re-run via `Scripts/diff_cli_web.py`: 0 fails; matched 52, wrong 6, missing 9, extra 3, plumbing 18); jpip: PS3.6 A-1 JPIP syntaxes, PS3.3 Pixel Data Provider URL (wrong 2 fixed, plumbing 15); cloud: no DICOM-standard data (plumbing 19) | `39da529`: `--content-type` rejects unrequestable values, frame/limit/offset validated, "IN PROGRESS" accepted, `--transfer-syntax`/`--anonymize`/`--rows`/`--columns`/`--fuzzy-matching` added, `--timeout` honoured, `store` exits 1 if any file failed; `827f021`: .4.204/.4.205 HTJ2K JPIP listed, (0028,7FE0) named, PS3.5 A.6/A.7/A.11/A.12 cited; `b7a11a4` README profile; P-WADO-UPS-STATE, P-WADO-UPS-UPDATE | `dicom-wadoTests` 15/15, `dicom-jpipTests` 6/6 |
 | 2026-10-01 | Scaffold | `Scripts/diff_cli.py`: surface extractor (1,042 options), generic DICOMKit literal checks re-run per tool, transfer-syntax-name and documented-default checks; this report | — | — |
 
 ---
@@ -58,7 +61,7 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | Item | What | Status | Evidence |
 |---|---|---|---|
 | P-DCMDIR-PROFILE | `dicom-dcmdir --profile` still accepts the non-standard spellings STD-GEN-DVD, STD-GEN-USB, STD-GEN-SEC, STD-CTMR-XXXX, STD-US-XXXX (mapped by `DICOMDIRProfile.legacyAliases`, already deprecated in DICOMCore). Proposal: keep accepting them, print a one-line stderr deprecation note naming the identifier used, remove in the next major. `DcmdirRoundTripTests.swift:459` and `DICOMDcmdirTests.swift:312` still use the deprecated constants | PEND | PS3.11 2026a Tables H.1-1, J.1-1 |
-| P-QUERY-JSON | `dicom-query --format json` emits a tool-specific summary object, not the PS3.18 F.2 DICOM JSON Model. Proposal: additive `--format dicom-json` (keyword/tag keys, `vr`, `Value`, PN component objects) through the shared `QueryOutputFormat` type, keeping `json` as is | PEND | PS3.18 2026a F.2 |
+| P-QUERY-JSON | `dicom-query --format json` (also `dicom-wado query` and `ups --format json`) emits a tool-specific summary object, not the PS3.18 F.2 DICOM JSON Model. Proposal: additive `--format dicom-json` (keyword/tag keys, `vr`, `Value`, PN component objects) through the shared `QueryOutputFormat` type, keeping `json` as is | PEND | PS3.18 2026a F.2 |
 | P-QUERY-COLUMNS | table/CSV column labels of dicom-query are tool wording, not PS3.6 attribute names; changing them touches the shared formatter and the Studio parity suite | PEND | PS3.6 2026a Table 6-1 |
 | P-SEND-SUMMARY | `NetworkConsole.sendSummary` (DICOMKit shared console) has no warning count; dicom-send now tallies B000/B006/B007 itself. Proposal: add the count to the shared summary so the Workshop shows it too | PEND | PS3.4 2026a Table B.2-1 |
 | P-QR-STATUS-TEXT | `RetrieveStatusText.swift` (dicom-retrieve, 17 rows generated from PS3.4 Tables C.4-2/C.4-3) duplicates wording that belongs in DICOMNetwork's `DIMSEStatus.description` so the Studio console matches. Proposal: hoist the table into DICOMNetwork | PEND | PS3.4 2026a Tables C.4-2, C.4-3 |
@@ -68,6 +71,10 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | P-QR-PARALLEL | `dicom-qr --parallel` is parsed but never read. Proposal: implement or deprecate | PEND | — |
 | P-MWL-JSON-KEYS | 10 of the 38 `dicom-mwl --json` keys are not PS3.6 keywords; the JSON comes from the shared `NetworkConsole.mwlJSON` (also the Studio MWL panel). Proposal: emit PS3.6 keywords, old keys kept for one release | PEND | PS3.6 2026a Table 6-1 |
 | P-MPPS-STRICT | `dicom-mpps create` now refuses a missing `--modality` (Type 1, Table F.7.2-1) and an invalid `--patient-sex` / `--patient-birth-date`; `update` refuses `--image-uid` without study/series. Owner choice: keep as errors (done) or downgrade to warnings | PEND (decision only) | PS3.4 2026a Table F.7.2-1; PS3.3 Table C.2-3 |
+| P-PRINT-JSON | dicom-print / dicom-printscp JSON uses tool keys; proposal: add PS3.6 keywords (`PrinterStatus`, `ExecutionStatus`, …) beside the old keys, which stay for one release | PEND | PS3.6 2026a Table 6-1; PS3.3 C.13 |
+| P-BIN | Film Destination supports BIN_1 and BIN_2 only; the standard defines BIN_i with no maximum. Proposal: accept any `BIN_<n>` through the shared DICOMPrintKit enum | PEND | PS3.3 2026a C.13.1 Film Destination |
+| P-WADO-UPS-STATE | `dicom-wado ups --state SCHEDULED` only warns; PS3.18 11.7.1.4 does not allow a change to SCHEDULED. Proposal: reject it | PEND | PS3.18 2026a 11.7.1.4 |
+| P-WADO-UPS-UPDATE | `dicom-wado ups --update` performs Change State; proposal: add `--change-state` as the canonical name and keep `--update` as an alias | PEND | PS3.18 2026a 11.7 |
 | P-AUDIO-SOURCE-PER-TRACK | `VideoWorkflow.Metadata.audioChannelSource` (DICOMKit, `VideoWorkflow.swift:133`, `audioChannels(for:metadata:)`) is one Source applied to every audio track, so `--audio-channel-source` is single-valued. Proposal: add `audioChannelSources: [VideoAudioChannel.Source]?` to `Metadata` (one per track) and let the CLI option repeat | PEND | PS3.3 2026a Table C.7-13 (one (003A,0300) Item per channel, each with its own (003A,0208)) |
 
 ---
@@ -83,7 +90,7 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | D44 | dicom-ai | `AIDICOMOutputGenerator.swift` `createSegmentationObject` | Worse than reported: the writer discarded the builder's data set and emitted 14 attributes plus raw frames — no Segment Sequence, Segmentation Type, Pixel Data element or File Meta; by script, 5 of the 30 rows of Tables C.8.20-2 / C.8.20-4 were written and 10 applicable Type 1/1C rows were missing. Now routes through `Segmentation.buildDataSet` (D37d's check) and `DICOMFile.create`; every segment carries one CID 7150 and one CID 7151 Item, default (85756007, SCT, "Tissue"); additive `--segment-category` / `--segment-type` (keyword or `SCHEME:VALUE[:MEANING]`); new `SegmentPropertyCodes.swift` (8 CID 7150 rows, 21 type keywords from the CIDs CID 7151 includes). `dicom-ai` product and a `dicom-aiTests` target re-enabled in Package.swift (build config, not API) | PS3.3 2026a Tables C.8.20-2, C.8.20-4, A.51-1; PS3.16 CID 7150, 7151 | Medium | ✅ 2026-10-01 (`3fe88bd`); 5 tests pass |
 | D56 | dicom-video (+ DICOMStudio) | `convert` / `batch`; CLI Workshop | No option named the audio Channel Source. Correction to the earlier row: (003A,0300) is Multiplexed Audio Channels Description Code Sequence (Type 2C, Cine Module Table C.7-13); the Channel Source is its nested Channel Source Sequence (003A,0208), Type 1, single Item, DCID 3000. Now `--audio-channel-source <value>` on `convert` and `batch` (one of the 6 CID 3000 keywords generated from the DocBook, or `SCHEME:VALUE[:MEANING]`, the CID being Extensible) maps to `VideoWorkflow.Metadata.audioChannelSource`; absent option → no Items, as before. New `dicom-videoTests` target | PS3.3 2026a Table C.7-13; PS3.16 CID 3000 | Low | ✅ CLI half closed 2026-10-01 (`8eebfab`), 10 tests pass; DICOMStudio Workshop half open |
 
-### New findings for other modules
+### New findings (other modules, and tool defects left open)
 
 | ID | Module | Where | Problem | Standard | Severity | Status |
 |---|---|---|---|---|---|---|
@@ -106,6 +113,28 @@ Surface extracted by `diff_cli.py --list-surface` on 2026-10-01: 1,042 options/f
 | D86 | DICOMNetwork | Sources/DICOMNetwork/MPPSService.swift:1125-1168 (N-CREATE builder) | the N-CREATE data set never creates (0040,0281) zero-length, yet the N-SET sends it for DISCONTINUED; F.7.2.1.1 note: "If an SCU wishes to use the PPS Discontinuation Reason Code Sequence (0040,0281), it must create that Attribute (zero-length) during N-CREATE"; F.7.2.1.2 "All Attributes shall be created before they can be set" | PS3.4 F.7.2.1.1 note, F.7.2.1.2 | medium (strict SCPs may answer 0105H No such Attribute) | ⏳ Open |
 | D87 | DICOMNetwork | Sources/DICOMNetwork/MPPSService.swift:1163 | `add(0x0008,0x0060,.CS, procedureStep.modality)` writes an empty value when `modality` is nil — a Type 1 attribute (Table F.7.2-1 row 105); the engine's `validate(_:for:)` does not check it (the CLI now refuses before calling) | PS3.4 Table F.7.2-1 | medium | ⏳ Open |
 | D88 | Tests/DICOMStudioTests | NetworkToolWorkshopCLIParityTests.swift:151-157 | parse fixtures use the wrong code/meaning pairs ("110513 Doctor cancelled procedure", "110514 Equipment failure"); harmless for parsing but mislead readers | PS3.16 Table D-1 | low | ⏳ Open |
+
+| D89 | DICOMNetwork | `Sources/DICOMNetwork/PrintService.swift:272-277` | `FilmDestination` has only BIN_1 and BIN_2; Table C.13-1 defines BIN_i "with no maximum", without leading zeros. Adding cases is public API: see P-BIN | PS3.3 2026a Table C.13-1 | Low | ⏳ Open |
+| D90 | DICOMPrintKit | `Sources/DICOMPrintKit/PrintConsoleFormatter.swift:21-37, 93-109` | Printer/job status labels "Name", "Status", "Status Info", "Model", "Created" instead of the PS3.3 attribute names (Printer Name, Printer Status, Printer Status Info, Manufacturer's Model Name; Execution Status, Execution Status Info, Creation Date/Time). Shared with DICOMStudio and dicom-printscp `status` | PS3.3 2026a Tables C.13-8, C.13-9; PS3.6 Table 6-1 | Low | ⏳ Open |
+| D91 | DICOMNetwork | `Sources/DICOMNetwork/DIMSEStatus.swift:124-160, 264-300` (used by `DICOMNetworkError.printOperationFailed`, DICOMNetworkError.swift:484) | Print Management statuses carry no Annex H name: C6xx prints as "Failed: unable to process / cannot understand (Cxxx)" and B6xx as "Unknown status". It should name e.g. 0xC603 "Failed: Image size is larger than image box size", 0xB605 "Requested Min Density or Max Density outside of printer's operating range…" (a lookup by the SOP Class of the request) | PS3.4 2026a Tables H.4.1.2.1.2-1, H.4-4, H.4.2.2.1.2-1, H.4-9, H.4.3.1.2.1.2-1, H.4.3.2.2.1.2-1, H.4.9.2.1.2-1 | Low–Medium | ⏳ Open |
+| D92 | DICOMPrintKit | `Sources/DICOMPrintKit/Printing/FilmComposer.swift:817-838` | Trim = YES is drawn as four crop marks at the sheet corners; Table C.13-3 says "a trim box shall be printed surrounding each image on the film" | PS3.3 2026a Table C.13-3 Trim (2010,0140) | Low (emulator fidelity) | ⏳ Open |
+| D93 | DICOMNetwork | `Sources/DICOMNetwork/PrintSCPTypes.swift:91-115` (`PrintSCPStatus.explanation`, also the default Error Comment) | 6 of 9 Annex H codes paraphrased. B604 should read "Image size is larger than image box size, the image has been demagnified.", B605 "Requested Min Density or Max Density outside of printer's operating range. The printer will use its respective minimum or maximum density value instead.", B609 "Image size is larger than the Image Box size. The Image has been cropped to fit.", C603 "Failed: Image size is larger than image box size", C605 "Failed: Insufficient memory in printer to store the image", C613 "Failed: Combined Print Image size is larger than the Image Box size" | PS3.4 2026a Tables H.4-4, H.4-9, H.4.2.2.1.2-1, H.4.3.1.2.1.2-1, H.4.3.2.2.1.2-1 | Low | ⏳ Open |
+| D94 | dicom-server | DICOMServer.swift StartCommand; ServerSession.swift implementationClassUID | --aet / --allowed-ae / --blocked-ae not validated as VR AE (16 chars); Implementation Class UID 1.2.826.0.1.3680043.9.7433.1.2 is not under DICOMKit's root (1.2.826.0.1.3680043.10.511) | PS3.5 Table 6.2-1, 9.1 | Low | ⏳ Open |
+| D95 | dicom-server | ServerSession.swift sendDIMSEResponse / sendAssociationAccept | Outgoing P-DATA fragmented to the server's own --max-pdu-size instead of the peer's Maximum Length; AC does not carry the server's Maximum Length | PS3.8 D.1; PS3.7 D.3.3.1 | Medium | ⏳ Open |
+| D96 | dicom-server | ServerSession.swift sendToDestination (fallback `("localhost", 104, destination)`) | Unknown Move Destination is sent to localhost:104 instead of status A801 "Refused: Move Destination unknown" | PS3.4 Table C.4-2 | Medium | ⏳ Open |
+| D97 | dicom-server | ServerSession.swift sendViaCStore | C-GET sub-operations counted Completed without awaiting C-STORE-RSP; no SCP/SCU Role Selection; only the 5 accepted storage classes can be returned | PS3.4 C.4.3.3.1; PS3.7 D.3.3.4 | Medium | ⏳ Open |
+| D98 | dicom-server | DatabaseManager.swift `matchesWildcard` | Wildcard applied to UI keys (C.2.2.2.4 lists AE, CS, LO, LT, PN, SH, ST, UC, UR, UT only), case-insensitive for non-PN (C.2.2.2.4 "case sensitive, except PN"), no List of UID Matching (C.2.2.2.2), no Range Matching for Study Date (C.2.2.2.5) | PS3.4 C.2.2.2 | Medium | ⏳ Open |
+| D99 | dicom-server | Package.swift:214, 1140; DICOMServer.swift; ServerSession.swift | Target excluded and ~35 compile errors against the current DICOMNetwork/DICOMKit API; DICOMServerTests compiled by no target | — | High | ⏳ Open |
+| D100 | dicom-server | DatabaseManager.swift query*Level | Required keys not matched/returned: Study Time, Accession Number, Study ID (C.6-2), Patient's Name at Study level (C.6-5), Series Number (C.6-3), Instance Number (C.6-4); responses carry a fixed attribute set instead of the requested keys and omit Query/Retrieve Level (C.4.1.1.3.2) | PS3.4 Tables C.6-1..C.6-5, C.4.1.1.3.2 | Medium | ⏳ Open |
+| D101 | dicom-server | ServerSession.swift handleCFind/CMove/CGet (`?? "STUDY"`) | Missing Query/Retrieve Level (0008,0052) defaults to STUDY; the request Identifier "shall contain" it (C.4.1.1.3.1 / C.4.2.1.4.1) — should fail A900 | PS3.4 C.4.1.1.3.1, Table C.4-1 | Low | ⏳ Open |
+| D102 | dicom-server | StorageManager.swift storeFile; ServerSession.swift handleCStore | Stored files lack preamble/DICM/File Meta (PS3.10 7.1) and the data set is parsed without the negotiated transfer syntax; sendViaCStore then rejects every stored file (no DICM) | PS3.10 7.1; PS3.5 10 | High | ⏳ Open |
+| D103 | dicom-gateway | GatewayListener.swift handleDICOMClient / forwardToPACS | `forward --listen-port` accepts TCP but implements no PS3.8 Upper Layer / C-STORE SCP; `listen --forward pacs://` only prints "Would forward" | PS3.8 9; PS3.4 B | Low (help overstates) | ⏳ Open |
+| D104 | dicom-gateway | HL7ToDICOMConverter.swift / FHIRConverter.swift createBasicDICOMFile | Without --template the output claims Secondary Capture Image Storage but has no Image Pixel Module and no Type 1 Conversion Type (0008,0064) — not a conforming SC instance; an MWL-shaped output (PS3.4 Table K.6-1) or a template requirement is a design decision | PS3.3 A.8.1; PS3.4 K.6-1 | Medium | ⏳ Open |
+| D105 | DICOMWeb | `QIDOResultFormatter` (QIDOResultFormatter.swift:34, :95, :148) | study column "Modality" holds Modalities In Study (0008,0061); "# Images" is Number of Series Related Instances (0020,1209); "SOP Class" truncates the UID to 15 chars. PS3.6 Table 6-1 names | see the tool section | Low | ⏳ Open |
+| D106 | DICOMWeb | `STOWResultFormatter.failureReason` (STOWResultFormatter.swift:52) | prints "Code <decimal>" without the PS3.18 Table I.2-2 meaning/hex; Warning Reason (Table I.2-1) never printed | see the tool section | Low | ⏳ Open |
+| D107 | DICOMWeb | `UPSQuery.workitemSearch` (Sources/DICOMWeb/UPS/UPSQuery.swift:611) | rejects the standard term "IN PROGRESS" (accepts only IN_PROGRESS/INPROGRESS); PS3.3 Table C.30.1-1 (Tool normalises before calling.) | see the tool section | Low | ⏳ Open |
+| D108 | DICOMWeb | `WADOURIClient` | 9 optional WADO-URI parameters (charset, annotation, imageAnnotation, imageQuality, region, windowCenter, windowWidth, presentationUID, presentationSeriesUID) and 8 Rendered Media Types (image/jxl, video/mp4, video/H265, text/*, application/pdf) not requestable; PS3.18 Tables 9.4.1-1, 9.5.1-1, 8.7.4-1. Low (optional). | PS3.18 2026a Section 9 | Low | ⏳ Open |
+| D109 | DICOMCore | `TransferSyntax.isJPIP` (Sources/DICOMCore/TransferSyntax.swift:1087) returns false for 1.2.840.10008.1.2.4.204 / .205 (JPIP HTJ2K Referenced [Deflate], PS3.5 A.11 / A.12, PS3.6 Table A-1), so `DICOMJPIPClient.jpipURI` (DICOMKit/DICOMJPIPClient.swift:335) throws notAJPIPTransferSyntax for them; the .204 doc comment (TransferSyntax.swift:581) says "the Pixel Data is a URI reference" (A.11 | Pixel Data absent, (0028,7FE0)) | see the tool section | Medium | ⏳ Open |
 
 ### Rows handed to DICOMStudio
 
@@ -596,6 +625,596 @@ Marker: `// NEMA-verified: 2026a, checked 2026-10-01 — the 24 attribute-bearin
 Tests: `Tests/DICOMNetworkTests/MWLMPPSCLIEndToEndTests.swift` — 12 dicom-mpps tests (16 in the file), all pass; `swift build --product dicom-mpps` ok; `check_nema_markers.py Sources/dicom-mpps`: 1/1.
 
 Commit: 416de5a `fix(cli): dicom-mpps CID 9300 reason examples, Type 1 Modality, M/F/O and DA checks, PS3.7 Annex C status names (2026a)`.
+
+### dicom-print (G1, 2026-10-01)
+
+Files: `Sources/dicom-print/main.swift` (53 options + 1 argument over status/send/job/list-printers/add-printer/remove-printer), README. Evidence: PS3.3 2026a Tables C.13-1, C.13-3, C.13-5, C.13-8, C.13-9, C.11-4 (dumped by script; the print module tables have no Type column, so `diff_kit.attribute_terms` returns nothing for them and a variablelist dump of the Description cell was used), PS3.4 2026a Tables H.3.2.2.1-1/H.3.2.2.2-1, H.4-2, H.4-6, H.4-10, H.4-14 and the Annex H status tables, PS3.6 2026a Tables 6-1 and A-1. `Scripts/diff_cli.py --tool dicom-print`: 11 checks ok (15 citations matched, 22 documented defaults matched). The baseline "JPEG-LS/RLE" hit at main.swift:502 is a code comment about decoding, not a transfer-syntax label; the current script no longer flags it. No standard default exists for any film-session or film-box attribute in PS3.4 Annex H (only the recommended L0/La of H.4.2.2.1.1), so "Default (std)" is "none (SCP default)" except Polarity (NORMAL).
+
+**Counts:** matched 11, wrong 2, missing 2, extra 2, plumbing 24 (plus 2 absent optional U/U concepts). Both wrong rows and 1 missing row are fixed. The other missing row (BIN_i for i > 2) is engine-side and deferred.
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard / code accepts, defaults | Verdict |
+|---|---|---|---|---|
+| `<url>` | TCP address of the Print SCP (pacs://host[:port]) | PS3.8 9.1.1 (well-known 104, registered 11112) | host[:port]; code default port 11112 | plumbing |
+| `--aet` | Calling AE Title | PS3.8 7.1.1.3; PS3.5 Table 6.2-1 VR AE | AE <=16 chars | plumbing |
+| `--called-aet` | Called AE Title | PS3.8 7.1.1.4; PS3.5 Table 6.2-1 VR AE | AE; default "ANY-SCP" is a tool convention | plumbing |
+| `--timeout` | ARTIM / socket timeout | PS3.8 9.1.2 | seconds (status/job 30, send 60) | plumbing |
+| `--verbose` |  |  |  | plumbing |
+| `--format` | output rendering |  | text, json | plumbing |
+| `<paths>` | PS3.10 files to print | PS3.10 7.1 |  | plumbing |
+| `--copies` | Number of Copies (2000,0010) | PS3.3 Table C.13-1; PS3.4 Table H.4-2 U/M | IS; std default none (SCP); code 1, >=1 | match |
+| `--film-size` | Film Size ID (2010,0050) | PS3.3 Table C.13-3 (12 Defined Terms) | 8INX10IN..A3 = 12 tokens (8x10..a3); term accepted as alias; std default none; code 14x17 | wrong -> fixed (help listed 9 of 12, named no term) |
+| `--orientation` | Film Orientation (2010,0040) | PS3.3 Table C.13-3 | PORTRAIT, LANDSCAPE = portrait/landscape; std default none; code portrait | match |
+| `--priority` | Print Priority (2000,0020) | PS3.3 Table C.13-1 (Enumerated Values) | HIGH, MED, LOW = high/medium/low; std default none; code medium | match (help now names MED) |
+| `--layout` | Image Display Format (2010,0010) | PS3.3 Table C.13-3 (Enumerated Values) | STANDARD\C,R, ROW\.., COL\.., SLIDE, SUPERSLIDE, CUSTOM\i all accepted; RxC grid sent as STANDARD\C,R; std default none; code auto | match (help listed 2 of 6 forms -> fixed) |
+| `--template` | layout preset (Image Display Format + Film Size ID + Film Orientation) | PS3.3 Table C.13-3 | single, comparison, grid, multi-phase | extra (tool convenience) |
+| `--medium` | Medium Type (2000,0030) | PS3.3 Table C.13-1 (5 Defined Terms) | PAPER, CLEAR FILM, BLUE FILM, MAMMO CLEAR FILM, MAMMO BLUE FILM; std default none; code paper | missing -> fixed (mammo-clear-film, mammo-blue-film added) |
+| `--magnification` | Magnification Type (2010,0060) | PS3.3 Table C.13-3 | REPLICATE, BILINEAR, CUBIC, NONE; std default none; code replicate | match |
+| `--film-destination` | Film Destination (2000,0040) | PS3.3 Table C.13-1 | MAGAZINE, PROCESSOR, BIN_i (i>=1, no maximum); code BIN_1, BIN_2 only; std default none; code processor | missing (BIN_i for i>2: engine enum, D89) |
+| `--check-status` | N-GET Printer Status (2110,0010) before printing | PS3.3 Table C.13-9; PS3.4 H.4.6 | FAILURE aborts (exit 1), WARNING warns | match |
+| `--verify` | C-ECHO before printing | PS3.4 Annex A |  | plumbing |
+| `--color` | Print Management Meta SOP Class negotiated | PS3.4 H.3.2.2.1 / H.3.2.2.2; PS3.6 Table A-1 | grayscale = 1.2.840.10008.5.1.1.9, color = 1.2.840.10008.5.1.1.18 | match |
+| `--frame` | frame of a multi-frame source |  | >=1 | plumbing |
+| `--all-frames` |  |  |  | plumbing |
+| `--raw` | send stored values (no VOI/rescale) | PS3.3 Table C.13-5 |  | plumbing |
+| `--window-center` | VOI window applied before sending | PS3.3 C.11.2 |  | plumbing |
+| `--window-width` | VOI window applied before sending | PS3.3 C.11.2 |  | plumbing |
+| `--bit-depth` | Bits Stored (0028,0101) of the Basic Grayscale Image Sequence | PS3.3 Table C.13-5 | 8, 12 (higher clamped); code default 8 | wrong -> fixed (help cited Table C.13-3; README said 16) |
+| `--presentation-lut` | Presentation LUT Shape (2050,0020) | PS3.3 Table C.11-4 | IDENTITY, LIN OD; inverse = no shape, pixels inverted; std default none; code none | match (inverse: extra, documented) |
+| `--palette` | pseudo-colour baked into RGB | PS3.3 Table C.13-5 (RGB only) | DICOMCore.PseudoColorPalette tokens | extra (tool feature) |
+| `--annotate` | Text String (2030,0020) of Basic Annotation Box | PS3.4 H.4.4; PS3.3 Table C.13-7 | LO; position = order given | match |
+| `--annotation-format` | Annotation Display Format ID (2010,0030) | PS3.3 Table C.13-3 | CS, printer Conformance Statement | match |
+| `--recursive` |  |  |  | plumbing |
+| `--dry-run` |  |  |  | plumbing |
+| `--retries` | retry on connection/setup failure |  | >=0 | plumbing |
+| `job --job-id` | Print Job SOP Instance UID (N-GET) | PS3.4 H.4.5; PS3.5 VR UI | UI | match |
+| `add-printer --name` | local registry name |  |  | plumbing |
+| `add-printer --host` | TCP address | PS3.8 9.1.1 |  | plumbing |
+| `add-printer --port` | TCP port | PS3.8 9.1.1 (well-known 104, registered 11112) | code default 11112 | plumbing |
+| `add-printer --called-ae` | Called AE Title | PS3.8 7.1.1.4; PS3.5 VR AE |  | plumbing |
+| `add-printer --calling-ae` | Calling AE Title | PS3.8 7.1.1.3; PS3.5 VR AE |  | plumbing |
+| `add-printer --color` | Meta SOP Class preference | PS3.6 Table A-1 | grayscale, color | plumbing |
+| `add-printer --default` |  |  |  | plumbing |
+| `remove-printer --name` |  |  |  | plumbing |
+| `(smoothing-type)` | Smoothing Type (2010,0080) | PS3.3 Table C.13-3 (values in Conformance Statement; CUBIC only) | not offered (U/U) | absent (optional) |
+| `(border/empty density, trim, polarity, min/max density)` | Border Density, Empty Image Density, Trim, Polarity, Min/Max Density | PS3.3 Tables C.13-3 / C.13-5 | not offered on send (U/U; offered by dicom-printscp simulate) | absent (optional) |
+
+**Output contract**
+
+| Output | Standard name / ref | Code | Verdict |
+|---|---|---|---|
+| `status` text: Name / Status / Status Info / Manufacturer / Model / Is Normal | Printer Name (2110,0030), Printer Status (2110,0010), Printer Status Info (2110,0020), Manufacturer (0008,0070), Manufacturer's Model Name (0008,1090): PS3.3 Table C.13-9 | DICOMPrintKit `PrintConsoleFormatter.printerStatusText` (shared with DICOMStudio) | wrong labels, engine: D90 |
+| `status` JSON keys `status`, `statusInfo`, `name`, `manufacturer`, `model`, `isNormal` | PS3.6 keywords PrinterStatus, PrinterStatusInfo, PrinterName, Manufacturer, ManufacturerModelName | shared formatter | P-PRINT-JSON |
+| `status` values | Printer Status NORMAL/WARNING/FAILURE (Table C.13-9) passed through; unknown or absent becomes UNKNOWN | DICOMNetwork `PrinterStatusSeverity` | match |
+| `job` text: Job UID / Status / Status Info / Created | Execution Status (2100,0020) PENDING/PRINTING/DONE/FAILURE, Execution Status Info (2100,0030), Creation Date/Time (2100,0040/0050): Table C.13-8 | shared formatter | wrong labels, engine: D90 |
+| `job` JSON `jobUID`, `status`, `statusInfo`, `creationDate` | PS3.6 keywords ExecutionStatus, ExecutionStatusInfo, CreationDate | shared formatter | P-PRINT-JSON |
+| `send` JSON `success`, `printJobUID`, `filmSessionUID`, `filmBoxUID`(s), `printJobUIDs`, `error` | SOP Instance UIDs of Print Job / Basic Film Session / Basic Film Box (PS3.4 H.4) | shared formatter | match (tool keys, no attribute keyword applies) |
+| `send` failure text for N-CREATE/N-SET/N-ACTION statuses | PS3.4 Tables H.4.1.2.1.2-1, H.4-4, H.4.2.2.1.2-1, H.4-9, H.4.3.x status names (B600–B60A, C600–C616) | DICOMNetwork `DIMSEStatus.description`: "Failed: unable to process / cannot understand (Cxxx) (0xC603)", "Unknown status (0xB605)" | wrong, engine: D91 |
+| verbose banner labels | Number of Copies, Film Size ID, Film Orientation, Print Priority, Medium Type, Film Destination, Magnification Type, Presentation LUT Shape, Calling/Called AE Title | main.swift | wrong -> fixed (were Copies, Film Size, Orientation, Priority, Medium, Calling AE …; Medium printed rawValue, now wireValue) |
+| `list-printers` labels / JSON | Called AE Title, Calling AE Title (PS3.8 7.1.1.3/4); JSON `calledAETitle`, `callingAETitle`, … | main.swift | wrong -> fixed labels (were "Called AE"); JSON keys match |
+| exit codes | — | 0 success (status/job: the printer answered); 1 print not accepted, `--check-status` FAILURE, connection/file error; 64 usage | match. README listed 65/66/74, which the tool never returns -> fixed |
+
+**Changes** (commit `ceeb966`): `--medium` gains `mammo-clear-film` / `mammo-blue-film`. A `StandardTermOption` protocol gives each film option a `standardTerm`: help lists `token = TERM`, and the term is accepted as an alias in any case (additive). Help was rewritten for `--film-size` (listed 9 of 12), `--priority` (MED), `--film-destination` (BIN_i note), `--layout` (6 forms; RxC is sent as STANDARD\C,R), `--bit-depth` (Table C.13-5, was C.13-3), `--color` (Meta SOP Class names/UIDs), `--presentation-lut`, `--annotate` / `--annotation-format`, `--check-status`, and the status/job discussions. Verbose and list-printers labels were fixed. README: option table, `--bit-depth` (said 8, 12 or 16), exit codes. Test target `dicom-printTests` (Package.swift hunk only): `PrintOptionTermsTests`, 9 tests, all pass. `swift build --product dicom-print` ok; `check_nema_markers.py Sources/dicom-print` exits 0.
+
+**Deferred findings**
+- D90 | DICOMPrintKit | `Sources/DICOMPrintKit/PrintConsoleFormatter.swift:21-37, 93-109` | Printer/job status labels "Name", "Status", "Status Info", "Model", "Created" instead of the PS3.3 attribute names (Printer Name, Printer Status, Printer Status Info, Manufacturer's Model Name; Execution Status, Execution Status Info, Creation Date/Time). Shared with DICOMStudio and dicom-printscp `status` | PS3.3 2026a Tables C.13-8, C.13-9; PS3.6 Table 6-1 | Low
+- D91 | DICOMNetwork | `Sources/DICOMNetwork/DIMSEStatus.swift:124-160, 264-300` (used by `DICOMNetworkError.printOperationFailed`, DICOMNetworkError.swift:484) | Print Management statuses carry no Annex H name: C6xx prints as "Failed: unable to process / cannot understand (Cxxx)" and B6xx as "Unknown status". It should name e.g. 0xC603 "Failed: Image size is larger than image box size", 0xB605 "Requested Min Density or Max Density outside of printer's operating range…" (a lookup by the SOP Class of the request) | PS3.4 2026a Tables H.4.1.2.1.2-1, H.4-4, H.4.2.2.1.2-1, H.4-9, H.4.3.1.2.1.2-1, H.4.3.2.2.1.2-1, H.4.9.2.1.2-1 | Low–Medium
+- D89 | DICOMNetwork | `Sources/DICOMNetwork/PrintService.swift:272-277` | `FilmDestination` has only BIN_1 and BIN_2; Table C.13-1 defines BIN_i "with no maximum", without leading zeros. Adding cases is public API: see P-BIN | PS3.3 2026a Table C.13-1 | Low
+
+**P-items**
+- P-PRINT-JSON: the shared `PrintConsoleFormatter` JSON keys (`status`, `statusInfo`, `name`, `model`, `jobUID`, `creationDate`) are not PS3.6 keywords. Proposal: add `PrinterStatus`, `PrinterStatusInfo`, `PrinterName`, `ManufacturerModelName`, `ExecutionStatus`, `ExecutionStatusInfo`, `CreationDate`/`CreationTime` alongside the old keys, keeping the old keys (deprecated in docs) for one release.
+- P-BIN: replace or extend `DICOMNetwork.FilmDestination` with a `bin(Int)` form (or `.bin(n)` factory plus raw-value parsing of `BIN_n`), deprecating `.bin1` / `.bin2`; then dicom-print accepts `bin-N` / `BIN_N` for any N ≥ 1.
+
+**Marker:** `// NEMA-verified: 2026a, checked 2026-10-01 — send option vocabularies text-diffed against PS3.3 2026a Tables C.13-1 (Print Priority 3, Medium Type 5, Film Destination MAGAZINE/PROCESSOR/BIN_i), C.13-3 (Film Size ID 12, Film Orientation 2, Magnification Type 4, Image Display Format 6 forms) and C.11-4 (Presentation LUT Shape 2): every term offered (MAMMO CLEAR FILM / MAMMO BLUE FILM added), BIN_i limited to BIN_1/BIN_2 by DICOMNetwork.FilmDestination; Bits Stored 8/12 per Table C.13-5; Meta SOP Class and Printer SOP Instance UIDs per PS3.6 Table A-1; status/job N-GET attributes per PS3.6 Table 6-1 and PS3.3 Tables C.13-8/C.13-9`
+
+**Notes for the orchestrator:** `diff_kit.attribute_terms` requires >= 4 columns and so returns no terms for the 3-column PS3.3 C.13 / C.11-4 module tables. The terms were dumped with `<scratch>/print_terms.py` / `print_desc.py`. A 3-column fallback in attribute_terms would let diff_cli check these. The UID check counted 0 UIDs because the UIDs appear inside help sentences. They were checked against Table A-1 by dump: .9, .14, .15, .17, .18, .23.
+
+### dicom-printscp (G1, 2026-10-01)
+
+Files: `Sources/dicom-printscp/` DICOMPrintSCPCommand.swift (C1), EmulatorOptions.swift, InfoCommands.swift, ServeCommand.swift, SimulateCommand.swift, README (72 options over serve/simulate/status/queues). Evidence: the same PS3.3 / PS3.4 / PS3.6 2026a dumps as dicom-print, plus PS3.4 Tables H.4.4.2-1 (Basic Annotation Box: N-SET only), H.4.9.2-1 and H.4-14 (Print Job events Pending 1 / Printing 2 / Done 3 / Failure 4), PS3.3 C.13.9.1. `Scripts/diff_cli.py --tool dicom-printscp`: 11 checks ok. The inverted flags keep "(default: yes)", and their help now names the SOP Class each one controls.
+
+**Counts:** matched 20, wrong 5, missing 3, extra 0, plumbing 38. All wrong and missing rows are fixed.
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed per standard / code accepts, defaults | Verdict |
+|---|---|---|---|---|
+| `--port` | TCP port the SCP listens on | PS3.8 9.1.1 (well-known 104, registered 11112) | code default 11113 (avoids a local SCP on 11112) | plumbing |
+| `--ae-title` | Called AE Title the SCP answers as | PS3.8 7.1.1.4; PS3.5 VR AE | code default DCMPRINT | plumbing |
+| `--max-associations` |  |  | default 10 | plumbing |
+| `--idle-timeout` | association idle timeout | PS3.8 9.1.2 (ARTIM) | seconds; 0 disables; default 300 | plumbing |
+| `--allow-ae` | Calling AE Title accepted | PS3.8 Table 9-21 (A-ASSOCIATE-RJ reason 3) |  | plumbing |
+| `--deny-ae` | Calling AE Title refused | PS3.8 Table 9-21 |  | plumbing |
+| `--max-pdu` | Maximum Length sub-item | PS3.8 D.1 | bytes; default 65536 | plumbing |
+| `--accept-color` | Basic Color Print Management Meta SOP Class | PS3.4 H.3.2.2.2; PS3.6 Table A-1 (1.2.840.10008.5.1.1.18) | default yes | match (help named "Color Print Management" -> fixed) |
+| `--presentation-lut` | Presentation LUT SOP Class N-CREATE | PS3.4 H.4.9, Table H.4.9.2-1; PS3.6 Table A-1 (1.2.840.10008.5.1.1.23) | default yes | match |
+| `--annotation-box` | Basic Annotation Box SOP Class N-SET | PS3.4 Table H.4.4.2-1 (N-SET only); PS3.6 Table A-1 (1.2.840.10008.5.1.1.15) | default yes | wrong -> fixed (help said N-CREATE / N-SET) |
+| `--annotation-boxes-per-film` | Referenced Basic Annotation Box Sequence (2010,0520) item count | PS3.4 Table H.4-6 | default 6 | plumbing |
+| `--push-job-events` | Print Job N-EVENT-REPORT | PS3.4 H.4.5, Table H.4-14 | Done (Event Type ID 3) only | wrong -> fixed (help implied several events) |
+| `serve --film-size` | Film Size ID (2010,0050) accepted | PS3.3 Table C.13-3 (12 Defined Terms) | all 12 tokens, term accepted as alias; default all | match (help now names terms) |
+| `serve --medium` | Medium Type (2000,0030) accepted | PS3.3 Table C.13-1 (5 Defined Terms) | all 5; default all | match |
+| `--max-image-boxes` | image boxes per Image Display Format | PS3.3 Table C.13-3 | default 64 | plumbing |
+| `--max-image-dimension` |  |  | default 10000 | plumbing |
+| `--printer-name` | Printer Name (2110,0030) | PS3.3 Table C.13-9; PS3.6 Table 6-1 | LO | match |
+| `--manufacturer` | Manufacturer (0008,0070) | PS3.3 Table C.13-9; PS3.6 Table 6-1 | LO | match |
+| `--model` | Manufacturer's Model Name (0008,1090) | PS3.6 Table 6-1 | LO | wrong -> fixed (help said "Manufacturer Model Name") |
+| `--serial-number` | Device Serial Number (0018,1000) | PS3.6 Table 6-1 | LO | match |
+| `--software-version` | Software Versions (0018,1020) | PS3.6 Table 6-1 | LO 1-n | wrong -> fixed (help said "Software Version") |
+| `--printer-status` | Printer Status (2110,0010) | PS3.3 Table C.13-9 (Enumerated Values) | NORMAL, WARNING, FAILURE = normal/warning/failure; default normal | match |
+| `--status-info` | Printer Status Info (2110,0020) | PS3.3 Table C.13-9; C.13.9.1 (108 Defined Terms) | free CS; empty = the status default term | match (Defined Terms extensible) |
+| `--dpi` | composition resolution |  | default 300 | plumbing |
+| `--density` | P-Value to grey mapping | PS3.14 7 (gsdf) | paper, film, gsdf | plumbing |
+| `--margin-mm` |  |  |  | plumbing |
+| `--cell-spacing-mm` |  |  |  | plumbing |
+| `--annotations` | draw Basic Annotation Box text | PS3.3 Table C.13-7 | default yes | plumbing |
+| `--trim-marks` | draw Trim (2010,0140) = YES | PS3.3 Table C.13-3 | default yes; draws sheet-corner marks, not a trim box per image (D92) | plumbing |
+| `--max-pixels` |  |  |  | plumbing |
+| `--output` |  |  | png, tiff, pdf, none | plumbing |
+| `--output-dir` |  |  |  | plumbing |
+| `--name-pattern` |  |  |  | plumbing |
+| `--paper-queue` |  |  |  | plumbing |
+| `--allow-paper` |  |  |  | plumbing |
+| `--open` |  |  |  | plumbing |
+| `--config` |  |  |  | plumbing |
+| `--save-config` |  |  |  | plumbing |
+| `--max-films` |  |  |  | plumbing |
+| `--duration` |  |  |  | plumbing |
+| `--format` | output rendering |  | text, json | plumbing |
+| `--verbose` |  |  |  | plumbing |
+| `--quiet` |  |  |  | plumbing |
+| `simulate <paths>` | PS3.10 files | PS3.10 7.1 |  | plumbing |
+| `simulate --layout` | Image Display Format (2010,0010) | PS3.3 Table C.13-3 | grid RxC (STANDARD\C,R) + STANDARD/ROW/COL/SLIDE/SUPERSLIDE/CUSTOM forms | missing -> fixed (only grid tokens were accepted) |
+| `simulate --film-size` | Film Size ID (2010,0050) | PS3.3 Table C.13-3 | 12 terms; code default 14x17 | match |
+| `simulate --orientation` | Film Orientation (2010,0040) | PS3.3 Table C.13-3 | PORTRAIT, LANDSCAPE | match |
+| `simulate --magnification` | Magnification Type (2010,0060) | PS3.3 Table C.13-3 | 4 terms | match |
+| `simulate --medium` | Medium Type (2000,0030) | PS3.3 Table C.13-1 | 5 terms | match |
+| `simulate --copies` | Number of Copies (2000,0010) | PS3.3 Table C.13-1 | >=1 (clamped) | match |
+| `simulate --polarity` | Polarity (2020,0020) | PS3.3 Table C.13-5 | NORMAL, REVERSE; std default NORMAL = code | match |
+| `simulate --presentation-lut` | Presentation LUT Shape (2050,0020) | PS3.3 Table C.11-4 | IDENTITY, LIN OD; inverse rendered | match |
+| `simulate --trim` | Trim (2010,0140) | PS3.3 Table C.13-3 | YES/NO; code default NO | match |
+| `simulate --border-density` | Border Density (2010,0100) | PS3.3 Table C.13-3 | BLACK, WHITE, i hundredths of OD; code default BLACK | missing -> fixed (i added) |
+| `simulate --empty-density` | Empty Image Density (2010,0110) | PS3.3 Table C.13-3 | BLACK, WHITE, i; code default BLACK | missing -> fixed (i added) |
+| `simulate --annotate` | Text String (2030,0020) | PS3.3 Table C.13-7 | LO | match |
+| `simulate --annotation-format` | Annotation Display Format ID (2010,0030) | PS3.3 Table C.13-3 | CS | match |
+| `simulate --color` | Basic Grayscale / Color Image Box SOP Class | PS3.4 H.4.3; PS3.6 Table A-1 | grayscale, color | match |
+| `simulate --frame` |  |  |  | plumbing |
+| `simulate --all-frames` |  |  |  | plumbing |
+| `simulate --raw` |  |  |  | plumbing |
+| `simulate --window-center` |  | PS3.3 C.11.2 |  | plumbing |
+| `simulate --window-width` |  | PS3.3 C.11.2 |  | plumbing |
+| `simulate --bit-depth` | Bits Stored (0028,0101) | PS3.3 Table C.13-5 | 8, 12 | wrong -> fixed (help said 8, 12 or 16; 16 was refused) |
+| `simulate --recursive` |  |  |  | plumbing |
+| `simulate --calling-ae` | Calling AE Title recorded | PS3.5 VR AE | default SIMULATE | plumbing |
+
+**Output contract**
+
+| Output | Standard name / ref | Code | Verdict |
+|---|---|---|---|
+| `status` text / JSON | Printer Status / Printer Status Info / Printer Name … (Table C.13-9) | `PrintSCPConsole.printerStatusText` → shared `PrintConsoleFormatter` | wrong labels, engine: D90; JSON keys P-PRINT-JSON |
+| Printer Status values reported to N-GET | NORMAL, WARNING, FAILURE (Table C.13-9); default Status Info terms per C.13.9.1 (FAILURE → SUPPLY EMPTY) | DICOMPrintKit `EmulatedPrinterStatus` (verified in DICOMPRINTKIT report) | match |
+| Request-failure log line / Error Comment (0000,0902) | Annex H status names | `"<command> failed (0xC603): <PrintSCPStatus.explanation>"`; 6 of 9 Annex H codes paraphrased (B604, B605, B609, C603, C605, C613), 3 match, by script | wrong, engine: D93 |
+| film line / `--verbose` film detail | Film Size ID, Image Display Format, Film Orientation, Medium Type, Number of Copies, Magnification Type, Border/Empty Image Density, Trim, Min/Max Density, Presentation LUT Shape: values are the received terms | `PrintSCPConsole.filmLine/filmDetail` (short labels "Film", "Magnify", "LUT shape") | match on values; labels are the engine's (minor, included in D93) |
+| film JSON | `ComposedFilm.info.jsonRepresentation` | engine | not re-checked (DICOMPrintKit report) |
+| `--trim-marks` rendering | Trim YES: "a trim box shall be printed surrounding each image" (Table C.13-3) | sheet-corner crop marks | wrong, engine: D92 (help now says what is drawn) |
+| exit codes | — | 0 success / listener stopped for its configured reason; 1 bad option value (PrintSCPCommandError), port in use, unreadable input; 64 ArgumentParser usage | match (README) |
+
+**Changes** (commit `deb66db`):
+- EmulatorOptions: `--model` "Manufacturer's Model Name (0008,1090)" and `--software-version` "Software Versions (0018,1020)", per PS3.6 Table 6-1.
+- `--annotation-box` is N-SET only (help said N-CREATE / N-SET).
+- `--push-job-events` sends Done (3) only, as the engine does.
+- `--accept-color`, `--presentation-lut` and `--annotation-box` name their SOP Class and UID.
+- `--film-size` / `--medium` list `token = TERM`.
+- `OptionTokens.validate` accepts the standard term as an alias (additive).
+- SimulateCommand:
+  - `--layout` accepts the Image Display Format forms (missing).
+  - `--border-density` / `--empty-density` accept i hundredths of OD (missing; leading zeros stripped).
+  - `--bit-depth` help is "8 or 12, Table C.13-5" (said 8, 12 or 16).
+  - All film-box options name their attribute and term.
+- Info and Serve discussions name the Printer SOP Instance UID and the N-GET attributes.
+- README updated, including `--density gsdf`, which it omitted.
+- Test target `dicom-printscpTests` (Package.swift hunk only; other agents' wado/gateway hunks were left unstaged): `EmulatorOptionTermsTests`, 6 tests, all pass.
+
+`swift build --product dicom-printscp` ok; `check_nema_markers.py Sources/dicom-printscp` exits 0 (5/5).
+
+**Deferred findings**
+- D93 | DICOMNetwork | `Sources/DICOMNetwork/PrintSCPTypes.swift:91-115` (`PrintSCPStatus.explanation`, also the default Error Comment) | 6 of 9 Annex H codes paraphrased. B604 should read "Image size is larger than image box size, the image has been demagnified.", B605 "Requested Min Density or Max Density outside of printer's operating range. The printer will use its respective minimum or maximum density value instead.", B609 "Image size is larger than the Image Box size. The Image has been cropped to fit.", C603 "Failed: Image size is larger than image box size", C605 "Failed: Insufficient memory in printer to store the image", C613 "Failed: Combined Print Image size is larger than the Image Box size" | PS3.4 2026a Tables H.4-4, H.4-9, H.4.2.2.1.2-1, H.4.3.1.2.1.2-1, H.4.3.2.2.1.2-1 | Low
+- D92 | DICOMPrintKit | `Sources/DICOMPrintKit/Printing/FilmComposer.swift:817-838` | Trim = YES is drawn as four crop marks at the sheet corners; Table C.13-3 says "a trim box shall be printed surrounding each image on the film" | PS3.3 2026a Table C.13-3 Trim (2010,0140) | Low (emulator fidelity)
+- (shared) D90 for the `status` labels.
+
+**P-items:** none new (P-PRINT-JSON from dicom-print also covers `dicom-printscp status --format json`).
+
+**Markers:**
+- EmulatorOptions.swift: `// NEMA-verified: 2026a, checked 2026-10-01 — option vocabularies text-diffed against PS3.3 2026a Tables C.13-1 (Medium Type 5), C.13-3 (Film Size ID 12) and C.13-9 (Printer Status 3; Printer Status Info per C.13.9.1) via the DICOMPrintKit catalog: all offered, each term also accepted as an alias; 7 identity attribute names/tags per PS3.6 2026a Table 6-1 (Software Versions, Manufacturer's Model Name corrected); 4 SOP Class names/UIDs per PS3.6 Table A-1; DIMSE services per PS3.4 Tables H.4.4.2-1 (Annotation Box N-SET only), H.4.9.2-1, H.4-14 (Done = 3)`
+- SimulateCommand.swift: `… film-box option vocabularies text-diffed against PS3.3 2026a Tables C.13-1 (Medium Type 5), C.13-3 (Film Size ID 12, Film Orientation 2, Magnification Type 4, Image Display Format 6 forms, Border/Empty Image Density BLACK/WHITE/i, Trim 2), C.13-5 (Polarity 2 with default NORMAL; Bits Stored 8/12) and C.11-4 (Presentation LUT Shape 2): all match (Image Display Format forms and numeric densities added in this pass)`
+- InfoCommands.swift: `… status names the N-GET attributes per PS3.3 2026a Table C.13-9 / PS3.6 Table 6-1 and the Printer SOP Instance UID per PS3.6 Table A-1; the text/JSON is DICOMPrintKit's PrintConsoleFormatter (labels reported as a deferred finding); queues carries no DICOM-standard data`
+- ServeCommand.swift: `… Printer SOP Instance UID (PS3.6 2026a Table A-1) and PS3.4 H.4.6 citation checked; otherwise carries no DICOM-standard data (listener lifecycle, console routing)`
+- DICOMPrintSCPCommand.swift: `… carries no DICOM-standard data (ArgumentParser shell, output-format enum, console routing, error type)`
+
+### dicom-server (G1) — 2026-10-01
+
+Bucket: B2 (no citation; data gaps). **The executable target is commented out in Package.swift
+("Phase 1 scope") and does not compile**: a typecheck of the 9 files against the current build
+products (`swiftc -typecheck`) gives 5 errors in DICOMServer.swift and ~30 in ServerSession.swift
+(`DataSet.read(from:)`, `PresentationContextAccept`, `DIMSEStatus.processingFailure`,
+`.pending(warningOptionalKeys:)`, `CFindResponse(hasDataSet:)`, `StorageService`, `EchoService`,
+`AETitle` vs `String`, `DICOMClient(callingAETitle:)`, top-level code beside `@main`). So no XCTest
+can exercise it; fixes were limited to data whose evidence is script-diffed, and the behavioural
+gaps are recorded as D-DICOM-SERVER rows. `Tests/DICOMToolsTests/DICOMServerTests.swift` is compiled
+by no target (README now says so).
+
+Evidence scripts (scratch): server_checks.py (Table 6-1: DB columns, metadata fields, helper VRs),
+server_std.py (B.5-1/GG.3-1, B.2-1, C.4-1..3, C.6.x, PS3.8 9-18/9-21), diff_cli.py --tool dicom-server.
+DataSetExtensions behaviour checked with an ad-hoc link of the file against the built DICOMKit
+objects (13 tags: VRs LO/PN/SH/SH/LO/LO/CS/DA/TM/IS/IS/UI/UI, UI NUL-padded).
+
+#### Input contract (24 options)
+
+| Option | DICOM concept | 2026a ref | Standard values | Code | Std default | Code default | Verdict |
+|---|---|---|---|---|---|---|---|
+| start --aet | Called AE Title | PS3.5 Table 6.2-1 AE; PS3.8 9.3.2 | ≤16 chars | any string, unchecked | — | DICOMKIT_SCP | plumbing (D94) |
+| start --port | TCP port | PS3.8 9.1.1 | 104 well-known, else 11112 | UInt16 | 104/11112 | 11112 | plumbing (match) |
+| start --data-dir / --database / --database-url / --config | storage, index | — | — | sqlite/postgres/none (in-memory; postgres throws) | — | ./dicom-data, sqlite | plumbing |
+| start --max-connections | association limit | — | — | Int | — | 10 | plumbing |
+| start --max-pdu-size | Maximum Length | PS3.8 D.1, PS3.7 D.3.3.1 | 0 = unlimited | UInt32; used to fragment *outgoing* PDUs, not advertised in the AC | — | 16384 | plumbing (D95) |
+| start --allowed-ae / --blocked-ae | reject unknown Calling AE | PS3.8 Table 9-21 | result 1 rejected-permanent, source 1 service-user, reason 3 calling-AE-title-not-recognized | 1/1/3 | — | none | match (2) |
+| start --verbose / --tls | logging / TLS | PS3.15 B.1 (TLS not implemented) | — | flags | — | false | plumbing |
+| status/stats --host, --port, --calling-ae, --called-ae, --verbose | C-ECHO SCU | PS3.8 9.1.1; PS3.5 AE | 11112; ≤16 | AETitle-checked by DICOMNetwork | — | localhost, 11112, DICOM_ECHO/DICOM_STATS, DICOMKIT_SCP | plumbing (10); `-h` for --host collides with ArgumentParser help |
+| stop --port, --verbose | none (prints SIGINT hint) | — | — | — | — | 11112 | plumbing (2) |
+
+Counts: matched 2, wrong 0, missing 0, extra 0, plumbing 22.
+
+#### Output contract
+
+| Item | 2026a ref | Standard | Code | Verdict |
+|---|---|---|---|---|
+| UID literals (16) and names beside them (15) | PS3.6 Table A-1 | A-1 Name | 8 names wrong (CR, PET, 6 × "Q/R"), 3 shortened | **wrong → fixed** (8+3) |
+| Storage SOP Classes accepted | PS3.4 Table B.5-1 (+GG.3-1: 179) | — | 5 (CT, MR, CR, SC, PET), all in B.5-1 | match (subset; 174 not accepted) |
+| Q/R models accepted | PS3.4 C.6.1 / C.6.2 | Patient Root, Study Root FIND/MOVE/GET | 6 | match |
+| Transfer syntaxes accepted | PS3.6 A-1 | — | Explicit VR LE, Implicit VR LE, Explicit VR BE (Retired) | match (BE retired, still accepted) |
+| Application Context Name | PS3.6 A-1 | 1.2.840.10008.3.1.1.1 | same | match |
+| Implementation Class UID / Version Name | PS3.7 D.3.3.2 | UID ≤64, name 1–16 chars | 1.2.826.0.1.3680043.9.7433.1.2 / DICOMKIT_SCP | plumbing (UID not DICOMKit's root, D94) |
+| Presentation-context result | PS3.8 Table 9-18 | 0 acceptance, 3 abstract-syntax-not-supported, 4 transfer-syntaxes-not-supported | 0/3/4 | match |
+| A-ASSOCIATE-RJ on decode error | PS3.8 Table 9-21 | result 2 transient, source 2 ACSE, reason 1 no-reason-given | 2/2/1 | match |
+| C-ECHO status | PS3.7 9.1.5 | 0000 | 0000 | match |
+| C-STORE statuses | PS3.4 Table B.2-1, PS3.7 C | 0000; failure A7xx/A9xx/Cxxx | 0000 / 0110 Processing failure | match (0110 is a PS3.7 general failure) |
+| C-FIND statuses | PS3.4 Table C.4-1 | FF00, 0000, A700, A900, Cxxx | FF00, 0000, 0110 | match |
+| C-MOVE statuses | PS3.4 Table C.4-2 | FF00, 0000, B000 "Sub-operations Complete - One or more Failures", A801 "Refused: Move Destination unknown" | FF00, 0000, B000, 0110; A801 never sent | **missing A801** (D96) |
+| C-GET statuses | PS3.4 Table C.4-3 | FF00, 0000, B000 | FF00, 0000, B000, 0110 | match (counts unreliable, D97) |
+| C-FIND response VRs | PS3.6 Table 6-1 | LO/PN/SH/SH/LO/LO… | 6 of 19 tags CS | **wrong → fixed** (dictionary VR) |
+| C-FIND keys / matching | PS3.4 C.2.2.2, C.4.1.1.3.2, Tables C.6-1..C.6-5 | 15 R/U keys; UID list, range, case-sensitive wildcard; Q/R Level in response | 9 of 15 keys; see D98/3 | **missing** (deferred) |
+| Help/README level names | PS3.4 Tables C.6.1-1 / C.6.2-1 | PATIENT, STUDY, SERIES, IMAGE | "Instance" | **wrong → fixed** |
+| `stats` labels C-ECHO, C-STORE, C-FIND, C-MOVE, C-GET | PS3.7 9.1.1–9.1.5 | same | same | match (5) |
+| DATABASE_SCHEMA.md columns | PS3.6 Table 6-1 keywords | — | 21 of 26 columns are snake_case of a keyword (e.g. patient_birth_date = PatientBirthDate); 5 plumbing (created_at, updated_at, file_path, file_size, transfer_syntax_uid); widths ≥ VR max (LO 64, UI 64, CS 16, PN, SH) | match (report only) |
+| DICOMMetadata fields | PS3.6 keywords | — | 11 attribute fields name keywords; filePath plumbing | match |
+| Exit codes | — | — | status/stats: 0 reachable, 1 not | plumbing |
+
+#### Commit
+d9cd70b `fix(cli): dicom-server PS3.6 2026a VRs for C-FIND response elements, Table A-1 SOP Class names, IMAGE level name; markers on 9 files` — DataSetExtensions.swift (dictionary VR), ServerSession.swift (A-1 names), DICOMServer.swift + README (level names, build-status note), markers on all 9 files, CHANGELOG bullet. `check_nema_markers.py Sources/dicom-server`: 9/9. `diff_cli.py --tool dicom-server`: 0 FAIL (A-1 names 15/15). No swift build/test possible (target excluded).
+
+#### Deferred findings (orchestrator assigns D-numbers)
+| ID | File:line | Problem | Ref | Severity |
+|---|---|---|---|---|
+| D99 | Package.swift:214, 1140; DICOMServer.swift; ServerSession.swift | Target excluded and ~35 compile errors against the current DICOMNetwork/DICOMKit API; DICOMServerTests compiled by no target | — | High |
+| D98 | DatabaseManager.swift `matchesWildcard` | Wildcard applied to UI keys (C.2.2.2.4 lists AE, CS, LO, LT, PN, SH, ST, UC, UR, UT only), case-insensitive for non-PN (C.2.2.2.4 "case sensitive, except PN"), no List of UID Matching (C.2.2.2.2), no Range Matching for Study Date (C.2.2.2.5) | PS3.4 C.2.2.2 | Medium |
+| D100 | DatabaseManager.swift query*Level | Required keys not matched/returned: Study Time, Accession Number, Study ID (C.6-2), Patient's Name at Study level (C.6-5), Series Number (C.6-3), Instance Number (C.6-4); responses carry a fixed attribute set instead of the requested keys and omit Query/Retrieve Level (C.4.1.1.3.2) | PS3.4 Tables C.6-1..C.6-5, C.4.1.1.3.2 | Medium |
+| D101 | ServerSession.swift handleCFind/CMove/CGet (`?? "STUDY"`) | Missing Query/Retrieve Level (0008,0052) defaults to STUDY; the request Identifier "shall contain" it (C.4.1.1.3.1 / C.4.2.1.4.1) — should fail A900 | PS3.4 C.4.1.1.3.1, Table C.4-1 | Low |
+| D96 | ServerSession.swift sendToDestination (fallback `("localhost", 104, destination)`) | Unknown Move Destination is sent to localhost:104 instead of status A801 "Refused: Move Destination unknown" | PS3.4 Table C.4-2 | Medium |
+| D97 | ServerSession.swift sendViaCStore | C-GET sub-operations counted Completed without awaiting C-STORE-RSP; no SCP/SCU Role Selection; only the 5 accepted storage classes can be returned | PS3.4 C.4.3.3.1; PS3.7 D.3.3.4 | Medium |
+| D102 | StorageManager.swift storeFile; ServerSession.swift handleCStore | Stored files lack preamble/DICM/File Meta (PS3.10 7.1) and the data set is parsed without the negotiated transfer syntax; sendViaCStore then rejects every stored file (no DICM) | PS3.10 7.1; PS3.5 10 | High |
+| D95 | ServerSession.swift sendDIMSEResponse / sendAssociationAccept | Outgoing P-DATA fragmented to the server's own --max-pdu-size instead of the peer's Maximum Length; AC does not carry the server's Maximum Length | PS3.8 D.1; PS3.7 D.3.3.1 | Medium |
+| D94 | DICOMServer.swift StartCommand; ServerSession.swift implementationClassUID | --aet / --allowed-ae / --blocked-ae not validated as VR AE (16 chars); Implementation Class UID 1.2.826.0.1.3680043.9.7433.1.2 is not under DICOMKit's root (1.2.826.0.1.3680043.10.511) | PS3.5 Table 6.2-1, 9.1 | Low |
+
+P-items: none.
+
+Marker text (ServerSession.swift, representative): `// NEMA-verified: 2026a, checked 2026-10-01 — 16 UID literals are registered in PS3.6 2026a Table A-1 and the 15 names written next to them match it (8 wrong SOP Class names corrected; 3 shortened names …completed…); A-ASSOCIATE-RJ result/source/reason 1/1/3 and 2/2/1 and presentation-context results 0/3/4 match PS3.8 2026a Tables 9-21 / 9-18; the 5 accepted Storage SOP Classes are in PS3.4 2026a Table B.5-1 (5 of 179); C-MOVE / C-GET final statuses 0000 / B000 match Tables C.4-2 / C.4-3; …D101..8`. C1 files: ServerConfiguration, PACSServer, ServerLogger ("carries no DICOM-standard data (…)").
+
+diff_cli.py: nothing to add; a check for "VR chosen in a hand-written switch vs Table 6-1" (server_checks.py §3) could be generalised.
+
+### dicom-gateway (G1) — 2026-10-01
+
+Bucket: B2. HL7 v2 (ER7, XPN, CX, EI, DTM, table 0001), FHIR R4 and IHE are **not NEMA standards —
+plumbing**; only the DICOM side was checked. The gateway cites no PS3.17 clause (no citation found;
+part17 not fetched). Evidence scripts (scratch/reports): gw_std.py (PS3.3 C.7-1/C.7-3/C.7-5a/C.12-1
+types, Patient's Sex terms, Modality terms vs D-1 / CID 29 / CID 33, PS3.5 Table 6.2-1, PS3.16
+Table 8-1), gw_checks.py (VRs written vs Table 6-1, MappingEngine names vs keywords), diff_cli.py.
+
+#### Input contract (33 options)
+
+| Option | Concept | 2026a ref | Standard values | Code | Verdict |
+|---|---|---|---|---|---|
+| dicom-to-hl7 `<input>` | Part 10 file; Patient's Name read as PN | PS3.5 6.2.1 | first component group; family^given^middle^prefix^suffix | was split across "=" groups and 4-component names mis-ordered | **wrong → fixed** |
+| dicom-to-hl7 --output, --verbose | path, output | — | — | — | plumbing (2) |
+| dicom-to-hl7 --message-type | HL7 type (not NEMA) | — | ADT, ORM, ORU | same | plumbing |
+| dicom-to-hl7 --event-type | HL7 trigger (not NEMA) | — | A01… | sent "ADT^AA01" | plumbing (bug fixed) |
+| hl7-to-dicom `<input>`, --template, --verbose | HL7 file, template, output | PS3.10 7.1 | — | — | plumbing (3) |
+| hl7-to-dicom --output | DICOM values written | PS3.5 Table 6.2-1, 6.2.1, 9.1; PS3.3 Table C.7-1 | PN 5 components (≤4 "^"); DA YYYYMMDD; TM HH[MM[SS[.F≤6]]]; Patient's Sex M/F/O (Type 2 empty); SH ≤16; LO ≤64; UID syntax | 4-comp XPN put suffix in prefix slot; partial dates written as DA; CX/EI components written whole; UID check digits-only; UIDs + File Meta under other arcs of 1.2.826.0.1.3680043.10 | **wrong → fixed** |
+| dicom-to-fhir `<input>` | PN → HumanName | PS3.5 6.2.1 | first group; middle name kept | given only, middle dropped | **wrong → fixed** (with the PN row above: 1 row) |
+| dicom-to-fhir --resource | FHIR type; ImagingStudy.modality system | PS3.16 Table 8-1 (DCM FHIR URI) | http://dicom.nema.org/resources/ontology/DCM | same | match |
+| dicom-to-fhir --output, --pretty, --verbose | — | — | — | — | plumbing (3) |
+| fhir-to-dicom `<input>`, --template, --verbose | FHIR JSON, template | — | — | — | plumbing (3) |
+| fhir-to-dicom --output | DICOM values written | as hl7-to-dicom --output | as above | given names joined in one component; partial dates and "+05:30" zones written into DA/TM; Study UID unchecked | **wrong → fixed** |
+| batch `<conversion-type>`, `<input-pattern>`, --output, --type, --verbose | — | — | — | — | plumbing (5) |
+| listen --protocol, --port (2575), --forward, --message-types, --verbose | HL7 listener; PACS forward is a stub | PS3.8 9.1.1 for pacs://…:11112 | — | — | plumbing (5) |
+| forward --listen-port | DICOM port | PS3.8 9.1.1 | 11112 registered | 11112; no PS3.8 UL behind it | plumbing (match default; D103) |
+| forward --forward-hl7, --forward-fhir, --message-type, --verbose | — | — | — | — | plumbing (4) |
+
+Counts: matched 1, wrong 3 (all fixed), missing 0, extra 0, plumbing 29.
+
+#### Output contract
+
+| Item | 2026a ref | Standard | Code | Verdict |
+|---|---|---|---|---|
+| VRs of the 16 / 14 elements written by HL7ToDICOMConverter / FHIRConverter | PS3.6 Table 6-1 | — | all match (gw_checks.py) | match (30) |
+| Issuer of Patient ID (0010,0021) from CX.4 | PS3.3 Table C.7-1 (Type 3, LO) | — | new | missing → added |
+| Patient's Sex | PS3.3 Table C.7-1 | Enumerated M, F, O (Type 2) | M/F/O or empty from HL7 0001 / FHIR gender | match |
+| Patient's Birth Date / Study Date | PS3.5 Table 6.2-1 DA | YYYYMMDD | full date only; partial → empty (birth) / omitted (study) | wrong → fixed |
+| Study Time | PS3.5 Table 6.2-1 TM | HHMMSS.FFFFFF, reduced precision right-truncated | HH/HHMM/HHMMSS + fraction; zone dropped | wrong → fixed |
+| Accession Number | PS3.5 SH 16 | ≤16 chars | EI.1; stderr warning above 16 (value kept) | match (warn) |
+| Modality | PS3.3 C.7.3.1.1.1; PS3.16 CID 29/33 | 147 terms (union), OT in CID 33 not CID 29 | DICOMCore.Modality.normalized (verified in DICOMCore); unknown codes kept as CS | match (delegated) |
+| SOP Class of created file | PS3.6 A-1 | 1.2.840.10008.5.1.4.1.1.7 Secondary Capture Image Storage | same | match; IOD incomplete (D104) |
+| Generated UIDs / Implementation Class UID | PS3.5 9.1 | under the organisation's root | was 1.2.826.0.1.3680043.10.<timestamp>.<rand> and …10.1078 (other registrants' arcs); now UIDGenerator / DICOMFile.create (…10.511) | wrong → fixed |
+| IHEProfiles PDI labels | PS3.3 C.7-1, C.7-3 | Patient ID / Patient's Name / Birth Date / Study Date are Type 2 | "Required Type 1", "recommended" | wrong → fixed |
+| IHEProfiles Timezone Offset From UTC | PS3.3 C.12.1.1.8 | "&ZZXX" with minutes | hours only (+0500 for +05:30, -0300 for -03:30) | wrong → fixed |
+| IHEProfiles Instance Creator UID example | PS3.5 9.1 | numeric, own root | "1.2.840.113619.DICOMKit" (GE root, letters) | wrong → fixed |
+| MappingEngine tag names (12) | PS3.6 keywords | — | all keywords | match |
+| README attribute names | PS3.6 Table 6-1 | Patient's Name, Patient's Birth Date, Patient's Sex | Patient Name, Birth Date, Sex | wrong → fixed; HL7→DICOM table added |
+| Exit codes | — | — | thrown errors → ArgumentParser exit 1 | plumbing |
+
+#### Commit / tests
+95dcd11 `fix(cli): dicom-gateway PN/DA/TM/Patient's Sex/UID values per PS3.5 and PS3.3 2026a, own UID root, ADT event; dicom-gatewayTests` — new Sources/dicom-gateway/DICOMValueMapping.swift; HL7ToDICOMConverter, DICOMToHL7Converter, FHIRConverter, IHEProfiles, README; markers on 10 files; Package.swift test target `dicom-gatewayTests` (only this hunk); Tests/dicom-gatewayTests/DICOMValueMappingTests.swift; CHANGELOG bullet.
+`swift build --product dicom-gateway`: OK. `swift test --filter DICOMValueMappingTests`: 14 tests, 0 failures. `check_nema_markers.py Sources/dicom-gateway`: 10/10. `diff_cli.py --tool dicom-gateway`: 0 FAIL.
+
+#### Deferred findings
+| ID | File:line | Problem | Ref | Severity |
+|---|---|---|---|---|
+| D104 | HL7ToDICOMConverter.swift / FHIRConverter.swift createBasicDICOMFile | Without --template the output claims Secondary Capture Image Storage but has no Image Pixel Module and no Type 1 Conversion Type (0008,0064) — not a conforming SC instance; an MWL-shaped output (PS3.4 Table K.6-1) or a template requirement is a design decision | PS3.3 A.8.1; PS3.4 K.6-1 | Medium |
+| D103 | GatewayListener.swift handleDICOMClient / forwardToPACS | `forward --listen-port` accepts TCP but implements no PS3.8 Upper Layer / C-STORE SCP; `listen --forward pacs://` only prints "Would forward" | PS3.8 9; PS3.4 B | Low (help overstates) |
+
+P-items: none (no option, value or JSON key renamed; `--event-type` still takes "A01").
+Marker (DICOMValueMapping.swift): `// NEMA-verified: 2026a, checked 2026-10-01 — the DICOM side of the HL7 v2 / FHIR mappings: PN five components and the "=" component groups of PS3.5 2026a Table 6.2-1 / 6.2.1, DA (YYYYMMDD) and TM (HHMMSS.FFFFFF) of Table 6.2-1, SH 16 / LO 64 characters, Patient's Sex Enumerated Values M, F, O of PS3.3 2026a Table C.7-1, UID syntax of PS3.5 9.1 … HL7 v2 … and FHIR … are not NEMA standards and are treated as plumbing`.
+
+### dicom-wado (G1, PS3.18 2026a)
+
+Files: DICOMWado.swift (bucket B2), WADOOptionRules.swift (new, A). Commit `39da529`.
+Scripts: `Scripts/diff_cli.py --tool dicom-wado` (11 ok, 0 fail); new `Scripts/diff_cli_web.py` (0 fail) —
+engine checks rerun over Sources/DICOMWeb, the code every subcommand calls (diff_web.py): F.2.3-1 VR→JSON 34/34 (encoder and decoder),
+media types 19 match + 1 extra (application/json), URI templates 31 match / 7 missing (bulkdata, pixeldata, ?workitem create, suspend) / 5 known extensions,
+RESTful query parameter names 15 match / 13 missing (volume rendering), WADO-URI buildURL 10 match / 9 optional absent, contentType 7/7,
+Table 10.6.1-5 QIDOQueryAttribute 20/20, UPS methods 14/14. Tool-level: WADO-URI parameters reachable 10 of 19; contentType 7/7 valid (8 of 15 Rendered Media Types not requestable);
+help lists exactly the 7; QIDO parameters 4 of 7; levels 3/3; matching keys 12 of 20; UPS transactions 6 of 8; Change State targets 3/3 (11.7.1.4);
+C.30.1-1 states 4/4, C.30.2-1 priorities 3/3, C.7-1 sexes 3/3; query JSON keys 27/27 PS3.6 keywords; ups JSON keys 0/18 keywords (camelCase).
+
+**Counts: matched 52, wrong 6, missing 9, extra 3, plumbing 18** (88 rows; 79 options + 9 grouped/qualified rows).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed / code accepts | Verdict |
+|---|---|---|---|---|
+| `retrieve <base-url>` | Studies Service base URI / URI service endpoint | PS3.18 Table 10.1-1; 9.1 | http(s) URL; /rs rewritten to /wado with --uri (dcm4chee) | plumbing |
+| `retrieve --study` | Study Instance UID: {study} path segment / studyUID | PS3.18 Tables 10.4.1-1, 9.1.2-1 | UID; required (M in 9.1.2-1) | match |
+| `retrieve --series` | Series Instance UID: {series} / seriesUID | PS3.18 Tables 10.4.1-1, 9.1.2-1 | UID; required with --uri | match |
+| `retrieve --instance` | SOP Instance UID: {instance} / objectUID | PS3.18 Tables 10.4.1-1, 9.1.2-1 | UID; required with --uri | match |
+| `retrieve --frames` | {frameList} (RS) / frameNumber (URI) | PS3.18 Table 10.4.1.6-1; 9.5.1.2.1 | RS: comma list of positive ints; URI: one positive int | wrong (URI: 0/text sent or dropped; fixed 39da529) |
+| `retrieve --uri` | URI service (WADO-URI), requestType=WADO | PS3.18 9.1.2.1.1 | "WADO" | match |
+| `retrieve --content-type` | contentType | PS3.18 9.1.2.2.1; Table 8.7.4-1 | application/dicom or a Rendered Media Type (15 in 8.7.4-1); tool: 7 | wrong (unknown value silently fetched application/dicom; fixed 39da529) |
+| `retrieve --transfer-syntax` | transferSyntax | PS3.18 9.4.1.2.3, Table 9.4.1-1 | one Transfer Syntax UID | missing (added 39da529) |
+| `retrieve --anonymize` | anonymize=yes | PS3.18 9.4.1.2.1, Table 9.4.1-1 | "yes" | missing (added 39da529) |
+| `retrieve --rows` | rows | PS3.18 9.5.1.2.4.1, Table 9.5.1-1 | positive integer | missing (added 39da529) |
+| `retrieve --columns` | columns | PS3.18 9.5.1.2.4.2, Table 9.5.1-1 | positive integer | missing (added 39da529) |
+| `(retrieve: charset, annotation, imageAnnotation, imageQuality, region, windowCenter, windowWidth, presentationUID, presentationSeriesUID)` | optional WADO-URI parameters | PS3.18 Tables 9.1.2-2, 9.4.1-1, 9.5.1-1 | O; not in WADOURIClient.buildURL | missing (optional) |
+| `retrieve --metadata` | Metadata resources | PS3.18 Table 10.4.1-2 | study / series / instance /metadata | match |
+| `retrieve --rendered` | Rendered resources | PS3.18 Table 10.4.1-3; 8.7.4-1 (image/jpeg default) | instance /rendered; saved as .jpg | match |
+| `retrieve --thumbnail` | Thumbnail resources | PS3.18 Table 10.4.1-4 | study / series / instance /thumbnail | match |
+| `retrieve -f, --format` | metadata media type | PS3.18 Table 8.7.3-3; Annex F (JSON); PS3.19 Native DICOM Model (XML) | json, xml; default json | match |
+| `retrieve -o, --output` |  |  | directory | plumbing |
+| `retrieve --token` | HTTP Authorization bearer token | PS3.18 8.4 (header fields; RFC 6750) |  | plumbing |
+| `retrieve --timeout` | HTTP request timeout |  | seconds; default 60 | plumbing (was ignored; fixed 39da529) |
+| `retrieve --verbose` |  |  |  | plumbing |
+| `query <base-url>` | Studies Service base URI | PS3.18 Table 10.1-1 | http(s) URL | plumbing |
+| `query --level` | Search resource level | PS3.18 Tables 10.6.1-1, 10.6.1-5 | study, series, instance; default study | match |
+| `query --patient-name` | Patient's Name (0010,0010) | PS3.18 Table 10.6.1-5; 8.3.4.1 | PN, * ? wild card | match |
+| `query --patient-id` | Patient ID (0010,0020) | PS3.18 Table 10.6.1-5 | LO | match |
+| `query --study-date` | Study Date (0008,0020) | PS3.18 Table 10.6.1-5; PS3.4 C.2.2.2.5 | DA or DA-DA range | match |
+| `query --study` | Study Instance UID (0020,000D); {study} of series/instance search | PS3.18 Tables 10.6.1-1, 10.6.1-5 | UID | match |
+| `query --series` | Series Instance UID (0020,000E) | PS3.18 Table 10.6.1-5 | UID | match |
+| `query --accession-number` | Accession Number (0008,0050) | PS3.18 Table 10.6.1-5 | SH | match |
+| `query --modality` | Modalities In Study (0008,0061) at study/instance level; Modality (0008,0060) at series level | PS3.18 Table 10.6.1-5 | CS Defined Terms (shared ModalityOptionValidator) | match |
+| `query --strict-modality` | reject non-Defined-Term Modality | PS3.3 C.7.3.1.1.1 |  | match |
+| `query --study-description` | Study Description (0008,1030) | not in PS3.18 Table 10.6.1-5 (server-optional key) | LO | extra |
+| `query --pps-start-date` | Performed Procedure Step Start Date (0040,0244), series | PS3.18 Table 10.6.1-5 | DA / range | match |
+| `query --pps-start-time` | Performed Procedure Step Start Time (0040,0245), series | PS3.18 Table 10.6.1-5 | TM / range | match |
+| `query --sps-id` | >Scheduled Procedure Step ID (0040,0275.0040,0009), series | PS3.18 Table 10.6.1-5 | SH | match |
+| `query --requested-procedure-id` | >Requested Procedure ID (0040,0275.0040,1001), series | PS3.18 Table 10.6.1-5 | SH | match |
+| `query --limit` | limit | PS3.18 Table 8.3.4-1; 8.3.4.4 | uint; no standard default (code 100) | wrong (negative accepted; fixed 39da529) |
+| `query --offset` | offset | PS3.18 Table 8.3.4-1; 8.3.4.4 | uint; default 0 | wrong (negative accepted; fixed 39da529) |
+| `query --fuzzy-matching` | fuzzymatching=true | PS3.18 Table 8.3.4-1; 8.3.4.2 | true/false | missing (added 39da529) |
+| `(query: includefield, emptyvaluematching, multiplevaluematching)` | QIDO query parameters | PS3.18 Table 8.3.4-1; 8.3.4.3, 8.3.4.5, 8.3.4.6 | O for user agent | missing (optional; includefield useful only with P-QUERY-JSON) |
+| `(query keys: Study Time, Referring Physician Name, Study ID, Series Number, SOP Class UID, SOP Instance UID, Instance Number)` | Required Matching Attributes the origin server supports | PS3.18 Table 10.6.1-5 | 7 of 20 rows not settable | missing (optional for the user agent) |
+| `query -f, --format` | result rendering | PS3.18 Annex F (not followed) | table, json (keyword-keyed summary), csv | extra (P-QUERY-JSON) |
+| `query --token` | HTTP Authorization bearer token | PS3.18 8.4 |  | plumbing |
+| `query --verbose` |  |  |  | plumbing |
+| `store <base-url>` | Studies Service base URI | PS3.18 Table 10.5.1-1 | http(s) URL | plumbing |
+| `store <files>` | PS3.10 files sent as application/dicom parts | PS3.18 10.5.1; Table 8.7.3-2 | paths | plumbing |
+| `store --study` | /studies/{study} target | PS3.18 Table 10.5.1-1 | UID | match |
+| `store --input` |  |  | file list | plumbing |
+| `store --batch` | instances per request |  | >= 1; default 10 | plumbing |
+| `store --continue-on-error` |  | PS3.18 Table 10.5.3-1 (202/4xx = not all stored) |  | plumbing (exit 0 on failures; fixed 39da529: exit 1) |
+| `store --token` | HTTP Authorization bearer token | PS3.18 8.4 |  | plumbing |
+| `store --verbose` |  |  |  | plumbing |
+| `ups <base-url>` | Worklist Service base URI | PS3.18 Table 11.1.1-1 | http(s) URL | plumbing |
+| `ups --search` | Search Transaction GET /workitems | PS3.18 11.9; Table 11.3-1 |  | match |
+| `ups --get` | Retrieve Workitem GET /workitems/{workitem} | PS3.18 11.5; Table 11.3-1 | UID | match |
+| `ups --create` | Create Workitem POST /workitems from DICOM JSON | PS3.18 11.4; Table 11.3-1 | JSON file | match |
+| `ups --create-workitem` | Create Workitem from options | PS3.18 11.4; PS3.4 Table CC.2.5-3 |  | match |
+| `ups --update` | Change Workitem State PUT /workitems/{workitem}/state | PS3.18 11.7; Table 11.3-1 | UID (name suggests Update 11.6: P-WADO-UPS-UPDATE) | match |
+| `ups --subscribe` | Subscribe POST .../subscribers/{subscriber} | PS3.18 11.10; Table 11.1.1-1 | workitem or Worklist (1.2.840.10008.5.1.4.34.5) | match |
+| `ups --unsubscribe` | Unsubscribe DELETE .../subscribers/{subscriber} | PS3.18 11.11 |  | match |
+| `ups --aet` | {subscriber} AE Title / requester | PS3.18 11.10.1, Table 11.7.2.1-1; PS3.5 VR AE | AE; sent as path segment (dcm4chee), not ?requester= | match |
+| `ups --state` | Procedure Step State (0074,1000) of Change State | PS3.18 11.7.1.4; PS3.3 Table C.30.1-1 | IN PROGRESS, COMPLETED, CANCELED | wrong ("IN PROGRESS" rejected; fixed 39da529; SCHEDULED warns, P-WADO-UPS-STATE) |
+| `ups --transaction-uid` | Transaction UID (0008,1195) | PS3.18 11.7.1.4 | UI; generated for IN PROGRESS, required for COMPLETED/CANCELED | match |
+| `ups --filter-state` | Procedure Step State (0074,1000) matching key | PS3.3 Table C.30.1-1 | SCHEDULED, IN PROGRESS, COMPLETED, CANCELED | wrong ("IN PROGRESS" rejected; fixed 39da529) |
+| `ups --scheduled-station` | Scheduled Station Name Code Sequence (0040,4025) key | PS3.4 Table CC.2.5-3 |  | match |
+| `ups --workitem-uid` | Workitem SOP Instance UID {workitem} | PS3.18 Table 11.1.1-1 | UID; generated under 1.2.826.0.1.3680043.8.498 | match |
+| `ups --label` | Procedure Step Label (0074,1204) | PS3.3 Table C.30.2-1 | LO; required for --create-workitem | match |
+| `ups --patient-name` | Patient's Name (0010,0010) | PS3.4 Table CC.2.5-3 | PN | match |
+| `ups --patient-id` | Patient ID (0010,0020) | PS3.4 Table CC.2.5-3 | LO | match |
+| `ups --priority` | Scheduled Procedure Step Priority (0074,1200) | PS3.3 Table C.30.2-1 | HIGH, MEDIUM, LOW; STAT -> HIGH; default MEDIUM | match (help named STAT as a value; fixed 39da529) |
+| `ups --patient-birth-date` | Patient's Birth Date (0010,0030) | PS3.5 VR DA | YYYYMMDD | match |
+| `ups --patient-sex` | Patient's Sex (0010,0040) | PS3.3 Table C.7-1 | M, F, O | match |
+| `ups --study-uid` | Study Instance UID (0020,000D) | PS3.4 Table CC.2.5-3 | UID | match |
+| `ups --accession-number` | Accession Number (0008,0050) | PS3.4 Table CC.2.5-3 | SH | match |
+| `ups --referring-physician` | Referring Physician's Name (0008,0090) | PS3.6 Table 6-1 | PN | match |
+| `ups --procedure-id` | Requested Procedure ID (0040,1001) | PS3.6 Table 6-1 | SH | match |
+| `ups --step-id` | Scheduled Procedure Step ID (0040,0009) | PS3.6 Table 6-1 | SH | match |
+| `ups --worklist-label` | Worklist Label (0074,1202) | PS3.3 Table C.30.2-1 | LO | match |
+| `ups --comments` | Comments on the Scheduled Procedure Step (0040,0400) | PS3.6 Table 6-1 | LT | match |
+| `ups --scheduled-start` | Scheduled Procedure Step Start DateTime (0040,4005) | PS3.5 VR DT | ISO 8601 input -> DT | match |
+| `ups --expected-completion` | Expected Completion DateTime (0040,4011) | PS3.5 VR DT | ISO 8601 input -> DT | match |
+| `ups --station-name` | Scheduled Station Name Code Sequence (0040,4025) item | PS3.3 8.2 (designator "L" = local) | code value = meaning = name, scheme L | match |
+| `ups --performer-name` | Human Performer's Name (0040,4037) in (0040,4034) | PS3.6 Table 6-1 | PN | match |
+| `ups --performer-organization` | Human Performer's Organization (0040,4036) | PS3.6 Table 6-1 | LO | match |
+| `ups --admission-id` | Admission ID (0038,0010) | PS3.6 Table 6-1 | LO | match |
+| `(ups: Update Workitem, Request Cancellation)` | UPS-RS transactions | PS3.18 11.6, 11.8; Table 11.3-1 | DICOMwebClient has both | missing (optional) |
+| `ups -f, --format` | result rendering | PS3.18 Annex F (not followed) | table, json (camelCase summary), csv; help omitted csv (fixed) | extra (P-QUERY-JSON) |
+| `ups --token` | HTTP Authorization bearer token | PS3.18 8.4 |  | plumbing |
+| `ups --verbose` |  |  |  | plumbing |
+
+**Output contract**
+
+| Field | DICOM source | Encoding (standard) | Encoding (code) | Verdict |
+|---|---|---|---|---|
+| `query --format json` keys | QIDO-RS result attributes | PS3.18 F.2 (tag keys, vr, Value) | keyword → string summary (27 keys, all PS3.6 keywords; QIDOResultFormatter) | tool summary — P-QUERY-JSON (extend to dicom-wado) |
+| `ups --format json` keys | UPS workitem attributes | PS3.18 F.2 | camelCase keys (`state`, `priority`, `procedureStepLabel`, … 18 not keywords; UPSResultFormatter) | tool summary — P-QUERY-JSON |
+| `retrieve --metadata --format json` | metadata resource | PS3.18 F.2 | server JSON as received | match |
+| `retrieve --metadata --format xml` | metadata resource | PS3.19 Native DICOM Model | shared DICOMXMLEncoder | match |
+| table labels (query) | Study/Series/Instance columns | PS3.6 names | "Modality" column shows Modalities In Study; "# Images" = Number of Series Related Instances; "SOP Class" truncates the UID to 15 chars | shared formatter (D105) |
+| UPS state text | Procedure Step State (0074,1000) | "IN PROGRESS" | UPSState.rawValue "IN PROGRESS" | match |
+| STOW failure line | Failure Reason (0008,1197) | PS3.18 Table I.2-2 (hex + decimal + meaning) | "Code 42752" (decimal only, no meaning) | shared formatter (D106) |
+| STOW warnings | Warning Reason (0008,1196), Table I.2-1 | — | not printed | missing (D106) |
+| HTTP status text | PS3.18 Table 8.5-1 | "404 (Not Found)" … | DICOMwebError: "Not Found: …", others "HTTP Error <code>" | match |
+| exit codes | — | — | 0 ok; 1 runtime/HTTP error or any file not stored (store, now also with --continue-on-error); 64 validation | match (README said 2; fixed) |
+
+**Fixed (39da529, 15 tests in new target `dicom-wadoTests`)**: --content-type unknown values rejected (were fetched as application/dicom);
+--uri --frames positive single frame (0/text sent or dropped), extra list entries warn; new --transfer-syntax/--anonymize/--rows/--columns;
+parameter-outside-its-table warnings; --timeout wired (was ignored); query --fuzzy-matching, --limit/--offset ≥ 0; ups "IN PROGRESS" accepted for
+--state/--filter-state, --state SCHEDULED warns; help texts (priority HIGH/MEDIUM/LOW, M/F/O, csv); comment citations §11.6→11.7 (Change State, `requester` Table 11.7.2.1-1), §11.5→11.6 (Update);
+store exits 1 on any unstored file. README: exit 64, real error text, jq example used tag keys on keyword JSON, WADO-URI/fuzzy/state sections.
+
+**P-items**
+- **P-WADO-UPS-STATE**: `ups --state SCHEDULED` is accepted and sent; PS3.18 11.7.1.4 allows only IN PROGRESS, COMPLETED, CANCELED and PS3.4 Table CC.1.1-2 refuses it (C303H/C307H). Proposal: reject SCHEDULED (currently warns).
+- **P-WADO-UPS-UPDATE**: `ups --update <uid>` performs Change Workitem State (11.7), not Update Workitem (11.6). Proposal: additive alias `--change-state`, keep `--update`; optionally add Update (11.6) and `--cancel-request` (11.8).
+- **P-QUERY-JSON** (existing): extend to `dicom-wado query/ups --format json` (shared QIDOResultFormatter / UPSResultFormatter).
+
+**Deferred findings**
+- D107 — DICOMWeb `UPSQuery.workitemSearch` (Sources/DICOMWeb/UPS/UPSQuery.swift:611): rejects the standard term "IN PROGRESS" (accepts only IN_PROGRESS/INPROGRESS); PS3.3 Table C.30.1-1. Low. (Tool normalises before calling.)
+- D105 — DICOMWeb `QIDOResultFormatter` (QIDOResultFormatter.swift:34, :95, :148): study column "Modality" holds Modalities In Study (0008,0061); "# Images" is Number of Series Related Instances (0020,1209); "SOP Class" truncates the UID to 15 chars. PS3.6 Table 6-1 names. Low.
+- D106 — DICOMWeb `STOWResultFormatter.failureReason` (STOWResultFormatter.swift:52): prints "Code <decimal>" without the PS3.18 Table I.2-2 meaning/hex; Warning Reason (Table I.2-1) never printed. Low.
+- D108 — DICOMWeb `WADOURIClient`: 9 optional WADO-URI parameters (charset, annotation, imageAnnotation, imageQuality, region, windowCenter, windowWidth, presentationUID, presentationSeriesUID) and 8 Rendered Media Types (image/jxl, video/mp4, video/H265, text/*, application/pdf) not requestable; PS3.18 Tables 9.4.1-1, 9.5.1-1, 8.7.4-1. Low (optional).
+
+**Markers**: DICOMWado.swift "options diffed against PS3.18 2026a Tables 9.1.2-1/9.1.2-2/9.4.1-1/9.5.1-1 (WADO-URI: 10 of 19 parameters reachable, the other 9 optional and absent from WADOURIClient), 9.1.2.2.1/8.7.4-1 (7 contentType values, all match), 8.3.4-1 (QIDO: 4 of 7 parameters), 10.6.1-5 (3 levels; 12 of 20 matching keys), 11.3-1 (UPS: 6 of 8 transactions), 11.7.1.4 (3 Change State targets); PS3.3 2026a Tables C.30.1-1 (4 states), C.30.2-1 (3 priorities), C.7-1 (3 sexes): all match; Scripts/diff_cli_web.py"; WADOOptionRules.swift "WADO-URI rules read against PS3.18 2026a 9.1.2.2.1, 9.4.1.2.1, 9.4.1.2.3, 9.5.1.2.1, 9.5.1.2.4 and Tables 9.4.1-1 / 9.5.1-1 / 8.7.4-1 (7 contentType values); limit/offset against 8.3.4.4; UPS states against PS3.3 2026a Table C.30.1-1 (4 Enumerated Values) and PS3.18 11.7.1.4 (3 Change State targets)". check_nema_markers: 2/2.
+
+**For Scripts/diff_cli.py (orchestrator)**: optionally call `Scripts/diff_cli_web.py` checks for dicom-wado / dicom-jpip (standalone today).
+
+### dicom-jpip (G1, PS3.6 Table A-1, PS3.5 8.4.1 / A.6 / A.7 / A.11 / A.12)
+
+Files: main.swift (B2), JPIPSyntaxes.swift (new, A). Commit `827f021`. JPIP itself (ISO/IEC 15444-9: layers, levels, regions, sessions) is out of scope;
+DICOM governs only the Transfer Syntax UIDs and Pixel Data Provider URL (0028,7FE0) (UR, PS3.6 Table 6-1). `fetch` still exits 1 (F1, unimplemented upstream).
+PS3.6 Table A-1 dumped by script: 4 JPIP rows (.4.94 JPIP Referenced, .4.95 JPIP Referenced Deflate, .4.204 JPIP HTJ2K Referenced, .4.205 JPIP HTJ2K Referenced Deflate).
+Before: --list-syntaxes and help listed 2 of 4 (diff_cli_web: matched 2, missing 2); after: 4/4 both. diff_cli generic: A-1 UIDs 4/4, names next to UIDs 4/4, citations 4/4.
+
+**Counts: matched 0, wrong 2, missing 0, extra 0, plumbing 15** (17 rows; both wrong rows fixed).
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed / code accepts | Verdict |
+|---|---|---|---|---|
+| `fetch <server-url>` | JPIP server (ISO/IEC 15444-9) | PS3.5 8.4.1 (HTTP/HTTPS transport) | http(s) URL | plumbing |
+| `fetch --image` | JPIP target | ISO/IEC 15444-9 (out of scope) |  | plumbing |
+| `fetch --layers` | JPIP quality layers | ISO/IEC 15444-9 (out of scope) |  | plumbing |
+| `fetch --level` | JPIP resolution level | ISO/IEC 15444-9 (out of scope) |  | plumbing |
+| `fetch --region` | JPIP region | ISO/IEC 15444-9 (out of scope) | x,y,w,h | plumbing |
+| `fetch -o, --output` |  |  |  | plumbing |
+| `fetch -v, --verbose` |  |  |  | plumbing |
+| `uri <input>` | PS3.10 file with a JPIP Referenced Transfer Syntax; prints Pixel Data Provider URL (0028,7FE0) | PS3.6 Table A-1 (4 JPIP UIDs); PS3.5 8.4.1, A.6, A.7, A.11, A.12 | .4.94, .4.95, .4.204, .4.205 | wrong (.4.204/.4.205 refused; fixed 827f021) |
+| `uri --json` | summary JSON (file, transferSyntaxUID, isDeflated, jpipURI) |  | tool keys | plumbing |
+| `serve -p, --port` | JPIP server port | ISO/IEC 15444-9; no DICOM default | default 8080 | plumbing |
+| `serve -d, --directory` |  |  | *.dcm files | plumbing |
+| `serve --max-clients` |  |  | default 16 | plumbing |
+| `serve --client-bandwidth` |  |  | bytes/s; 0 = unlimited | plumbing |
+| `serve -v, --verbose` |  |  |  | plumbing |
+| `info <target>` | file or JPIP server URL | PS3.5 8.4.1 |  | plumbing |
+| `info --list-syntaxes` | JPIP Referenced Transfer Syntaxes | PS3.6 Table A-1 | 4 UIDs with A-1 names | wrong (2 of 4 listed, "Pixel Data contains a JPIP URI", A.8 cited; fixed 827f021) |
+| `info --json` | summary JSON (file, transferSyntaxUID, isJPIP, jpipURI) |  | tool keys | plumbing |
+
+**Output contract**
+
+| Field | DICOM source | Encoding (standard) | Encoding (code) | Verdict |
+|---|---|---|---|---|
+| `--list-syntaxes` uid/name | PS3.6 Table A-1 | 4 JPIP rows | 4 rows, A-1 names | wrong → fixed (2 of 4) |
+| `--list-syntaxes` description | PS3.5 A.6 / A.11 | Pixel Data absent; URL in (0028,7FE0) | was "Pixel Data contains a JPIP server URI" | wrong → fixed |
+| label "Pixel Data Provider URL" (uri, info) | (0028,7FE0) | PS3.6 name | was "JPIP URI" | fixed |
+| label "Transfer Syntax" | (0002,0010) | UID + A-1 name | UID (+ "(deflated)") → UID (A-1 name) | fixed |
+| info banner citation | PS3.5 | 8.4.1, A.6, A.7, A.11, A.12 | was "Annex A.8" (SMPTE ST 2110-20) | wrong → fixed |
+| JSON `jpipURI`, `transferSyntaxUID`, `isDeflated`, `isJPIP`, `file` | tool summary | — | unchanged | plumbing (key `jpipURI` names (0028,7FE0); rename would be a P-item, not proposed) |
+| exit codes | — | — | 0; 1 (non-JPIP file, fetch, errors); 64 validation | match |
+
+**Fixed (827f021, 6 tests in new target `dicom-jpipTests`)**: HTJ2K JPIP pair listed and recognised by uri/info (reads (0028,7FE0) itself because the engine guard rejects them); descriptions/labels/citations.
+
+**P-items**: none.
+
+**Deferred findings**
+- D109 — DICOMCore `TransferSyntax.isJPIP` (Sources/DICOMCore/TransferSyntax.swift:1087) returns false for 1.2.840.10008.1.2.4.204 / .205 (JPIP HTJ2K Referenced [Deflate], PS3.5 A.11 / A.12, PS3.6 Table A-1), so `DICOMJPIPClient.jpipURI` (DICOMKit/DICOMJPIPClient.swift:335) throws notAJPIPTransferSyntax for them; the .204 doc comment (TransferSyntax.swift:581) says "the Pixel Data is a URI reference" (A.11: Pixel Data absent, (0028,7FE0)). Medium.
+
+**Markers**: main.swift "transfer syntax lists diffed against PS3.6 2026a Table A-1 (4 JPIP rows, 4 / 4 match, via JPIPSyntaxes); Pixel Data Provider URL (0028,7FE0) and section citations against PS3.5 2026a 8.4.1, 10.8, A.6, A.7, A.11, A.12; fetch/serve parameters (layers, level, region, port) belong to ISO/IEC 15444-9 JPIP and are out of scope (plumbing)"; JPIPSyntaxes.swift "the 4 JPIP Referenced Transfer Syntax UIDs and names diffed against PS3.6 2026a Table A-1 (4 / 4 match); Pixel Data Provider URL (0028,7FE0) per PS3.5 2026a 8.4.1, A.6, A.7, A.11, A.12 and PS3.6 Table 6-1 (UR); JPIP itself (ISO/IEC 15444-9) is out of scope". check_nema_markers: 2/2.
+
+### dicom-cloud (G1, bucket C1)
+
+Files: DICOMCloud.swift, CloudTypes.swift, CloudOperations.swift, CloudProvider.swift (all C1). Commit `b7a11a4` (docs + markers).
+The target is commented out of Package.swift ("Phase 1 scope: exclude dicom-cloud …"), so it is not built and has no tests; only comments, help prose and README changed.
+diff_cli generic: 0 UID / tag / code / citation literals (all checks ok, matched 0). DICOM concepts vs cloud plumbing:
+no DICOMweb endpoint, no transfer syntax, no de-identification and no SOP Class / modality filter exist in the code — files are moved as opaque bytes
+(GCS upload sends Content-Type application/octet-stream, not application/dicom). Baseline: "--bidirectional (default: upload only)" is prose (plumbing).
+
+**Counts: matched 0, wrong 0, missing 0, extra 0, plumbing 19**
+
+**Input contract**
+
+| Option | DICOM concept | 2026a reference | Allowed / code accepts | Verdict |
+|---|---|---|---|---|
+| `<source>` | local path or cloud URL |  | s3:// gs:// azure:// | plumbing |
+| `<destination>` | cloud URL or local path |  |  | plumbing |
+| `<cloud-url>` | cloud URL |  |  | plumbing |
+| `<local-path>` | local directory |  |  | plumbing |
+| `-r, --recursive` |  |  |  | plumbing |
+| `--tags` | object metadata key=value | none (keys are free text; e.g. PatientID is a PS3.6 keyword but not written as a DICOM attribute) |  | plumbing |
+| `--encrypt` | storage encryption | none (not PS3.15) | none, server-side, client-side | plumbing |
+| `--multipart` |  |  |  | plumbing |
+| `--parallel` |  |  | default 4 | plumbing |
+| `--resume` |  |  |  | plumbing |
+| `--endpoint` | S3-compatible endpoint |  |  | plumbing |
+| `--region` | cloud region |  |  | plumbing |
+| `--details` |  |  |  | plumbing |
+| `--force` |  |  |  | plumbing |
+| `--bidirectional` | sync direction |  | default upload only (help prose fixed b7a11a4) | plumbing |
+| `--delete` |  |  |  | plumbing |
+| `--source-region` |  |  |  | plumbing |
+| `--dest-region` |  |  |  | plumbing |
+| `-v, --verbose` |  |  |  | plumbing |
+
+**Output contract**
+
+| Field | DICOM source | Encoding (standard) | Encoding (code) | Verdict |
+|---|---|---|---|---|
+| list lines (key, size, ISO 8601 date) | — | — | tab-separated | plumbing |
+| verbose / error text (CloudError) | — | — | free text | plumbing |
+| exit codes | — | — | 0; 1 on error; 64 validation | plumbing |
+
+**Fixed (b7a11a4)**: README ran `dicom-anon --profile archive` (no such profile; dicom-anon takes basic, clinical-trial, research, ps315) → `--profile ps315`, labelled with the PS3.15 Annex E title "Basic Application Level Confidentiality Profile" (E.2, dumped by script); --tags example notes metadata keys (PatientID, StudyDate, Modality — PS3.6 keywords, 3/3) are not de-identified; `sync` help no longer calls the default bidirectional.
+
+**P-items**: none. **Deferred**: none (note: storing DICOM objects with Content-Type application/dicom would be more accurate, not a standard requirement for object stores).
+
+**Markers** (all four): "carries no DICOM-standard data (<file role>); Scripts/diff_cli.py: 0 UID, tag or code literals". check_nema_markers: 4/4.
 
 
 ## G2 File and media
