@@ -169,7 +169,7 @@ public final class UPSClient: @unchecked Sendable {
     /// - Throws: DICOMwebError on failure, UPSError.workitemNotFound if not found
     public func retrieveWorkitemResult(uid: String) async throws -> WorkitemResult {
         let json = try await retrieveWorkitem(uid: uid)
-        guard let result = WorkitemResult.parse(json: json) else {
+        guard let result = WorkitemResult.parse(json: json, requestedUID: uid) else {
             throw DICOMwebError.invalidJSON(reason: "Failed to parse workitem JSON")
         }
         return result

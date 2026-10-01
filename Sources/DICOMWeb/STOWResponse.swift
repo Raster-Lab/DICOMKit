@@ -1,6 +1,6 @@
 import Foundation
 
-// NEMA-verified: 2026a, checked 2026-09-28 — the 7 tags read against PS3.18 2026a Table I.1-1 (all present); FailureReasonCode diffed against Tables I.2-1 / I.2-2: 0110, 0122, C122, A900, C000, A700, B000, B006, B007 match, 0111 is an additional code (I.2.2), the 7 PS3.7-only cases are deprecated; the range classification (A7xx, A9xx, Cxxx) is in knownFailureReason
+// NEMA-verified: 2026a, checked 2026-10-01 — Warning Reason (0008,1196) is read from the Referenced SOP Sequence items (Table I.1-1, D106); meanings of Tables I.2-1 (3 rows) / I.2-2 (6 rows) dumped by Scripts/nema_docbook.py into standardMeaning(forFailureReason:/forWarningReason:); checked 2026-09-28 — the 7 tags read against PS3.18 2026a Table I.1-1 (all present); FailureReasonCode diffed against Tables I.2-1 / I.2-2: 0110, 0122, C122, A900, C000, A700, B000, B006, B007 match, 0111 is an additional code (I.2.2), the 7 PS3.7-only cases are deprecated; the range classification (A7xx, A9xx, Cxxx) is in knownFailureReason
 /// Response from a STOW-RS store operation
 ///
 /// Contains the results of storing one or more DICOM instances,
@@ -36,15 +36,22 @@ public struct STOWResponse: Sendable, Equatable {
         /// The retrieve URL for the stored instance (if available)
         public let retrieveURL: String?
         
+        /// Warning Reason (0008,1196): why the instance was accepted with warnings
+        /// (PS3.18 2026a Table I.1-1, values in Table I.2-1); nil when stored without warning.
+        public let warningReason: UInt16?
+        
         /// Creates an instance result
         /// - Parameters:
         ///   - sopClassUID: The SOP Class UID
         ///   - sopInstanceUID: The SOP Instance UID
         ///   - retrieveURL: The retrieve URL for the stored instance
-        public init(sopClassUID: String? = nil, sopInstanceUID: String, retrieveURL: String? = nil) {
+        ///   - warningReason: Warning Reason (0008,1196), PS3.18 Table I.2-1
+        public init(sopClassUID: String? = nil, sopInstanceUID: String, retrieveURL: String? = nil,
+                    warningReason: UInt16? = nil) {
             self.sopClassUID = sopClassUID
             self.sopInstanceUID = sopInstanceUID
             self.retrieveURL = retrieveURL
+            self.warningReason = warningReason
         }
     }
     
@@ -152,6 +159,43 @@ public struct STOWResponse: Sendable, Equatable {
             default: return nil
             }
         }
+    }
+    
+    // MARK: - Standard meanings (PS3.18 2026a Annex I.2)
+    
+    /// The PS3.18 2026a Table I.2-2 meaning of a Failure Reason (0008,1197) value, including
+    /// the A7xx / A9xx / Cxxx ranges; 0111 is the additional code (I.2.2) the DICOMKit server
+    /// uses for a duplicate SOP Instance. nil for a value the table does not define.
+    public static func standardMeaning(forFailureReason code: UInt16) -> String? {
+        switch code {
+        case 0x0110: return "Processing failure"
+        case 0x0111: return "Duplicate SOP Instance"
+        case 0x0122: return "Referenced SOP Class not supported"
+        case 0xC122: return "Referenced Transfer Syntax not supported"
+        case 0xA700...0xA7FF: return "Refused out of Resources"
+        case 0xA900...0xA9FF: return "Error: Data Set does not match SOP Class"
+        case 0xC000...0xCFFF: return "Error: Cannot understand"
+        default: return nil
+        }
+    }
+    
+    /// The PS3.18 2026a Table I.2-1 meaning of a Warning Reason (0008,1196) value; nil for a
+    /// value the table does not define.
+    public static func standardMeaning(forWarningReason code: UInt16) -> String? {
+        switch code {
+        case 0xB000: return "Coercion of Data Elements"
+        case 0xB006: return "Elements Discarded"
+        case 0xB007: return "Data Set does not match SOP Class"
+        default: return nil
+        }
+    }
+    
+    /// `<hex> (<decimal>): <meaning>` for a reason code, as PS3.18 Tables I.2-1 / I.2-2 list
+    /// both forms, e.g. `A701 (42753): Refused out of Resources`; an undefined value reads
+    /// `… : not defined in PS3.18 Table I.2-x`.
+    static func describe(code: UInt16, meaning: String?, table: String) -> String {
+        let hex = String(format: "%04X", code)
+        return "\(hex) (\(code)): " + (meaning ?? "not defined in PS3.18 Table \(table)")
     }
     
     /// Warning message from the server
@@ -266,7 +310,7 @@ extension STOWResponse {
     public static func parse(json: [String: Any]) throws -> STOWResponse {
         var storedInstances: [InstanceResult] = []
         var failedInstances: [InstanceFailure] = []
-        let warnings: [Warning] = []
+        var warnings: [Warning] = []
         var retrieveURL: String?
         
         // Parse RetrieveURL (0008,1190)
@@ -281,6 +325,13 @@ extension STOWResponse {
             for item in items {
                 let result = parseInstanceResult(from: item)
                 storedInstances.append(result)
+                // Warning Reason (0008,1196), Table I.1-1: accepted with warnings (Table I.2-1).
+                if let code = result.warningReason {
+                    warnings.append(Warning(
+                        code: String(format: "%04X", code),
+                        message: "\(result.sopInstanceUID): " + describe(
+                            code: code, meaning: standardMeaning(forWarningReason: code), table: "I.2-1")))
+                }
             }
         }
         
@@ -306,6 +357,7 @@ extension STOWResponse {
         var sopClassUID: String?
         var sopInstanceUID = ""
         var retrieveURL: String?
+        var warningReason: UInt16?
         
         // ReferencedSOPClassUID (0008,1150)
         if let element = json[Tag.referencedSOPClassUID] as? [String: Any],
@@ -325,10 +377,20 @@ extension STOWResponse {
             retrieveURL = values.first
         }
         
+        // WarningReason (0008,1196), US — PS3.18 Table I.1-1 (Referenced SOP Sequence item)
+        if let element = json[Tag.warningReason] as? [String: Any],
+           let values = element["Value"] as? [Any],
+           let first = values.first,
+           let value = (first as? Int) ?? (first as? NSNumber)?.intValue,
+           let code = UInt16(exactly: value) {
+            warningReason = code
+        }
+        
         return InstanceResult(
             sopClassUID: sopClassUID,
             sopInstanceUID: sopInstanceUID,
-            retrieveURL: retrieveURL
+            retrieveURL: retrieveURL,
+            warningReason: warningReason
         )
     }
     
@@ -355,7 +417,7 @@ extension STOWResponse {
         if let element = json[Tag.failureReason] as? [String: Any],
            let values = element["Value"] as? [Int] {
             if let value = values.first {
-                failureReason = UInt16(value)
+                failureReason = UInt16(exactly: value)
             }
         }
         

@@ -1524,7 +1524,8 @@ extension DICOMwebClient {
     /// - Throws: DICOMwebError on failure, UPSError.workitemNotFound if not found
     public func retrieveWorkitemResult(uid: String) async throws -> WorkitemResult {
         let json = try await retrieveWorkitem(uid: uid)
-        guard let result = WorkitemResult.parse(json: json) else {
+        // PS3.4 Table CC.2.5-3 N-GET: (0008,0018) is not in a Retrieve Workitem response
+        guard let result = WorkitemResult.parse(json: json, requestedUID: uid) else {
             throw DICOMwebError.invalidJSON(reason: "Failed to parse workitem JSON")
         }
         return result

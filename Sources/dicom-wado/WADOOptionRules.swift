@@ -2,7 +2,7 @@ import Foundation
 import ArgumentParser
 import DICOMWeb
 
-// NEMA-verified: 2026a, checked 2026-10-01 — WADO-URI rules read against PS3.18 2026a 9.1.2.2.1, 9.4.1.2.1, 9.4.1.2.3, 9.5.1.2.1, 9.5.1.2.4 and Tables 9.4.1-1 / 9.5.1-1 / 8.7.4-1 (7 contentType values); limit/offset against 8.3.4.4; UPS states against PS3.3 2026a Table C.30.1-1 (4 Enumerated Values) and PS3.18 11.7.1.4 (3 Change State targets)
+// NEMA-verified: 2026a, checked 2026-10-01 — WADO-URI rules read against PS3.18 2026a 9.1.2.2.1, 9.4.1.2.1-9.4.1.2.3, 9.5.1.2.1-9.5.1.2.7 and Tables 9.1.2-2 / 9.4.1-1 / 9.5.1-1 / 8.7.4-1 (15 contentType values: application/dicom + 14 Rendered Media Types; all 19 parameters reachable, D108); limit/offset against 8.3.4.4; UPS states against PS3.3 2026a Table C.30.1-1 (4 Enumerated Values) and PS3.18 11.7.1.4 (3 Change State targets)
 
 /// Standard-derived rules for the values `dicom-wado` options accept. Kept apart from the
 /// command structs so the tests can pin each rule to its clause.
@@ -13,23 +13,36 @@ enum WADOOptionRules {
     /// The `--content-type` values the URI service accepts and `WADOURIClient` carries:
     /// application/dicom (Retrieve DICOM Instance, 9.4) or a Rendered Media Type of
     /// Table 8.7.4-1 (Retrieve Rendered Instance, 9.5), per 9.1.2.2.1.
-    static let uriContentTypes = [
-        "application/dicom", "image/jpeg", "image/gif", "image/png", "image/jp2", "image/jph", "video/mpeg",
-    ]
+    static let uriContentTypes = WADOURIClient.MediaType.allowed.map(\.rawValue)
 
     /// Maps `--content-type` to the request representation. An absent value is the
-    /// WADO-URI default, application/dicom. A value the client cannot request is
+    /// WADO-URI default, application/dicom. A value 9.1.2.2.1 does not allow is
     /// rejected rather than silently fetched as application/dicom.
-    static func uriContentType(_ raw: String?) throws -> WADOURIClient.ContentType {
+    static func uriContentType(_ raw: String?) throws -> WADOURIClient.MediaType {
         guard let raw = raw?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return .dicom }
-        let mapped = WADOURIClient.ContentType.fromRequestString(raw)
-        if mapped == .dicom && !["application/dicom", "dicom"].contains(raw.lowercased()) {
+        guard let mapped = WADOURIClient.MediaType.fromRequestString(raw) else {
             throw ValidationError(
                 "--content-type '\(raw)' cannot be requested over WADO-URI. Use one of: "
                 + uriContentTypes.joined(separator: ", ")
                 + " (PS3.18 9.1.2.2.1: application/dicom or a Rendered Media Type of Table 8.7.4-1)")
         }
         return mapped
+    }
+
+    /// `annotation` / `imageAnnotation` (PS3.18 9.4.1.2.2): a comma-separated list of
+    /// "patient" and/or "technique" (a server may support more; those pass through).
+    static func uriAnnotation(_ raw: String?) -> [String] {
+        guard let raw else { return [] }
+        return raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    /// `region` (PS3.18 9.5.1.2.5): `xmin,ymin,xmax,ymax`, four decimals.
+    static func uriRegion(_ raw: String?) throws -> WADOURIClient.Region? {
+        guard let raw else { return nil }
+        guard let region = WADOURIClient.Region(raw) else {
+            throw ValidationError("--region takes xmin,ymin,xmax,ymax, four decimal numbers (PS3.18 9.5.1.2.5); got '\(raw)'")
+        }
+        return region
     }
 
     /// `frameNumber` (PS3.18 9.5.1.2.1) names a single Frame and is a positive integer.
@@ -48,15 +61,17 @@ enum WADOOptionRules {
     /// Warnings for parameters sent with a representation whose transaction does not
     /// define them: Table 9.4.1-1 (application/dicom) has anonymize, annotation and
     /// transferSyntax; Table 9.5.1-1 (rendered) has frameNumber, rows, columns and others.
-    static func uriParameterWarnings(contentType: WADOURIClient.ContentType, frame: Int?,
+    static func uriParameterWarnings(contentType: WADOURIClient.MediaType, frame: Int?,
                                      rows: Int?, columns: Int?,
-                                     transferSyntax: String?, anonymize: Bool) -> [String] {
+                                     transferSyntax: String?, anonymize: Bool,
+                                     otherRendered: [String] = []) -> [String] {
         var out: [String] = []
         if contentType == .dicom {
             var rendered: [String] = []
             if frame != nil { rendered.append("frameNumber (--frames)") }
             if rows != nil { rendered.append("rows (--rows)") }
             if columns != nil { rendered.append("columns (--columns)") }
+            rendered += otherRendered
             if !rendered.isEmpty {
                 out.append("\(rendered.joined(separator: ", ")) \(rendered.count == 1 ? "is a" : "are") "
                     + "Retrieve Rendered Instance parameter\(rendered.count == 1 ? "" : "s") (PS3.18 Table 9.5.1-1), "
@@ -139,14 +154,6 @@ enum WADOOptionRules {
     static let updateDeprecationNote =
         "Note: --update is deprecated; use --change-state (it performs Change Workitem State, "
         + "PS3.18 2026a 11.7, not Update Workitem, 11.6)"
-
-    /// `--filter-state` in the spelling `UPSQuery.workitemSearch` accepts (it does not
-    /// take the standard "IN PROGRESS"); other values pass through unchanged so the
-    /// shared builder still rejects them.
-    static func searchFilterState(_ raw: String?) -> String? {
-        guard let raw = raw else { return nil }
-        return upsState(raw) == .inProgress ? "IN_PROGRESS" : raw
-    }
 
     // MARK: - Plumbing
 

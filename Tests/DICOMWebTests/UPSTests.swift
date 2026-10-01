@@ -411,6 +411,19 @@ final class UPSResultsTests: XCTestCase {
         XCTAssertEqual(inProgress, ["00741000": "IN PROGRESS"])
     }
 
+    /// D107: PS3.3 2026a Table C.30.1-1 (Enumerated Values) spells the state "IN PROGRESS" (with a space); the
+    /// shared builder accepts it as written, case-insensitively, and still takes IN_PROGRESS.
+    func testWorkitemSearchAcceptsTheStandardInProgressTerm() throws {
+        for term in ["IN PROGRESS", "in progress", " IN PROGRESS ", "IN_PROGRESS"] {
+            let params = try UPSQuery.workitemSearch(filterState: term, scheduledStation: nil).toParameters()
+            XCTAssertEqual(params, ["00741000": "IN PROGRESS"], term)
+        }
+        XCTAssertThrowsError(try UPSQuery.workitemSearch(filterState: "IN  PROGRESS", scheduledStation: nil))
+        XCTAssertThrowsError(try UPSQuery.workitemSearch(filterState: "STARTED", scheduledStation: nil)) { error in
+            XCTAssertTrue((error as? UPSSearchFilterError)?.description.contains("IN PROGRESS") == true)
+        }
+    }
+
     func testWorkitemSearchStationFilter() throws {
         let params = try UPSQuery.workitemSearch(filterState: "", scheduledStation: "CT_AE_01").toParameters()
         XCTAssertEqual(params, ["00404025": "CT_AE_01"])

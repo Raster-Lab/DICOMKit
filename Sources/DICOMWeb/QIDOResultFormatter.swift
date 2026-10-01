@@ -1,6 +1,6 @@
 import Foundation
 
-// NEMA-verified: 2026a, checked 2026-09-28 — carries no DICOM-standard data (console column layout for search results)
+// NEMA-verified: 2026a, checked 2026-10-01 — the 12 table column labels are the PS3.6 2026a Table 6-1 Attribute Names of the attributes shown (12 rows dumped by Scripts/nema_docbook.py; D105); UIDs are printed whole (SOP Class UID no longer truncated); JSON keys are Table 6-1 Keywords
 /// Output renderings shared by the `dicom-wado query` CLI (QIDO-RS) and
 /// DICOMStudio's in-app QIDO query, so both produce identical text for the same
 /// search results. This mirrors `DICOMQueryResultFormatter` (DICOMNetwork) for the
@@ -36,15 +36,16 @@ public struct QIDOResultFormatter {
     private func studyTable(_ studies: [QIDOStudyResult]) -> String {
         var output = ""
         output += String(repeating: "=", count: 120) + "\n"
-        output += pad("Study UID", 20) + " " + pad("Patient Name", 30) + " " + pad("Study Date", 20) + " " + pad("Modality", 10) + " " + pad("# Series", 10) + "\n"
+        // Column labels are the PS3.6 2026a Table 6-1 Attribute Names (D105).
+        output += pad("Study Instance UID", 20) + " " + pad("Patient's Name", 30) + " " + pad("Study Date", 10) + " " + pad("Modalities in Study", 20) + " " + pad("Number of Study Related Series", 30) + "\n"
         output += String(repeating: "=", count: 120) + "\n"
         for study in studies {
             let studyUID = truncate(study.studyInstanceUID ?? "", maxLength: 20)
             let patientName = truncate(study.patientName ?? "", maxLength: 30)
             let studyDate = study.studyDate ?? ""
-            let modality = truncate(study.modalitiesInStudy.joined(separator: ", "), maxLength: 10)
+            let modality = truncate(study.modalitiesInStudy.joined(separator: ", "), maxLength: 20)
             let numSeries = study.numberOfStudyRelatedSeries ?? 0
-            output += pad(studyUID, 20) + " " + pad(patientName, 30) + " " + pad(studyDate, 20) + " " + pad(modality, 10) + " " + pad("\(numSeries)", 10) + "\n"
+            output += pad(studyUID, 20) + " " + pad(patientName, 30) + " " + pad(studyDate, 10) + " " + pad(modality, 20) + " " + pad("\(numSeries)", 30) + "\n"
         }
         output += String(repeating: "=", count: 120) + "\n"
         return output
@@ -98,14 +99,15 @@ public struct QIDOResultFormatter {
     private func seriesTable(_ series: [QIDOSeriesResult]) -> String {
         var output = ""
         output += String(repeating: "=", count: 100) + "\n"
-        output += pad("Series UID", 25) + " " + pad("Modality", 10) + " " + pad("Description", 30) + " " + pad("# Images", 10) + "\n"
+        // Column labels are the PS3.6 2026a Table 6-1 Attribute Names (D105).
+        output += pad("Series Instance UID", 25) + " " + pad("Modality", 10) + " " + pad("Series Description", 28) + " " + pad("Number of Series Related Instances", 34) + "\n"
         output += String(repeating: "=", count: 100) + "\n"
         for s in series {
             let seriesUID = truncate(s.seriesInstanceUID ?? "", maxLength: 25)
             let modality = s.modality ?? ""
-            let description = truncate(s.seriesDescription ?? "", maxLength: 30)
+            let description = truncate(s.seriesDescription ?? "", maxLength: 28)
             let numInstances = s.numberOfSeriesRelatedInstances ?? 0
-            output += pad(seriesUID, 25) + " " + pad(modality, 10) + " " + pad(description, 30) + " " + pad("\(numInstances)", 10) + "\n"
+            output += pad(seriesUID, 25) + " " + pad(modality, 10) + " " + pad(description, 28) + " " + pad("\(numInstances)", 34) + "\n"
         }
         output += String(repeating: "=", count: 100) + "\n"
         return output
@@ -152,13 +154,15 @@ public struct QIDOResultFormatter {
     private func instanceTable(_ instances: [QIDOInstanceResult]) -> String {
         var output = ""
         output += String(repeating: "=", count: 80) + "\n"
-        output += pad("SOP Instance UID", 30) + " " + pad("SOP Class", 15) + " " + pad("# Frames", 10) + "\n"
+        // Column labels are the PS3.6 2026a Table 6-1 Attribute Names (D105). The SOP
+        // Class UID is printed whole (up to 64 characters, PS3.5 VR UI), not truncated.
+        output += pad("SOP Instance UID", 30) + " " + pad("SOP Class UID", 30) + " " + pad("Number of Frames", 16) + "\n"
         output += String(repeating: "=", count: 80) + "\n"
         for instance in instances {
             let sopUID = truncate(instance.sopInstanceUID ?? "", maxLength: 30)
-            let sopClass = truncate(instance.sopClassUID ?? "", maxLength: 15)
+            let sopClass = instance.sopClassUID ?? ""
             let numFrames = instance.numberOfFrames ?? 1
-            output += pad(sopUID, 30) + " " + pad(sopClass, 15) + " " + pad("\(numFrames)", 10) + "\n"
+            output += pad(sopUID, 30) + " " + pad(sopClass, 30) + " " + pad("\(numFrames)", 16) + "\n"
         }
         output += String(repeating: "=", count: 80) + "\n"
         return output

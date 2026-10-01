@@ -149,16 +149,21 @@ dicom-wado retrieve https://pacs.example.com/dicom-web \
 
 | Option | WADO-URI parameter | PS3.18 2026a |
 |--------|--------------------|--------------|
-| `--content-type` | `contentType`: `application/dicom` (default) or a Rendered Media Type: `image/jpeg`, `image/gif`, `image/png`, `image/jp2`, `image/jph`, `video/mpeg`. Any other value is rejected | 9.1.2.2.1, Table 8.7.4-1 |
+| `--content-type` | `contentType`: `application/dicom` (default) or a Rendered Media Type: `image/jpeg`, `image/gif`, `image/png`, `image/jp2`, `image/jph`, `image/jxl`, `video/mpeg`, `video/mp4`, `video/H265`, `text/html`, `text/plain`, `text/xml`, `text/rtf`, `application/pdf`. Any other value is rejected | 9.1.2.2.1, Table 8.7.4-1 |
+| `--charset <list>` | `charset`: comma-separated character sets | 9.1.2.2.2 |
 | `--transfer-syntax <uid>` | `transferSyntax` (application/dicom) | 9.4.1.2.3 |
 | `--anonymize` | `anonymize=yes` (application/dicom) | 9.4.1.2.1 |
+| `--annotation <list>` | `annotation` (application/dicom, Table 9.4.1-1) or `imageAnnotation` (rendered, Table 9.5.1-1): `patient`, `technique` | 9.4.1.2.2 |
 | `--frames <n>` | `frameNumber`: one positive frame number; further list entries are not sent | 9.5.1.2.1 |
-| `--rows <n>`, `--columns <n>` | `rows`, `columns`: positive integers (rendered) | 9.5.1.2.4 |
+| `--image-quality <1-100>` | `imageQuality` | 9.5.1.2.3, 8.3.5.1.2 |
+| `--rows <n>`, `--columns <n>` | `rows`, `columns`: positive integers, both or neither (rendered) | 9.5.1.2.4 |
+| `--region <xmin,ymin,xmax,ymax>` | `region`: normalized 0.0-1.0, xmin < xmax, ymin < ymax | 9.5.1.2.5 |
+| `--window-center <d>`, `--window-width <d>` | `windowCenter`, `windowWidth`: both or neither; not with application/dicom or a Presentation State | 9.5.1.2.6 |
+| `--presentation-uid <uid>`, `--presentation-series-uid <uid>` | `presentationUID`, `presentationSeriesUID`: both or neither | 9.5.1.2.7 |
 
-A parameter that the requested representation's table does not define (for example
-`--frames` with `application/dicom`, Table 9.4.1-1) is still sent, with a warning on stderr.
-`annotation`, `charset`, `imageQuality`, `region`, `windowCenter`, `windowWidth`,
-`presentationUID` and `presentationSeriesUID` are not supported.
+A value that breaks one of these rules is refused before the request is sent. A parameter
+that the requested representation's table does not define (for example `--frames` with
+`application/dicom`, Table 9.4.1-1) is still sent, with a warning on stderr.
 
 ```bash
 dicom-wado retrieve http://server:8080/wado --uri \

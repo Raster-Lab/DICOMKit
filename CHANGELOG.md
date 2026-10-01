@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, DICOMweb client and console output (2026-10-01, DICOM 2026a)
+
+- **QIDO table labels are PS3.6 names** (D105): `QIDOResultFormatter` tables say Study Instance UID, Patient's Name,
+  Modalities in Study, Number of Study Related Series, Series Instance UID, Series Description, Number of Series
+  Related Instances, SOP Class UID (printed whole, no longer cut to 15 characters) and Number of Frames. PS3.6 2026a
+  Table 6-1.
+- **STOW Failure / Warning Reason** (D106): `STOWResultFormatter.failureReason` prints `<hex> (<decimal>): <meaning>`
+  (PS3.18 2026a Table I.2-2, ranges included); Warning Reason (0008,1196) is read from the Referenced SOP Sequence
+  items (Table I.1-1) into the new `STOWResponse.InstanceResult.warningReason` and `STOWResponse.warnings`, and
+  `dicom-wado store --verbose` prints it with its Table I.2-1 meaning (new `STOWResultFormatter.warningDetail`,
+  `STOWResponse.standardMeaning(forFailureReason:)` / `(forWarningReason:)`).
+- **UPS search takes "IN PROGRESS"** (D107): `UPSQuery.workitemSearch` accepts the PS3.3 2026a Table C.30.1-1 term
+  with the space (IN_PROGRESS / INPROGRESS still accepted); dicom-wado's rewrite workaround is removed.
+- **WADO-URI: every Section 9 parameter and Rendered Media Type** (D108): new `WADOURIClient.Parameters`,
+  `MediaType`, `Region`, `retrieve(studyUID:seriesUID:objectUID:parameters:)`, `requestURL(...)` and
+  `WADOURIParameterError` carry charset, annotation / imageAnnotation, imageQuality, region, windowCenter,
+  windowWidth, presentationUID, presentationSeriesUID and the 14 Rendered Media Types of Table 8.7.4-1 (image/jxl,
+  video/mp4, video/H265, text/*, application/pdf added), and check the 9.5.1.2.x pair / exclusion / range rules
+  before sending. The `ContentType` enum and the old `retrieve` are unchanged. `dicom-wado retrieve --uri` gains
+  `--charset`, `--annotation`, `--image-quality`, `--region`, `--window-center`, `--window-width`,
+  `--presentation-uid`, `--presentation-series-uid` and accepts the new media types; `--rows` without `--columns`
+  (or the reverse) is now refused (9.5.1.2.4: "both shall be present"). PS3.18 2026a Tables 9.1.2-2, 9.4.1-1,
+  9.5.1-1, 8.7.4-1.
+- **UPS `dicom-json` from the parsed result** (D213): `WorkitemResult` keeps the server's DICOM JSON object
+  (`dicomJSON`, `attributes`); `UPSOutputFormat.dicomJSON` renders it (PS3.18 F.2). dicom-wado `ups --search` /
+  `--get` no longer fetch a second raw copy (`DICOMwebClient.searchWorkitemsDICOMJSON` stays public).
+- **Retrieve Workitem without SOP Instance UID** (D-WEB-UPSGET-1): `retrieveWorkitemResult(uid:)` uses the requested
+  UID when the response has no (0008,0018), which PS3.4 2026a Table CC.2.5-3 (N-GET column) does not allow in it.
+
 ### Fixed — deferred rows, pixel / video / document batch (2026-10-01, DICOM 2026a)
 
 - **`ImageConverter` writes Specific Character Set, the SC device identity and valid EXIF text** (D166, D167, D168;

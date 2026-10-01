@@ -11,9 +11,11 @@ final class WADOOptionRulesTests: XCTestCase {
     // MARK: - WADO-URI contentType (PS3.18 9.1.2.2.1, Table 8.7.4-1)
 
     func testURIContentTypesAreApplicationDicomOrRenderedMediaTypes() throws {
-        // application/dicom plus the Table 8.7.4-1 Rendered Media Types WADOURIClient carries.
+        // application/dicom plus the 14 distinct Rendered Media Types of Table 8.7.4-1 (D108).
         XCTAssertEqual(WADOOptionRules.uriContentTypes,
-                       ["application/dicom", "image/jpeg", "image/gif", "image/png", "image/jp2", "image/jph", "video/mpeg"])
+                       ["application/dicom", "image/jpeg", "image/gif", "image/png", "image/jp2", "image/jph", "image/jxl",
+                        "video/mpeg", "video/mp4", "video/H265",
+                        "text/html", "text/plain", "text/xml", "text/rtf", "application/pdf"])
         for value in WADOOptionRules.uriContentTypes {
             XCTAssertEqual(try WADOOptionRules.uriContentType(value).rawValue, value)
         }
@@ -26,12 +28,52 @@ final class WADOOptionRulesTests: XCTestCase {
     }
 
     func testUnrequestableContentTypeIsRejectedNotFetchedAsDicom() {
-        // image/jxl is a Rendered Media Type in 2026a but WADOURIClient cannot request it;
-        // before, it silently downloaded application/dicom.
-        XCTAssertThrowsError(try WADOOptionRules.uriContentType("image/jxl"))
-        XCTAssertThrowsError(try WADOOptionRules.uriContentType("text/html"))
+        // image/jxl, text/html, application/pdf are Rendered Media Types (D108: now requestable);
+        // a value outside Table 8.7.4-1 is still refused rather than fetched as application/dicom.
+        XCTAssertEqual(try WADOOptionRules.uriContentType("image/jxl"), .jxl)
+        XCTAssertEqual(try WADOOptionRules.uriContentType("text/html"), .html)
+        XCTAssertEqual(try WADOOptionRules.uriContentType("application/pdf").fileExtension, "pdf")
+        XCTAssertThrowsError(try WADOOptionRules.uriContentType("image/bmp"))
         XCTAssertThrowsError(try RetrieveCommand.parse(["http://h/wado", "--uri", "--study", "1",
                                                         "--content-type", "image/bmp"]))
+    }
+
+    // MARK: - D108: the 9 further optional WADO-URI parameters (Tables 9.1.2-2, 9.4.1-1, 9.5.1-1)
+
+    func testAllOptionalURIParametersAreReachable() throws {
+        let cmd = try RetrieveCommand.parse([
+            "http://h/wado", "--uri", "--study", "1", "--series", "2", "--instance", "3",
+            "--content-type", "image/jpeg", "--charset", "UTF-8", "--annotation", "patient,technique",
+            "--image-quality", "75", "--region", "0,0,0.5,0.5", "--rows", "128", "--columns", "128",
+            "--presentation-uid", "9.8.7", "--presentation-series-uid", "9.8"])
+        let p = try cmd.uriParameters(frame: nil)
+        XCTAssertEqual(p.charset, ["UTF-8"])
+        XCTAssertEqual(p.annotation, ["patient", "technique"])
+        XCTAssertEqual(p.imageQuality, 75)
+        XCTAssertEqual(p.region, WADOURIClient.Region(xmin: 0, ymin: 0, xmax: 0.5, ymax: 0.5))
+        XCTAssertEqual(p.presentationUID, "9.8.7")
+        XCTAssertEqual(p.presentationSeriesUID, "9.8")
+        XCTAssertNoThrow(try RetrieveCommand.parse([
+            "http://h/wado", "--uri", "--study", "1", "--content-type", "image/png",
+            "--window-center", "40", "--window-width", "400"]))
+    }
+
+    func testSection9RulesRefuseTheCommand() {
+        let base = ["http://h/wado", "--uri", "--study", "1", "--content-type", "image/jpeg"]
+        for extra in [["--window-center", "40"],                                         // 9.5.1.2.6 pair
+                      ["--presentation-uid", "1.2"],                                      // 9.5.1.2.7 pair
+                      ["--window-center", "1", "--window-width", "2",
+                       "--presentation-uid", "1", "--presentation-series-uid", "2"],     // 9.5.1.2.6 exclusion
+                      ["--image-quality", "0"], ["--image-quality", "101"],               // 8.3.5.1.2
+                      ["--region", "0.5,0,0.4,1"], ["--region", "a,b,c,d"],               // 9.5.1.2.5
+                      ["--rows", "64"]] {                                                 // 9.5.1.2.4 pair
+            XCTAssertThrowsError(try RetrieveCommand.parse(base + extra), extra.joined(separator: " "))
+        }
+        // windowing with application/dicom (9.5.1.2.6)
+        XCTAssertThrowsError(try RetrieveCommand.parse(["http://h/wado", "--uri", "--study", "1",
+                                                        "--window-center", "40", "--window-width", "400"]))
+        // WADO-URI-only options without --uri
+        XCTAssertThrowsError(try RetrieveCommand.parse(["http://h/rs", "--study", "1", "--charset", "UTF-8"]))
     }
 
     // MARK: - WADO-URI frameNumber / rows / columns (9.5.1.2.1, 9.5.1.2.4)
@@ -196,11 +238,9 @@ final class WADOOptionRulesTests: XCTestCase {
     }
 
     func testFilterStateInProgressReachesTheSharedSearchBuilder() throws {
-        XCTAssertEqual(WADOOptionRules.searchFilterState("IN PROGRESS"), "IN_PROGRESS")
-        XCTAssertEqual(WADOOptionRules.searchFilterState("SCHEDULED"), "SCHEDULED")
-        XCTAssertNil(WADOOptionRules.searchFilterState(nil))
-        XCTAssertNoThrow(try UPSQuery.workitemSearch(filterState: WADOOptionRules.searchFilterState("IN PROGRESS"),
-                                                     scheduledStation: nil))
+        // D107: the shared builder takes the PS3.3 Table C.30.1-1 term itself.
+        let params = try UPSQuery.workitemSearch(filterState: "IN PROGRESS", scheduledStation: nil).toParameters()
+        XCTAssertEqual(params, ["00741000": "IN PROGRESS"])
     }
 
     func testUPSHelpNamesTheStandardTerms() {

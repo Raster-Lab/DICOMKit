@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — options diffed against PS3.18 2026a Tables 9.1.2-1/9.1.2-2/9.4.1-1/9.5.1-1 (WADO-URI: 10 of 19 parameters reachable, the other 9 optional and absent from WADOURIClient), 9.1.2.2.1/8.7.4-1 (7 contentType values, all match), 8.3.4-1 (QIDO: 4 of 7 parameters), 10.6.1-5 (3 levels; 12 of 20 matching keys), 11.3-1 (UPS: 6 of 8 transactions), 11.7.1.4 (3 Change State targets); PS3.3 2026a Tables C.30.1-1 (4 states), C.30.2-1 (3 priorities), C.7-1 (3 sexes): all match; Scripts/diff_cli_web.py; 2026-10-01 P-items: ups --change-state (11.7, --update deprecated alias), SCHEDULED refused (11.7.1.4; PS3.4 Table CC.1.1-2 C303H), query/ups --format dicom-json (PS3.18 F.2.1/F.2.2)
+// NEMA-verified: 2026a, checked 2026-10-01 — options diffed against PS3.18 2026a Tables 9.1.2-1/9.1.2-2/9.4.1-1/9.5.1-1 (WADO-URI: 19 of 19 parameters reachable, D108), 9.1.2.2.1/8.7.4-1 (15 contentType values: application/dicom + 14 Rendered Media Types), 8.3.4-1 (QIDO: 4 of 7 parameters), 10.6.1-5 (3 levels; 12 of 20 matching keys), 11.3-1 (UPS: 6 of 8 transactions), 11.7.1.4 (3 Change State targets); PS3.3 2026a Tables C.30.1-1 (4 states), C.30.2-1 (3 priorities), C.7-1 (3 sexes): all match; Scripts/diff_cli_web.py; 2026-10-01 P-items: ups --change-state (11.7, --update deprecated alias), SCHEDULED refused (11.7.1.4; PS3.4 Table CC.1.1-2 C303H), query/ups --format dicom-json (PS3.18 F.2.1/F.2.2)
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -82,8 +82,32 @@ struct RetrieveCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Use WADO-URI protocol (legacy query-parameter URLs for dcm4chee2 etc.)")
     var uri: Bool = false
     
-    @Option(name: .long, help: "Content type for WADO-URI: application/dicom (default), or a Rendered Media Type: image/jpeg, image/gif, image/png, image/jp2, image/jph, video/mpeg (PS3.18 9.1.2.2.1, Table 8.7.4-1)")
+    @Option(name: .long, help: "Content type for WADO-URI: application/dicom (default), or a Rendered Media Type: image/jpeg, image/gif, image/png, image/jp2, image/jph, image/jxl, video/mpeg, video/mp4, video/H265, text/html, text/plain, text/xml, text/rtf, application/pdf (PS3.18 9.1.2.2.1, Table 8.7.4-1)")
     var contentType: String?
+
+    @Option(name: .long, help: "WADO-URI charset: comma-separated character sets of the response, e.g. UTF-8 (PS3.18 9.1.2.2.2)")
+    var charset: String?
+
+    @Option(name: .long, help: "WADO-URI annotation (application/dicom) / imageAnnotation (rendered): patient, technique, or both comma-separated (PS3.18 9.4.1.2.2, Table 9.5.1-1)")
+    var annotation: String?
+
+    @Option(name: .long, help: "WADO-URI imageQuality of a rendered image, 1-100 (PS3.18 9.5.1.2.3, 8.3.5.1.2)")
+    var imageQuality: Int?
+
+    @Option(name: .long, help: "WADO-URI region: xmin,ymin,xmax,ymax in normalized 0.0-1.0 image coordinates (PS3.18 9.5.1.2.5)")
+    var region: String?
+
+    @Option(name: .long, help: "WADO-URI windowCenter of a rendered image; needs --window-width (PS3.18 9.5.1.2.6.1)")
+    var windowCenter: Double?
+
+    @Option(name: .long, help: "WADO-URI windowWidth of a rendered image; needs --window-center (PS3.18 9.5.1.2.6.2)")
+    var windowWidth: Double?
+
+    @Option(name: .long, help: "WADO-URI presentationUID: Presentation State SOP Instance UID used to render; needs --presentation-series-uid (PS3.18 9.5.1.2.7.2)")
+    var presentationUid: String?
+
+    @Option(name: .long, help: "WADO-URI presentationSeriesUID: Series of that Presentation State; needs --presentation-uid (PS3.18 9.5.1.2.7.1)")
+    var presentationSeriesUid: String?
 
     @Option(name: .long, help: "WADO-URI transferSyntax: Transfer Syntax UID for an application/dicom retrieve (PS3.18 9.4.1.2.3)")
     var transferSyntax: String?
@@ -123,12 +147,37 @@ struct RetrieveCommand: AsyncParsableCommand {
 
     func validate() throws {
         _ = try WADOOptionRules.uriContentType(contentType)
-        if !uri && (transferSyntax != nil || anonymize || rows != nil || columns != nil) {
-            throw ValidationError("--transfer-syntax, --anonymize, --rows and --columns are WADO-URI query parameters (PS3.18 Section 9); add --uri")
+        let uriOnly = charset != nil || annotation != nil || imageQuality != nil || region != nil
+            || windowCenter != nil || windowWidth != nil || presentationUid != nil || presentationSeriesUid != nil
+        if !uri && (transferSyntax != nil || anonymize || rows != nil || columns != nil || uriOnly) {
+            throw ValidationError("--transfer-syntax, --anonymize, --rows, --columns, --charset, --annotation, --image-quality, --region, --window-center, --window-width, --presentation-uid and --presentation-series-uid are WADO-URI query parameters (PS3.18 Section 9); add --uri")
         }
         if let r = rows, r < 1 { throw ValidationError("--rows must be a positive integer (PS3.18 9.5.1.2.4.1)") }
         if let c = columns, c < 1 { throw ValidationError("--columns must be a positive integer (PS3.18 9.5.1.2.4.2)") }
-        if uri { _ = try WADOOptionRules.uriFrameNumber(frames) }
+        if uri {
+            // Every rule of PS3.18 Section 9 the shared client checks (pairs, ranges, exclusions)
+            let problems = try uriParameters(frame: WADOOptionRules.uriFrameNumber(frames)?.frame).problems()
+            if !problems.isEmpty { throw ValidationError(problems.joined(separator: "; ")) }
+        }
+    }
+
+    /// The WADO-URI request parameters (PS3.18 Tables 9.1.2-2, 9.4.1-1, 9.5.1-1) from the options.
+    func uriParameters(frame: Int?) throws -> WADOURIClient.Parameters {
+        WADOURIClient.Parameters(
+            contentType: [try WADOOptionRules.uriContentType(contentType)],
+            charset: charset.map { $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } } ?? [],
+            anonymize: anonymize,
+            annotation: WADOOptionRules.uriAnnotation(annotation),
+            transferSyntax: transferSyntax,
+            frameNumber: frame,
+            imageQuality: imageQuality,
+            rows: rows,
+            columns: columns,
+            region: try WADOOptionRules.uriRegion(region),
+            windowCenter: windowCenter,
+            windowWidth: windowWidth,
+            presentationSeriesUID: presentationSeriesUid,
+            presentationUID: presentationUid)
     }
 
     func run() async throws {
@@ -201,9 +250,14 @@ struct RetrieveCommand: AsyncParsableCommand {
                 + "only frame \(frameNumber ?? 0) is requested, \(dropped) further frame number(s) ignored",
                 to: .standardError)
         }
+        var otherRendered: [String] = []
+        if imageQuality != nil { otherRendered.append("imageQuality (--image-quality)") }
+        if region != nil { otherRendered.append("region (--region)") }
+        if presentationUid != nil { otherRendered.append("presentationUID (--presentation-uid)") }
+        if presentationSeriesUid != nil { otherRendered.append("presentationSeriesUID (--presentation-series-uid)") }
         for warning in WADOOptionRules.uriParameterWarnings(
             contentType: wadoContentType, frame: frameNumber, rows: rows, columns: columns,
-            transferSyntax: transferSyntax, anonymize: anonymize) {
+            transferSyntax: transferSyntax, anonymize: anonymize, otherRendered: otherRendered) {
             fprintln("Warning: \(warning)", to: .standardError)
         }
 
@@ -216,31 +270,21 @@ struct RetrieveCommand: AsyncParsableCommand {
         }
 
         let client = WADOURIClient(configuration: config)
-        let result = try await client.retrieve(
-            studyUID: studyUID,
-            seriesUID: seriesUID,
-            objectUID: instanceUID,
-            contentType: wadoContentType,
-            transferSyntax: transferSyntax,
-            anonymize: anonymize ? "yes" : nil,
-            rows: rows,
-            columns: columns,
-            frameNumber: frameNumber
-        )
+        let result: WADOURIClient.RetrieveResult
+        do {
+            result = try await client.retrieve(
+                studyUID: studyUID,
+                seriesUID: seriesUID,
+                objectUID: instanceUID,
+                parameters: try uriParameters(frame: frameNumber)
+            )
+        } catch let error as WADOURIParameterError {
+            throw ValidationError(error.description)
+        }
         
         // Determine filename and extension
         let frameSuffix = frameNumber.map { "_frame\($0)" } ?? ""
-        let ext: String
-        switch wadoContentType {
-        case .dicom:          ext = "dcm"
-        case .jpeg:           ext = "jpg"
-        case .png:            ext = "png"
-        case .gif:            ext = "gif"
-        case .jpeg2000:       ext = "jp2"
-        case .htj2k:          ext = "jph"
-        case .htj2kContainer: ext = "jphc"
-        case .mpeg:           ext = "mpg"
-        }
+        let ext = wadoContentType.fileExtension
         let filename = "\(instanceUID)\(frameSuffix).\(ext)"
         try saveData(result.data, filename: filename)
         
@@ -841,6 +885,12 @@ struct StoreCommand: AsyncParsableCommand {
                                                            code: failure.failureReason)
                         fprintln(stowFmt.failureDetail(sopInstanceUID: failure.sopInstanceUID, reason: reason))
                     }
+                    // Warning Reason (0008,1196), PS3.18 Table I.1-1 / I.2-1 (D106)
+                    for stored in response.storedInstances {
+                        if let code = stored.warningReason {
+                            fprintln(stowFmt.warningDetail(sopInstanceUID: stored.sopInstanceUID, code: code))
+                        }
+                    }
                 }
             } catch {
                 if continueOnError {
@@ -1062,10 +1112,11 @@ struct UPSCommand: AsyncParsableCommand {
         // Build query via the SHARED UPSQuery.workitemSearch builder (DICOMWeb) — the
         // single source of truth the CLI Workshop's in-app search and the CLI-parity
         // reference also call, so the three issue an IDENTICAL UPS-RS query. Maps only
-        // the two real search flags (--filter-state / --scheduled-station).
+        // the two real search flags (--filter-state / --scheduled-station). The builder
+        // takes "IN PROGRESS" as PS3.3 Table C.30.1-1 spells it (D107), so no rewrite here.
         let query: UPSQuery
         do {
-            query = try UPSQuery.workitemSearch(filterState: WADOOptionRules.searchFilterState(filterState),
+            query = try UPSQuery.workitemSearch(filterState: filterState,
                                                 scheduledStation: scheduledStation)
         } catch let error as UPSSearchFilterError {
             throw ValidationError(error.description)
@@ -1075,16 +1126,8 @@ struct UPSCommand: AsyncParsableCommand {
             fprintln("Searching worklist items...")
         }
 
-        if format == .dicomJSON {
-            // PS3.18 F.2: the DICOM JSON Model objects as the server returned them.
-            let objects = try await client.searchWorkitemsDICOMJSON(query: query)
-            print(DICOMJSONModelFormatter.format(objects))
-            if verbose {
-                fprintln("\nFound \(objects.count) worklist item(s)")
-            }
-            return
-        }
-
+        // dicom-json (PS3.18 F.2) renders the DICOM JSON objects each WorkitemResult keeps
+        // (D213), so every format comes from this one search.
         let results = try await client.searchWorkitems(query: query)
 
         // Render via the SHARED UPSResultFormatter — the single workitem-search renderer
@@ -1106,14 +1149,6 @@ struct UPSCommand: AsyncParsableCommand {
         // the SAME renderer --search uses, so get and search share one output pipeline and
         // the CLI Workshop's in-app get cannot drift. retrieveWorkitemResult returns the
         // WorkitemResult the formatter consumes (mirrors the package's UPS --format contract).
-        if format == .dicomJSON {
-            // PS3.18 F.2: the DICOM JSON Model object as the server returned it.
-            print(DICOMJSONModelFormatter.format([try await client.retrieveWorkitem(uid: uid)]))
-            if verbose {
-                fprintln("\nRetrieved worklist item \(uid)")
-            }
-            return
-        }
         let result = try await client.retrieveWorkitemResult(uid: uid)
         print(UPSResultFormatter().format([result], format: format.asUPS))
 
@@ -1424,8 +1459,8 @@ enum OutputFormat: String, ExpressibleByArgument {
     var asQIDO: QIDOOutputFormat { QIDOOutputFormat(rawValue: rawValue) ?? .table }
 
     /// Bridges the CLI's `--format` to the shared `UPSResultFormatter` (DICOMWeb).
-    /// table/json/csv line up 1:1; dicom-json is rendered from the raw DICOM JSON by
-    /// `DICOMJSONModelFormatter` before this is reached (table is the fallback).
+    /// The cases line up 1:1 (dicom-json from the DICOM JSON each WorkitemResult keeps,
+    /// D213); table is the fallback.
     var asUPS: UPSOutputFormat { UPSOutputFormat(rawValue: rawValue) ?? .table }
 }
 
