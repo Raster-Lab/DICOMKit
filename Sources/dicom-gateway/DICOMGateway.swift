@@ -452,13 +452,14 @@ struct BatchConvert: AsyncParsableCommand {
 struct ListenCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "listen",
-        abstract: "Listen for HL7 messages and forward to PACS",
+        abstract: "Listen for HL7 messages and convert them to DICOM",
         discussion: """
-            Run an HL7 TCP listener that receives HL7 v2 messages,
-            converts them to DICOM, and forwards to a PACS server.
-            
-            This enables real-time integration where HL7 messages trigger
-            DICOM operations (e.g., creating imaging orders from ORM messages).
+            Run an HL7 TCP listener that receives HL7 v2 messages and
+            converts them to DICOM.
+
+            Not implemented: forwarding to a PACS. --forward pacs://host:port
+            is accepted but only reports what would be sent; no PS3.8
+            association is opened and no C-STORE (PS3.4 Annex B) is sent.
             """
     )
     
@@ -468,7 +469,7 @@ struct ListenCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Port to listen on")
     var port: UInt16 = 2575
     
-    @Option(name: .long, help: "Forward destination (e.g., pacs://server:11112)")
+    @Option(name: .long, help: "Forward destination (e.g., pacs://server:11112). Not implemented: reports what would be sent; no C-STORE is performed")
     var forward: String?
     
     @Option(name: .long, help: "Message types to process (comma-separated, e.g., ADT,ORM)")
@@ -480,6 +481,9 @@ struct ListenCommand: AsyncParsableCommand {
     mutating func run() async throws {
         guard protocolType.lowercased() == "hl7" else {
             throw GatewayError.invalidProtocol("Only HL7 protocol is currently supported for listening")
+        }
+        if forward != nil {
+            FileHandle.standardError.write(Data("Warning: --forward is not implemented: no PS3.8 association is opened and no C-STORE (PS3.4 Annex B) is sent; the listener only reports what it would forward (D103).\n".utf8))
         }
         
         let types = messageTypes.isEmpty ? [] : messageTypes.split(separator: ",").map(String.init)
@@ -514,17 +518,20 @@ struct ListenCommand: AsyncParsableCommand {
 struct ForwardCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "forward",
-        abstract: "Forward DICOM events as HL7/FHIR messages",
+        abstract: "Forward DICOM events as HL7/FHIR messages (DICOM listener not implemented)",
         discussion: """
-            Run a DICOM listener that receives DICOM files and forwards
-            them as HL7 v2 or FHIR messages to external systems.
-            
-            This enables integration where DICOM events trigger notifications
-            to other healthcare IT systems.
+            Intended to receive DICOM instances and forward them as HL7 v2 or
+            FHIR messages.
+
+            Not implemented: the listener on --listen-port accepts TCP
+            connections but does not implement the PS3.8 DICOM Upper Layer
+            protocol or a Storage SCP (PS3.4 Annex B), so no DICOM
+            association can be made with it. Use the convert subcommands
+            (dicom-to-hl7, dicom-to-fhir) on files instead.
             """
     )
     
-    @Option(name: .long, help: "Port to listen for DICOM connections")
+    @Option(name: .long, help: "TCP port to open (no PS3.8 Upper Layer / C-STORE SCP is implemented)")
     var listenPort: UInt16 = 11112
     
     @Option(name: .long, help: "HL7 destination (e.g., hl7://server:2575)")
@@ -543,6 +550,7 @@ struct ForwardCommand: AsyncParsableCommand {
         guard forwardHl7 != nil || forwardFhir != nil else {
             throw GatewayError.invalidConfiguration("At least one forward destination (--forward-hl7 or --forward-fhir) must be specified")
         }
+        FileHandle.standardError.write(Data("Warning: the DICOM listener is not implemented: --listen-port accepts TCP but speaks no PS3.8 Upper Layer protocol and is not a Storage SCP (PS3.4 Annex B), so no DICOM association can be made (D103).\n".utf8))
         
         let forwarder = DICOMForwarder(
             listenPort: listenPort,

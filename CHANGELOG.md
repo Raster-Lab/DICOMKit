@@ -332,6 +332,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`UIDGenerator`, `DICOMFile.create`) instead of other organisations' arcs of
   1.2.826.0.1.3680043.10. `dicom-to-hl7` / `dicom-to-fhir` read only the first PN component
   group; `--message-type ADT` sends `ADT^A01` instead of `ADT^AA01`. New `dicom-gatewayTests`.
+- **dicom-gateway** `listen` / `forward` (D103): help no longer claims a PACS forward or a DICOM listener. `--forward pacs://…` only reports what it would send, and `forward --listen-port` speaks no PS3.8 Upper Layer protocol and is no Storage SCP; both now say so in `--help` and print a stderr warning when used.
 
 ### Fixed — dicom-server verified against DICOM 2026a (2026-10-01)
 
