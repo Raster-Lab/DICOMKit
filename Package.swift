@@ -1334,6 +1334,12 @@ let package = Package(
                 .copy("Fixtures")
             ]
         ),
+        // dicom-compress: codec / syntax help rows pinned to PS3.6 2026a Table A-1 (D9).
+        .testTarget(
+            name: "dicom-compressTests",
+            dependencies: ["dicom-compress", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-compressTests"
+        ),
         // dicom-j2k: frame/fragment mapping, Photometric Interpretation, lossy provenance and
         // derived-image attributes after a re-encode, pinned to PS3.5 / PS3.3 2026a.
         .testTarget(
