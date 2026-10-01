@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — help names checked by script: 9 SOP Class names quoted in full and 2 abbreviated lists (Enhanced CT/MR/PET/XA/XRF, Legacy Converted Enhanced CT/MR/PET) against PS3.6 2026a Table A-1, 7 attribute names/tags (Instance Number, Stack ID, In-Stack Position Number, Temporal Position Index, Series Instance UID, Shared/Per-Frame Functional Groups Sequence) against Table 6-1; --frames is a 0-based index (Frame number 1 = index 0, PS3.3 C.7.6.16.1.2); Explicit VR Little Endian per Table A-1
+// NEMA-verified: 2026a, checked 2026-10-01 — help names checked by script: 9 SOP Class names quoted in full and 2 abbreviated lists (Enhanced CT/MR/PET/XA/XRF, Legacy Converted Enhanced CT/MR/PET) against PS3.6 2026a Table A-1, 7 attribute names/tags (Instance Number, Stack ID, In-Stack Position Number, Temporal Position Index, Series Instance UID, Shared/Per-Frame Functional Groups Sequence) against Table 6-1; --frame-numbers takes Frame numbers from 1 (PS3.3 C.7.6.16.1.2 "Frames are implicitly numbered starting from 1"), the 0-based --frames is deprecated (P-SPLIT-1); verbose progress labels say Frame number N; Explicit VR Little Endian per Table A-1
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -26,15 +26,16 @@ struct DICOMSplit: AsyncParsableCommand {
             syntax frame by frame. Supports output as DICOM files or common image
             formats (PNG, JPEG, TIFF).
 
-            --frames takes 0-based frame indices: index 0 is Frame number 1 (PS3.3
-            C.7.6.16.1.2).
+            --frame-numbers takes Frame numbers, numbered from 1 (PS3.3 C.7.6.16.1.2:
+            "Frames are implicitly numbered starting from 1"). The 0-based --frames
+            (index 0 is Frame number 1) is deprecated.
 
             Examples:
               # Extract all frames to DICOM files (Enhanced CT -> CT Image Storage)
               dicom-split multiframe.dcm --output frames/
 
-              # Extract specific frames (0-based indices: Frame numbers 2, 6 and 11-16)
-              dicom-split multiframe.dcm --frames 1,5,10-15 --output selected/
+              # Extract Frame numbers 2, 6 and 11-16
+              dicom-split multiframe.dcm --frame-numbers 2,6,11-16 --output selected/
 
               # Keep the Enhanced SOP Class, one series per Stack ID
               dicom-split enhanced-mr.dcm --target same --split-by stack --output stacks/
@@ -68,7 +69,10 @@ struct DICOMSplit: AsyncParsableCommand {
     @Option(name: .long, help: "Output directory for extracted frames")
     var output: String = "."
     
-    @Option(name: .long, help: "Frames to extract as 0-based indices; index 0 is Frame number 1 (e.g., '0,2,4-9')")
+    @Option(name: .long, help: "Frames to extract by Frame number, numbered from 1 (PS3.3 C.7.6.16.1.2), e.g. '1,3,5-10' (default: all)")
+    var frameNumbers: String?
+
+    @Option(name: .long, help: "deprecated: 0-based index; use --frame-numbers")
     var frames: String?
     
     @Option(name: .long, help: "Output format: dicom, png, jpeg, tiff (default: dicom)")
@@ -116,7 +120,29 @@ struct DICOMSplit: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Show verbose output")
     var verbose: Bool = false
 
+    mutating func validate() throws {
+        // P-SPLIT-1: both spellings at once is refused with exit 1 (not a usage error).
+        if frames != nil && frameNumbers != nil {
+            throw SplitFrameSelectionConflict()
+        }
+    }
+
+    /// The 0-based frame indices selected by --frame-numbers (1-based) or the deprecated
+    /// --frames (0-based); nil selects every frame.
+    func selectedFrameIndices() throws -> Set<Int>? {
+        do {
+            if let frameNumbers { return try SplitConsole.parseFrameNumberSelection(frameNumbers) }
+            if let frames { return try SplitConsole.parseFrameSelection(frames) }
+            return nil
+        } catch let e as SplitConsole.FrameSelectionError {
+            throw ValidationError(e.description)
+        }
+    }
+
     mutating func run() async throws {
+        if frames != nil {
+            fprintln(SplitConsole.framesDeprecatedLine)
+        }
         // Validate input
         guard FileManager.default.fileExists(atPath: input) else {
             throw ValidationError(SplitConsole.inputNotFoundMessage(path: input))
@@ -144,7 +170,7 @@ struct DICOMSplit: AsyncParsableCommand {
             for line in SplitConsole.headerLines(
                 input: input, output: output, format: format, frames: frames,
                 applyWindow: applyWindow, windowCenter: windowCenter, windowWidth: windowWidth,
-                options: options
+                options: options, frameNumbers: frameNumbers
             ) {
                 fprintln(line)
             }
@@ -165,10 +191,7 @@ struct DICOMSplit: AsyncParsableCommand {
 
         // Parse frame ranges through the shared parser (one copy of the grammar
         // and its error text for both surfaces).
-        let frameIndices = try frames.map { spec -> Set<Int> in
-            do { return try SplitConsole.parseFrameSelection(spec) }
-            catch let e as SplitConsole.FrameSelectionError { throw ValidationError(e.description) }
-        }
+        let frameIndices = try selectedFrameIndices()
 
         // Process files
         var isDirectory: ObjCBool = false
@@ -215,6 +238,13 @@ extension MultiframePixelHandling: ExpressibleByArgument {}
 extension PrivateFunctionalGroupPolicy: ExpressibleByArgument {}
 extension SplitInstanceNumbering: ExpressibleByArgument {}
 extension SplitSeriesGrouping: ExpressibleByArgument {}
+
+/// `--frames` and `--frame-numbers` given together. Not a `ValidationError`, so the command
+/// exits 1 with this message.
+struct SplitFrameSelectionConflict: LocalizedError, CustomStringConvertible {
+    var description: String { SplitConsole.framesAndFrameNumbersConflictMessage }
+    var errorDescription: String? { description }
+}
 
 /// Prints to stderr
 private func fprintln(_ message: String) {

@@ -251,6 +251,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `patientName:` variant is deprecated.
 - **`dicom-export contact-sheet --apply-window`** and **`bulk --apply-window`** are deprecated (P-EXPORT-3): they
   have no effect (the file's VOI is always applied); `--help` says so and use prints a stderr warning.
+- **`dicom-split --frame-numbers`** (P-SPLIT-1): new option taking Frame numbers, numbered from 1 (PS3.3 2026a
+  C.7.6.16.1.2 "Frames are implicitly numbered starting from 1"; Table 10-3), as a list with ranges (`1,3,5-10`).
+  The 0-based `--frames` keeps its meaning, says "deprecated: 0-based index" in `--help` and prints a stderr note;
+  both together exit 1; Frame number 0 is refused. Verbose progress and errors of the shared FrameSplitter now say
+  "Frame number N" (1-based) instead of "frame <index>", the banner prints "Frame numbers: …", and the
+  concatenation warning names both options. New DICOMKit API: `SplitConsole.parseFrameNumberSelection(_:)`,
+  `framesDeprecatedLine`, `framesAndFrameNumbersConflictMessage`, `headerLines(…, frameNumbers:)`.
+  SplitMergeWorkshopCLIParityTests ignore the CLI-only `--frames` deprecation line until the Workshop prints it.
 
 ### Fixed — dicom-viewer grayscale display verified against DICOM 2026a (2026-10-01)
 

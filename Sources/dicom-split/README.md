@@ -25,8 +25,9 @@ dicom-split multiframe.dcm --output frames/
 ### Extract Specific Frames
 
 ```bash
-# Extract 0-based frame indices 1, 5 and 10-15 (Frame numbers 2, 6 and 11-16)
-dicom-split multiframe.dcm --frames 1,5,10-15 --output selected/
+# Extract Frame numbers 2, 6 and 11-16 (numbered from 1)
+dicom-split multiframe.dcm --frame-numbers 2,6,11-16 --output selected/
+# (deprecated, 0-based: --frames 1,5,10-15 selects the same frames)
 ```
 
 ### Extract as PNG Images
@@ -105,7 +106,8 @@ dicom-split multiframe.dcm \
 
 - `input` - Input DICOM file or directory
 - `--output` - Output directory for extracted frames (default: current directory)
-- `--frames` - Frame numbers to extract (e.g., '1,3,5-10')
+- `--frame-numbers` - Frame numbers to extract, numbered from 1 (e.g., '1,3,5-10'; default: all)
+- `--frames` - **Deprecated** (stderr warning on use): 0-based frame indices (e.g., '0,2,4-9'); use `--frame-numbers`. Giving both exits 1
 - `--format` - Output format: dicom, png, jpeg, tiff (default: dicom)
 - `--apply-window` - Apply window/level settings to image output
 - `--window-center` - Window center for image rendering
@@ -133,7 +135,8 @@ dicom-split multiframe.dcm \
 
 DICOM numbers frames from 1 ("Frames are implicitly numbered starting from 1",
 PS3.3 C.7.6.16.1.2; Referenced Frame Number (0008,1160), PS3.3 Table 10-3, uses the same numbering).
-`--frames` and `{number}` use 0-based **indices** instead:
+`--frame-numbers` and the verbose progress lines ("Extracted Frame number N") use that numbering.
+The deprecated `--frames` and the `{number}` naming variable use 0-based **indices** instead:
 - First frame: index 0 = Frame number 1
 - Second frame: index 1 = Frame number 2
 - etc.
@@ -187,9 +190,9 @@ dicom-split ct-chest-multiframe.dcm \
 ### Extract Ultrasound Cine Loop
 
 ```bash
-# Extract frames 10-50 from ultrasound cine
+# Extract Frame numbers 11-51 from ultrasound cine
 dicom-split us-cine.dcm \
-  --frames 10-50 \
+  --frame-numbers 11-51 \
   --format png \
   --output us_frames/ \
   --pattern "us_{number:04d}.png"
@@ -209,9 +212,9 @@ dicom-split mr_studies/ \
 ### Extract Key Frames
 
 ```bash
-# Extract specific diagnostic frames
+# Extract specific diagnostic frames (Frame numbers 1, 11, 21, 31, 41)
 dicom-split multiframe.dcm \
-  --frames 0,10,20,30,40 \
+  --frame-numbers 1,11,21,31,41 \
   --format jpeg \
   --apply-window \
   --output key_frames/

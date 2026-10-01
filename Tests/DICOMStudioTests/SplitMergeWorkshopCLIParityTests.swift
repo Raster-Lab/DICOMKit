@@ -354,6 +354,9 @@ struct SplitMergeWorkshopCLIParityTests {
         if !isApp, let usage = lines.firstIndex(where: { $0.hasPrefix("Usage:") }) {
             lines.removeSubrange(usage...)
         }
+        // P-SPLIT-1 (2026-10-01): the terminal prints a stderr deprecation note for the 0-based
+        // `--frames`; the Workshop does not print it yet (Workshop follow-up), so it is not compared.
+        if !isApp { lines.removeAll { $0 == SplitConsole.framesDeprecatedLine } }
         lines = lines.map {
             $0.replacingOccurrences(of: appOutput, with: "<OUT>")
               .replacingOccurrences(of: cliOutput, with: "<OUT>")

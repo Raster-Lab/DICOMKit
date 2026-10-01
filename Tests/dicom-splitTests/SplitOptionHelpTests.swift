@@ -45,8 +45,9 @@ final class SplitOptionHelpTests: XCTestCase {
     /// PS3.3 C.7.6.16.1.2: "Frames are implicitly numbered starting from 1." --frames
     /// takes 0-based indices, so the help must say so instead of "frame numbers".
     func testFramesOptionIsDocumentedAsZeroBasedIndex() throws {
-        XCTAssertTrue(help.contains("Frames to extract as 0-based indices; index 0 is Frame number 1"))
-        XCTAssertFalse(help.contains("Frame numbers to extract"))
+        // P-SPLIT-1: --frames is the deprecated 0-based option; --frame-numbers counts from 1.
+        XCTAssertTrue(help.contains("--frames <frames> deprecated: 0-based index; use --frame-numbers"))
+        XCTAssertTrue(help.contains("Frames to extract by Frame number, numbered from 1 (PS3.3 C.7.6.16.1.2)"))
         XCTAssertEqual(try SplitConsole.parseFrameSelection("0,2-3"), [0, 2, 3])
     }
 

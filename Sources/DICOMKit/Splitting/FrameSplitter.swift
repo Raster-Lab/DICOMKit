@@ -261,7 +261,7 @@ public struct FrameSplitter {
                 failureCount += 1
                 result.failed += 1
                 if verbose {
-                    log("  Failed to extract frame \(frameIndex): \(error)")
+                    log("  Failed to extract Frame number \(frameIndex + 1): \(error)")
                 }
             }
         }
@@ -413,7 +413,7 @@ public struct FrameSplitter {
         }
 
         if verbose {
-            log("  Extracted frame \(frameIndex) -> \(filename)")
+            log("  Extracted Frame number \(frameIndex + 1) -> \(filename)")
         }
 
         return outputFilePath
@@ -801,9 +801,9 @@ public enum SplitError: Error, CustomStringConvertible {
         case .missingPixelData:
             return "Missing pixel data in DICOM file"
         case .frameExtractionFailed(let frameIndex):
-            return "Failed to extract frame \(frameIndex)"
+            return "Failed to extract Frame number \(frameIndex + 1)"
         case .renderingFailed(let frameIndex):
-            return "Failed to render frame \(frameIndex) as image"
+            return "Failed to render Frame number \(frameIndex + 1) as image"
         case .imageWriteFailed(let path):
             return "Failed to write image to \(path)"
         case .directoryAccessFailed(let path):
