@@ -1,3 +1,5 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — input/output contract of all 19 option/flag/argument declarations by script: Encapsulated PDF Storage 1.2.840.10008.5.1.4.1.1.104.1 (PS3.6 2026a Table A-1); a round trip of an odd-length PDF diffed against PS3.3 2026a Tables A.45.1-1, C.7-1, C.7-3, C.24-1, C.7-8, C.8-24, C.24-2, C.12-1 (every Type 1/2 attribute present; (0042,0015) and (0008,0005) added here, padding byte stripped on extraction); --modality default DOC / M3D (C.24-1, A.85.x.4.3); --conversion-type 8 Defined Terms (C.8-24); --burned-in-annotation YES/NO and --hl7-instance-identifier (C.24-2); see EncapsulationAttributes.swift
+
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -31,6 +33,15 @@ struct DICOMPdf: ParsableCommand {
               
               # Extract CDA document
               dicom-pdf cda.dcm --output cda.xml --extract
+
+              # Encapsulate a CDA document; HL7 Instance Identifier (0040,E001) is
+              # read from /ClinicalDocument/id unless given
+              dicom-pdf cda.xml --output cda.dcm --patient-name "DOE^JOHN" \\
+                --patient-id "12345" --hl7-instance-identifier "2.16.840.1.113883.19^X1"
+
+              # A scanned paper report (Conversion Type SD, PS3.3 Table C.8-24)
+              dicom-pdf scan.pdf --output scan.dcm --patient-name "DOE^JOHN" \\
+                --patient-id "12345" --conversion-type SD
               
               # Batch extract all documents from directory
               dicom-pdf study/ --output documents/ --extract --recursive
@@ -52,13 +63,13 @@ struct DICOMPdf: ParsableCommand {
     @Flag(name: .long, help: "Extract mode: Extract document from DICOM")
     var extract: Bool = false
     
-    @Option(name: .long, help: "Patient Name (for encapsulation mode)")
+    @Option(name: .long, help: "Patient's Name (for encapsulation mode)")
     var patientName: String?
     
     @Option(name: .long, help: "Patient ID (for encapsulation mode)")
     var patientId: String?
     
-    @Option(name: .long, help: "Document Title (for encapsulation mode)")
+    @Option(name: .long, help: "Document Title (0042,0010) (for encapsulation mode)")
     var title: String?
     
     @Option(name: .long, help: "Study Instance UID (auto-generated if not provided)")
@@ -67,7 +78,7 @@ struct DICOMPdf: ParsableCommand {
     @Option(name: .long, help: "Series Instance UID (auto-generated if not provided)")
     var seriesUid: String?
     
-    @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("to write (default: DOC, or M3D for 3D models)")))
+    @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("to write (default: DOC; STL/OBJ/MTL require M3D, PS3.3 A.85.x.4.3)")))
     var modality: String?
 
     @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
@@ -82,6 +93,15 @@ struct DICOMPdf: ParsableCommand {
     @Option(name: .long, help: "Instance Number")
     var instanceNumber: Int?
     
+    @Option(name: .long, help: ArgumentHelp(stringLiteral: "Conversion Type (0008,0064) for PDF and CDA, a PS3.3 Table C.8-24 Defined Term: \(PDFEncapsulation.conversionTypes.joined(separator: ", ")) (default: \(PDFEncapsulation.defaultConversionType))"))
+    var conversionType: String?
+
+    @Option(name: .long, help: "Burned In Annotation (0028,0301): YES or NO, whether the document identifies the patient and the date (default: YES)")
+    var burnedInAnnotation: String?
+
+    @Option(name: .long, help: "HL7 Instance Identifier (0040,E001) of a CDA document, UID or UID^extension (default: read from /ClinicalDocument/id; single file only)")
+    var hl7InstanceIdentifier: String?
+
     @Flag(name: .long, help: "Process directories recursively")
     var recursive: Bool = false
     
@@ -154,11 +174,12 @@ struct DICOMPdf: ParsableCommand {
                 .path
         }
 
-        // Write document data
-        try document.documentData.write(to: URL(fileURLWithPath: finalOutputPath))
+        // Write document data, without the trailing padding (0042,0015)
+        let documentBytes = PDFEncapsulation.documentBytes(document.documentData, in: dicomFile.dataSet)
+        try documentBytes.write(to: URL(fileURLWithPath: finalOutputPath))
 
         if verbose {
-            print("✓ Extracted \(document.documentType) (\(EncapsulatedDocumentFormatting.fileSize(Int64(document.documentData.count))))")
+            print("✓ Extracted \(document.documentType) (\(EncapsulatedDocumentFormatting.fileSize(Int64(documentBytes.count))))")
             print("  Output: \(finalOutputPath)")
         } else {
             print("Extracted: \(finalOutputPath)")
@@ -204,8 +225,9 @@ struct DICOMPdf: ParsableCommand {
                 let fileExtension = document.documentType.fileExtension
                 let outputFileURL = outputDirURL.appendingPathComponent("\(baseName).\(fileExtension)")
                 
-                // Write document data
-                try document.documentData.write(to: outputFileURL)
+                // Write document data, without the trailing padding (0042,0015)
+                try PDFEncapsulation.documentBytes(document.documentData, in: dicomFile.dataSet)
+                    .write(to: outputFileURL)
                 
                 successCount += 1
                 extractedFiles.append(outputFileURL.path)
@@ -247,7 +269,7 @@ struct DICOMPdf: ParsableCommand {
 
         // Validate required metadata for encapsulation
         guard let patientName = patientName, !patientName.isEmpty else {
-            throw ValidationError("Patient Name is required for encapsulation (--patient-name)")
+            throw ValidationError("Patient's Name is required for encapsulation (--patient-name)")
         }
 
         guard let patientId = patientId, !patientId.isEmpty else {
@@ -258,31 +280,15 @@ struct DICOMPdf: ParsableCommand {
         let finalStudyUID = studyUid ?? UIDGenerator.generateUID().value
         let finalSeriesUID = seriesUid ?? UIDGenerator.generateUID().value
 
-        // Determine modality (explicit override, else the document-type default).
-        // resolve() normalizes aliases and honours --strict-modality.
-        let finalModality = try ModalityOptionValidator.resolve(
-            modality, strict: strictModality, verbose: verbose)
-            ?? documentType.defaultModality
+        if hl7InstanceIdentifier != nil, documentType != .cda {
+            throw ValidationError("--hl7-instance-identifier applies to CDA documents only (HL7 Instance Identifier (0040,E001) is Type 1C, required if the document is CDA; PS3.3 Table C.24-2)")
+        }
 
-        // Build encapsulated document (shared option chain).
-        let builder = EncapsulatedDocumentBuilder(
-            documentData: documentData,
-            mimeType: documentType.expectedMIMEType,
-            documentType: documentType,
-            studyInstanceUID: finalStudyUID,
-            seriesInstanceUID: finalSeriesUID
-        )
-        .applyStandardOptions(
-            patientName: patientName,
-            patientID: patientId,
-            modality: finalModality,
-            title: title,
-            seriesDescription: seriesDescription,
-            seriesNumber: seriesNumber,
-            instanceNumber: instanceNumber
-        )
-
-        let dataSet = try builder.buildDataSet()
+        let dataSet = try encapsulatedDataSet(
+            documentData: documentData, documentType: documentType,
+            patientName: patientName, patientID: patientId,
+            studyUID: finalStudyUID, seriesUID: finalSeriesUID,
+            instanceNumber: instanceNumber, hl7Override: hl7InstanceIdentifier)
         
         // Create DICOM file
         let dicomFile = DICOMFile.create(
@@ -339,7 +345,12 @@ struct DICOMPdf: ParsableCommand {
         
         // Validate required metadata
         guard let patientName = patientName, !patientName.isEmpty else {
-            throw ValidationError("Patient Name is required for batch encapsulation (--patient-name)")
+            throw ValidationError("Patient's Name is required for batch encapsulation (--patient-name)")
+        }
+
+        // One identifier cannot name several CDA documents.
+        if hl7InstanceIdentifier != nil {
+            throw ValidationError("--hl7-instance-identifier names one CDA document; in directory mode each CDA's /ClinicalDocument/id is used")
         }
         
         guard let patientId = patientId, !patientId.isEmpty else {
@@ -371,31 +382,12 @@ struct DICOMPdf: ParsableCommand {
             do {
                 let documentData = try Data(contentsOf: fileURL)
 
-                // Determine modality (explicit override, else the document-type default).
-                // resolve() normalizes aliases and honours --strict-modality.
-                let finalModality = try ModalityOptionValidator.resolve(
-                    modality, strict: strictModality, verbose: verbose)
-                    ?? documentType.defaultModality
-
-                // Build encapsulated document (shared option chain; batch uses the running instance counter).
-                let builder = EncapsulatedDocumentBuilder(
-                    documentData: documentData,
-                    mimeType: documentType.expectedMIMEType,
-                    documentType: documentType,
-                    studyInstanceUID: finalStudyUID,
-                    seriesInstanceUID: finalSeriesUID
-                )
-                .applyStandardOptions(
-                    patientName: patientName,
-                    patientID: patientId,
-                    modality: finalModality,
-                    title: title,
-                    seriesDescription: seriesDescription,
-                    seriesNumber: seriesNumber,
-                    instanceNumber: instanceNum
-                )
-
-                let dataSet = try builder.buildDataSet()
+                // Batch uses the running instance counter.
+                let dataSet = try encapsulatedDataSet(
+                    documentData: documentData, documentType: documentType,
+                    patientName: patientName, patientID: patientId,
+                    studyUID: finalStudyUID, seriesUID: finalSeriesUID,
+                    instanceNumber: instanceNum, hl7Override: nil)
                 
                 // Create DICOM file
                 let dicomFile = DICOMFile.create(
@@ -439,6 +431,61 @@ struct DICOMPdf: ParsableCommand {
     }
     
     // MARK: - Helper Methods
+
+    /// The dataset of one encapsulated document: the shared builder option chain,
+    /// then this tool's options (Conversion Type, Burned In Annotation, HL7
+    /// Instance Identifier) and the attributes the builder leaves out
+    /// (Encapsulated Document Length, Specific Character Set).
+    func encapsulatedDataSet(
+        documentData: Data,
+        documentType: EncapsulatedDocumentType,
+        patientName: String,
+        patientID: String,
+        studyUID: String,
+        seriesUID: String,
+        instanceNumber: Int?,
+        hl7Override: String?
+    ) throws -> DataSet {
+        // Determine modality (explicit override, else the document-type default).
+        // resolve() normalizes aliases and honours --strict-modality.
+        let finalModality = try ModalityOptionValidator.resolve(
+            modality, strict: strictModality, verbose: verbose)
+            ?? documentType.defaultModality
+
+        // Build encapsulated document (shared option chain).
+        let builder = EncapsulatedDocumentBuilder(
+            documentData: documentData,
+            mimeType: documentType.expectedMIMEType,
+            documentType: documentType,
+            studyInstanceUID: studyUID,
+            seriesInstanceUID: seriesUID
+        )
+        .applyStandardOptions(
+            patientName: patientName,
+            patientID: patientID,
+            modality: finalModality,
+            title: title,
+            seriesDescription: seriesDescription,
+            seriesNumber: seriesNumber,
+            instanceNumber: instanceNumber
+        )
+        if let conversionType {
+            builder.setConversionType(try PDFEncapsulation.conversionType(conversionType))
+        }
+        if let burnedInAnnotation {
+            builder.setBurnedInAnnotation(try PDFEncapsulation.burnedInAnnotation(burnedInAnnotation))
+        }
+        if documentType == .cda {
+            guard let identifier = hl7Override ?? PDFEncapsulation.hl7InstanceIdentifier(fromCDA: documentData) else {
+                throw ValidationError("HL7 Instance Identifier (0040,E001) is required for a CDA document (PS3.3 Table C.24-2) and /ClinicalDocument/id has no root; pass --hl7-instance-identifier")
+            }
+            builder.setHL7InstanceIdentifier(identifier)
+        }
+
+        var dataSet = try builder.buildDataSet()
+        PDFEncapsulation.complete(&dataSet, documentByteCount: documentData.count)
+        return dataSet
+    }
     //
     // Document-type ↔ file-extension mapping, default modality, the byte-size
     // formatter, the `--show-metadata` report, and the builder option chain all

@@ -378,6 +378,12 @@ let package = Package(
             dependencies: ["dicom-video", "DICOMKit", "DICOMCore"],
             path: "Tests/dicom-videoTests"
         ),
+        // dicom-pdf: Encapsulated PDF round trip per PS3.3 2026a A.45.1 / Table C.24-2 (G3)
+        .testTarget(
+            name: "dicom-pdfTests",
+            dependencies: ["dicom-pdf", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-pdfTests"
+        ),
         // dicom-wado: WADO-URI / QIDO-RS / UPS-RS option values pinned to PS3.18 / PS3.3 2026a.
         .testTarget(
             name: "dicom-wadoTests",

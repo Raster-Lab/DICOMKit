@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-pdf verified against DICOM 2026a (2026-10-01)
+
+- **dicom-pdf** writes Encapsulated Document Length (0042,0015) with the unpadded length and cuts the
+  extracted document to it, so an odd-length PDF/CDA comes back byte for byte (it gained a trailing 0x00;
+  PS3.3 Table C.24-2), and writes Specific Character Set (0008,0005) "ISO_IR 192" when a text value is not
+  ASCII (Type 1C, Tables C.12-1 / C.12-5). New `--conversion-type` (Conversion Type (0008,0064), the 8
+  Table C.8-24 Defined Terms, default WSD), `--burned-in-annotation YES|NO` (0028,0301, default YES) and
+  `--hl7-instance-identifier` (0040,E001, Type 1C for CDA): a CDA document could not be encapsulated at all;
+  the identifier is now read from /ClinicalDocument/id unless given. Help/README: "Patient's Name", M3D
+  required for STL/OBJ/MTL (A.85.x.4.3), corrected standard references (A.45.1, A.85, C.24.1/C.24.2,
+  PS3.5 A.2). New test target `dicom-pdfTests` (7 tests).
+
 ### Fixed — dicom-video option contract verified against DICOM 2026a (2026-10-01)
 
 - **dicom-video** `convert` / `batch` warn on stderr (the object is still written) when an option value
