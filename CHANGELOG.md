@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   LE → BE and BE → LE output is correct at any nesting depth; `CompressionManager` encodes a Big Endian source from
   little-endian samples. `dicom-compress decompress|batch --syntax explicit-be` is accepted again (P-COMPRESS-SYNTAX
   had refused it because of this defect).
+- **`TransferSyntaxConverter` keeps defined-length sequences** (D-CORE-5, found in this batch; PS3.5 2026a 7.5.2
+  "Explicit Length"): its parser kept no Items for a defined-length SQ and `DICOMWriter` re-encodes an SQ from its
+  Items, so every such sequence was written empty on a `dicom-convert` transcode (all `DataSet.write` output uses
+  defined lengths). Parsed elements now carry the source byte order, and an Explicit VR Big Endian source is
+  encoded from little-endian samples (D206).
 - **`dicom-compress` File Meta UIDs are even length** (D188; PS3.5 2026a 6.2, 7.1): (0002,0002), (0002,0003),
   (0002,0010), (0002,0012) are padded with one trailing NULL.
 - **`dicom-convert --strip-private` reaches into Sequence Items** (D191; PS3.5 2026a 7.8.1): Private Data Elements

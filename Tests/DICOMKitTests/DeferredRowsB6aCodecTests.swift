@@ -289,6 +289,23 @@ final class DeferredRowsB6aCodecTests: XCTestCase {
         XCTAssertNotNil(item[.referencedSOPClassUID])
     }
 
+    /// D-CORE-5 (found in this batch): TransferSyntaxConverter dropped every defined-length
+    /// sequence (PS3.5 2026a 7.5.2 "Explicit Length") on a transcode — DICOMWriter re-encodes an
+    /// SQ from its Items, and the converter's parser kept none.
+    func test_DCORE5_sequencesSurviveConvert() throws {
+        let nested = SequenceItem(elements: [
+            DataElement.string(tag: .referencedSOPClassUID, vr: .UI, value: "1.2.840.10008.5.1.4.1.1.7"),
+        ])
+        let sq = DataElement(tag: Tag(group: 0x0008, element: 0x1140), vr: .SQ, length: 0xFFFFFFFF,
+                             valueData: Data(), sequenceItems: [nested])
+        let source = try DICOMFile.read(from: try makeFile(extra: [sq]))
+        for uid in ["1.2.840.10008.1.2.4.50", "1.2.840.10008.1.2.4.90", "1.2.840.10008.1.2.5", "1.2.840.10008.1.2"] {
+            let outcome = try DICOMConverter.convertToDICOM(dicomFile: source, to: try XCTUnwrap(DICOMConverter.resolveTargetEncoding(uid)), stripPrivate: false)
+            let ds = try DICOMFile.read(from: outcome.data).dataSet
+            XCTAssertNotNil(ds[Tag(group: 0x0008, element: 0x1140)]?.sequenceItems?.first?[.referencedSOPClassUID], uid)
+        }
+    }
+
     // MARK: - D197: per-frame rescale
 
     func test_D197_rescale_usesThePerFramePixelValueTransformation() {

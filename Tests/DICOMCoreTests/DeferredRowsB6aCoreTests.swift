@@ -158,4 +158,37 @@ struct DeferredRowsB6aCoreTests {
         let back = try converter.transcode(dataSetData: be.data, from: .explicitVRBigEndian, to: .explicitVRLittleEndian)
         #expect(back.data == source)
     }
+
+    @Test("D206 / D-CORE-5: Big Endian 16-bit source with a nested US → JPEG 2000 Lossless keeps values and the sequence")
+    func bigEndianSourceToJ2K() throws {
+        let le = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
+        let beWriter = DICOMWriter(byteOrder: .bigEndian, explicitVR: true)
+        let item = SequenceItem(elements: [us(Tag(group: 0x0028, element: 0x0010), 7)])
+        let sq = DataElement(tag: Tag(group: 0x0008, element: 0x1140), vr: .SQ, length: 0, valueData: Data(),
+                             sequenceItems: [item])
+        let samples: [UInt16] = [0x0102, 0x0304, 0x0506, 0x0708, 0x0A0B, 0x0C0D]
+        let pixelLE = samples.reduce(into: Data()) { $0.append(UInt8($1 & 0xFF)); $0.append(UInt8($1 >> 8)) }
+        let elements: [DataElement] = [
+            sq,
+            us(.samplesPerPixel, 1),
+            DataElement(tag: .photometricInterpretation, vr: .CS, length: 12, valueData: Data("MONOCHROME2 ".utf8)),
+            us(.rows, 2), us(.columns, 3),
+            us(.bitsAllocated, 16), us(.bitsStored, 16), us(.highBit, 15), us(.pixelRepresentation, 0),
+            DataElement(tag: .pixelData, vr: .OW, length: UInt32(pixelLE.count), valueData: pixelLE),
+        ]
+        let leSource = elements.reduce(into: Data()) { $0.append(le.serializeElement($1)) }
+        let beSource = elements.reduce(into: Data()) { $0.append(beWriter.serializeElement($1)) }
+        #expect(leSource != beSource)
+
+        let converter = TransferSyntaxConverter(
+            configuration: TranscodingConfiguration(preferredSyntaxes: [.jpeg2000Lossless], allowLossyCompression: false,
+                                                    preservePixelDataFidelity: true),
+            compressionConfiguration: .lossless)
+        let j2k = try converter.transcode(dataSetData: beSource, from: .explicitVRBigEndian, to: .jpeg2000Lossless)
+        let back = try converter.transcode(dataSetData: j2k.data, from: .jpeg2000Lossless, to: .explicitVRLittleEndian)
+        #expect(value(.pixelData, in: back.data) == pixelLE)
+        #expect(value(.rows, in: back.data) == Data([2, 0]))
+        // The nested Rows (0028,0010) US 7 inside the defined-length sequence, little-endian.
+        #expect(back.data.range(of: Data([0x28, 0x00, 0x10, 0x00, 0x55, 0x53, 0x02, 0x00, 0x07, 0x00])) != nil)
+    }
 }

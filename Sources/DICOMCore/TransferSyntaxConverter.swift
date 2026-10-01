@@ -174,7 +174,7 @@ extension TranscodingError: CustomStringConvertible {
 /// decompression (compressed to uncompressed), and compression (uncompressed to compressed).
 ///
 /// Reference: DICOM PS3.5 Section 10 - Transfer Syntax Specification
-/// NEMA-verified: 2026a, checked 2026-10-01 — YBR_FULL converted to RGB before a lossy J2K/HTJ2K encode and refused for a reversible one (PS3.5 2026a 8.2.4, Table 8.2.4-1; D-CORE-3); JPEG colour labelled YBR_FULL_422 from the frame header sampling (Table 8.2.1-1; D190); byte-order transcoded values are marked with their new order (D206); the byte-swap VR set (16-, 32- and 64-bit binary VRs incl. OV/SV/UV) follows PS3.5 2026a §7.3 and Table 6.2-1; the XYB to RGB relabel after JPEG XL decode follows PS3.3 2026a C.7.6.3.1.2 and PS3.5 Table 8.2.15-1 (fixed under P1/P3 on 2026-09-24). Re-checked for this marker on 2026-09-25.
+/// NEMA-verified: 2026a, checked 2026-10-01 — YBR_FULL converted to RGB before a lossy J2K/HTJ2K encode and refused for a reversible one (PS3.5 2026a 8.2.4, Table 8.2.4-1; D-CORE-3); JPEG colour labelled YBR_FULL_422 from the frame header sampling (Table 8.2.1-1; D190); byte-order transcoded and parsed values are marked with their order, Big Endian samples are swapped before encoding (D206); defined-length SQ keep their Items (PS3.5 2026a 7.5.2, D-CORE-5); the byte-swap VR set (16-, 32- and 64-bit binary VRs incl. OV/SV/UV) follows PS3.5 2026a §7.3 and Table 6.2-1; the XYB to RGB relabel after JPEG XL decode follows PS3.3 2026a C.7.6.3.1.2 and PS3.5 Table 8.2.15-1 (fixed under P1/P3 on 2026-09-24). Re-checked for this marker on 2026-09-25.
 public struct TransferSyntaxConverter: Sendable {
     
     /// Configuration for the converter
@@ -892,7 +892,9 @@ public struct TransferSyntaxConverter: Sendable {
             if element.tag == .pixelData && !element.isEncapsulated {
                 // Get pixel data descriptor from surrounding elements
                 var descriptor = try extractPixelDataDescriptor(from: elements)
-                var pixelBytes = element.valueData
+                // Encoders take little-endian samples; OW from a Big Endian source is swapped (D206).
+                var pixelBytes = DICOMWriter.value(element.valueData, vr: element.vr,
+                                                   from: element.byteOrder, to: .littleEndian)
                 
                 // Apply bit-depth reduction if pre-scan determined it's needed
                 if needsBitReduction {
@@ -1351,7 +1353,8 @@ public struct TransferSyntaxConverter: Sendable {
                 // Parse sequence
                 let (items, newOffset) = try parseSequence(from: data, at: offset, transferSyntax: transferSyntax)
                 offset = newOffset
-                return DataElement(tag: tag, vr: vr, length: length, valueData: Data(), sequenceItems: items)
+                return DataElement(tag: tag, vr: vr, length: length, valueData: Data(), sequenceItems: items,
+                                   byteOrder: transferSyntax.byteOrder)
             } else if tag == .pixelData {
                 // Parse encapsulated pixel data
                 let (fragments, offsetTable, newOffset) = try parseEncapsulatedPixelData(from: data, at: offset, transferSyntax: transferSyntax)
@@ -1362,7 +1365,8 @@ public struct TransferSyntaxConverter: Sendable {
                     length: length,
                     valueData: Data(),
                     encapsulatedFragments: fragments,
-                    encapsulatedOffsetTable: offsetTable
+                    encapsulatedOffsetTable: offsetTable,
+                    byteOrder: transferSyntax.byteOrder
                 )
             }
         }
@@ -1380,13 +1384,26 @@ public struct TransferSyntaxConverter: Sendable {
             let availableLength = data.count - offset
             let valueData = data.subdata(in: offset..<offset+availableLength)
             offset = data.count
-            return DataElement(tag: tag, vr: vr, length: UInt32(availableLength), valueData: valueData)
+            return DataElement(tag: tag, vr: vr, length: UInt32(availableLength), valueData: valueData,
+                               byteOrder: transferSyntax.byteOrder)
         }
         
         let valueData = data.subdata(in: offset..<offset+intLength)
         offset += intLength
-        
-        return DataElement(tag: tag, vr: vr, length: length, valueData: valueData)
+
+        // A defined-length Sequence (PS3.5 2026a 7.5.2, "Explicit Length") keeps its Items:
+        // DICOMWriter re-encodes an SQ from its Items, so an SQ element without them was written
+        // as an empty sequence, dropping every defined-length sequence on a transcode (D-CORE-5).
+        if vr == .SQ {
+            let (items, _) = try parseSequence(from: valueData, at: 0, transferSyntax: transferSyntax)
+            return DataElement(tag: tag, vr: vr, length: length, valueData: valueData, sequenceItems: items,
+                               byteOrder: transferSyntax.byteOrder)
+        }
+
+        // Values are marked with the byte order they were read in, so DICOMWriter swaps them
+        // when the target order differs (PS3.5 2026a 7.3; D206).
+        return DataElement(tag: tag, vr: vr, length: length, valueData: valueData,
+                           byteOrder: transferSyntax.byteOrder)
     }
     
     /// Parses a sequence with undefined length
