@@ -8,7 +8,9 @@ import DICOMDictionary
 /// The XML format uses the NativeDicomModel root element with DicomAttribute
 /// elements for each DICOM tag.
 ///
-/// NEMA-verified: 2026a, checked 2026-09-28 — elements and attributes diffed against
+/// NEMA-verified: 2026a, checked 2026-10-01 — PersonName number runs 1..n with an empty value
+/// kept as `<PersonName number="n"/>` (Table A.1.5-2, D115); a BulkData uri names its element's
+/// own Value Field, with the item path inside sequences (D110); checked 2026-09-28 — elements and attributes diffed against
 /// PS3.19 2026a Table A.1.5-2 and the A.1.6 schema (34 VRs; Value / Item / PersonName /
 /// BulkData / InlineBinary; tag, vr, keyword, privateCreator, uri); AT format and the
 /// empty-value rule of A.1.5-2; xml:space="preserve" and the Group Length rule of A.1.1;
@@ -97,13 +99,14 @@ public struct DICOMXMLEncoder: Sendable {
     public func encodeToString(_ elements: [DataElement]) throws -> String {
         var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         xml += "<NativeDicomModel xmlns=\"\(Self.namespace)\" xml:space=\"preserve\">\n"
-        xml += try encodeDataSet(elements, indent: configuration.prettyPrinted ? "  " : "")
+        xml += try encodeDataSet(elements, indent: configuration.prettyPrinted ? "  " : "", path: [])
         xml += "</NativeDicomModel>\n"
         return xml
     }
 
     /// Encodes one Data Set (the root or a sequence item)
-    private func encodeDataSet(_ elements: [DataElement], indent: String) throws -> String {
+    /// `path`: the BulkData uri segments of the enclosing items (`<SQ tag>`, `<item number>`).
+    private func encodeDataSet(_ elements: [DataElement], indent: String, path: [String]) throws -> String {
         var xml = ""
         let creators = Self.privateCreators(in: elements)
         for element in elements where element.tag.element != 0x0000 {
@@ -113,7 +116,7 @@ public struct DICOMXMLEncoder: Sendable {
             if !configuration.includeEmptyValues && element.valueData.isEmpty && !hasSequenceItems {
                 continue
             }
-            xml += try encodeElement(element, privateCreator: creators[element.tag], indent: indent)
+            xml += try encodeElement(element, privateCreator: creators[element.tag], indent: indent, path: path)
         }
         return xml
     }
@@ -137,7 +140,8 @@ public struct DICOMXMLEncoder: Sendable {
     }
 
     /// Encodes a single data element to XML
-    private func encodeElement(_ element: DataElement, privateCreator: String?, indent: String) throws -> String {
+    private func encodeElement(_ element: DataElement, privateCreator: String?, indent: String,
+                               path: [String]) throws -> String {
         // Private Data Elements have the form gggg00ee, since the Private Creator is conveyed
         // explicitly and the block used in the DICOM encoding is not sent (PS3.19 Table A.1.5-2)
         let tag: String
@@ -165,7 +169,8 @@ public struct DICOMXMLEncoder: Sendable {
         if element.vr == .SQ, let sequence = element.sequenceItems {
             for (index, item) in sequence.enumerated() {
                 xml += "\(indent)  <Item number=\"\(index + 1)\">\n"
-                xml += try encodeDataSet(item.allElements, indent: indent + "    ")
+                xml += try encodeDataSet(item.allElements, indent: indent + "    ",
+                                         path: path + [element.tag.hexString, String(index + 1)])
                 xml += "\(indent)  </Item>\n"
             }
         }
@@ -184,8 +189,9 @@ public struct DICOMXMLEncoder: Sendable {
                     let base64 = element.valueData.base64EncodedString()
                     xml += "\(indent)  <InlineBinary>\(base64)</InlineBinary>\n"
                 } else if let baseURL = configuration.bulkDataBaseURL {
-                    // Generate bulk data URI (using tag as identifier)
-                    let uri = baseURL.appendingPathComponent(tag).absoluteString
+                    // One URI per element: the item path inside sequences, and the full
+                    // (gggg,xxee) tag of a private element, so no two elements share one (D110)
+                    let uri = DICOMJSONEncoder.bulkDataURI(base: baseURL, path: path, tag: element.tag)
                     xml += "\(indent)  <BulkData uri=\"\(escapeXML(uri))\"/>\n"
                 } else {
                     // Default to inline if no base URL specified
@@ -194,9 +200,11 @@ public struct DICOMXMLEncoder: Sendable {
                 }
             }
         }
-        // Handle PersonName specially
+        // Handle PersonName specially: one PersonName per value, numbered 1..n by 1 with an
+        // empty value kept as <PersonName number="n"/> (Table A.1.5-2; the A.1.6 schema
+        // makes every name component group optional) — D115
         else if element.vr == .PN {
-            for (index, value) in Self.stringValues(of: element).enumerated() where !value.isEmpty {
+            for (index, value) in Self.stringValues(of: element).enumerated() {
                 xml += encodePersonName(value, number: index + 1, indent: indent + "  ")
             }
         }
@@ -254,6 +262,7 @@ public struct DICOMXMLEncoder: Sendable {
 
     /// Encodes a PersonName value
     private func encodePersonName(_ value: String, number: Int, indent: String) -> String {
+        if value.isEmpty { return "\(indent)<PersonName number=\"\(number)\"/>\n" }
         var xml = "\(indent)<PersonName number=\"\(number)\">\n"
 
         // Parse PersonName component groups (Alphabetic=Ideographic=Phonetic)

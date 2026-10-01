@@ -7,7 +7,8 @@ import DICOMDictionary
 
 // NEMA-verified: 2026a, checked 2026-10-01 — options read against PS3.18 2026a F.2.2 (ascending attribute order,
 // 8-hex attribute names), F.2.5 (empty attribute kept as "vr" only), F.2.6 / F.2.7 (BulkDataURI, InlineBinary),
-// 10.4.1.1.2 / 10.4.3.3.2 (Metadata resource); 11 options; output validated by script against Table F.2.3-1 (34 VRs)
+// 10.4.1.1.2 / 10.4.3.3.2 (Metadata resource: all Bulk Data left out or referenced, D111; 2026-10-01 D110 item-path
+// BulkDataURIs, D113 stderr warning for an unresolved BulkDataURI on --reverse); 11 options; output validated by script against Table F.2.3-1 (34 VRs)
 
 struct DICOMJson: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -66,10 +67,10 @@ struct DICOMJson: ParsableCommand {
     @Option(name: .long, help: "With --bulk-data-url: OB/OD/OF/OL/OV/OW/UN values longer than this many bytes become a BulkDataURI (0: all of them); without it every such value is InlineBinary (PS3.18 F.2.6, F.2.7)")
     var inlineThreshold: Int = 1024
 
-    @Option(name: .long, help: "Base URL for BulkDataURI values (PS3.18 F.2.6); the URI is <url>/<GGGGEEEE>")
+    @Option(name: .long, help: "Base URL for BulkDataURI values (PS3.18 F.2.6); the URI is <url>/<GGGGEEEE>, inside sequence items <url>/<SQ tag>/<item n>/<GGGGEEEE>")
     var bulkDataURL: String?
 
-    @Flag(name: .long, help: "Omit Pixel Data (7FE0,0010); other bulk data is kept (this is not the PS3.18 10.4.1.1.2 Metadata resource)")
+    @Flag(name: .long, help: "Metadata only (PS3.18 10.4.1.1.2): leave out every OB/OD/OF/OL/OV/OW/UN value at any depth (Pixel Data, Float Pixel Data, Encapsulated Document, Waveform, Overlay, LUTs); with --bulk-data-url each becomes a BulkDataURI instead")
     var metadataOnly: Bool = false
 
     @Option(name: .long, help: "Keep only this attribute: PS3.6 keyword, GGGG,EEEE or GGGGEEEE (can be used multiple times)")
@@ -116,7 +117,14 @@ struct DICOMJson: ParsableCommand {
         } catch let e as DataExchangeWorkflow.WorkflowError {
             throw ValidationError(e.errorDescription ?? "\(e)")
         }
-        for line in result.console { print(line) }
+        // Warnings (an unresolved BulkData reference on --reverse, PS3.18 F.2.6) go to stderr
+        for line in result.console {
+            if line.hasPrefix("Warning:") {
+                FileHandle.standardError.write(Data(("dicom-json: " + line + "\n").utf8))
+            } else {
+                print(line)
+            }
+        }
 
         let writeStart = Date()
         try result.data.write(to: URL(fileURLWithPath: outputPath))

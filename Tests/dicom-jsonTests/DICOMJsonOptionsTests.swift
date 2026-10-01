@@ -73,4 +73,24 @@ final class DICOMJsonOptionsTests: XCTestCase {
         XCTAssertTrue(try DICOMJson.parse(["in.dcm"]).deprecationNotes.isEmpty)
         XCTAssertTrue(DICOMJson.helpMessage().contains("Deprecated: don't order attribute objects"))
     }
+
+    // D111: --metadata-only is the PS3.18 10.4.1.1.2 Metadata (all Bulk Data left out)
+    func testMetadataOnlyLeavesOutAllBulkDataPer10_4_1_1_2() throws {
+        let help = DICOMJson.helpMessage().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        XCTAssertTrue(help.contains("Metadata only (PS3.18 10.4.1.1.2)"))
+        XCTAssertFalse(help.contains("this is not the PS3.18 10.4.1.1.2 Metadata resource"))
+
+        var dataSet = DataSet()
+        dataSet.setString("1.2.840.10008.5.1.4.1.1.104.1", for: .sopClassUID, vr: .UI)
+        dataSet.setString("1.2.826.0.1.3680043.10.999.3.2", for: .sopInstanceUID, vr: .UI)
+        let document = Tag(group: 0x0042, element: 0x0011)  // Encapsulated Document, OB
+        dataSet[document] = DataElement(tag: document, vr: .OB, length: 2048, valueData: Data(count: 2048))
+        let input = try DICOMFile.create(dataSet: dataSet).write()
+        let command = try DICOMJson.parse(["in.dcm", "--metadata-only"])
+        let result = try DataExchangeWorkflow.encode(
+            dicomData: input, format: .json, options: .init(metadataOnly: command.metadataOnly))
+        let text = String(decoding: result.data, as: UTF8.self)
+        XCTAssertFalse(text.contains("00420011"))
+        XCTAssertTrue(text.contains("00080018"))
+    }
 }

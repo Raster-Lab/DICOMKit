@@ -9,7 +9,8 @@ import DICOMDictionary
 /// (F.2.2). The pre-2026 DICOMKit layout, which put `{"InlineBinary": …}` or
 /// `{"BulkDataURI": …}` inside the `Value` array, is still accepted on input.
 ///
-/// NEMA-verified: 2026a, checked 2026-09-28 — VR-to-JSON types diffed against PS3.18 2026a
+/// NEMA-verified: 2026a, checked 2026-10-01 — a BulkDataURI goes to the optional bulkDataResolver (PS3.18 F.2.6, D113);
+/// checked 2026-09-28 — VR-to-JSON types diffed against PS3.18 2026a
 /// Table F.2.3-1 (34 / 34); layout, null values, AT format and PN component groups read
 /// against F.2.2-F.2.7; tests `DICOMJSONDecoderTests`, `DICOMJSONModelConformanceTests`.
 ///
@@ -26,19 +27,27 @@ public struct DICOMJSONDecoder: Sendable {
         /// Handler for fetching bulk data
         public let bulkDataHandler: (@Sendable (URL) async throws -> Data)?
         
+        /// Synchronous resolver for a `BulkDataURI` (PS3.18 F.2.6): returns the element's
+        /// Value Field, or nil when it cannot be retrieved — the element is then decoded with
+        /// an empty Value Field, as without a resolver. Called with the URI and the tag.
+        public let bulkDataResolver: (@Sendable (_ uri: String, _ tag: Tag) throws -> Data?)?
+        
         /// Creates decoding configuration
         /// - Parameters:
         ///   - allowMissingVR: Allow missing VR fields (default: false)
         ///   - fetchBulkData: Fetch bulk data automatically (default: false)
         ///   - bulkDataHandler: Handler for fetching bulk data
+        ///   - bulkDataResolver: Synchronous BulkDataURI resolver (default: none)
         public init(
             allowMissingVR: Bool = false,
             fetchBulkData: Bool = false,
-            bulkDataHandler: (@Sendable (URL) async throws -> Data)? = nil
+            bulkDataHandler: (@Sendable (URL) async throws -> Data)? = nil,
+            bulkDataResolver: (@Sendable (_ uri: String, _ tag: Tag) throws -> Data?)? = nil
         ) {
             self.allowMissingVR = allowMissingVR
             self.fetchBulkData = fetchBulkData
             self.bulkDataHandler = bulkDataHandler
+            self.bulkDataResolver = bulkDataResolver
         }
         
         /// Default configuration
@@ -240,6 +249,9 @@ public struct DICOMJSONDecoder: Sendable {
         // For now, store an empty data - actual fetching would be async
         // The caller can use the BulkDataReference to fetch later
         
+        if let resolver = configuration.bulkDataResolver, let data = try resolver(uriString, tag) {
+            return DataElement(tag: tag, vr: vr, length: UInt32(data.count), valueData: data)
+        }
         // Create a placeholder element
         return DataElement(tag: tag, vr: vr, length: 0, valueData: Data())
     }

@@ -7,6 +7,8 @@ import DICOMDictionary
 
 // NEMA-verified: 2026a, checked 2026-10-01 — options read against PS3.19 2026a Table A.1.5-1 / A.1.5-2 (keyword
 // required for PS3.6 elements, DicomAttribute per attribute, empty Value Field, BulkData uri/uuid, InlineBinary);
+// 2026-10-01: --metadata-only leaves out / references all Bulk Data (PS3.18 10.4.1.1.2, D111), item-path BulkData uris
+// (D110), empty PersonName kept numbered (D115), stderr warning for an unresolved BulkData on --reverse (D113);
 // 11 options; output validated by script and by xmllint against the A.1.6 RELAX NG schema (34 VRs)
 
 struct DICOMXml: ParsableCommand {
@@ -61,10 +63,10 @@ struct DICOMXml: ParsableCommand {
     @Option(name: .long, help: "With --bulk-data-url: OB/OD/OF/OL/OV/OW/UN values longer than this many bytes become BulkData (0: all of them); without it every such value is InlineBinary (PS3.19 Table A.1.5-2)")
     var inlineThreshold: Int = 1024
 
-    @Option(name: .long, help: "Base URL for BulkData uri values, <url>/<GGGGEEEE> (PS3.19 Table A.1.5-2 reserves uri for a WADO-RS Retrieve Metadata response)")
+    @Option(name: .long, help: "Base URL for BulkData uri values, <url>/<GGGGEEEE>, inside items <url>/<SQ tag>/<item n>/<GGGGEEEE> (PS3.19 Table A.1.5-2 reserves uri for a WADO-RS Retrieve Metadata response)")
     var bulkDataURL: String?
 
-    @Flag(name: .long, help: "Omit Pixel Data (7FE0,0010); other bulk data is kept (this is not the PS3.18 10.4.1.1.2 Metadata resource)")
+    @Flag(name: .long, help: "Metadata only (PS3.18 10.4.1.1.2): leave out every OB/OD/OF/OL/OV/OW/UN value at any depth (Pixel Data, Float Pixel Data, Encapsulated Document, Waveform, Overlay, LUTs); with --bulk-data-url each becomes BulkData instead")
     var metadataOnly: Bool = false
 
     @Option(name: .long, help: "Keep only this attribute: PS3.6 keyword, GGGG,EEEE or GGGGEEEE (can be used multiple times)")
@@ -111,7 +113,14 @@ struct DICOMXml: ParsableCommand {
         } catch let e as DataExchangeWorkflow.WorkflowError {
             throw ValidationError(e.errorDescription ?? "\(e)")
         }
-        for line in result.console { print(line) }
+        // Warnings (an unresolved BulkData reference on --reverse, PS3.18 F.2.6) go to stderr
+        for line in result.console {
+            if line.hasPrefix("Warning:") {
+                FileHandle.standardError.write(Data(("dicom-xml: " + line + "\n").utf8))
+            } else {
+                print(line)
+            }
+        }
 
         let writeStart = Date()
         try result.data.write(to: URL(fileURLWithPath: outputPath))

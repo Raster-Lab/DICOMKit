@@ -13,7 +13,7 @@ import DICOMDictionary
 /// privateCreator attribute) are placed in the block that their Private Creator owns in
 /// the enclosing Data Set, allocating a block and its Private Creator element when needed.
 ///
-/// NEMA-verified: 2026a, checked 2026-09-28 — elements and attributes read against PS3.19
+/// NEMA-verified: 2026a, checked 2026-10-01 — a BulkData uri/uuid goes to the optional bulkDataResolver (PS3.19 Table A.1.5-2: a reference to retrievable data, D113); checked 2026-09-28 — elements and attributes read against PS3.19
 /// 2026a Table A.1.5-2 and the A.1.6 schema (Value, Item, PersonName, BulkData uri/uuid,
 /// InlineBinary; tag, vr, keyword, privateCreator); tests `DICOMXMLDecoderTests`,
 /// `DICOMXMLModelConformanceTests`.
@@ -31,19 +31,27 @@ public struct DICOMXMLDecoder: Sendable {
         /// Handler for bulk data URIs
         public let bulkDataHandler: (@Sendable (String) async throws -> Data)?
         
+        /// Synchronous resolver for a `BulkData` reference (its `uri`, else its `uuid`;
+        /// PS3.19 Table A.1.5-2): returns the element's Value Field, or nil when it cannot be
+        /// retrieved — the element is then decoded with an empty Value Field. A throw is ignored.
+        public let bulkDataResolver: (@Sendable (_ reference: String, _ tag: Tag) throws -> Data?)?
+        
         /// Creates decoding configuration
         /// - Parameters:
         ///   - allowMissingVR: Allow missing VR (infer from tag dictionary)
         ///   - fetchBulkData: Fetch bulk data from URIs (default: false)
         ///   - bulkDataHandler: Custom handler for fetching bulk data
+        ///   - bulkDataResolver: Synchronous BulkData resolver (default: none)
         public init(
             allowMissingVR: Bool = true,
             fetchBulkData: Bool = false,
-            bulkDataHandler: (@Sendable (String) async throws -> Data)? = nil
+            bulkDataHandler: (@Sendable (String) async throws -> Data)? = nil,
+            bulkDataResolver: (@Sendable (_ reference: String, _ tag: Tag) throws -> Data?)? = nil
         ) {
             self.allowMissingVR = allowMissingVR
             self.fetchBulkData = fetchBulkData
             self.bulkDataHandler = bulkDataHandler
+            self.bulkDataResolver = bulkDataResolver
         }
         
         /// Default configuration
@@ -349,9 +357,14 @@ public struct DICOMXMLDecoder: Sendable {
                     element = DataElement(tag: tag, vr: vrValue, length: UInt32(data.count), valueData: data)
                 }
                 // Handle bulk data URI (placeholder)
-                else if bulkDataURI != nil {
-                    // For now, create empty element (real implementation would fetch data)
-                    element = DataElement(tag: tag, vr: vrValue, length: 0, valueData: Data())
+                else if let reference = bulkDataURI {
+                    // Resolved through the configured resolver, else an empty Value Field
+                    if let resolver = configuration.bulkDataResolver,
+                       let data = (try? resolver(reference, tag)) ?? nil {
+                        element = DataElement(tag: tag, vr: vrValue, length: UInt32(data.count), valueData: data)
+                    } else {
+                        element = DataElement(tag: tag, vr: vrValue, length: 0, valueData: Data())
+                    }
                 }
                 // Handle person names
                 else if vrValue == .PN && !personNames.isEmpty {

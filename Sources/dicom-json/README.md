@@ -54,7 +54,10 @@ dicom-json file.dcm --output file.json --format dicomweb
 
 ### Metadata Only
 
-Exclude pixel data from conversion:
+The Metadata of PS3.18 10.4.1.1.2, without Bulk Data: every OB/OD/OF/OL/OV/OW/UN value
+(Pixel Data, Float / Double Float Pixel Data, Encapsulated Document, Waveform and Overlay
+Data, LUTs), in sequence items too, is left out; with `--bulk-data-url` each one is
+written as a BulkDataURI instead (PS3.18 10.4.3.3.2):
 ```bash
 dicom-json large-image.dcm --output metadata.json --metadata-only
 ```
@@ -100,13 +103,13 @@ dicom-json file.dcm --output file.json --verbose
 | Option | Description |
 |--------|-------------|
 | `-o, --output <path>` | Output file path (default: input with .json or .dcm extension) |
-| `-r, --reverse` | Convert from JSON to DICOM |
+| `-r, --reverse` | Convert from JSON to DICOM. A BulkData reference that is a `file:` URL (or absolute path) is read into the attribute; any other is reported on stderr and the attribute is written with an empty Value Field. Group 0002 attributes in the input go to the File Meta Information only (PS3.10 7.1) |
 | `-p, --pretty` | Pretty-print JSON output |
 | `--no-sort-keys` | **Deprecated** (prints a stderr warning; will be removed). Don't order attribute objects by tag (default: ordered; unordered output breaks PS3.18 F.2.2) |
 | `--include-empty` / `--no-include-empty` | Keep attributes with an empty Value Field as `{"vr": ...}` (default: on, PS3.18 F.2.5) / drop them |
 | `--inline-threshold <bytes>` | With `--bulk-data-url`: OB/OD/OF/OL/OV/OW/UN values longer than this become a BulkDataURI (default: 1024; 0: all of them). Without `--bulk-data-url` they are all InlineBinary |
-| `--bulk-data-url <url>` | Base URL for BulkDataURI values (PS3.18 F.2.6): `<url>/<GGGGEEEE>` |
-| `--metadata-only` | Omit Pixel Data (7FE0,0010); other bulk data is kept (not the PS3.18 10.4.1.1.2 Metadata resource) |
+| `--bulk-data-url <url>` | Base URL for BulkDataURI values (PS3.18 F.2.6): `<url>/<GGGGEEEE>`, inside sequence items `<url>/<SQ tag>/<item n>/<GGGGEEEE>` |
+| `--metadata-only` | Metadata (PS3.18 10.4.1.1.2): every OB/OD/OF/OL/OV/OW/UN value at any depth is left out, or with `--bulk-data-url` becomes a BulkDataURI |
 | `--filter-tag <tag>` | Keep only this attribute: PS3.6 keyword, `GGGG,EEEE` or `GGGGEEEE` (can be used multiple times) |
 | `--verbose` | Show detailed timing and statistics |
 | `--version` | Show version information |

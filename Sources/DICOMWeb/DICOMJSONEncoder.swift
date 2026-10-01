@@ -8,7 +8,9 @@ import DICOMCore
 /// carries `vr`, and at most one of `Value`, `BulkDataURI` or `InlineBinary` as
 /// siblings of `vr` (PS3.18 F.2.2).
 ///
-/// NEMA-verified: 2026a, checked 2026-09-28 — VR-to-JSON types diffed against PS3.18 2026a
+/// NEMA-verified: 2026a, checked 2026-10-01 — a BulkDataURI names its element's own Value
+/// Field (PS3.18 F.2.6): `<base>/<GGGGEEEE>` at the top level, `<base>/<SQ tag>/<item n>/…/<GGGGEEEE>`
+/// inside sequence items (D110); checked 2026-09-28 — VR-to-JSON types diffed against PS3.18 2026a
 /// Table F.2.3-1 (34 / 34); object layout, ordering, Group Length exclusion, AT format, null
 /// values, BulkDataURI/InlineBinary rules read against F.2.2-F.2.7 and PS3.19 Table A.1.5-2;
 /// tests `DICOMJSONEncoderTests`, `DICOMJSONModelConformanceTests`.
@@ -103,10 +105,16 @@ public struct DICOMJSONEncoder: Sendable {
     /// - Returns: Dictionary representing the DICOM JSON
     /// - Throws: DICOMwebError if encoding fails
     public func encodeToObject(_ elements: [DataElement]) throws -> [String: Any] {
+        try encodeToObject(elements, path: [])
+    }
+
+    /// `path`: the BulkDataURI path segments of the enclosing sequence items
+    /// (`<SQ tag>`, `<item number from 1>`, …), so each URI names one element (D110).
+    private func encodeToObject(_ elements: [DataElement], path: [String]) throws -> [String: Any] {
         var result: [String: Any] = [:]
 
         for element in elements where element.tag.element != 0x0000 {
-            if let encoded = try encodeElement(element) {
+            if let encoded = try encodeElement(element, path: path) {
                 result[element.tag.hexString] = encoded
             }
         }
@@ -136,7 +144,7 @@ public struct DICOMJSONEncoder: Sendable {
 
     /// One attribute object: `vr` plus at most one of `Value`, `BulkDataURI`, `InlineBinary`
     /// (PS3.18 F.2.2). Returns nil when the attribute is empty and empty attributes are dropped.
-    private func encodeElement(_ element: DataElement) throws -> [String: Any]? {
+    private func encodeElement(_ element: DataElement, path: [String]) throws -> [String: Any]? {
         var result: [String: Any] = ["vr": element.vr.rawValue]
 
         // Sequences: an array of DICOM JSON objects, empty items as empty objects (F.2.2, F.2.5)
@@ -145,7 +153,9 @@ public struct DICOMJSONEncoder: Sendable {
             guard !items.isEmpty else {
                 return configuration.includeEmptyValues ? result : nil
             }
-            result["Value"] = try items.map { try encodeToObject($0.allElements) }
+            result["Value"] = try items.enumerated().map { index, item in
+                try encodeToObject(item.allElements, path: path + [element.tag.hexString, String(index + 1)])
+            }
             return result
         }
 
@@ -156,7 +166,7 @@ public struct DICOMJSONEncoder: Sendable {
                 return configuration.includeEmptyValues ? result : nil
             }
             if shouldEncodeBulkData(element), let baseURL = configuration.bulkDataBaseURL {
-                result["BulkDataURI"] = baseURL.appendingPathComponent(element.tag.hexString).absoluteString
+                result["BulkDataURI"] = Self.bulkDataURI(base: baseURL, path: path, tag: element.tag)
             } else {
                 result["InlineBinary"] = element.valueData.base64EncodedString()
             }
@@ -185,6 +195,14 @@ public struct DICOMJSONEncoder: Sendable {
         }
         result["Value"] = values
         return result
+    }
+
+    /// The BulkDataURI of one element: `<base>/<GGGGEEEE>` for a top-level element and
+    /// `<base>/<SQ tag>/<item number>/…/<GGGGEEEE>` inside sequence items, so the same tag in
+    /// two items or at two levels gets two URIs (PS3.18 F.2.6: the URI of that element's
+    /// Bulk Data). Shared with `DICOMXMLEncoder`.
+    static func bulkDataURI(base: URL, path: [String], tag: Tag) -> String {
+        (path + [tag.hexString]).reduce(base) { $0.appendingPathComponent($1) }.absoluteString
     }
 
     private func shouldEncodeBulkData(_ element: DataElement) -> Bool {
