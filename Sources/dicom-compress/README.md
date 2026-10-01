@@ -29,6 +29,12 @@ dicom-compress info file.dcm
 dicom-compress info file.dcm --json
 ```
 
+`info --json` carries the PS3.6 Table 6-1 keyword keys `TransferSyntaxUID`, `Rows`, `Columns`,
+`BitsAllocated`, `BitsStored`, `SamplesPerPixel`, `PhotometricInterpretation`, `NumberOfFrames`
+and `LossyImageCompression` (when present). The camelCase keys `transferSyntaxUID`, `rows`,
+`columns`, `bitsAllocated`, `bitsStored`, `samplesPerPixel`, `photometricInterpretation` and
+`numberOfFrames` are **deprecated** and keep their old values.
+
 ### Compress — Compress a DICOM File
 
 ```bash
@@ -51,6 +57,10 @@ dicom-compress decompress compressed.dcm --output uncompressed.dcm
 # Decompress to Implicit VR Little Endian
 dicom-compress decompress compressed.dcm --output uncompressed.dcm --syntax implicit-le
 ```
+
+`decompress --syntax` and `batch --syntax` accept only the native targets `explicit-le`,
+`implicit-le` and `deflate` (PS3.5 A.2, A.1, A.5). A compressed codec name (for example
+`jpeg2000`) and the retired `explicit-be` (PS3.5 A.3) are refused with exit 1.
 
 ### Batch — Process Directories
 

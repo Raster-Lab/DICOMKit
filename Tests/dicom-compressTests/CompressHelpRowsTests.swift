@@ -103,7 +103,7 @@ final class CompressHelpRowsTests: XCTestCase {
 
     func test_decompressRows_matchTableA1() {
         let rows = Self.rows(DICOMCompress.Decompress.configuration.discussion)
-        XCTAssertEqual(rows.map(\.name), ["explicit-le", "implicit-le"])
+        XCTAssertEqual(rows.map(\.name), ["explicit-le", "implicit-le", "deflate"])
         for row in rows { check(row) }
     }
 

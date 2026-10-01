@@ -352,11 +352,33 @@ public enum CompressionConsole {
         if let v = info.samplesPerPixel { dict["samplesPerPixel"] = Int(v) }
         if let v = info.photometricInterpretation { dict["photometricInterpretation"] = v }
         if let v = info.numberOfFrames { dict["numberOfFrames"] = v }
+        // PS3.6 2026a Table 6-1 keyword keys (P-COMPRESS-JSON), next to the camelCase keys
+        // above, which are deprecated but keep their old values. Numbers stay numbers; Number
+        // of Frames (IS) is a JSON number when it parses (PS3.18 F.2.3, Table F.2.3-1), else its string.
+        for (keyword, value) in infoKeywordFields(info) { dict[keyword] = value }
         let jsonData = try JSONSerialization.data(
             withJSONObject: dict,
             options: [.prettyPrinted, .sortedKeys]
         )
         return (String(data: jsonData, encoding: .utf8) ?? "") + "\n"
+    }
+
+    /// The PS3.6 2026a Table 6-1 keyword → value pairs of `info --json` (only the present
+    /// ones): TransferSyntaxUID (0002,0010), Rows (0028,0010), Columns (0028,0011),
+    /// BitsAllocated (0028,0100), BitsStored (0028,0101), SamplesPerPixel (0028,0002),
+    /// PhotometricInterpretation (0028,0004), NumberOfFrames (0028,0008),
+    /// LossyImageCompression (0028,2110).
+    public static func infoKeywordFields(_ info: CompressionInfo) -> [String: Any] {
+        var fields: [String: Any] = ["TransferSyntaxUID": info.transferSyntaxUID]
+        if let v = info.rows { fields["Rows"] = Int(v) }
+        if let v = info.columns { fields["Columns"] = Int(v) }
+        if let v = info.bitsAllocated { fields["BitsAllocated"] = Int(v) }
+        if let v = info.bitsStored { fields["BitsStored"] = Int(v) }
+        if let v = info.samplesPerPixel { fields["SamplesPerPixel"] = Int(v) }
+        if let v = info.photometricInterpretation { fields["PhotometricInterpretation"] = v }
+        if let v = info.numberOfFrames { fields["NumberOfFrames"] = Int(v) ?? v as Any }
+        if let v = info.lossyImageCompression, !v.isEmpty { fields["LossyImageCompression"] = v }
+        return fields
     }
 
     /// The `info` read-failure line. The CLI prints the raw error value, not

@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   says so and it prints a stderr note; giving both exits 1. New `DICOMConverter.invalidFrameNumberMessage`.
 - **`dicom-convert` directory run exits 1 when any file failed** (P-CONVERT-EXIT), as `dicom-compress batch` does;
   it exited 0.
+- **`dicom-compress decompress --syntax` / `batch --syntax` accept only native targets** (P-COMPRESS-SYNTAX):
+  `explicit-le`, `implicit-le` and `deflate` (PS3.5 2026a A.2, A.1, A.5). Every compressed codec name (e.g.
+  `--syntax jpeg2000`, which wrote encapsulated .91) and the retired `explicit-be` (PS3.5 A.3; the engine does not
+  byte-swap values) are refused with exit 1 (an unknown name exited 64).
+- **`dicom-compress info --json`** (P-COMPRESS-JSON) adds the PS3.6 2026a Table 6-1 keyword keys
+  `TransferSyntaxUID`, `Rows`, `Columns`, `BitsAllocated`, `BitsStored`, `SamplesPerPixel`,
+  `PhotometricInterpretation`, `NumberOfFrames` (a JSON number) and `LossyImageCompression`; the camelCase keys
+  are deprecated and keep their values. Shared: `CompressionConsole.infoJSON` / new `infoKeywordFields`,
+  `CompressionInfo.lossyImageCompression` (DICOMKit), so the Studio Workshop output matches.
 
 ### Changed — CLI P-items, webprint batch (approved 2026-10-01, DICOM 2026a)
 

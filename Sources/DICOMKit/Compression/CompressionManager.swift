@@ -34,6 +34,9 @@ public struct CompressionInfo {
     public let samplesPerPixel: UInt16?
     public let photometricInterpretation: String?
     public let numberOfFrames: String?
+    /// Lossy Image Compression (0028,2110) as stored ("00" / "01"), `nil` when absent.
+    /// PS3.3 C.7.6.1.1.5.
+    public var lossyImageCompression: String? = nil
 }
 
 // MARK: - Compression Manager
@@ -231,7 +234,8 @@ public struct CompressionManager {
             photometricInterpretation: file.dataSet.string(for: .photometricInterpretation)?
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")),
             numberOfFrames: file.dataSet.string(for: .numberOfFrames)?
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")),
+            lossyImageCompression: lossyFlag
         )
     }
 

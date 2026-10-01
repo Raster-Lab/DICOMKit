@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — the 25 codec/syntax help rows (alias → UID → name) diffed by script against PS3.6 2026a Table A-1 and the engine codec table: 24 match, 1 fixed (.4.110 is "JPEG XL Lossless", D9), now pinned by dicom-compressTests; JPEG Extended 8/12-bit per PS3.5 2026a Table 8.2.1-1; the cited PS3.5 A.4.4 / A.4.12 section titles confirmed; 21 options classified (input contract); compressed / decompressed output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4, 8.2.14, 10.18.1 (engine findings deferred)
+// NEMA-verified: 2026a, checked 2026-10-01 — decompress/batch --syntax accept only the native PS3.5 2026a A.1 / A.2 / A.5 targets (explicit-le, implicit-le, deflate; retired A.3 big endian and every encapsulated A-1 UID refused, exit 1, P-COMPRESS-SYNTAX); info --json adds the 9 PS3.6 2026a Table 6-1 keyword keys (P-COMPRESS-JSON); the 25 codec/syntax help rows (alias → UID → name) diffed by script against PS3.6 2026a Table A-1 and the engine codec table: 24 match, 1 fixed (.4.110 is "JPEG XL Lossless", D9), now pinned by dicom-compressTests; JPEG Extended 8/12-bit per PS3.5 2026a Table 8.2.1-1; the cited PS3.5 A.4.4 / A.4.12 section titles confirmed; 21 options classified (input contract); compressed / decompressed output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4, 8.2.14, 10.18.1 (engine findings deferred)
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -187,11 +187,15 @@ extension DICOMCompress {
         static let configuration = CommandConfiguration(
             abstract: "Decompress a compressed DICOM file",
             discussion: """
-                Decompress compressed DICOM images to an uncompressed transfer syntax.
+                Decompress compressed DICOM images to a native (uncompressed) transfer syntax.
                 
-                Target syntaxes:
+                Target syntaxes (native, PS3.5 A.1, A.2, A.5):
                   explicit-le   Explicit VR Little Endian (default)
                   implicit-le   Implicit VR Little Endian
+                  deflate       Deflated Explicit VR Little Endian
+                
+                Refused (exit 1): every compressed codec name (use `compress`), and
+                explicit-be — Explicit VR Big Endian is retired (PS3.5 A.3) and not written.
                 
                 Examples:
                   dicom-compress decompress compressed.dcm --output uncompressed.dcm
@@ -205,7 +209,7 @@ extension DICOMCompress {
         @Option(name: .shortAndLong, help: "Output DICOM file path")
         var output: String
 
-        @Option(name: .shortAndLong, help: "Target syntax: explicit-le (default), implicit-le")
+        @Option(name: .shortAndLong, help: "Native target syntax: explicit-le (default), implicit-le, deflate")
         var syntax: String = "explicit-le"
 
         @Flag(name: .shortAndLong, help: "Show verbose output")
@@ -215,14 +219,12 @@ extension DICOMCompress {
             guard FileManager.default.fileExists(atPath: input) else {
                 throw ValidationError("Input file not found: \(input)")
             }
-            guard CompressionManager.transferSyntax(for: syntax) != nil else {
-                throw ValidationError("Unknown syntax '\(syntax)'. Use explicit-le or implicit-le.")
-            }
+            _ = try NativeTargetSyntax.resolve(syntax)
         }
 
         mutating func run() throws {
             let manager = CompressionManager()
-            let targetSyntax = CompressionManager.transferSyntax(for: syntax)!
+            let targetSyntax = try NativeTargetSyntax.resolve(syntax)
 
             if verbose {
                 fprint(CompressionConsole.decompressPreamble(
@@ -269,6 +271,14 @@ extension DICOMCompress {
             abstract: "Show compression information about a DICOM file",
             discussion: """
                 Display transfer syntax, compression status, and image parameters.
+                
+                --json keys: the PS3.6 Table 6-1 keywords TransferSyntaxUID, Rows, Columns,
+                BitsAllocated, BitsStored, SamplesPerPixel, PhotometricInterpretation,
+                NumberOfFrames and LossyImageCompression (when present). The camelCase keys
+                (transferSyntaxUID, rows, columns, bitsAllocated, bitsStored, samplesPerPixel,
+                photometricInterpretation, numberOfFrames) are deprecated and keep their old
+                values; file, transferSyntax, compressed, lossless, codec and pixelDataSize
+                are tool keys.
                 
                 Examples:
                   dicom-compress info file.dcm
@@ -339,7 +349,7 @@ extension DICOMCompress {
         @Option(name: .shortAndLong, help: "Quality: maximum, high, medium, low, or a value 0.0-1.0")
         var quality: String?
 
-        @Option(name: .shortAndLong, help: "Target syntax for decompression (default: explicit-le)")
+        @Option(name: .shortAndLong, help: "Native target syntax for decompression: explicit-le (default), implicit-le, deflate")
         var syntax: String = "explicit-le"
 
         @Flag(name: .shortAndLong, help: "Process subdirectories recursively")
@@ -363,9 +373,7 @@ extension DICOMCompress {
                 }
             }
             if decompress {
-                guard CompressionManager.transferSyntax(for: syntax) != nil else {
-                    throw ValidationError("Unknown syntax '\(syntax)'. Use explicit-le or implicit-le.")
-                }
+                _ = try NativeTargetSyntax.resolve(syntax)
             }
         }
 
@@ -419,7 +427,7 @@ extension DICOMCompress {
 
                 do {
                     if decompress {
-                        let targetSyntax = CompressionManager.transferSyntax(for: syntax)!
+                        let targetSyntax = try NativeTargetSyntax.resolve(syntax)
                         try manager.decompressFile(
                             inputPath: filePath,
                             outputPath: outputPath,
@@ -452,6 +460,44 @@ extension DICOMCompress {
                 throw ExitCode.failure
             }
         }
+    }
+}
+
+// MARK: - Native decompress targets
+
+/// `decompress --syntax` / `batch --syntax`: only native Transfer Syntaxes are targets
+/// (P-COMPRESS-SYNTAX). PS3.6 2026a Table A-1 names, PS3.5 2026a A.1 (Implicit VR Little
+/// Endian), A.2 (Explicit VR Little Endian), A.5 (Deflated Explicit VR Little Endian).
+/// Explicit VR Big Endian (A.3, retired) is not written: the engine serializer does not
+/// byte-swap values. Every other name — the compressed codecs included — is refused with
+/// exit 1.
+enum NativeTargetSyntax {
+    static let accepted: [(name: String, syntax: TransferSyntax)] = [
+        ("explicit-le", .explicitVRLittleEndian),
+        ("implicit-le", .implicitVRLittleEndian),
+        ("deflate", .deflatedExplicitVRLittleEndian),
+    ]
+
+    /// A refused `--syntax` value. Not a `ValidationError`, so the command exits 1.
+    struct Refused: LocalizedError, CustomStringConvertible {
+        let description: String
+        var errorDescription: String? { description }
+    }
+
+    static func resolve(_ name: String) throws -> TransferSyntax {
+        let lower = name.trimmingCharacters(in: .whitespaces).lowercased()
+        if let hit = accepted.first(where: { $0.name == lower }) { return hit.syntax }
+        let allowed = accepted.map(\.name).joined(separator: ", ")
+        if ["explicit-be", "explicit-vr-be", "big-endian", "evbe"].contains(lower) {
+            throw Refused(description: "--syntax \(name): Explicit VR Big Endian (1.2.840.10008.1.2.2) "
+                + "is retired (PS3.5 2026a A.3) and not written by dicom-compress. Native targets: \(allowed)")
+        }
+        if let codec = CompressionManager.transferSyntax(for: lower) {
+            throw Refused(description: "--syntax \(name) names \(codec.uid), an encapsulated (compressed) "
+                + "Transfer Syntax (PS3.6 2026a Table A-1); decompression writes native Pixel Data "
+                + "(PS3.5 2026a A.1, A.2, A.5). Native targets: \(allowed). To compress, use `compress --codec`.")
+        }
+        throw Refused(description: "Unknown syntax '\(name)'. Native targets: \(allowed)")
     }
 }
 
