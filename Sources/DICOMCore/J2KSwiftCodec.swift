@@ -406,7 +406,7 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         }
         // PS3.5 2026a 10.18.1 markers for .202 (RPCL label, TLM); verified by the round trip below.
         let encoded = Self.conformingCodestream(raw, transferSyntaxUID: encodingTransferSyntaxUID)
-        try Self.verifyEncodedRoundTrip(encoded, original: frameData, descriptor: descriptor, configuration: configuration)
+        try Self.verifyEncodedRoundTrip(encoded, original: frameData, descriptor: descriptor, requireExact: plan.lossless)
         return encoded
         #else
         throw DICOMError.unsupportedTransferSyntax("JPEG 2000 encoding requires J2KSwift support in this build")
@@ -568,11 +568,15 @@ private extension J2KSwiftCodec {
         }
     }
 
+    /// Decodes the encoded frame and checks its size; when the planned encode is reversible
+    /// (`J2KRoutePlanner.EncodePlan.lossless`, the 5-3 filter of PS3.5 2026a 8.2.4) the decoded
+    /// samples must equal the source exactly. An irreversible 9-7 encode is lossy by definition,
+    /// so it is not held to bit-exactness even when the quality preset is "maximum" (D234).
     static func verifyEncodedRoundTrip(
         _ encoded: Data,
         original: Data,
         descriptor: PixelDataDescriptor,
-        configuration: CompressionConfiguration
+        requireExact: Bool
     ) throws {
         let decoded = try decodeWithJ2KSwift(encoded, descriptor: descriptor)
         guard decoded.count == descriptor.bytesPerFrame else {
@@ -581,7 +585,7 @@ private extension J2KSwiftCodec {
             )
         }
 
-        if configuration.preferLossless || configuration.quality.isLossless {
+        if requireExact {
             guard decoded == original else {
                 throw DICOMError.parsingFailed("J2KSwift lossless round-trip validation failed")
             }

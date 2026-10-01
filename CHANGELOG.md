@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — JPEG 2000 / HTJ2K irreversible encode at maximum quality (D234, 2026-10-01)
+
+- **DICOMCore** `J2KSwiftCodec`: the bit-exact round-trip check now follows the planned encode. A lossy-intent encode on .91 / .203 with `--quality maximum` is planned as the irreversible 9-7 transform (PS3.5 2026a 8.2.4) and is no longer refused with "lossless round-trip validation failed"; reversible (5-3) encodes are still verified bit-exact.
+
 ### Fixed — deferred rows, batch r2 new findings (2026-10-01, DICOM 2026a)
 
 - **`dicom-mpps` status text** (D220; PS3.7 2026a Annex C, PS3.4 2026a Table F.7.2-2): the CLI's own 22-code
