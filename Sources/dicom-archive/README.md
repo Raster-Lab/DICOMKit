@@ -139,7 +139,7 @@ The `archive_index.json` file contains:
     - **studyInstanceUID**: Study Instance UID
     - **studyDate**: Study date (YYYYMMDD)
     - **studyDescription**: Study description
-    - **modality**: Primary modality
+    - **modality**: Modality (0008,0060) of the first instance imported into the study (not Modalities in Study (0008,0061))
     - **series**: Array of series records
       - **seriesInstanceUID**: Series Instance UID
       - **modality**: Series modality
@@ -153,10 +153,16 @@ The `archive_index.json` file contains:
 
 ## Wildcard Matching
 
-Query filters support wildcard patterns:
+`--patient-name` and `--patient-id` support the wild cards of PS3.4 C.2.2.2.4:
 
 - `*` matches any number of characters
 - `?` matches exactly one character
+
+Matching is case-insensitive for both. PS3.4 C.2.2.2.4 leaves case handling of Patient's Name
+(0010,0010) to the implementation but makes Patient ID (0010,0020) (LO) case-sensitive, so the
+Patient ID behaviour is tool-specific. `--study-uid` and `--study-date` match exactly: no List of UID
+Matching (C.2.2.2.2) and no Range Matching (C.2.2.2.5); a UID list or a date range gets a warning.
+`--modality` matches a study when any of its series has that Modality (Modalities in Study semantics).
 
 Examples:
 - `DOE*` matches "DOE", "DOE^JOHN", "DOERING"
@@ -185,11 +191,11 @@ Files are deduplicated by SOP Instance UID. If a file with the same SOP Instance
 ### Query Command
 
 - `--archive, -a <path>`: Path to the archive (required)
-- `--patient-name <pattern>`: Filter by patient name (wildcard)
-- `--patient-id <pattern>`: Filter by patient ID (wildcard)
-- `--study-uid <uid>`: Filter by Study Instance UID
-- `--modality <modality>`: Filter by modality
-- `--study-date <date>`: Filter by study date (YYYYMMDD)
+- `--patient-name <pattern>`: Filter by Patient's Name (0010,0010) (wild cards)
+- `--patient-id <pattern>`: Filter by Patient ID (0010,0020) (wild cards)
+- `--study-uid <uid>`: Filter by Study Instance UID (0020,000D) (one UID, exact)
+- `--modality <modality>`: Filter by Modality (0008,0060) of any series in the study
+- `--study-date <date>`: Filter by Study Date (0008,0020) (YYYYMMDD, exact)
 - `--format, -f <format>`: Output format: table (default), json, text
 
 ### List Command

@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (Study / Series Instance UID, the PS3.4 C.6.1.1 unique keys), the count options as Number of Study
   Related Series / Number of Series Related Instances, and the Instance Number (0020,0013) gap check as a
   heuristic (PS3.3 Table C.7-9 does not require consecutive numbers). README synced. New `dicom-studyTests`.
+- **dicom-archive** `query` warns when `--study-date` is a range (PS3.4 C.2.2.2.5) or not YYYYMMDD, and
+  `query` / `export` warn when a UID option holds a backslash UID list (C.2.2.2.2): the archive matches
+  these exactly, so such values matched nothing in silence. Help names the PS3.6 attribute each key
+  matches, that `--modality` matches any series of the study (Modalities in Study semantics), and that
+  wild cards are case-insensitive for Patient ID too (tool-specific; C.2.2.2.4 is case-sensitive for LO).
+  README synced (study `modality` is the first instance's). New `dicom-archiveTests`.
 
 ### Fixed — dicom-json verified against DICOM 2026a (2026-10-01)
 

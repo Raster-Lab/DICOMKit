@@ -434,6 +434,11 @@ let package = Package(
             path: "Tests/dicom-studyTests"
         ),
         .testTarget(
+            name: "dicom-archiveTests",
+            dependencies: ["dicom-archive", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-archiveTests"
+        ),
+        .testTarget(
             name: "dicom-printTests",
             dependencies: [
                 "dicom-print", "DICOMNetwork", "DICOMPrintKit",

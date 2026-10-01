@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — option help names the PS3.6 2026a Table 6-1 attributes each key matches (Patient's Name (0010,0010), Patient ID (0010,0020), Study Instance UID (0020,000D), Series Instance UID (0020,000E), Study Date (0008,0020), Modality (0008,0060), Modalities in Study (0008,0061), SOP Instance UID (0008,0018); all match) and how it matches against PS3.4 C.2.2.2 (wild cards * ?, case-insensitive: tool-specific for LO; no range or UID-list matching, warned); labels and JSON keys are printed by DICOMKit ArchiveStore (deferred, see DICOMCLI_STANDARD_IMPLEMENTATION.md)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -28,8 +29,13 @@ struct DICOMArchive: ParsableCommand {
         abstract: "Local DICOM file archive manager",
         discussion: """
             Manage a local archive of DICOM files with a JSON-based metadata index.
-            Files are organized in a Patient/Study/Series directory hierarchy with
-            deduplication by SOP Instance UID.
+            Files are stored as data/<Patient ID>/<Study Instance UID>/<Series Instance UID>/
+            <SOP Instance UID>.dcm and deduplicated by SOP Instance UID (0008,0018).
+
+            Query keys match like a DICOM C-FIND (PS3.4 C.2.2.2) with these differences:
+            * and ? wild cards are case-insensitive for Patient ID too (DICOM: case-sensitive
+            except Patient's Name), and Study Date and Study Instance UID match exactly (no
+            range or UID-list matching; such values get a warning).
 
             Examples:
               # Initialize a new archive
@@ -131,22 +137,23 @@ extension DICOMArchive {
         @Option(name: .shortAndLong, help: "Path to the archive")
         var archive: String
 
-        @Option(name: .long, help: "Filter by patient name (supports * and ? wildcards)")
+        @Option(name: .long, help: "Filter by Patient's Name (0010,0010); * and ? wild cards (PS3.4 C.2.2.2.4), case-insensitive")
         var patientName: String?
 
-        @Option(name: .long, help: "Filter by patient ID (supports * and ? wildcards)")
+        @Option(name: .long, help: "Filter by Patient ID (0010,0020); * and ? wild cards, case-insensitive (tool-specific: PS3.4 C.2.2.2.4 is case-sensitive for LO)")
         var patientID: String?
 
-        @Option(name: .long, help: "Filter by study UID")
+        @Option(name: .long, help: "Filter by Study Instance UID (0020,000D); one UID, exact match")
         var studyUID: String?
 
-        @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("filter")))
+        @Option(name: .long, help: ArgumentHelp(stringLiteral: ModalityOptionValidator.helpText("filter")
+            + " A study matches when any of its series has it (Modalities in Study (0008,0061))."))
         var modality: String?
 
         @Flag(name: .long, help: "Reject a --modality value that is not a current DICOM Defined Term")
         var strictModality: Bool = false
 
-        @Option(name: .long, help: "Filter by study date (YYYYMMDD)")
+        @Option(name: .long, help: "Filter by Study Date (0008,0020), YYYYMMDD; exact match (no PS3.4 C.2.2.2.5 range)")
         var studyDate: String?
 
         @Option(name: .shortAndLong, help: "Output format: table, json, text")
@@ -156,6 +163,10 @@ extension DICOMArchive {
             // One answer to "is that a modality?" across every dicom-* tool.
             modality = try ModalityOptionValidator.resolve(
                 modality, strict: strictModality)
+            ArchiveQueryKeys.printWarnings([
+                ArchiveQueryKeys.studyDateWarning(studyDate),
+                ArchiveQueryKeys.uidListWarning(option: "--study-uid", attribute: "Study Instance UID (0020,000D)", studyUID),
+            ])
 
             try runArchive { try ArchiveStore.query(
                 in: archive, patientName: patientName, patientID: patientID,
@@ -204,22 +215,26 @@ extension DICOMArchive {
         @Option(name: .shortAndLong, help: "Output directory for exported files")
         var output: String
 
-        @Option(name: .long, help: "Export by Study Instance UID")
+        @Option(name: .long, help: "Export by Study Instance UID (0020,000D); one UID, exact match")
         var studyUID: String?
 
-        @Option(name: .long, help: "Export by Series Instance UID")
+        @Option(name: .long, help: "Export by Series Instance UID (0020,000E); one UID, exact match")
         var seriesUID: String?
 
-        @Option(name: .long, help: "Export by Patient ID")
+        @Option(name: .long, help: "Export by Patient ID (0010,0020); exact match, no wild cards")
         var patientID: String?
 
-        @Flag(name: .long, help: "Flatten output (no subdirectories)")
+        @Flag(name: .long, help: "Flatten output to <SOP Instance UID>.dcm (no Patient ID / Study / Series subdirectories)")
         var flatten: Bool = false
 
         @Flag(name: .long, help: "Verbose output")
         var verbose: Bool = false
 
         mutating func run() throws {
+            ArchiveQueryKeys.printWarnings([
+                ArchiveQueryKeys.uidListWarning(option: "--study-uid", attribute: "Study Instance UID (0020,000D)", studyUID),
+                ArchiveQueryKeys.uidListWarning(option: "--series-uid", attribute: "Series Instance UID (0020,000E)", seriesUID),
+            ])
             try runArchive { try ArchiveStore.export(
                 from: archive, output: output, studyUID: studyUID, seriesUID: seriesUID,
                 patientID: patientID, flatten: flatten, verbose: verbose) }
