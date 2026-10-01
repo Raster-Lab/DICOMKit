@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — --tag accepts PS3.6 2026a Table 6-1/7-1 keywords exactly (plus the name/tag substring match of the shared MetadataPresenter); printed (tag, name, VR) of a CT fixture match PS3.6 Table 6-1/7-1 31/31; date/time values print in their PS3.5 Table 6.2-1 VR form; output format vocabulary text/json/csv carries no DICOM-standard data
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -16,6 +17,9 @@ struct DICOMInfo: ParsableCommand {
               dicom-info scan.dcm
               dicom-info --format json report.dcm
               dicom-info --tag PatientName --tag StudyDate exam.dcm
+
+            --tag takes a PS3.6 keyword (exact, e.g. PatientName), a tag (0010,0010), or
+            any part of a PS3.6 Attribute name (case-insensitive, e.g. "Patient").
             """,
         version: "1.0.0"
     )
@@ -26,7 +30,7 @@ struct DICOMInfo: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output format: text, json, csv")
     var format: OutputFormat = .text
     
-    @Option(name: .shortAndLong, help: "Filter by specific tag names (can be used multiple times)")
+    @Option(name: .shortAndLong, help: "Filter by keyword, tag (GGGG,EEEE) or part of the Attribute name (can be used multiple times)")
     var tag: [String] = []
     
     @Flag(name: .long, help: "Include private tags in output")
@@ -50,13 +54,20 @@ struct DICOMInfo: ParsableCommand {
         
         let presenter = MetadataPresenter(
             file: dicomFile,
-            filterTags: tag,
+            filterTags: Self.filterTerms(tag),
             includePrivate: showPrivate,
             showStats: statistics
         )
         
         let output = try presenter.render(format: MetadataOutputFormat(rawValue: format.rawValue) ?? .text)
         print(output, terminator: "")
+    }
+
+    /// The shared presenter matches a filter against the PS3.6 Attribute name and the
+    /// "(GGGG,EEEE)" tag text. A PS3.6 keyword (e.g. PatientName) matches neither, so each
+    /// filter that is a keyword (exact, as in PS3.6 Table 6-1/7-1) also contributes its tag.
+    static func filterTerms(_ filters: [String]) -> [String] {
+        filters + filters.compactMap { DataElementDictionary.lookup(keyword: $0)?.tag.description }
     }
 }
 

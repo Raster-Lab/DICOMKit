@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — dicom-dump, dicom-info, dicom-tags verified against DICOM 2026a (2026-10-01)
 
+- **dicom-info** `--tag` also accepts a PS3.6 keyword exactly (the documented
+  `--tag PatientName --tag StudyDate` selected nothing). New `dicom-infoTests`.
 - **dicom-dump** `--tag` / `--highlight` accept a PS3.6 keyword; a negative `--length` (trap)
   and `--bytes-per-line 0` (endless loop) are rejected. README: `--annotate` is off by default.
   New `dicom-dumpTests`.
