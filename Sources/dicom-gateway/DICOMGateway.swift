@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — options: 33 options of 7 subcommands compared (contract rows in DICOMCLI_STANDARD_IMPLEMENTATION.md); all are HL7 v2 / FHIR selectors or plumbing (paths, ports, verbosity) — HL7 and FHIR are not NEMA standards; `forward --listen-port` 11112 is the registered DICOM port of PS3.8 2026a 9.1.1; the DICOM values written and read are checked in DICOMValueMapping.swift
 import Foundation
 import ArgumentParser
 import DICOMKit

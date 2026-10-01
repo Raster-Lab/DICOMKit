@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-gateway verified against DICOM 2026a (2026-10-01)
+
+- **dicom-gateway** `hl7-to-dicom` / `fhir-to-dicom`: Patient's Name follows the PN component
+  order of PS3.5 2026a 6.2.1 for every HL7 XPN length (a 4-component XPN put the suffix in the
+  prefix slot) and FHIR further given names go to the middle-name component; PID-3 writes the
+  CX ID to Patient ID and the assigning authority to Issuer of Patient ID (0010,0021); ORC-2 /
+  OBR-3 use the EI identifier; DA is written only as a full YYYYMMDD (a partial date gives the
+  empty Type 2 value) and TM keeps HH/HHMM/fractions without the time-zone suffix; Study
+  Instance UIDs are checked against PS3.5 9.1; an Accession Number over 16 characters (SH)
+  warns on stderr. Generated UIDs and File Meta Information now use DICOMKit's own root
+  (`UIDGenerator`, `DICOMFile.create`) instead of other organisations' arcs of
+  1.2.826.0.1.3680043.10. `dicom-to-hl7` / `dicom-to-fhir` read only the first PN component
+  group; `--message-type ADT` sends `ADT^A01` instead of `ADT^AA01`. New `dicom-gatewayTests`.
+
 ### Fixed — dicom-server verified against DICOM 2026a (2026-10-01)
 
 - **dicom-server** (target still excluded from `Package.swift`; it does not compile against the

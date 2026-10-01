@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — carries no DICOM-standard data (HL7 MLLP-style listener and a TCP stub on --listen-port that does not implement the PS3.8 Upper Layer, D-DICOM-GATEWAY-2)
 import Foundation
 import DICOMKit
 import DICOMCore
