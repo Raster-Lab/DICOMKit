@@ -388,6 +388,12 @@ let package = Package(
             ],
             path: "Tests/dicom-wadoTests"
         ),
+        // dicom-jpip: JPIP Referenced Transfer Syntaxes pinned to PS3.6 / PS3.5 2026a.
+        .testTarget(
+            name: "dicom-jpipTests",
+            dependencies: ["dicom-jpip", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-jpipTests"
+        ),
         // dicom-query / dicom-send: option values and C-STORE status handling
         // pinned to PS3.4 / PS3.7 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(

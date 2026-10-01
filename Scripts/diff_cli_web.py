@@ -179,13 +179,13 @@ def check_jpip(rep, p6):
     src = tool_src('dicom-jpip')['main.swift']
     a1 = {row[0]: row[1] for row in dw.table_rows(p6, 'A-1') if len(row) >= 2}
     std = {u: n for u, n in a1.items() if n.startswith('JPIP ')}
-    body = src[src.index('private func printJPIPSyntaxes'):]
+    body = src[src.index('static var listedSyntaxes'):]
     ours = dict(re.findall(r'"uid": "([0-9.]+)", "name": "([^"]+)"', body))
     wrong = [f'{u}: "{n}", A-1 "{std.get(u, a1.get(u))}"' for u, n in ours.items() if std.get(u) != n]
     missing = [f'{u} {n}' for u, n in std.items() if u not in ours]
     rep.check(f'PS3.6 Table A-1 JPIP transfer syntaxes listed by dicom-jpip info ({len(std)} in 2026a)',
               len(ours) - len(wrong), wrong, missing)
-    m = re.search(r'Transfer Syntaxes:\n((?:\s+JPIP[^\n]*\n)+)', src)
+    m = re.search(r'Transfer Syntaxes[^\n]*:\n((?:\s+JPIP[^\n]*\n)+)', src)
     listed = dict((u, n.strip()) for n, u in re.findall(r'(JPIP[A-Za-z0-9 ]+?)\s+(1\.2\.840\.10008\.[0-9.]+)', m.group(1))) if m else {}
     wrong = [f'{u}: "{n}"' for u, n in listed.items() if std.get(u) != n]
     missing = [f'{u} {n}' for u, n in std.items() if u not in listed]

@@ -35,6 +35,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   magnification, polarity and Presentation LUT tokens are listed with the term each sends, and the
   term is accepted as an alias. New test target `dicom-printscpTests`.
 
+### Fixed — dicom-jpip verified against DICOM 2026a (2026-10-01)
+
+- **dicom-jpip:** `info --list-syntaxes`, the help and the `uri` error listed 2 of the 4 JPIP
+  Referenced Transfer Syntaxes of PS3.6 2026a Table A-1; JPIP HTJ2K Referenced (…4.204) and JPIP
+  HTJ2K Referenced Deflate (…4.205) are added, and `uri` / `info` now recognise them and read
+  their Pixel Data Provider URL (0028,7FE0) (the shared `TransferSyntax.isJPIP` does not, see the
+  DICOMCLI report). The descriptions said Pixel Data "contains a JPIP server URI"; per PS3.5 A.6
+  Pixel Data is absent and the URL is in (0028,7FE0), which the printed label now names
+  ("Pixel Data Provider URL", JSON key `jpipURI` unchanged). `info` cited "PS3.5 Annex A.8"
+  (SMPTE ST 2110-20); it now cites 8.4.1 and A.6, A.7, A.11, A.12. New test target
+  `dicom-jpipTests`.
+
 ### Fixed — dicom-wado verified against DICOM 2026a (2026-10-01)
 
 - **dicom-wado:** `retrieve --uri --content-type` rejects a value WADOURIClient cannot request
