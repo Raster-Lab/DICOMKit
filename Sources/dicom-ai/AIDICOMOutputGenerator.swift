@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — createSegmentationObject diffed against PS3.3 2026a Table C.8.20-4 (14 rows) and Table C.8.20-2 (16 rows): the hand-built DataSet wrote 5 of the 30 rows and omitted 10 Type 1/1C rows that apply (Image Type, Photometric Interpretation, Lossy Image Compression, Segmentation Type, Segment Sequence, Segment Number, Segment Label, Segment Algorithm Type, Segment Algorithm Name, Segmented Property Category/Type Code Sequences) plus the Pixel Data element and the PS3.10 File Meta Information; it now routes through Segmentation.buildDataSet (D37d) and DICOMFile.create, every segment carrying one Category (CID 7150) and one Type (CID 7151) Item; the 9 attributes it writes outside those tables are in the Patient, General Study, General Series, Image Pixel and SOP Common Modules of Table A.51-1; Enhanced General Equipment Type 1 rows added (Table A.51-1, M)
 import Foundation
 import DICOMKit
 import DICOMCore
@@ -155,18 +156,34 @@ struct AIDICOMOutputGenerator {
 
     // MARK: - DICOM Segmentation Object
 
-    /// Creates a DICOM Segmentation object from an AI segmentation mask.
+    /// Creates a DICOM Segmentation object (PS3.3 A.51, Segmentation Storage) from an AI
+    /// segmentation mask, through DICOMKit's `SegmentationBuilder` and
+    /// `Segmentation.buildDataSet(pixelData:)`, which writes the Type 1 attributes of
+    /// Tables C.8.20-2 and C.8.20-4 and refuses a segment without Segmented Property
+    /// Category / Type codes (D37d).
+    ///
+    /// Every segment carries the same Segmented Property Category Code Sequence (0062,0003)
+    /// and Segmented Property Type Code Sequence (0062,000F) Item: an AI class label has no
+    /// coded anatomy, so the caller picks one pair from PS3.16 CID 7150 / CID 7151
+    /// (`SegmentPropertyCodes`), with `SegmentPropertyCodes.defaultCategory` /
+    /// `.defaultType` when none is given.
+    ///
     /// - Parameters:
     ///   - sourceDataSet: The original DICOM DataSet for reference metadata
     ///   - segmentationMask: The segmentation mask with class labels
     ///   - labels: Human-readable labels for each segment class
-    ///   - modelName: Name of the AI model used
-    /// - Returns: Serialized DICOM Segmentation binary data
+    ///   - modelName: Name of the AI model used (Segment Algorithm Name, Type 1C when the
+    ///     Segment Algorithm Type is AUTOMATIC, Table C.8.20-2)
+    ///   - category: Segmented Property Category (CID 7150) for every segment
+    ///   - type: Segmented Property Type (CID 7151) for every segment
+    /// - Returns: A complete DICOM Part 10 file (preamble, File Meta Information, data set)
     static func createSegmentationObject(
         sourceDataSet: DataSet,
         segmentationMask: SegmentationMask,
         labels: [String],
-        modelName: String
+        modelName: String,
+        category: CodedConcept = SegmentPropertyCodes.defaultCategory,
+        type: CodedConcept = SegmentPropertyCodes.defaultType
     ) throws -> Data {
         let studyInstanceUID = sourceDataSet.string(for: .studyInstanceUID) ?? UIDGenerator.generateStudyInstanceUID().value
         let seriesInstanceUID = UIDGenerator.generateSeriesInstanceUID().value
@@ -192,6 +209,12 @@ struct AIDICOMOutputGenerator {
         .setContentLabel("AI_SEGMENTATION")
         .setContentDescription("AI segmentation from \(modelName)")
 
+        if let frameOfReferenceUID = sourceDataSet.string(for: .frameOfReferenceUID) {
+            // Table A.51-1: Frame of Reference is required when no Derivation Image
+            // Functional Group is present
+            builder.setFrameOfReference(frameOfReferenceUID)
+        }
+
         if !sopInstanceUID.isEmpty {
             builder.addSourceImage(
                 sopClassUID: sopClassUID,
@@ -211,40 +234,43 @@ struct AIDICOMOutputGenerator {
                 number: classIndex + 1,
                 label: label,
                 mask: binaryMask,
+                category: category,
+                type: type,
                 algorithmType: .automatic,
                 algorithmName: modelName
             )
         }
 
-        let (_, pixelData) = try builder.build()
+        let (segmentation, pixelData) = try builder.build()
+        var dataSet = try segmentation.buildDataSet(pixelData: pixelData)
 
-        // Build a complete DICOM file with segmentation metadata
-        var dataSet = DataSet()
-        dataSet.setString("1.2.840.10008.5.1.4.1.1.66.4", for: .sopClassUID, vr: .UI)
-        dataSet.setString(UIDGenerator.generateSOPInstanceUID().value, for: .sopInstanceUID, vr: .UI)
-        dataSet.setString(studyInstanceUID, for: .studyInstanceUID, vr: .UI)
-        dataSet.setString(seriesInstanceUID, for: .seriesInstanceUID, vr: .UI)
-        dataSet.setString(Modality.seg.rawValue, for: .modality, vr: .CS)
-        dataSet.setUInt16(UInt16(segmentationMask.height), for: .rows)
-        dataSet.setUInt16(UInt16(segmentationMask.width), for: .columns)
-        dataSet.setUInt16(1, for: .bitsAllocated)
-        dataSet.setUInt16(1, for: .bitsStored)
-        dataSet.setUInt16(0, for: .highBit)
-        dataSet.setUInt16(0, for: .pixelRepresentation)
-        dataSet.setUInt16(1, for: .samplesPerPixel)
-
-        // Copy patient info from source
-        if let patientName = sourceDataSet.string(for: .patientName) {
-            dataSet.setString(patientName, for: .patientName, vr: .PN)
+        // Patient and General Study Modules (Table A.51-1, both M): the Type 2 rows are
+        // copied from the source image, or written empty, so the object joins its study.
+        for (tag, vr) in Self.patientAndStudyAttributes {
+            dataSet.setString(sourceDataSet.string(for: tag) ?? "", for: tag, vr: vr)
         }
-        if let patientID = sourceDataSet.string(for: .patientID) {
-            dataSet.setString(patientID, for: .patientID, vr: .LO)
-        }
+        // Enhanced General Equipment Module (Table A.51-1, M): Manufacturer, Manufacturer's
+        // Model Name, Device Serial Number and Software Versions are Type 1 (Table C.7-8b).
+        dataSet.setString("DICOMKit", for: .manufacturer, vr: .LO)
+        dataSet.setString("dicom-ai", for: .manufacturerModelName, vr: .LO)
+        dataSet.setString(modelName, for: .deviceSerialNumber, vr: .LO)
+        dataSet.setString(DICOMFile.implementationVersionName, for: .softwareVersions, vr: .LO)
 
-        var result = dataSet.write()
-        result.append(pixelData)
-        return result
+        let file = DICOMFile.create(
+            dataSet: dataSet,
+            sopClassUID: Segmentation.segmentationStorageUID,
+            sopInstanceUID: segmentation.sopInstanceUID
+        )
+        return try file.write()
     }
+
+    /// Type 2 attributes of the Patient (Table C.7-1) and General Study (Table C.7-3)
+    /// Modules, copied from the source image into every object this generator creates
+    private static let patientAndStudyAttributes: [(Tag, VR)] = [
+        (.patientName, .PN), (.patientID, .LO), (.patientBirthDate, .DA), (.patientSex, .CS),
+        (.studyDate, .DA), (.studyTime, .TM), (.referringPhysicianName, .PN),
+        (.studyID, .SH), (.accessionNumber, .SH),
+    ]
 
     /// Extracts a binary mask for a specific class from the segmentation mask.
     private static func extractBinaryMask(from mask: SegmentationMask, forClass classIndex: Int) -> [UInt8] {

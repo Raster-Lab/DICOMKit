@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — Segment subcommand: --segment-category / --segment-type values are checked against PS3.16 2026a CID 7150 / CID 7151 keyword tables (SegmentPropertyCodes.swift); no other DICOM-standard data in this file
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -178,6 +179,21 @@ struct Segment: ParsableCommand {
     
     @Option(name: .long, help: "Segmentation labels file (JSON with class names)")
     var labels: String?
+
+    @Option(name: .long, help: ArgumentHelp(
+        "Segmented Property Category (PS3.16 CID 7150) written for every segment of a dicom-seg output: a keyword or SCHEME:VALUE[:MEANING]. Default: tissue (85756007, SCT, \"Tissue\")",
+        discussion: "Keywords: \(SegmentPropertyCodes.keywordList(SegmentPropertyCodes.categories))"))
+    var segmentCategory: String = "tissue"
+
+    @Option(name: .long, help: ArgumentHelp(
+        "Segmented Property Type (PS3.16 CID 7151) written for every segment of a dicom-seg output: a keyword or SCHEME:VALUE[:MEANING]. Default: tissue (85756007, SCT, \"Tissue\")",
+        discussion: "Keywords: \(SegmentPropertyCodes.keywordList(SegmentPropertyCodes.types))"))
+    var segmentType: String = "tissue"
+
+    mutating func validate() throws {
+        _ = try SegmentPropertyCodes.parse(segmentCategory, from: SegmentPropertyCodes.categories, option: "--segment-category")
+        _ = try SegmentPropertyCodes.parse(segmentType, from: SegmentPropertyCodes.types, option: "--segment-type")
+    }
     
     mutating func run() throws {
         #if canImport(CoreML)
@@ -216,7 +232,9 @@ struct Segment: ParsableCommand {
             let segDICOM = try createDICOMSegmentation(
                 sourceDataSet: dataSet,
                 segmentationMask: segmentationMask,
-                labels: try loadLabels(from: labels)
+                labels: try loadLabels(from: labels),
+                category: try SegmentPropertyCodes.parse(segmentCategory, from: SegmentPropertyCodes.categories, option: "--segment-category"),
+                type: try SegmentPropertyCodes.parse(segmentType, from: SegmentPropertyCodes.types, option: "--segment-type")
             )
             guard let outputPath = options.output else {
                 throw AIError.missingOutput("Output file required for DICOM-SEG format")
@@ -637,12 +655,20 @@ func formatBatchResultsAsCSV(_ results: [[String: Any]]) -> String {
     return csv
 }
 
-func createDICOMSegmentation(sourceDataSet: DataSet, segmentationMask: SegmentationMask, labels: [String]) throws -> Data {
+func createDICOMSegmentation(
+    sourceDataSet: DataSet,
+    segmentationMask: SegmentationMask,
+    labels: [String],
+    category: CodedConcept = SegmentPropertyCodes.defaultCategory,
+    type: CodedConcept = SegmentPropertyCodes.defaultType
+) throws -> Data {
     return try AIDICOMOutputGenerator.createSegmentationObject(
         sourceDataSet: sourceDataSet,
         segmentationMask: segmentationMask,
         labels: labels,
-        modelName: "AI Model"
+        modelName: "AI Model",
+        category: category,
+        type: type
     )
 }
 

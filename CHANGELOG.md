@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-ai Segmentation output (D44, 2026-10-01)
+
+- **`dicom-ai segment --format dicom-seg` writes a conformant Segmentation object (D44):** the
+  output is built through `SegmentationBuilder` / `Segmentation.buildDataSet` and `DICOMFile.create`
+  instead of a private DataSet, so it is a PS3.10 file whose every Segment Sequence Item carries
+  one Segmented Property Category Code Sequence (0062,0003) and one Segmented Property Type Code
+  Sequence (0062,000F) Item (Type 1, PS3.3 2026a Table C.8.20-4) plus the other Type 1 rows of
+  Tables C.8.20-2 / C.8.20-4 the old writer omitted (Image Type, Photometric Interpretation, Lossy
+  Image Compression, Segmentation Type, Segment Sequence, Segment Algorithm Type/Name, Pixel Data
+  element, File Meta Information). New options `--segment-category` / `--segment-type` take a
+  listed keyword or `SCHEME:VALUE[:MEANING]`; the default for both is (85756007, SCT, "Tissue")
+  from PS3.16 2026a CID 7150 / CID 7166 (in CID 7151). Type 2 Patient and General Study attributes
+  are copied from the source image and the Enhanced General Equipment Type 1 rows are written.
+  The `dicom-ai` product and a `dicom-aiTests` target are re-enabled in `Package.swift`.
+
 ### Fixed — dicom-* CLI tools verified against DICOM 2026a (2026-10-01)
 
 - **dicom-compress** help names transfer syntax 1.2.840.10008.1.2.4.110 "JPEG XL Lossless", the

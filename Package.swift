@@ -203,11 +203,10 @@ let package = Package(
             name: "dicom-j2k",
             targets: ["dicom-j2k"]
         ),
-        // Phase 1 scope: exclude dicom-ai because it is outside JPEG 2000 validation.
-        // .executable(
-        //     name: "dicom-ai",
-        //     targets: ["dicom-ai"]
-        // ),
+        .executable(
+            name: "dicom-ai",
+            targets: ["dicom-ai"]
+        ),
         .executable(
             name: "dicom-gateway",
             targets: ["dicom-gateway"]
@@ -368,6 +367,12 @@ let package = Package(
         // Phase 1 scope: DICOMKitTests re-enabled for JP3D volume integration tests.
         // Only the JP3D-related test files are included to avoid pre-existing
         // concurrency errors in PerformanceTests/ImageCacheTests.swift.
+        // dicom-ai: Segmentation output conformance (D44)
+        .testTarget(
+            name: "dicom-aiTests",
+            dependencies: ["dicom-ai", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-aiTests"
+        ),
         .testTarget(
             name: "DICOMKitTests",
             // DICOMDictionary: the presentation-state builders' VRs are asserted
@@ -1091,18 +1096,18 @@ let package = Package(
             path: "Sources/dicom-j2k",
             exclude: ["README.md"]
         ),
-        // Phase 1 scope: exclude dicom-ai because it is outside JPEG 2000 validation.
-        // .executableTarget(
-        //     name: "dicom-ai",
-        //     dependencies: [
-        //         "DICOMKit",
-        //         "DICOMCore",
-        //         "DICOMDictionary",
-        //         .product(name: "ArgumentParser", package: "swift-argument-parser")
-        //     ],
-        //     path: "Sources/dicom-ai",
-        //     exclude: ["README.md"]
-        // ),
+        // Re-enabled 2026-10-01 for the D44 Segmentation fix (dicom-ai verification).
+        .executableTarget(
+            name: "dicom-ai",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-ai",
+            exclude: ["README.md"]
+        ),
         .executableTarget(
             name: "dicom-gateway",
             dependencies: [
