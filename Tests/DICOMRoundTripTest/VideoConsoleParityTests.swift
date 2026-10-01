@@ -168,16 +168,31 @@ final class VideoConsoleParityTests: XCTestCase {
             sampleEntry: entry, frameCount: frameCount, duration: 300_000)])
     }
 
-    /// The same clip carrying an audio track, which DICOM video cannot hold.
-    private func h264MP4WithAudio() -> Data {
+    /// An AudioSampleEntry (ISO/IEC 14496-12 12.2.3) declaring 48 kHz stereo.
+    private func audioSampleEntry(format: String = "mp4a", sampleRate: UInt32 = 48_000) -> Data {
+        var payload = Data(repeating: 0, count: 6)
+        payload.appendBE16(1)                  // data_reference_index
+        payload.append(Data(repeating: 0, count: 8))
+        payload.appendBE16(2)                  // channelcount
+        payload.appendBE16(16)                 // samplesize
+        payload.appendBE32(0)                  // pre_defined + reserved
+        payload.appendBE32(sampleRate << 16)   // samplerate, 16.16
+        return box(format, payload)
+    }
+
+    /// The same clip carrying an audio track. PS3.5 8.2.12 permits AAC at
+    /// 48 kHz in stereo, so this one is carried.
+    private func h264MP4WithAudio(sampleRate: UInt32 = 48_000) -> Data {
         let entry = visualSampleEntry(
             format: "avc1", width: 1920, height: 1080,
             extensions: avcC(sps: [Self.spsH264Unit], pps: [Data([0xEE, 0x3C, 0xB0])])
         )
         let video = videoTrack(sampleEntry: entry, frameCount: 300, duration: 300_000)
+        // 470 AAC frames of 1024 samples is ten seconds; at 1000 bytes each
+        // that is about 376 kbps, inside the 640 kbps ceiling.
         let audio = videoTrack(
-            sampleEntry: box("mp4a", Data(repeating: 0, count: 28)),
-            frameCount: 400, duration: 300_000, handler: "soun")
+            sampleEntry: audioSampleEntry(sampleRate: sampleRate),
+            frameCount: 470, timescale: sampleRate, duration: sampleRate * 10, handler: "soun")
         return mp4File(tracks: [video, audio])
     }
 
@@ -229,11 +244,23 @@ final class VideoConsoleParityTests: XCTestCase {
             """)
     }
 
-    func testProbeReportNamesDiscardedAudioTracks() throws {
+    func testProbeReportDescribesAudioTracks() throws {
         let outcome = try VideoWorkflow.probe(bitstream: h264MP4WithAudio())
+        XCTAssertEqual(outcome.exitCode, .success)
         XCTAssertTrue(outcome.output.contains(
-            "Audio tracks:     1 (discarded; DICOM video has no audio)"),
-            "the report has to say the audio is dropped, not drop it silently")
+            "Audio:            AAC, 48 kHz, 2 ch, 376 kbps"),
+            "the report has to describe the audio it will carry: \(outcome.output)")
+    }
+
+    /// PS3.5 8.2.12 requires 48 kHz for AAC, so a 44.1 kHz track is rejected
+    /// with a remedy that copies the video untouched.
+    func testNonConformantAudioIsRejectedWithAnAudioOnlyRemedy() throws {
+        let outcome = try VideoWorkflow.probe(bitstream: h264MP4WithAudio(sampleRate: 44_100))
+        XCTAssertEqual(outcome.exitCode, .conformanceRejection)
+        XCTAssertTrue(outcome.output.contains(
+            "error: audio track 1 (AAC, 44.1 kHz, 2 ch, 376 kbps) is sampled at 44.1 kHz; "
+            + "AAC must be 48 kHz (PS3.5 8.2.12)"), outcome.output)
+        XCTAssertTrue(outcome.output.contains("-c:v copy -c:a aac -ar 48000"), outcome.output)
     }
 
     // MARK: - Default Type Notice
@@ -254,12 +281,14 @@ final class VideoConsoleParityTests: XCTestCase {
                       "naming the type explicitly must silence the notice")
     }
 
-    func testAudioWarningIsEmittedOnConvert() throws {
+    func testAudioNoteIsEmittedOnConvert() throws {
         let outcome = try VideoWorkflow.convert(
             bitstream: h264MP4WithAudio(), type: .endoscopic,
             typeWasExplicit: true, dryRun: true)
-        XCTAssertEqual(outcome.output,
-            "warning: input has 1 audio track; DICOM video has no audio, discarding.")
+        XCTAssertEqual(outcome.output, """
+            note: carrying 1 audio track (AAC, 48 kHz, 2 ch, 376 kbps) inside the \
+            encapsulated bit stream, as PS3.5 8.2.5 and 8.2.12 permit.
+            """)
     }
 
     // MARK: - Conformance Rejection
@@ -273,7 +302,7 @@ final class VideoConsoleParityTests: XCTestCase {
             }
             XCTAssertEqual(failure.exitCode, .conformanceRejection)
             XCTAssertTrue(failure.message.contains("QuickTime (MOV) is not a permitted container"))
-            XCTAssertTrue(failure.message.contains("ffmpeg -i input -c copy output.mp4"),
+            XCTAssertTrue(failure.message.contains("ffmpeg -i input.mov -map 0:v:0 -map '0:a?' -c copy output.mp4"),
                           "a rejection has to carry its remedy")
         }
     }
@@ -546,7 +575,9 @@ final class VideoConsoleParityTests: XCTestCase {
     }
 
     /// Every video transfer syntax is encapsulated (PS3.5 A.4), and the
-    /// non-fragmentable ones want the whole stream in one fragment.
+    /// non-fragmentable ones want the whole stream in one fragment. The Basic
+    /// Offset Table is present but empty: A.4 allows a non-empty one only with
+    /// an offset per frame, which an inter-coded stream does not have.
     func testPixelDataIsEncapsulatedInASingleFragment() throws {
         let outcome = try VideoWorkflow.convert(
             bitstream: h264MP4(), type: .endoscopic, typeWasExplicit: true)
@@ -554,7 +585,7 @@ final class VideoConsoleParityTests: XCTestCase {
 
         XCTAssertEqual(element.length, 0xFFFF_FFFF, "encapsulated, not a native OB value")
         XCTAssertEqual(element.encapsulatedFragments?.count, 1)
-        XCTAssertEqual(element.encapsulatedOffsetTable, [0])
+        XCTAssertEqual(element.encapsulatedOffsetTable, [])
     }
 
     // MARK: - Batch
@@ -725,7 +756,7 @@ final class VideoConsoleParityTests: XCTestCase {
         XCTAssertTrue(outcome.output.isEmpty,
                       "nothing was converted, so there is no result to capture")
         XCTAssertTrue(outcome.diagnostics.contains(
-            "ffmpeg -i input -c copy output.mp4\n\nStopped at 'bad.mov'. 0 file(s) already written."),
+            "-c copy output.mp4\n\nStopped at 'bad.mov'. 0 file(s) already written."),
             "one blank line separates the remedy from the stop report, not two")
     }
 
@@ -872,8 +903,10 @@ final class VideoConsoleParityTests: XCTestCase {
         XCTAssertEqual(VideoConsole.conformanceOKLine, "\nConformance:      OK")
         XCTAssertEqual(VideoConsole.batchConvertedLine(input: "a.mp4", output: "a.dcm"),
                        "a.mp4 -> a.dcm")
-        XCTAssertEqual(VideoConsole.audioDiscardedLine(trackCount: 2),
-                       "warning: input has 2 audio tracks; DICOM video has no audio, discarding.")
+        XCTAssertEqual(
+            VideoConsole.audioCarriedLine([AudioStreamInfo(format: .aac, sampleRate: 48_000, channels: 2)]),
+            "note: carrying 1 audio track (AAC, 48 kHz, 2 ch) inside the encapsulated bit stream, "
+                + "as PS3.5 8.2.5 and 8.2.12 permit.")
     }
 
     /// A rejection is only actionable if it names the constraint and the fix.

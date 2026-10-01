@@ -91,6 +91,8 @@ public final class VideoBuilder {
     private var patientBirthDate: DICOMDate?
     private var patientSex: String?
     private var pixelData: Data?
+    private var stereoPairsPresent: Bool?
+    private var allowsMultipleFragments = false
 
     // MARK: - Initialization
 
@@ -441,6 +443,25 @@ public final class VideoBuilder {
         return self
     }
 
+    /// Applies what a transfer syntax requires of the data set: Stereo Pairs
+    /// Present for the 3D and Stereo High syntaxes, and whether Pixel Data may be
+    /// split across fragments.
+    ///
+    /// Reference: PS3.5 Table 8-8, Sections 8.2.5 - 8.2.11
+    @discardableResult
+    public func setTransferSyntax(_ transferSyntax: TransferSyntax) -> Self {
+        let base = transferSyntax.uid.hasSuffix(".1") && !transferSyntax.isH265
+            ? String(transferSyntax.uid.dropLast(2)) : transferSyntax.uid
+        switch base {
+        case TransferSyntax.mpeg4AVCHP42For3DVideo.uid, TransferSyntax.mpeg4AVCStereoHP42.uid:
+            stereoPairsPresent = true
+        default:
+            stereoPairsPresent = nil
+        }
+        allowsMultipleFragments = transferSyntax.allowsMultipleFragments
+        return self
+    }
+
     // MARK: - Build
 
     /// Builds the Video object
@@ -516,7 +537,9 @@ public final class VideoBuilder {
             accessionNumber: accessionNumber,
             patientBirthDate: patientBirthDate,
             patientSex: patientSex,
-            pixelData: pixelData
+            pixelData: pixelData,
+            stereoPairsPresent: stereoPairsPresent,
+            allowsMultipleFragments: allowsMultipleFragments
         )
     }
 
@@ -662,6 +685,11 @@ extension Video {
         // PixelAspectRatio (0028,0034) shall be ABSENT: the video transfer syntaxes
         // fix the Sampling Aspect Ratio at 1:1 (PS3.5 8.2.7). Never emitted.
 
+        // Stereo Pairs Present: YES for 3D and Stereo High (PS3.5 Table 8-8).
+        if stereoPairsPresent == true {
+            dataSet.setString("YES", for: .stereoPairsPresent, vr: .CS)
+        }
+
         // MARK: Multi-frame Module (PS3.3 C.7.6.6)
         // NumberOfFrames and FrameIncrementPointer are both Type 1.
         dataSet.setString(String(numberOfFrames), for: .numberOfFrames, vr: .IS)
@@ -697,23 +725,48 @@ extension Video {
         // MARK: Pixel Data (PS3.5 A.4)
         // Every video transfer syntax is encapsulated, so Pixel Data must be
         // written as undefined-length fragments, never as a native OB value.
-        // One fragment holds the whole bit stream: MPEG-family streams are
-        // inter-coded, so frame boundaries are not independently decodable and
-        // splitting them would produce an undecodable object. The Basic Offset
-        // Table carries a single zero entry rather than fabricated per-frame
-        // offsets. DICOMWriter pads an odd-length fragment; do not pad here.
+        // One fragment holds the whole bit stream unless it cannot: a fragment's
+        // length is a 32-bit even value, so a larger stream is split - which only
+        // a fragmentable transfer syntax permits. The Basic Offset Table is
+        // present but empty: PS3.5 8.2.5 / 8.2.6 require that for MPEG-2, and
+        // A.4 allows a non-empty one only with an offset for every frame, which
+        // an inter-coded stream does not have. DICOMWriter pads an odd-length
+        // fragment; do not pad here.
         if let pixelData = pixelData {
             dataSet[.pixelData] = DataElement(
                 tag: .pixelData,
                 vr: .OB,
                 length: 0xFFFFFFFF,
                 valueData: Data(),
-                encapsulatedFragments: [pixelData],
-                encapsulatedOffsetTable: [0]
+                encapsulatedFragments: allowsMultipleFragments
+                    ? Video.fragments(of: pixelData)
+                    : [pixelData],
+                encapsulatedOffsetTable: []
             )
         }
 
         return dataSet
+    }
+
+    /// Splits a bit stream into fragments no longer than `maximumLength`, each
+    /// but the last of even length, as PS3.5 7.5 requires of an Item.
+    ///
+    /// A stream that fits one fragment stays whole: splitting is a necessity of
+    /// the 32-bit Item length, not something done for its own sake.
+    static func fragments(
+        of payload: Data,
+        maximumLength: Int = VideoConformanceValidator.maximumFragmentLength
+    ) -> [Data] {
+        let limit = maximumLength - maximumLength % 2
+        guard limit > 0, payload.count > limit else { return [payload] }
+        var fragments: [Data] = []
+        var offset = payload.startIndex
+        while offset < payload.endIndex {
+            let end = min(offset + limit, payload.endIndex)
+            fragments.append(payload.subdata(in: offset..<end))
+            offset = end
+        }
+        return fragments
     }
 
     /// Formats a Double for a DICOM Decimal String (DS) value.

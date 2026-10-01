@@ -62,7 +62,8 @@ public struct VideoStreamInfo: Sendable, Hashable {
     /// Chroma subsampling.
     public let chromaFormat: ChromaFormat
 
-    /// Coded luma bit depth: 8 for Main-tier profiles, 10 for HEVC Main 10.
+    /// Coded luma bit depth: 8 for MPEG-2, H.264 High and HEVC Main; 10 for HEVC
+    /// Main 10.
     public let bitDepthLuma: Int
 
     /// Coded chroma bit depth.
@@ -84,6 +85,37 @@ public struct VideoStreamInfo: Sendable, Hashable {
     /// (PS3.5 8.2.7). Anything else has to be rejected.
     public let sampleAspectRatio: (width: Int, height: Int)?
 
+    /// Coded picture width in luma samples, before cropping, when known.
+    ///
+    /// Level limits are defined on the coded picture, not the displayed one: a
+    /// 1920x1080 H.264 stream codes 1088 rows, and it is those 68 macroblock rows
+    /// that count against `MaxFS`. Nil for MPEG-2, whose header carries only the
+    /// display size, and for summaries built without a parameter set.
+    public let codedWidth: Int?
+
+    /// Coded frame height in luma samples, before cropping, when known.
+    public let codedHeight: Int?
+
+    /// Whether an HEVC stream is coded at High tier (`general_tier_flag` = 1).
+    ///
+    /// PS3.5 8.2.10 and 8.2.11 name Main tier, so High tier is rejected. Always
+    /// false for the other codecs, which have no tiers.
+    public let isHighTier: Bool
+
+    /// Whether the stream carries an H.264 frame packing arrangement SEI, i.e.
+    /// packs two views into each frame for 3D display.
+    ///
+    /// Nil when the coded pictures were not inspected. PS3.5 Table 8-8 requires
+    /// the SEI for the "For 3D Video" transfer syntax and forbids it for
+    /// "For 2D Video".
+    public let hasFramePacking: Bool?
+
+    /// MPEG-2 `aspect_ratio_information` (ITU-T H.262 Table 6-3): 1 is square
+    /// samples, 2 is 4:3, 3 is 16:9 and 4 is 2.21:1 display aspect ratio.
+    ///
+    /// PS3.5 8.2.6 requires 3 (16:9) for Main Profile / High Level.
+    public let mpeg2AspectRatioInformation: Int?
+
     /// Whether the sample aspect ratio is square, i.e. SAR 1:1.
     public var hasSquarePixels: Bool {
         guard let ratio = sampleAspectRatio else { return true }
@@ -93,8 +125,19 @@ public struct VideoStreamInfo: Sendable, Hashable {
     /// The level as a decimal number, e.g. 4.1 or 5.1.
     public var level: Double { Double(levelTimesTen) / 10.0 }
 
-    /// A short human-readable level, e.g. "4.1".
+    /// A short human-readable level, e.g. "4.1", or for MPEG-2 the level's name.
     public var levelDescription: String {
+        if codec == .mpeg2 {
+            // MPEG-2 levels are named, and their identifiers descend as levels
+            // rise (ITU-T H.262 Table 8-11), so "0.4" would mislead.
+            switch levelTimesTen {
+            case 4: return "High"
+            case 6: return "High 1440"
+            case 8: return "Main"
+            case 10: return "Low"
+            default: return "level \(levelTimesTen)"
+            }
+        }
         let whole = levelTimesTen / 10
         let fraction = levelTimesTen % 10
         return "\(whole).\(fraction)"
@@ -111,7 +154,12 @@ public struct VideoStreamInfo: Sendable, Hashable {
         bitDepthChroma: Int,
         frameRate: Double?,
         isProgressive: Bool,
-        sampleAspectRatio: (width: Int, height: Int)? = nil
+        sampleAspectRatio: (width: Int, height: Int)? = nil,
+        codedWidth: Int? = nil,
+        codedHeight: Int? = nil,
+        isHighTier: Bool = false,
+        hasFramePacking: Bool? = nil,
+        mpeg2AspectRatioInformation: Int? = nil
     ) {
         self.codec = codec
         self.width = width
@@ -124,6 +172,40 @@ public struct VideoStreamInfo: Sendable, Hashable {
         self.frameRate = frameRate
         self.isProgressive = isProgressive
         self.sampleAspectRatio = sampleAspectRatio
+        self.codedWidth = codedWidth
+        self.codedHeight = codedHeight
+        self.isHighTier = isHighTier
+        self.hasFramePacking = hasFramePacking
+        self.mpeg2AspectRatioInformation = mpeg2AspectRatioInformation
+    }
+
+    /// A copy with some fields replaced, so callers that refine one fact - a
+    /// container's frame rate, a scan's frame packing verdict - cannot drop the
+    /// others by rebuilding the summary field by field.
+    public func with(
+        frameRate: Double?? = nil,
+        profileIDC: Int? = nil,
+        levelTimesTen: Int? = nil,
+        hasFramePacking: Bool?? = nil
+    ) -> VideoStreamInfo {
+        VideoStreamInfo(
+            codec: codec,
+            width: width,
+            height: height,
+            profileIDC: profileIDC ?? self.profileIDC,
+            levelTimesTen: levelTimesTen ?? self.levelTimesTen,
+            chromaFormat: chromaFormat,
+            bitDepthLuma: bitDepthLuma,
+            bitDepthChroma: bitDepthChroma,
+            frameRate: frameRate ?? self.frameRate,
+            isProgressive: isProgressive,
+            sampleAspectRatio: sampleAspectRatio,
+            codedWidth: codedWidth,
+            codedHeight: codedHeight,
+            isHighTier: isHighTier,
+            hasFramePacking: hasFramePacking ?? self.hasFramePacking,
+            mpeg2AspectRatioInformation: mpeg2AspectRatioInformation
+        )
     }
 
     public static func == (lhs: VideoStreamInfo, rhs: VideoStreamInfo) -> Bool {
@@ -139,6 +221,11 @@ public struct VideoStreamInfo: Sendable, Hashable {
             && lhs.isProgressive == rhs.isProgressive
             && lhs.sampleAspectRatio?.width == rhs.sampleAspectRatio?.width
             && lhs.sampleAspectRatio?.height == rhs.sampleAspectRatio?.height
+            && lhs.codedWidth == rhs.codedWidth
+            && lhs.codedHeight == rhs.codedHeight
+            && lhs.isHighTier == rhs.isHighTier
+            && lhs.hasFramePacking == rhs.hasFramePacking
+            && lhs.mpeg2AspectRatioInformation == rhs.mpeg2AspectRatioInformation
     }
 
     public func hash(into hasher: inout Hasher) {
@@ -154,6 +241,11 @@ public struct VideoStreamInfo: Sendable, Hashable {
         hasher.combine(isProgressive)
         hasher.combine(sampleAspectRatio?.width)
         hasher.combine(sampleAspectRatio?.height)
+        hasher.combine(codedWidth)
+        hasher.combine(codedHeight)
+        hasher.combine(isHighTier)
+        hasher.combine(hasFramePacking)
+        hasher.combine(mpeg2AspectRatioInformation)
     }
 }
 

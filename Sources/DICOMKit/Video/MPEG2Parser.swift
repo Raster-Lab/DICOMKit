@@ -56,7 +56,8 @@ public enum MPEG2Parser {
 
         /// The level identifier from `profile_and_level_indication`.
         ///
-        /// 10 is High level, 8 is High-1440, 6 is Main, 4 is Low.
+        /// Per ITU-T H.262 Table 8-11, identifiers *descend* as levels rise: 4 is
+        /// High, 6 is High 1440, 8 is Main and 10 is Low.
         public var levelIdentifier: Int? {
             guard let value = profileAndLevel else { return nil }
             return value & 0x0F
@@ -265,7 +266,8 @@ extension MPEG2Parser.SequenceHeader {
             bitDepthChroma: 8,
             frameRate: frameRate,
             isProgressive: isProgressive,
-            sampleAspectRatio: nil
+            sampleAspectRatio: nil,
+            mpeg2AspectRatioInformation: aspectRatioInformation
         )
     }
 }
