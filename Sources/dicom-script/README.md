@@ -136,11 +136,11 @@ if exists /path/to/file.dcm
     dicom-info /path/to/file.dcm
 endif
 
-# Conditional with else
+# Conditional with else (only dicom-* tools run: there is no echo or exit)
 if exists ${INPUT_DIR}
     dicom-study summary ${INPUT_DIR}
 else
-    echo "Input directory not found"
+    dicom-study summary ${FALLBACK_DIR}
 endif
 
 # Condition operators
@@ -225,8 +225,9 @@ if exists ${INPUT_FILE}
     # Print the metadata (JSON goes to the script output / --log)
     dicom-info ${INPUT_FILE} --format json
 else
-    echo "Error: Input file not found"
-    exit 1
+    # The file is missing: dicom-info reports it and exits non-zero, and a failed
+    # command stops the script with "Command failed with status 1" (no echo / exit 1)
+    dicom-info ${INPUT_FILE}
 endif
 ```
 
@@ -278,10 +279,12 @@ dicom-study summary ${WORK_DIR} --format json
 dicom-archive init --path ${ARCHIVE_DIR}
 dicom-archive import ${WORK_DIR} --archive ${ARCHIVE_DIR} --recursive
 
-# Step 5: Cleanup
-if exists ${WORK_DIR}
-    rm -rf ${WORK_DIR}
-endif
+# Step 5: Check the archive before the work directory is removed
+dicom-archive check --archive ${ARCHIVE_DIR} --verify-files
+dicom-archive stats --archive ${ARCHIVE_DIR}
+
+# Scripts call only dicom-* tools (validate reports rm, echo or exit as unknown tools) and
+# run them without a shell: delete ${WORK_DIR} outside the script once the check has passed.
 ```
 
 ## Supported Condition Operators
@@ -330,7 +333,7 @@ The tool provides comprehensive error handling:
 - **Script Not Found**: Specified script file does not exist
 - **Parse Error**: Syntax error in script (with line number)
 - **Invalid Variable**: Malformed variable assignment
-- **Invalid Command**: Unknown DICOM tool
+- **Invalid Command**: Unknown DICOM tool (scripts call only the `dicom-*` tools listed above: `validate` reports any other command, such as `echo`, `exit` or `rm`, as an unknown DICOM tool, and the runner starts commands without a shell, so shell built-ins, globs and `>` do not work)
 - **Execution Error**: Command execution failed
 - **Condition Error**: Invalid condition syntax
 

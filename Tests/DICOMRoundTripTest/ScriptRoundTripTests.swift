@@ -603,3 +603,57 @@ extension ScriptRoundTripTests {
         XCTAssertTrue(issues[1].hasPrefix("Line 3: > is passed to the tool literally"), issues[1])
     }
 }
+
+// MARK: - D241: README examples call dicom-* tools only
+
+extension ScriptRoundTripTests {
+
+    private func readmeScriptBlocks() throws -> [(section: String, body: String)] {
+        let readme = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/dicom-script/README.md")
+        let text = try String(contentsOf: readme, encoding: .utf8)
+        guard let start = text.range(of: "## Script Syntax"),
+              let end = text.range(of: "## Supported Condition Operators") else {
+            XCTFail("README sections not found"); return []
+        }
+        var blocks: [(String, String)] = []
+        var heading = "", body: [Substring] = [], inBlock = false
+        for line in text[start.lowerBound..<end.lowerBound].split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("### ") { heading = String(line.dropFirst(4)) }
+            if line == "```bash" { inBlock = true; body = []; continue }
+            if line == "```", inBlock { inBlock = false; blocks.append((heading, body.joined(separator: "\n"))); continue }
+            if inBlock { body.append(line) }
+        }
+        return blocks
+    }
+
+    /// Every command line of the Script Syntax / Script Examples blocks is a dicom-* tool
+    /// (the runner execs `/usr/bin/env <tool>` without a shell; echo, exit and rm are not tools).
+    func testReadmeScriptLinesCallDicomToolsOnly() throws {
+        let blocks = try readmeScriptBlocks()
+        XCTAssertGreaterThanOrEqual(blocks.count, 10)
+        var commands = 0
+        for (section, body) in blocks {
+            for raw in body.split(separator: "\n") {
+                let line = raw.trimmingCharacters(in: .whitespaces)
+                if line.isEmpty || line.hasPrefix("#") || ["else", "endif"].contains(line) || line.hasPrefix("if ") { continue }
+                if line.range(of: #"^[A-Za-z_][A-Za-z0-9_]*="#, options: .regularExpression) != nil { continue }
+                XCTAssertTrue(line.hasPrefix("dicom-"), "\(section): \(line)")
+                commands += 1
+            }
+        }
+        XCTAssertGreaterThan(commands, 30)
+    }
+
+    /// The five Script Examples validate with no issue (no unknown tool, glob or redirection).
+    func testReadmeScriptExamplesValidateCleanly() throws {
+        let examples = try readmeScriptBlocks().filter { $0.section.hasPrefix("Example ") }
+        XCTAssertEqual(examples.count, 5)
+        for (section, body) in examples {
+            let path = try writeScript(body, name: "readme.dcmscript")
+            let issues = try ScriptValidator().validate(scriptPath: path, verbose: false)
+            XCTAssertEqual(issues, [], section)
+        }
+    }
+}
