@@ -2,6 +2,7 @@ import Foundation
 import ArgumentParser
 import DICOMCore
 import DICOMNetwork
+// NEMA-verified: 2026a, checked 2026-10-01 — option surface compared with PS3.4 2026a: the 3 retrieve levels and their unique keys (Table C.6.1-1 STUDY/SERIES/IMAGE; Table C.6-5 Study Instance UID U key; C.4.2.2.1 / C.4.3.2.1 one unique key per level above the retrieve level), the 2 methods and their SOP Classes (Table C.6.2.3-1, Study Root MOVE/GET), Move Destination (0000,0600) per PS3.7 Table 9.3-9, ports 104 / 11112 per PS3.8 9.1.2; host, --called-aet default, --output, --timeout, --parallel, --hierarchical, --verbose are plumbing
 
 @main
 struct DICOMRetrieve: AsyncParsableCommand {
@@ -53,7 +54,7 @@ struct DICOMRetrieve: AsyncParsableCommand {
     @Argument(help: "PACS server hostname or IP address, optionally with port (host:port)")
     var host: String
     
-    @Option(name: .long, help: "PACS server port (default: 11112)")
+    @Option(name: .long, help: "PACS server port (default: 11112, the registered DICOM port; 104 is the well-known port — PS3.8 9.1.2)")
     var port: UInt16?
     
     @Option(name: .long, help: "Local Application Entity Title (calling AE)")
@@ -62,13 +63,13 @@ struct DICOMRetrieve: AsyncParsableCommand {
     @Option(name: .long, help: "Remote Application Entity Title (default: ANY-SCP)")
     var calledAet: String = "ANY-SCP"
     
-    @Option(name: .long, help: "Study Instance UID to retrieve")
+    @Option(name: .long, help: "Study Instance UID (0020,000D) to retrieve — Query/Retrieve Level STUDY")
     var studyUid: String?
     
-    @Option(name: .long, help: "Series Instance UID to retrieve (requires --study-uid)")
+    @Option(name: .long, help: "Series Instance UID (0020,000E) to retrieve — Query/Retrieve Level SERIES (requires --study-uid)")
     var seriesUid: String?
     
-    @Option(name: .long, help: "SOP Instance UID to retrieve (requires --study-uid and --series-uid)")
+    @Option(name: .long, help: "SOP Instance UID (0008,0018) to retrieve — Query/Retrieve Level IMAGE (requires --study-uid and --series-uid)")
     var instanceUid: String?
     
     @Option(name: .long, help: "File containing list of Study UIDs to retrieve (one per line)")
@@ -77,13 +78,13 @@ struct DICOMRetrieve: AsyncParsableCommand {
     @Option(name: .long, help: "Output directory for retrieved files")
     var output: String = "."
     
-    @Option(name: .long, help: "Retrieval method: c-move or c-get (default: c-move)")
+    @Option(name: .long, help: "Retrieval method: c-move (Study Root Query/Retrieve Information Model - MOVE) or c-get (Study Root Query/Retrieve Information Model - GET) (default: c-move)")
     var method: RetrievalMethod = .cMove
     
-    @Option(name: .long, help: "Move destination AE title (required for C-MOVE)")
+    @Option(name: .long, help: "Move Destination (0000,0600): AE Title of the Storage SCP that receives the C-STORE sub-operations (required for C-MOVE)")
     var moveDest: String?
     
-    @Flag(name: .long, help: "Organize output hierarchically (patient/study/series)")
+    @Flag(name: .long, help: "Organize C-GET output hierarchically (<output>/<Study Instance UID>/<Series Instance UID>/); C-MOVE output is stored by the move destination")
     var hierarchical: Bool = false
     
     @Option(name: .long, help: "Connection timeout in seconds (default: 60)")

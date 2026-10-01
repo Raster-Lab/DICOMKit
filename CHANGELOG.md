@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-mwl and dicom-mpps verified against DICOM 2026a (2026-10-01)
+
+- **dicom-mwl:** `--sps-status` help and the discussion listed the Performed Procedure Step
+  Status words; the Scheduled Procedure Step Status (0040,0020) Defined Terms are SCHEDULED,
+  ARRIVED, READY, STARTED, DEPARTED (PS3.3 Table C.4-10). A value outside that list is still
+  sent, now with a warning on stderr. The combined date+time interval is cited to its clause
+  (PS3.4 Table K.6-1 remark under (0040,0003), C.2.2.2.5.4) instead of "K.6.1"; `--time`
+  documents the TM forms of PS3.5 Table 6.2-1.
+- **dicom-mpps:** the `--discontinuation-reason` examples paired DCM codes with the wrong
+  meanings (110513 is "Discontinued for unspecified reason", 110514 "Incorrect worklist entry
+  selected"; 110518 is not in CID 9300) — corrected from PS3.16 CID 9300/9301 and Table D-1.
+  `create` now requires `--modality` (Modality (0008,0060) is Type 1 in the N-CREATE, PS3.4
+  Table F.7.2-1) and validates `--patient-sex` (M/F/O, PS3.3 Table C.2-3) and
+  `--patient-birth-date` (DA YYYYMMDD). `update` rejects `--image-uid` without
+  `--study-uid`/`--series-uid` instead of silently dropping the references, and its examples
+  show the Performed Series item COMPLETED needs. N-CREATE/N-SET failure and warning statuses
+  are named per PS3.7 Annex C (e.g. "0106H Invalid Attribute Value") instead of
+  "Store failed: Unknown status".
+
 ### Added — dicom-video audio Channel Source (D56, 2026-10-01)
 
 - **`dicom-video convert` / `batch --audio-channel-source <value>`:** names the source of the
@@ -45,6 +64,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of the family headings STD-GEN-DVD / STD-GEN-USB (D29); the error lists every identifier
   `DICOMDIRProfile.allStandard` accepts. Accepted values are unchanged (the old spellings remain
   aliases).
+- **dicom-retrieve** prints the final C-MOVE/C-GET status with the wording of PS3.4 2026a
+  Table C.4-2 / C.4-3 (e.g. "Failure (0xA702): Refused: Out of resources - Unable to perform
+  sub-operations", "Warning (0xB000): Sub-operations Complete - One or more Failures") instead of
+  the service-agnostic DIMSE text, the counters under their PS3.7 names (Number of Completed /
+  Failed / Warning Sub-operations), and labels the Failed SOP Instance UID List (0008,0058). Help
+  names the Query/Retrieve Level (STUDY / SERIES / IMAGE), the Study Root MOVE/GET SOP Classes, Move
+  Destination (0000,0600) and the PS3.8 ports; `--hierarchical` help says what it does (C-GET,
+  study/series). Option names, values and defaults are unchanged.
 - **dicom-send** counts a C-STORE response in the Failure class of PS3.4 2026a Table B.2-1 (A7xx
   Refused: Out of resources, A9xx Error: Data Set does not match SOP Class, Cxxx Error: Cannot
   understand, 0122 Refused: SOP Class not supported) as a failed file: it is printed with its

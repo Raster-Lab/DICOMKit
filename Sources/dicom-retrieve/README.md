@@ -117,17 +117,19 @@ dicom-retrieve pacs://server:11112 \
 
 ## Options
 
-- `url` - PACS server URL (pacs://hostname:port)
+- `host` - PACS server hostname or IP address, optionally with port (host:port; `pacs://` prefix accepted)
+- `--port` - PACS server port (default: 11112, the registered DICOM port; 104 is the well-known port — PS3.8 9.1.2)
 - `--aet` - Local Application Entity Title (calling AE)
 - `--called-aet` - Remote Application Entity Title (default: ANY-SCP)
-- `--study-uid` - Study Instance UID to retrieve
-- `--series-uid` - Series Instance UID to retrieve (requires --study-uid)
-- `--instance-uid` - SOP Instance UID to retrieve (requires --study-uid and --series-uid)
+- `--study-uid` - Study Instance UID (0020,000D) to retrieve — Query/Retrieve Level STUDY
+- `--series-uid` - Series Instance UID (0020,000E) to retrieve — Query/Retrieve Level SERIES (requires --study-uid)
+- `--instance-uid` - SOP Instance UID (0008,0018) to retrieve — Query/Retrieve Level IMAGE (requires --study-uid and --series-uid)
 - `--uid-list` - File containing list of Study UIDs (one per line)
 - `--output` - Output directory for retrieved files (default: current directory)
-- `--method` - Retrieval method: c-move or c-get (default: c-move)
-- `--move-dest` - Move destination AE title (required for C-MOVE)
-- `--hierarchical` - Organize output hierarchically (patient/study/series)
+- `--method` - Retrieval method: c-move (Study Root Query/Retrieve Information Model - MOVE, 1.2.840.10008.5.1.4.1.2.2.2) or c-get (Study Root Query/Retrieve Information Model - GET, 1.2.840.10008.5.1.4.1.2.2.3) (default: c-move)
+- `--move-dest` - Move Destination (0000,0600): AE Title of the Storage SCP that receives the C-STORE sub-operations (required for C-MOVE)
+- `--hierarchical` - Organize C-GET output hierarchically (`<output>/<Study Instance UID>/<Series Instance UID>/`); C-MOVE output is stored by the move destination
+- `--transfer-syntax` - Requested transfer syntax (name or UID) for the C-GET storage presentation contexts; advisory for C-MOVE
 - `--timeout` - Connection timeout in seconds (default: 60)
 - `--parallel` - Number of parallel retrieval operations (default: 1)
 - `-v, --verbose` - Show verbose output including progress
@@ -188,8 +190,11 @@ dicom-retrieve pacs://pacs.hospital.org:11112 \
 
 ## Exit Codes
 
-- `0` - Success
-- `1` - Error (connection failed, invalid parameters, etc.)
+- `0` - The final C-MOVE/C-GET response was Success (0000) with no failed sub-operations (PS3.4 C.4.2.2.1 / C.4.3.2.1)
+- `1` - A final response of Warning (B000), Failure (A701, A702, A801, A900, Cxxx) or Cancel (FE00), any failed sub-operation, a transport error, or a bulk run with at least one failed study
+- `64` - Usage error (for example C-MOVE without `--move-dest`, or `--series-uid` without `--study-uid`)
+
+The final status is printed with the wording of PS3.4 2026a Table C.4-2 (C-MOVE) or Table C.4-3 (C-GET), and the counters under their PS3.7 names (Number of Completed / Failed / Warning Sub-operations); the Failed SOP Instance UID List (0008,0058) is printed to stderr when the SCP supplies one.
 
 ## See Also
 

@@ -1,6 +1,7 @@
 import Foundation
 import DICOMCore
 import DICOMNetwork
+// NEMA-verified: 2026a, checked 2026-10-01 — final-status handling checked against PS3.4 2026a Tables C.4-2 / C.4-3 (status wording via RetrieveStatusText, success = 0000 with no failed sub-operations per C.4.2.2.1 / C.4.3.2.1), the four counters against PS3.7 2026a Tables 9.3-7 / 9.3-10, Failed SOP Instance UID List (0008,0058) against C.4.2.1.4.2; the Part 10 wrapper writes the 6 Type 1 rows of PS3.10 2026a Table 7.1-1 (group length, (0002,0001), (0002,0002), (0002,0003), (0002,0010), (0002,0012)) and no Type 3 row
 
 #if canImport(Network)
 
@@ -155,33 +156,33 @@ struct RetrieveExecutor {
         
         // C-MOVE result via the SHARED formatter, printed to STDOUT (always).
         print(NetworkConsole.cMoveResult(
-            status: "\(result.status)",
+            status: RetrieveStatusText.describe(result.status, service: .cMove),
             completed: result.progress.completed,
             failed: result.progress.failed,
             warning: result.progress.warning,
             isSuccess: result.isSuccess), terminator: "")
 
-        // PS3.4 C.4.2.1.4.2: success means status 0x0000 and no failed
+        // PS3.4 C.4.2.2.1: success means status 0x0000 and no failed
         // sub-operations. Anything else exits non-zero, with the Failed SOP
         // Instance UID List (0008,0058) when the SCP supplied one.
-        try Self.checkResult(result)
+        try Self.checkResult(result, service: .cMove)
     }
 
     /// Prints failed/warning details to stderr and throws unless `result.isSuccess`.
-    static func checkResult(_ result: RetrieveResult) throws {
+    /// The status is worded per PS3.4 2026a Table C.4-2 (C-MOVE) or C.4-3 (C-GET)
+    /// and the counters per PS3.7 Tables 9.3-10 / 9.3-7.
+    static func checkResult(_ result: RetrieveResult, service: RetrieveStatusText.Service) throws {
         if !result.failedSOPInstanceUIDs.isEmpty {
-            fprintln("Failed SOP Instance UIDs (\(result.failedSOPInstanceUIDs.count)):")
+            fprintln("Failed SOP Instance UID List (0008,0058), \(result.failedSOPInstanceUIDs.count) UID(s):")
             for uid in result.failedSOPInstanceUIDs { fprintln("  \(uid)") }
         }
         if result.isSuccess { return }
-        if result.isWarning {
-            fprintln("Warning: retrieve finished with status \(result.status) — "
-                + "\(result.progress.completed) completed, \(result.progress.failed) failed, "
-                + "\(result.progress.warning) warning(s)")
-        }
-        throw RetrieveError.retrievalFailed(status: result.status,
-                                            failed: result.progress.failed,
-                                            warning: result.progress.warning,
+        fprintln("Final \(service.rawValue) response: "
+            + RetrieveStatusText.describe(result.status, service: service)
+            + " — " + RetrieveStatusText.subOperationCounts(result.progress))
+        throw RetrieveError.retrievalFailed(service: service,
+                                            status: result.status,
+                                            progress: result.progress,
                                             failedSOPInstanceUIDs: result.failedSOPInstanceUIDs)
     }
     
@@ -263,9 +264,9 @@ struct RetrieveExecutor {
         // C-GET summary via the SHARED formatter (handles the 0-instances warning).
         print(NetworkConsole.cGetSummary(received: filesReceived), terminator: "")
 
-        // PS3.4 C.4.3.1.4.2: same success rule as C-MOVE.
+        // PS3.4 C.4.3.2.1: same success rule as C-MOVE.
         if let result = finalResult {
-            try Self.checkResult(result)
+            try Self.checkResult(result, service: .cGet)
         }
     }
 
@@ -414,16 +415,21 @@ struct RetrieveExecutor {
 
 enum RetrieveError: Error, CustomStringConvertible, LocalizedError {
     case missingMoveDestination
-    case retrievalFailed(status: DIMSEStatus, failed: Int, warning: Int, failedSOPInstanceUIDs: [String])
+    case retrievalFailed(service: RetrieveStatusText.Service, status: DIMSEStatus,
+                         progress: RetrieveProgress, failedSOPInstanceUIDs: [String])
     case partialFailure(succeeded: Int, failed: Int)
     
     var description: String {
         switch self {
         case .missingMoveDestination:
             return "C-MOVE requires a move destination AE title"
-        case .retrievalFailed(let status, let failed, let warning, let uids):
-            var text = "Retrieval failed with status: \(status) (\(failed) failed, \(warning) warning sub-operations)"
-            if !uids.isEmpty { text += "; failed SOP Instance UIDs: " + uids.joined(separator: ", ") }
+        case .retrievalFailed(let service, let status, let progress, let uids):
+            var text = "\(service.rawValue) final response "
+                + RetrieveStatusText.describe(status, service: service)
+                + " (" + RetrieveStatusText.subOperationCounts(progress) + ")"
+            if !uids.isEmpty {
+                text += "; Failed SOP Instance UID List (0008,0058): " + uids.joined(separator: ", ")
+            }
             return text
         case .partialFailure(let succeeded, let failed):
             return "Bulk retrieval partially failed: \(succeeded) succeeded, \(failed) failed"
