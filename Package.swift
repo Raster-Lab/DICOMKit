@@ -793,6 +793,8 @@ let package = Package(
                 "DICOMDIRConformanceTests.swift",
                 // PS3.3 2026a F.5 record types and keys, F.3-3, F.4-1; PS3.11 image attribute values (D229-D233, 2026-10-01).
                 "DICOMDIRRecordKeysTests.swift",
+                // PS3.11 2026a Additional DICOMDIR Keys tables and Icon Images sections, PS3.3 F.7 (D239, 2026-10-01).
+                "DICOMDIRProfileKeysTests.swift",
                 // PS3.15 Table E.1-1 UID set incl. sequence items, PS3.5 9.1, PS3.6 Table A-1
                 // wording (D133, D135, D136, D138, 2026-10-01).
                 "UIDManagerStandardTests.swift",

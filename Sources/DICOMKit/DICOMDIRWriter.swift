@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — PS3.3 2026a F.3.2.2 offsets and Table F.3-3 record keys; Implementation Class UID is no longer the Deflated Transfer Syntax UID; (0002,0000) is computed by DICOMFile.write() (PS3.10 Table 7.1-1)
+// NEMA-verified: 2026a, checked 2026-10-01 — PS3.3 2026a F.3.2.2 offsets and Table F.3-3 record keys; Implementation Class UID is no longer the Deflated Transfer Syntax UID; (0002,0000) is computed by DICOMFile.write() (PS3.10 Table 7.1-1); the Builder adds the PS3.11 2026a Additional DICOMDIR Keys of the profile and its Icon Image Sequence (D239)
 // NEMA-verified: 2026a, checked 2026-10-01 — Builder: one record per instance under its PATIENT/STUDY/SERIES records (PS3.3 2026a F.4, Table F.4-1; was first image per series, D129), of the record type PS3.3 F.5 gives its SOP Class with its Type 1/2 keys (D229, D230); File-set Consistency Flag always 0000H (Table F.3-3, D231); refuses File IDs outside PS3.10 2026a 8.2/8.5 (D131) and SOP Classes / Transfer Syntaxes the profile's PS3.11 2026a table does not list (DICOMDIRProfileRules, D70)
 import Foundation
 import DICOMCore
@@ -271,7 +271,11 @@ extension DICOMDirectory {
     /// Number its ordinal in the study, a record without Instance Number its ordinal in the
     /// series (PS3.11 D.3.3.1: the FSC supplies them); a Study Date / Time the instance lacks
     /// is taken from its Series, Acquisition or Content Date / Time, else 19000101 / 000000
-    /// (``suppliesMissingStudyDateTime``); any other missing Type 1 key refuses the file. `addFile` refuses (throws ``DICOMDIRProfileRules/Refusal``) a File ID that
+    /// (``suppliesMissingStudyDateTime``); any other missing Type 1 key refuses the file. The
+    /// profile's PS3.11 "Additional DICOMDIR Keys" (Tables A.3-2, B.3-2, D.3-2, E.3-2, H.3-2, I.3-2)
+    /// are added to the PATIENT, SERIES and instance records, with an Icon Image Sequence made from
+    /// the pixels where STD-XABC-CD / STD-XA1K require one; a required key that cannot be supplied
+    /// refuses the file (``DICOMDIRProfileRules/Refusal/missingProfileKey(profile:recordType:key:tag:table:reason:)``). `addFile` refuses (throws ``DICOMDIRProfileRules/Refusal``) a File ID that
     /// breaks PS3.10 8.2 / 8.5, a SOP Class or Transfer Syntax the profile's PS3.11 table
     /// does not list, and a SOP Instance that is already indexed.
     public struct Builder {
@@ -400,9 +404,19 @@ extension DICOMDirectory {
                 $0.recordType == .series && $0.attribute(for: .seriesInstanceUID)?.stringValue == seriesInstanceUID
             }) }
 
+            // PS3.11 2026a "Additional DICOMDIR Keys" of the profile (Tables A.3-2 ... I.3-2) and its
+            // Icon Images section, for this instance's PATIENT, SERIES and own record.
+            func profileKeys(_ type: DirectoryRecordType) throws -> [Tag: DataElement] {
+                try DICOMDIRProfileRules.additionalKeyElements(for: type, profile: profile, file: file, sopClassUID: sopClassUID)
+            }
+            let patientExtra = try profileKeys(.patient)
+            let seriesExtra = try profileKeys(.series)
+            let leafExtra = try profileKeys(recordType)
+
             var newPatient: DirectoryRecord?
             if p == nil {
-                newPatient = DirectoryRecord(recordType: .patient, attributes: try keys(.patient, .init()))
+                newPatient = DirectoryRecord(recordType: .patient,
+                                             attributes: Self.merged(try keys(.patient, .init()), patientExtra))
             }
             var newStudy: DirectoryRecord?
             if s == nil {
@@ -423,18 +437,22 @@ extension DICOMDirectory {
                 var assigned = DICOMDIRRecordKeys.Assigned()
                 assigned.seriesNumber = String(seriesInStudy + 1)     // IS
                 assigned.modality = "OT"   // Type 1 in every IOD; "OT" for an instance without one (as before)
-                var attributes = try keys(.series, assigned)
+                var attributes = Self.merged(try keys(.series, assigned), seriesExtra)
                 if let description = dataSet[.seriesDescription] { attributes[.seriesDescription] = description }
                 newSeries = DirectoryRecord(recordType: .series, attributes: attributes)
             }
             let instancesInSeries = r.map { patients[p!].children[s!].children[$0].children.count } ?? 0
             var assigned = DICOMDIRRecordKeys.Assigned()
             assigned.instanceNumber = String(instancesInSeries + 1)   // IS
-            let leaf = instanceRecord(try keys(recordType, assigned))
+            let leaf = instanceRecord(Self.merged(try keys(recordType, assigned), leafExtra))
 
             // PATIENT (root entity) — found or appended.
             let pi: Int
-            if let p { pi = p } else {
+            if let p {
+                pi = p
+                // "Required if present in any objects referenced by subordinate records" (H.3-2, I.3-2)
+                Self.fill(&patients[pi], with: patientExtra)
+            } else {
                 pi = patients.count
                 patients.append(newPatient!)
                 patientIndex[patientID] = pi
@@ -447,13 +465,33 @@ extension DICOMDirectory {
             }
             // SERIES under that STUDY.
             let ri: Int
-            if let r { ri = r } else {
+            if let r {
+                ri = r
+                Self.fill(&patients[pi].children[si].children[ri], with: seriesExtra)
+            } else {
                 ri = patients[pi].children[si].children.count
                 patients[pi].children[si].addChild(newSeries!)
             }
             // One record per instance, of the type its SOP Class calls for (PS3.3 F.4, F.5).
             patients[pi].children[si].children[ri].addChild(leaf)
             indexedInstances[sopInstanceUID] = relativePath
+        }
+
+        /// `base` with the profile's additional keys; a non-empty value is never replaced by an empty one.
+        static func merged(_ base: [Tag: DataElement], _ extra: [Tag: DataElement]) -> [Tag: DataElement] {
+            base.merging(extra) { old, new in isEmpty(old) ? new : old }
+        }
+
+        /// Sets the additional keys an existing PATIENT / SERIES record lacks or has empty.
+        static func fill(_ record: inout DirectoryRecord, with extra: [Tag: DataElement]) {
+            for (tag, element) in extra where !isEmpty(element) {
+                if let existing = record.attribute(for: tag), !isEmpty(existing) { continue }
+                record.setAttribute(element, for: tag)
+            }
+        }
+
+        private static func isEmpty(_ element: DataElement) -> Bool {
+            element.vr == .SQ ? (element.sequenceItems ?? []).isEmpty : element.length == 0
         }
 
         /// The Directory Record Type for an instance: PS3.3 2026a F.5 per SOP Class; for a SOP

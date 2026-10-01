@@ -309,7 +309,20 @@ final class DICOMDIRRecordKeysTests: XCTestCase {
         let xa = "1.2.840.10008.5.1.4.1.1.12.1"
         let jpegLossless = "1.2.840.10008.1.2.4.70"   // the only syntax of Table B.3-1
         var builder = DICOMDirectory.Builder(fileSetID: "T", profile: .standardXA1024CD)
-        XCTAssertNoThrow(try builder.addFile(image(xa, ts: jpegLossless, rows: 1024, columns: 1024, stored: 10, high: 9, modality: "XA"), relativePath: fileID(1)))
+        // B.3-2 / B.3.3.2 (D239): the IMAGE record needs a 128 x 128 8-bit MONOCHROME2 Icon Image
+        // Sequence; this JPEG stand-in cannot be decoded, so the instance carries one
+        func icon(_ ds: inout DataSet) {
+            var icon = DataSet()
+            for (tag, value) in [(Tag.samplesPerPixel, 1), (.rows, 128), (.columns, 128), (.bitsAllocated, 8),
+                                 (.bitsStored, 8), (.highBit, 7), (.pixelRepresentation, 0)] {
+                icon.setUInt16(UInt16(value), for: tag)
+            }
+            icon.setString("MONOCHROME2", for: .photometricInterpretation, vr: .CS)
+            icon[.pixelData] = DataElement.data(tag: .pixelData, vr: .OB, data: Data(count: 128 * 128))
+            ds.setSequence([SequenceItem(elements: icon.allElements)], for: .iconImageSequence)
+            ds.setStrings(["ORIGINAL", "PRIMARY", "SINGLE PLANE"], for: .imageType, vr: .CS)
+        }
+        XCTAssertNoThrow(try builder.addFile(image(xa, ts: jpegLossless, rows: 1024, columns: 1024, stored: 10, high: 9, modality: "XA", icon), relativePath: fileID(1)))
         XCTAssertThrowsError(try builder.addFile(image(xa, ts: jpegLossless, rows: 1100, columns: 1024, stored: 14, high: 13, modality: "XA"),
                                                  relativePath: fileID(2))) { error in
             let text = "\(error)"

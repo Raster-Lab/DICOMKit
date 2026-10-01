@@ -6,6 +6,7 @@
 //
 // NEMA-verified: 2026a, checked 2026-10-01 — every non-Basic-Directory row of PS3.11 2026a Tables A.3-1 (1), B.3-1 (5), C.3-1 (6), D.3-1 (1), E.3-1 (10), G.3-1 (1), H.3-1 (6), I.3-1 (1), J.3-1 (6), K.3-1 (4), L.3-1 (1), L.3-2 (2), M.3-1 (10), N.3-1 (3) (57 rows) and the 9 SOP Classes of PS3.4 2026a Table GG.3-1, generated from the DocBook; `generate_dicomdir_profile_rules.py --check` re-verifies it.
 // Image attribute rows of Tables A.3-3, B.3-3, B.3-4, E.3-3, E.3-4, E.3-5, E.3-6, K.3-3, L.4-1, K.3-4, L.4-2 (47 rows) and the 5 Photometric Interpretation rows of Table C.3-2 copied verbatim.
+// Additional DICOMDIR Keys: top-level rows of Tables A.3-2 (9), B.3-2 (10), D.3-2 (2), E.3-2 (7), H.3-2 (19), I.3-2 (9), applied per Annex A: A.3-2, B: B.3-2, D: D.3-2, E: E.3-2, H: H.3-2, I: I.3-2, J: H.3-2, M: H.3-2, N: H.3-2; Icon Images sections A.3.3.2, B.3.3.2, E.3.3.3 (D239).
 
 import DICOMCore
 
@@ -200,6 +201,99 @@ extension DICOMDIRProfileRules {
         "PALETTE COLOR": ["1.2.840.10008.1.2.1", "1.2.840.10008.1.2.5"],
         "YBR_FULL": ["1.2.840.10008.1.2.5"],
         "YBR_FULL_422": ["1.2.840.10008.1.2.1", "1.2.840.10008.1.2.4.50"],
+    ]
+
+    /// PS3.11 2026a "Additional DICOMDIR Keys" tables: top-level rows, Notes verbatim, the 1C
+    /// condition classified by the generator.
+    static let additionalKeyTables: [String: [AdditionalKey]] = [
+        "A.3-2": [
+            AdditionalKey(name: "Patient's Birth Date", tag: Tag(group: 0x0010, element: 0x0030), recordTypes: ["PATIENT"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Patient's Sex", tag: Tag(group: 0x0010, element: 0x0040), recordTypes: ["PATIENT"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Institution Name", tag: Tag(group: 0x0008, element: 0x0080), recordTypes: ["SERIES"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Institution Address", tag: Tag(group: 0x0008, element: 0x0081), recordTypes: ["SERIES"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Performing Physicians' Name", tag: Tag(group: 0x0008, element: 0x1050), recordTypes: ["SERIES"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Icon Image Sequence", tag: Tag(group: 0x0088, element: 0x0200), recordTypes: ["IMAGE"], type: "1", condition: "", notes: ""),
+            AdditionalKey(name: "Image Type", tag: Tag(group: 0x0008, element: 0x0008), recordTypes: ["IMAGE"], type: "1", condition: "", notes: ""),
+            AdditionalKey(name: "Calibration Image", tag: Tag(group: 0x0050, element: 0x0004), recordTypes: ["IMAGE"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Referenced Image Sequence", tag: Tag(group: 0x0008, element: 0x1140), recordTypes: ["IMAGE"], type: "1C", condition: "biplane", notes: "Required if the SOP Instance referenced by the Directory Record has an Image Type (0008,0008) of BIPLANE A or BIPLANE B. May be present otherwise."),
+        ],
+        "B.3-2": [
+            AdditionalKey(name: "Patient's Birth Date", tag: Tag(group: 0x0010, element: 0x0030), recordTypes: ["PATIENT"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Patient's Sex", tag: Tag(group: 0x0010, element: 0x0040), recordTypes: ["PATIENT"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Institution Name", tag: Tag(group: 0x0008, element: 0x0080), recordTypes: ["SERIES"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Institution Address", tag: Tag(group: 0x0008, element: 0x0081), recordTypes: ["SERIES"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Performing Physicians' Name", tag: Tag(group: 0x0008, element: 0x1050), recordTypes: ["SERIES"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Icon Image Sequence", tag: Tag(group: 0x0088, element: 0x0200), recordTypes: ["IMAGE"], type: "1", condition: "", notes: ""),
+            AdditionalKey(name: "Image Type", tag: Tag(group: 0x0008, element: 0x0008), recordTypes: ["IMAGE"], type: "1C", condition: "xaImage", notes: "Required if the SOP Instance referenced by the Directory Record is an XA Image."),
+            AdditionalKey(name: "Calibration Image", tag: Tag(group: 0x0050, element: 0x0004), recordTypes: ["IMAGE"], type: "2", condition: "", notes: ""),
+            AdditionalKey(name: "Referenced Image Sequence", tag: Tag(group: 0x0008, element: 0x1140), recordTypes: ["IMAGE"], type: "1C", condition: "xaBiplane", notes: "Required if the SOP Instance referenced by the Directory Record is an XA Image and has an Image Type (0008,0008) value 3 of BIPLANE A or BIPLANE B. May be present otherwise."),
+            AdditionalKey(name: "Lossy image Compression Ratio", tag: Tag(group: 0x0028, element: 0x2112), recordTypes: ["IMAGE"], type: "1C", condition: "presentNonZero", notes: "Required if present in image object with a non-zero length value."),
+        ],
+        "D.3-2": [
+            AdditionalKey(name: "Image Type", tag: Tag(group: 0x0008, element: 0x0008), recordTypes: ["IMAGE"], type: "1C", condition: "present", notes: "Required if present in image object."),
+            AdditionalKey(name: "Referenced Image Sequence", tag: Tag(group: 0x0008, element: 0x1140), recordTypes: ["IMAGE"], type: "1C", condition: "present", notes: "Required if present in image object."),
+        ],
+        "E.3-2": [
+            AdditionalKey(name: "Referenced Image Sequence", tag: Tag(group: 0x0008, element: 0x1140), recordTypes: ["IMAGE"], type: "1C", condition: "present", notes: "Required if present in image object."),
+            AdditionalKey(name: "Image Position (Patient)", tag: Tag(group: 0x0020, element: 0x0032), recordTypes: ["IMAGE"], type: "1C", condition: "present", notes: "Required if present in image object."),
+            AdditionalKey(name: "Image Orientation (Patient)", tag: Tag(group: 0x0020, element: 0x0037), recordTypes: ["IMAGE"], type: "1C", condition: "present", notes: "Required if present in image object."),
+            AdditionalKey(name: "Frame of Reference UID", tag: Tag(group: 0x0020, element: 0x0052), recordTypes: ["IMAGE"], type: "1C", condition: "present", notes: "Required if present in image object."),
+            AdditionalKey(name: "Rows", tag: Tag(group: 0x0028, element: 0x0010), recordTypes: ["IMAGE"], type: "1", condition: "", notes: ""),
+            AdditionalKey(name: "Columns", tag: Tag(group: 0x0028, element: 0x0011), recordTypes: ["IMAGE"], type: "1", condition: "", notes: ""),
+            AdditionalKey(name: "Pixel Spacing", tag: Tag(group: 0x0028, element: 0x0030), recordTypes: ["IMAGE"], type: "1C", condition: "present", notes: "Required if present in image object."),
+        ],
+        "H.3-2": [
+            AdditionalKey(name: "Patient's Birth Date", tag: Tag(group: 0x0010, element: 0x0030), recordTypes: ["PATIENT"], type: "1C", condition: "presentInSubordinates", notes: "Required if present in any objects referenced by subordinate records with a non-zero length value."),
+            AdditionalKey(name: "Patient's Sex", tag: Tag(group: 0x0010, element: 0x0040), recordTypes: ["PATIENT"], type: "1C", condition: "presentInSubordinates", notes: "Required if present in any objects referenced by subordinate records with a non-zero length value."),
+            AdditionalKey(name: "Institution Name", tag: Tag(group: 0x0008, element: 0x0080), recordTypes: ["SERIES"], type: "1C", condition: "presentInSubordinates", notes: "Required if present in any objects referenced by subordinate records with a non-zero length value."),
+            AdditionalKey(name: "Institution Address", tag: Tag(group: 0x0008, element: 0x0081), recordTypes: ["SERIES"], type: "1C", condition: "presentInSubordinates", notes: "Required if present in any objects referenced by subordinate records with a non-zero length value."),
+            AdditionalKey(name: "Performing Physicians' Name", tag: Tag(group: 0x0008, element: 0x1050), recordTypes: ["SERIES"], type: "1C", condition: "presentInSubordinates", notes: "Required if present in any objects referenced by subordinate records with a non-zero length value."),
+            AdditionalKey(name: "Image Type", tag: Tag(group: 0x0008, element: 0x0008), recordTypes: ["IMAGE"], type: "1C", condition: "present", notes: "Required if present in image object."),
+            AdditionalKey(name: "Calibration Image", tag: Tag(group: 0x0050, element: 0x0004), recordTypes: ["IMAGE"], type: "1C", condition: "presentNonZero", notes: "Required if present in image object with a non-zero length value."),
+            AdditionalKey(name: "Referenced Image Sequence", tag: Tag(group: 0x0008, element: 0x1140), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1C", condition: "presentOrSharedFunctionalGroups", notes: "Required if present in image object with one or more items, either in the top level Data Set or nested within a functional group sequence of the Shared Functional Groups Sequence (5200,9229). | This sequence shall be the entire contents of the sequence present in image object (all items and Attributes shall be copied in the same order and no addition or removal shall be done). When more then one sequence is present in the image object, the top level Data Set sequence shall be copied."),
+            AdditionalKey(name: "Lossy Image Compression Ratio", tag: Tag(group: 0x0028, element: 0x2112), recordTypes: ["IMAGE"], type: "1C", condition: "presentNonZero", notes: "Required if present in image object with a non-zero length value."),
+            AdditionalKey(name: "Rows", tag: Tag(group: 0x0028, element: 0x0010), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1", condition: "", notes: ""),
+            AdditionalKey(name: "Columns", tag: Tag(group: 0x0028, element: 0x0011), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1", condition: "", notes: ""),
+            AdditionalKey(name: "Frame of Reference UID", tag: Tag(group: 0x0020, element: 0x0052), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1C", condition: "present", notes: "Required if present in image or spectroscopy object."),
+            AdditionalKey(name: "Synchronization Frame of Reference UID", tag: Tag(group: 0x0020, element: 0x0200), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1C", condition: "present", notes: "Required if present in image or spectroscopy object."),
+            AdditionalKey(name: "Number of Frames", tag: Tag(group: 0x0028, element: 0x0008), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1C", condition: "present", notes: "Required if present in image or spectroscopy object."),
+            AdditionalKey(name: "Acquisition Time Synchronized", tag: Tag(group: 0x0018, element: 0x1800), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1C", condition: "present", notes: "Required if present in image or spectroscopy object."),
+            AdditionalKey(name: "Acquisition DateTime", tag: Tag(group: 0x0008, element: 0x002A), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1C", condition: "present", notes: "Required if present in image or spectroscopy object."),
+            AdditionalKey(name: "Image Position (Patient)", tag: Tag(group: 0x0020, element: 0x0032), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1C", condition: "presentOrSharedFunctionalGroups", notes: "Required if present in image or spectroscopy object, either in the top level Data Set or nested within a functional group sequence of the Shared Functional Groups Sequence (5200,9229)."),
+            AdditionalKey(name: "Image Orientation (Patient)", tag: Tag(group: 0x0020, element: 0x0037), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1C", condition: "presentOrSharedFunctionalGroups", notes: "Required if present in image or spectroscopy object, either in the top level Data Set or nested within a functional group sequence of the Shared Functional Groups Sequence (5200,9229)."),
+            AdditionalKey(name: "Pixel Spacing", tag: Tag(group: 0x0028, element: 0x0030), recordTypes: ["IMAGE", "SPECTROSCOPY"], type: "1C", condition: "presentOrSharedFunctionalGroups", notes: "Required if present in image or spectroscopy object, either in the top level Data Set or nested within a functional group sequence of the Shared Functional Groups Sequence (5200,9229)."),
+        ],
+        "I.3-2": [
+            AdditionalKey(name: "Patient's Birth Date", tag: Tag(group: 0x0010, element: 0x0030), recordTypes: ["PATIENT"], type: "1C", condition: "presentInSubordinates", notes: "Required if present in any objects referenced by subordinate records with a non-zero length value."),
+            AdditionalKey(name: "Patient's Sex", tag: Tag(group: 0x0010, element: 0x0040), recordTypes: ["PATIENT"], type: "1C", condition: "presentInSubordinates", notes: "Required if present in any objects referenced by subordinate records with a non-zero length value."),
+            AdditionalKey(name: "Institution Name", tag: Tag(group: 0x0008, element: 0x0080), recordTypes: ["SERIES"], type: "1C", condition: "presentInSubordinates", notes: "Required if present in any objects referenced by subordinate records with a non-zero length value."),
+            AdditionalKey(name: "Institution Address", tag: Tag(group: 0x0008, element: 0x0081), recordTypes: ["SERIES"], type: "1C", condition: "presentInSubordinates", notes: "Required if present in any objects referenced by subordinate records with a non-zero length value."),
+            AdditionalKey(name: "Performing Physicians' Name", tag: Tag(group: 0x0008, element: 0x1050), recordTypes: ["SERIES"], type: "1C", condition: "presentInSubordinates", notes: "Required if present in any objects referenced by subordinate records with a non-zero length value."),
+            AdditionalKey(name: "Image Type", tag: Tag(group: 0x0008, element: 0x0008), recordTypes: ["IMAGE"], type: "1C", condition: "present", notes: "Required if present in image object."),
+            AdditionalKey(name: "Lossy Image Compression Ratio", tag: Tag(group: 0x0028, element: 0x2112), recordTypes: ["IMAGE"], type: "1C", condition: "presentNonZero", notes: "Required if present in image object with a non-zero length value."),
+            AdditionalKey(name: "Rows", tag: Tag(group: 0x0028, element: 0x0010), recordTypes: ["IMAGE"], type: "1", condition: "", notes: ""),
+            AdditionalKey(name: "Columns", tag: Tag(group: 0x0028, element: 0x0011), recordTypes: ["IMAGE"], type: "1", condition: "", notes: ""),
+        ],
+    ]
+
+    /// The Additional DICOMDIR Keys table each PS3.11 2026a Annex applies (its X.3.3 section).
+    static let additionalKeyTableByAnnex: [String: String] = [
+        "A": "A.3-2",
+        "B": "B.3-2",
+        "D": "D.3-2",
+        "E": "E.3-2",
+        "H": "H.3-2",
+        "I": "I.3-2",
+        "J": "H.3-2",
+        "M": "H.3-2",
+        "N": "H.3-2",
+    ]
+
+    /// PS3.11 2026a "Icon Images" sections per Annex (empty Photometric list: PS3.3 F.7 alone).
+    static let iconImageRules: [String: IconImageRule] = [
+        "A": IconImageRule(section: "A.3.3.2", recordTypes: ["IMAGE"], required: true, rows: 128, columns: 128, bits: 8, photometricInterpretations: []),
+        "B": IconImageRule(section: "B.3.3.2", recordTypes: ["IMAGE"], required: true, rows: 128, columns: 128, bits: 8, photometricInterpretations: ["MONOCHROME2"]),
+        "E": IconImageRule(section: "E.3.3.3", recordTypes: ["SERIES", "IMAGE"], required: false, rows: 64, columns: 64, bits: 8, photometricInterpretations: ["MONOCHROME2", "PALETTE COLOR"]),
     ]
 
     /// PS3.4 2026a Table GG.3-1 (Non-Patient Object Storage): Media Storage SOP Classes per PS3.4 I.4.

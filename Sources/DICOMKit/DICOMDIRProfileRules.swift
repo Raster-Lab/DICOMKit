@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — File-set Creator conformance rules: the SOP Class / Transfer Syntax rows of PS3.11 2026a Tables A.3-1, B.3-1, C.3-1, D.3-1, E.3-1, G.3-1, H.3-1, I.3-1, J.3-1, K.3-1, L.3-1, L.3-2, M.3-1, N.3-1 (57 rows, generated: DICOMDIRProfileTables.swift) mapped to the 64 identifiers of Tables A.1-1 to N.1-1; "Composite IODs for which a Media Storage SOP Class is defined in PS3.4" = PS3.4 2026a Table B.5-1 (170) + Table GG.3-1 (9) per PS3.4 I.4; File ID rules of PS3.10 2026a 8.2 (1-8 components of 1-8 characters) and 8.5 (A-Z, 0-9, _); "Multi-frame Composite IODs" rows admit only instances with Number of Frames (D233)
+// NEMA-verified: 2026a, checked 2026-10-01 — File-set Creator conformance rules: the SOP Class / Transfer Syntax rows of PS3.11 2026a Tables A.3-1, B.3-1, C.3-1, D.3-1, E.3-1, G.3-1, H.3-1, I.3-1, J.3-1, K.3-1, L.3-1, L.3-2, M.3-1, N.3-1 (57 rows, generated: DICOMDIRProfileTables.swift) mapped to the 64 identifiers of Tables A.1-1 to N.1-1; "Composite IODs for which a Media Storage SOP Class is defined in PS3.4" = PS3.4 2026a Table B.5-1 (170) + Table GG.3-1 (9) per PS3.4 I.4; File ID rules of PS3.10 2026a 8.2 (1-8 components of 1-8 characters) and 8.5 (A-Z, 0-9, _); "Multi-frame Composite IODs" rows admit only instances with Number of Frames (D233); the Additional DICOMDIR Keys tables A.3-2, B.3-2, D.3-2, E.3-2, H.3-2, I.3-2 and Icon Images sections are applied by DICOMDIRProfileKeys.swift (D239)
 import Foundation
 import DICOMCore
 import DICOMDictionary
@@ -35,6 +35,9 @@ public enum DICOMDIRProfileRules {
         case missingRecordKey(recordType: String, key: String, tag: String, table: String)
         /// The instance breaks the profile's image attribute values (PS3.11 2026a).
         case imageAttributeValues(sopClassUID: String, profile: String, problems: [String])
+        /// A Type 1 (or applicable 1C) key of the profile's PS3.11 2026a "Additional DICOMDIR Keys"
+        /// table cannot be supplied (e.g. an Icon Image Sequence that cannot be made from the pixels).
+        case missingProfileKey(profile: String, recordType: String, key: String, tag: String, table: String, reason: String)
 
         public var description: String {
             switch self {
@@ -54,6 +57,8 @@ public enum DICOMDIRProfileRules {
                 return "SOP Class \(DICOMDIRProfileRules.named(sop)) has no Directory Record Type; refused [PS3.3 2026a F.4 Table F.4-1, F.5]"
             case let .missingRecordKey(recordType, key, tag, table):
                 return "\(recordType) record: Type 1 key \(key) \(tag) has no value in the instance and cannot be supplied [PS3.3 2026a Table \(table); PS3.11 2026a D.3.3.1]"
+            case let .missingProfileKey(profile, recordType, key, tag, table, reason):
+                return "\(recordType) record: key \(key) \(tag), required by \(profile), cannot be supplied: \(reason) [PS3.11 2026a Table \(table)]"
             case let .imageAttributeValues(sop, profile, problems):
                 return "SOP Class \(DICOMDIRProfileRules.named(sop)) instance breaks \(profile): \(problems.joined(separator: "; ")) [PS3.11 2026a]"
             }

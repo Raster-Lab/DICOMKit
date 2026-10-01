@@ -108,7 +108,7 @@ public enum DICOMDIRRecordKeys {
         return out
     }
 
-    private static func present(_ tag: Tag, in dataSet: DataSet) -> DataElement? {
+    static func present(_ tag: Tag, in dataSet: DataSet) -> DataElement? {
         guard let element = dataSet[tag] else { return nil }
         if element.vr == .SQ { return (element.sequenceItems?.isEmpty ?? true) ? nil : element }
         if element.length == 0 { return nil }

@@ -40,6 +40,9 @@ final class DICOMDIRConformanceTests: XCTestCase {
         ds.setString("Conformance^Test", for: .patientName, vr: .PN)
         ds.setString(patient, for: .patientID, vr: .LO)
         ds.setString("\(number)", for: .instanceNumber, vr: .IS)
+        // Rows / Columns: Type 1 keys of the IMAGE record under STD-GEN-DVD-* (PS3.11 2026a H.3-2, D239)
+        ds.setUInt16(512, for: .rows)
+        ds.setUInt16(512, for: .columns)
         return DICOMFile.create(dataSet: ds, sopClassUID: sopClass, sopInstanceUID: instanceUID,
                                 transferSyntaxUID: transferSyntax)
     }
