@@ -78,6 +78,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adds `ModalitiesInStudy`, `NumberOfStudyRelatedSeries`, `NumberOfStudyRelatedInstances` (PS3.4 Table C.6-5) next
   to the deprecated `modality`, `seriesCount`, `imageCount`. Indexes written before still load (the key is
   computed, not read). New DICOMKit API: `ArchiveStudy.modalitiesInStudy`.
+- **`dicom-export` frame numbers** (P-EXPORT-1): new 1-based `single --frame-number` and `animate
+  --start-frame-number` / `--end-frame-number` (PS3.3 2026a Table 10-3 "The first Frame shall be denoted as Frame
+  number 1"; C.7.6.6). The 0-based `--frame`, `--start-frame`, `--end-frame` keep their meaning, say "deprecated:
+  0-based index" in `--help` and print a stderr note; a 0-based and a 1-based option together exit 1. An
+  out-of-range Frame number is reported as "Frame number N does not exist … numbered 1 to M".
+- **`dicom-export bulk --organize-by patient|study|series`** names the patient folder from Patient ID (0010,0020),
+  followed by `@` and Issuer of Patient ID (0010,0021) when present (PS3.3 2026a Table C.7-1 / Table 10-18; the
+  Patient level unique key of PS3.4 Table C.6-1), instead of Patient's Name (P-EXPORT-2). **Behaviour change:**
+  existing output trees organized by name are not reused. New DICOMKit API:
+  `DICOMImageExporter.patientFolderName(patientID:issuerOfPatientID:)` and
+  `buildOrganizedPath(baseOutput:scheme:patientID:issuerOfPatientID:studyUID:seriesUID:filename:)`; the
+  `patientName:` variant is deprecated.
+- **`dicom-export contact-sheet --apply-window`** and **`bulk --apply-window`** are deprecated (P-EXPORT-3): they
+  have no effect (the file's VOI is always applied); `--help` says so and use prints a stderr warning.
 
 ### Fixed — dicom-viewer grayscale display verified against DICOM 2026a (2026-10-01)
 

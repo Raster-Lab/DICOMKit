@@ -7,7 +7,7 @@ import CoreGraphics
 #endif
 
 /// `dicom-export` against DICOM 2026a: the cine frame rate of PS3.3 Table C.7-13, Burned In
-/// Annotation (0028,0301) of Table C.7-9, 0-based frame indexes, and one render path (the
+/// Annotation (0028,0301) of Table C.7-9, frame selection, and one render path (the
 /// PS3.4 N.2 chain) for every subcommand. Names and tags dumped from the DocBook by script.
 final class ExportStandardTests: XCTestCase {
 
@@ -85,11 +85,12 @@ final class ExportStandardTests: XCTestCase {
         XCTAssertTrue(BurnedInAnnotation.warning(for: "a.dcm").contains("Burned In Annotation (0028,0301) is YES"))
     }
 
-    // MARK: - Frames are 0-based indexes (PS3.3 C.7.6.5.1.1: the first Frame number is one)
+    // MARK: - Frame numbers from 1 (P-EXPORT-1; PS3.3 Table 10-3); the 0-based options are deprecated
 
     func testFrameOptionsSayZeroBased() {
-        XCTAssertTrue(DICOMExport.Single.helpMessage(columns: 400).contains("0-based index (DICOM frame number - 1"))
-        XCTAssertTrue(DICOMExport.Animate.helpMessage(columns: 400).contains("First frame, 0-based index (DICOM frame number - 1)"))
+        XCTAssertTrue(DICOMExport.Single.helpMessage(columns: 400).contains("--frame <frame>         deprecated: 0-based index")
+                      || DICOMExport.Single.helpMessage(columns: 400).contains("deprecated: 0-based index; use --frame-number"))
+        XCTAssertTrue(DICOMExport.Animate.helpMessage(columns: 400).contains("First frame, Frame number from 1"))
     }
 
     func testWindowOptionsNameTheAttributes() {

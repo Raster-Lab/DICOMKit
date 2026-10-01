@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — option help names the PS3.6 2026a attributes it reads (Window Center (0028,1050), Window Width (0028,1051), VOI LUT Function (0028,1056), VOI LUT Sequence (0028,3010), Patient's Name (0010,0010), Study / Series Instance UID, the 9 --exif-fields keywords, all match Table 6-1); frames are 0-based indexes (frame number - 1, PS3.3 C.7.6.5.1.1 numbers the first Frame 1); PNG/JPEG/TIFF/GIF outputs are non-DICOM plumbing; every subcommand renders through ExportFrames (PS3.4 N.2 chain)
+// NEMA-verified: 2026a, checked 2026-10-01 — option help names the PS3.6 2026a attributes it reads (Window Center (0028,1050), Window Width (0028,1051), VOI LUT Function (0028,1056), VOI LUT Sequence (0028,3010), Patient's Name (0010,0010), Study / Series Instance UID, the 9 --exif-fields keywords, all match Table 6-1); frames are selected by Frame number from 1 (--frame-number, --start-frame-number, --end-frame-number; PS3.3 Table 10-3 "The first Frame shall be denoted as Frame number 1", C.7.6.6), the 0-based --frame / --start-frame / --end-frame are deprecated (P-EXPORT-1); bulk patient folders are keyed on Patient ID (0010,0020) + Issuer of Patient ID (0010,0021) (PS3.3 Table C.7-1 / 10-18, P-EXPORT-2); --apply-window on contact-sheet / bulk is deprecated (P-EXPORT-3); PNG/JPEG/TIFF/GIF outputs are non-DICOM plumbing; every subcommand renders through ExportFrames (PS3.4 N.2 chain)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -40,13 +40,17 @@ struct DICOMExport: ParsableCommand {
             (Rescale Slope/Intercept), then the file's VOI (Window Center (0028,1050) and
             Window Width (0028,1051) with VOI LUT Function (0028,1056), else VOI LUT Sequence
             (0028,3010), else the full pixel range), then INVERSE for MONOCHROME1. Frames are
-            0-based indexes (DICOM frame number - 1). Files with Burned In Annotation
+            selected by Frame number, numbered from 1 (PS3.3 Table 10-3): --frame-number,
+            --start-frame-number, --end-frame-number; the 0-based --frame, --start-frame and
+            --end-frame are deprecated. bulk --organize-by patient names the patient folder
+            from Patient ID (0010,0020) and Issuer of Patient ID (0010,0021). Files with Burned In Annotation
             (0028,0301) YES get a warning on stderr. The outputs (PNG, JPEG, TIFF, GIF) are
             not DICOM files.
 
             Examples:
               dicom-export single ct.dcm --output ct.jpg --embed-metadata
               dicom-export contact-sheet *.dcm --output sheet.png --columns 6
+              dicom-export single cine.dcm --output frame3.png --format png --frame-number 3
               dicom-export animate cine.dcm --output cine.gif --fps 15
               dicom-export bulk input/ --output output/ --organize-by patient
             """,
@@ -91,10 +95,32 @@ extension DICOMExport {
         @Option(name: .long, help: "Window Width (0028,1051) in modality units, >= 1; needs --apply-window and --window-center")
         var windowWidth: Double?
 
-        @Option(name: .long, help: "Frame to export as a 0-based index (DICOM frame number - 1; PS3.3 numbers the first frame 1). Default: 0")
+        @Option(name: .long, help: "Frame to export, numbered from 1 (PS3.3 Table 10-3, C.7.6.6; default 1)")
+        var frameNumber: Int?
+
+        @Option(name: .long, help: "deprecated: 0-based index; use --frame-number")
         var frame: Int?
 
+        mutating func validate() throws {
+            if let f = frame, f < 0 {
+                throw ValidationError("--frame is a 0-based frame index and must be 0 or more")
+            }
+            if let n = frameNumber, n < 1 {
+                throw ValidationError("--frame-number must be 1 or more (\(ExportFrameSelection.reference))")
+            }
+            if frame != nil && frameNumber != nil {
+                throw ExportFrameSelectionConflict(zeroBased: "--frame", oneBased: "--frame-number")
+            }
+        }
+
+        /// 0-based index of the frame to export: --frame-number - 1, else the deprecated
+        /// 0-based --frame, else the first frame.
+        var frameIndex: Int { frameNumber.map { $0 - 1 } ?? frame ?? 0 }
+
         mutating func run() throws {
+            if frame != nil {
+                ExportFrameSelection.printNote(ExportFrameSelection.deprecationNote(option: "--frame", replacement: "--frame-number"))
+            }
             #if canImport(CoreGraphics) && canImport(ImageIO)
             let inputURL = URL(fileURLWithPath: input)
             guard FileManager.default.fileExists(atPath: input) else {
@@ -111,9 +137,11 @@ extension DICOMExport {
                 BurnedInAnnotation.printWarning(BurnedInAnnotation.warning(for: input))
             }
 
-            let frameIndex = frame ?? 0
             let totalFrames = pixelData.descriptor.numberOfFrames
             guard frameIndex >= 0 && frameIndex < totalFrames else {
+                if let number = frameNumber {
+                    throw ExportError.invalidInput(ExportFrameSelection.invalidFrameNumberMessage(requested: number, total: totalFrames))
+                }
                 throw ExportError.invalidFrame(frameIndex, totalFrames)
             }
 
@@ -178,13 +206,16 @@ extension DICOMExport {
         @Option(name: .long, help: "JPEG quality (1-100)")
         var quality: Int = 90
 
-        @Flag(name: .long, help: ArgumentHelp(stringLiteral: "No effect, kept for compatibility: the file's VOI (Window Center (0028,1050) and Window Width (0028,1051), else VOI LUT Sequence (0028,3010), else the full pixel range) is always applied"))
+        @Flag(name: .long, help: ArgumentHelp(stringLiteral: "deprecated: no effect; the file's VOI (Window Center (0028,1050) and Window Width (0028,1051), else VOI LUT Sequence (0028,3010), else the full pixel range) is always applied"))
         var applyWindow: Bool = false
 
         @Flag(name: .long, help: "Add filename labels below thumbnails")
         var labels: Bool = false
 
         mutating func run() throws {
+            if applyWindow {
+                ExportFrameSelection.printNote(ExportApplyWindowDeprecation.note(subcommand: "contact-sheet"))
+            }
             #if canImport(CoreGraphics) && canImport(ImageIO)
             guard !inputs.isEmpty else {
                 throw ExportError.invalidInput("No input files specified")
@@ -294,16 +325,50 @@ extension DICOMExport {
         @Option(name: .long, help: "Window Width (0028,1051) in modality units, >= 1; needs --apply-window and --window-center")
         var windowWidth: Double?
 
-        @Option(name: .long, help: "First frame, 0-based index (DICOM frame number - 1)")
-        var startFrame: Int = 0
+        @Option(name: .long, help: "First frame, Frame number from 1 (PS3.3 Table 10-3, C.7.6.6; default 1)")
+        var startFrameNumber: Int?
 
-        @Option(name: .long, help: "Last frame, 0-based index, inclusive (default: last frame)")
+        @Option(name: .long, help: "Last frame, Frame number from 1, inclusive (default: the last frame)")
+        var endFrameNumber: Int?
+
+        @Option(name: .long, help: "deprecated: 0-based index; use --start-frame-number")
+        var startFrame: Int?
+
+        @Option(name: .long, help: "deprecated: 0-based index; use --end-frame-number")
         var endFrame: Int?
 
         @Option(name: .long, help: "Scale factor (0.1-2.0)")
         var scale: Double = 1.0
 
+        mutating func validate() throws {
+            for (name, value) in [("--start-frame-number", startFrameNumber), ("--end-frame-number", endFrameNumber)] {
+                if let n = value, n < 1 {
+                    throw ValidationError("\(name) must be 1 or more (\(ExportFrameSelection.reference))")
+                }
+            }
+            let zeroBased = [("--start-frame", startFrame), ("--end-frame", endFrame)].filter { $0.1 != nil }.map(\.0)
+            let oneBased = [("--start-frame-number", startFrameNumber), ("--end-frame-number", endFrameNumber)].filter { $0.1 != nil }.map(\.0)
+            if let z = zeroBased.first, let o = oneBased.first {
+                throw ExportFrameSelectionConflict(zeroBased: z, oneBased: o)
+            }
+        }
+
+        /// 0-based start index and inclusive end index: the Frame number options - 1, else
+        /// the deprecated 0-based options, else the whole file.
+        var frameIndexRange: (start: Int, end: Int?) {
+            if startFrameNumber != nil || endFrameNumber != nil {
+                return ((startFrameNumber ?? 1) - 1, endFrameNumber.map { $0 - 1 })
+            }
+            return (startFrame ?? 0, endFrame)
+        }
+
         mutating func run() throws {
+            if startFrame != nil {
+                ExportFrameSelection.printNote(ExportFrameSelection.deprecationNote(option: "--start-frame", replacement: "--start-frame-number"))
+            }
+            if endFrame != nil {
+                ExportFrameSelection.printNote(ExportFrameSelection.deprecationNote(option: "--end-frame", replacement: "--end-frame-number"))
+            }
             #if canImport(CoreGraphics) && canImport(ImageIO)
             let inputURL = URL(fileURLWithPath: input)
             guard FileManager.default.fileExists(atPath: input) else {
@@ -318,7 +383,8 @@ extension DICOMExport {
                 throw ExportError.noFrames
             }
 
-            guard let range = DICOMImageExporter.validatedFrameRange(start: startFrame, end: endFrame, totalFrames: totalFrames) else {
+            let requested = frameIndexRange
+            guard let range = DICOMImageExporter.validatedFrameRange(start: requested.start, end: requested.end, totalFrames: totalFrames) else {
                 throw ExportError.noFrames
             }
 
@@ -426,13 +492,13 @@ extension DICOMExport {
         @Option(name: .long, help: "JPEG quality (1-100)")
         var quality: Int = 90
 
-        @Option(name: .long, help: "Folders: flat; patient = Patient's Name (0010,0010); study = patient + Study Instance UID (0020,000D); series = study + Series Instance UID (0020,000E)")
+        @Option(name: .long, help: "Folders: flat; patient = Patient ID (0010,0020), plus @Issuer of Patient ID (0010,0021) when present (PS3.3 Table C.7-1; before 2026-10-01 Patient's Name); study = patient + Study Instance UID (0020,000D); series = study + Series Instance UID (0020,000E)")
         var organizeBy: OrganizationScheme = .flat
 
         @Flag(name: .long, help: "Process directories recursively")
         var recursive: Bool = false
 
-        @Flag(name: .long, help: ArgumentHelp(stringLiteral: "No effect, kept for compatibility: the file's VOI (Window Center (0028,1050) and Window Width (0028,1051), else VOI LUT Sequence (0028,3010), else the full pixel range) is always applied"))
+        @Flag(name: .long, help: ArgumentHelp(stringLiteral: "deprecated: no effect; the file's VOI (Window Center (0028,1050) and Window Width (0028,1051), else VOI LUT Sequence (0028,3010), else the full pixel range) is always applied"))
         var applyWindow: Bool = false
 
         @Flag(name: .long, help: "Embed DICOM attributes as EXIF/TIFF tags: PatientName, StudyDate, Modality, StudyDescription, Manufacturer (PS3.6 keywords)")
@@ -442,6 +508,9 @@ extension DICOMExport {
         var verbose: Bool = false
 
         mutating func run() throws {
+            if applyWindow {
+                ExportFrameSelection.printNote(ExportApplyWindowDeprecation.note(subcommand: "bulk"))
+            }
             #if canImport(CoreGraphics) && canImport(ImageIO)
             let inputURL = URL(fileURLWithPath: input)
             var isDirectory: ObjCBool = false
@@ -480,13 +549,16 @@ extension DICOMExport {
                         continue
                     }
 
+                    // --apply-window is deprecated here and has no effect (no window values).
                     let image = try DICOMImageExporter.renderFrameForExport(
                         file: dicomFile, pixelData: pixelDataObj, frameIndex: 0,
-                        applyWindow: applyWindow, windowCenter: nil, windowWidth: nil
+                        applyWindow: false, windowCenter: nil, windowWidth: nil
                     )
 
-                    // Build output path
-                    let patientName = dicomFile.dataSet.string(for: .patientName)
+                    // Build output path: patient folder keyed on Patient ID (0010,0020) and
+                    // Issuer of Patient ID (0010,0021) (P-EXPORT-2; PS3.3 Table C.7-1).
+                    let patientID = dicomFile.dataSet.string(for: .patientID)
+                    let issuer = dicomFile.dataSet.string(for: .issuerOfPatientID)
                     let studyUID = dicomFile.dataSet.string(for: .studyInstanceUID)
                     let seriesUID = dicomFile.dataSet.string(for: .seriesInstanceUID)
                     let baseName = fileURL.deletingPathExtension().lastPathComponent + "." + format.fileExtension
@@ -494,7 +566,8 @@ extension DICOMExport {
                     let outputPath = DICOMImageExporter.buildOrganizedPath(
                         baseOutput: output,
                         scheme: organizeBy,
-                        patientName: patientName,
+                        patientID: patientID,
+                        issuerOfPatientID: issuer,
                         studyUID: studyUID,
                         seriesUID: seriesUID,
                         filename: baseName

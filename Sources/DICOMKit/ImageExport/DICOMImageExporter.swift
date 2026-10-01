@@ -205,7 +205,45 @@ public enum DICOMImageExporter {
         return result.isEmpty ? "UNKNOWN" : result
     }
 
-    /// Builds the output path for a bulk export file based on the organization scheme.
+    /// The bulk-export patient folder name (P-EXPORT-2, approved 2026-10-01): Patient ID
+    /// (0010,0020, PS3.3 2026a Table C.7-1; the Patient level unique key of PS3.4 Table C.6-1),
+    /// followed by `@` and Issuer of Patient ID (0010,0021, Table 10-18) when that is present.
+    /// Each part is sanitized; an absent or empty Patient ID gives "UNKNOWN". `@` never comes
+    /// out of ``sanitizePathComponent(_:)``, so the two parts cannot be confused.
+    public static func patientFolderName(patientID: String?, issuerOfPatientID: String?) -> String {
+        let id = patientID?.trimmingCharacters(in: .whitespaces) ?? ""
+        let folder = sanitizePathComponent(id)
+        let issuer = issuerOfPatientID?.trimmingCharacters(in: .whitespaces) ?? ""
+        return issuer.isEmpty ? folder : folder + "@" + sanitizePathComponent(issuer)
+    }
+
+    /// Builds the output path for a bulk export file based on the organization scheme. The
+    /// patient folder is ``patientFolderName(patientID:issuerOfPatientID:)``; study and series
+    /// add Study Instance UID (0020,000D) and Series Instance UID (0020,000E) folders.
+    public static func buildOrganizedPath(
+        baseOutput: String, scheme: OrganizationScheme,
+        patientID: String?, issuerOfPatientID: String?,
+        studyUID: String?, seriesUID: String?, filename: String
+    ) -> String {
+        let patient = patientFolderName(patientID: patientID, issuerOfPatientID: issuerOfPatientID)
+        switch scheme {
+        case .flat:
+            return (baseOutput as NSString).appendingPathComponent(filename)
+        case .patient:
+            return (baseOutput as NSString).appendingPathComponent(patient).appending("/\(filename)")
+        case .study:
+            let study = sanitizePathComponent(studyUID ?? "UNKNOWN")
+            return (baseOutput as NSString).appendingPathComponent(patient).appending("/\(study)/\(filename)")
+        case .series:
+            let study = sanitizePathComponent(studyUID ?? "UNKNOWN")
+            let series = sanitizePathComponent(seriesUID ?? "UNKNOWN")
+            return (baseOutput as NSString).appendingPathComponent(patient).appending("/\(study)/\(series)/\(filename)")
+        }
+    }
+
+    /// Builds the output path with the patient folder named from Patient's Name (0010,0010),
+    /// the layout `dicom-export bulk` used before 2026-10-01.
+    @available(*, deprecated, message: "P-EXPORT-2: the patient folder is keyed on Patient ID (0010,0020) and Issuer of Patient ID (0010,0021) (PS3.3 Table C.7-1); use buildOrganizedPath(baseOutput:scheme:patientID:issuerOfPatientID:studyUID:seriesUID:filename:)")
     public static func buildOrganizedPath(
         baseOutput: String, scheme: OrganizationScheme,
         patientName: String?, studyUID: String?, seriesUID: String?, filename: String

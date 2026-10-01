@@ -105,3 +105,44 @@ enum ExportFrames {
     }
 }
 #endif
+
+/// Frame selection by Frame number (P-EXPORT-1, approved 2026-10-01). PS3.3 2026a Table 10-3:
+/// "The first Frame shall be denoted as Frame number 1"; C.7.6.6: "Frames numbered from 1". The 1-based options are
+/// `--frame-number` (single) and `--start-frame-number` / `--end-frame-number` (animate); the
+/// 0-based `--frame`, `--start-frame`, `--end-frame` keep working, are deprecated, and print a
+/// one-line stderr note. Mixing the two kinds exits 1 (``ExportFrameSelectionConflict``).
+enum ExportFrameSelection {
+    static let reference = "PS3.3 Table 10-3, C.7.6.6: Frames are numbered from 1"
+
+    static func deprecationNote(option: String, replacement: String) -> String {
+        "warning: \(option) is deprecated (0-based index); use \(replacement) (numbered from 1, \(reference))"
+    }
+
+    /// Text for a Frame number the file does not have.
+    static func invalidFrameNumberMessage(requested: Int, total: Int) -> String {
+        "Frame number \(requested) does not exist. The file has \(total) frame\(total == 1 ? "" : "s"), numbered 1 to \(max(total, 1))."
+    }
+
+    static func printNote(_ text: String) {
+        FileHandle.standardError.write(Data((text + "\n").utf8))
+    }
+}
+
+/// A 0-based frame option and a 1-based Frame number option given together. Not a
+/// `ValidationError`, so the command exits 1 with this message.
+struct ExportFrameSelectionConflict: LocalizedError, CustomStringConvertible {
+    let zeroBased: String
+    let oneBased: String
+    var description: String {
+        "\(zeroBased) (deprecated, 0-based) and \(oneBased) (numbered from 1) cannot be used together"
+    }
+    var errorDescription: String? { description }
+}
+
+/// `--apply-window` on `contact-sheet` and `bulk` (P-EXPORT-3, approved 2026-10-01): it has
+/// no effect there (the file's VOI is always applied), so it is deprecated.
+enum ExportApplyWindowDeprecation {
+    static func note(subcommand: String) -> String {
+        "warning: \(subcommand) --apply-window is deprecated and has no effect: the file's VOI (Window Center (0028,1050) / Window Width (0028,1051), else VOI LUT Sequence (0028,3010), else the full pixel range) is always applied"
+    }
+}
