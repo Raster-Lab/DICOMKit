@@ -693,7 +693,7 @@ public struct StorageClientResult: Sendable {
 
 extension StorageClientResult: CustomStringConvertible {
     public var description: String {
-        let statusStr = storeResult.success ? "SUCCESS" : "FAILED"
+        let statusStr = storeResult.isWarning ? "WARNING" : (storeResult.isStored ? "SUCCESS" : "FAILED")
         let failoverStr = usedFailover ? " [FAILOVER]" : ""
         return "StorageClientResult(\(statusStr), server=\(server.aeTitle), retries=\(retryAttempts), time=\(String(format: "%.2f", totalTime))s\(failoverStr))"
     }

@@ -2458,7 +2458,7 @@ public struct PartialPrintResult: Sendable {
 public enum DICOMPrintService {
     
     /// Default Implementation Class UID for Print Service
-    public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.2"
+    public static let defaultImplementationClassUID = DICOMNetworkImplementation.classUID
     
     /// Default Implementation Version Name for Print Service
     public static let defaultImplementationVersionName = "DICOMKIT_PRT"

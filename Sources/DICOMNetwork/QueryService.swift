@@ -46,7 +46,7 @@ public struct QueryConfiguration: Sendable, Hashable {
     public let specificCharacterSet: String?
     
     /// Default Implementation Class UID for DICOMKit
-    public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
+    public static let defaultImplementationClassUID = DICOMNetworkImplementation.classUID
     
     /// Default Implementation Version Name for DICOMKit
     public static let defaultImplementationVersionName = "DICOMKIT_001"
@@ -726,8 +726,9 @@ public enum DICOMQueryService {
                 if status.isPending {
                     // Pending - parse the data set and add to results
                     if let dataSetData = message.dataSet {
-                        let attributes = parseQueryResponse(data: dataSetData, transferSyntax: transferSyntax)
-                        results.append(GenericQueryResult(attributes: attributes, level: level))
+                        let parsed = parseQueryResponseElements(data: dataSetData, transferSyntax: transferSyntax)
+                        results.append(GenericQueryResult(attributes: parsed.attributes, level: level,
+                                                          vrs: parsed.vrs, transferSyntaxUID: transferSyntax))
                     }
                 } else if status.isSuccess {
                     // Success - query complete
@@ -914,7 +915,15 @@ public enum DICOMQueryService {
     /// bytes and its nested elements are never merged into the top level, so a
     /// nested (0008,1150) cannot collide with a top-level tag.
     static func parseQueryResponse(data: Data, transferSyntax: String) -> [Tag: Data] {
+        parseQueryResponseElements(data: data, transferSyntax: transferSyntax).attributes
+    }
+
+    /// ``parseQueryResponse(data:transferSyntax:)`` plus the VR of each top-level
+    /// element as encoded in an Explicit VR response (PS3.5 7.1.2); `vrs` is empty
+    /// for Implicit VR, where the VR is not in the stream (D210).
+    static func parseQueryResponseElements(data: Data, transferSyntax: String) -> (attributes: [Tag: Data], vrs: [Tag: VR]) {
         var attributes: [Tag: Data] = [:]
+        var vrs: [Tag: VR] = [:]
         var offset = 0
         let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
         
@@ -943,6 +952,7 @@ public enum DICOMQueryService {
                 let vrString = String(data: vrBytes, encoding: .ascii) ?? "UN"
                 let vr = VR(rawValue: vrString) ?? .UN
                 offset += 2
+                vrs[tag] = vr
                 
                 // Read length based on VR
                 if vr.uses32BitLength {
@@ -990,7 +1000,7 @@ public enum DICOMQueryService {
             attributes[tag] = value
         }
         
-        return attributes
+        return (attributes, vrs)
     }
 
     /// Returns the offset just past the Sequence Delimitation Item (FFFE,E0DD)

@@ -156,10 +156,13 @@ final class WorklistQueryKeysTests: XCTestCase {
         XCTAssertEqual(keys.allSPSKeys[Tag(group: 0x0040, element: 0x0001)], "CT1")
     }
 
-    func testStationAETitle_wildcardsAllowedForMatchingKey() throws {
-        XCTAssertNoThrow(try WorklistQueryKeys.validateScheduledStationAETitle("CT*"))
-        XCTAssertNoThrow(try WorklistQueryKeys.validateScheduledStationAETitle("CT?"))
-        XCTAssertEqual(try WorklistQueryKeys.forQuery(station: "CT*").allSPSKeys[Tag(group: 0x0040, element: 0x0001)], "CT*")
+    /// PS3.4 2026a Table K.6-1: "Scheduled Station AE Title shall be retrieved with
+    /// Single Value Matching only" — wild card characters are refused (D81).
+    func testStationAETitle_wildcardsRefusedSingleValueMatchingOnly() throws {
+        XCTAssertThrowsError(try WorklistQueryKeys.validateScheduledStationAETitle("CT*"))
+        XCTAssertThrowsError(try WorklistQueryKeys.validateScheduledStationAETitle("CT?"))
+        XCTAssertThrowsError(try WorklistQueryKeys.forQuery(station: "CT*"))
+        XCTAssertTrue(WorklistDateFilterError.invalidStationAETitle("CT*").description.contains("Table K.6-1"))
     }
 
     func testStationAETitle_invalidValuesThrow() {

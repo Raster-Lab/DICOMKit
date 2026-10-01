@@ -37,7 +37,7 @@ public struct ModalityWorklistConfiguration: Sendable, Hashable {
     public let specificCharacterSet: String?
     
     /// Default Implementation Class UID for DICOMKit
-    public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
+    public static let defaultImplementationClassUID = DICOMNetworkImplementation.classUID
     
     /// Default Implementation Version Name for DICOMKit
     public static let defaultImplementationVersionName = "DICOMKIT_001"
@@ -149,9 +149,11 @@ public struct WorklistQueryKeys: Sendable {
     /// Validates a Scheduled Station AE Title matching key.
     ///
     /// AE is 16 characters maximum from the Default Character Repertoire excluding
-    /// backslash and control characters (PS3.5 Table 6.2-1). Because (0040,0001) is
-    /// a matching key, the wildcard characters `*` and `?` are allowed
-    /// (PS3.4 C.2.2.2.4). An empty value is a Universal Match and is accepted.
+    /// backslash and control characters (PS3.5 Table 6.2-1). PS3.4 2026a Table K.6-1:
+    /// "Scheduled Station AE Title shall be retrieved with Single Value Matching
+    /// only", so the wildcard characters `*` and `?` (which would make it Wild Card
+    /// Matching, C.2.2.2.4) are refused (before 2026-10-01 they were accepted, D81).
+    /// An empty value is a Universal Match and is accepted.
     ///
     /// - Throws: ``WorklistDateFilterError/invalidStationAETitle(_:)``
     public static func validateScheduledStationAETitle(_ value: String) throws {
@@ -164,6 +166,10 @@ public struct WorklistQueryKeys: Sendable {
             // ISO 646 graphic characters only: no control characters (0x00–0x1F,
             // 0x7F), no backslash (value delimiter), nothing outside ASCII.
             if v < 0x20 || v >= 0x7F || v == 0x5C {
+                throw WorklistDateFilterError.invalidStationAETitle(value)
+            }
+            // Single Value Matching only (PS3.4 Table K.6-1): no wild card characters.
+            if v == 0x2A || v == 0x3F {
                 throw WorklistDateFilterError.invalidStationAETitle(value)
             }
         }
@@ -354,7 +360,8 @@ public enum WorklistDateFilterError: Error, CustomStringConvertible, Sendable {
         case .invalidStationAETitle(let value):
             return "Invalid Scheduled Station AE Title '\(value)': an AE title is at most 16 " +
                 "characters from the default repertoire, without backslash or control " +
-                "characters (PS3.5 Table 6.2-1); '*' and '?' wildcards are allowed."
+                "characters (PS3.5 Table 6.2-1), matched by Single Value Matching only — no '*' or '?' " +
+                "wildcards (PS3.4 Table K.6-1)."
         case .invalidDateFormat(let filter):
             return "Invalid date filter '\(filter)'. Use YYYYMMDD, 'today', 'tomorrow', " +
                 "or a DICOM date range (YYYYMMDD-YYYYMMDD, YYYYMMDD-, or -YYYYMMDD)."
@@ -762,7 +769,7 @@ public struct WorklistItem: Sendable {
 
 #if canImport(Network)
 import Network
-// NEMA-verified: 2026a, checked 2026-09-28 — MWL FIND UID per PS3.4 2026a Table K.6.1.4-1; identifier keys and (0008,0005) rule per Tables K.6-1/K.6-1a, K.4.1.1.3.1 and C.2.2.2; response decoding per PS3.5 §6.1.2
+// NEMA-verified: 2026a, checked 2026-09-28 — MWL FIND UID per PS3.4 2026a Table K.6.1.4-1; identifier keys and (0008,0005) rule per Tables K.6-1/K.6-1a, K.4.1.1.3.1 and C.2.2.2; response decoding per PS3.5 §6.1.2; Scheduled Station AE Title (0040,0001) Single Value Matching only per Table K.6-1 (wild cards refused, D81, 2026-10-01)
 
 // MARK: - DICOM Modality Worklist Service
 

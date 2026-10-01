@@ -369,7 +369,7 @@ final class StorageCommitmentServiceTests: XCTestCase {
     func testDefaultImplementationClassUID() {
         XCTAssertEqual(
             StorageCommitmentConfiguration.defaultImplementationClassUID,
-            "1.2.826.0.1.3680043.9.7433.1.1"
+            "1.2.826.0.1.3680043.10.511.3.0.5.0"  // DICOMKit root (D155)
         )
     }
     
@@ -463,7 +463,7 @@ final class StorageCommitmentServiceTests: XCTestCase {
     func testCommitmentNotificationListenerConfigurationDefaultConstants() {
         XCTAssertEqual(
             CommitmentNotificationListenerConfiguration.defaultImplementationClassUID,
-            "1.2.826.0.1.3680043.9.7433.1.4"
+            "1.2.826.0.1.3680043.10.511.3.0.5.0"  // DICOMKit root (D155)
         )
         XCTAssertEqual(
             CommitmentNotificationListenerConfiguration.defaultImplementationVersionName,

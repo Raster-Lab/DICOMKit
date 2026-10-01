@@ -362,7 +362,7 @@ struct RetrieveExecutor {
         meta += uiElem(0x0002, 0x0002, sopClassUID)
         meta += uiElem(0x0002, 0x0003, sopInstanceUID)
         meta += uiElem(0x0002, 0x0010, transferSyntaxUID)
-        meta += uiElem(0x0002, 0x0012, "1.2.826.0.1.3680043.9.7433.1.1")
+        meta += uiElem(0x0002, 0x0012, DICOMNetworkImplementation.classUID)  // DICOMKit root (D155)
 
         var file = Data(repeating: 0, count: 128)            // preamble
         file += Data([0x44, 0x49, 0x43, 0x4D])               // DICM

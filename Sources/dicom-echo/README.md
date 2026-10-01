@@ -109,7 +109,7 @@ Test 2: Connection stability (5 requests)
   RTT min/avg/max/stddev: 0.023/0.025/0.027/0.001s
 
 Test 3: Association parameters
-  Implementation Class UID: 1.2.826.0.1.3680043.9.7433.1.1
+  Implementation Class UID: 1.2.826.0.1.3680043.10.511.3.0.5.0
   Implementation Version: DICOMKIT_001
   SOP Class: Verification (1.2.840.10008.1.1)
   Transfer Syntaxes: Explicit VR Little Endian, Implicit VR Little Endian

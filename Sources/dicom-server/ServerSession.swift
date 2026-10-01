@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — UID literals and names are those of ServerProtocol (PS3.6 2026a Table A-1); A-ASSOCIATE-RJ result/source/reason 1/1/3 and 2/2/1 and presentation-context results 0/3/4 match PS3.8 2026a Tables 9-21 / 9-18; the A-ASSOCIATE-AC carries the server's Maximum Length and DICOMKit's Implementation Class UID and answers SCP/SCU Role Selection (PS3.8 D.1, PS3.7 D.3.3.2 / D.3.3.4) and outgoing P-DATA is fragmented to the peer's Maximum Length (D95); C-STORE stores PS3.10 files with the negotiated transfer syntax (D102); C-FIND / C-MOVE / C-GET fail with A900 when Query/Retrieve Level is missing (Tables C.4-1..C.4-3, D101); unknown Move Destination gets A801 (Table C.4-2, D96); C-GET sub-operations await each C-STORE-RSP and count Completed / Warning / Failed from its status, final status per C.4.3.3.1 (D97); failure statuses are the Cxxx / A7xx / A9xx rows of Tables B.2-1 and C.4-1..C.4-3
+// NEMA-verified: 2026a, checked 2026-10-01 — UID literals and names are those of ServerProtocol (PS3.6 2026a Table A-1); A-ASSOCIATE-RJ result/source/reason 1/1/3 and 2/2/1 and presentation-context results 0/3/4 match PS3.8 2026a Tables 9-21 / 9-18; the A-ASSOCIATE-AC carries the server's Maximum Length and DICOMKit's Implementation Class UID and answers SCP/SCU Role Selection (PS3.8 D.1, PS3.7 D.3.3.2 / D.3.3.4) and outgoing P-DATA is fragmented to the peer's Maximum Length (D95); C-STORE stores PS3.10 files with the negotiated transfer syntax (D102); C-FIND / C-MOVE / C-GET fail with A900 when Query/Retrieve Level is missing (Tables C.4-1..C.4-3, D101); unknown Move Destination gets A801 (Table C.4-2, D96); C-GET sub-operations await each C-STORE-RSP and count Completed / Warning / Failed from its status, final status per C.4.3.3.1 (D97); failure statuses are the Cxxx / A7xx / A9xx rows of Tables B.2-1 and C.4-1..C.4-3; C-MOVE sub-operation C-STORE-RQs carry Move Originator AE Title / Message ID (0000,1030/1031) per PS3.7 9.1.1.1.6 / 9.1.1.1.7 (D156)
 import Foundation
 import DICOMCore
 import DICOMKit
@@ -515,7 +515,8 @@ actor ServerSession {
 
             for metadata in instances {
                 let status = await storeToDestination(metadata: metadata, destination: destination,
-                                                      priority: request.priority)
+                                                      priority: request.priority,
+                                                      moveOriginatorMessageID: request.messageID)
                 counts.record(status, sopInstanceUID: metadata.sopInstanceUID)
                 if counts.remaining > 0 {
                     try await sendDIMSE(response(.pending(warningOptionalKeys: false), counts, includeRemaining: true),
@@ -540,7 +541,11 @@ actor ServerSession {
     ///
     /// - Returns: the C-STORE-RSP status, or nil when the sub-operation could not be performed
     ///   (no file, association or presentation context: a Failure, PS3.4 C.4.2.3.1)
-    private func storeToDestination(metadata: DICOMMetadata, destination: DestinationAE, priority: DIMSEPriority) async -> DIMSEStatus? {
+    /// The C-STORE-RQ carries Move Originator AE Title (0000,1030) = the calling AE of
+    /// this association and Move Originator Message ID (0000,1031) = the C-MOVE-RQ
+    /// Message ID (PS3.7 2026a 9.1.1.1.6 / 9.1.1.1.7, D156).
+    private func storeToDestination(metadata: DICOMMetadata, destination: DestinationAE, priority: DIMSEPriority,
+                                    moveOriginatorMessageID: UInt16) async -> DIMSEStatus? {
         do {
             let fileData = try Data(contentsOf: URL(fileURLWithPath: metadata.filePath))
             let config = StorageConfiguration(
@@ -551,7 +556,7 @@ actor ServerSession {
                 implementationClassUID: ServerProtocol.implementationClassUID,
                 implementationVersionName: ServerProtocol.implementationVersionName,
                 priority: priority
-            )
+            ).withMoveOriginator(aeTitle: callingAETitle, messageID: moveOriginatorMessageID)
             let result = try await DICOMStorageService.store(
                 fileData: fileData, to: destination.host, port: destination.port, configuration: config)
             log("C-STORE sub-operation \(metadata.sopInstanceUID) -> \(destination.aeTitle): \(result.status)")

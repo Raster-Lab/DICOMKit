@@ -1,6 +1,6 @@
 import Foundation
 import DICOMCore
-// NEMA-verified: 2026a, checked 2026-09-28 — C-STORE fields per PS3.7 2026a Table 9.3-1, statuses per PS3.4 Table B.2-1; presentation-context IDs bounded per PS3.8 §9.3.2.2; File Meta Information parse per PS3.10 §7.1
+// NEMA-verified: 2026a, checked 2026-10-01 — C-STORE fields per PS3.7 2026a Table 9.3-1 (Move Originator AE Title / Message ID (0000,1030/1031) per 9.1.1.1.6 / 9.1.1.1.7, D156), statuses per PS3.4 Table B.2-1 (StoreResult.success / isStored true for the Success and Warning classes, D72); presentation-context IDs bounded per PS3.8 §9.3.2.2; File Meta Information parse per PS3.10 §7.1
 
 // MARK: - Store Result
 
@@ -8,9 +8,21 @@ import DICOMCore
 ///
 /// Contains information about the completed C-STORE operation.
 ///
+/// A C-STORE-RSP in the Failure class (PS3.4 Table B.2-1: A7xx, A9xx, Cxxx, or
+/// 0122 per PS3.7 9.1.1.1.9) is **returned**, not thrown: `DICOMStorageService.store`
+/// throws only when no response was received (association, transport or
+/// negotiation errors). Test ``isStored`` (or ``isFailure``), not just the status.
+///
 /// Reference: PS3.4 Annex B - Storage Service Class
 public struct StoreResult: Sendable, Hashable {
-    /// Whether the storage was successful
+    /// Whether the SCP stored the instance: true for the Success **and** Warning
+    /// classes of PS3.4 Table B.2-1 (0000; B000 Coercion of Data Elements, B006
+    /// Elements Discarded, B007 Data Set does not match SOP Class), false for a
+    /// Failure — the same meaning as ``FileStoreResult/success``.
+    ///
+    /// Before 2026-10-01 `DICOMStorageService.store` set it true only for 0000, so a
+    /// Warning read as not stored (D72). Prefer ``isStored``, ``isSuccess``,
+    /// ``isWarning`` and ``isFailure``, which are derived from ``status``.
     public let success: Bool
     
     /// The DIMSE status from the response
@@ -31,6 +43,28 @@ public struct StoreResult: Sendable, Hashable {
     /// Whether the store completed with a warning
     public var hasWarning: Bool {
         status.isWarning
+    }
+
+    /// Whether the instance was stored: Success or Warning class (PS3.4 Table B.2-1).
+    public var isStored: Bool {
+        status.isSuccessOrWarning
+    }
+
+    /// Whether the response status is Success (0000) — no warning.
+    public var isSuccess: Bool {
+        status.isSuccess
+    }
+
+    /// Whether the response status is in the Warning class (B000, B006, B007, other Bxxx):
+    /// the instance was stored with a deviation.
+    public var isWarning: Bool {
+        status.isWarning
+    }
+
+    /// Whether the response status is in the Failure class (A7xx, A9xx, Cxxx, 0122, …):
+    /// the instance was not stored.
+    public var isFailure: Bool {
+        !status.isSuccessOrWarning
     }
     
     /// Creates a store result
@@ -53,7 +87,7 @@ public struct StoreResult: Sendable, Hashable {
 
 extension StoreResult: CustomStringConvertible {
     public var description: String {
-        let statusStr = success ? "SUCCESS" : (status.isWarning ? "WARNING" : "FAILED")
+        let statusStr = status.isWarning ? "WARNING" : (success ? "SUCCESS" : "FAILED")
         return "StoreResult(\(statusStr), status=\(status), sop=\(affectedSOPClassUID), rtt=\(String(format: "%.3f", roundTripTime))s, ae=\(remoteAETitle))"
     }
 }
@@ -130,10 +164,35 @@ public struct StorageConfiguration: Sendable, Hashable {
     public let transcodingConfiguration: TranscodingConfiguration?
     
     /// Default Implementation Class UID for DICOMKit
-    public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
+    public static let defaultImplementationClassUID = DICOMNetworkImplementation.classUID
     
     /// Default Implementation Version Name for DICOMKit
     public static let defaultImplementationVersionName = "DICOMKIT_001"
+
+    /// Move Originator Application Entity Title (0000,1030) put on every C-STORE-RQ,
+    /// or nil (the default) to omit it.
+    ///
+    /// PS3.7 2026a 9.1.1.1.6: set when the C-STORE is a sub-operation of a C-MOVE,
+    /// to the AE Title of the SCU that issued the C-MOVE; with
+    /// ``moveOriginatorMessageID`` it lets the Move Destination tie the instance to
+    /// the originating C-MOVE (Table 9.3-1, both U). Set both with
+    /// ``withMoveOriginator(aeTitle:messageID:)`` (D156, 2026-10-01).
+    public var moveOriginatorAETitle: String? = nil
+
+    /// Move Originator Message ID (0000,1031) put on every C-STORE-RQ, or nil to
+    /// omit it — the Message ID (0000,0110) of the C-MOVE-RQ this store is a
+    /// sub-operation of (PS3.7 2026a 9.1.1.1.7).
+    public var moveOriginatorMessageID: UInt16? = nil
+
+    /// This configuration with Move Originator AE Title (0000,1030) and Move
+    /// Originator Message ID (0000,1031) set, for the C-STORE sub-operations of a
+    /// C-MOVE (PS3.7 2026a 9.1.1.1.6 / 9.1.1.1.7).
+    public func withMoveOriginator(aeTitle: String, messageID: UInt16) -> StorageConfiguration {
+        var copy = self
+        copy.moveOriginatorAETitle = aeTitle
+        copy.moveOriginatorMessageID = messageID
+        return copy
+    }
     
     /// Creates a storage configuration
     ///
@@ -819,14 +878,17 @@ public enum DICOMStorageService {
                 sopClassUID: sopClassUID,
                 sopInstanceUID: sopInstanceUID,
                 priority: configuration.priority,
-                dataSetData: dataSetData
+                dataSetData: dataSetData,
+                moveOriginatorAETitle: configuration.moveOriginatorAETitle,
+                moveOriginatorMessageID: configuration.moveOriginatorMessageID
             )
 
             try await association.release()
 
             let roundTripTime = Date().timeIntervalSince(startTime)
             return StoreResult(
-                success: response.status.isSuccess,
+                // Stored for Success and Warning, PS3.4 Table B.2-1 (D72)
+                success: response.status.isSuccessOrWarning,
                 status: response.status,
                 affectedSOPClassUID: response.affectedSOPClassUID,
                 affectedSOPInstanceUID: response.affectedSOPInstanceUID,
@@ -915,14 +977,18 @@ public enum DICOMStorageService {
         sopClassUID: String,
         sopInstanceUID: String,
         priority: DIMSEPriority,
-        dataSetData: Data
+        dataSetData: Data,
+        moveOriginatorAETitle: String? = nil,
+        moveOriginatorMessageID: UInt16? = nil
     ) async throws -> CStoreResponse {
         // Create C-STORE request
-        let request = CStoreRequest(
+        let request = cStoreRequest(
             messageID: 1,
-            affectedSOPClassUID: sopClassUID,
-            affectedSOPInstanceUID: sopInstanceUID,
+            sopClassUID: sopClassUID,
+            sopInstanceUID: sopInstanceUID,
             priority: priority,
+            moveOriginatorAETitle: moveOriginatorAETitle,
+            moveOriginatorMessageID: moveOriginatorMessageID,
             presentationContextID: presentationContextID
         )
         
@@ -1255,7 +1321,9 @@ public enum DICOMStorageService {
                             sopInstanceUID: fileInfo.sopInstanceUID,
                             priority: configuration.priority,
                             dataSetData: fileInfo.dataSetData,
-                            messageID: messageID
+                            messageID: messageID,
+                            moveOriginatorAETitle: configuration.moveOriginatorAETitle,
+                            moveOriginatorMessageID: configuration.moveOriginatorMessageID
                         )
                     
                         let roundTripTime = Date().timeIntervalSince(fileStartTime)
@@ -1368,6 +1436,30 @@ public enum DICOMStorageService {
         }
     }
 
+    /// The C-STORE-RQ command (PS3.7 2026a Table 9.3-1). Move Originator AE Title
+    /// (0000,1030) and Move Originator Message ID (0000,1031) are written only as a
+    /// pair, when both are given (9.1.1.1.6 / 9.1.1.1.7). `internal` for unit tests.
+    static func cStoreRequest(
+        messageID: UInt16,
+        sopClassUID: String,
+        sopInstanceUID: String,
+        priority: DIMSEPriority,
+        moveOriginatorAETitle: String?,
+        moveOriginatorMessageID: UInt16?,
+        presentationContextID: UInt8
+    ) -> CStoreRequest {
+        let pair = moveOriginatorAETitle.flatMap { ae in moveOriginatorMessageID.map { (ae, $0) } }
+        return CStoreRequest(
+            messageID: messageID,
+            affectedSOPClassUID: sopClassUID,
+            affectedSOPInstanceUID: sopInstanceUID,
+            priority: priority,
+            moveOriginatorAETitle: pair?.0,
+            moveOriginatorMessageID: pair?.1,
+            presentationContextID: presentationContextID
+        )
+    }
+
     /// Performs the C-STORE request/response exchange with a specific message ID
     private static func performCStoreWithMessageID(
         association: Association,
@@ -1377,14 +1469,18 @@ public enum DICOMStorageService {
         sopInstanceUID: String,
         priority: DIMSEPriority,
         dataSetData: Data,
-        messageID: UInt16
+        messageID: UInt16,
+        moveOriginatorAETitle: String? = nil,
+        moveOriginatorMessageID: UInt16? = nil
     ) async throws -> CStoreResponse {
         // Create C-STORE request
-        let request = CStoreRequest(
+        let request = cStoreRequest(
             messageID: messageID,
-            affectedSOPClassUID: sopClassUID,
-            affectedSOPInstanceUID: sopInstanceUID,
+            sopClassUID: sopClassUID,
+            sopInstanceUID: sopInstanceUID,
             priority: priority,
+            moveOriginatorAETitle: moveOriginatorAETitle,
+            moveOriginatorMessageID: moveOriginatorMessageID,
             presentationContextID: presentationContextID
         )
         

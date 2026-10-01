@@ -266,7 +266,7 @@ public struct PrintSCPConfiguration: Sendable, Hashable {
     public let pushPrintJobEvents: Bool
 
     /// Default Implementation Class UID for the DICOMKit Print SCP.
-    public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.3"
+    public static let defaultImplementationClassUID = DICOMNetworkImplementation.classUID
 
     /// Default Implementation Version Name for the DICOMKit Print SCP.
     public static let defaultImplementationVersionName = "DICOMKIT_PRTSCP"

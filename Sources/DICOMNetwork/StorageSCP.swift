@@ -45,7 +45,7 @@ public struct StorageSCPConfiguration: Sendable, Hashable {
     public let callingAEBlacklist: Set<String>?
     
     /// Default Implementation Class UID for DICOMKit SCP
-    public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.2"
+    public static let defaultImplementationClassUID = DICOMNetworkImplementation.classUID
     
     /// Default Implementation Version Name for DICOMKit SCP
     public static let defaultImplementationVersionName = "DICOMKIT_SCP"

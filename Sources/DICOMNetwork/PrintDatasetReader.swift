@@ -157,6 +157,13 @@ public struct PrintDatasetReader: Sendable {
         return set
     }
 
+    /// Parses the Value Field of a sequence — its Items, without the sequence's
+    /// own element header or Sequence Delimitation Item (PS3.5 7.5). Used for the
+    /// raw SQ values a C-FIND response keeps (`GenericQueryResult`).
+    func parseSequenceValue(_ data: Data, tag: Tag) throws -> [PrintAttributeSet] {
+        try parseItems(data, from: 0, limit: data.count, undefinedLength: false, tag: tag, depth: 1).0
+    }
+
     // MARK: Element walk
 
     /// Parses attributes from `start` until `limit` (defined length), or until

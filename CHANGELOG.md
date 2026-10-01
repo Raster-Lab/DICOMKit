@@ -38,6 +38,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refuses an empty Modality (0008,0060), Type 1 in Table F.7.2-1 (it was sent empty); the `CODE|SCHEME|MEANING` example
   is `110513|DCM|Discontinued for unspecified reason` (PS3.16 Table D-1; "Doctor canceled procedure" is 110500) and CID
   9300 is "Procedure Discontinuation Reason". dicom-mpps' own `.storeFailed` renaming is now unused (left in place).
+- **C-STORE Warning is a stored result** (D72): `DICOMStorageService.store` sets `StoreResult.success` for the Success
+  and the Warning class of PS3.4 Table B.2-1 (B000, B006, B007 store the instance; it was true only for 0000), the
+  meaning `FileStoreResult.success` already had; new `isStored`, `isSuccess`, `isWarning`, `isFailure`. A Failure
+  status is still returned, not thrown (documented); `StoreAndForwardQueue` now completes items stored with a warning.
+- **Shared network console** (D74, D75, D77): Query/Retrieve Level values print as PATIENT / STUDY / SERIES / IMAGE
+  (`levelName`, the retrieve header's `Level:`; "instance" / "Instance" before — PS3.4 Table C.6.1-1); the C-MOVE
+  result counters read "Number of Completed / Failed / Warning Sub-operations" (PS3.7 Table 9.3-10); the dicom-qr study
+  entry labels (0008,0061) "Modalities in Study:" (was "Modality:"); new `NetworkConsole.sendFileResult(status:rtt:)`
+  renders Success, Warning (stored, with the B.2-1 warning line) and Failure (not stored) from the status in one call.
+  DICOMStudio's CLI Workshop renders the same text through the same functions.
+- **Scheduled Station AE Title is Single Value Matching only** (D81): `WorklistQueryKeys.validateScheduledStationAETitle`
+  (and `forQuery(station:)`, dicom-mwl `--station`) refuses `*` and `?` (PS3.4 Table K.6-1); they were accepted.
+- **Implementation Class UID under DICOMKit's root** (D155): every DICOMNetwork configuration default
+  (`StorageConfiguration`, `StorageSCPConfiguration`, `QueryConfiguration`, `RetrieveConfiguration`,
+  `VerificationConfiguration`, MPPS, MWL, Print, Storage Commitment, `DICOMClient`) is the new
+  `DICOMNetworkImplementation.classUID` = `DICOMFile.implementationClassUID` (1.2.826.0.1.3680043.10.511.3.0.5.0,
+  PS3.7 D.3.3.2, PS3.5 9.2.2); they were 1.2.826.0.1.3680043.9.7433.1.x. dicom-retrieve's C-GET File Meta (0002,0012)
+  uses it too.
+- **Move Originator on the C-STORE-RQ** (D156): `StorageConfiguration.moveOriginatorAETitle` /
+  `moveOriginatorMessageID` and `withMoveOriginator(aeTitle:messageID:)` put (0000,1030) / (0000,1031) on every
+  C-STORE-RQ (PS3.7 9.1.1.1.6 / 9.1.1.1.7, written only as a pair); dicom-server's C-MOVE sub-operations now carry the
+  C-MOVE's calling AE Title and Message ID.
+- **dicom-query `--format dicom-json` writes sequences as sequences** (D210): `GenericQueryResult` keeps the Explicit VR
+  of each attribute (`vrs`) and the response transfer syntax (`transferSyntaxUID`, new initializer; the old one is
+  kept), so `dicomJSONElements()` uses the response's VR (e.g. SS for a "US or SS" attribute) and decodes an SQ into
+  item objects (PS3.18 F.2.2 / F.2.5) instead of UN InlineBinary.
 
 ### Fixed — File Meta Media Storage UIDs follow the data set (2026-10-01, DICOM 2026a)
 

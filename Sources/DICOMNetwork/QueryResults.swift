@@ -1,6 +1,6 @@
 import Foundation
 import DICOMCore
-// NEMA-verified: 2026a, checked 2026-09-28 — accessor VRs checked against PS3.5 2026a Table 6.2-1 (Rows/Columns are US, read as 16-bit LE); (0008,0005) handling per PS3.5 §6.1.2
+// NEMA-verified: 2026a, checked 2026-10-01 — GenericQueryResult keeps the Explicit VR of each attribute and the response transfer syntax (PS3.5 7.1.2, D210); accessor VRs checked against PS3.5 2026a Table 6.2-1 (Rows/Columns are US, read as 16-bit LE); (0008,0005) handling per PS3.5 §6.1.2
 
 // MARK: - Base Query Result Protocol
 
@@ -462,11 +462,29 @@ public struct GenericQueryResult: QueryResult, Sendable, Hashable {
     
     /// The query level from the response
     public let level: QueryLevel?
+
+    /// The VR of each top-level attribute as encoded in the response, when it was
+    /// sent in an Explicit VR transfer syntax (PS3.5 7.1.2); empty for Implicit VR
+    /// or a result built from attributes alone (D210, 2026-10-01).
+    public let vrs: [Tag: VR]
+
+    /// The transfer syntax the response data set was encoded in, when known. A
+    /// sequence (SQ) value is kept as raw item bytes in ``attributes``; this is
+    /// what ``dicomJSONElements()`` needs to decode its items.
+    public let transferSyntaxUID: String?
     
     /// Creates a generic result from raw attributes
     public init(attributes: [Tag: Data], level: QueryLevel? = nil) {
+        self.init(attributes: attributes, level: level, vrs: [:], transferSyntaxUID: nil)
+    }
+
+    /// Creates a generic result from raw attributes with their encoded VRs and
+    /// the response's transfer syntax.
+    public init(attributes: [Tag: Data], level: QueryLevel?, vrs: [Tag: VR], transferSyntaxUID: String?) {
         self.attributes = attributes
         self.level = level
+        self.vrs = vrs
+        self.transferSyntaxUID = transferSyntaxUID
     }
     
     /// Converts to a PatientResult

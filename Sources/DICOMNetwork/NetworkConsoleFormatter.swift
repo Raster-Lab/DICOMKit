@@ -1,6 +1,6 @@
 import Foundation
 import DICOMCore
-// NEMA-verified: 2026a, checked 2026-10-01 — A-ASSOCIATE-RJ reason texts taken from AssociateRejectPDU (PS3.8 2026a Table 9-21); C-STORE warning lines and the summary Warnings count per PS3.4 2026a Table B.2-1 via DIMSEServiceStatusText (P-SEND-SUMMARY); retrieve header Priority per PS3.7 Tables 9.3-9 / 9.3-6 and relational-retrieval per PS3.4 Table C.5-3; MWL JSON PS3.6 keyword keys (P-MWL-JSON-KEYS); other text is display labels
+// NEMA-verified: 2026a, checked 2026-10-01 — A-ASSOCIATE-RJ reason texts taken from AssociateRejectPDU (PS3.8 2026a Table 9-21); C-STORE warning lines, sendFileResult(status:) for the three classes and the summary Warnings count per PS3.4 2026a Table B.2-1 via DIMSEServiceStatusText (P-SEND-SUMMARY, D75); Query/Retrieve Level values PATIENT / STUDY / SERIES / IMAGE per PS3.4 Table C.6.1-1 (D74), C-MOVE counters under the PS3.7 Table 9.3-10 names and Modalities in Study (0008,0061) labelled per PS3.6 (D77); retrieve header Priority per PS3.7 Tables 9.3-9 / 9.3-6 and relational-retrieval per PS3.4 Table C.5-3; MWL JSON PS3.6 keyword keys (P-MWL-JSON-KEYS); other text is display labels
 
 /// Shared console rendering for the network CLIs (`dicom-query`, `dicom-send`,
 /// `dicom-retrieve`, `dicom-qr`) AND the DICOMStudio CLI Workshop in-process
@@ -155,6 +155,24 @@ public enum NetworkConsole {
         "    ⚠️ Stored with warning: \(status.description(for: .cStore))\n"
     }
 
+    /// Completes a ``sendFilePrefix(index:total:filename:size:)`` line from the
+    /// C-STORE-RSP status, by its PS3.4 Table B.2-1 class: Success → ` ✅ (rtt)`;
+    /// Warning → ` ✅ (rtt)` plus ``sendFileWarningLine(status:)`` (the instance is
+    /// stored); Failure → ` ❌` with the Table B.2-1 wording (not stored). One call
+    /// renders all three classes, so a caller holding a returned failure status
+    /// cannot print it as a success (D75).
+    public static func sendFileResult(status: DIMSEStatus, rtt: TimeInterval) -> String {
+        if status.isSuccess {
+            return sendFileResultSuffix(success: true, rtt: rtt, error: nil)
+        }
+        if status.isWarning {
+            return sendFileResultSuffix(success: true, rtt: rtt, error: nil) + sendFileWarningLine(status: status)
+        }
+        return sendFileResultSuffix(
+            success: false, rtt: rtt,
+            error: "C-STORE response status \(status.description(for: .cStore)) — not stored (PS3.4 Table B.2-1)")
+    }
+
     /// A dry-run listing line: `  [i/total] name (size)`.
     public static func sendDryRunLine(index: Int, total: Int, filename: String, size: Int) -> String {
         "  [\(index)/\(total)] \(filename) (\(formatBytes(size)))\n"
@@ -198,7 +216,7 @@ public enum NetworkConsole {
         host: String, port: UInt16,
         callingAE: String, calledAE: String,
         moveDestination: String?,
-        level: String,                  // "Study" / "Series" / "Instance"
+        level: String,                  // "Study" / "Series" / "Instance" (printed as STUDY / SERIES / IMAGE)
         studyUID: String, seriesUID: String?, instanceUID: String?,
         output: String, hierarchical: Bool, timeout: Int,
         transferSyntax: String?
@@ -231,7 +249,7 @@ public enum NetworkConsole {
         out += field("Called AE Title:", calledAE)
         out += field("Method:", method)
         if let dest = moveDestination, !dest.isEmpty { out += field("Move Destination:", dest) }
-        out += field("Level:", level)
+        out += field("Level:", queryRetrieveLevelValue(level))
         out += field("Study UID:", studyUID)
         if let s = seriesUID, !s.isEmpty { out += field("Series UID:", s) }
         if let i = instanceUID, !i.isEmpty { out += field("Instance UID:", i) }
@@ -268,13 +286,16 @@ public enum NetworkConsole {
         "  Received [\(index)]: \(sopInstanceUID) (\(formatBytes(size)))\n"
     }
 
-    /// C-MOVE result block.
+    /// C-MOVE result block. The counters carry their PS3.7 2026a Table 9.3-10
+    /// names (Number of Completed / Failed / Warning Sub-operations, (0000,1021) /
+    /// (0000,1022) / (0000,1023)); before 2026-10-01 they read "Completed:",
+    /// "Failed:", "Warnings:" (D77).
     public static func cMoveResult(status: String, completed: Int, failed: Int, warning: Int, isSuccess: Bool) -> String {
         var out = "C-MOVE Result:\n"
         out += field("Status:", status)
-        out += field("Completed:", "\(completed)")
-        out += field("Failed:", "\(failed)")
-        out += field("Warnings:", "\(warning)")
+        out += field("Number of Completed Sub-operations:", " \(completed)")
+        out += field("Number of Failed Sub-operations:", " \(failed)")
+        out += field("Number of Warning Sub-operations:", " \(warning)")
         out += isSuccess ? "\n✅ Retrieval successful\n" : "\n❌ Retrieval returned non-success status\n"
         return out
     }
@@ -326,14 +347,16 @@ public enum NetworkConsole {
         return out
     }
 
-    /// A compact study entry for the query phase of `dicom-qr`.
+    /// A compact study entry for the query phase of `dicom-qr`. `modality` is the
+    /// study's Modalities in Study (0008,0061) and is labelled so (PS3.6 2026a
+    /// Table 6-1; "Modality:" before 2026-10-01, D77).
     public static func qrStudyEntry(
         index: Int, patientName: String?, patientID: String?,
         studyDescription: String?, studyDate: String?, modality: String?, studyUID: String?
     ) -> String {
         var out = "  [\(index)] \(patientName ?? "Unknown") (ID: \(patientID ?? "N/A"))\n"
         out += "      Study: \(studyDescription ?? "No description")\n"
-        out += "      Date: \(studyDate ?? "N/A")  Modality: \(modality ?? "N/A")\n"
+        out += "      Date: \(studyDate ?? "N/A")  Modalities in Study: \(modality ?? "N/A")\n"
         if let uid = studyUID { out += "      UID: \(uid)\n" }
         out += "\n"
         return out
@@ -913,12 +936,19 @@ public enum NetworkConsole {
 
     // MARK: - Helpers
 
+    /// The Query/Retrieve Level (0008,0052) value of `level` — PATIENT, STUDY,
+    /// SERIES or IMAGE (PS3.4 2026a C.6.1.1.x, Table C.6.1-1). Before 2026-10-01
+    /// this printed lower-case names and "instance" for IMAGE (D74).
     public static func levelName(_ level: QueryLevel) -> String {
-        switch level {
-        case .patient: return "patient"
-        case .study:   return "study"
-        case .series:  return "series"
-        case .image:   return "instance"
-        }
+        level.rawValue
+    }
+
+    /// The Query/Retrieve Level value for a level label given as text: "Study",
+    /// "series", "Instance" and "IMAGE" print as STUDY, SERIES, IMAGE, IMAGE
+    /// (PS3.4 2026a Table C.6.1-1 has no INSTANCE level); anything else is kept.
+    public static func queryRetrieveLevelValue(_ label: String) -> String {
+        let upper = label.trimmingCharacters(in: .whitespaces).uppercased()
+        if upper == "INSTANCE" { return QueryLevel.image.rawValue }
+        return QueryLevel(rawValue: upper)?.rawValue ?? label
     }
 }

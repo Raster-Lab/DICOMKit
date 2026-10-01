@@ -1,7 +1,7 @@
 import Foundation
 import DICOMCore
 import DICOMDictionary
-// NEMA-verified: 2026a, checked 2026-10-01 — the 18 table column labels are the PS3.6 2026a Table 6-1 Attribute Names of the attributes shown (19 rows dumped by Scripts/nema_docbook.py; Columns × Rows names two), P-QUERY-COLUMNS; --csv-keywords headers are Table 6-1 Keywords via DICOMDictionary; dicom-json builds the PS3.18 2026a F.2 element list (UTF-8 / ISO_IR 192 per F.2, VR from Table 6-1, SQ as UN InlineBinary) for DICOMWeb's encoder (P-QUERY-JSON)
+// NEMA-verified: 2026a, checked 2026-10-01 — the 18 table column labels are the PS3.6 2026a Table 6-1 Attribute Names of the attributes shown (19 rows dumped by Scripts/nema_docbook.py; Columns × Rows names two), P-QUERY-COLUMNS; --csv-keywords headers are Table 6-1 Keywords via DICOMDictionary; dicom-json builds the PS3.18 2026a F.2 element list (UTF-8 / ISO_IR 192 per F.2; VR as encoded in an Explicit VR response, else from Table 6-1; SQ decoded into item objects per F.2.2 / F.2.5, UN InlineBinary only when undecodable, D210) for DICOMWeb's encoder (P-QUERY-JSON)
 
 /// Output renderings shared by the dicom-query CLI and DICOMStudio's in-app query,
 /// so both produce identical text for the same C-FIND results.
@@ -289,30 +289,67 @@ public extension GenericQueryResult {
     /// The response attributes as data elements for a PS3.18 F.2 DICOM JSON
     /// encoder (DICOMWeb's `DICOMJSONEncoder`).
     ///
-    /// - VR: the first VR of the attribute's PS3.6 Table 6-1 row (C-FIND
-    ///   responses may be Implicit VR); attributes the dictionary does not know
-    ///   (private, unknown) are UN.
+    /// - VR: the VR the response was encoded with (``vrs``, Explicit VR); for an
+    ///   Implicit VR response, the first VR of the attribute's PS3.6 Table 6-1 row;
+    ///   attributes the dictionary does not know (private, unknown) are UN.
     /// - Text values are decoded with the response's Specific Character Set
     ///   (0008,0005) and re-encoded as UTF-8, and (0008,0005) is written as
     ///   `ISO_IR 192`: "The default character repertoire shall be UTF-8 /
     ///   ISO_IR 192" (PS3.18 F.2).
-    /// - A sequence (SQ) value is kept as its raw bytes under VR UN (InlineBinary,
-    ///   PS3.18 F.2.7): the response's transfer syntax is not retained here.
+    /// - A sequence (SQ) is decoded into its items when the response's transfer
+    ///   syntax is known (``transferSyntaxUID``, Explicit or Implicit VR Little
+    ///   Endian), so the encoder writes "Value" as an array of DICOM JSON objects
+    ///   (PS3.18 F.2.2 / F.2.5) with the items' own VRs; only when it cannot be
+    ///   decoded is it kept as raw bytes under VR UN (InlineBinary, F.2.7). Before
+    ///   2026-10-01 every sequence was written as UN (D210).
     /// - Group Length (gggg,0000) is left to the encoder, which omits it.
     func dicomJSONElements() -> [DataElement] {
         let characterSet = specificCharacterSet
+        let reader = transferSyntaxUID.flatMap(Self.sequenceReader(transferSyntaxUID:))
         return attributes.keys.sorted().map { tag -> DataElement in
             let raw = attributes[tag] ?? Data()
-            var vr = DataElementDictionary.lookup(tag: tag)?.vr.first ?? .UN
-            var value = raw
-            if tag == .specificCharacterSet {
-                value = Data("ISO_IR 192".utf8)
-            } else if vr == .SQ {
-                vr = .UN
-            } else if vr.characterRepertoire != nil {
-                value = Data(QueryResultDecoding.decodeString(raw, specificCharacterSet: characterSet).utf8)
+            let vr = vrs[tag] ?? DataElementDictionary.lookup(tag: tag)?.vr.first ?? .UN
+            if vr == .SQ {
+                if let reader, let items = try? reader.parseSequenceValue(raw, tag: tag) {
+                    return DataElement(tag: tag, vr: .SQ, length: UInt32(raw.count), valueData: Data(),
+                                       sequenceItems: items.map { Self.jsonItem($0, characterSet: characterSet) })
+                }
+                return DataElement(tag: tag, vr: .UN, length: UInt32(raw.count), valueData: raw)
             }
-            return DataElement(tag: tag, vr: vr, length: UInt32(value.count), valueData: value)
+            return Self.jsonElement(tag: tag, vr: vr, raw: raw, characterSet: characterSet)
         }
+    }
+
+    /// The Little Endian reader for a response transfer syntax, or nil when the
+    /// syntax is neither Explicit nor Implicit VR Little Endian.
+    private static func sequenceReader(transferSyntaxUID: String) -> PrintDatasetReader? {
+        switch transferSyntaxUID {
+        case explicitVRLittleEndianTransferSyntaxUID: return PrintDatasetReader(explicitVR: true)
+        case implicitVRLittleEndianTransferSyntaxUID: return PrintDatasetReader(explicitVR: false)
+        default: return nil
+        }
+    }
+
+    /// One non-sequence element for the DICOM JSON encoder: text transcoded to UTF-8.
+    private static func jsonElement(tag: Tag, vr: VR, raw: Data, characterSet: String?) -> DataElement {
+        var value = raw
+        if tag == .specificCharacterSet {
+            value = Data("ISO_IR 192".utf8)
+        } else if vr.characterRepertoire != nil {
+            value = Data(QueryResultDecoding.decodeString(raw, specificCharacterSet: characterSet).utf8)
+        }
+        return DataElement(tag: tag, vr: vr, length: UInt32(value.count), valueData: value)
+    }
+
+    /// One sequence item, its nested sequences decoded recursively.
+    private static func jsonItem(_ set: PrintAttributeSet, characterSet: String?) -> SequenceItem {
+        var elements: [DataElement] = set.elements.values.map {
+            jsonElement(tag: $0.tag, vr: $0.vr, raw: $0.valueData, characterSet: characterSet)
+        }
+        for (tag, items) in set.sequences {
+            elements.append(DataElement(tag: tag, vr: .SQ, length: 0, valueData: Data(),
+                                        sequenceItems: items.map { jsonItem($0, characterSet: characterSet) }))
+        }
+        return SequenceItem(elements: elements)
     }
 }
