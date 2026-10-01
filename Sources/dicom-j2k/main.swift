@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — the 7 UID/name rows of the help diffed by script against PS3.6 2026a Table A-1 (7 wrong names fixed) and the 10 transcode target rows (alias → UID → intent, 10 match); 33 options classified (input contract); frame lookup, Photometric Interpretation, lossy provenance, derived-image and .202 handling moved to J2KDICOMBoundary.swift (PS3.5 A.4.4, 8.2.4, 8.2.14, 10.18.1; PS3.3 C.7.6.1.1.2, C.7.6.1.1.5); --quality now reaches the encoder; validate exits 2 on read errors as documented
 // main.swift — dicom-j2k
 // JPEG 2000 / HTJ2K codestream operations on DICOM files.
 //
@@ -23,13 +24,14 @@ struct DICOMJ2K: ParsableCommand {
             metadata and re-wrap the result in a conformant DICOM file.
 
             Transfer Syntaxes supported:
-              1.2.840.10008.1.2.4.90  JPEG 2000 Lossless Only
-              1.2.840.10008.1.2.4.91  JPEG 2000 (Lossless or Lossy)
-              1.2.840.10008.1.2.4.92  JPEG 2000 Part 2 Multi-component Lossless Only
-              1.2.840.10008.1.2.4.93  JPEG 2000 Part 2 Multi-component (Lossless or Lossy)
-              1.2.840.10008.1.2.4.201 HTJ2K Lossless Only
-              1.2.840.10008.1.2.4.202 HTJ2K Lossless Only (RPCL)
-              1.2.840.10008.1.2.4.203 HTJ2K (Lossless or Lossy)
+              1.2.840.10008.1.2.4.90  JPEG 2000 Image Compression (Lossless Only)
+              1.2.840.10008.1.2.4.91  JPEG 2000 Image Compression
+              1.2.840.10008.1.2.4.92  JPEG 2000 Part 2 Multi-component Image Compression (Lossless Only)
+              1.2.840.10008.1.2.4.93  JPEG 2000 Part 2 Multi-component Image Compression
+              1.2.840.10008.1.2.4.201 High-Throughput JPEG 2000 Image Compression (Lossless Only)
+              1.2.840.10008.1.2.4.202 High-Throughput JPEG 2000 with RPCL Options Image Compression (Lossless Only)
+              1.2.840.10008.1.2.4.203 High-Throughput JPEG 2000 Image Compression
+            (.91, .93 and .203 carry a lossless or a lossy codestream, PS3.5 A.4.4.)
 
             Examples:
               dicom-j2k info scan.dcm
@@ -40,7 +42,7 @@ struct DICOMJ2K: ParsableCommand {
               dicom-j2k reduce input.dcm --output small.dcm --levels 3 --layers 4
               dicom-j2k roi input.dcm --output roi.dcm --frame 0 --region 0,0,256,256
               dicom-j2k benchmark scan.dcm
-              dicom-j2k benchmark scan.dcm --iterations 20 --backends all
+              dicom-j2k benchmark scan.dcm --iterations 20
               dicom-j2k compare ref.dcm test.dcm
               dicom-j2k completions zsh
             """,
@@ -75,18 +77,57 @@ private func loadDICOM(at path: String) throws -> DICOMFile {
     }
 }
 
-/// Extract the raw J2K codestream for a specific frame from a DICOM file.
-/// Returns nil if the pixel data is not encapsulated (e.g., uncompressed).
+/// The J2K codestream of one frame (0-based). A frame may span several fragments
+/// (PS3.5 A.4.4); the mapping is in `J2KDICOMBoundary.frameCodestreams`.
 @available(macOS 10.15, *)
-private func j2kCodestream(from dicom: DICOMFile, frameIndex: Int = 0) -> Data? {
-    guard let element = dicom.dataSet[.pixelData],
-          let fragments = element.encapsulatedFragments else {
-        return nil
+private func j2kCodestream(from dicom: DICOMFile, frameIndex: Int = 0) throws -> Data {
+    do {
+        return try J2KDICOMBoundary.frameCodestream(of: dicom, frame: frameIndex)
+    } catch let error as J2KDICOMBoundary.FrameError {
+        throw ValidationError("No JPEG 2000 codestream for frame \(frameIndex): \(error)")
     }
-    guard frameIndex < fragments.count else {
-        return nil
+}
+
+/// Every frame's J2K codestream, in frame order.
+@available(macOS 10.15, *)
+private func j2kCodestreams(from dicom: DICOMFile) throws -> [Data] {
+    do {
+        return try J2KDICOMBoundary.frameCodestreams(of: dicom)
+    } catch let error as J2KDICOMBoundary.FrameError {
+        throw ValidationError("Cannot read the JPEG 2000 frames: \(error)")
     }
-    return fragments[frameIndex]
+}
+
+/// Encoder settings that keep the codestream family of `uid` (HTJ2K block coder for
+/// .201/.202/.203) and, for .202, the PS3.5 10.18.1 progression (RPCL) and enough
+/// decomposition levels for a base resolution of at most 64.
+@available(macOS 10.15, *)
+private func configureFamily(_ config: inout J2KEncodingConfiguration, uid: String,
+                             rows: Int, columns: Int) {
+    let ts = TransferSyntax.from(uid: uid)
+    if ts?.isHTJ2K == true {
+        config.useHTJ2K = true
+        config.htj2kBlockFormat = .conformant
+    }
+    if uid == TransferSyntax.htj2kRPCLLossless.uid {
+        config.progressionOrder = .rpcl
+        config.decompositionLevels = max(
+            config.decompositionLevels,
+            J2KDICOMBoundary.minimumDecompositionLevelsForRPCL(rows: rows, columns: columns))
+    }
+}
+
+/// Warns when a .202 codestream misses a PS3.5 2026a 10.18.1 requirement (the encoder,
+/// not this tool, decides the markers it writes).
+@available(macOS 10.15, *)
+private func warnIfNotRPCLConformant(_ codestream: Data?, uid: String, rows: Int, columns: Int) {
+    guard uid == TransferSyntax.htj2kRPCLLossless.uid, let codestream else { return }
+    let problems = J2KDICOMBoundary.rpclViolations(
+        J2KDICOMBoundary.codestreamFacts(codestream), rows: rows, columns: columns)
+    if !problems.isEmpty {
+        FileHandle.standardError.write(Data((
+            "Warning: PS3.5 10.18.1 (\(uid)): " + problems.joined(separator: "; ") + "\n").utf8))
+    }
 }
 
 /// Synchronously runs an async throwing closure and returns its result.
@@ -181,11 +222,7 @@ extension DICOMJ2K {
                 )
             }
 
-            guard let codestream = j2kCodestream(from: dicom, frameIndex: frame) else {
-                throw ValidationError(
-                    "No encapsulated JPEG 2000 pixel data found for frame \(frame)."
-                )
-            }
+            let codestream = try j2kCodestream(from: dicom, frameIndex: frame)
 
             let image = try decodeJ2K(codestream)
 
@@ -318,19 +355,23 @@ extension DICOMJ2K {
         var json: Bool = false
 
         mutating func run() throws {
-            let dicom = try loadDICOM(at: input)
-            let tsUID = dicom.transferSyntaxUID
-
-            guard isJ2KTransferSyntax(tsUID) else {
-                throw ValidationError(
-                    "Not a JPEG 2000 file. Transfer syntax: \(tsLabel(tsUID))"
-                )
-            }
-
-            guard let codestream = j2kCodestream(from: dicom, frameIndex: frame) else {
-                throw ValidationError(
-                    "No encapsulated JPEG 2000 pixel data found for frame \(frame)."
-                )
+            // Exit 2 when the file, its transfer syntax or the frame cannot be read, as the
+            // discussion documents (exit 1 is reserved for codestream violations).
+            let dicom: DICOMFile
+            let tsUID: String?
+            let codestream: Data
+            do {
+                dicom = try loadDICOM(at: input)
+                tsUID = dicom.transferSyntaxUID
+                guard isJ2KTransferSyntax(tsUID) else {
+                    throw ValidationError(
+                        "Not a JPEG 2000 file. Transfer syntax: \(tsLabel(tsUID))"
+                    )
+                }
+                codestream = try j2kCodestream(from: dicom, frameIndex: frame)
+            } catch {
+                FileHandle.standardError.write(Data("Error: \(error)\n".utf8))
+                throw ExitCode(2)
             }
 
             let htValidator = HTJ2KConformanceTestHarness()
@@ -472,22 +513,19 @@ extension DICOMJ2K {
             }
 
             // Decode all frames, re-encode, and rebuild DICOM
-            let frameCount = dicom.numberOfFrames ?? 1
-            let useHTJ2K = targetUID.hasPrefix("1.2.840.10008.1.2.4.20")
+            let rows = Int(dicom.dataSet.uint16(for: .rows) ?? 0)
+            let columns = Int(dicom.dataSet.uint16(for: .columns) ?? 0)
             var encConfig = J2KEncodingConfiguration()
             encConfig.lossless = isLossless
-            encConfig.useHTJ2K = useHTJ2K
-            // ISO/IEC 15444-15 conformant wire format for DICOM HTJ2K transfer syntaxes —
-            // interop with OpenJPH and Part-15 PACS decoders. Requires J2KSwift 5.1.1+
-            // (decoder dispatch + pixel-0 K_max fix for CT/MR 16-bit lossless round-trip).
-            if useHTJ2K {
-                encConfig.htj2kBlockFormat = .conformant
-            }
+            // --quality drives the irreversible encode (ignored when lossless).
+            if !isLossless { encConfig.quality = quality }
+            // HTJ2K block coder (ISO/IEC 15444-15, conformant wire format) for .201/.202/.203,
+            // and the PS3.5 10.18.1 RPCL settings for .202.
+            configureFamily(&encConfig, uid: targetUID, rows: rows, columns: columns)
 
             let encoder = J2KEncoder(encodingConfiguration: encConfig)
             var newFragments = [Data]()
-            for idx in 0..<frameCount {
-                guard let cs = j2kCodestream(from: dicom, frameIndex: idx) else { continue }
+            for cs in try j2kCodestreams(from: dicom) {
                 let img = try decodeJ2K(cs)
                 let enc: Data = try runAsync { try await encoder.encode(img) }
                 newFragments.append(enc)
@@ -496,28 +534,25 @@ extension DICOMJ2K {
             guard !newFragments.isEmpty else {
                 throw ValidationError("No J2K frames found in input file.")
             }
+            warnIfNotRPCLConformant(newFragments.first, uid: targetUID, rows: rows, columns: columns)
 
             var newDataSet = dicom.dataSet
-            let pixelElement = DataElement(
-                tag: .pixelData,
-                vr: .OB,
-                length: 0xFFFFFFFF,
-                valueData: Data(),
-                encapsulatedFragments: newFragments,
-                encapsulatedOffsetTable: []
-            )
-            newDataSet[.pixelData] = pixelElement
+            var newMeta = dicom.fileMetaInformation
+            J2KDICOMBoundary.setEncapsulatedPixelData(newFragments, in: &newDataSet)
+            // Photometric Interpretation follows the written codestream (PS3.5 8.2.4 / 8.2.14).
+            J2KDICOMBoundary.applyPixelModule(to: &newDataSet, firstCodestream: newFragments[0])
+            // An irreversible encode is lossy compression (PS3.3 C.7.6.1.1.5).
+            if !isLossless, let method = targetEncoding.transferSyntax.lossyImageCompressionMethod {
+                J2KDICOMBoundary.applyLossyCompression(
+                    to: &newDataSet, meta: &newMeta, method: method,
+                    uncompressedBytes: J2KDICOMBoundary.uncompressedByteCount(
+                        of: newDataSet, frames: newFragments.count),
+                    compressedBytes: newFragments.reduce(0) { $0 + $1.count })
+            }
 
             // Update transfer syntax in file meta
-            var newMeta = dicom.fileMetaInformation
-            let tsTag = Tag(group: 0x0002, element: 0x0010)
-            let tsData = Data(targetUID.utf8)
-            newMeta[tsTag] = DataElement(
-                tag: tsTag,
-                vr: .UI,
-                length: UInt32(tsData.count),
-                valueData: tsData
-            )
+            newMeta.setString(targetUID, for: .transferSyntaxUID, vr: .UI)
+            J2KDICOMBoundary.invalidateGroupLength(&newMeta)
 
             let newFile = DICOMFile(fileMetaInformation: newMeta, dataSet: newDataSet)
             let outputURL = URL(fileURLWithPath: output)
@@ -541,16 +576,17 @@ extension DICOMJ2K {
     struct ReduceCommand: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "reduce",
-            abstract: "Re-encode at lower resolution levels or fewer quality layers",
+            abstract: "Re-encode losslessly with other decomposition levels or quality layers",
             discussion: """
-                Decodes the codestream then re-encodes with fewer wavelet decomposition
-                levels (lower spatial resolution) or fewer quality layers (lower quality).
-                Useful for generating thumbnails or bandwidth-efficient previews.
+                Decodes every frame and re-encodes it reversibly with the given number of
+                wavelet decomposition levels (the reduced resolutions a decoder can extract)
+                and quality layers. The re-encode is lossless: pixel values, Rows (0028,0010),
+                Columns (0028,0011) and the transfer syntax stay as they are.
 
-                --levels  Number of wavelet decomposition levels (1–10, default same as source).
-                          Fewer levels = lower maximum resolution.
-                --layers  Number of quality layers (1–20, default same as source).
-                          Fewer layers = lower maximum quality.
+                --levels  Number of wavelet decomposition levels (1–10). For
+                          1.2.840.10008.1.2.4.202 at least enough for a base resolution
+                          of 64 or less (PS3.5 10.18.1).
+                --layers  Number of quality layers (1–20).
 
                 Examples:
                   dicom-j2k reduce input.dcm --output thumb.dcm --levels 2
@@ -593,51 +629,46 @@ extension DICOMJ2K {
                 )
             }
 
-            guard let codestream = j2kCodestream(from: dicom, frameIndex: 0) else {
-                throw ValidationError("No encapsulated JPEG 2000 pixel data found.")
+            let sourceUID = dicom.transferSyntaxUID ?? ""
+            let rows = Int(dicom.dataSet.uint16(for: .rows) ?? 0)
+            let columns = Int(dicom.dataSet.uint16(for: .columns) ?? 0)
+            if sourceUID == TransferSyntax.htj2kRPCLLossless.uid, let l = levels {
+                let need = J2KDICOMBoundary.minimumDecompositionLevelsForRPCL(rows: rows, columns: columns)
+                guard l >= need else {
+                    throw ValidationError(
+                        "--levels \(l) is too few for \(sourceUID): PS3.5 10.18.1 needs at least \(need) "
+                        + "decomposition levels for a \(columns)×\(rows) image (base resolution ≤ 64).")
+                }
             }
 
-            let srcImage = try decodeJ2K(codestream)
-
+            // Reversible re-encode: the pixel values, Rows and Columns do not change.
             var encConfig = J2KEncodingConfiguration()
             encConfig.lossless = true
             if let l = levels {
                 encConfig.decompositionLevels = l
-                if verbose { print("Reducing to \(l) decomposition levels") }
+                if verbose { print("Re-encoding with \(l) decomposition levels") }
             }
             if let l = layers {
                 encConfig.qualityLayers = l
-                if verbose { print("Reducing to \(l) quality layers") }
+                if verbose { print("Re-encoding with \(l) quality layers") }
             }
+            // Keep the codestream family of the unchanged transfer syntax (HTJ2K for .20x).
+            configureFamily(&encConfig, uid: sourceUID, rows: rows, columns: columns)
 
             let encoder = J2KEncoder(encodingConfiguration: encConfig)
-            let encoded: Data = try runAsync { try await encoder.encode(srcImage) }
-
-            // Re-wrap in a DICOM file preserving existing metadata
-            let frameCount = dicom.numberOfFrames ?? 1
-            var newFragments = [Data](repeating: encoded, count: frameCount)
-            // For multi-frame files, reduce all frames
-            if frameCount > 1 {
-                newFragments = []
-                for idx in 0..<frameCount {
-                    if let cs = j2kCodestream(from: dicom, frameIndex: idx) {
-                        let img = try decodeJ2K(cs)
-                        let encoded2: Data = try runAsync { try await encoder.encode(img) }
-                        newFragments.append(encoded2)
-                    }
-                }
+            var newFragments = [Data]()
+            for cs in try j2kCodestreams(from: dicom) {
+                let img = try decodeJ2K(cs)
+                let encoded: Data = try runAsync { try await encoder.encode(img) }
+                newFragments.append(encoded)
             }
+            warnIfNotRPCLConformant(newFragments.first, uid: sourceUID, rows: rows, columns: columns)
 
             var newDataSet = dicom.dataSet
-            let pixelElement = DataElement(
-                tag: .pixelData,
-                vr: .OB,
-                length: 0xFFFFFFFF,
-                valueData: Data(),
-                encapsulatedFragments: newFragments,
-                encapsulatedOffsetTable: []
-            )
-            newDataSet[.pixelData] = pixelElement
+            J2KDICOMBoundary.setEncapsulatedPixelData(newFragments, in: &newDataSet)
+            if let first = newFragments.first {
+                J2KDICOMBoundary.applyPixelModule(to: &newDataSet, firstCodestream: first)
+            }
 
             let newFile = DICOMFile(fileMetaInformation: dicom.fileMetaInformation, dataSet: newDataSet)
             let outputURL = URL(fileURLWithPath: output)
@@ -663,7 +694,11 @@ extension DICOMJ2K {
             abstract: "Extract a region of interest (ROI) frame into a new DICOM file",
             discussion: """
                 Decodes the specified frame, crops to the given rectangle, and re-encodes
-                the crop as a single-frame DICOM file preserving the original transfer syntax.
+                the crop losslessly as a single-frame DICOM file in the original transfer
+                syntax. The crop is a derived image (PS3.3 C.7.6.1.1.2): Image Type value 1
+                becomes DERIVED, it gets a new SOP Instance UID, Rows / Columns, Number of
+                Frames and Image Position (Patient) describe the crop, and Derivation
+                Description names the region.
 
                 --region x,y,width,height   Crop rectangle in pixels (origin at top-left).
 
@@ -696,6 +731,12 @@ extension DICOMJ2K {
             guard parts[2] > 0, parts[3] > 0 else {
                 throw ValidationError("--region width and height must be positive")
             }
+            guard parts[0] >= 0, parts[1] >= 0 else {
+                throw ValidationError("--region x and y must be 0 or more (origin at the top-left pixel)")
+            }
+            guard parts[2] <= Int(UInt16.max), parts[3] <= Int(UInt16.max) else {
+                throw ValidationError("--region width and height must fit Rows / Columns (US, at most 65535)")
+            }
         }
 
         mutating func run() throws {
@@ -708,9 +749,7 @@ extension DICOMJ2K {
                     "Not a JPEG 2000 file. Transfer syntax: \(tsLabel(dicom.transferSyntaxUID))"
                 )
             }
-            guard let codestream = j2kCodestream(from: dicom, frameIndex: frame) else {
-                throw ValidationError("No encapsulated JPEG 2000 pixel data found for frame \(frame).")
-            }
+            let codestream = try j2kCodestream(from: dicom, frameIndex: frame)
 
             let image = try decodeJ2K(codestream)
             guard roiX + roiW <= image.width, roiY + roiH <= image.height else {
@@ -766,35 +805,31 @@ extension DICOMJ2K {
                 colorSpace: image.colorSpace
             )
 
+            let sourceUID = dicom.transferSyntaxUID ?? ""
             var encConfig = J2KEncodingConfiguration()
             encConfig.lossless = true
+            configureFamily(&encConfig, uid: sourceUID, rows: roiH, columns: roiW)
             let encoder = J2KEncoder(encodingConfiguration: encConfig)
             let encoded: Data = try runAsync { try await encoder.encode(croppedImage) }
+            warnIfNotRPCLConformant(encoded, uid: sourceUID, rows: roiH, columns: roiW)
 
             var newDataSet = dicom.dataSet
-            newDataSet[.pixelData] = DataElement(
-                tag: .pixelData,
-                vr: .OB,
-                length: 0xFFFFFFFF,
-                valueData: Data(),
-                encapsulatedFragments: [encoded],
-                encapsulatedOffsetTable: []
-            )
-            // Update Rows (0028,0010) and Columns (0028,0011)
-            let rowsTag = Tag(group: 0x0028, element: 0x0010)
-            var rowsVal = UInt16(roiH).littleEndian
-            newDataSet[rowsTag] = DataElement(
-                tag: rowsTag, vr: .US,
-                length: 2, valueData: Data(bytes: &rowsVal, count: 2)
-            )
-            let colsTag = Tag(group: 0x0028, element: 0x0011)
-            var colsVal = UInt16(roiW).littleEndian
-            newDataSet[colsTag] = DataElement(
-                tag: colsTag, vr: .US,
-                length: 2, valueData: Data(bytes: &colsVal, count: 2)
-            )
+            var newMeta = dicom.fileMetaInformation
+            J2KDICOMBoundary.setEncapsulatedPixelData([encoded], in: &newDataSet)
+            J2KDICOMBoundary.applyPixelModule(to: &newDataSet, firstCodestream: encoded)
+            // Rows / Columns, Number of Frames 1, the kept frame's functional groups and the
+            // Image Position (Patient) of the crop origin (PS3.3 C.7.6.2.1.1, C.7.6.16).
+            J2KDICOMBoundary.applyCrop(to: &newDataSet, frame: frame, x: roiX, y: roiY,
+                                       width: roiW, height: roiH)
+            // A crop is a derived image with other pixel data: Image Type DERIVED and a new
+            // SOP Instance UID (PS3.3 C.7.6.1.1.2).
+            let sourceSOP = dicom.dataSet.string(for: .sopInstanceUID) ?? "unknown"
+            J2KDICOMBoundary.appendDerivationDescription(
+                "Region \(roiX),\(roiY),\(roiW),\(roiH) of frame \(frame) (0-based) of \(sourceSOP)",
+                to: &newDataSet)
+            J2KDICOMBoundary.markDerived(&newDataSet, meta: &newMeta)
 
-            let newFile = DICOMFile(fileMetaInformation: dicom.fileMetaInformation, dataSet: newDataSet)
+            let newFile = DICOMFile(fileMetaInformation: newMeta, dataSet: newDataSet)
             let outputURL = URL(fileURLWithPath: output)
             let outData = try newFile.write()
             try outData.write(to: outputURL)
@@ -856,9 +891,7 @@ extension DICOMJ2K {
                     "Not a JPEG 2000 file. Transfer syntax: \(tsLabel(dicom.transferSyntaxUID))"
                 )
             }
-            guard let codestream = j2kCodestream(from: dicom, frameIndex: frame) else {
-                throw ValidationError("No encapsulated JPEG 2000 pixel data found for frame \(frame).")
-            }
+            let codestream = try j2kCodestream(from: dicom, frameIndex: frame)
 
             if verbose { print("Benchmarking \(input) (\(iterations) iterations)…") }
 
@@ -939,32 +972,27 @@ extension DICOMJ2K {
             let refDICOM = try loadDICOM(at: reference)
             let tstDICOM = try loadDICOM(at: test)
 
-            // Prefer J2K decode; fall back to PixelData for uncompressed
-            let refPixels: [Double]
-            let tstPixels: [Double]
-            let maxVal: Double
-
-            if isJ2KTransferSyntax(refDICOM.transferSyntaxUID),
-               let cs = j2kCodestream(from: refDICOM, frameIndex: frame) {
-                let img = try decodeJ2K(cs)
-                refPixels = pixelDoubles(from: img)
-                maxVal = Double((1 << (img.components.first?.bitDepth ?? 16)) - 1)
-            } else if let pd = refDICOM.pixelData(), let fd = pd.frameData(at: frame) {
-                refPixels = fd.map { Double($0) }
-                maxVal = Double((1 << refDICOM.pixelDataDescriptor()!.bitsStored) - 1)
-            } else {
-                throw ValidationError("Cannot extract pixel data from reference file.")
+            // Both files are decoded through the shared pixel pipeline, so a native file and a
+            // compressed one are compared sample by sample: Bits Allocated, Pixel
+            // Representation and Samples per Pixel (PS3.3 C.7.6.3) decide what a sample is.
+            func samples(_ file: DICOMFile, _ name: String) throws -> (values: [Double], bitsStored: Int) {
+                let pixels: PixelData
+                do {
+                    pixels = try file.pixelData(frame: frame)
+                } catch {
+                    throw ValidationError("Cannot extract frame \(frame) from the \(name) file: \(error)")
+                }
+                guard let values = pixels.pixelValues(forFrame: 0) else {
+                    throw ValidationError("Cannot extract pixel data from \(name) file.")
+                }
+                return (values.map(Double.init), pixels.descriptor.bitsStored)
             }
-
-            if isJ2KTransferSyntax(tstDICOM.transferSyntaxUID),
-               let cs = j2kCodestream(from: tstDICOM, frameIndex: frame) {
-                let img = try decodeJ2K(cs)
-                tstPixels = pixelDoubles(from: img)
-            } else if let pd = tstDICOM.pixelData(), let fd = pd.frameData(at: frame) {
-                tstPixels = fd.map { Double($0) }
-            } else {
-                throw ValidationError("Cannot extract pixel data from test file.")
-            }
+            let ref = try samples(refDICOM, "reference")
+            let tst = try samples(tstDICOM, "test")
+            let refPixels = ref.values
+            let tstPixels = tst.values
+            // Peak value for PSNR: the range of Bits Stored (0028,0101) of the reference.
+            let maxVal = Double((1 << ref.bitsStored) - 1)
 
             guard refPixels.count == tstPixels.count else {
                 throw ValidationError(
@@ -1004,24 +1032,6 @@ extension DICOMJ2K {
                     print(String(format: "  PSNR: %.2f dB", psnr))
                 }
                 print("  Identical: \(identical ? "Yes" : "No")")
-            }
-        }
-
-        private func pixelDoubles(from image: J2KImage) -> [Double] {
-            guard let comp = image.components.first else { return [] }
-            let bytesPerSample = comp.bitDepth <= 8 ? 1 : 2
-            if bytesPerSample == 1 {
-                return comp.data.map { Double($0) }
-            } else {
-                var values = [Double]()
-                values.reserveCapacity(comp.data.count / 2)
-                comp.data.withUnsafeBytes { ptr in
-                    let shorts = ptr.bindMemory(to: UInt16.self)
-                    for i in 0..<(comp.data.count / 2) {
-                        values.append(Double(shorts[i]))
-                    }
-                }
-                return values
             }
         }
     }
@@ -1098,7 +1108,7 @@ extension DICOMJ2K {
                     'info:Show J2K codestream metadata'
                     'validate:ISO 15444-4 conformance check'
                     'transcode:Transcode J2K<->HTJ2K'
-                    'reduce:Re-encode at lower resolution/quality'
+                    'reduce:Re-encode with other levels/layers (lossless)'
                     'roi:Extract region of interest'
                     'benchmark:Decode-speed benchmark'
                     'compare:Compute PSNR/MSE between images'
@@ -1117,7 +1127,7 @@ extension DICOMJ2K {
             complete -c dicom-j2k -n __fish_use_subcommand -a info       -d 'Show J2K codestream metadata'
             complete -c dicom-j2k -n __fish_use_subcommand -a validate   -d 'ISO 15444-4 conformance check'
             complete -c dicom-j2k -n __fish_use_subcommand -a transcode  -d 'Transcode J2K<->HTJ2K'
-            complete -c dicom-j2k -n __fish_use_subcommand -a reduce     -d 'Re-encode at lower resolution/quality'
+            complete -c dicom-j2k -n __fish_use_subcommand -a reduce     -d 'Re-encode with other levels/layers (lossless)'
             complete -c dicom-j2k -n __fish_use_subcommand -a roi        -d 'Extract region of interest'
             complete -c dicom-j2k -n __fish_use_subcommand -a benchmark  -d 'Decode-speed benchmark'
             complete -c dicom-j2k -n __fish_use_subcommand -a compare    -d 'Compute PSNR/MSE between images'

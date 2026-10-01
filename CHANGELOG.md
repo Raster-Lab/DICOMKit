@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-j2k DICOM boundary verified against DICOM 2026a (2026-10-01)
+
+- **dicom-j2k** finds each frame through the Extended / Basic Offset Table (or SOC-delimited fragments),
+  so frames that span several fragments are read instead of failing (PS3.5 A.4.4). `transcode`, `reduce`
+  and `roi` set Photometric Interpretation from the written codestream (YBR_RCT / YBR_ICT when the
+  multi-component transform is applied, RGB when a YBR_RCT/ICT source is re-encoded without one) and
+  Planar Configuration 0 (PS3.5 8.2.4 / 8.2.14); `--quality` now reaches the encoder (it was ignored).
+  A lossy `transcode` sets Lossy Image Compression "01", appends Ratio / Method (ISO_15444_1 /
+  ISO_15444_15), Derivation Description, Image Type DERIVED and a new SOP Instance UID (also in
+  (0002,0003)) (PS3.3 C.7.6.1.1.5). `roi` output is a derived single-frame image: new SOP Instance UID,
+  DERIVED, Number of Frames 1, the kept Per-frame Functional Groups item and the Image Position (Patient)
+  of the crop origin; a negative `--region` origin is refused. `reduce`/`roi` keep the HTJ2K block coder
+  for HTJ2K sources; for `.202` the encoder is asked for RPCL and enough levels, `reduce --levels` below the
+  PS3.5 10.18.1 minimum is refused, and a warning names any 10.18.1 requirement the codestream misses.
+  File Meta Group Length is recomputed after a meta change. `compare` decodes both files through the
+  shared pixel pipeline (16-bit native and colour images compared sample by sample). **Behaviour change:**
+  `validate` exits 2 (as documented) when the file cannot be read or is not JPEG 2000. Help/README: PS3.6
+  Table A-1 transfer syntax names, `reduce` described as a lossless re-encode, `--backends` example removed.
+
 ### Fixed — dicom-pdf verified against DICOM 2026a (2026-10-01)
 
 - **dicom-pdf** writes Encapsulated Document Length (0042,0015) with the unpadded length and cuts the

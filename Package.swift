@@ -1334,12 +1334,16 @@ let package = Package(
                 .copy("Fixtures")
             ]
         ),
+        // dicom-j2k: frame/fragment mapping, Photometric Interpretation, lossy provenance and
+        // derived-image attributes after a re-encode, pinned to PS3.5 / PS3.3 2026a.
         .testTarget(
             name: "dicom-j2kTests",
             dependencies: [
+                "dicom-j2k",
                 "DICOMCore",
                 "DICOMKit",
-                .product(name: "J2KCore", package: "J2KSwift")
+                .product(name: "J2KCore", package: "J2KSwift"),
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
             ]
         ),
         // Oracle-based round-trip tests for the local (non-network) dicom-* tools.
