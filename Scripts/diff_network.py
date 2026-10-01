@@ -130,7 +130,8 @@ def swift_string_cases(src, enum_name):
     never written (e.g. MediumType's MAMMO CLEAR / MAMMO BLUE, written as the terms)."""
     m = re.search(r'enum\s+' + re.escape(enum_name) + r'\b[^{]*\{', src)
     if not m:
-        return []
+        # A struct of named terms (FilmDestination since P-BIN: static lets plus .bin(n)).
+        return re.findall(r'static\s+let\s+\w+\s*=\s*' + re.escape(enum_name) + r'\(term:\s*"([^"]*)"\)', src)
     depth, i, start = 0, m.end() - 1, m.end() - 1
     while i < len(src):
         if src[i] == '{':

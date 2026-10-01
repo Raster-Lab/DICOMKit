@@ -63,8 +63,11 @@ def line_of(src, pos):
 
 
 def enum_raw_values(src, enum_name):
-    """{case name: raw value} of a String-backed enum."""
-    return dict(re.findall(r'case\s+(\w+)\s*=\s*"([^"]*)"', dw.enum_body(src, enum_name)))
+    """{case name: raw value} of a String-backed enum (or of a struct of named terms:
+    FilmDestination since P-BIN, whose BIN_i values are `.bin(n)`)."""
+    out = dict(re.findall(r'case\s+(\w+)\s*=\s*"([^"]*)"', dw.enum_body(src, enum_name)))
+    out.update(re.findall(r'static\s+let\s+(\w+)\s*=\s*' + re.escape(enum_name) + r'\(term:\s*"([^"]*)"\)', src))
+    return out
 
 
 # --- the standard ------------------------------------------------------------------------
@@ -196,6 +199,9 @@ def check_catalog_terms(rep, p3, files, net):
         raw = enum_raw_values(net, enum)
         body = re.search(r'static\s+let\s+' + listname + r'\b[^=]*=\s*\[(.*?)\n\s*\]', src, re.S)
         cases = re.findall(r'\(\s*(?:\w+\.)?\.?(\w+)\s*,', body.group(1)) if body else []
+        for n in (re.findall(r'\(\s*\.bin\((\d+)\)\s*,', body.group(1)) if body else []):
+            raw = {**raw, f'bin({n})': f'BIN_{n}'}
+            cases.append(f'bin({n})')
         wire = raw
         if enum == 'PresentationLUTShape':
             off = set(re.findall(r'case\s+\.(\w+)\s*:\s*return\s+nil',

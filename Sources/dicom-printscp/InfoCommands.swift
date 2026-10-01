@@ -25,6 +25,11 @@ struct StatusCommand: AsyncParsableCommand {
             (2110,0030), Manufacturer and Manufacturer's Model Name — from the
             configuration alone. Useful for checking a --config file, and
             for confirming what --printer-status failure will make an SCU see.
+
+            --format json keys each attribute by its PS3.6 keyword (PrinterStatus,
+            PrinterStatusInfo, PrinterName, Manufacturer, ManufacturerModelName);
+            the older keys status, statusInfo, name, manufacturer and model carry
+            the same values and are deprecated.
             """
     )
 

@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PS3.18 2026a F.2 DICOM JSON Model the server returned (one top-level array, attributes in ascending tag
   order, Group Length removed); `--format json` is unchanged. DICOMWeb adds `QIDOOutputFormat.dicomJSON`,
   `DICOMJSONModelFormatter` and `DICOMwebClient.searchWorkitemsDICOMJSON(query:)` (P-QUERY-JSON for dicom-wado).
+- **`dicom-print status` / `job` and `dicom-printscp status` `--format json`** add the PS3.6 2026a keyword
+  keys `PrinterStatus`, `PrinterStatusInfo`, `PrinterName`, `Manufacturer`, `ManufacturerModelName`,
+  `ExecutionStatus`, `ExecutionStatusInfo`, `CreationDate` (DA) and `CreationTime` (TM) beside the old
+  keys, which keep their values and are deprecated (help and README say so) (P-PRINT-JSON).
+- **Film Destination BIN_i** (P-BIN, closes D89): `DICOMNetwork.FilmDestination` carries every sorter bin
+  of PS3.3 2026a Table C.13-1 (numbered from 1, no maximum, no leading zeros) through `.bin(n)`;
+  `.bin1` / `.bin2` are deprecated. It is now a struct (`rawValue`, `init?(rawValue:)`, single-string
+  `Codable`, `allCases` keep working; an exhaustive `switch` needs a `default`). `dicom-print send
+  --film-destination` accepts any `bin-N` / `BIN_N`; the Print SCP accepts any BIN_i on N-CREATE.
 
 ### Changed — CLI P-items, pixel batch (approved 2026-10-01, DICOM 2026a)
 

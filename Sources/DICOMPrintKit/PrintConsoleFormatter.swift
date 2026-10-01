@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — carries no DICOM-standard data (console and JSON text for values DICOMNetwork parses)
+// NEMA-verified: 2026a, checked 2026-10-01 — JSON keyword keys diffed against PS3.6 2026a Table 6-1 (9 keywords: PrinterStatus, PrinterStatusInfo, PrinterName, Manufacturer, ManufacturerModelName, ExecutionStatus, ExecutionStatusInfo, CreationDate DA, CreationTime TM; P-PRINT-JSON); the older tool keys are kept (deprecated); text labels per D90
 // PrintConsoleFormatter.swift
 // DICOMPrintKit
 //
@@ -37,16 +37,24 @@ public enum PrintConsoleFormatter {
         return lines
     }
 
-    /// Machine-readable printer status.
+    /// Machine-readable printer status. Each N-GET attribute is keyed by its PS3.6
+    /// Table 6-1 keyword (`PrinterStatus`, `PrinterStatusInfo`, `PrinterName`,
+    /// `Manufacturer`, `ManufacturerModelName`). The older tool keys (`status`,
+    /// `statusInfo`, `name`, `manufacturer`, `model`) carry the same values and are
+    /// deprecated; `isNormal` is derived and has no keyword.
     public static func printerStatusJSON(_ status: PrinterStatus) -> String? {
         var dict: [String: Any] = [
             "status": status.status,
+            "PrinterStatus": status.status,
             "isNormal": status.isNormal
         ]
-        if let name = status.printerName { dict["name"] = name }
-        if let info = status.statusInfo { dict["statusInfo"] = info }
-        if let manufacturer = status.manufacturer { dict["manufacturer"] = manufacturer }
-        if let model = status.manufacturerModelName { dict["model"] = model }
+        if let name = status.printerName { dict["name"] = name; dict["PrinterName"] = name }
+        if let info = status.statusInfo { dict["statusInfo"] = info; dict["PrinterStatusInfo"] = info }
+        if let manufacturer = status.manufacturer {
+            dict["manufacturer"] = manufacturer
+            dict["Manufacturer"] = manufacturer
+        }
+        if let model = status.manufacturerModelName { dict["model"] = model; dict["ManufacturerModelName"] = model }
         return json(from: dict)
     }
 
@@ -108,17 +116,34 @@ public enum PrintConsoleFormatter {
         return lines
     }
 
-    /// Machine-readable print job status.
+    /// Machine-readable print job status. Each N-GET attribute is keyed by its PS3.6
+    /// Table 6-1 keyword (`ExecutionStatus`, `ExecutionStatusInfo`, `CreationDate` as DA
+    /// YYYYMMDD, `CreationTime` as TM HHMMSS). The older tool keys (`status`,
+    /// `statusInfo`, `creationDate` as ISO 8601) carry the same values and are
+    /// deprecated; `jobUID` (the Print Job SOP Instance UID) stays.
     public static func jobStatusJSON(_ status: PrintJobStatus) -> String? {
         var dict: [String: Any] = [
             "jobUID": status.printJobUID,
-            "status": status.executionStatus
+            "status": status.executionStatus,
+            "ExecutionStatus": status.executionStatus
         ]
-        if let info = status.executionStatusInfo { dict["statusInfo"] = info }
+        if let info = status.executionStatusInfo { dict["statusInfo"] = info; dict["ExecutionStatusInfo"] = info }
         if let creationDate = status.creationDate {
             dict["creationDate"] = ISO8601DateFormatter().string(from: creationDate)
+            dict["CreationDate"] = dicomValue(creationDate, format: "yyyyMMdd")
+        }
+        if let creationTime = status.creationTime {
+            dict["CreationTime"] = dicomValue(creationTime, format: "HHmmss")
         }
         return json(from: dict)
+    }
+
+    /// DA / TM text in the time zone DICOMNetwork parsed the value in (the current one).
+    private static func dicomValue(_ date: Date, format: String) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = format
+        return formatter.string(from: date)
     }
 
     // MARK: - Film plan

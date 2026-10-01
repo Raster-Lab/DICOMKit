@@ -211,12 +211,14 @@ public enum PrintOptionCatalog {
         (.mammoBlueFilm,  "mammo-blue-film",  "Mammography blue film")
     ]
 
-    /// Film destinations.
+    /// Film destinations: MAGAZINE, PROCESSOR and the first two sorter bins. PS3.3
+    /// Table C.13-1 places no maximum on BIN_i, so a bin beyond these is
+    /// `FilmDestination.bin(n)` (`bin-N` on the command line).
     public static let filmDestinations: [(value: FilmDestination, cliToken: String, label: String)] = [
         (.magazine,  "magazine",  "Magazine"),
         (.processor, "processor", "Processor"),
-        (.bin1,      "bin-1",     "Bin 1"),
-        (.bin2,      "bin-2",     "Bin 2")
+        (.bin(1),    "bin-1",     "Bin 1"),
+        (.bin(2),    "bin-2",     "Bin 2")
     ]
 
     /// Magnification (interpolation) types.

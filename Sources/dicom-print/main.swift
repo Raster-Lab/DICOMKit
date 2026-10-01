@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — send option vocabularies text-diffed against PS3.3 2026a Tables C.13-1 (Print Priority 3, Medium Type 5, Film Destination MAGAZINE/PROCESSOR/BIN_i), C.13-3 (Film Size ID 12, Film Orientation 2, Magnification Type 4, Image Display Format 6 forms) and C.11-4 (Presentation LUT Shape 2): every term offered (MAMMO CLEAR FILM / MAMMO BLUE FILM added), BIN_i limited to BIN_1/BIN_2 by DICOMNetwork.FilmDestination; Bits Stored 8/12 per Table C.13-5; Meta SOP Class and Printer SOP Instance UIDs per PS3.6 Table A-1; status/job N-GET attributes per PS3.6 Table 6-1 and PS3.3 Tables C.13-8/C.13-9
+// NEMA-verified: 2026a, checked 2026-10-01 — send option vocabularies text-diffed against PS3.3 2026a Tables C.13-1 (Print Priority 3, Medium Type 5, Film Destination MAGAZINE/PROCESSOR/BIN_i), C.13-3 (Film Size ID 12, Film Orientation 2, Magnification Type 4, Image Display Format 6 forms) and C.11-4 (Presentation LUT Shape 2): every term offered (MAMMO CLEAR FILM / MAMMO BLUE FILM added), BIN_i sent for every i >= 1 without leading zeros (P-BIN, DICOMNetwork.FilmDestination.bin(_:), 2026-10-01); Bits Stored 8/12 per Table C.13-5; Meta SOP Class and Printer SOP Instance UIDs per PS3.6 Table A-1; status/job N-GET attributes per PS3.6 Table 6-1 and PS3.3 Tables C.13-8/C.13-9
 import Foundation
 import ArgumentParser
 import DICOMCore
@@ -131,6 +131,11 @@ struct StatusCommand: ParsableCommand {
             (PS3.4 H.4.6) and prints Printer Status (2110,0010: NORMAL, WARNING,
             FAILURE), Printer Status Info (2110,0020), Printer Name (2110,0030),
             Manufacturer (0008,0070) and Manufacturer's Model Name (0008,1090).
+
+            --format json keys each attribute by its PS3.6 keyword (PrinterStatus,
+            PrinterStatusInfo, PrinterName, Manufacturer, ManufacturerModelName).
+            The older keys status, statusInfo, name, manufacturer and model carry
+            the same values and are deprecated.
             
             Examples:
               dicom-print status pacs://192.168.1.100:11112 --aet WORKSTATION
@@ -262,7 +267,7 @@ struct SendCommand: ParsableCommand {
     @Option(name: .long, help: "Magnification Type (2010,0060): \(MagnificationOption.tokenList) (default: replicate)")
     var magnification: MagnificationOption = .replicate
 
-    @Option(name: .long, help: "Film Destination (2000,0040): \(FilmDestinationOption.tokenList) (default: processor). PS3.3 Table C.13-1 numbers bins BIN_1, BIN_2, ... with no maximum; only bins 1 and 2 can be sent")
+    @Option(name: .long, help: "Film Destination (2000,0040): \(FilmDestinationOption.tokenList) (default: processor). PS3.3 Table C.13-1 numbers sorter bins from 1 with no maximum; any bin-N / BIN_N is sent (no leading zeros)")
     var filmDestination: FilmDestinationOption = .processor
 
     @Flag(name: .long, help: "N-GET Printer Status (2110,0010) before printing; abort on FAILURE, warn on WARNING")
@@ -715,6 +720,11 @@ struct JobCommand: ParsableCommand {
             Execution Status (2100,0020: PENDING, PRINTING, DONE, FAILURE),
             Execution Status Info (2100,0030) and Creation Date / Time
             (2100,0040 / 2100,0050).
+
+            --format json keys each attribute by its PS3.6 keyword (ExecutionStatus,
+            ExecutionStatusInfo, CreationDate as YYYYMMDD, CreationTime as HHMMSS).
+            The older keys status, statusInfo and creationDate (ISO 8601) carry the
+            same values and are deprecated; jobUID stays.
             
             Examples:
               dicom-print job pacs://server:11112 --aet APP --job-id 1.2.840...
@@ -1067,28 +1077,51 @@ enum MagnificationOption: String, StandardTermOption {
     var standardTerm: String? { magnificationType.rawValue }
 }
 
-enum FilmDestinationOption: String, StandardTermOption {
-    case magazine
-    case processor
-    case bin1 = "bin-1"
-    case bin2 = "bin-2"
+/// `--film-destination`: magazine, processor or sorter bin N (P-BIN). PS3.3 2026a Table
+/// C.13-1 defines BIN_i "numbered sequentially starting from 1" with "no maximum" and no
+/// leading zeros, so every bin is accepted (formerly bin-1 / bin-2 only). Tokens and terms
+/// are matched case-insensitively: `bin-12` and `BIN_12` both send BIN_12.
+struct FilmDestinationOption: ExpressibleByArgument, Equatable, CustomStringConvertible {
+    let filmDestination: FilmDestination
 
-    var filmDestination: FilmDestination {
-        switch self {
-        case .magazine: return .magazine
-        case .processor: return .processor
-        case .bin1: return .bin1
-        case .bin2: return .bin2
+    static let magazine = FilmDestinationOption(filmDestination: .magazine)
+    static let processor = FilmDestinationOption(filmDestination: .processor)
+    static let bin1 = FilmDestinationOption(filmDestination: .bin(1))
+    static let bin2 = FilmDestinationOption(filmDestination: .bin(2))
+
+    init(filmDestination: FilmDestination) { self.filmDestination = filmDestination }
+
+    init?(argument: String) {
+        let upper = argument.trimmingCharacters(in: .whitespaces).uppercased()
+        switch upper {
+        case "MAGAZINE": self = .magazine
+        case "PROCESSOR": self = .processor
+        default:
+            // bin-N (the tool's token) or BIN_N (the Defined Term)
+            let term = upper.hasPrefix("BIN-") ? "BIN_" + upper.dropFirst(4) : upper
+            guard let destination = FilmDestination(rawValue: term), destination.binNumber != nil else {
+                return nil
+            }
+            self.init(filmDestination: destination)
         }
     }
 
-    init?(argument: String) {
-        guard let match = Self.matching(argument) else { return nil }
-        self = match
+    /// The tool's token: magazine, processor or bin-N.
+    var rawValue: String {
+        if let n = filmDestination.binNumber { return "bin-\(n)" }
+        return filmDestination.rawValue.lowercased()
     }
+
+    var description: String { rawValue }
 
     /// Film Destination (2000,0040), PS3.3 Table C.13-1.
     var standardTerm: String? { filmDestination.rawValue }
+
+    static var allValueStrings: [String] { [] }
+
+    static var tokenList: String {
+        "magazine = MAGAZINE, processor = PROCESSOR, bin-1 = BIN_1, bin-2 = BIN_2, ... bin-N = BIN_N"
+    }
 }
 
 enum OrientationOption: String, StandardTermOption {

@@ -160,6 +160,11 @@ Bits Stored values of Table C.13-5.
 
 `status` takes every settings option plus `--format` and `--verbose`. `queues` takes `--format`.
 
+`status --format json` keys each attribute by its PS3.6 Table 6-1 keyword (`PrinterStatus`,
+`PrinterStatusInfo`, `PrinterName`, `Manufacturer`, `ManufacturerModelName`), the same object
+`dicom-print status --format json` prints. The older keys `status`, `statusInfo`, `name`,
+`manufacturer` and `model` carry the same values and are deprecated.
+
 ## Configuration file
 
 `--config` reads and writes the same JSON document DICOM Studio's Print SCP screen persists, so

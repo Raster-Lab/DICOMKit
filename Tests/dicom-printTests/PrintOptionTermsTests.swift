@@ -38,15 +38,23 @@ final class PrintOptionTermsTests: XCTestCase {
 
     // PS3.3 Table C.13-1, Film Destination (2000,0040): MAGAZINE, PROCESSOR, BIN_i.
     func testFilmDestinationTerms() {
-        let sent = terms(FilmDestinationOption.self)
-        XCTAssertTrue(sent.contains("MAGAZINE"))
-        XCTAssertTrue(sent.contains("PROCESSOR"))
-        for term in sent where term.hasPrefix("BIN_") {
-            // "The encoding of the BIN number shall not contain leading zeros."
-            let number = term.dropFirst(4)
-            XCTAssertNotNil(Int(number), term)
-            XCTAssertFalse(number.hasPrefix("0"), term)
-        }
+        XCTAssertEqual(FilmDestinationOption(argument: "magazine")?.standardTerm, "MAGAZINE")
+        XCTAssertEqual(FilmDestinationOption(argument: "processor")?.standardTerm, "PROCESSOR")
+        // P-BIN: "Film sorter BINs shall be numbered sequentially starting from 1 and no
+        // maximum is placed on the number of BINs" — any bin-N / BIN_N is sent.
+        XCTAssertEqual(FilmDestinationOption(argument: "bin-1")?.standardTerm, "BIN_1")
+        XCTAssertEqual(FilmDestinationOption(argument: "bin-3")?.standardTerm, "BIN_3")
+        XCTAssertEqual(FilmDestinationOption(argument: "BIN_42")?.standardTerm, "BIN_42")
+        XCTAssertEqual(FilmDestinationOption(argument: "bin_7")?.rawValue, "bin-7")
+        // "The encoding of the BIN number shall not contain leading zeros."
+        XCTAssertNil(FilmDestinationOption(argument: "bin-03"))
+        XCTAssertNil(FilmDestinationOption(argument: "bin-0"))
+        XCTAssertNil(FilmDestinationOption(argument: "bin-"))
+        XCTAssertNil(FilmDestinationOption(argument: "tray"))
+        XCTAssertNoThrow(try SendCommand.parse(["pacs://h:104", "x.dcm", "--aet", "A", "--film-destination", "bin-12"]))
+        XCTAssertThrowsError(try SendCommand.parse(["pacs://h:104", "x.dcm", "--aet", "A", "--film-destination", "bin-012"]))
+        XCTAssertEqual(try SendCommand.parse(["pacs://h:104", "x.dcm", "--aet", "A", "--film-destination", "BIN_9"])
+                        .filmDestination.filmDestination, .bin(9))
     }
 
     // PS3.3 Table C.13-3: Film Orientation PORTRAIT, LANDSCAPE; Magnification Type

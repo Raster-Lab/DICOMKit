@@ -109,7 +109,7 @@ dicom-print remove-printer --name radiology-printer
 | `--copies` | Number of Copies (2000,0010), 1 or more (default: 1) |
 | `--film-size` | Film Size ID (2010,0050), PS3.3 Table C.13-3: 8x10 = 8INX10IN, 8.5x11 = 8_5INX11IN, 10x12 = 10INX12IN, 10x14 = 10INX14IN, 11x14 = 11INX14IN, 11x17 = 11INX17IN, 14x14 = 14INX14IN, 14x17 = 14INX17IN, 24x24cm = 24CMX24CM, 24x30cm = 24CMX30CM, a4 = A4, a3 = A3 (the Defined Term is also accepted; default: 14x17) |
 | `--magnification` | Magnification Type (2010,0060): replicate, bilinear, cubic, none = REPLICATE, BILINEAR, CUBIC, NONE (default: replicate) |
-| `--film-destination` | Film Destination (2000,0040): magazine = MAGAZINE, processor = PROCESSOR, bin-1 = BIN_1, bin-2 = BIN_2 (default: processor). PS3.3 Table C.13-1 allows BIN_i for any i; only bins 1 and 2 can be sent |
+| `--film-destination` | Film Destination (2000,0040): magazine = MAGAZINE, processor = PROCESSOR, bin-1 = BIN_1, bin-2 = BIN_2, ... bin-N = BIN_N (default: processor). PS3.3 Table C.13-1 numbers sorter bins from 1 with no maximum and no leading zeros: any `bin-N` or `BIN_N` is accepted and sent |
 | `--check-status` | N-GET Printer Status (2110,0010) first; abort on FAILURE, warn on WARNING |
 | `--verify` | C-ECHO connectivity check against the printer before printing |
 | `--orientation` | Film Orientation (2010,0040): portrait = PORTRAIT, landscape = LANDSCAPE (default: portrait) |
@@ -159,6 +159,17 @@ Scripts can rely on this split across all subcommands:
 
 `send --format json` emits `{"success": bool, "printJobUID"?, "filmSessionUID"?,
 "filmBoxUID"?, "error"?}`.
+
+`status --format json` and `job --format json` key each N-GET attribute by its PS3.6
+Table 6-1 keyword:
+
+| Subcommand | Keyword keys | Deprecated keys (same value, kept for now) |
+|---|---|---|
+| `status` | `PrinterStatus`, `PrinterStatusInfo`, `PrinterName`, `Manufacturer`, `ManufacturerModelName` | `status`, `statusInfo`, `name`, `manufacturer`, `model` |
+| `job` | `ExecutionStatus`, `ExecutionStatusInfo`, `CreationDate` (DA, `YYYYMMDD`), `CreationTime` (TM, `HHMMSS`) | `status`, `statusInfo`, `creationDate` (ISO 8601) |
+
+`status` also has `isNormal` and `job` has `jobUID` (the Print Job SOP Instance UID); neither
+is an attribute keyword.
 
 ### Presentation LUT
 

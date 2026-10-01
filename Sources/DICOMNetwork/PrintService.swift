@@ -10,7 +10,7 @@ import DICOMCore
 
 #if canImport(CoreGraphics)
 import CoreGraphics
-// NEMA-verified: 2026a, checked 2026-09-28 — the 12 print SOP Class / instance UIDs registered in PS3.6 2026a Table A-1 and 11 defined-term enums text-diffed against PS3.3 2026a C.13.1/C.13.3/C.13.5/C.13.8/C.13.9 (Scripts/diff_network.py; MediumType MAMMO CLEAR FILM / MAMMO BLUE FILM added 2026-09-29, P-MAMMO, old spellings deprecated and written as the terms); N-ACTION-RSP Print Job reference per PS3.4 Tables H.4-3/H.4-8; colour item per Table C.13-5; Text String (2030,0020) written as a legal LO per PS3.5 2026a Table 6.2-1 (D41, checked 2026-09-29)
+// NEMA-verified: 2026a, checked 2026-09-28 — the 12 print SOP Class / instance UIDs registered in PS3.6 2026a Table A-1 and 11 defined-term enums text-diffed against PS3.3 2026a C.13.1/C.13.3/C.13.5/C.13.8/C.13.9 (Scripts/diff_network.py; MediumType MAMMO CLEAR FILM / MAMMO BLUE FILM added 2026-09-29, P-MAMMO, old spellings deprecated and written as the terms); N-ACTION-RSP Print Job reference per PS3.4 Tables H.4-3/H.4-8; colour item per Table C.13-5; Text String (2030,0020) written as a legal LO per PS3.5 2026a Table 6.2-1 (D41, checked 2026-09-29); FilmDestination re-checked 2026-10-01 against PS3.3 2026a Table C.13-1 (MAGAZINE, PROCESSOR, BIN_i numbered from 1, no maximum, no leading zeros; P-BIN: .bin(n), .bin1/.bin2 deprecated)
 #else
 // Define CGSize for platforms without CoreGraphics
 public struct CGSize: Sendable {
@@ -268,12 +268,86 @@ public enum MediumType: String, Sendable, Hashable, CaseIterable, Codable {
     ]
 }
 
-/// Film destination
-public enum FilmDestination: String, Sendable, Hashable, CaseIterable, Codable {
-    case magazine = "MAGAZINE"
-    case processor = "PROCESSOR"
-    case bin1 = "BIN_1"
-    case bin2 = "BIN_2"
+/// Film Destination (2000,0040), PS3.3 2026a Table C.13-1: MAGAZINE, PROCESSOR, or
+/// BIN_i — "Film sorter BINs shall be numbered sequentially starting from 1 and no maximum
+/// is placed on the number of BINs. The encoding of the BIN number shall not contain
+/// leading zeros." A bin is `.bin(n)` for any n ≥ 1 (P-BIN; the fixed `.bin1` / `.bin2`
+/// are deprecated). The value is a CS (PS3.5 Table 6.2-1, at most 16 characters), so a
+/// bin number has at most 12 digits.
+///
+/// Formerly an enum with four cases; it is a struct so that every BIN_i can be carried.
+/// `rawValue`, `init?(rawValue:)`, `Codable` (a single string), `Hashable`, and the
+/// `.magazine` / `.processor` / `.bin1` / `.bin2` spellings keep working.
+public struct FilmDestination: RawRepresentable, Sendable, Hashable, CaseIterable, Codable,
+                               CustomStringConvertible {
+    /// The Defined Term written to (2000,0040).
+    public let rawValue: String
+
+    /// Accepts MAGAZINE, PROCESSOR or BIN_i (i ≥ 1, no leading zeros, CS length ≤ 16).
+    public init?(rawValue: String) {
+        if rawValue == "MAGAZINE" || rawValue == "PROCESSOR" || Self.binNumber(of: rawValue) != nil {
+            self.rawValue = rawValue
+        } else {
+            return nil
+        }
+    }
+
+    private init(term: String) { self.rawValue = term }
+
+    /// The exposed film is stored in film magazine.
+    public static let magazine = FilmDestination(term: "MAGAZINE")
+    /// The exposed film is developed in film processor.
+    public static let processor = FilmDestination(term: "PROCESSOR")
+
+    /// Sorter bin `number` (BIN_<number>); `number` is 1 or more and at most 12 digits.
+    public static func bin(_ number: Int) -> FilmDestination {
+        precondition(number >= 1 && number <= maximumBinNumber,
+                     "Film Destination BIN_i: i is 1 or more (PS3.3 Table C.13-1), got \(number)")
+        return FilmDestination(term: "BIN_\(number)")
+    }
+
+    @available(*, deprecated, message: "use FilmDestination.bin(1): PS3.3 Table C.13-1 defines BIN_i with no maximum")
+    public static var bin1: FilmDestination { .bin(1) }
+
+    @available(*, deprecated, message: "use FilmDestination.bin(2): PS3.3 Table C.13-1 defines BIN_i with no maximum")
+    public static var bin2: FilmDestination { .bin(2) }
+
+    /// The largest bin number whose BIN_i term fits a CS value (16 characters).
+    public static let maximumBinNumber = 999_999_999_999
+
+    /// The bin number when this is BIN_i, else nil.
+    public var binNumber: Int? { Self.binNumber(of: rawValue) }
+
+    /// MAGAZINE, PROCESSOR and the first two bins — the values the former enum listed.
+    /// BIN_i has no maximum, so this is not every valid value.
+    public static var allCases: [FilmDestination] { [.magazine, .processor, .bin(1), .bin(2)] }
+
+    public var description: String { rawValue }
+
+    /// i of "BIN_i" when i is a positive decimal without leading zeros (Table C.13-1).
+    private static func binNumber(of term: String) -> Int? {
+        guard term.hasPrefix("BIN_") else { return nil }
+        let digits = term.dropFirst(4)
+        guard !digits.isEmpty, digits.count <= 12, digits.first != "0",
+              digits.allSatisfy({ $0 >= "0" && $0 <= "9" }), let number = Int(digits) else { return nil }
+        return number
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        guard let value = FilmDestination(rawValue: raw) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Film Destination must be MAGAZINE, PROCESSOR or BIN_i (PS3.3 Table C.13-1), got \(raw)")
+        }
+        self = value
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 // MARK: - Film Box
