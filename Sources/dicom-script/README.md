@@ -191,16 +191,17 @@ PACS_PORT=11112
 PACS_AET=PACS
 LOCAL_AET=WORKSTATION
 PATIENT_ID=12345
+# A Study Instance UID (0020,000D) returned by the query
+STUDY_UID=1.2.3.4.5.6.7.8.9
 
-# Query PACS
-dicom-query --host ${PACS_HOST} --port ${PACS_PORT} \
-    --called-aet ${PACS_AET} --calling-aet ${LOCAL_AET} \
-    --patient-id ${PATIENT_ID} --level STUDY
+# Query PACS (host is positional; --aet is the calling AE Title)
+dicom-query ${PACS_HOST} --port ${PACS_PORT} --called-aet ${PACS_AET} --aet ${LOCAL_AET} --patient-id ${PATIENT_ID} --level study
 
-# Retrieve studies
-dicom-retrieve --host ${PACS_HOST} --port ${PACS_PORT} \
-    --called-aet ${PACS_AET} --calling-aet ${LOCAL_AET} \
-    --patient-id ${PATIENT_ID} --output studies/
+# Query by a Study Date range: one PS3.4 C.2.2.2.5 range value
+dicom-query ${PACS_HOST} --port ${PACS_PORT} --called-aet ${PACS_AET} --aet ${LOCAL_AET} --study-date 20240101-20241231 --level study
+
+# Retrieve the study (dicom-retrieve retrieves by UID, not by Patient ID)
+dicom-retrieve ${PACS_HOST} --port ${PACS_PORT} --called-aet ${PACS_AET} --aet ${LOCAL_AET} --study-uid ${STUDY_UID} --method c-get --output studies/
 
 # Validate retrieved files
 dicom-validate studies/*.dcm --level 2
@@ -263,7 +264,6 @@ dicom-validate ${OUTPUT_DIR}/**/*.dcm --level 2
 SOURCE_DIR=/data/incoming
 WORK_DIR=/data/work
 ARCHIVE_DIR=/data/archive
-ARCHIVE_DB=${ARCHIVE_DIR}/archive.db
 
 # Step 1: Organize incoming files
 dicom-study organize ${SOURCE_DIR} --output ${WORK_DIR}
@@ -275,7 +275,8 @@ dicom-validate ${WORK_DIR}/**/*.dcm --level 2
 dicom-study summary ${WORK_DIR} --format json > ${WORK_DIR}/summary.json
 
 # Step 4: Archive files
-dicom-archive create ${ARCHIVE_DB} --input ${WORK_DIR}
+dicom-archive init --path ${ARCHIVE_DIR}
+dicom-archive import ${WORK_DIR} --archive ${ARCHIVE_DIR} --recursive
 
 # Step 5: Cleanup
 if exists ${WORK_DIR}

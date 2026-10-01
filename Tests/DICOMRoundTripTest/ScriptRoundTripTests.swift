@@ -486,5 +486,57 @@ final class ScriptRoundTripTests: XCTestCase {
         XCTAssertTrue(log.contains("dicom-info"), "log must record executed commands")
         XCTAssertTrue(log.contains("dicom-validate"))
     }
+
+    // MARK: - Oracle: template commands use options the called tools declare (D200, D201, D203)
+
+    // Oracle: every `--option` a template passes to dicom-query, dicom-retrieve or
+    // dicom-archive is declared by that tool's ArgumentParser command (option `--a-b` is the
+    // property `aB`), the PACS host is the positional argument (no `--host`), and the
+    // dicom-archive subcommand exists. Checked against the tools' sources so that a renamed
+    // option breaks this test.
+    func testTemplateOptionsExistInTheCalledTools() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        let toolFiles = [
+            "dicom-query": "DICOMQuery.swift",
+            "dicom-retrieve": "DICOMRetrieve.swift",
+            "dicom-archive": "main.swift",
+        ]
+        func property(_ option: Substring) -> String {
+            let parts = option.split(separator: "-")
+            return parts.enumerated().map { $0.offset == 0 ? String($0.element) : $0.element.capitalized }.joined()
+        }
+        var checked = 0
+        for name in ["workflow", "pipeline", "query", "archive", "anonymize"] {
+            let template = try TemplateGenerator().generate(templateName: name)
+            for line in template.split(separator: "\n") {
+                let words = line.trimmingCharacters(in: .whitespaces).split(separator: " ")
+                guard let tool = words.first.map(String.init), let file = toolFiles[tool] else { continue }
+                let source = try String(contentsOf: sources.appendingPathComponent(tool).appendingPathComponent(file), encoding: .utf8)
+                var arguments = Array(words.dropFirst())
+                if tool == "dicom-archive" {
+                    let subcommand = arguments.removeFirst()
+                    XCTAssertTrue(source.contains("commandName: \"\(subcommand)\""),
+                                  "\(name): dicom-archive has no subcommand \(subcommand)")
+                } else {
+                    XCTAssertFalse(arguments.first?.hasPrefix("--") ?? true,
+                                   "\(name): \(tool) takes host[:port] as its positional argument")
+                }
+                for option in arguments where option.hasPrefix("--") {
+                    let name = property(option.dropFirst(2))
+                    XCTAssertNotNil(source.range(of: "var \(name):", options: .caseInsensitive),
+                                    "\(tool) declares no \(option) (line: \(line))")
+                    checked += 1
+                }
+            }
+        }
+        XCTAssertGreaterThan(checked, 20)
+
+        // D200: a Study Date range is one range value YYYYMMDD-YYYYMMDD (PS3.4 C.2.2.2.5)
+        let query = try TemplateGenerator().generate(templateName: "query")
+        XCTAssertTrue(query.contains("--study-date 20240101-20241231"))
+        XCTAssertFalse(query.contains("--study-date-from"))
+    }
 }
 
