@@ -5,13 +5,19 @@ import DICOMCore
 import DICOMWeb
 import DICOMDictionary
 
+// NEMA-verified: 2026a, checked 2026-10-01 — options read against PS3.19 2026a Table A.1.5-1 / A.1.5-2 (keyword
+// required for PS3.6 elements, DicomAttribute per attribute, empty Value Field, BulkData uri/uuid, InlineBinary);
+// 11 options; output validated by script and by xmllint against the A.1.6 RELAX NG schema (34 VRs)
+
 struct DICOMXml: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-xml",
         abstract: "Convert between DICOM and XML formats",
         discussion: """
-            Converts DICOM files to XML format (DICOM Native XML Model) and vice versa.
-            Supports DICOM Part 19 Native XML format with bulk data handling.
+            Converts DICOM files to XML format (Native DICOM Model, PS3.19 Annex A.1)
+            and vice versa, with bulk data handling. Every attribute is a DicomAttribute
+            with tag, vr and keyword; an attribute with an empty Value Field is kept
+            with no Value element (PS3.19 Table A.1.5-2).
 
             Examples:
               dicom-xml file.dcm --output file.xml
@@ -34,22 +40,27 @@ struct DICOMXml: ParsableCommand {
     @Flag(name: .shortAndLong, help: "Pretty-print XML output")
     var pretty: Bool = false
 
-    @Flag(name: .long, help: "Don't include keyword attributes in XML")
+    // PS3.19 Table A.1.5-2: keyword is "Required unless the DICOM Data Element is unknown to
+    // the host", so output written with this flag is not conformant.
+    @Flag(name: .long, help: "Don't write the keyword attribute (the output then breaks PS3.19 Table A.1.5-2, which requires it for PS3.6 elements)")
     var noKeywords: Bool = false
 
-    @Flag(name: .long, help: "Include empty values in XML")
-    var includeEmpty: Bool = false
+    // PS3.19 Table A.1.5-2: a DicomAttribute for "each DICOM Attribute"; a zero length Value
+    // Field has "no Infoset Value elements at all". Keeping it is the default; --no-include-empty drops it.
+    @Flag(name: .long, inversion: .prefixedNo,
+          help: "Keep attributes with an empty Value Field as a DicomAttribute without Value (PS3.19 Table A.1.5-2)")
+    var includeEmpty: Bool = true
 
-    @Option(name: .long, help: "Inline binary data up to this size (bytes, 0 to always use URIs)")
+    @Option(name: .long, help: "With --bulk-data-url: OB/OD/OF/OL/OV/OW/UN values longer than this many bytes become BulkData (0: all of them); without it every such value is InlineBinary (PS3.19 Table A.1.5-2)")
     var inlineThreshold: Int = 1024
 
-    @Option(name: .long, help: "Base URL for bulk data URIs")
+    @Option(name: .long, help: "Base URL for BulkData uri values, <url>/<GGGGEEEE> (PS3.19 Table A.1.5-2 reserves uri for a WADO-RS Retrieve Metadata response)")
     var bulkDataURL: String?
 
-    @Flag(name: .long, help: "Only include metadata (exclude pixel data)")
+    @Flag(name: .long, help: "Omit Pixel Data (7FE0,0010); other bulk data is kept (this is not the PS3.18 10.4.1.1.2 Metadata resource)")
     var metadataOnly: Bool = false
 
-    @Option(name: .long, help: "Filter tags by name or group (can be used multiple times)")
+    @Option(name: .long, help: "Keep only this attribute: PS3.6 keyword, GGGG,EEEE or GGGGEEEE (can be used multiple times)")
     var filterTag: [String] = []
 
     @Flag(name: .long, help: "Verbose output")
@@ -69,7 +80,7 @@ struct DICOMXml: ParsableCommand {
         let options = DataExchangeWorkflow.Options(
             reverse: reverse, pretty: pretty, includeEmpty: includeEmpty,
             inlineThreshold: inlineThreshold, bulkDataURL: bulkDataURL,
-            metadataOnly: metadataOnly, filterTags: filterTag, verbose: verbose,
+            metadataOnly: metadataOnly, filterTags: Self.normalizedFilterTags(filterTag), verbose: verbose,
             includeKeywords: !noKeywords
         )
 
@@ -103,6 +114,19 @@ struct DICOMXml: ParsableCommand {
         for line in DataExchangeWorkflow.completionLines(
             outputSize: Int64(result.data.count), verbose: verbose) {
             print(line)
+        }
+    }
+
+    /// Accepts the eight-character tag (the Table A.1.5-2 `tag` form, e.g. `00100020`) and
+    /// `(GGGG,EEEE)` besides the keyword and `GGGG,EEEE` forms the shared workflow resolves.
+    static func normalizedFilterTags(_ specs: [String]) -> [String] {
+        specs.map { spec in
+            var s = spec.trimmingCharacters(in: .whitespaces)
+            if s.hasPrefix("("), s.hasSuffix(")") { s = String(s.dropFirst().dropLast()) }
+            if s.count == 8, s.allSatisfy(\.isHexDigit) {
+                return "\(s.prefix(4)),\(s.suffix(4))"
+            }
+            return s.contains(",") ? s : spec
         }
     }
 }

@@ -421,6 +421,11 @@ let package = Package(
             path: "Tests/dicom-jsonTests"
         ),
         .testTarget(
+            name: "dicom-xmlTests",
+            dependencies: ["dicom-xml", "DICOMWeb", "DICOMKit", "DICOMCore"],
+            path: "Tests/dicom-xmlTests"
+        ),
+        .testTarget(
             name: "dicom-printTests",
             dependencies: [
                 "dicom-print", "DICOMNetwork", "DICOMPrintKit",

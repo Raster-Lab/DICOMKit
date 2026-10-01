@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resource. The README rows for the removed `--format` / `--stream` options are deleted.
   Tests: `dicom-jsonTests`.
 
+### Fixed — dicom-xml verified against DICOM 2026a (2026-10-01)
+
+- **dicom-xml**: an attribute with an empty Value Field is now kept by default as a
+  `DicomAttribute` without `Value` (PS3.19 2026a Table A.1.5-2: a DicomAttribute "corresponding
+  to each DICOM Attribute"). `--include-empty` still parses, and the new `--no-include-empty`
+  drops such attributes. `--filter-tag` also accepts `GGGGEEEE` and `(GGGG,EEEE)`. Help and
+  README now say that `--no-keywords` output breaks Table A.1.5-2 (the keyword is required for
+  PS3.6 elements), that a `BulkData uri` belongs to a WADO-RS Retrieve Metadata response, and
+  that `--metadata-only` omits only Pixel Data (7FE0,0010). Tests: `dicom-xmlTests`.
+
 ### Fixed — dicom-gateway verified against DICOM 2026a (2026-10-01)
 
 - **dicom-gateway** `hl7-to-dicom` / `fhir-to-dicom`: Patient's Name follows the PN component

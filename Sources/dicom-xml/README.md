@@ -1,15 +1,15 @@
 # dicom-xml
 
-Convert between DICOM and XML formats using the DICOM Native XML Model (PS3.19).
+Convert between DICOM and XML formats using the Native DICOM Model (PS3.19 Annex A.1).
 
 ## Description
 
-`dicom-xml` is a command-line tool for converting DICOM files to XML format and back. It implements the DICOM Native XML Model as specified in PS3.19, providing interoperability with XML-based tools and workflows.
+`dicom-xml` is a command-line tool for converting DICOM files to XML format and back. It implements the Native DICOM Model as specified in PS3.19 Annex A.1, providing interoperability with XML-based tools and workflows.
 
 ## Features
 
 - **Bidirectional Conversion**: Convert DICOM → XML and XML → DICOM
-- **DICOM Native XML Model**: Full compliance with PS3.19 Native XML format
+- **Native DICOM Model**: PS3.19 Annex A.1 (output validates against the A.1.6 RELAX NG schema; empty attributes kept without Value, Table A.1.5-2)
 - **Bulk Data Handling**: Inline binary data or URI references
 - **Pretty Printing**: Human-readable XML output with indentation
 - **Metadata Filtering**: Extract specific tags only
@@ -46,7 +46,7 @@ dicom-xml file.dcm --output file.xml --pretty
 
 ### Without Keywords
 
-Exclude keyword attributes from XML elements:
+Exclude keyword attributes from XML elements (the output then breaks PS3.19 Table A.1.5-2, which requires the keyword for every PS3.6 element):
 ```bash
 dicom-xml file.dcm --output file.xml --no-keywords
 ```
@@ -65,7 +65,7 @@ Configure inline binary threshold:
 # Inline binary data up to 2KB
 dicom-xml file.dcm --output file.xml --inline-threshold 2048
 
-# Always use bulk data URIs
+# Every OB/OD/OF/OL/OV/OW/UN value as BulkData (needs --bulk-data-url)
 dicom-xml file.dcm --output file.xml --inline-threshold 0 --bulk-data-url "http://example.com/bulk"
 ```
 
@@ -94,12 +94,12 @@ dicom-xml file.dcm --output file.xml --verbose
 | `-o, --output <path>` | Output file path (default: input with .xml or .dcm extension) |
 | `-r, --reverse` | Convert from XML to DICOM |
 | `-p, --pretty` | Pretty-print XML output with indentation |
-| `--no-keywords` | Don't include keyword attributes in XML (default: keywords included) |
-| `--include-empty` | Include empty values in XML |
-| `--inline-threshold <bytes>` | Inline binary data up to this size (default: 1024, 0 for always URI) |
-| `--bulk-data-url <url>` | Base URL for bulk data URIs |
-| `--metadata-only` | Only include metadata (exclude pixel data) |
-| `--filter-tag <tag>` | Filter tags by name or hex (can be used multiple times) |
+| `--no-keywords` | Don't write the keyword attribute (default: written; omitting it breaks PS3.19 Table A.1.5-2) |
+| `--include-empty` / `--no-include-empty` | Keep attributes with an empty Value Field as a DicomAttribute without Value (default: on, PS3.19 Table A.1.5-2) / drop them |
+| `--inline-threshold <bytes>` | With `--bulk-data-url`: OB/OD/OF/OL/OV/OW/UN values longer than this become BulkData (default: 1024; 0: all of them). Without `--bulk-data-url` they are all InlineBinary |
+| `--bulk-data-url <url>` | Base URL for `BulkData uri` values, `<url>/<GGGGEEEE>` (Table A.1.5-2 reserves `uri` for a WADO-RS Retrieve Metadata response) |
+| `--metadata-only` | Omit Pixel Data (7FE0,0010); other bulk data is kept (not the PS3.18 10.4.1.1.2 Metadata resource) |
+| `--filter-tag <tag>` | Keep only this attribute: PS3.6 keyword, `GGGG,EEEE` or `GGGGEEEE` (can be used multiple times) |
 | `--verbose` | Show detailed timing and statistics |
 | `--version` | Show version information |
 | `--help` | Show help message |
@@ -154,7 +154,7 @@ The tool outputs DICOM Native XML format as specified in PS3.19. The root elemen
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<NativeDicomModel xmlns="http://dicom.nema.org/PS3.19/models/NativeDICOM">
+<NativeDicomModel xmlns="http://dicom.nema.org/PS3.19/models/NativeDICOM" xml:space="preserve">
   <DicomAttribute tag="00100010" vr="PN" keyword="PatientName">
     <PersonName number="1">
       <Alphabetic>
