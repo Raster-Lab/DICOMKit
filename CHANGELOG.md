@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the identifier written: STD-GEN-DVD-JPEG (PS3.11 2026a Table H.1-1), STD-GEN-USB-JPEG (J.1-1),
   STD-GEN-SEC-CD (D.1-1), STD-CTMR-CD (E.1-1), STD-US-ID-SF-CDR (C.1-1) (P-DCMDIR-PROFILE). The tests that
   used the deprecated `DICOMDIRProfile` constants use the -JPEG constants.
+- **`dicom-uid lookup`** prints the UID Type of PS3.6 2026a Table A-1 verbatim ("Well-known SOP Instance",
+  "Application Context Name", "DICOM UIDs as a Coding Scheme" instead of "Well-Known UID", "Application
+  Context", "Coding Scheme"; 21 UIDs change) in text output, and `--json` adds a **`uidType`** key with that
+  text. The JSON `type` key keeps the former wording and is deprecated (P-UID-TYPE). New DICOMKit API:
+  `UIDManager.tableA1UIDType(of:)` / `tableA1UIDType(_:uid:)`, `UIDManager.dicomUIDsAsCodingSchemeUID`, and
+  `UIDConsole.lookupEntryJSON(uid:name:type:uidType:)` / `listingJSON(entries:)` overloads with `uidType`.
 
 ### Fixed — dicom-viewer grayscale display verified against DICOM 2026a (2026-10-01)
 

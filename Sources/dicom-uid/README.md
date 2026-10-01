@@ -65,6 +65,12 @@ dicom-uid lookup --list-all --type transfer-syntax
 dicom-uid lookup --search "CT"
 ```
 
+`lookup` prints the UID Type of PS3.6 2026a Table A-1 verbatim (for example "Well-known SOP Instance",
+"Application Context Name", "DICOM UIDs as a Coding Scheme"). With `--json` each entry has `uid`, `name`,
+`uidType` (the Table A-1 UID Type) and `type`. **`type` is deprecated**: it keeps the former tool wording
+("Well-Known UID", "Application Context", "Coding Scheme" for the DICOM UID Registry) for existing scripts and
+will be removed in the next major version; read `uidType` instead.
+
 ### Regenerate UIDs
 
 ```bash

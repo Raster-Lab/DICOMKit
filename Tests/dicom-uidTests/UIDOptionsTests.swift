@@ -70,4 +70,52 @@ final class UIDOptionsTests: XCTestCase {
         XCTAssertNil(LookupTypeFilter.entries(for: "nonsense"))
         for f in LookupTypeFilter.all { XCTAssertFalse(LookupTypeFilter.entries(for: f.value)!.isEmpty, f.value) }
     }
+
+    // MARK: - P-UID-TYPE: PS3.6 2026a Table A-1 UID Type text
+
+    /// Rows per UID Type in PS3.6 2026a Table A-1 (465 rows, dumped from part06 by
+    /// Scripts/nema_docbook.py on 2026-10-01).
+    private let tableA1TypeCounts: [String: Int] = [
+        "Application Context Name": 1, "Application Hosting Model": 2, "Coding Scheme": 15,
+        "DICOM UIDs as a Coding Scheme": 1, "LDAP OID": 39, "Mapping Resource": 1,
+        "Meta SOP Class": 9, "SOP Class": 311, "Service Class": 3,
+        "Synchronization Frame of Reference": 1, "Transfer Syntax": 63, "Well-known SOP Instance": 19,
+    ]
+
+    func testTableA1UIDTypeTextMatchesEveryRegistryRow() {
+        var counts: [String: Int] = [:]
+        // The two unregistered Fragmentable HEVC syntaxes (registered: false) are not Table A-1 rows.
+        for entry in UIDDictionary.allEntries where entry.registered {
+            counts[UIDManager.tableA1UIDType(of: entry), default: 0] += 1
+        }
+        XCTAssertEqual(Set(counts.keys), Set(tableA1TypeCounts.keys))
+        for (type, expected) in tableA1TypeCounts {
+            XCTAssertEqual(counts[type] ?? 0, expected, type)
+        }
+    }
+
+    func testTheThreeFormerlyRewordedTypes() throws {
+        let registry = try XCTUnwrap(UIDDictionary.lookup(uid: "1.2.840.10008.2.6.1"))
+        XCTAssertEqual(UIDManager.tableA1UIDType(of: registry), "DICOM UIDs as a Coding Scheme")
+        XCTAssertEqual(UIDManager.uidTypeDescription(registry.type), "Coding Scheme", "legacy wording kept for the deprecated JSON type key")
+        let context = try XCTUnwrap(UIDDictionary.lookup(uid: "1.2.840.10008.3.1.1.1"))
+        XCTAssertEqual(UIDManager.tableA1UIDType(of: context), "Application Context Name")
+        let wellKnown = try XCTUnwrap(UIDDictionary.lookup(uid: "1.2.840.10008.1.20.1.1"))
+        XCTAssertEqual(UIDManager.tableA1UIDType(of: wellKnown), "Well-known SOP Instance")
+        XCTAssertEqual(UIDManager.uidTypeDescription(wellKnown.type), "Well-Known UID")
+    }
+
+    func testLookupJSONCarriesUIDTypeNextToTheDeprecatedTypeKey() throws {
+        let text = try UIDConsole.lookupEntryJSON(
+            uid: "1.2.840.10008.1.20.1.1", name: "Storage Commitment Push Model SOP Instance",
+            type: "Well-Known UID", uidType: "Well-known SOP Instance")
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: String])
+        XCTAssertEqual(object["uidType"], "Well-known SOP Instance")
+        XCTAssertEqual(object["type"], "Well-Known UID")
+        let list = try UIDConsole.listingJSON(entries: [(uid: "1.2.840.10008.3.1.1.1", name: "DICOM Application Context Name",
+                                                         type: "Application Context", uidType: "Application Context Name")])
+        let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(list.utf8)) as? [[String: String]])
+        XCTAssertEqual(rows.first?["uidType"], "Application Context Name")
+        XCTAssertEqual(rows.first?["type"], "Application Context")
+    }
 }

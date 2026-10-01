@@ -210,7 +210,7 @@ extension DICOMUID {
         @Option(name: .long, help: "Search UIDs by name keyword")
         var search: String?
 
-        @Flag(name: .long, help: "Output as JSON")
+        @Flag(name: .long, help: "Output as JSON: uid, name, uidType (PS3.6 Table A-1 UID Type) and type (deprecated: the former tool wording)")
         var json: Bool = false
 
         mutating func validate() throws {
@@ -225,11 +225,15 @@ extension DICOMUID {
             if let uidValue = uid {
                 // Single UID lookup
                 if let entry = dictionary.lookup(uid: uidValue) {
-                    let typeName = UIDManager.uidTypeDescription(entry.type)
+                    // P-UID-TYPE: text and the JSON `uidType` key carry the PS3.6 Table A-1
+                    // UID Type; the JSON `type` key keeps the legacy wording (deprecated).
+                    let uidType = UIDManager.tableA1UIDType(of: entry)
                     if json {
-                        print(try UIDConsole.lookupEntryJSON(uid: uidValue, name: entry.name, type: typeName), terminator: "")
+                        print(try UIDConsole.lookupEntryJSON(
+                            uid: uidValue, name: entry.name,
+                            type: UIDManager.uidTypeDescription(entry.type), uidType: uidType), terminator: "")
                     } else {
-                        print(UIDConsole.lookupEntryText(uid: uidValue, name: entry.name, type: typeName), terminator: "")
+                        print(UIDConsole.lookupEntryText(uid: uidValue, name: entry.name, type: uidType), terminator: "")
                     }
                 } else {
                     fprintln(UIDConsole.lookupNotFoundLine(uid: uidValue))
@@ -263,11 +267,14 @@ extension DICOMUID {
                 }
 
                 if json {
-                    let rows = entries.map { (uid: $0.uid, name: $0.name, type: UIDManager.uidTypeDescription($0.type)) }
+                    let rows = entries.map {
+                        (uid: $0.uid, name: $0.name, type: UIDManager.uidTypeDescription($0.type),
+                         uidType: UIDManager.tableA1UIDType(of: $0))
+                    }
                     print(try UIDConsole.listingJSON(entries: rows), terminator: "")
                 } else {
                     for entry in entries {
-                        print(UIDConsole.listingLine(uid: entry.uid, name: entry.name, type: UIDManager.uidTypeDescription(entry.type)))
+                        print(UIDConsole.listingLine(uid: entry.uid, name: entry.name, type: UIDManager.tableA1UIDType(of: entry)))
                     }
                     // Result summary belongs on stdout (with the listing), consistent
                     // with how DICOMStudio renders it — keeps app/CLI output in parity.

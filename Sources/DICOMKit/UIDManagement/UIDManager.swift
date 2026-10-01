@@ -313,7 +313,12 @@ public struct UIDManager {
         }
     }
 
-    /// Gets a human-readable description of a UID type
+    /// Gets a human-readable description of a UID type.
+    ///
+    /// This is the legacy tool wording ("Well-Known UID", "Application Context", and
+    /// "Coding Scheme" also for "DICOM UIDs as a Coding Scheme"), kept for the JSON `type` key
+    /// of `dicom-uid lookup`, which is deprecated. For the PS3.6 Table A-1 UID Type text use
+    /// ``tableA1UIDType(of:)`` (P-UID-TYPE).
     public static func uidTypeDescription(_ type: UIDType) -> String {
         switch type {
         case .transferSyntax: return "Transfer Syntax"
@@ -323,6 +328,40 @@ public struct UIDManager {
         case .ldap: return "LDAP OID"
         case .codingScheme: return "Coding Scheme"
         case .applicationContext: return "Application Context"
+        case .serviceClass: return "Service Class"
+        case .applicationHostingModel: return "Application Hosting Model"
+        case .mappingResource: return "Mapping Resource"
+        case .synchronizationFrameOfReference: return "Synchronization Frame of Reference"
+        }
+    }
+
+    /// The UID whose PS3.6 2026a Table A-1 UID Type is "DICOM UIDs as a Coding Scheme"
+    /// (DICOM UID Registry, DCMUID). `UIDType` folds it into `.codingScheme`.
+    public static let dicomUIDsAsCodingSchemeUID = "1.2.840.10008.2.6.1"
+
+    /// The "UID Type" column of PS3.6 2026a Table A-1 for a registry entry, verbatim (12 values:
+    /// Transfer Syntax, SOP Class, Meta SOP Class, Well-known SOP Instance, LDAP OID,
+    /// Coding Scheme, DICOM UIDs as a Coding Scheme, Application Context Name, Service Class,
+    /// Application Hosting Model, Mapping Resource, Synchronization Frame of Reference).
+    ///
+    /// NEMA-verified: 2026a, checked 2026-10-01 — the 12 UID Type values of the 465 Table A-1 rows
+    /// dumped from part06 by script.
+    public static func tableA1UIDType(of entry: UIDEntry) -> String {
+        tableA1UIDType(entry.type, uid: entry.uid)
+    }
+
+    /// The PS3.6 2026a Table A-1 UID Type text for `type`; `uid` distinguishes "DICOM UIDs as a
+    /// Coding Scheme" from "Coding Scheme".
+    public static func tableA1UIDType(_ type: UIDType, uid: String) -> String {
+        switch type {
+        case .transferSyntax: return "Transfer Syntax"
+        case .sopClass: return "SOP Class"
+        case .metaSOPClass: return "Meta SOP Class"
+        case .wellKnown: return "Well-known SOP Instance"
+        case .ldap: return "LDAP OID"
+        case .codingScheme:
+            return uid == dicomUIDsAsCodingSchemeUID ? "DICOM UIDs as a Coding Scheme" : "Coding Scheme"
+        case .applicationContext: return "Application Context Name"
         case .serviceClass: return "Service Class"
         case .applicationHostingModel: return "Application Hosting Model"
         case .mappingResource: return "Mapping Resource"
@@ -404,6 +443,14 @@ public enum UIDConsole {
         return (String(data: data, encoding: .utf8) ?? "") + "\n"
     }
 
+    /// Single-UID hit as `--json` with the PS3.6 Table A-1 UID Type in `uidType` (P-UID-TYPE);
+    /// `type` keeps the legacy wording (deprecated key).
+    public static func lookupEntryJSON(uid: String, name: String, type: String, uidType: String) throws -> String {
+        let dict: [String: String] = ["uid": uid, "name": name, "type": type, "uidType": uidType]
+        let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
+        return (String(data: data, encoding: .utf8) ?? "") + "\n"
+    }
+
     public static func lookupNotFoundLine(uid: String) -> String {
         "UID not found in DICOM registry (not a standard Transfer Syntax or SOP Class UID): \(uid)"
     }
@@ -429,6 +476,14 @@ public enum UIDConsole {
     /// `--list-all`/`--search` as `--json` (trailing newline).
     public static func listingJSON(entries: [(uid: String, name: String, type: String)]) throws -> String {
         let jsonEntries = entries.map { ["uid": $0.uid, "name": $0.name, "type": $0.type] }
+        let data = try JSONSerialization.data(withJSONObject: jsonEntries, options: [.prettyPrinted, .sortedKeys])
+        return (String(data: data, encoding: .utf8) ?? "") + "\n"
+    }
+
+    /// `--list-all`/`--search` as `--json` with the PS3.6 Table A-1 UID Type in `uidType`
+    /// (P-UID-TYPE); `type` keeps the legacy wording (deprecated key).
+    public static func listingJSON(entries: [(uid: String, name: String, type: String, uidType: String)]) throws -> String {
+        let jsonEntries = entries.map { ["uid": $0.uid, "name": $0.name, "type": $0.type, "uidType": $0.uidType] }
         let data = try JSONSerialization.data(withJSONObject: jsonEntries, options: [.prettyPrinted, .sortedKeys])
         return (String(data: data, encoding: .utf8) ?? "") + "\n"
     }
