@@ -1,3 +1,5 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — 42 option/flag/argument declarations extracted by script: no UID, codec or transfer-syntax literal in this file (help text is VideoConsole.Help); --audio-channel-source (convert, batch) takes a PS3.16 2026a CID 3000 value (AudioChannelSourceOption.swift, 6 rows) into VideoWorkflow.Metadata.audioChannelSource, which the engine writes as Channel Source Sequence (003A,0208) in each Multiplexed Audio Channels Description Code Sequence (003A,0300) Item of PS3.3 2026a Table C.7-13 (Cine Module); no other DICOM-standard data in this file
+
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -129,14 +131,26 @@ struct MetadataOptions: ParsableArguments {
     @Option(name: .long, help: .init(stringLiteral: VideoConsole.Help.institutionName))
     var institutionName: String?
 
-    /// The shared metadata value the engine takes, with `--modality` validated.
+    /// PS3.16 CID 3000 keyword or SCHEME:VALUE[:MEANING]; see
+    /// `AudioChannelSourceOption` (D56). One value for every audio track, which
+    /// is what `VideoWorkflow.Metadata.audioChannelSource` takes.
+    @Option(name: .customLong("audio-channel-source"),
+            help: .init(stringLiteral: AudioChannelSourceOption.help))
+    var audioChannelSource: String?
+
+    /// The shared metadata value the engine takes, with `--modality` and
+    /// `--audio-channel-source` validated.
     ///
-    /// Throwing so `--strict-modality` can stop the run; the non-throwing
-    /// `shared` below stays for callers that have already validated.
+    /// Throwing so `--strict-modality` and a bad channel source can stop the
+    /// run; the non-throwing `shared` below stays for callers that have already
+    /// validated (it carries no audio channel source).
     func validatedShared() throws -> VideoWorkflow.Metadata {
         var metadata = shared
         if let resolved = try ModalityOptionValidator.resolve(modality, strict: strictModality) {
             metadata.modality = resolved
+        }
+        if let audioChannelSource {
+            metadata.audioChannelSource = try AudioChannelSourceOption.parse(audioChannelSource)
         }
         return metadata
     }
