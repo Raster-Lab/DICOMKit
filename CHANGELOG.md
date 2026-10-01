@@ -7,24 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed — deferred rows, DICOMweb data exchange (2026-10-01, DICOM 2026a)
-
-- **BulkDataURI / BulkData uri unique per element** (D110): `DICOMJSONEncoder` and `DICOMXMLEncoder` name an element
-  inside sequence items `<base>/<SQ tag>/<item n>/<GGGGEEEE>` (top level unchanged, `<base>/<GGGGEEEE>`); the XML
-  encoder uses the full (gggg,xxee) tag of a private element. PS3.18 2026a F.2.6, PS3.19 Table A.1.5-2.
-- **`--metadata-only` is the Metadata of PS3.18 10.4.1.1.2** (D111, **behaviour change**, dicom-json / dicom-xml and
-  `DataExchangeWorkflow`): every OB/OD/OF/OL/OV/OW/UN value at any depth (Pixel Data, Float / Double Float Pixel Data,
-  Encapsulated Document, Waveform, Overlay, LUTs) is left out, or with `--bulk-data-url` written as a BulkDataURI /
-  BulkData (10.4.3.3.2); before, only top-level (7FE0,0010) was dropped.
-- **BulkData references on `--reverse`** (D113): `DICOMJSONDecoder` / `DICOMXMLDecoder` take an optional synchronous
-  `bulkDataResolver` (new, defaulted `Configuration` parameter); `DataExchangeWorkflow.decode` reads a `file:` URL or
-  absolute path and reports every other reference as a `Warning:` line (dicom-json / dicom-xml print it on stderr)
-  instead of writing an empty element silently. PS3.18 F.2.6, PS3.19 Table A.1.5-2.
-- **Empty PersonName value keeps its number** (D115): `DICOMXMLEncoder` writes `<PersonName number="n"/>`, so numbers
-  run 1..n by 1 and the value survives a round trip. PS3.19 2026a Table A.1.5-2.
-- **Group 0002 stays out of the data set on `--reverse`** (D-WEB-FILEMETA-1): `DataExchangeWorkflow.decode` takes the
-  Transfer Syntax UID from group 0002 of the input and leaves group 0002 out of the main data set. PS3.10 2026a 7.1.
-
 ### Fixed — deferred rows, pixel / video / document batch (2026-10-01, DICOM 2026a)
 
 - **`ImageConverter` writes Specific Character Set, the SC device identity and valid EXIF text** (D166, D167, D168;
@@ -49,6 +31,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Method when absent; window/invert of PALETTE COLOR throw the new `PixelEditError.notApplicableToPaletteColor`;
   Pixel Padding Value / Range Limit follow invert and window, or are removed when a window maps padding onto image
   values. dicom-pixedit now calls the engine with prefix "dicom-pixedit" and no longer marks or translates itself.
+- **Video: MPEG-2 container unconstrained, MPEG-2 levels named, raw MPEG-2 detected, Specific Character Set** (D177,
+  D178, D179, D180; PS3.5 2026a 8.2.5–8.2.11; PS3.3 Tables C.12-1, C.12-5): new
+  `VideoContainer.isPermittedByDICOM(for:)` — MPEG-TS/MP4 for H.264/HEVC, any readable container (elementary stream,
+  QuickTime included) for MPEG-2; the codec-blind `isPermittedByDICOM` property is deprecated. `levelDescription`
+  prints MPEG-2 levels as "Main" / "High" / "High 1440" / "Low" instead of "0.8"; the MPEG-2 level ceiling now
+  compares level_identification the right way round (High in MP@ML is a violation, Low is not). `VideoProbe`
+  recognises a raw MPEG-2 stream (sequence header 00 00 01 B3) before the H.264 search, which took slice 0x07 for an
+  SPS. `Video.toDataSet` writes `ISO_IR 192` for non-ASCII text.
+
+### Fixed — deferred rows, DICOMweb data exchange (2026-10-01, DICOM 2026a)
+
+- **BulkDataURI / BulkData uri unique per element** (D110): `DICOMJSONEncoder` and `DICOMXMLEncoder` name an element
+  inside sequence items `<base>/<SQ tag>/<item n>/<GGGGEEEE>` (top level unchanged, `<base>/<GGGGEEEE>`); the XML
+  encoder uses the full (gggg,xxee) tag of a private element. PS3.18 2026a F.2.6, PS3.19 Table A.1.5-2.
+- **`--metadata-only` is the Metadata of PS3.18 10.4.1.1.2** (D111, **behaviour change**, dicom-json / dicom-xml and
+  `DataExchangeWorkflow`): every OB/OD/OF/OL/OV/OW/UN value at any depth (Pixel Data, Float / Double Float Pixel Data,
+  Encapsulated Document, Waveform, Overlay, LUTs) is left out, or with `--bulk-data-url` written as a BulkDataURI /
+  BulkData (10.4.3.3.2); before, only top-level (7FE0,0010) was dropped.
+- **BulkData references on `--reverse`** (D113): `DICOMJSONDecoder` / `DICOMXMLDecoder` take an optional synchronous
+  `bulkDataResolver` (new, defaulted `Configuration` parameter); `DataExchangeWorkflow.decode` reads a `file:` URL or
+  absolute path and reports every other reference as a `Warning:` line (dicom-json / dicom-xml print it on stderr)
+  instead of writing an empty element silently. PS3.18 F.2.6, PS3.19 Table A.1.5-2.
+- **Empty PersonName value keeps its number** (D115): `DICOMXMLEncoder` writes `<PersonName number="n"/>`, so numbers
+  run 1..n by 1 and the value survives a round trip. PS3.19 2026a Table A.1.5-2.
+- **Group 0002 stays out of the data set on `--reverse`** (D-WEB-FILEMETA-1): `DataExchangeWorkflow.decode` takes the
+  Transfer Syntax UID from group 0002 of the input and leaves group 0002 out of the main data set. PS3.10 2026a 7.1.
 
 ### Fixed — deferred rows, dump / info / tags / diff engines, batch b4 (2026-10-01, DICOM 2026a)
 

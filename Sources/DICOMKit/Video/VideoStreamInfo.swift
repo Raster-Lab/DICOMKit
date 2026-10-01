@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — carries codec parameters only; the DICOM constraints are checked in VideoConformanceValidator
+// NEMA-verified: 2026a, checked 2026-10-01 — carries codec parameters only; the DICOM constraints are checked in VideoConformanceValidator; MPEG-2 levels named Main / High (High 1440, Low) as PS3.5 2026a 8.2.5 / 8.2.6 name them (D178)
 //
 // VideoStreamInfo.swift
 // DICOMKit
@@ -91,14 +91,30 @@ public struct VideoStreamInfo: Sendable, Hashable {
         return ratio.width == ratio.height
     }
 
-    /// The level as a decimal number, e.g. 4.1 or 5.1.
+    /// The level as a decimal number, e.g. 4.1 or 5.1. For MPEG-2, which has named
+    /// levels rather than numbered ones, this is the raw `level_identification` / 10;
+    /// use ``levelDescription``.
     public var level: Double { Double(levelTimesTen) / 10.0 }
 
-    /// A short human-readable level, e.g. "4.1".
+    /// A short human-readable level: "4.1" for H.264/HEVC; for MPEG-2 the ISO/IEC
+    /// 13818-2 level name ("Main", "High", "High 1440", "Low"), the names PS3.5 2026a
+    /// 8.2.5 / 8.2.6 use ("Main Profile / Main Level", "Main Profile / High Level").
     public var levelDescription: String {
+        if codec == .mpeg2 { return Self.mpeg2LevelName(levelTimesTen) }
         let whole = levelTimesTen / 10
         let fraction = levelTimesTen % 10
         return "\(whole).\(fraction)"
+    }
+
+    /// Names an MPEG-2 `level_identification` value (ISO/IEC 13818-2 Table 8-11).
+    static func mpeg2LevelName(_ identifier: Int) -> String {
+        switch identifier {
+        case 10: return "Low"
+        case 8: return "Main"
+        case 6: return "High 1440"
+        case 4: return "High"
+        default: return "level_identification \(identifier)"
+        }
     }
 
     public init(

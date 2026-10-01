@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — Channel Source (003A,0208) keeps any code: PS3.3 2026a Table C.7-13 includes Table 8.8-1 with "DCID 3000" and PS3.16 2026a CID 3000 Audio Channel Source is "Type: Extensible" (DCM 109110-109115 verified by script) (D57)
+// NEMA-verified: 2026a, checked 2026-10-01 — toDataSet writes Specific Character Set ISO_IR 192 when a text value is not ASCII (PS3.3 2026a Table C.12-1 Type 1C, Table C.12-5) (D180); Channel Source (003A,0208) keeps any code: PS3.3 2026a Table C.7-13 includes Table 8.8-1 with "DCID 3000" and PS3.16 2026a CID 3000 Audio Channel Source is "Type: Extensible" (DCM 109110-109115 verified by script) (D57)
 // NEMA-verified: 2026a, checked 2026-09-30 — modules per PS3.3 2026a Tables A.32.5-1/A.32.6-1/A.32.7-1; Cine Module Table C.7-13 (Frame Time / Frame Time Vector 1C, Preferred Playback Sequencing 0/1, Multiplexed Audio Channels 2C, written with no Items for undescribed audio), Multi-frame Table C.7-14, Lossy Image Compression Method terms C.7.6.1.1.5.1, empty Basic Offset Table and one fragment per PS3.5 8.2.5-8.2.8 (P-VIDEO, D34)
 //
 // VideoBuilder.swift
@@ -851,6 +851,11 @@ extension Video {
                 encapsulatedOffsetTable: []
             )
         }
+
+        // Text is written as UTF-8: Specific Character Set (0008,0005) is Type 1C,
+        // required when a value is not ASCII (PS3.3 2026a Table C.12-1; ISO_IR 192,
+        // Table C.12-5).
+        dataSet.setUTF8SpecificCharacterSetIfNeeded()
 
         return dataSet
     }

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — profile, level and BD flag of every video transfer syntax diffed by Scripts/diff_kit.py against the PS3.6 2026a Table A-1 names; BD formats per PS3.5 Table 8-4
+// NEMA-verified: 2026a, checked 2026-10-01 — profile, level and BD flag of every video transfer syntax diffed by Scripts/diff_kit.py against the PS3.6 2026a Table A-1 names; BD formats per PS3.5 Table 8-4; MPEG-2 level ceiling compared as a level_identification (smaller is higher: MP@ML rejects High / High 1440); container rejection cites PS3.5 8.2.7-8.2.11 (H.264/HEVC only, D177)
 //
 // VideoConformanceValidator.swift
 // DICOMKit
@@ -112,9 +112,9 @@ public enum VideoConformanceViolation: Sendable, Hashable {
                 """
         case let .containerNotPermitted(observed):
             return """
-                \(observed) is not a permitted container; the video bit stream \
-                shall be in an MPEG-2 Transport Stream or MP4 container \
-                (PS3.5 8.2.7)
+                \(observed) is not a permitted container; an H.264 or HEVC video \
+                bit stream shall be in an MPEG-2 Transport Stream or MP4 container \
+                (PS3.5 8.2.7-8.2.11)
                 """
         }
     }
@@ -376,12 +376,13 @@ public enum VideoConformanceValidator {
         }
 
         // Level must not exceed the ceiling. MPEG-2 codes levels as descending
-        // identifiers (High is 4, Main is 8), so the comparison inverts.
+        // identifiers (ISO/IEC 13818-2 Table 8-11: High 4, High 1440 6, Main 8, Low 10),
+        // so a higher level is a *smaller* identifier and the comparison inverts.
         if stream.codec == .mpeg2 {
-            if stream.levelTimesTen != 0, stream.levelTimesTen > constraints.maximumLevelTimesTen {
+            if stream.levelTimesTen != 0, stream.levelTimesTen < constraints.maximumLevelTimesTen {
                 violations.append(.levelExceedsMaximum(
-                    observed: mpeg2LevelName(stream.levelTimesTen),
-                    maximum: mpeg2LevelName(constraints.maximumLevelTimesTen)
+                    observed: VideoStreamInfo.mpeg2LevelName(stream.levelTimesTen),
+                    maximum: VideoStreamInfo.mpeg2LevelName(constraints.maximumLevelTimesTen)
                 ))
             }
         } else if stream.levelTimesTen > constraints.maximumLevelTimesTen {
@@ -499,14 +500,4 @@ public enum VideoConformanceValidator {
         "\(levelTimesTen / 10).\(levelTimesTen % 10)"
     }
 
-    /// Names an MPEG-2 level identifier, per ITU-T H.262 Table 8-11.
-    private static func mpeg2LevelName(_ identifier: Int) -> String {
-        switch identifier {
-        case 10: return "Low"
-        case 8: return "Main"
-        case 6: return "High 1440"
-        case 4: return "High"
-        default: return "level \(identifier)"
-        }
-    }
 }

@@ -226,8 +226,9 @@ public enum VideoWorkflow {
             return failure
         }
 
-        // The container itself must be one DICOM blesses.
-        guard probe.container.isPermittedByDICOM else {
+        // The container itself must be one DICOM blesses for this codec: MPEG-TS or MP4
+        // for H.264/HEVC (PS3.5 8.2.7-8.2.11), any for MPEG-2 (8.2.5, 8.2.6).
+        guard probe.container.isPermittedByDICOM(for: probe.stream.codec) else {
             let violation = VideoConformanceViolation.containerNotPermitted(
                 observed: probe.container.displayName)
             throw reject(.conformance(VideoConsole.violationReport(violation)))

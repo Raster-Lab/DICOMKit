@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-30 — no DICOM-standard data (container probing); audio tracks read from MP4 and MPEG-TS for the PS3.5 2026a 8.2.5/8.2.12 (Table 8.2.12-1) check, which VideoConformanceValidator.validateAudio applies (D46)
+// NEMA-verified: 2026a, checked 2026-10-01 — no DICOM-standard data (container probing); a raw MPEG-2 video elementary stream (sequence header 00 00 01 B3) is recognised before the H.264/HEVC parameter-set search, so it is offered to the MPEG2 MP@ML / MP@HL syntaxes of PS3.5 2026a 8.2.5 / 8.2.6 (D179); audio tracks read from MP4 and MPEG-TS for the PS3.5 2026a 8.2.5/8.2.12 (Table 8.2.12-1) check, which VideoConformanceValidator.validateAudio applies (D46)
 //
 // VideoProbe.swift
 // DICOMKit
@@ -286,6 +286,14 @@ public enum VideoProbe {
     // MARK: - Elementary Streams
 
     private static func probeElementaryStream(_ data: Data) throws -> VideoProbeResult {
+        // An MPEG-2 video elementary stream starts with a sequence header, start code
+        // 00 00 01 B3 (ITU-T H.262 6.2.2.1). It is checked first: MPEG-2 slice start
+        // codes 0x07, 0x27, … read as H.264 NAL type 7 (SPS), so trying H.264 first
+        // reported a raw .m2v as H.264 with a nonsense profile and level.
+        if firstStartCodeValue(in: data) == 0xB3, let header = MPEG2Parser.parseSequenceHeader(data) {
+            return mpeg2ElementaryStreamResult(header: header, data: data)
+        }
+
         // Try each codec's parameter set in turn. Detection is by content, since
         // an extension is a claim rather than evidence.
         if let sps = H264Parser.parseFirstSPS(annexB: data) {
@@ -317,20 +325,41 @@ public enum VideoProbe {
         }
 
         if let header = MPEG2Parser.parseSequenceHeader(data) {
-            let stream = header.streamInfo
-            let count = MPEG2Parser.countFrames(data)
-            return VideoProbeResult(
-                container: .elementaryStream,
-                stream: stream,
-                frameCount: count,
-                frameCountSource: count > 0 ? .accessUnitScan : .unavailable,
-                audioTrackCount: 0,
-                suggestedTransferSyntax: VideoConformanceValidator.selectTransferSyntax(for: stream),
-                frameRate: stream.frameRate
-            )
+            return mpeg2ElementaryStreamResult(header: header, data: data)
         }
 
         throw VideoProbeError.unrecognizedFormat
+    }
+
+    private static func mpeg2ElementaryStreamResult(
+        header: MPEG2Parser.SequenceHeader,
+        data: Data
+    ) -> VideoProbeResult {
+        let stream = header.streamInfo
+        let count = MPEG2Parser.countFrames(data)
+        return VideoProbeResult(
+            container: .elementaryStream,
+            stream: stream,
+            frameCount: count,
+            frameCountSource: count > 0 ? .accessUnitScan : .unavailable,
+            audioTrackCount: 0,
+            suggestedTransferSyntax: VideoConformanceValidator.selectTransferSyntax(for: stream),
+            frameRate: stream.frameRate
+        )
+    }
+
+    /// The byte after the first 00 00 01 start-code prefix, or nil when there is none
+    /// in the first 1024 bytes.
+    static func firstStartCodeValue(in data: Data) -> UInt8? {
+        let bytes = data.prefix(1024)
+        var index = bytes.startIndex
+        while index + 3 < bytes.endIndex {
+            if bytes[index] == 0, bytes[index + 1] == 0, bytes[index + 2] == 1 {
+                return bytes[index + 3]
+            }
+            index += 1
+        }
+        return nil
     }
 
     // MARK: - Transport Streams

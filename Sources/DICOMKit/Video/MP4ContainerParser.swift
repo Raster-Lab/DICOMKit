@@ -1,5 +1,5 @@
 // NEMA-verified: 2026a, checked 2026-09-30 — MP3 sample headers walked via stsz/stsc/stco for "CBR MPEG-1 LAYER III" (PS3.5 2026a 8.2.5, 8.2.12, verified by script); compressed audio's template samplesize (ISO/IEC 14496-12) no longer read as bits per sample (D58)
-// NEMA-verified: 2026a, checked 2026-09-30 — container syntax is ISO/IEC 14496-12/-14 (out of scope); audio tracks are permitted in the MP4 container per PS3.5 2026a 8.2.7-8.2.11 and Table 8.2.12-1 and are now read (format, sampling frequency, channels, bits per sample, bit rate) for the PS3.5 8.2.5/8.2.12 check, described via PS3.3 Table C.7-13 (003A,0300) (P-VIDEO, D46)
+// NEMA-verified: 2026a, checked 2026-10-01 — container rule per codec: MPEG-TS or MP4 for H.264/HEVC (PS3.5 2026a 8.2.7-8.2.11), unconstrained for MPEG-2 (8.2.5, 8.2.6: "The container format for the video bit stream is not constrained") (D177); container syntax is ISO/IEC 14496-12/-14 (out of scope); audio tracks are permitted in the MP4 container per PS3.5 2026a 8.2.7-8.2.11 and Table 8.2.12-1 and are now read (format, sampling frequency, channels, bits per sample, bit rate) for the PS3.5 8.2.5/8.2.12 check, described via PS3.3 Table C.7-13 (003A,0300) (P-VIDEO, D46)
 //
 // MP4ContainerParser.swift
 // DICOMKit
@@ -11,10 +11,12 @@ import Foundation
 
 /// The container a video payload arrives in.
 ///
-/// PS3.5 Sections 8.2.7, 8.2.10 and 8.2.11 each state that "the container format
-/// for the video bit stream shall be MPEG-2 Transport Stream, a.k.a. MPEG-TS … or
-/// MPEG-4, a.k.a. MP4 container", so the encapsulated payload *retains* its
-/// container rather than being demuxed to an elementary stream.
+/// PS3.5 Sections 8.2.7 to 8.2.11 (H.264 and HEVC) each state that "the container
+/// format for the video bit stream shall be MPEG-2 Transport Stream, a.k.a. MPEG-TS …
+/// or MPEG-4, a.k.a. MP4 container", so the encapsulated payload *retains* its
+/// container rather than being demuxed to an elementary stream. For MPEG-2 (8.2.5,
+/// 8.2.6) "the container format for the video bit stream is not constrained"
+/// (MPEG-TS, MPEG-PS, MPEG-ES, MPEG-PES or MP4, for example).
 public enum VideoContainer: Sendable, Hashable {
     /// ISO Base Media File Format with an MP4-compatible brand.
     case mp4
@@ -28,11 +30,24 @@ public enum VideoContainer: Sendable, Hashable {
     /// Something this toolkit does not recognize.
     case unknown
 
-    /// Whether DICOM permits this container as an encapsulated payload.
-    public var isPermittedByDICOM: Bool {
-        switch self {
-        case .mp4, .mpegTS: return true
-        case .quickTime, .elementaryStream, .unknown: return false
+    /// Whether DICOM permits this container for an H.264 or HEVC payload (PS3.5 8.2.7-8.2.11).
+    @available(*, deprecated, renamed: "isPermittedByDICOM(for:)",
+               message: "The container rule depends on the codec: PS3.5 2026a 8.2.5/8.2.6 leave the MPEG-2 container unconstrained")
+    public var isPermittedByDICOM: Bool { isPermittedByDICOM(for: .h264) }
+
+    /// Whether DICOM permits this container for a video bit stream coded in `codec`.
+    ///
+    /// H.264 and HEVC: MPEG-TS or MP4 only (PS3.5 2026a 8.2.7, 8.2.8, 8.2.9, 8.2.10,
+    /// 8.2.11). MPEG-2: "The container format for the video bit stream is not
+    /// constrained" (8.2.5, 8.2.6), so any container this toolkit can read is
+    /// permitted, including a raw elementary stream. An unknown codec (a transport
+    /// stream taken on trust) follows the H.264/HEVC rule.
+    public func isPermittedByDICOM(for codec: VideoCodec) -> Bool {
+        switch (codec, self) {
+        case (_, .unknown): return false
+        case (.mpeg2, _): return true
+        case (_, .mp4), (_, .mpegTS): return true
+        case (_, .quickTime), (_, .elementaryStream): return false
         }
     }
 
