@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-09-29 — Film Box / Image Box / Presentation LUT citations corrected to PS3.3 2026a C.13.3, C.13.5, C.11.4; YBR 4:2:2 layout and partial-range inverse per C.7.6.3.1.2; Border/Empty Density terms per Table C.13-3; P-Value rendering through the PS3.14 7.2/7.3 GSDF under DensityMapping.gsdf (P-GSDF), linear under paper/film
+// NEMA-verified: 2026a, checked 2026-09-29 — Film Box / Image Box / Presentation LUT citations corrected to PS3.3 2026a C.13.3, C.13.5, C.11.4; YBR 4:2:2 layout and partial-range inverse per C.7.6.3.1.2; Border/Empty Density terms per Table C.13-3; Trim = YES prints a trim box around each image per Table C.13-3 (D92); P-Value rendering through the PS3.14 7.2/7.3 GSDF under DensityMapping.gsdf (P-GSDF), linear under paper/film
 //
 // FilmComposer.swift
 // DICOMPrintKit
@@ -47,7 +47,9 @@ public struct FilmComposerConfiguration: Sendable, Hashable {
     /// every film before this option existed was composed with.
     public let annotationEdge: FilmAnnotationEdge
 
-    /// Whether to draw crop marks when Trim (2010,0140) is YES.
+    /// Whether to print the trim box when Trim (2010,0140) is YES: per PS3.3
+    /// Table C.13-3, "a trim box shall be printed surrounding each image on the
+    /// film". (The name predates that reading and is kept for source compatibility.)
     public let drawTrimMarks: Bool
 
     /// Safety cap on the composed bitmap's longest side, in pixels.
@@ -326,6 +328,8 @@ public struct FilmComposer: Sendable {
             film.imageBoxes.map { (Int($0.content.imagePosition), $0) },
             uniquingKeysWith: { first, _ in first })
 
+        // Where each image landed, for the Trim (2010,0140) box.
+        var imageRects: [CGRect] = []
         for cell in cells(for: film) where !cell.isEmpty {
             let destination = flip(cell)
             guard let box = boxesByPosition[cell.position], let image = box.image else {
@@ -336,9 +340,9 @@ public struct FilmComposer: Sendable {
             }
 
             do {
-                try draw(box: box, image: image, film: film, cell: cell,
-                         sheet: sheet, in: context, isColor: isColor,
-                         emptyDensity: emptyDensity)
+                imageRects.append(try draw(box: box, image: image, film: film, cell: cell,
+                                           sheet: sheet, in: context, isColor: isColor,
+                                           emptyDensity: emptyDensity))
             } catch {
                 context.setFillColor(gray(emptyDensity, isColor: isColor))
                 context.fill(destination)
@@ -347,7 +351,8 @@ public struct FilmComposer: Sendable {
         }
 
         if configuration.drawTrimMarks, film.filmBox.trimOption == .yes {
-            drawTrimMarks(sheet: sheet, in: context, isColor: isColor, border: border)
+            drawTrimBoxes(around: imageRects, sheet: sheet, in: context,
+                          isColor: isColor, border: border)
         }
         if configuration.drawAnnotations, !film.annotations.isEmpty {
             drawAnnotations(film.annotations, sheet: sheet, in: context,
@@ -355,7 +360,9 @@ public struct FilmComposer: Sendable {
         }
     }
 
-    /// Draws one image box into its cell.
+    /// Draws one image box into its cell and returns the rectangle the image
+    /// occupies (CoreGraphics coordinates).
+    @discardableResult
     private func draw(
         box: ReceivedImageBox,
         image: PrintImageData,
@@ -365,7 +372,7 @@ public struct FilmComposer: Sendable {
         in context: CGContext,
         isColor: Bool,
         emptyDensity: Double
-    ) throws {
+    ) throws -> CGRect {
         let invert = shouldInvert(box: box, image: image, film: film)
         let transfer = displayTransfer(film: film)
         guard let cgImage = try makeCGImage(
@@ -417,6 +424,7 @@ public struct FilmComposer: Sendable {
                 width: cell.width, height: cell.height))
             context.draw(source, in: rect)
             context.restoreGState()
+            return rect
         }
     }
 
@@ -814,27 +822,22 @@ public struct FilmComposer: Sendable {
 
     // MARK: Decoration
 
-    /// Corner crop marks for Trim = YES.
-    private func drawTrimMarks(sheet: FilmSheet, in context: CGContext, isColor: Bool, border: Double) {
-        let inset = sheet.pixels(fromMillimeters: 2)
-        let length = sheet.pixels(fromMillimeters: 6)
-        let width = Double(sheet.pixelWidth), height = Double(sheet.pixelHeight)
-
+    /// Trim = YES: "a trim box shall be printed surrounding each image on the
+    /// film" (PS3.3 Table C.13-3, Trim (2010,0140)). One rectangle per placed
+    /// image, stroked just outside the image so no pixel of it is covered, in
+    /// the tone that contrasts with the Border Density.
+    private func drawTrimBoxes(
+        around imageRects: [CGRect], sheet: FilmSheet,
+        in context: CGContext, isColor: Bool, border: Double
+    ) {
+        guard !imageRects.isEmpty else { return }
+        let lineWidth = max(1, sheet.pixels(fromMillimeters: 0.3))
         context.saveGState()
         context.setStrokeColor(gray(border > 0.5 ? 0 : 1, isColor: isColor))
-        context.setLineWidth(max(1, sheet.pixels(fromMillimeters: 0.3)))
-        for (x, y, dx, dy) in [
-            (inset, inset, 1.0, 1.0),
-            (width - inset, inset, -1.0, 1.0),
-            (inset, height - inset, 1.0, -1.0),
-            (width - inset, height - inset, -1.0, -1.0)
-        ] {
-            context.move(to: CGPoint(x: x, y: y))
-            context.addLine(to: CGPoint(x: x + dx * length, y: y))
-            context.move(to: CGPoint(x: x, y: y))
-            context.addLine(to: CGPoint(x: x, y: y + dy * length))
+        context.setLineWidth(lineWidth)
+        for rect in imageRects {
+            context.stroke(rect.insetBy(dx: -lineWidth / 2, dy: -lineWidth / 2))
         }
-        context.strokePath()
         context.restoreGState()
     }
 

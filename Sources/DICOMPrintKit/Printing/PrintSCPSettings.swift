@@ -190,7 +190,7 @@ public struct PrintSCPSettings: Codable, Sendable, Equatable {
     /// footer, header, side, or drawn over the images).
     public var annotationEdge: FilmAnnotationEdge
 
-    /// Whether crop marks are drawn when Trim (2010,0140) is YES.
+    /// Whether a trim box is printed around each image when Trim (2010,0140) is YES (PS3.3 Table C.13-3).
     public var drawTrimMarks: Bool
 
     /// A pseudo-colour palette laid over received films when they are rendered.

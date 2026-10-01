@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, misc batch (2026-10-01, DICOM 2026a)
+
+- **DICOMPrintKit status labels** (D90): `PrintConsoleFormatter.printerStatusText` / `jobStatusText` (dicom-print
+  `status` / `job`, dicom-printscp `status`, DICOMStudio) label each attribute by its PS3.3 2026a Table C.13-9 /
+  C.13-8 name as PS3.6 Table 6-1 spells it: Printer Name, Printer Status, Printer Status Info, Manufacturer's
+  Model Name; Execution Status, Execution Status Info, Creation Date and (new line) Creation Time. JSON output is
+  unchanged.
+- **Trim (2010,0140) = YES prints a trim box around each image** (D92): `FilmComposer` strokes one rectangle just
+  outside every placed image, as PS3.3 2026a Table C.13-3 says ("a trim box shall be printed surrounding each
+  image on the film"), instead of four crop marks at the sheet corners. `drawTrimMarks` / `--trim-marks` keep
+  their names and now switch the trim box.
+
 ### Changed — CLI P-items, net batch (approved 2026-10-01, DICOM 2026a)
 
 - **Service-specific DIMSE status text in DICOMNetwork** (P-QR-STATUS-TEXT, closes D76): new public

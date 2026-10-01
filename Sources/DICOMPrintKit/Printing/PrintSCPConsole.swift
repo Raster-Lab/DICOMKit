@@ -191,7 +191,7 @@ public enum PrintSCPConsole {
             "  Composition:  \(Int(settings.dpi)) DPI, "
                 + "\(densityLabel(settings.densityMapping))"
                 + "\(settings.drawAnnotations ? ", annotations" : "")"
-                + "\(settings.drawTrimMarks ? ", trim marks" : "")",
+                + "\(settings.drawTrimMarks ? ", trim boxes" : "")",
             "  Capability:   \(settings.supportsColor ? "color + grayscale" : "grayscale only")"
                 + "\(settings.acceptPresentationLUT ? ", presentation LUT" : "")"
                 + "\(settings.acceptAnnotationBox ? ", annotation boxes" : "")"

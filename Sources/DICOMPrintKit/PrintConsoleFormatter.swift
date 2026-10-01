@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — JSON keyword keys diffed against PS3.6 2026a Table 6-1 (9 keywords: PrinterStatus, PrinterStatusInfo, PrinterName, Manufacturer, ManufacturerModelName, ExecutionStatus, ExecutionStatusInfo, CreationDate DA, CreationTime TM; P-PRINT-JSON); the older tool keys are kept (deprecated); text labels per D90
+// NEMA-verified: 2026a, checked 2026-10-01 — JSON keyword keys diffed against PS3.6 2026a Table 6-1 (9 keywords: PrinterStatus, PrinterStatusInfo, PrinterName, Manufacturer, ManufacturerModelName, ExecutionStatus, ExecutionStatusInfo, CreationDate DA, CreationTime TM; P-PRINT-JSON); the older tool keys are kept (deprecated); text labels are the PS3.3 Table C.13-8 (4) / C.13-9 (5) attribute names as PS3.6 spells them (D90)
 // PrintConsoleFormatter.swift
 // DICOMPrintKit
 //
@@ -17,21 +17,22 @@ public enum PrintConsoleFormatter {
 
     // MARK: - Printer status
 
-    /// Human-readable printer status block.
+    /// Human-readable printer status block. Each label is the attribute name of the
+    /// Printer Module (PS3.3 Table C.13-9) as PS3.6 Table 6-1 spells it.
     public static func printerStatusText(_ status: PrinterStatus) -> [String] {
         var lines: [String] = []
         lines.append("Printer Status")
         lines.append("==============")
-        lines.append("Name: \(status.printerName ?? "Unknown")")
-        lines.append("Status: \(status.status)")
+        lines.append("Printer Name: \(status.printerName ?? "Unknown")")
+        lines.append("Printer Status: \(status.status)")
         if let info = status.statusInfo {
-            lines.append("Status Info: \(info)")
+            lines.append("Printer Status Info: \(info)")
         }
         if let manufacturer = status.manufacturer {
             lines.append("Manufacturer: \(manufacturer)")
         }
         if let model = status.manufacturerModelName {
-            lines.append("Model: \(model)")
+            lines.append("Manufacturer's Model Name: \(model)")
         }
         lines.append("Is Normal: \(status.isNormal ? "Yes" : "No")")
         return lines
@@ -97,21 +98,28 @@ public enum PrintConsoleFormatter {
 
     // MARK: - Print job status
 
-    /// Human-readable print job status block.
+    /// Human-readable print job status block. Each label is the attribute name of the
+    /// Print Job Module (PS3.3 Table C.13-8) as PS3.6 Table 6-1 spells it.
     public static func jobStatusText(_ status: PrintJobStatus) -> [String] {
         var lines: [String] = []
         lines.append("Print Job Status")
         lines.append("================")
         lines.append("Job UID: \(status.printJobUID)")
-        lines.append("Status: \(status.executionStatus)")
+        lines.append("Execution Status: \(status.executionStatus)")
         if let info = status.executionStatusInfo {
-            lines.append("Status Info: \(info)")
+            lines.append("Execution Status Info: \(info)")
         }
         if let creationDate = status.creationDate {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            lines.append("Creation Date: \(formatter.string(from: creationDate))")
+        }
+        if let creationTime = status.creationTime {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .none
             formatter.timeStyle = .medium
-            lines.append("Created: \(formatter.string(from: creationDate))")
+            lines.append("Creation Time: \(formatter.string(from: creationTime))")
         }
         return lines
     }

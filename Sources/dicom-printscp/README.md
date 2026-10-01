@@ -115,7 +115,7 @@ dicom-printscp queues                      # CUPS queues for --paper-queue
 | `--margin-mm` | Sheet margin in millimetres (default: 5) |
 | `--cell-spacing-mm` | Gap between image cells in millimetres (default: 2) |
 | `--annotations` / `--no-annotations` | Draw Basic Annotation Box text (default: yes) |
-| `--trim-marks` / `--no-trim-marks` | Draw crop marks at the sheet corners when Trim (2010,0140) is YES (default: yes) |
+| `--trim-marks` / `--no-trim-marks` | Print a trim box around each image when Trim (2010,0140) is YES, PS3.3 Table C.13-3 (default: yes) |
 | `--max-pixels` | Cap on the composed bitmap's longest side (default: 12000) |
 
 **Output**

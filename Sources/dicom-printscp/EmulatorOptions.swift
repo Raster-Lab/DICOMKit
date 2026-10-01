@@ -169,7 +169,7 @@ struct CompositionOptions: ParsableArguments {
     var annotations: Bool?
 
     @Flag(name: .customLong("trim-marks"), inversion: .prefixedNo,
-          help: "Draw crop marks at the sheet corners when Trim (2010,0140) is YES (default: yes)")
+          help: "Print a trim box around each image when Trim (2010,0140) is YES, PS3.3 Table C.13-3 (default: yes)")
     var trimMarks: Bool?
 
     @Option(name: .long, help: "Cap on the composed bitmap's longest side, in pixels (default: 12000)")
