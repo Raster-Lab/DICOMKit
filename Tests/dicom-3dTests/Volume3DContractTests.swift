@@ -360,6 +360,20 @@ extension Volume3DContractTests {
         return 100 + 10 * c + 20 * r + 30 * k
     }
 
+    /// D207: voxel centres are at integer indices (C.7.6.2.1.1); nearest-neighbour
+    /// sampling in the last half voxel of the accepted range [0, n) returns the last
+    /// voxel instead of nil, matching trilinear sampling there.
+    func testNearestSamplingCoversTheEdgeHalfVoxel() throws {
+        let volume = try Self.linearVolume()   // 6 x 5 x 4
+        let last = try XCTUnwrap(volume.voxelAt(x: 5, y: 4, z: 3))
+        XCTAssertEqual(volume.interpolatedVoxelAt(x: 5.7, y: 4.6, z: 3.9, method: .nearest), last)
+        XCTAssertEqual(volume.interpolatedVoxelAt(x: 5.7, y: 4.6, z: 3.9, method: .linear), last)
+        XCTAssertEqual(volume.interpolatedVoxelAt(x: 0.4, y: 0.4, z: 0.4, method: .nearest),
+                       volume.voxelAt(x: 0, y: 0, z: 0))
+        XCTAssertNil(volume.interpolatedVoxelAt(x: 6, y: 0, z: 0, method: .nearest))
+        XCTAssertNil(volume.interpolatedVoxelAt(x: -0.1, y: 0, z: 0, method: .nearest))
+    }
+
     func testObliquePlaneDirectionsAreOrthonormalAndInThePlane() throws {
         let plane = try XCTUnwrap(ObliquePlane(normal: V3(x: 0, y: 2, z: 2), point: V3(x: 0, y: 0, z: 0)))
         let s = 1 / 2.0.squareRoot()

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — volume assembly against PS3.3 2026a Table C.7-10 (Pixel Spacing value 1 = adjacent row spacing, value 2 = adjacent column spacing; Spacing Between Slices centre-to-centre; Slice Thickness nominal), C.7.6.2.1.1 Equation C.7.6.2.1-1 and LPS axes, C.7.4.1.1.1 (one Frame of Reference UID per series), Tables C.7.6.16-2/-4/-5 (Pixel Measures, Plane Position (Patient), Plane Orientation (Patient) per frame), C.7.6.6.1.1, C.11.1.1.2 (Rescale per instance): 6 geometry rules, 2 were wrong (spacing order, z offset off the normal) and 4 missing (FoR, orientation, per-frame geometry, per-slice rescale), all fixed; voxelCoordinates is the inverse of Equation C.7.6.2.1-1 for orthonormal row/column/normal
+// NEMA-verified: 2026a, checked 2026-10-01 — volume assembly against PS3.3 2026a Table C.7-10 (Pixel Spacing value 1 = adjacent row spacing, value 2 = adjacent column spacing; Spacing Between Slices centre-to-centre; Slice Thickness nominal), C.7.6.2.1.1 Equation C.7.6.2.1-1 and LPS axes, C.7.4.1.1.1 (one Frame of Reference UID per series), Tables C.7.6.16-2/-4/-5 (Pixel Measures, Plane Position (Patient), Plane Orientation (Patient) per frame), C.7.6.6.1.1, C.11.1.1.2 (Rescale per instance): 6 geometry rules, 2 were wrong (spacing order, z offset off the normal) and 4 missing (FoR, orientation, per-frame geometry, per-slice rescale), all fixed; voxelCoordinates is the inverse of Equation C.7.6.2.1-1 for orthonormal row/column/normal; nearest-neighbour sampling clamps to the last voxel centre over the edge half voxel (D207)
 import Foundation
 import DICOMKit
 import DICOMCore
@@ -116,7 +116,13 @@ struct VolumeData {
         
         switch method {
         case .nearest:
-            return voxelAt(x: Int(round(x)), y: Int(round(y)), z: Int(round(z)))
+            // Index i is the voxel centre (PS3.3 C.7.6.2.1.1). The accepted range
+            // [0, n) reaches half a voxel past the last centre, which `round` would
+            // carry to n; clamp so that edge half-voxel reads the last voxel (D207),
+            // as the linear branch already does.
+            return voxelAt(x: min(Int(x.rounded()), dimensions.width - 1),
+                           y: min(Int(y.rounded()), dimensions.height - 1),
+                           z: min(Int(z.rounded()), dimensions.depth - 1))
             
         case .linear, .cubic:
             // Trilinear interpolation

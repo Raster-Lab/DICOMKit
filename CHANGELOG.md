@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outside every placed image, as PS3.3 2026a Table C.13-3 says ("a trim box shall be printed surrounding each
   image on the film"), instead of four crop marks at the sheet corners. `drawTrimMarks` / `--trim-marks` keep
   their names and now switch the trim box.
+- **dicom-3d nearest-neighbour edge sample** (D207): `VolumeData.interpolatedVoxelAt(.nearest)` returned nil in the
+  last half voxel of the accepted range [0, n) because `round` carried the index to n; it now clamps to the last
+  voxel centre (PS3.3 2026a C.7.6.2.1.1), as the linear branch already did.
 
 ### Changed — CLI P-items, net batch (approved 2026-10-01, DICOM 2026a)
 
