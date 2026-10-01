@@ -27,6 +27,18 @@ public enum ConvertConsole {
                 : "✗ \(relativePath): \(error ?? "unknown error")\n"
     }
 
+    /// Full failure report for a single-file conversion — the text BOTH the CLI and the
+    /// app print when a conversion fails, so the two cannot drift. Any error is accepted
+    /// and explained through ``ConversionFailure/init(describing:)``.
+    public static func failureReport(for error: Error) -> String {
+        "❌ Conversion failed\n\(ConversionFailure(describing: error).message)\n"
+    }
+
+    /// One-line failure text for a batch progress line (``batchProgressLine(success:relativePath:error:)``).
+    public static func failureSummary(for error: Error) -> String {
+        ConversionFailure(describing: error).summary
+    }
+
     /// Final batch summary line.
     public static func batchSummary(succeeded: Int, total: Int, failed: Int) -> String {
         "\nConversion complete: \(succeeded)/\(total) succeeded, \(failed) failed\n"

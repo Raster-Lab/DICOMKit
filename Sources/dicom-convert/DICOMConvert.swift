@@ -90,7 +90,13 @@ struct DICOMConvert: AsyncParsableCommand {
                 output: output, input: inputPath, fileExtension: format.fileExtension))
             try FileManager.default.createDirectory(
                 at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try convertFile(input: inputURL, output: destination)
+            do {
+                try convertFile(input: inputURL, output: destination)
+            } catch {
+                // Same failure report as DICOMStudio's Workshop (shared ConvertConsole).
+                FileHandle.standardError.write(Data(ConvertConsole.failureReport(for: error).utf8))
+                throw ExitCode.failure
+            }
         }
     }
     
@@ -138,7 +144,7 @@ struct DICOMConvert: AsyncParsableCommand {
                 print(ConvertConsole.batchProgressLine(success: true, relativePath: relativePath, error: nil), terminator: "")
             } catch {
                 errorCount += 1
-                print(ConvertConsole.batchProgressLine(success: false, relativePath: relativePath, error: error.localizedDescription), terminator: "")
+                print(ConvertConsole.batchProgressLine(success: false, relativePath: relativePath, error: ConvertConsole.failureSummary(for: error)), terminator: "")
             }
         }
 
@@ -168,7 +174,7 @@ struct DICOMConvert: AsyncParsableCommand {
     
     private func convertTransferSyntax(dicomFile: DICOMFile, output: URL) throws {
         guard let transferSyntaxName = transferSyntax else {
-            throw ValidationError("--transfer-syntax required for DICOM output")
+            throw ValidationError(DICOMConverter.missingTargetMessage)
         }
 
         let targetEncoding = try parseTransferSyntax(transferSyntaxName)
@@ -267,13 +273,13 @@ enum ConversionError: LocalizedError {
         case .noPixelData:
             return "No pixel data found in DICOM file"
         case .invalidFrame(let requested, let total):
-            return "Invalid frame \(requested). File has \(total) frames (0-\(total-1))"
+            return DICOMConverter.invalidFrameMessage(requested: requested, total: total)
         case .renderFailed:
             return "Failed to render pixel data to image"
         case .exportFailed:
             return "Failed to export image to file"
         case .unsupportedPlatform:
-            return "Image export not supported on this platform"
+            return "Image export is not supported on this platform"
         }
     }
 }

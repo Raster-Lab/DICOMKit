@@ -138,6 +138,12 @@ public enum TranscodingError: Error, Sendable, Equatable {
     case fidelityLost
 }
 
+/// Surfaces the readable ``description`` through `localizedDescription`, so apps and
+/// CLIs show the reason instead of Foundation's "TranscodingError error N" fallback.
+extension TranscodingError: LocalizedError {
+    public var errorDescription: String? { description }
+}
+
 extension TranscodingError: CustomStringConvertible {
     public var description: String {
         switch self {
@@ -231,7 +237,7 @@ public struct TransferSyntaxConverter: Sendable {
         // Recompression: compressed to compressed
         if source.isEncapsulated && target.isEncapsulated {
             // JPEG XL JPEG Recompression is a lossless bitstream wrap/unwrap, not a
-            // pixel re-encode: JPEG Baseline ↔ …4.111. …4.111 has no pixel encoder, so
+            // pixel re-encode: JPEG Baseline / Extended ↔ …4.111. …4.111 has no pixel encoder, so
             // it is admitted here explicitly rather than via the encoder registry.
             if Self.isJXLRecompressionForward(from: source, to: target)
                 || Self.isJXLRecompressionReverse(from: source, to: target) {
@@ -320,6 +326,17 @@ public struct TransferSyntaxConverter: Sendable {
             )
         }
         
+        // JPEG XL JPEG Recompression (…4.111) only wraps an 8-bit DCT JPEG. Explain a
+        // wrong source instead of reporting a bare "unsupported target syntax".
+        if targetSyntax.uid == TransferSyntax.jpegXLRecompression.uid,
+           !Self.jxlRecompressibleJPEGSyntaxUIDs.contains(sourceSyntax.uid) {
+            throw TranscodingError.unsupportedSourceSyntax(
+                "\(sourceSyntax.uid) (\(sourceSyntax.displayName)). JPEG XL JPEG Recompression "
+                + "(1.2.840.10008.1.2.4.111) needs an 8-bit JPEG Baseline (…4.50) or JPEG "
+                + "Extended (…4.51) source. For lossless JPEG or non-JPEG sources use "
+                + "JPEG XL Lossless (1.2.840.10008.1.2.4.110) instead")
+        }
+
         // Check if transcoding is supported
         guard canTranscode(from: sourceSyntax, to: targetSyntax) else {
             throw TranscodingError.unsupportedTargetSyntax(targetSyntax.uid)
@@ -328,10 +345,12 @@ public struct TransferSyntaxConverter: Sendable {
         // Check lossy constraint. JPEG XL JPEG Recompression (…4.111) adds NO loss —
         // it losslessly rewraps an already-encoded JPEG bitstream (and reverses it
         // byte-for-byte) — so it counts as lossless even when the wrapped JPEG is a
-        // lossy Baseline (whose `isLossless` is false).
+        // lossy Baseline (whose `isLossless` is false). The gate is about loss *this*
+        // transcode adds, so only a lossy target counts: decoding an already-lossy source
+        // (e.g. JPEG Baseline → Implicit VR LE) stores its pixels exactly, adding none.
         let isRecompression = Self.isJXLRecompressionForward(from: sourceSyntax, to: targetSyntax)
             || Self.isJXLRecompressionReverse(from: sourceSyntax, to: targetSyntax)
-        let isLossless = isRecompression || (sourceSyntax.isLossless && targetSyntax.isLossless)
+        let isLossless = isRecompression || targetSyntax.isLossless
         if !configuration.allowLossyCompression && !isLossless {
             throw TranscodingError.lossyCompressionNotAllowed
         }
@@ -527,27 +546,75 @@ public struct TransferSyntaxConverter: Sendable {
 
     // MARK: - JPEG XL JPEG Recompression (…4.111)
 
-    /// Whether this is a forward JPEG → JPEG XL JPEG Recompression (…4.111) transcode.
+    /// DICOM JPEG transfer syntaxes whose DCT bitstream can be losslessly recompressed
+    /// into JPEG XL (…4.111): JPEG Baseline (…4.50, process 1) and JPEG Extended
+    /// (…4.51, processes 2 & 4).
     ///
-    /// Recompression losslessly wraps an existing JPEG bitstream; JXLSwift's
-    /// `encodeLosslessJPEG` covers baseline-DCT JPEG, so only DICOM JPEG Baseline
-    /// (…4.50) is offered as a recompression source. Other JPEG flavours (Extended,
-    /// Lossless, SV1) are outside the supported bridge scope and fall through to the
-    /// generic (encoder-registry) path, which correctly rejects …4.111 as a target.
+    /// JXLSwift's `encodeLosslessJPEG` bridges any 8-bit Huffman DCT JPEG — baseline
+    /// (SOF0), extended-sequential (SOF1) and progressive (SOF2). Progressive has no
+    /// active DICOM UID, so it is only met inside …4.50 / …4.51 fragments, which this
+    /// covers. 12-bit Extended is rejected before any fragment is touched, because
+    /// PS3.5 Table 8.2.15-1 limits …4.111 to 8-bit unsigned pixel data and the JPEG XL
+    /// `jbrd` reconstruction box cannot carry 12-bit JPEG. Lossless JPEG (…4.57 /
+    /// …4.70, SOF3) has no DCT coefficients to carry over and stays on the pixel path.
+    public static let jxlRecompressibleJPEGSyntaxUIDs: Set<String> = [
+        TransferSyntax.jpegBaseline.uid,
+        TransferSyntax.jpegExtended.uid
+    ]
+
+    /// Whether this is a forward JPEG → JPEG XL JPEG Recompression (…4.111) transcode.
+    /// Sources outside ``jxlRecompressibleJPEGSyntaxUIDs`` fall through to the generic
+    /// (encoder-registry) path, which correctly rejects …4.111 as a target.
     static func isJXLRecompressionForward(from source: TransferSyntax, to target: TransferSyntax) -> Bool {
-        source.uid == TransferSyntax.jpegBaseline.uid
+        jxlRecompressibleJPEGSyntaxUIDs.contains(source.uid)
             && target.uid == TransferSyntax.jpegXLRecompression.uid
     }
 
     /// Whether this is a reverse JPEG XL JPEG Recompression (…4.111) → JPEG transcode,
-    /// reconstructing the byte-identical original JPEG bitstream. Targets DICOM JPEG
-    /// Baseline (…4.50), matching the forward recompression source.
+    /// reconstructing the byte-identical original JPEG bitstream into JPEG Baseline
+    /// (…4.50) or JPEG Extended (…4.51). The rebuilt JPEG's frame type is checked
+    /// against the chosen UID in ``transcodeJXLRecompression(dataSetData:from:to:forward:)``.
     static func isJXLRecompressionReverse(from source: TransferSyntax, to target: TransferSyntax) -> Bool {
         source.uid == TransferSyntax.jpegXLRecompression.uid
-            && target.uid == TransferSyntax.jpegBaseline.uid
+            && jxlRecompressibleJPEGSyntaxUIDs.contains(target.uid)
     }
 
-    /// Transcodes between JPEG Baseline and JPEG XL JPEG Recompression (…4.111) at the
+    /// The Start-Of-Frame marker (`0xC0`…`0xCF`, excluding DHT `C4`, JPG `C8` and DAC
+    /// `CC`) of a JPEG bitstream, or `nil` when none is found before the first scan.
+    static func jpegStartOfFrameMarker(in jpeg: Data) -> UInt8? {
+        let b = Data(jpeg)  // rebase to 0-based indices
+        guard b.count >= 4, b[0] == 0xFF, b[1] == 0xD8 else { return nil }
+        var i = 2
+        while i + 3 < b.count {
+            guard b[i] == 0xFF else { return nil }
+            let marker = b[i + 1]
+            if marker == 0xFF { i += 1; continue }          // fill byte
+            if marker == 0xDA || marker == 0xD9 { return nil } // scan / EOI before SOF
+            if (0xD0...0xD7).contains(marker) || marker == 0x01 { i += 2; continue }
+            if (0xC0...0xCF).contains(marker), marker != 0xC4, marker != 0xC8, marker != 0xCC {
+                return marker
+            }
+            let length = Int(b[i + 2]) << 8 | Int(b[i + 3])
+            guard length >= 2 else { return nil }
+            i += 2 + length
+        }
+        return nil
+    }
+
+    /// Whether a reconstructed JPEG with Start-Of-Frame `sof` may be labelled with the
+    /// JPEG transfer syntax `target`. JPEG Baseline (…4.50) is process 1 only (SOF0).
+    /// JPEG Extended (…4.51) also admits SOF0 (baseline is a subset of the extended
+    /// process), SOF1, and SOF2 — progressive has no active DICOM UID, and …4.51 is the
+    /// DCT syntax such files are found under, so the original bytes are restored as-is.
+    static func jpegFrame(_ sof: UInt8, isAllowedIn target: TransferSyntax) -> Bool {
+        switch target.uid {
+        case TransferSyntax.jpegBaseline.uid: return sof == 0xC0
+        case TransferSyntax.jpegExtended.uid: return sof == 0xC0 || sof == 0xC1 || sof == 0xC2
+        default: return false
+        }
+    }
+
+    /// Transcodes between JPEG Baseline / Extended and JPEG XL JPEG Recompression (…4.111) at the
     /// encapsulated-fragment level — each JPEG frame is wrapped (`forward`) or the
     /// original JPEG frame is reconstructed byte-for-byte (`!forward`) without any pixel
     /// decode/re-encode. Structurally mirrors ``transcodeFastPath(dataSetData:from:to:)``.
@@ -559,6 +626,23 @@ public struct TransferSyntaxConverter: Sendable {
     ) throws -> Data {
         // Parse elements including the encapsulated pixel data.
         let elements = try parseDataElements(from: dataSetData, transferSyntax: source)
+
+        // PS3.5 Table 8.2.15-1: …4.111 carries only 8-bit unsigned pixel data. Reject a
+        // 12-bit JPEG Extended (or signed) source up front with a clear message.
+        if forward {
+            func value(_ tag: Tag) -> UInt16? { elements.first { $0.tag == tag }?.uint16Value }
+            let bitsAllocated = value(.bitsAllocated)
+            let bitsStored = value(.bitsStored)
+            let pixelRepresentation = value(.pixelRepresentation) ?? 0
+            if bitsAllocated != 8 || (bitsStored ?? 8) != 8 || pixelRepresentation != 0 {
+                throw TranscodingError.encodingFailed(
+                    "JPEG XL JPEG Recompression (…4.111) requires 8-bit unsigned pixel data "
+                    + "(Bits Allocated \(bitsAllocated.map(String.init) ?? "absent"), "
+                    + "Bits Stored \(bitsStored.map(String.init) ?? "absent"), "
+                    + "Pixel Representation \(pixelRepresentation)); 12-bit JPEG cannot be "
+                    + "recompressed — transcode to JPEG XL Lossless (…4.110) instead")
+            }
+        }
 
         var outputElements: [DataElement] = []
 
@@ -577,6 +661,21 @@ public struct TransferSyntaxConverter: Sendable {
                         throw TranscodingError.encodingFailed(
                             "JPEG XL JPEG recompression \(forward ? "wrap" : "reconstruct") "
                             + "failed: \(error)")
+                    }
+                    // Reverse: the rebuilt JPEG must be a frame type the chosen JPEG
+                    // UID allows (e.g. an Extended/progressive JPEG is never labelled
+                    // Baseline …4.50).
+                    if !forward {
+                        guard let sof = Self.jpegStartOfFrameMarker(in: transcoded) else {
+                            throw TranscodingError.encodingFailed(
+                                "JPEG XL JPEG reconstruct: rebuilt JPEG has no Start-Of-Frame marker")
+                        }
+                        guard Self.jpegFrame(sof, isAllowedIn: target) else {
+                            throw TranscodingError.encodingFailed(
+                                "JPEG XL JPEG reconstruct: rebuilt JPEG is SOF\(sof - 0xC0), "
+                                + "which \(target.uid) does not allow — reconstruct to JPEG "
+                                + "Extended (1.2.840.10008.1.2.4.51) instead")
+                        }
                     }
                     transcodedFragments.append(transcoded)
                 }
@@ -606,7 +705,7 @@ public struct TransferSyntaxConverter: Sendable {
             }
         }
 
-        // Write elements in target transfer syntax (both …4.50 and …4.111 use Explicit VR LE).
+        // Write elements in target transfer syntax (…4.50, …4.51 and …4.111 all use Explicit VR LE).
         let writer = DICOMWriter(byteOrder: target.byteOrder, explicitVR: target.isExplicitVR)
         var outputData = Data()
         for element in outputElements {
@@ -701,17 +800,34 @@ public struct TransferSyntaxConverter: Sendable {
             }
         }
         
+        // The JPEG (ImageIO) decoder converts YCbCr to RGB, so a decoded JPEG Baseline /
+        // Extended colour image must be relabelled. YBR_FULL_422 in particular is only
+        // valid for encapsulated JPEG and must never label native pixel data
+        // (PS3.3 C.7.6.3.1.2).
+        if Self.jxlRecompressibleJPEGSyntaxUIDs.contains(source.uid) {
+            outputElements = outputElements.map { element in
+                guard element.tag == .photometricInterpretation,
+                      let value = String(data: element.valueData, encoding: .ascii)?
+                          .trimmingCharacters(in: .whitespaces.union(.controlCharacters)),
+                      value == "YBR_FULL_422" || value == "YBR_FULL" else {
+                    return element
+                }
+                let rgb = Data("RGB ".utf8)
+                return DataElement(tag: element.tag, vr: element.vr, length: UInt32(rgb.count), valueData: rgb)
+            }
+        }
+
         // Write elements in target transfer syntax
         let writer = DICOMWriter(byteOrder: target.byteOrder, explicitVR: target.isExplicitVR)
         var outputData = Data()
-        
+
         for element in outputElements {
             outputData.append(writer.serializeElement(element))
         }
-        
+
         return outputData
     }
-    
+
     /// Transcodes from uncompressed to encapsulated (compressed)
     private func transcodeToEncapsulated(
         dataSetData: Data,

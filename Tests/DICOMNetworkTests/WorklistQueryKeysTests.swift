@@ -238,4 +238,16 @@ final class WorklistQueryKeysTests: XCTestCase {
         XCTAssertNil(keys.allKeys[Tag(group: 0x0032, element: 0x1070)],
                      "(0032,1070) Requested Contrast Agent must not be in the MWL key set")
     }
+
+    // MARK: - Default return keys
+
+    /// Requested Procedure Description is (0032,1060). The default keys used to
+    /// request (0032,1070) — Requested Contrast Agent — so a conforming SCP never
+    /// returned the description to either the dicom-mwl CLI or DICOMStudio.
+    func testDefaultKeys_requestRequestedProcedureDescriptionTag() {
+        let keys = WorklistQueryKeys.default()
+        XCTAssertNotNil(keys.allKeys[.requestedProcedureDescription])
+        XCTAssertNotNil(keys.allKeys[Tag(group: 0x0032, element: 0x1060)])
+        XCTAssertNil(keys.allKeys[.requestedContrastAgent])
+    }
 }
