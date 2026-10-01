@@ -20,20 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value applies to every audio track (the engine's `Metadata.audioChannelSource` takes one code).
   New test target `dicom-videoTests`.
 
-
-### Added — dicom-video audio Channel Source (D56, 2026-10-01)
-
-- **`dicom-video convert` / `batch --audio-channel-source <value>`:** names the source of the
-  multiplexed audio, which no container records, so each audio track gets a Multiplexed Audio
-  Channels Description Code Sequence (003A,0300) Item whose Channel Source Sequence (003A,0208)
-  carries the code (PS3.3 2026a Table C.7-13, Cine Module). The value is a PS3.16 2026a CID 3000
-  keyword (`voice`, `operators-narrative`, `ambient-room-environment`, `doppler-audio`,
-  `phonocardiogram`, `physiological-audio-signal`; the 6 rows generated from the DocBook) or
-  `SCHEME:VALUE[:MEANING]` for any code, the CID being Extensible (MEANING required for an unlisted
-  code, Code Meaning being Type 1). Without the option the sequence stays empty, as before. One
-  value applies to every audio track (the engine's `Metadata.audioChannelSource` takes one code).
-  New test target `dicom-videoTests`.
-
 ### Fixed — dicom-ai Segmentation output (D44, 2026-10-01)
 
 - **`dicom-ai segment --format dicom-seg` writes a conformant Segmentation object (D44):** the

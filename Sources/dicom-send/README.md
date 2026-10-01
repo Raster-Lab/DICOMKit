@@ -192,11 +192,23 @@ The tool handles various error conditions:
 
 Failed files are reported but don't stop the batch transfer unless `--retry` exhausts.
 
+## C-STORE Response Statuses
+
+Each C-STORE response is classified by PS3.4 Table B.2-1 (2026a):
+
+- **Success** (`0000`): stored.
+- **Warning** (`B000` Coercion of Data Elements, `B006` Elements Discarded, `B007` Data Set does
+  not match SOP Class): the SCP stored the instance but reports a deviation. The file counts as
+  sent; the status is printed under the file line and tallied as "Stored with warning".
+- **Failure** (`A7xx` Refused: Out of resources, `A9xx` Error: Data Set does not match SOP Class,
+  `Cxxx` Error: Cannot understand, `0122` Refused: SOP Class not supported): not stored. The
+  file counts as failed, `--retry` applies, and the status is printed on the file line.
+
 ## Exit Codes
 
-- `0`: All files sent successfully
-- `1`: All files failed or error before transfer
-- `2`: Partial success (some files failed)
+- `0`: All files sent (stored, or stored with a warning status)
+- `1`: One or more files failed (a Failure status or a network error), or an error before transfer
+- `64`: Invalid arguments (usage error, e.g. a negative `--retry` or an unknown `--transfer-syntax`)
 
 ## Performance Considerations
 
