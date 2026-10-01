@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — --ignore-tag accepts the Tag notation of PS3.6 2026a Table 6-1 ((gggg,eeee), also gggg,eeee / ggggeeee; PS3.5 7.1.1) and Table 6-1 keywords; --ignore-private is the odd-group rule of PS3.5 7.1/7.8; the 10 options otherwise carry no DICOM-standard data (comparison engine verified in DICOMKit/Comparison)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -35,19 +36,19 @@ struct DICOMDiff: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output format: text, json, summary")
     var format: ComparisonOutputFormat = .text
 
-    @Option(name: .long, help: "Tags to ignore (can be used multiple times, e.g. '0008,0012' or 'SOPInstanceUID')")
+    @Option(name: .long, help: "Tag to ignore, repeatable: (gggg,eeee), gggg,eeee, ggggeeee or a PS3.6 keyword (e.g. '(0008,0018)' or 'SOPInstanceUID')")
     var ignoreTag: [String] = []
 
-    @Flag(name: .long, help: "Ignore all private tags")
+    @Flag(name: .long, help: "Ignore private data elements (odd group number, PS3.5 7.1) at the top level of the data set")
     var ignorePrivate: Bool = false
 
-    @Flag(name: .long, help: "Compare pixel data")
+    @Flag(name: .long, help: "Compare Pixel Data (7FE0,0010) byte by byte instead of as one element")
     var comparePixels: Bool = false
 
-    @Option(name: .long, help: "Pixel value tolerance for comparison (default: 0)")
+    @Option(name: .long, help: "Largest per-byte difference in Pixel Data (7FE0,0010) still treated as identical; bytes, not sample values (default: 0)")
     var tolerance: Double = 0.0
 
-    @Flag(name: .long, help: "Quick mode: metadata only, skip pixel data")
+    @Flag(name: .long, help: "Quick mode: metadata only, overrides --compare-pixels")
     var quick: Bool = false
 
     @Flag(name: .long, help: "Show identical tags in detailed mode")
@@ -115,26 +116,40 @@ struct DICOMDiff: ParsableCommand {
         var result = Set<Tag>()
 
         for tagStr in tags {
-            if let tag = parseTag(tagStr) {
+            if let tag = Self.parseTag(tagStr) {
                 result.insert(tag)
             } else {
-                throw ValidationError("Invalid tag format: \(tagStr). Use format like '0008,0012' or tag keyword like 'SOPInstanceUID'")
+                throw ValidationError("Invalid tag format: \(tagStr). Use (gggg,eeee), gggg,eeee, ggggeeee or a PS3.6 keyword like 'SOPInstanceUID'")
             }
         }
 
         return result
     }
 
-    private func parseTag(_ str: String) -> Tag? {
-        // Try parsing as hex notation (0008,0012)
+    /// Parses an `--ignore-tag` value: the PS3.6 Table 6-1 Tag notation `(gggg,eeee)` that the
+    /// report itself prints, `gggg,eeee`, the 8-digit `ggggeeee` form, or a PS3.6
+    /// Table 6-1 keyword.
+    static func parseTag(_ input: String) -> Tag? {
+        var str = input.trimmingCharacters(in: .whitespaces)
+        if str.hasPrefix("("), str.hasSuffix(")") {
+            str = String(str.dropFirst().dropLast())
+        }
+        let isHex4: (String) -> Bool = { (1...4).contains($0.count) && $0.allSatisfy(\.isHexDigit) }
+
+        // gggg,eeee
         let components = str.components(separatedBy: ",")
-        if components.count == 2,
+        if components.count == 2, isHex4(components[0]), isHex4(components[1]),
            let group = UInt16(components[0], radix: 16),
            let element = UInt16(components[1], radix: 16) {
             return Tag(group: group, element: element)
         }
 
-        // Try looking up by keyword
+        // ggggeeee
+        if str.count == 8, str.allSatisfy(\.isHexDigit), let value = UInt32(str, radix: 16) {
+            return Tag(group: UInt16(value >> 16), element: UInt16(value & 0xFFFF))
+        }
+
+        // PS3.6 keyword
         return DataElementDictionary.lookup(keyword: str)?.tag
     }
 }

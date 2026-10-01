@@ -406,6 +406,13 @@ let package = Package(
             dependencies: ["dicom-send", "DICOMNetwork", "DICOMCore"],
             path: "Tests/dicom-sendTests"
         ),
+        // dicom-diff / dicom-split / dicom-merge: option vocabularies pinned to PS3.3 / PS3.5 /
+        // PS3.6 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
+        .testTarget(
+            name: "dicom-diffTests",
+            dependencies: ["dicom-diff", "DICOMCore"],
+            path: "Tests/dicom-diffTests"
+        ),
         // dicom-gateway: the DICOM side of the HL7 v2 / FHIR mappings (PN, DA, TM, Patient's
         // Sex, UIDs) pinned to PS3.3 / PS3.5 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(

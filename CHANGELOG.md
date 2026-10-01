@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-diff, dicom-split, dicom-merge verified against DICOM 2026a (2026-10-01)
+
+- **dicom-diff** `--ignore-tag` also accepts the `(gggg,eeee)` Tag notation the report itself prints (PS3.6
+  2026a Table 6-1) and the 8-digit `ggggeeee` form; `gggg,eeee` and PS3.6 keywords work as before. Help and
+  README state that `--tolerance` and the pixel statistics are per byte of Pixel Data (7FE0,0010), not per
+  sample value, that `--ignore-private` (odd groups, PS3.5 7.1) filters top-level elements only, that the File
+  Meta Information (group 0002) is not compared, and that exit 1 also means an unreadable file. New test target
+  `dicom-diffTests`.
+
 ### Fixed — dicom-dcmdir, dicom-uid, dicom-validate verified against DICOM 2026a (2026-10-01)
 
 - **dicom-dcmdir** `validate` checks the File-set ID (0-16 characters, PS3.10 8.1) and every Referenced

@@ -7,7 +7,7 @@ A command-line tool for comparing two DICOM files and reporting differences in m
 - **Tag Comparison**: Compare all metadata tags between two files
 - **Pixel Data Comparison**: Optional comparison of pixel data with tolerance
 - **Multiple Output Formats**: text, JSON, summary
-- **Flexible Filtering**: Ignore specific tags or all private tags
+- **Flexible Filtering**: Ignore specific tags (Tag or PS3.6 keyword) or all private data elements
 - **Detailed Reports**: Show differences, additions, deletions
 - **Exit Codes**: Returns 0 for identical files, 1 for differences
 
@@ -49,10 +49,13 @@ dicom-diff --format summary file1.dcm file2.dcm
 ### Filtering Options
 
 ```bash
-# Ignore specific tags by hex notation
+# Ignore specific tags by hex notation: (gggg,eeee) as printed in the report,
+# gggg,eeee or ggggeeee
+dicom-diff --ignore-tag "(0008,0012)" file1.dcm file2.dcm
 dicom-diff --ignore-tag 0008,0012 file1.dcm file2.dcm
+dicom-diff --ignore-tag 00080012 file1.dcm file2.dcm
 
-# Ignore by tag keyword
+# Ignore by PS3.6 keyword (Table 6-1)
 dicom-diff --ignore-tag SOPInstanceUID file1.dcm file2.dcm
 
 # Ignore multiple tags
@@ -62,7 +65,7 @@ dicom-diff \
   --ignore-tag SOPInstanceUID \
   file1.dcm file2.dcm
 
-# Ignore all private tags
+# Ignore all private data elements (odd group number, PS3.5 7.1) at the top level
 dicom-diff --ignore-private file1.dcm file2.dcm
 ```
 
@@ -72,7 +75,9 @@ dicom-diff --ignore-private file1.dcm file2.dcm
 # Compare pixel data
 dicom-diff --compare-pixels file1.dcm file2.dcm
 
-# With tolerance for minor differences
+# With a tolerance: the largest per-byte difference still treated as identical
+# (Pixel Data is compared byte by byte, so for 16-bit samples this is not a
+# sample-value tolerance)
 dicom-diff --compare-pixels --tolerance 5 original.dcm processed.dcm
 
 # Quick mode - skip pixel data
@@ -162,8 +167,8 @@ Pixel data: IDENTICAL
 ## Exit Codes
 
 - **0**: Files are identical (no differences found)
-- **1**: Files are different (differences found)
-- **64**: Usage error (invalid arguments)
+- **1**: Files are different (differences found), or a file could not be read as DICOM
+- **64**: Usage error (invalid arguments, file not found, invalid `--ignore-tag` value)
 
 This makes the tool suitable for use in scripts and automated workflows:
 
@@ -216,7 +221,9 @@ fi
 
 ## Limitations
 
-- **Pixel Data Comparison**: Currently performs simple byte-wise comparison. Does not account for different encodings or transfer syntaxes.
+- **Pixel Data Comparison**: Currently performs simple byte-wise comparison of Pixel Data (7FE0,0010). Does not account for different encodings or transfer syntaxes; `--tolerance`, "Max difference" and "Different pixels" count bytes, not samples.
+- **File Meta Information**: Group 0002 (PS3.10 7.1) is not compared; only the data set is.
+- **Private data elements in sequences**: `--ignore-private` filters top-level elements only.
 - **Large Files**: Loads entire files into memory. May be slow for very large files.
 - **Sequence Comparison**: Compares sequences recursively but may be slow for deeply nested structures.
 
