@@ -450,7 +450,7 @@ struct DICOMAnon: ParsableCommand {
                 try? FileManager.default.copyItem(at: inputURL, to: backupURL)
             }
             
-            // Write anonymized file. PS3.10 7.1: Media Storage SOP Instance UID (0002,0003)
+            // Write anonymized file. PS3.10 7.1 (DICOM File Meta Information), Table 7.1-1: Media Storage SOP Instance UID (0002,0003)
             // equals SOP Instance UID (0008,0018); the engines leave the file meta as read,
             // which would carry the original UID that Table E.1-1 replaces (U).
             let outputData = try AnonCLI.syncingMediaStorageSOPInstanceUID(anonymizedFile).write()
