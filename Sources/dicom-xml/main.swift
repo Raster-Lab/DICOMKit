@@ -23,7 +23,6 @@ struct DICOMXml: ParsableCommand {
               dicom-xml file.dcm --output file.xml
               dicom-xml file.xml --output file.dcm --reverse
               dicom-xml file.dcm --pretty
-              dicom-xml file.dcm --output file.xml --no-keywords
             """,
         version: "1.1.5"
     )
@@ -42,8 +41,16 @@ struct DICOMXml: ParsableCommand {
 
     // PS3.19 Table A.1.5-2: keyword is "Required unless the DICOM Data Element is unknown to
     // the host", so output written with this flag is not conformant.
-    @Flag(name: .long, help: "Don't write the keyword attribute (the output then breaks PS3.19 Table A.1.5-2, which requires it for PS3.6 elements)")
+    // P-XML-NO-KEYWORDS (approved 2026-10-01): deprecated; still works, stderr note on use.
+    @Flag(name: .long, help: "Deprecated: don't write the keyword attribute (the output then breaks PS3.19 Table A.1.5-2, which requires it for PS3.6 elements; will be removed)")
     var noKeywords: Bool = false
+
+    /// One-line stderr notes for deprecated options in use (P-XML-NO-KEYWORDS).
+    var deprecationNotes: [String] {
+        noKeywords
+            ? ["dicom-xml: warning: --no-keywords is deprecated and will be removed: PS3.19 2026a Table A.1.5-2 requires the keyword attribute for every PS3.6 Data Element"]
+            : []
+    }
 
     // PS3.19 Table A.1.5-2: a DicomAttribute for "each DICOM Attribute"; a zero length Value
     // Field has "no Infoset Value elements at all". Keeping it is the default; --no-include-empty drops it.
@@ -69,6 +76,9 @@ struct DICOMXml: ParsableCommand {
     mutating func run() throws {
         guard FileManager.default.fileExists(atPath: input) else {
             throw ValidationError("File not found: \(input)")
+        }
+        for note in deprecationNotes {
+            FileHandle.standardError.write(Data((note + "\n").utf8))
         }
 
         // Entire pipeline via the SHARED DataExchangeWorkflow (DICOMWeb) — the

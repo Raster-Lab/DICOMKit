@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — CLI P-items, file batch (approved 2026-10-01, DICOM 2026a)
+
+- **`dicom-json --no-sort-keys`** and **`dicom-xml --no-keywords`** are deprecated (P-JSON-NO-SORT-KEYS,
+  P-XML-NO-KEYWORDS): both still work, `--help` says "Deprecated", and using them prints a one-line stderr
+  warning, because their output breaks PS3.18 2026a F.2.2 (ascending tag order) and PS3.19 2026a
+  Table A.1.5-2 (keyword required). They will be removed in the next major version.
+
 ### Fixed — dicom-viewer grayscale display verified against DICOM 2026a (2026-10-01)
 
 - **`dicom-viewer`** applies the window with the VOI LUT Function of the file (PS3.3 Table C.11-2b,

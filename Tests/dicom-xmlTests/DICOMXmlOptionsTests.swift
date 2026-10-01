@@ -63,4 +63,15 @@ final class DICOMXmlOptionsTests: XCTestCase {
         XCTAssertNotNil(attribute("00100020", in: xml))
         XCTAssertNil(attribute("00080016", in: xml))
     }
+
+    // P-XML-NO-KEYWORDS: --no-keywords keeps working but is deprecated (help + stderr note).
+    func testNoKeywordsIsDeprecatedButStillParses() throws {
+        let command = try DICOMXml.parse(["in.dcm", "--no-keywords"])
+        XCTAssertTrue(command.noKeywords)
+        XCTAssertEqual(command.deprecationNotes.count, 1)
+        XCTAssertTrue(command.deprecationNotes[0].contains("--no-keywords is deprecated"))
+        XCTAssertTrue(command.deprecationNotes[0].contains("PS3.19 2026a Table A.1.5-2"))
+        XCTAssertTrue(try DICOMXml.parse(["in.dcm"]).deprecationNotes.isEmpty)
+        XCTAssertTrue(DICOMXml.helpMessage().contains("Deprecated: don't write the keyword attribute"))
+    }
 }

@@ -102,7 +102,7 @@ dicom-json file.dcm --output file.json --verbose
 | `-o, --output <path>` | Output file path (default: input with .json or .dcm extension) |
 | `-r, --reverse` | Convert from JSON to DICOM |
 | `-p, --pretty` | Pretty-print JSON output |
-| `--no-sort-keys` | Don't order attribute objects by tag (default: ordered; unordered output breaks PS3.18 F.2.2) |
+| `--no-sort-keys` | **Deprecated** (prints a stderr warning; will be removed). Don't order attribute objects by tag (default: ordered; unordered output breaks PS3.18 F.2.2) |
 | `--include-empty` / `--no-include-empty` | Keep attributes with an empty Value Field as `{"vr": ...}` (default: on, PS3.18 F.2.5) / drop them |
 | `--inline-threshold <bytes>` | With `--bulk-data-url`: OB/OD/OF/OL/OV/OW/UN values longer than this become a BulkDataURI (default: 1024; 0: all of them). Without `--bulk-data-url` they are all InlineBinary |
 | `--bulk-data-url <url>` | Base URL for BulkDataURI values (PS3.18 F.2.6): `<url>/<GGGGEEEE>` |

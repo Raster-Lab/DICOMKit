@@ -62,4 +62,15 @@ final class DICOMJsonOptionsTests: XCTestCase {
         XCTAssertEqual(tags, [Tag(group: 0x0010, element: 0x0020), Tag(group: 0x0008, element: 0x001A)])
         XCTAssertEqual(Array(try encode(["--filter-tag", "00100020"]).keys), ["00100020"])
     }
+
+    // P-JSON-NO-SORT-KEYS: --no-sort-keys keeps working but is deprecated (help + stderr note).
+    func testNoSortKeysIsDeprecatedButStillParses() throws {
+        let command = try DICOMJson.parse(["in.dcm", "--no-sort-keys"])
+        XCTAssertTrue(command.noSortKeys)
+        XCTAssertEqual(command.deprecationNotes.count, 1)
+        XCTAssertTrue(command.deprecationNotes[0].contains("--no-sort-keys is deprecated"))
+        XCTAssertTrue(command.deprecationNotes[0].contains("PS3.18 2026a F.2.2"))
+        XCTAssertTrue(try DICOMJson.parse(["in.dcm"]).deprecationNotes.isEmpty)
+        XCTAssertTrue(DICOMJson.helpMessage().contains("Deprecated: don't order attribute objects"))
+    }
 }

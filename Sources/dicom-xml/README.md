@@ -46,7 +46,7 @@ dicom-xml file.dcm --output file.xml --pretty
 
 ### Without Keywords
 
-Exclude keyword attributes from XML elements (the output then breaks PS3.19 Table A.1.5-2, which requires the keyword for every PS3.6 element):
+Deprecated (prints a stderr warning and will be removed): exclude keyword attributes from XML elements (the output then breaks PS3.19 Table A.1.5-2, which requires the keyword for every PS3.6 element):
 ```bash
 dicom-xml file.dcm --output file.xml --no-keywords
 ```
@@ -94,7 +94,7 @@ dicom-xml file.dcm --output file.xml --verbose
 | `-o, --output <path>` | Output file path (default: input with .xml or .dcm extension) |
 | `-r, --reverse` | Convert from XML to DICOM |
 | `-p, --pretty` | Pretty-print XML output with indentation |
-| `--no-keywords` | Don't write the keyword attribute (default: written; omitting it breaks PS3.19 Table A.1.5-2) |
+| `--no-keywords` | **Deprecated** (prints a stderr warning; will be removed). Don't write the keyword attribute (default: written; omitting it breaks PS3.19 Table A.1.5-2) |
 | `--include-empty` / `--no-include-empty` | Keep attributes with an empty Value Field as a DicomAttribute without Value (default: on, PS3.19 Table A.1.5-2) / drop them |
 | `--inline-threshold <bytes>` | With `--bulk-data-url`: OB/OD/OF/OL/OV/OW/UN values longer than this become BulkData (default: 1024; 0: all of them). Without `--bulk-data-url` they are all InlineBinary |
 | `--bulk-data-url <url>` | Base URL for `BulkData uri` values, `<url>/<GGGGEEEE>` (Table A.1.5-2 reserves `uri` for a WADO-RS Retrieve Metadata response) |

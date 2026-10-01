@@ -41,8 +41,16 @@ struct DICOMJson: ParsableCommand {
 
     // PS3.18 F.2.2: "Attribute objects ... shall be ordered by their property name in ascending
     // lexicographic (alphabetic) order", so output written with this flag is not conformant.
-    @Flag(name: .long, help: "Don't order attribute objects by tag (the output then breaks the PS3.18 F.2.2 ascending order)")
+    // P-JSON-NO-SORT-KEYS (approved 2026-10-01): deprecated; still works, stderr note on use.
+    @Flag(name: .long, help: "Deprecated: don't order attribute objects by tag (the output then breaks the PS3.18 F.2.2 ascending order; will be removed)")
     var noSortKeys: Bool = false
+
+    /// One-line stderr notes for deprecated options in use (P-JSON-NO-SORT-KEYS).
+    var deprecationNotes: [String] {
+        noSortKeys
+            ? ["dicom-json: warning: --no-sort-keys is deprecated and will be removed: PS3.18 2026a F.2.2 requires attribute objects in ascending tag order"]
+            : []
+    }
 
     // NOTE: the former --format standard|dicomweb and --stream flags were
     // removed: both were declared but never read (the encoder always emits the
@@ -73,6 +81,9 @@ struct DICOMJson: ParsableCommand {
     mutating func run() throws {
         guard FileManager.default.fileExists(atPath: input) else {
             throw ValidationError("File not found: \(input)")
+        }
+        for note in deprecationNotes {
+            FileHandle.standardError.write(Data((note + "\n").utf8))
         }
 
         // Entire pipeline via the SHARED DataExchangeWorkflow (DICOMWeb) — the
