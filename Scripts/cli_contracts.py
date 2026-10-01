@@ -284,16 +284,16 @@ CONTRACT['dicom-printscp'] = {
 }
 
 CONTRACT['dicom-server'] = {
-    'start --aet': ('Called AE Title of the SCP', 'PS3.5 Table 6.2-1 VR AE; PS3.8 9.3.2', '1-16 chars, no backslash/control; code accepts any string (not validated, D-DICOM-SERVER-9)', 'plumbing'),
+    'start --aet': ('Called AE Title of the SCP', 'PS3.5 Table 6.2-1 VR AE; PS3.8 9.3.2', '1-16 chars, no backslash/control; validated via DICOMNetwork.AETitle (D94 closed)', 'match'),
     'start --port': ('TCP port', 'PS3.8 9.1.1', '104 well-known, else 11112 registered; default 11112', 'plumbing (match)'),
     'start --data-dir': ('storage directory', '-', 'path', 'plumbing'),
     'start --database': ('index backend', '-', 'sqlite|postgres|none (sqlite/postgres are in-memory / unimplemented)', 'plumbing'),
     'start --database-url': ('index connection string', '-', 'sqlite://, postgres://', 'plumbing'),
-    'start --config': ('JSON ServerConfiguration file', '-', 'path', 'plumbing'),
+    'start --config': ('JSON ServerConfiguration file', '-', 'path; AE titles in it validated as VR AE', 'plumbing'),
     'start --max-connections': ('concurrent associations', '-', 'Int, default 10', 'plumbing'),
-    'start --max-pdu-size': ('Maximum Length received', 'PS3.8 D.1 / PS3.7 D.3.3.1', 'UInt32, 0 = unlimited; code uses it to fragment outgoing PDUs and does not advertise it (D-DICOM-SERVER-8)', 'plumbing (behaviour finding)'),
-    'start --allowed-ae': ('Calling AE Title allow list -> A-ASSOCIATE-RJ 1/1/3', 'PS3.8 Table 9-21', 'rejected-permanent / service-user / calling-AE-title-not-recognized', 'match'),
-    'start --blocked-ae': ('Calling AE Title block list -> A-ASSOCIATE-RJ 1/1/3', 'PS3.8 Table 9-21', 'as --allowed-ae', 'match'),
+    'start --max-pdu-size': ('Maximum Length received', 'PS3.8 D.1 / PS3.7 D.3.3.1', 'UInt32, 0 = unlimited; sent in the A-ASSOCIATE-AC, incoming P-DATA checked against it; outgoing fragmented to the peer value (D95 closed)', 'match'),
+    'start --allowed-ae': ('Calling AE Title allow list -> A-ASSOCIATE-RJ 1/1/3', 'PS3.8 Table 9-21; PS3.5 Table 6.2-1', 'rejected-permanent / service-user / calling-AE-title-not-recognized; entries validated as VR AE', 'match'),
+    'start --blocked-ae': ('Calling AE Title block list -> A-ASSOCIATE-RJ 1/1/3', 'PS3.8 Table 9-21; PS3.5 Table 6.2-1', 'as --allowed-ae', 'match'),
     'start --verbose': ('logging', '-', 'flag', 'plumbing'),
     'start --tls': ('TLS', 'PS3.15 B.1 (not implemented)', 'flag; stored only', 'plumbing'),
     'status --host': ('peer host', '-', 'string; -h collides with --help', 'plumbing'),
@@ -308,6 +308,7 @@ CONTRACT['dicom-server'] = {
     'stats --calling-ae': ('Calling AE Title', 'PS3.5 VR AE', '16 chars', 'plumbing'),
     'stats --called-ae': ('Called AE Title', 'PS3.5 VR AE', '16 chars', 'plumbing'),
     'stats --verbose': ('output', '-', 'flag', 'plumbing'),
+    'start --move-destination': ('C-MOVE Move Destination (0000,0600) -> host:port', 'PS3.4 C.4.2.1.3, Table C.4-2; PS3.5 Table 6.2-1', 'AE=host:port, repeatable; AE validated as VR AE; unknown destination -> A801 (D96 closed)', 'match (new, additive)'),
 }
 
 CONTRACT['dicom-gateway'] = {
@@ -347,7 +348,6 @@ CONTRACT['dicom-gateway'] = {
 }
 
 CONTRACT['dicom-wado'] = {
-    # retrieve (WADO-RS PS3.18 10.4; WADO-URI PS3.18 Section 9)
     'retrieve <base-url>': ('Studies Service base URI / URI service endpoint', 'PS3.18 Table 10.1-1; 9.1', 'http(s) URL; /rs rewritten to /wado with --uri (dcm4chee)', 'plumbing'),
     'retrieve --study': ('Study Instance UID: {study} path segment / studyUID', 'PS3.18 Tables 10.4.1-1, 9.1.2-1', 'UID; required (M in 9.1.2-1)', 'match'),
     'retrieve --series': ('Series Instance UID: {series} / seriesUID', 'PS3.18 Tables 10.4.1-1, 9.1.2-1', 'UID; required with --uri', 'match'),
@@ -368,7 +368,6 @@ CONTRACT['dicom-wado'] = {
     'retrieve --token': ('HTTP Authorization bearer token', 'PS3.18 8.4 (header fields; RFC 6750)', '', 'plumbing'),
     'retrieve --timeout': ('HTTP request timeout', '', 'seconds; default 60', 'plumbing (was ignored; fixed 39da529)'),
     'retrieve --verbose': ('', '', '', 'plumbing'),
-    # query (QIDO-RS PS3.18 10.6)
     'query <base-url>': ('Studies Service base URI', 'PS3.18 Table 10.1-1', 'http(s) URL', 'plumbing'),
     'query --level': ('Search resource level', 'PS3.18 Tables 10.6.1-1, 10.6.1-5', 'study, series, instance; default study', 'match'),
     'query --patient-name': ("Patient's Name (0010,0010)", 'PS3.18 Table 10.6.1-5; 8.3.4.1', 'PN, * ? wild card', 'match'),
@@ -392,7 +391,6 @@ CONTRACT['dicom-wado'] = {
     'query -f, --format': ('result rendering', 'PS3.18 Annex F (not followed)', 'table, json (keyword-keyed summary), csv', 'extra (P-QUERY-JSON)'),
     'query --token': ('HTTP Authorization bearer token', 'PS3.18 8.4', '', 'plumbing'),
     'query --verbose': ('', '', '', 'plumbing'),
-    # store (STOW-RS PS3.18 10.5)
     'store <base-url>': ('Studies Service base URI', 'PS3.18 Table 10.5.1-1', 'http(s) URL', 'plumbing'),
     'store <files>': ('PS3.10 files sent as application/dicom parts', 'PS3.18 10.5.1; Table 8.7.3-2', 'paths', 'plumbing'),
     'store --study': ('/studies/{study} target', 'PS3.18 Table 10.5.1-1', 'UID', 'match'),
@@ -401,7 +399,6 @@ CONTRACT['dicom-wado'] = {
     'store --continue-on-error': ('', 'PS3.18 Table 10.5.3-1 (202/4xx = not all stored)', '', 'plumbing (exit 0 on failures; fixed 39da529: exit 1)'),
     'store --token': ('HTTP Authorization bearer token', 'PS3.18 8.4', '', 'plumbing'),
     'store --verbose': ('', '', '', 'plumbing'),
-    # ups (UPS-RS PS3.18 11)
     'ups <base-url>': ('Worklist Service base URI', 'PS3.18 Table 11.1.1-1', 'http(s) URL', 'plumbing'),
     'ups --search': ('Search Transaction GET /workitems', 'PS3.18 11.9; Table 11.3-1', '', 'match'),
     'ups --get': ('Retrieve Workitem GET /workitems/{workitem}', 'PS3.18 11.5; Table 11.3-1', 'UID', 'match'),
@@ -543,7 +540,7 @@ CONTRACT['dicom-archive'] = {
     'import --skip-duplicates': ('deduplicate on SOP Instance UID (0008,0018), the Instance level unique key', 'PS3.4 Table C.6-4 (U)', 'flag (duplicates are always skipped; flag only counts them)', 'match'),
     'import --verbose': ('output', '-', 'flag', 'plumbing'),
     'query --archive': ('archive directory', '-', 'path', 'plumbing'),
-    "query --patient-name": ("Patient's Name (0010,0010) key, Wild Card Matching", 'PS3.4 C.2.2.2.4 (PN: case handling implementation dependent); Table C.6-1 (R)', '* and ?; case-insensitive', 'match'),
+    'query --patient-name': ("Patient's Name (0010,0010) key, Wild Card Matching", 'PS3.4 C.2.2.2.4 (PN: case handling implementation dependent); Table C.6-1 (R)', '* and ?; case-insensitive', 'match'),
     'query --patient-id': ('Patient ID (0010,0020) key, Wild Card Matching', 'PS3.4 C.2.2.2.4 (case sensitive except PN); Table C.6-1 (U)', '* and ?; case-insensitive (tool-specific, now in help; README already said so)', 'match (documented deviation)'),
     'query --study-uid': ('Study Instance UID (0020,000D) key', 'PS3.4 C.2.2.2.1 single value, C.2.2.2.2 List of UID; Table C.6-2 (U)', 'one UID, exact; a backslash UID list is now warned (not supported)', 'match (UID list: warned)'),
     'query --modality': ('Modality (0008,0060) value; study matches via its series = Modalities in Study (0008,0061) semantics', 'PS3.4 Table C.6-2 / C.6-5 (Modalities in Study, O); PS3.3 C.7.3.1.1.1 terms via DICOMCore.Modality', 'Defined Terms via ModalityOptionValidator; exact, upper-cased', 'match'),
@@ -585,7 +582,7 @@ CONTRACT['dicom-export'] = {
     'contact-sheet --spacing': ('grid', '-', 'pixels', 'plumbing'),
     'contact-sheet --format': ('PNG / JPEG', '-', 'png, jpeg (tiff also parses)', 'plumbing'),
     'contact-sheet --quality': ('JPEG quality', '-', '1-100', 'plumbing'),
-    'contact-sheet --apply-window': ('VOI for thumbnails', 'PS3.3 C.11.2.1.2.1; PS3.4 N.2', "applied HU window to stored values (wrong when Rescale Intercept != 0); now the file VOI is always applied through the N.2 chain, flag kept as a no-op (as bulk)", 'wrong -> fixed'),
+    'contact-sheet --apply-window': ('VOI for thumbnails', 'PS3.3 C.11.2.1.2.1; PS3.4 N.2', 'applied HU window to stored values (wrong when Rescale Intercept != 0); now the file VOI is always applied through the N.2 chain, flag kept as a no-op (as bulk)', 'wrong -> fixed'),
     'contact-sheet --labels': ('file-name captions', '-', 'flag', 'plumbing'),
     'animate <input>': ('multi-frame PS3.10 file', 'PS3.3 C.7.6.6', 'path', 'plumbing'),
     'animate --output': ('GIF path (non-DICOM)', '-', 'path', 'plumbing'),
@@ -601,7 +598,7 @@ CONTRACT['dicom-export'] = {
     'bulk --output': ('output directory', '-', 'path', 'plumbing'),
     'bulk --format': ('PNG / JPEG / TIFF', '-', 'png, jpeg, tiff', 'plumbing'),
     'bulk --quality': ('JPEG quality', '-', '1-100', 'plumbing'),
-    'bulk --organize-by': ("folders from Patient's Name (0010,0010), Study Instance UID (0020,000D), Series Instance UID (0020,000E)", 'PS3.4 Tables C.6-1..C.6-3 (Patient ID is the patient unique key)', 'flat, patient, study, series; patient folder keyed on Patient\'s Name (P-EXPORT-2)', 'match (help names the attributes)'),
+    'bulk --organize-by': ("folders from Patient's Name (0010,0010), Study Instance UID (0020,000D), Series Instance UID (0020,000E)", 'PS3.4 Tables C.6-1..C.6-3 (Patient ID is the patient unique key)', "flat, patient, study, series; patient folder keyed on Patient's Name (P-EXPORT-2)", 'match (help names the attributes)'),
     'bulk --recursive': ('', '-', 'flag', 'plumbing'),
     'bulk --apply-window': ('VOI', 'PS3.4 N.2', 'no effect: file VOI always applied (now said in help)', 'plumbing'),
     'bulk --embed-metadata': ('copy 5 attributes into EXIF/TIFF', 'PS3.6 Table 6-1 keywords', 'flag', 'plumbing'),
@@ -707,7 +704,7 @@ CONTRACT['dicom-info'] = {
 
 CONTRACT['dicom-tags'] = {
     '<input>': ('DICOM File', 'PS3.10 7.1', 'path', 'plumbing'),
-    '--list-modalities': ('Modality (0008,0060) Defined Terms', 'PS3.3 C.7.3.1.1.1', '79 current terms listed = 79 in 2026a; 18 retired not listed (stated); display names are DICOMKit\'s', 'match'),
+    '--list-modalities': ('Modality (0008,0060) Defined Terms', 'PS3.3 C.7.3.1.1.1', "79 current terms listed = 79 in 2026a; 18 retired not listed (stated); display names are DICOMKit's", 'match'),
     '--output': ('output path', '—', 'path (default: overwrite input)', 'plumbing'),
     '--set': ('Attribute value', 'PS3.6 Table 6-1 keyword/VR; PS3.5 Table 6.2-1 limits; PS3.10 7.1 group 0002; PS3.5 7.8.1', 'Keyword=Value | GGGG,EEEE=Value; dictionary VR; length/repertoire/range checked; US/SS/UL/SL/FL/FD encoded; group 0002, FFFE, 0001/3/5/7/FFFF refused', 'wrong -> fixed'),
     '--delete': ('remove Attribute', 'PS3.6 keywords; PS3.10 7.1', 'keyword exact | GGGG,EEEE; group 0002 refused', 'wrong -> fixed'),
