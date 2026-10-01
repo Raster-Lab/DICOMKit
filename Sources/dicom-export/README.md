@@ -16,7 +16,7 @@ Advanced DICOM image export tool with metadata embedding, contact sheets, animat
   `--window-width` (modality units, LINEAR) overrides the file's VOI in `single` and `animate`.
   On `contact-sheet` and `bulk`, `--apply-window` has no effect and is **deprecated** (stderr warning on use).
 - **Frame numbers**: frames are selected by Frame number, numbered from 1 (PS3.3 Table 10-3: "The first Frame
-  shall be denoted as Frame number 1"; C.7.6.6): `single --frame-number`, `animate --start-frame-number` /
+  shall be denoted as Frame number 1"): `single --frame-number`, `animate --start-frame-number` /
   `--end-frame-number`. The 0-based `--frame`, `--start-frame`, `--end-frame` still work, are **deprecated**
   and print a stderr warning; mixing a 0-based and a 1-based option exits 1.
 - **Burned In Annotation**: a file whose Burned In Annotation (0028,0301) is YES gets a warning on

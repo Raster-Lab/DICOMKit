@@ -94,7 +94,7 @@ dicom-j2k completions zsh > ~/.zsh/completions/_dicom-j2k
 
 ## Notes
 
-- Frames are selected with `--frame-number`, numbered from 1 (PS3.3 C.7.6.6: "The first Frame
+- Frames are selected with `--frame-number`, numbered from 1 (PS3.3 Table 10-3: "The first Frame
   shall be denoted as Frame number 1"); output says "Frame number N". `--frame` (0-based index)
   is **deprecated**, prints a note, and exits 1 when given with `--frame-number`.
 - `--json` keys: `TransferSyntaxUID` and `NumberOfFrames` (PS3.6 Table 6-1 keywords) and

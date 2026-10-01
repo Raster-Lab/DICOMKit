@@ -52,7 +52,7 @@ dicom-convert ct.dcm --output ct.png --apply-window --window-center 40 --window-
 ### Multi-frame Images
 
 ```bash
-# Export Frame number 5 (frames are numbered from 1, PS3.3 C.7.6.6); the default is Frame number 1
+# Export Frame number 5 (frames are numbered from 1, PS3.3 Table 10-3); the default is Frame number 1
 dicom-convert multiframe.dcm --output frame5.png --frame-number 5 --format png
 ```
 
@@ -75,7 +75,7 @@ dicom-convert input_dir/ --output output_dir/ --transfer-syntax ExplicitVRLittle
 - `--apply-window`: Apply window/level during export
 - `--window-center <value>`: Window Center (0028,1050) for export
 - `--window-width <value>`: Window Width (0028,1051) for export; at least 1 (PS3.3 C.11.2.1.2.1)
-- `--frame-number <n>`: Export Frame number n; frames are numbered from 1 (PS3.3 C.7.6.6)
+- `--frame-number <n>`: Export Frame number n; frames are numbered from 1 (PS3.3 Table 10-3)
 - `--frame <index>`: **Deprecated** 0-based index (`--frame 0` = Frame number 1); prints a deprecation note. Giving both `--frame` and `--frame-number` exits 1
 - `--recursive`: Process directories recursively
 - `--strip-private`: Remove private (odd group) Data Elements of the top-level Data Set

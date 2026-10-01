@@ -42,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   converts each HL7 message into the Secondary Capture data set that `hl7-to-dicom` refuses without `--template`
   (P-GATEWAY-SC, PS3.3 2026a Table A.8-1); it writes one stderr line per message, "Not forwarded to host:port: …",
   with the same reason, since `listen` takes no `--template` and C-STORE forwarding is not implemented (D103).
+- **Frame-number citations** (D208): help, error, deprecation and README text of dicom-convert, dicom-export,
+  dicom-measure and dicom-j2k, and the DICOMKit `ConversionDiagnostics.invalidFrameNumberMessage` doc, cite PS3.3
+  2026a Table 10-3 ("The first Frame shall be denoted as Frame number 1") instead of C.7.6.6, which does not say
+  it. dicom-export's deprecation note now reads "PS3.3 Table 10-3: the first Frame is Frame number 1".
 
 ### Changed — CLI P-items, net batch (approved 2026-10-01, DICOM 2026a)
 

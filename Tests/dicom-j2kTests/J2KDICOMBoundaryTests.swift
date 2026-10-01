@@ -458,7 +458,7 @@ struct HelpTextTests {
 @Suite("dicom-j2k P-items: Frame number, JSON keys, Part 2 targets, Table A-1 keywords")
 struct J2KPItemTests {
 
-    // PS3.3 2026a C.7.6.6: "The first Frame shall be denoted as Frame number 1".
+    // PS3.3 2026a Table 10-3: "The first Frame shall be denoted as Frame number 1".
     @Test("--frame-number is 1-based on every subcommand that selects a frame")
     func frameNumber() throws {
         #expect(try DICOMJ2K.InfoCommand.parse(["a.dcm", "--frame-number", "2"]).frame == 1)

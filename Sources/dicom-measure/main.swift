@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — option help and output keys diffed against PS3.3 2026a 10.7.1.3 (spacing Value order), Table C.18.6-1 (column,row; 0,0 = TLHC of the TLHC pixel), Table 10-3 / C.7.6.6 (pixel --frame-number is 1-based, "The first Frame shall be denoted as Frame number 1"; --frame 0-based index deprecated, P-MEASURE-FRAME), C.11.1.1.2 (output units); spacing_source values are PS3.6 2026a Table 6-1 keywords (5); unit_ucum values per PS3.16 2026a CID 82 (UCUM), CID 7460 (3 of 3 incl. um), CID 7461 (3 of 3 incl. um2), CID 7181/7183, {pixels} as PS3.16 TID UNITS; text prints the UCUM code (P-MEASURE-UNIT)
+// NEMA-verified: 2026a, checked 2026-10-01 — option help and output keys diffed against PS3.3 2026a 10.7.1.3 (spacing Value order), Table C.18.6-1 (column,row; 0,0 = TLHC of the TLHC pixel), Table 10-3 (pixel --frame-number is 1-based, "The first Frame shall be denoted as Frame number 1"; --frame 0-based index deprecated, P-MEASURE-FRAME), C.11.1.1.2 (output units); spacing_source values are PS3.6 2026a Table 6-1 keywords (5); unit_ucum values per PS3.16 2026a CID 82 (UCUM), CID 7460 (3 of 3 incl. um), CID 7461 (3 of 3 incl. um2), CID 7181/7183, {pixels} as PS3.16 TID UNITS; text prints the UCUM code (P-MEASURE-UNIT)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -33,7 +33,7 @@ struct DICOMMeasure: ParsableCommand {
             deprecated and kept unchanged. inches and px² have no UCUM code
             in PS3.16 and print the symbol only.
 
-            Frames: pixel --frame-number N is 1-based (PS3.3 C.7.6.6, Table
+            Frames: pixel --frame-number N is 1-based (PS3.3 Table
             10-3: the first Frame is Frame number 1). --frame (0-based index)
             is deprecated.
 
@@ -368,7 +368,7 @@ struct Pixel: ParsableCommand {
     @Option(name: .long, help: "Point to sample as x,y (e.g., 150,150)")
     var point: String
 
-    @Option(name: .long, help: "Frame number, 1-based (PS3.3 C.7.6.6, Table 10-3: the first Frame is Frame number 1); at most Number of Frames (0028,0008). Default 1")
+    @Option(name: .long, help: "Frame number, 1-based (PS3.3 Table 10-3: the first Frame is Frame number 1); at most Number of Frames (0028,0008). Default 1")
     var frameNumber: Int?
 
     @Option(name: .long, help: "Deprecated: 0-based index; use --frame-number (index 0 is Frame number 1)")
@@ -376,7 +376,7 @@ struct Pixel: ParsableCommand {
 
     mutating func validate() throws {
         if let n = frameNumber, n < 1 {
-            throw ValidationError("--frame-number must be 1 or greater: the first Frame is Frame number 1 (PS3.3 C.7.6.6)")
+            throw ValidationError("--frame-number must be 1 or greater: the first Frame is Frame number 1 (PS3.3 Table 10-3)")
         }
     }
 
@@ -410,7 +410,7 @@ struct Pixel: ParsableCommand {
             details: [
                 "point": "\(pt.x),\(pt.y)",
                 "frame": "\(index)",               // deprecated key: 0-based index
-                "frame_number": "\(index + 1)",    // PS3.3 C.7.6.6: 1-based
+                "frame_number": "\(index + 1)",    // PS3.3 Table 10-3: 1-based
             ]
         )
         try writeOutput(output, to: options.output)

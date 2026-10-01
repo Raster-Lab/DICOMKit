@@ -83,7 +83,7 @@ passed through the Modality LUT Sequence (0028,3000) or Rescale Slope / Intercep
 
 `x,y` are column,row in the PS3.3 Table C.18.6-1 system: 0,0 is the top-left corner of the
 top-left pixel. A point samples pixel floor(x),floor(y); an ROI holds the pixels whose centres
-lie inside it. `pixel --frame-number N` is 1-based (PS3.3 C.7.6.6 / Table 10-3: the first
+lie inside it. `pixel --frame-number N` is 1-based (PS3.3 Table 10-3: the first
 Frame is Frame number 1); text output labels it "Frame number N" and JSON adds `frame_number`.
 `--frame` (0-based index) is **deprecated**: it still works, prints a note on stderr, and its
 JSON key `frame` keeps the 0-based index. Giving both is refused (exit 1).

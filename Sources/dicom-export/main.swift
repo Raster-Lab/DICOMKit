@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — option help names the PS3.6 2026a attributes it reads (Window Center (0028,1050), Window Width (0028,1051), VOI LUT Function (0028,1056), VOI LUT Sequence (0028,3010), Patient's Name (0010,0010), Study / Series Instance UID, the 9 --exif-fields keywords, all match Table 6-1); frames are selected by Frame number from 1 (--frame-number, --start-frame-number, --end-frame-number; PS3.3 Table 10-3 "The first Frame shall be denoted as Frame number 1", C.7.6.6), the 0-based --frame / --start-frame / --end-frame are deprecated (P-EXPORT-1); bulk patient folders are keyed on Patient ID (0010,0020) + Issuer of Patient ID (0010,0021) (PS3.3 Table C.7-1 / 10-18, P-EXPORT-2); --apply-window on contact-sheet / bulk is deprecated (P-EXPORT-3); PNG/JPEG/TIFF/GIF outputs are non-DICOM plumbing; every subcommand renders through ExportFrames (PS3.4 N.2 chain)
+// NEMA-verified: 2026a, checked 2026-10-01 — option help names the PS3.6 2026a attributes it reads (Window Center (0028,1050), Window Width (0028,1051), VOI LUT Function (0028,1056), VOI LUT Sequence (0028,3010), Patient's Name (0010,0010), Study / Series Instance UID, the 9 --exif-fields keywords, all match Table 6-1); frames are selected by Frame number from 1 (--frame-number, --start-frame-number, --end-frame-number; PS3.3 Table 10-3 "The first Frame shall be denoted as Frame number 1"), the 0-based --frame / --start-frame / --end-frame are deprecated (P-EXPORT-1); bulk patient folders are keyed on Patient ID (0010,0020) + Issuer of Patient ID (0010,0021) (PS3.3 Table C.7-1 / 10-18, P-EXPORT-2); --apply-window on contact-sheet / bulk is deprecated (P-EXPORT-3); PNG/JPEG/TIFF/GIF outputs are non-DICOM plumbing; every subcommand renders through ExportFrames (PS3.4 N.2 chain)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -95,7 +95,7 @@ extension DICOMExport {
         @Option(name: .long, help: "Window Width (0028,1051) in modality units, >= 1; needs --apply-window and --window-center")
         var windowWidth: Double?
 
-        @Option(name: .long, help: "Frame to export, numbered from 1 (PS3.3 Table 10-3, C.7.6.6; default 1)")
+        @Option(name: .long, help: "Frame to export, numbered from 1 (PS3.3 Table 10-3; default 1)")
         var frameNumber: Int?
 
         @Option(name: .long, help: "deprecated: 0-based index; use --frame-number")
@@ -325,7 +325,7 @@ extension DICOMExport {
         @Option(name: .long, help: "Window Width (0028,1051) in modality units, >= 1; needs --apply-window and --window-center")
         var windowWidth: Double?
 
-        @Option(name: .long, help: "First frame, Frame number from 1 (PS3.3 Table 10-3, C.7.6.6; default 1)")
+        @Option(name: .long, help: "First frame, Frame number from 1 (PS3.3 Table 10-3; default 1)")
         var startFrameNumber: Int?
 
         @Option(name: .long, help: "Last frame, Frame number from 1, inclusive (default: the last frame)")

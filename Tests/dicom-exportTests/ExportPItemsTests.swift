@@ -5,7 +5,7 @@ import DICOMCore
 
 /// P-EXPORT-1 / -2 / -3 (approved 2026-10-01):
 /// - frames are selected by Frame number, numbered from 1 (PS3.3 2026a Table 10-3 "The first Frame
-///   shall be denoted as Frame number 1"; C.7.6.6); the 0-based options are deprecated;
+///   shall be denoted as Frame number 1"); the 0-based options are deprecated;
 /// - `bulk --organize-by patient` keys the patient folder on Patient ID (0010,0020) and Issuer of
 ///   Patient ID (0010,0021) (PS3.3 Table C.7-1 / Table 10-18);
 /// - `--apply-window` on contact-sheet and bulk is deprecated (it has no effect there).
@@ -36,7 +36,7 @@ final class ExportPItemsTests: XCTestCase {
 
     func testDeprecationNoteAndOutOfRangeText() {
         XCTAssertEqual(ExportFrameSelection.deprecationNote(option: "--frame", replacement: "--frame-number"),
-                       "warning: --frame is deprecated (0-based index); use --frame-number (numbered from 1, PS3.3 Table 10-3, C.7.6.6: Frames are numbered from 1)")
+                       "warning: --frame is deprecated (0-based index); use --frame-number (numbered from 1, PS3.3 Table 10-3: the first Frame is Frame number 1)")
         XCTAssertEqual(ExportFrameSelection.invalidFrameNumberMessage(requested: 5, total: 3),
                        "Frame number 5 does not exist. The file has 3 frames, numbered 1 to 3.")
     }

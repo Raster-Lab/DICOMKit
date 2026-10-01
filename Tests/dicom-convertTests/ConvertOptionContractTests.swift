@@ -6,7 +6,7 @@
 // UID (P-CONVERT-TS-KEYWORDS: JPEG2000Lossless / HTJ2KLossless / JPEGXLLossless now .90 / .201 /
 // .110; the old meaning is JPEG2000Reversible / HTJ2KReversible / JPEGXLReversible).
 // --window-width follows PS3.3 2026a C.11.2.1.2.1 ("shall always be greater than or equal to
-// 1"); --frame-number is 1-based per PS3.3 2026a C.7.6.6 (P-CONVERT-FRAME); a directory run
+// 1"); --frame-number is 1-based per PS3.3 2026a Table 10-3 (P-CONVERT-FRAME); a directory run
 // with a failed file exits 1 (P-CONVERT-EXIT).
 //
 
@@ -171,7 +171,7 @@ final class ConvertOptionContractTests: XCTestCase {
         XCTAssertNoThrow(try DICOMConvert.parse(["in.dcm", "-o", "o.png", "--frame", "0"]))
     }
 
-    // MARK: - Frame number (PS3.3 C.7.6.6), P-CONVERT-FRAME
+    // MARK: - Frame number (PS3.3 Table 10-3), P-CONVERT-FRAME
 
     func test_frameNumber_isOneBased() throws {
         XCTAssertEqual(try DICOMConvert.parse(["in.dcm", "-o", "o.png", "--frame-number", "3"]).frameIndex, 2)
@@ -192,6 +192,17 @@ final class ConvertOptionContractTests: XCTestCase {
         let help = DICOMConvert.helpMessage()
         XCTAssertTrue(help.contains("--frame-number"))
         XCTAssertTrue(help.contains("deprecated: 0-based index; use --frame-number"))
+    }
+
+    /// D208: "The first Frame shall be denoted as Frame number 1" is PS3.3 2026a Table 10-3
+    /// (Referenced Frame Number); C.7.6.6 does not say it.
+    func test_frameNumberRule_citesTable10_3() {
+        let help = DICOMConvert.helpMessage().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        XCTAssertTrue(help.contains("PS3.3 Table 10-3"), help)
+        XCTAssertFalse(help.contains("C.7.6.6"), help)
+        XCTAssertThrowsError(try DICOMConvert.parse(["in.dcm", "-o", "o.png", "--frame-number", "0"])) { error in
+            XCTAssertTrue(DICOMConvert.message(for: error).contains("PS3.3 Table 10-3"))
+        }
     }
 
     func test_invalidFrameNumberMessage_isOneBased() {

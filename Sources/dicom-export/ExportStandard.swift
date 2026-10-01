@@ -107,12 +107,12 @@ enum ExportFrames {
 #endif
 
 /// Frame selection by Frame number (P-EXPORT-1, approved 2026-10-01). PS3.3 2026a Table 10-3:
-/// "The first Frame shall be denoted as Frame number 1"; C.7.6.6: "Frames numbered from 1". The 1-based options are
+/// "The first Frame shall be denoted as Frame number 1". The 1-based options are
 /// `--frame-number` (single) and `--start-frame-number` / `--end-frame-number` (animate); the
 /// 0-based `--frame`, `--start-frame`, `--end-frame` keep working, are deprecated, and print a
 /// one-line stderr note. Mixing the two kinds exits 1 (``ExportFrameSelectionConflict``).
 enum ExportFrameSelection {
-    static let reference = "PS3.3 Table 10-3, C.7.6.6: Frames are numbered from 1"
+    static let reference = "PS3.3 Table 10-3: the first Frame is Frame number 1"
 
     static func deprecationNote(option: String, replacement: String) -> String {
         "warning: \(option) is deprecated (0-based index); use \(replacement) (numbered from 1, \(reference))"

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — P-items: --frame-number (1-based, PS3.3 2026a C.7.6.6) on info/validate/roi/benchmark/compare, 0-based --frame deprecated, labels "Frame number N"; --json adds PS3.6 2026a Table 6-1 keys TransferSyntaxUID / NumberOfFrames (camelCase keys deprecated); the 3 j2k-part2-* targets refused (PS3.5 2026a A.4.4, exit 1); JPEG2000Lossless / HTJ2KLossless select their Table A-1 UIDs .90 / .201 (note printed). Earlier: the 7 UID/name rows of the help diffed by script against PS3.6 2026a Table A-1 (7 wrong names fixed) and the 10 transcode target rows (alias → UID → intent, 10 match); 33 options classified (input contract); frame lookup, Photometric Interpretation, lossy provenance, derived-image and .202 handling moved to J2KDICOMBoundary.swift (PS3.5 A.4.4, 8.2.4, 8.2.14, 10.18.1; PS3.3 C.7.6.1.1.2, C.7.6.1.1.5); --quality now reaches the encoder; validate exits 2 on read errors as documented
+// NEMA-verified: 2026a, checked 2026-10-01 — P-items: --frame-number (1-based, PS3.3 2026a Table 10-3) on info/validate/roi/benchmark/compare, 0-based --frame deprecated, labels "Frame number N"; --json adds PS3.6 2026a Table 6-1 keys TransferSyntaxUID / NumberOfFrames (camelCase keys deprecated); the 3 j2k-part2-* targets refused (PS3.5 2026a A.4.4, exit 1); JPEG2000Lossless / HTJ2KLossless select their Table A-1 UIDs .90 / .201 (note printed). Earlier: the 7 UID/name rows of the help diffed by script against PS3.6 2026a Table A-1 (7 wrong names fixed) and the 10 transcode target rows (alias → UID → intent, 10 match); 33 options classified (input contract); frame lookup, Photometric Interpretation, lossy provenance, derived-image and .202 handling moved to J2KDICOMBoundary.swift (PS3.5 A.4.4, 8.2.4, 8.2.14, 10.18.1; PS3.3 C.7.6.1.1.2, C.7.6.1.1.5); --quality now reaches the encoder; validate exits 2 on read errors as documented
 // main.swift — dicom-j2k
 // JPEG 2000 / HTJ2K codestream operations on DICOM files.
 //
@@ -632,12 +632,12 @@ enum J2KJSONKeys {
     }
 }
 
-// MARK: - Frame selection (PS3.3 C.7.6.6)
+// MARK: - Frame selection (PS3.3 Table 10-3)
 
-/// `--frame-number` (1-based, PS3.3 2026a C.7.6.6: "The first Frame shall be denoted as Frame
+/// `--frame-number` (1-based, PS3.3 2026a Table 10-3: "The first Frame shall be denoted as Frame
 /// number 1") and the deprecated 0-based `--frame` (P-J2K-FRAME). Both at once exits 1.
 struct FrameSelection: ParsableArguments {
-    @Option(name: .long, help: "Frame number, numbered from 1 (PS3.3 C.7.6.6; default 1)")
+    @Option(name: .long, help: "Frame number, numbered from 1 (PS3.3 Table 10-3; default 1)")
     var frameNumber: Int?
 
     @Option(name: .long, help: "deprecated: 0-based index; use --frame-number")
@@ -645,7 +645,7 @@ struct FrameSelection: ParsableArguments {
 
     mutating func validate() throws {
         if let n = frameNumber, n < 1 {
-            throw ValidationError("--frame-number must be 1 or more (PS3.3 C.7.6.6: the first Frame is Frame number 1)")
+            throw ValidationError("--frame-number must be 1 or more (PS3.3 Table 10-3: the first Frame is Frame number 1)")
         }
         if let f = frame, f < 0 {
             throw ValidationError("--frame is a 0-based index and must be 0 or more")
@@ -660,7 +660,7 @@ struct FrameSelection: ParsableArguments {
 
     /// The one-line stderr deprecation note when --frame was used.
     static let deprecationNote =
-        "warning: --frame is deprecated (0-based index); use --frame-number (numbered from 1, PS3.3 C.7.6.6)"
+        "warning: --frame is deprecated (0-based index); use --frame-number (numbered from 1, PS3.3 Table 10-3)"
 
     func warnIfDeprecated() {
         if frame != nil { FileHandle.standardError.write(Data((Self.deprecationNote + "\n").utf8)) }

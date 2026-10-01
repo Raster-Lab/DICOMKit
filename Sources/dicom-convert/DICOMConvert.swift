@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — 14 options classified against PS3.6 2026a Table A-1 (--transfer-syntax: 25 catalog targets, 21 UIDs; all 21 A-1 keywords select their A-1 UID — JPEG2000Lossless / HTJ2KLossless / JPEGXLLossless now .90 / .201 / .110 with a stderr note, old meaning renamed …Reversible (P-CONVERT-TS-KEYWORDS); 7 keywords added in TransferSyntaxKeywords.swift), PS3.3 C.11.2.1.2.1 (--window-width ≥ 1, now enforced), C.7.6.6 ("The first Frame shall be denoted as Frame number 1": new 1-based --frame-number, 0-based --frame deprecated, P-CONVERT-FRAME), PS3.5 7.8 (--strip-private, engine deferred), PS3.10 7.1 (--force); directory run exits 1 when a file failed (P-CONVERT-EXIT); DICOM output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4 (engine findings deferred)
+// NEMA-verified: 2026a, checked 2026-10-01 — 14 options classified against PS3.6 2026a Table A-1 (--transfer-syntax: 25 catalog targets, 21 UIDs; all 21 A-1 keywords select their A-1 UID — JPEG2000Lossless / HTJ2KLossless / JPEGXLLossless now .90 / .201 / .110 with a stderr note, old meaning renamed …Reversible (P-CONVERT-TS-KEYWORDS); 7 keywords added in TransferSyntaxKeywords.swift), PS3.3 C.11.2.1.2.1 (--window-width ≥ 1, now enforced), Table 10-3 ("The first Frame shall be denoted as Frame number 1": new 1-based --frame-number, 0-based --frame deprecated, P-CONVERT-FRAME), PS3.5 7.8 (--strip-private, engine deferred), PS3.10 7.1 (--force); directory run exits 1 when a file failed (P-CONVERT-EXIT); DICOM output checked on fixtures against PS3.3 C.7.6.1.1.5 and PS3.5 8.2, 8.2.4 (engine findings deferred)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -23,7 +23,7 @@ struct DICOMConvert: AsyncParsableCommand {
             Convert DICOM files to different transfer syntaxes or export pixel data to PNG, JPEG, or TIFF.
             Supports both single file and batch directory conversion.
 
-            Frames are numbered from 1 (PS3.3 C.7.6.6); select one with --frame-number.
+            Frames are numbered from 1 (PS3.3 Table 10-3); select one with --frame-number.
             Exit codes: 0 success; 1 a file failed (a directory run exits 1 when any file
             failed) or --frame and --frame-number were both given; 64 invalid arguments.
             
@@ -61,7 +61,7 @@ struct DICOMConvert: AsyncParsableCommand {
     @Option(name: .long, help: "Window width value (Window Width (0028,1051), at least 1)")
     var windowWidth: Double?
     
-    @Option(name: .long, help: "Frame to export, numbered from 1 (PS3.3 C.7.6.6: the first Frame is Frame number 1; default 1)")
+    @Option(name: .long, help: "Frame to export, numbered from 1 (PS3.3 Table 10-3: the first Frame is Frame number 1; default 1)")
     var frameNumber: Int?
 
     @Option(name: .long, help: "deprecated: 0-based index; use --frame-number")
@@ -95,7 +95,7 @@ struct DICOMConvert: AsyncParsableCommand {
             throw ValidationError("--frame is a 0-based frame index and must be 0 or more")
         }
         if let n = frameNumber, n < 1 {
-            throw ValidationError("--frame-number must be 1 or more (PS3.3 C.7.6.6: the first Frame is Frame number 1)")
+            throw ValidationError("--frame-number must be 1 or more (PS3.3 Table 10-3: the first Frame is Frame number 1)")
         }
         // Both spellings at once: refused with exit 1 (not a usage error).
         if frame != nil && frameNumber != nil {
@@ -109,7 +109,7 @@ struct DICOMConvert: AsyncParsableCommand {
 
     mutating func run() async throws {
         if frame != nil {
-            FileHandle.standardError.write(Data("warning: --frame is deprecated (0-based index); use --frame-number (numbered from 1, PS3.3 C.7.6.6)\n".utf8))
+            FileHandle.standardError.write(Data("warning: --frame is deprecated (0-based index); use --frame-number (numbered from 1, PS3.3 Table 10-3)\n".utf8))
         }
         if let token = transferSyntax, let note = TransferSyntaxKeywords.meaningChangeNote(for: token) {
             FileHandle.standardError.write(Data((note + "\n").utf8))
