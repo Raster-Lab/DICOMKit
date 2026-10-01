@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`dicom-diff` exit status** (P-DIFF-1): 0 identical, 1 different, **2** when a file is missing or cannot
   be read or parsed as DICOM, or the comparison fails (the `diff`/`cmp` convention; such errors exited 1, a
   missing file 64). The error goes to stderr; 64 remains the usage error. `--help` and README document it.
+- **`dicom-dcmdir create --file-set-id`** refuses (exit 1, message citing PS3.10 2026a 8.1/8.5 and PS3.3
+  2026a Table F.3-2) a File-set ID longer than 16 characters or with characters other than A-Z, 0-9 and `_`;
+  it used to warn and write it (P-DCMDIR-FSID). No override flag.
+- **`dicom-dcmdir create --profile`**: the spellings STD-GEN-DVD, STD-GEN-USB, STD-GEN-SEC, STD-CTMR-XXXX and
+  STD-US-XXXX are deprecated (not PS3.11 identifiers). They still work and print a one-line stderr note naming
+  the identifier written: STD-GEN-DVD-JPEG (PS3.11 2026a Table H.1-1), STD-GEN-USB-JPEG (J.1-1),
+  STD-GEN-SEC-CD (D.1-1), STD-CTMR-CD (E.1-1), STD-US-ID-SF-CDR (C.1-1) (P-DCMDIR-PROFILE). The tests that
+  used the deprecated `DICOMDIRProfile` constants use the -JPEG constants.
 
 ### Fixed — dicom-viewer grayscale display verified against DICOM 2026a (2026-10-01)
 

@@ -49,6 +49,34 @@ enum FileSetRules {
         return out
     }
 
+    /// P-DCMDIR-FSID (approved 2026-10-01): `create --file-set-id` refuses an ID that breaks
+    /// PS3.10 8.1 / 8.5 (it used to warn and write it). Returns the refusal text, or nil.
+    static func fileSetIDRefusal(_ id: String) -> String? {
+        let problems = fileSetIDViolations(id)
+        guard !problems.isEmpty else { return nil }
+        return "Refusing --file-set-id: " + problems.joined(separator: "; ")
+            + ". A File-set ID is 0 to 16 characters A-Z, 0-9 and _ (PS3.10 2026a 8.1, 8.5; PS3.3 2026a Table F.3-2 File-set ID (0004,1130))"
+    }
+
+    /// The pre-2026-09-25 `--profile` spellings that are not PS3.11 identifiers, with the
+    /// PS3.11 2026a table that defines the identifier `DICOMDIRProfile(rawValue:)` maps them to
+    /// (P-DCMDIR-PROFILE: still accepted, deprecated).
+    static let deprecatedProfileTables: [String: String] = [
+        "STD-GEN-DVD": "PS3.11 2026a Table H.1-1",
+        "STD-GEN-USB": "PS3.11 2026a Table J.1-1",
+        "STD-GEN-SEC": "PS3.11 2026a Table D.1-1",
+        "STD-CTMR-XXXX": "PS3.11 2026a Table E.1-1",
+        "STD-US-XXXX": "PS3.11 2026a Table C.1-1",
+    ]
+
+    /// The one-line stderr note for a deprecated `--profile` spelling, naming the PS3.11
+    /// identifier actually used; nil for a PS3.11 identifier.
+    static func profileDeprecationNote(requested: String, resolved: DICOMDIRProfile) -> String? {
+        let key = requested.trimmingCharacters(in: .whitespaces).uppercased()
+        guard let table = deprecatedProfileTables[key] else { return nil }
+        return "dicom-dcmdir: warning: --profile \(requested) is deprecated (not a PS3.11 Application Profile identifier); using \(resolved.rawValue) (\(table)). It will be rejected in the next major version."
+    }
+
     /// The File-set ID `create` derives from the input directory name when
     /// `--file-set-id` is not given: upper-cased, every character outside the
     /// PS3.10 8.5 set replaced by `_`, cut to 16 characters (PS3.10 8.1).

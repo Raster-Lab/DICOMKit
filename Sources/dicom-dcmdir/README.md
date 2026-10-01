@@ -27,7 +27,7 @@ dicom-dcmdir create study_folder/ --output DICOMDIR
 dicom-dcmdir create study_folder/ \
   --output DICOMDIR \
   --file-set-id "MYSTUDY" \
-  --profile STD-GEN-DVD
+  --profile STD-GEN-DVD-JPEG
 
 # Strict mode (only include valid DICOM files)
 dicom-dcmdir create study_folder/ --output DICOMDIR --strict --verbose
@@ -65,8 +65,8 @@ dicom-dcmdir dump DICOMDIR --format text --verbose
 ### Create Command
 
 - `--output, -o <path>`: Output DICOMDIR path (default: DICOMDIR in input directory)
-- `--file-set-id <id>`: File-set ID (0004,1130), up to 16 characters A-Z, 0-9, _ (PS3.10 8.1, 8.5); a value outside these rules is written with a warning (default: the directory name upper-cased, other characters replaced by `_`, cut to 16)
-- `--profile <profile>`: Application profile (STD-GEN-CD, STD-GEN-DVD, STD-GEN-USB)
+- `--file-set-id <id>`: File-set ID (0004,1130), up to 16 characters A-Z, 0-9, _ (PS3.10 8.1, 8.5); a value outside these rules is refused with exit 1 (it was written with a warning before 2026-10-01) (default: the directory name upper-cased, other characters replaced by `_`, cut to 16)
+- `--profile <profile>`: PS3.11 Application Profile identifier (default STD-GEN-CD; e.g. STD-GEN-DVD-JPEG, STD-GEN-USB-JPEG). The deprecated spellings STD-GEN-DVD, STD-GEN-USB, STD-GEN-SEC, STD-CTMR-XXXX and STD-US-XXXX are not PS3.11 identifiers; they are still accepted, print a stderr warning, and write STD-GEN-DVD-JPEG, STD-GEN-USB-JPEG, STD-GEN-SEC-CD, STD-CTMR-CD and STD-US-ID-SF-CDR respectively
 - `--recursive`: Recursively scan subdirectories (default: true)
 - `--strict`: Include only valid DICOM files
 - `--verbose`: Verbose output showing progress
@@ -87,9 +87,10 @@ dicom-dcmdir dump DICOMDIR --format text --verbose
 
 The tool supports standard DICOM application profiles:
 
-- **STD-GEN-CD**: General Purpose CD-R Interchange (default)
-- **STD-GEN-DVD**: General Purpose DVD Interchange with JPEG
-- **STD-GEN-USB**: General Purpose USB/Flash Memory with JPEG/JPEG 2000
+- **STD-GEN-CD**: General Purpose CD-R Interchange (default; PS3.11 Table D.1-1)
+- **STD-GEN-DVD-JPEG** / **STD-GEN-DVD-J2K**: General Purpose DVD Interchange with JPEG / JPEG 2000 (Table H.1-1)
+- **STD-GEN-USB-JPEG** / **STD-GEN-USB-J2K**: General Purpose USB Media Interchange with JPEG / JPEG-2000 (Table J.1-1)
+- every other identifier of PS3.11 2026a Annexes A-N (`dicom-dcmdir create --help` and the error text list them)
 
 ## Examples
 

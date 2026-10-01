@@ -452,11 +452,13 @@ final class DcmdirRoundTripTests: XCTestCase {
 
     // MARK: - profile / recursion options
 
-    // Oracle: the requested application profile is honored — building with STD-GEN-DVD
-    // and STD-GEN-USB yields a directory carrying that profile, not the default CD.
+    // Oracle: the requested application profile is honored — building with STD-GEN-DVD-JPEG
+    // (PS3.11 2026a Table H.1-1) and STD-GEN-USB-JPEG (Table J.1-1) yields a directory carrying
+    // that profile, not the default CD. (The deprecated STD-GEN-DVD / STD-GEN-USB constants are
+    // not PS3.11 identifiers; P-DCMDIR-PROFILE.)
     func testBuildHonorsDVDAndUSBProfiles() throws {
         let (dir, _) = try makeCorpusDir(count: 2)
-        for profile in [DICOMDIRProfile.standardGeneralDVD, .standardGeneralUSB] {
+        for profile in [DICOMDIRProfile.standardGeneralDVDJPEG, .standardGeneralUSBJPEG] {
             let result = try DICOMDIRWorkflow.buildDirectory(
                 fromFilesIn: dir, recursive: true, strict: false,
                 fileSetID: "TEST", profile: profile)

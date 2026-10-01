@@ -54,10 +54,10 @@ extension DICOMDCMDIR {
         @Option(name: .shortAndLong, help: "Output DICOMDIR path (default: DICOMDIR in input directory)")
         var output: String?
         
-        @Option(name: .long, help: "File-set ID (0004,1130): up to 16 characters A-Z, 0-9, _ (PS3.10 8.1, 8.5); default: the directory name upper-cased, other characters as _, cut to 16")
+        @Option(name: .long, help: "File-set ID (0004,1130): up to 16 characters A-Z, 0-9, _ (PS3.10 8.1, 8.5); any other value is refused (exit 1); default: the directory name upper-cased, other characters as _, cut to 16")
         var fileSetID: String?
         
-        @Option(name: .long, help: "PS3.11 Application Profile identifier, e.g. STD-GEN-CD (default), STD-GEN-DVD-JPEG, STD-GEN-DVD-J2K, STD-GEN-USB-JPEG, STD-GEN-USB-J2K, STD-GEN-BD-JPEG (STD-GEN-DVD / STD-GEN-USB are accepted as aliases of the -JPEG profiles)")
+        @Option(name: .long, help: "PS3.11 Application Profile identifier, e.g. STD-GEN-CD (default), STD-GEN-DVD-JPEG, STD-GEN-DVD-J2K, STD-GEN-USB-JPEG, STD-GEN-USB-J2K, STD-GEN-BD-JPEG (deprecated: STD-GEN-DVD, STD-GEN-USB, STD-GEN-SEC, STD-CTMR-XXXX, STD-US-XXXX are not PS3.11 identifiers; still accepted with a warning)")
         var profile: String = "STD-GEN-CD"
         
         // `.inversion` is required by ArgumentParser for a Bool flag whose default is
@@ -95,10 +95,12 @@ extension DICOMDCMDIR {
             // Determine file-set ID
             let fsID: String
             if let id = fileSetID {
-                fsID = id
-                for problem in FileSetRules.fileSetIDViolations(id) {
-                    FileHandle.standardError.write(Data("Warning: \(problem)\n".utf8))
+                // P-DCMDIR-FSID: refuse (exit 1) instead of writing a non-conformant ID.
+                if let refusal = FileSetRules.fileSetIDRefusal(id) {
+                    FileHandle.standardError.write(Data("Error: \(refusal)\n".utf8))
+                    throw ExitCode.failure
                 }
+                fsID = id
             } else {
                 fsID = FileSetRules.defaultFileSetID(fromDirectoryName: inputURL.lastPathComponent)
             }
@@ -107,6 +109,11 @@ extension DICOMDCMDIR {
             guard let dicomProfile = DICOMDIRProfile(rawValue: profile) else {
                 let standard = DICOMDIRProfile.allStandard.map(\.rawValue).joined(separator: ", ")
                 throw ValidationError("Invalid profile: \(profile). Use a PS3.11 Application Profile identifier: \(standard), or STD-US-<ID|SC|CC>-<SF|MF>-<media>")
+            }
+            // P-DCMDIR-PROFILE: a pre-2026-09-25 spelling still works, with a note naming the
+            // PS3.11 identifier that is written.
+            if let note = FileSetRules.profileDeprecationNote(requested: profile, resolved: dicomProfile) {
+                FileHandle.standardError.write(Data((note + "\n").utf8))
             }
             
             if verbose {

@@ -1,4 +1,5 @@
 import XCTest
+import ArgumentParser
 import Foundation
 import DICOMCore
 import DICOMKit
@@ -80,5 +81,58 @@ final class FileSetRulesTests: XCTestCase {
         // Without --check-files nothing is looked up on disk.
         XCTAssertEqual(FileSetRules.findings(for: directory(fileIDs: [["DIR1", "IMG2"]]), mediaFolder: folder, checkFiles: false), [])
         XCTAssertEqual(FileSetRules.findings(for: directory(fileIDs: [], fileSetID: "media"), mediaFolder: nil, checkFiles: false).count, 1)
+    }
+
+    // MARK: - P-DCMDIR-FSID: refuse an invalid --file-set-id (PS3.10 8.1, 8.5)
+
+    func testInvalidFileSetIDIsRefusedWithTheClause() {
+        XCTAssertNil(FileSetRules.fileSetIDRefusal(""))
+        XCTAssertNil(FileSetRules.fileSetIDRefusal("MYSTUDY_2026"))
+        let lower = FileSetRules.fileSetIDRefusal("my study")
+        XCTAssertNotNil(lower)
+        XCTAssertTrue(lower!.contains("PS3.10 2026a 8.1, 8.5"))
+        XCTAssertTrue(lower!.contains("Table F.3-2"))
+        XCTAssertNotNil(FileSetRules.fileSetIDRefusal("ABCDEFGHIJKLMNOPQ"))   // 17 characters
+    }
+
+    func testCreateWithInvalidFileSetIDExitsOneAndWritesNothing() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dcmdir-fsid-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var command = try DICOMDCMDIR.Create.parse([dir.path, "--file-set-id", "bad id"])
+        XCTAssertThrowsError(try command.run()) { error in
+            XCTAssertEqual((error as? ExitCode)?.rawValue, 1)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("DICOMDIR").path))
+    }
+
+    // MARK: - P-DCMDIR-PROFILE: deprecated --profile spellings (PS3.11 2026a)
+
+    func testDeprecatedProfileSpellingsMapAndNameTheIdentifierUsed() throws {
+        // identifier each spelling maps to, and the PS3.11 2026a table that defines it
+        let expected: [String: (String, String)] = [
+            "STD-GEN-DVD": ("STD-GEN-DVD-JPEG", "Table H.1-1"),
+            "STD-GEN-USB": ("STD-GEN-USB-JPEG", "Table J.1-1"),
+            "STD-GEN-SEC": ("STD-GEN-SEC-CD", "Table D.1-1"),
+            "STD-CTMR-XXXX": ("STD-CTMR-CD", "Table E.1-1"),
+            "STD-US-XXXX": ("STD-US-ID-SF-CDR", "Table C.1-1"),
+        ]
+        for (spelling, (identifier, table)) in expected {
+            let profile = try XCTUnwrap(DICOMDIRProfile(rawValue: spelling))
+            XCTAssertEqual(profile.rawValue, identifier)
+            XCTAssertTrue(profile.isStandard)
+            let note = try XCTUnwrap(FileSetRules.profileDeprecationNote(requested: spelling, resolved: profile))
+            XCTAssertTrue(note.contains("--profile \(spelling) is deprecated"), note)
+            XCTAssertTrue(note.contains("using \(identifier) (PS3.11 2026a \(table))"), note)
+        }
+        // lower case is accepted by DICOMDIRProfile too
+        XCTAssertNotNil(FileSetRules.profileDeprecationNote(requested: "std-gen-dvd", resolved: .standardGeneralDVDJPEG))
+    }
+
+    func testStandardProfileIdentifiersGetNoNote() throws {
+        for id in ["STD-GEN-CD", "STD-GEN-DVD-JPEG", "STD-GEN-USB-J2K", "STD-US-ID-SF-CDR"] {
+            let profile = try XCTUnwrap(DICOMDIRProfile(rawValue: id))
+            XCTAssertNil(FileSetRules.profileDeprecationNote(requested: id, resolved: profile))
+        }
     }
 }
