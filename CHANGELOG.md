@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matches, that `--modality` matches any series of the study (Modalities in Study semantics), and that
   wild cards are case-insensitive for Patient ID too (tool-specific; C.2.2.2.4 is case-sensitive for LO).
   README synced (study `modality` is the first instance's). New `dicom-archiveTests`.
+- **dicom-export** `contact-sheet` and `animate` render through `DICOMImageExporter.renderFrameForExport`,
+  like `single` and `bulk` (PS3.4 N.2: Modality LUT, the file's VOI in modality units, INVERSE for
+  MONOCHROME1). `contact-sheet --apply-window` applied Window Center/Width in HU to stored values (wrong
+  whenever Rescale Intercept != 0) and by default ignored the file's VOI; `animate --apply-window` used a
+  stored-unit window (wrong for slope != 1, no Modality LUT Sequence) and by default a per-frame auto
+  window. `contact-sheet --apply-window` is now a no-op, as `bulk --apply-window` already was.
+- **dicom-export** `animate` without `--fps` uses the file's Recommended Display Frame Rate (0008,2144), else
+  Cine Rate (0018,0040), else 1000 / Frame Time (0018,1063) (PS3.3 Table C.7-13), else 10 (was always 10).
+- **dicom-export** warns on stderr when an exported file has Burned In Annotation (0028,0301) YES (PS3.3
+  Table C.7-9). Help: frames are 0-based indexes (DICOM frame number - 1); `--window-center/-width` are
+  Window Center/Width in modality units; `--exif-fields` lists its 9 PS3.6 keywords; `--organize-by`
+  names Patient's Name / Study / Series Instance UID. README synced. New `dicom-exportTests`.
 
 ### Fixed — dicom-json verified against DICOM 2026a (2026-10-01)
 

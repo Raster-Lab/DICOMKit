@@ -1,3 +1,4 @@
+// NEMA-verified: 2026a, checked 2026-10-01 — option help names the PS3.6 2026a attributes it reads (Window Center (0028,1050), Window Width (0028,1051), VOI LUT Function (0028,1056), VOI LUT Sequence (0028,3010), Patient's Name (0010,0010), Study / Series Instance UID, the 9 --exif-fields keywords, all match Table 6-1); frames are 0-based indexes (frame number - 1, PS3.3 C.7.6.5.1.1 numbers the first Frame 1); PNG/JPEG/TIFF/GIF outputs are non-DICOM plumbing; every subcommand renders through ExportFrames (PS3.4 N.2 chain)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -35,6 +36,14 @@ struct DICOMExport: ParsableCommand {
             EXIF metadata embedding, contact sheet generation, animated GIF export,
             and bulk directory export with organization.
 
+            Monochrome frames are rendered through the PS3.4 grayscale chain: Modality LUT
+            (Rescale Slope/Intercept), then the file's VOI (Window Center (0028,1050) and
+            Window Width (0028,1051) with VOI LUT Function (0028,1056), else VOI LUT Sequence
+            (0028,3010), else the full pixel range), then INVERSE for MONOCHROME1. Frames are
+            0-based indexes (DICOM frame number - 1). Files with Burned In Annotation
+            (0028,0301) YES get a warning on stderr. The outputs (PNG, JPEG, TIFF, GIF) are
+            not DICOM files.
+
             Examples:
               dicom-export single ct.dcm --output ct.jpg --embed-metadata
               dicom-export contact-sheet *.dcm --output sheet.png --columns 6
@@ -70,19 +79,19 @@ extension DICOMExport {
         @Flag(name: .long, help: "Embed DICOM metadata as EXIF/TIFF tags")
         var embedMetadata: Bool = false
 
-        @Option(name: .long, help: "Comma-separated DICOM fields to embed (e.g., PatientName,StudyDate,Modality)")
+        @Option(name: .long, help: "Comma-separated PS3.6 keywords to embed: PatientName, StudyDate, Modality, StudyDescription, SeriesDescription, InstitutionName, Manufacturer, ManufacturerModelName, StationName (default: PatientName,StudyDate,Modality,StudyDescription,Manufacturer)")
         var exifFields: String?
 
-        @Flag(name: .long, help: "Apply windowing")
+        @Flag(name: .long, help: ArgumentHelp(stringLiteral: "Use --window-center/--window-width (LINEAR, PS3.3 C.11.2.1.2.1). Without it the file's VOI is applied: Window Center (0028,1050) and Window Width (0028,1051), else VOI LUT Sequence (0028,3010), else the full pixel range"))
         var applyWindow: Bool = false
 
-        @Option(name: .long, help: "Window center value")
+        @Option(name: .long, help: "Window Center (0028,1050) in modality units (after Rescale Slope/Intercept); needs --apply-window and --window-width")
         var windowCenter: Double?
 
-        @Option(name: .long, help: "Window width value")
+        @Option(name: .long, help: "Window Width (0028,1051) in modality units, >= 1; needs --apply-window and --window-center")
         var windowWidth: Double?
 
-        @Option(name: .long, help: "Frame number to export (0-indexed)")
+        @Option(name: .long, help: "Frame to export as a 0-based index (DICOM frame number - 1; PS3.3 numbers the first frame 1). Default: 0")
         var frame: Int?
 
         mutating func run() throws {
@@ -97,6 +106,9 @@ extension DICOMExport {
 
             guard let pixelData = dicomFile.pixelData() else {
                 throw ExportError.noPixelData
+            }
+            if BurnedInAnnotation.isYes(dicomFile.dataSet) {
+                BurnedInAnnotation.printWarning(BurnedInAnnotation.warning(for: input))
             }
 
             let frameIndex = frame ?? 0
@@ -166,7 +178,7 @@ extension DICOMExport {
         @Option(name: .long, help: "JPEG quality (1-100)")
         var quality: Int = 90
 
-        @Flag(name: .long, help: "Apply windowing")
+        @Flag(name: .long, help: ArgumentHelp(stringLiteral: "No effect, kept for compatibility: the file's VOI (Window Center (0028,1050) and Window Width (0028,1051), else VOI LUT Sequence (0028,3010), else the full pixel range) is always applied"))
         var applyWindow: Bool = false
 
         @Flag(name: .long, help: "Add filename labels below thumbnails")
@@ -203,6 +215,7 @@ extension DICOMExport {
             context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
             context.fill(CGRect(x: 0, y: 0, width: layout.totalWidth, height: layout.totalHeight))
 
+            var burnedIn = 0
             for (index, inputPath) in inputs.enumerated() {
                 let pos = DICOMImageExporter.thumbnailPosition(
                     index: index,
@@ -216,19 +229,18 @@ extension DICOMExport {
                     let fileData = try Data(contentsOf: URL(fileURLWithPath: inputPath))
                     let dicomFile = try DICOMFile.read(from: fileData)
 
-                    var cgImage: CGImage?
-                    if applyWindow {
-                        cgImage = try dicomFile.tryRenderFrameWithStoredWindow(0)
-                    } else {
-                        cgImage = try dicomFile.tryRenderFrame(0)
-                    }
+                    // Same render as `single` (the PS3.4 N.2 chain with the file's VOI in
+                    // modality units); the old stored-window path applied a Window Center
+                    // in HU to stored values (wrong whenever Rescale Intercept != 0).
+                    let image = try ExportFrames.render(
+                        file: dicomFile, frameIndex: 0,
+                        applyWindow: false, windowCenter: nil, windowWidth: nil)
+                    if BurnedInAnnotation.isYes(dicomFile.dataSet) { burnedIn += 1 }
 
-                    if let image = cgImage {
-                        // CGContext origin is bottom-left, flip y
-                        let flippedY = layout.totalHeight - pos.y - thumbnailSize
-                        let rect = CGRect(x: pos.x, y: flippedY, width: thumbnailSize, height: thumbnailSize)
-                        context.draw(image, in: rect)
-                    }
+                    // CGContext origin is bottom-left, flip y
+                    let flippedY = layout.totalHeight - pos.y - thumbnailSize
+                    let rect = CGRect(x: pos.x, y: flippedY, width: thumbnailSize, height: thumbnailSize)
+                    context.draw(image, in: rect)
                 } catch {
                     // Draw placeholder for failed files
                     let flippedY = layout.totalHeight - pos.y - thumbnailSize
@@ -244,6 +256,7 @@ extension DICOMExport {
             let outputURL = URL(fileURLWithPath: output)
             try DICOMImageExporter.exportCGImage(sheetImage, to: outputURL, format: format, quality: quality, metadata: nil)
             print(ExportConsole.contactSheetLine(path: output, imageCount: inputs.count, columns: columns, rows: layout.rows))
+            if burnedIn > 0 { BurnedInAnnotation.printWarning(BurnedInAnnotation.summaryWarning(count: burnedIn)) }
             #else
             throw ExportError.unsupportedPlatform
             #endif
@@ -266,25 +279,25 @@ extension DICOMExport {
         @Option(name: .shortAndLong, help: "Output GIF file path")
         var output: String
 
-        @Option(name: .long, help: "Frames per second")
-        var fps: Double = 10
+        @Option(name: .long, help: "Frames per second. Default: the file's Recommended Display Frame Rate (0008,2144), else Cine Rate (0018,0040), else 1000 / Frame Time (0018,1063) (msec), else 10")
+        var fps: Double?
 
         @Option(name: .long, help: "Number of loops (0 = infinite)")
         var loopCount: Int = 0
 
-        @Flag(name: .long, help: "Apply windowing")
+        @Flag(name: .long, help: ArgumentHelp(stringLiteral: "Use --window-center/--window-width (LINEAR, PS3.3 C.11.2.1.2.1). Without it the file's VOI is applied: Window Center (0028,1050) and Window Width (0028,1051), else VOI LUT Sequence (0028,3010), else the full pixel range"))
         var applyWindow: Bool = false
 
-        @Option(name: .long, help: "Window center value")
+        @Option(name: .long, help: "Window Center (0028,1050) in modality units (after Rescale Slope/Intercept); needs --apply-window and --window-width")
         var windowCenter: Double?
 
-        @Option(name: .long, help: "Window width value")
+        @Option(name: .long, help: "Window Width (0028,1051) in modality units, >= 1; needs --apply-window and --window-center")
         var windowWidth: Double?
 
-        @Option(name: .long, help: "Start frame (0-indexed)")
+        @Option(name: .long, help: "First frame, 0-based index (DICOM frame number - 1)")
         var startFrame: Int = 0
 
-        @Option(name: .long, help: "End frame (default: last frame)")
+        @Option(name: .long, help: "Last frame, 0-based index, inclusive (default: last frame)")
         var endFrame: Int?
 
         @Option(name: .long, help: "Scale factor (0.1-2.0)")
@@ -310,7 +323,11 @@ extension DICOMExport {
             }
 
             let clampedScale = max(0.1, min(2.0, scale))
-            let delay = DICOMImageExporter.gifFrameDelay(fps: fps)
+            let rate = CineFrameRate.resolve(explicit: fps, dataSet: dicomFile.dataSet)
+            let delay = DICOMImageExporter.gifFrameDelay(fps: rate.fps)
+            if BurnedInAnnotation.isYes(dicomFile.dataSet) {
+                BurnedInAnnotation.printWarning(BurnedInAnnotation.warning(for: input))
+            }
 
             let outputURL = URL(fileURLWithPath: output)
             let frameCount = range.end - range.start + 1
@@ -338,22 +355,17 @@ extension DICOMExport {
                 ]
             ]
 
-            let pixelData = dicomFile.pixelData()
+            guard let pixelData = dicomFile.pixelData() else {
+                throw ExportError.noPixelData
+            }
 
             for frameIndex in range.start...range.end {
-                let cgImage: CGImage?
-                if applyWindow, let pd = pixelData {
-                    let window = DICOMImageExporter.determineWindowSettings(from: dicomFile, pixelData: pd,
-                                                          frameIndex: frameIndex,
-                                                          windowCenter: windowCenter, windowWidth: windowWidth)
-                    cgImage = try dicomFile.tryRenderFrame(frameIndex, window: window)
-                } else {
-                    cgImage = try dicomFile.tryRenderFrame(frameIndex)
-                }
-
-                guard var image = cgImage else {
-                    throw ExportError.renderFailed
-                }
+                // Same render as `single`: the PS3.4 N.2 chain, window in modality units.
+                // The old path applied a stored-unit window (wrong for slope != 1 and for a
+                // Modality LUT Sequence) and, without --apply-window, a per-frame auto window.
+                var image = try ExportFrames.render(
+                    file: dicomFile, pixelData: pixelData, frameIndex: frameIndex,
+                    applyWindow: applyWindow, windowCenter: windowCenter, windowWidth: windowWidth)
 
                 // Apply scaling if needed
                 if clampedScale != 1.0 {
@@ -385,7 +397,7 @@ extension DICOMExport {
                 throw ExportError.exportFailed
             }
 
-            print(ExportConsole.animatedGIFLine(path: output, frameCount: frameCount, fps: fps))
+            print(ExportConsole.animatedGIFLine(path: output, frameCount: frameCount, fps: rate.fps))
             #else
             throw ExportError.unsupportedPlatform
             #endif
@@ -414,16 +426,16 @@ extension DICOMExport {
         @Option(name: .long, help: "JPEG quality (1-100)")
         var quality: Int = 90
 
-        @Option(name: .long, help: "Organization: flat, patient, study, series")
+        @Option(name: .long, help: "Folders: flat; patient = Patient's Name (0010,0010); study = patient + Study Instance UID (0020,000D); series = study + Series Instance UID (0020,000E)")
         var organizeBy: OrganizationScheme = .flat
 
         @Flag(name: .long, help: "Process directories recursively")
         var recursive: Bool = false
 
-        @Flag(name: .long, help: "Apply windowing")
+        @Flag(name: .long, help: ArgumentHelp(stringLiteral: "No effect, kept for compatibility: the file's VOI (Window Center (0028,1050) and Window Width (0028,1051), else VOI LUT Sequence (0028,3010), else the full pixel range) is always applied"))
         var applyWindow: Bool = false
 
-        @Flag(name: .long, help: "Embed DICOM metadata as EXIF")
+        @Flag(name: .long, help: "Embed DICOM attributes as EXIF/TIFF tags: PatientName, StudyDate, Modality, StudyDescription, Manufacturer (PS3.6 keywords)")
         var embedMetadata: Bool = false
 
         @Flag(name: .long, help: "Verbose output")
@@ -452,6 +464,7 @@ extension DICOMExport {
             var fileCount = 0
             var successCount = 0
             var errorCount = 0
+            var burnedIn = 0
 
             for fileURL in fileURLs {
                 fileCount += 1
@@ -500,6 +513,7 @@ extension DICOMExport {
 
                     try DICOMImageExporter.exportCGImage(image, to: outputURL, format: format, quality: quality, metadata: metadata)
                     successCount += 1
+                    if BurnedInAnnotation.isYes(dicomFile.dataSet) { burnedIn += 1 }
                     if verbose { print(ExportConsole.bulkSuccessLine(path: outputPath)) }
                 } catch {
                     errorCount += 1
@@ -508,6 +522,7 @@ extension DICOMExport {
             }
 
             print(ExportConsole.bulkSummaryLine(success: successCount, total: fileCount, failed: errorCount))
+            if burnedIn > 0 { BurnedInAnnotation.printWarning(BurnedInAnnotation.summaryWarning(count: burnedIn)) }
             #else
             throw ExportError.unsupportedPlatform
             #endif
