@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — --tag accepts PS3.6 2026a Table 6-1/7-1 keywords exactly (plus the name/tag substring match of the shared MetadataPresenter); printed (tag, name, VR) of a CT fixture match PS3.6 Table 6-1/7-1 31/31; date/time values print in their PS3.5 Table 6.2-1 VR form; output format vocabulary text/json/csv carries no DICOM-standard data
+// NEMA-verified: 2026a, checked 2026-10-01 — --tag accepts PS3.6 2026a Table 6-1/7-1 keywords exactly, matched by the shared MetadataPresenter (D148; the CLI keyword workaround is gone), plus the name/tag substring match; printed (tag, name, VR) of a CT fixture match PS3.6 Table 6-1/7-1 31/31; date/time values print in their PS3.5 Table 6.2-1 VR form; output format vocabulary text/json/csv carries no DICOM-standard data
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -54,20 +54,13 @@ struct DICOMInfo: ParsableCommand {
         
         let presenter = MetadataPresenter(
             file: dicomFile,
-            filterTags: Self.filterTerms(tag),
+            filterTags: tag,
             includePrivate: showPrivate,
             showStats: statistics
         )
         
         let output = try presenter.render(format: MetadataOutputFormat(rawValue: format.rawValue) ?? .text)
         print(output, terminator: "")
-    }
-
-    /// The shared presenter matches a filter against the PS3.6 Attribute name and the
-    /// "(GGGG,EEEE)" tag text. A PS3.6 keyword (e.g. PatientName) matches neither, so each
-    /// filter that is a keyword (exact, as in PS3.6 Table 6-1/7-1) also contributes its tag.
-    static func filterTerms(_ filters: [String]) -> [String] {
-        filters + filters.compactMap { DataElementDictionary.lookup(keyword: $0)?.tag.description }
     }
 }
 

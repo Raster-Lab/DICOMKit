@@ -1,27 +1,28 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — Value length / character-repertoire limits of the 34 VRs dumped from PS3.5 2026a Table 6.2-1 (17 character VRs checked, 6 binary numeric VRs encoded, 11 VRs refused for --set); group 0002 placement per PS3.10 2026a 7.1; Item/delimiters (FFFE,E000/E00D/E0DD) per PS3.5 7.5; unused groups 0001/0003/0005/0007/FFFF and Private Creator (gggg,0010-00FF) per PS3.5 7.8.1
+// NEMA-verified: 2026a, checked 2026-10-01 — (moved from dicom-tags into DICOMKit, D150) Value length / character-repertoire limits of the 34 VRs dumped from PS3.5 2026a Table 6.2-1 (17 character VRs checked, 6 binary numeric VRs encoded, 11 VRs refused for --set); group 0002 placement per PS3.10 2026a 7.1; Item/delimiters (FFFE,E000/E00D/E0DD) per PS3.5 7.5; unused groups 0001/0003/0005/0007/FFFF and Private Creator (gggg,0010-00FF) per PS3.5 7.8.1
 import Foundation
 import DICOMCore
 import DICOMDictionary
 
-/// A `dicom-tags` edit the standard does not allow. Thrown before anything is written,
-/// so the input file is never left half-edited. Exit code 1.
-struct TagEditRefusal: Error, LocalizedError, Equatable {
-    let message: String
-    init(_ message: String) { self.message = message }
-    var errorDescription: String? { message }
+/// A tag edit the standard does not allow. ``TagEditor/applyCheckedChanges(to:sets:deletes:deletePrivate:sourceDataSet:copyTags:verbose:dryRun:)``
+/// throws it before anything is changed, so a Data Set is never left half-edited
+/// (`dicom-tags` exits 1).
+public struct TagEditRefusal: Error, LocalizedError, Equatable {
+    public let message: String
+    public init(_ message: String) { self.message = message }
+    public var errorDescription: String? { message }
 }
 
-/// The checks `dicom-tags` applies before it edits a Data Set, and the `--set` writer.
+/// The rules ``TagEditor`` applies to an edit: which tags a Data Set may hold, the VR a
+/// set writes, and the PS3.5 Table 6.2-1 limits its value must respect.
 ///
-/// The shared `TagEditor` (DICOMKit) applies deletes, private-tag removal and copies;
-/// `--set` is applied here so the written VR is the PS3.6 dictionary VR and every value
-/// respects the PS3.5 Table 6.2-1 limits for that VR.
-enum TagEditRules {
+/// Moved from the `dicom-tags` CLI (commit b091aa5) into DICOMKit so DICOMStudio's
+/// Workshop, which runs the same engine, applies them too (D150).
+public enum TagEditRules {
 
     // MARK: - Which tags a Data Set edit may touch
 
     /// Why `tag` may not be set, deleted or copied in the Data Set, or nil when it may.
-    static func dataSetRefusal(for tag: Tag) -> String? {
+    public static func dataSetRefusal(for tag: Tag) -> String? {
         switch tag.group {
         case 0x0002:
             // PS3.10 2026a 7.1: "Data Elements with a group of 0002 shall not be used in Data
@@ -41,8 +42,8 @@ enum TagEditRules {
     }
 
     /// Private Creator Data Elements (gggg,0010-00FF), gggg odd (PS3.5 7.8.1).
-    static func isPrivateCreator(_ tag: Tag) -> Bool {
-        tag.isPrivate && (0x0010...0x00FF).contains(tag.element)
+    public static func isPrivateCreator(_ tag: Tag) -> Bool {
+        AttributeNames.isPrivateCreator(tag)
     }
 
     // MARK: - VR of a written element
@@ -50,7 +51,7 @@ enum TagEditRules {
     /// The VR `--set` writes: the PS3.6 dictionary VR (the existing element's VR when it is
     /// one of the dictionary's alternatives, e.g. "US or SS"); LO for a Private Creator
     /// (PS3.5 7.8.1); for other private or unknown tags the existing VR, else LO.
-    static func writeVR(for tag: Tag, existing: VR?) -> VR {
+    public static func writeVR(for tag: Tag, existing: VR?) -> VR {
         if isPrivateCreator(tag) { return .LO }
         let dictionary = (DataElementDictionary.lookup(tag: tag)?.vr ?? []).filter { $0 != .UN }
         if !dictionary.isEmpty {
@@ -64,12 +65,12 @@ enum TagEditRules {
     // MARK: - PS3.5 Table 6.2-1 limits
 
     /// How Table 6.2-1 counts a Value's length.
-    enum LengthUnit: Equatable { case bytes, chars }
+    public enum LengthUnit: Equatable, Sendable { case bytes, chars }
 
     /// "Length of Value" column of PS3.5 2026a Table 6.2-1 for the character VRs that have a
     /// limit below 2^32-2 (UC, UR and UT allow 2^32-2 bytes and are not checked).
     /// `fixed` = "bytes fixed"; PN's limit is per component group.
-    static let lengthLimits: [VR: (max: Int, unit: LengthUnit, fixed: Bool)] = [
+    public static let lengthLimits: [VR: (max: Int, unit: LengthUnit, fixed: Bool)] = [
         .AE: (16, .bytes, false),
         .AS: (4, .bytes, true),
         .CS: (16, .bytes, false),
@@ -88,7 +89,7 @@ enum TagEditRules {
 
     /// "Character Repertoire" column of Table 6.2-1 for the VRs limited to a subset of the
     /// Default Character Repertoire (stored values, not query keys).
-    static let repertoires: [VR: Set<Character>] = {
+    public static let repertoires: [VR: Set<Character>] = {
         let digits = Set("0123456789")
         return [
             .AS: digits.union("DWMY"),
@@ -104,20 +105,20 @@ enum TagEditRules {
 
     /// VRs whose Values are separated by BACKSLASH; LT, ST, UT and UR "shall not be
     /// multi-valued" (Table 6.2-1), so a backslash is part of their one Value.
-    static let singleValuedTextVRs: Set<VR> = [.LT, .ST, .UT, .UR]
+    public static let singleValuedTextVRs: Set<VR> = [.LT, .ST, .UT, .UR]
 
     /// Binary VRs `--set` encodes from decimal text (Table 6.2-1 ranges).
-    static let numericVRs: Set<VR> = [.US, .SS, .UL, .SL, .FL, .FD]
+    public static let numericVRs: Set<VR> = [.US, .SS, .UL, .SL, .FL, .FD]
 
     /// Splits a `--set` value into its Values.
-    static func values(of text: String, vr: VR) -> [String] {
+    public static func values(of text: String, vr: VR) -> [String] {
         singleValuedTextVRs.contains(vr)
             ? [text]
             : text.split(separator: "\\", omittingEmptySubsequences: false).map(String.init)
     }
 
     /// Why `text` cannot be written with `vr`, or nil when it can.
-    static func valueProblem(_ text: String, vr: VR) -> String? {
+    public static func valueProblem(_ text: String, vr: VR) -> String? {
         if numericVRs.contains(vr) {
             return numericValues(text, vr: vr).problem
         }
@@ -172,7 +173,7 @@ enum TagEditRules {
     }
 
     /// Parses decimal text for a binary numeric VR, checking the Table 6.2-1 range.
-    static func numericValues(_ text: String, vr: VR) -> (doubles: [Double], problem: String?) {
+    public static func numericValues(_ text: String, vr: VR) -> (doubles: [Double], problem: String?) {
         var out: [Double] = []
         for raw in values(of: text, vr: vr) {
             let value = raw.trimmingCharacters(in: .whitespaces)
@@ -203,7 +204,7 @@ enum TagEditRules {
     }
 
     /// The element `--set` writes, or the reason it cannot.
-    static func element(tag: Tag, vr: VR, text: String) -> Result<DataElement, TagEditRefusal> {
+    public static func element(tag: Tag, vr: VR, text: String) -> Result<DataElement, TagEditRefusal> {
         if let problem = valueProblem(text, vr: vr) {
             return .failure(TagEditRefusal("--set \(tag.description): \(problem)"))
         }
@@ -226,10 +227,11 @@ enum TagEditRules {
         return .success(.string(tag: tag, vr: vr, value: text))
     }
 
-    /// `(GGGG,EEEE) Name`, or the bare tag for a tag with no dictionary name — the label the
-    /// shared TagEditor prints, so `--set` lines read like the other change lines.
-    static func label(for tag: Tag) -> String {
-        if let name = DataElementDictionary.lookup(tag: tag)?.name {
+    /// `(GGGG,EEEE) Name`, or the bare tag for a tag with no name — the label every
+    /// change line prints. A Private Creator Data Element is named "Private Creator"
+    /// (PS3.5 7.8.1, D146).
+    public static func label(for tag: Tag) -> String {
+        if let name = AttributeNames.name(for: tag) {
             return "\(tag.description) \(name)"
         }
         return tag.description

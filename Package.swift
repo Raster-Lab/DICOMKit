@@ -637,6 +637,9 @@ let package = Package(
                 "ModalityLUTPrecedenceTests.swift",
                 // PS3.15 Annex E Basic Application Level Confidentiality Profile engine.
                 "ConfidentialityProfileTests.swift",
+                // dicom-dump / dicom-info / dicom-tags / dicom-diff engines (HexDumper,
+                // MetadataPresenter, TagEditor, DICOMComparer) pinned to 2026a (D144-D153).
+                "ToolEngineStandardTests.swift",
                 // PS3.15 Annex E Clean Pixel Data Option (113101): region planning,
                 // blanking mechanism, and earned attestation.
                 "PixelRedactionTests.swift",

@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — --tag/--highlight accept (gggg,eeee) or a PS3.6 2026a Table 6-1/7-1 keyword (exact); the --tag header (name, VR) and --annotate keywords/VRs of a CT fixture match PS3.6 Table 6-1/7-1 31/31; layout follows PS3.10 7.1 (128-byte preamble, "DICM", group 0002); hex layout options carry no DICOM-standard data
+// NEMA-verified: 2026a, checked 2026-10-01 — --tag/--highlight accept (gggg,eeee) or a PS3.6 2026a Table 6-1/7-1 keyword (exact); the --tag header (name, VR) and --annotate keywords/VRs of a CT fixture match PS3.6 Table 6-1/7-1 31/31; layout follows PS3.10 7.1 (128-byte preamble, "DICM", group 0002); --offset annotations come from a whole-file element walk (DICOMKit HexDumper, D144); hex layout options carry no DICOM-standard data
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -119,10 +119,12 @@ struct DICOMDump: ParsableCommand {
             }
         }
         
-        // Dump the data
+        // Dump the data. The whole file goes to the dumper so annotations and the
+        // highlight are found by walking the file from its start (D144).
         var output = dumper.dump(
-            data: dataToShow,
+            fileData: fileData,
             startOffset: startOffset,
+            length: dataToShow.count,
             dicomFile: dicomFile,
             highlightTag: try parseHighlightTag()
         )

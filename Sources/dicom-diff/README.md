@@ -75,9 +75,8 @@ dicom-diff --ignore-private file1.dcm file2.dcm
 # Compare pixel data
 dicom-diff --compare-pixels file1.dcm file2.dcm
 
-# With a tolerance: the largest per-byte difference still treated as identical
-# (Pixel Data is compared byte by byte, so for 16-bit samples this is not a
-# sample-value tolerance)
+# With a tolerance: the largest Pixel Sample Value difference still treated as
+# identical (both files are decoded and compared sample by sample, PS3.5 8.1.1)
 dicom-diff --compare-pixels --tolerance 5 original.dcm processed.dcm
 
 # Quick mode - skip pixel data
@@ -223,9 +222,8 @@ fi
 
 ## Limitations
 
-- **Pixel Data Comparison**: Currently performs simple byte-wise comparison of Pixel Data (7FE0,0010). Does not account for different encodings or transfer syntaxes; `--tolerance`, "Max difference" and "Different pixels" count bytes, not samples.
+- **Pixel Data Comparison**: both files are decoded and compared per Pixel Sample Value (Bits Allocated, Bits Stored, High Bit, Pixel Representation; PS3.5 8.1.1); "Different pixels" counts pixels with at least one differing sample. When a file cannot be decoded (no codec), its raw Pixel Data bytes are compared instead.
 - **File Meta Information**: Group 0002 (PS3.10 7.1) is not compared; only the data set is.
-- **Private data elements in sequences**: `--ignore-private` filters top-level elements only.
 - **Large Files**: Loads entire files into memory. May be slow for very large files.
 - **Sequence Comparison**: Compares sequences recursively but may be slow for deeply nested structures.
 

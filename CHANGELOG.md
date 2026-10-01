@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — deferred rows, dump / info / tags / diff engines, batch b4 (2026-10-01, DICOM 2026a)
+
+- **`HexDumper` annotates the right bytes at any offset** (D144; PS3.10 2026a 7.1): the element walk skips the
+  128-byte Preamble and "DICM" Prefix only when "DICM" is at bytes 128-131, so a file without them (`--force`) is
+  annotated from byte 0. New `HexDumper.dump(fileData:startOffset:length:dicomFile:highlightTag:)` walks the whole
+  file and shows the requested range, so `--offset` keeps `--annotate` / `--highlight` on their bytes (an element
+  that starts before the range can still be highlighted); dicom-dump uses it. `dump(data:startOffset:…)` is
+  unchanged for a slice that starts on an element boundary.
+- **`HexDumper` labels Items and delimiters and descends every Item** (D145; PS3.5 2026a 7.5, A.4; PS3.6 Table
+  6-1): (FFFE,E000) Item, (FFFE,E00D) ItemDelimitationItem and (FFFE,E0DD) SequenceDelimitationItem are annotated
+  (no VR), defined-length Sequences and Items are descended so their elements are annotated, and the fragments of
+  encapsulated Pixel Data are stepped over.
+- **Private Creator Data Elements are named "Private Creator"** (D146; PS3.5 2026a 7.8.1: (gggg,0010-00FF), gggg
+  odd) instead of "Unknown" / no name in `MetadataPresenter` (dicom-info text, JSON, CSV), `HexDumper` (`--tag`
+  header, annotations) and `TagEditor` change lines.
+- **`MetadataPresenter --statistics` names the UIDs** (D147; PS3.6 2026a Table A-1): text prints
+  `Transfer Syntax: 1.2.840.10008.1.2.1 (Explicit VR Little Endian)` and the SOP Class likewise; JSON keeps
+  `transferSyntax` / `sopClass` and adds `transferSyntaxName` / `sopClassName`.
+- **`MetadataPresenter` filters match PS3.6 keywords exactly** (D148; PS3.6 2026a Table 6-1/7-1), as well as the
+  name / tag substring. dicom-info drops its own keyword-to-tag workaround (`DICOMInfo.filterTerms`).
+- **`MetadataPresenter` JSON gives every element a `value`** (D149): VRs without a character value (US, SS, UL,
+  SL, FL, FD, AT, the Other VRs) carry the same rendering as the text and CSV output. The JSON is the tool's own
+  model (tag / name / vr / value), not the PS3.18 Annex F DICOM JSON Model.
+- **`TagEditor` applies the PS3.5 / PS3.10 edit rules** (D150; PS3.5 2026a Table 6.2-1, 7.5, 7.8.1; PS3.10 7.1):
+  the rules dicom-tags carried since b091aa5 moved into DICOMKit as public `TagEditRules` and `TagEditRefusal`.
+  `applyChanges` now writes the PS3.6 dictionary VR (US, SS, UL, SL, FL, FD as binary; `Rows=512` was the text
+  "512 " in a US element), refuses a value outside the Table 6.2-1 limits of that VR, and refuses group 0002,
+  Items/delimiters and groups 0001/0003/0005/0007/FFFF for set, delete and copy, each with a "(refused: …)"
+  line. New `applyCheckedChanges(…) throws` refuses the whole edit before changing anything; dicom-tags calls
+  it (its `checkDataSetEdits` / `applySets` are gone).
+- **`DICOMComparer` `ignorePrivate` applies inside Sequence Items** (D152; PS3.5 2026a 7.8).
+- **`DICOMComparer` compares Pixel Data per Pixel Sample Value** (D153; PS3.5 2026a 8.1.1, 8.2; PS3.3 C.7.6.3.1.3):
+  both files are decoded (compressed ones too) and each sample is read per Bits Allocated, Bits Stored, High Bit
+  and Pixel Representation in frame / pixel / sample order whatever the Planar Configuration; `--tolerance`, the
+  maximum and the mean are in sample values and "Different pixels" counts pixels with a differing sample.
+  Pixel Data that cannot be decoded is compared byte by byte as before. dicom-diff help and README updated.
+
 ### Fixed — deferred rows, DICOMCore batch a2 (2026-10-01, DICOM 2026a)
 
 - **`TransferSyntax.isJPIP` covers JPIP HTJ2K Referenced (.204) and JPIP HTJ2K Referenced Deflate (.205)** (D109;

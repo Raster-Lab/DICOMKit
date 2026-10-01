@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — --ignore-tag accepts the Tag notation of PS3.6 2026a Table 6-1 ((gggg,eeee), also gggg,eeee / ggggeeee; PS3.5 7.1.1) and Table 6-1 keywords; --ignore-private is the odd-group rule of PS3.5 7.1/7.8; the 10 options otherwise carry no DICOM-standard data (comparison engine verified in DICOMKit/Comparison)
+// NEMA-verified: 2026a, checked 2026-10-01 — --ignore-tag accepts the Tag notation of PS3.6 2026a Table 6-1 ((gggg,eeee), also gggg,eeee / ggggeeee; PS3.5 7.1.1) and Table 6-1 keywords; --ignore-private is the odd-group rule of PS3.5 7.1/7.8, at every nesting level (D152); --compare-pixels/--tolerance are per Pixel Sample Value, PS3.5 8.1.1 (D153); the 10 options otherwise carry no DICOM-standard data (comparison engine verified in DICOMKit/Comparison)
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -42,13 +42,13 @@ struct DICOMDiff: ParsableCommand {
     @Option(name: .long, help: "Tag to ignore, repeatable: (gggg,eeee), gggg,eeee, ggggeeee or a PS3.6 keyword (e.g. '(0008,0018)' or 'SOPInstanceUID')")
     var ignoreTag: [String] = []
 
-    @Flag(name: .long, help: "Ignore private data elements (odd group number, PS3.5 7.1) at the top level of the data set")
+    @Flag(name: .long, help: "Ignore private data elements (odd group number, PS3.5 7.1), also inside sequence items")
     var ignorePrivate: Bool = false
 
-    @Flag(name: .long, help: "Compare Pixel Data (7FE0,0010) byte by byte instead of as one element")
+    @Flag(name: .long, help: "Compare Pixel Data (7FE0,0010) sample by sample (decoded; PS3.5 8.1.1) instead of as one element")
     var comparePixels: Bool = false
 
-    @Option(name: .long, help: "Largest per-byte difference in Pixel Data (7FE0,0010) still treated as identical; bytes, not sample values (default: 0)")
+    @Option(name: .long, help: "Largest Pixel Sample Value difference (PS3.5 8.1.1) in Pixel Data (7FE0,0010) still treated as identical (default: 0)")
     var tolerance: Double = 0.0
 
     @Flag(name: .long, help: "Quick mode: metadata only, overrides --compare-pixels")

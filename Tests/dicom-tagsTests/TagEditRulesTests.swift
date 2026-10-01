@@ -3,7 +3,7 @@ import DICOMCore
 import DICOMKit
 @testable import dicom_tags
 
-/// Pins dicom-tags edits to the 2026a text: PS3.5 Table 6.2-1 (VR length, repertoire and
+/// Pins dicom-tags edits (run by DICOMKit's TagEditor / TagEditRules since D150) to the 2026a text: PS3.5 Table 6.2-1 (VR length, repertoire and
 /// range limits), PS3.10 7.1 (group 0002 only in the File Meta Information), PS3.5 7.5
 /// (Item / delimiters) and 7.8.1 (unused groups, Private Creator), and PS3.6 keywords.
 final class TagEditRulesTests: XCTestCase {
@@ -83,11 +83,20 @@ final class TagEditRulesTests: XCTestCase {
         XCTAssertNil(TagEditRules.dataSetRefusal(for: Tag(group: 0x0009, element: 0x0010)))
     }
 
+    private func checked(deletes: [String] = [], copyTags: [String] = [], sets: [String] = [],
+                         source: DataSet? = nil, dryRun: Bool = false,
+                         into ds: inout DataSet) throws -> [String] {
+        try TagEditor().applyCheckedChanges(to: &ds, sets: sets, deletes: deletes, deletePrivate: false,
+                                            sourceDataSet: source ?? (copyTags.isEmpty ? nil : DataSet()),
+                                            copyTags: copyTags, verbose: false, dryRun: dryRun)
+    }
+
     func testGroup0002EditsAreRefusedByKeywordAndByTag() {
-        XCTAssertThrowsError(try DICOMTags.checkDataSetEdits(deletes: [], copyTags: [], sets: ["TransferSyntaxUID=1.2.840.10008.1.2"]))
-        XCTAssertThrowsError(try DICOMTags.checkDataSetEdits(deletes: ["0002,0013"], copyTags: [], sets: []))
-        XCTAssertThrowsError(try DICOMTags.checkDataSetEdits(deletes: [], copyTags: ["MediaStorageSOPInstanceUID"], sets: []))
-        XCTAssertNoThrow(try DICOMTags.checkDataSetEdits(deletes: ["PatientName"], copyTags: ["PatientID"], sets: ["StudyDate=20200101"]))
+        var ds = DataSet()
+        XCTAssertThrowsError(try checked(sets: ["TransferSyntaxUID=1.2.840.10008.1.2"], into: &ds))
+        XCTAssertThrowsError(try checked(deletes: ["0002,0013"], into: &ds))
+        XCTAssertThrowsError(try checked(copyTags: ["MediaStorageSOPInstanceUID"], into: &ds))
+        XCTAssertNoThrow(try checked(deletes: ["PatientName"], copyTags: ["PatientID"], sets: ["StudyDate=20200101"], into: &ds))
     }
 
     // PS3.6 dictionary VR; Private Creator is LO (PS3.5 7.8.1).
@@ -102,7 +111,7 @@ final class TagEditRulesTests: XCTestCase {
 
     func testSetWritesBinaryUSForRows() throws {
         var ds = DataSet()
-        let lines = try DICOMTags.applySets(["Rows=512"], to: &ds, dryRun: false)
+        let lines = try checked(sets: ["Rows=512"], into: &ds)
         XCTAssertEqual(lines, ["SET (0028,0010) Rows = 512"])
         let rows = try XCTUnwrap(ds[Tag(group: 0x0028, element: 0x0010)])
         XCTAssertEqual(rows.vr, .US)
@@ -111,7 +120,7 @@ final class TagEditRulesTests: XCTestCase {
 
     func testSetKeepsOrderAndSkipLinesAndHonoursDryRun() throws {
         var ds = DataSet()
-        let lines = try DICOMTags.applySets(["Foo=1", "bad", "PatientName=DOE^JOHN"], to: &ds, dryRun: true)
+        let lines = try checked(sets: ["Foo=1", "bad", "PatientName=DOE^JOHN"], dryRun: true, into: &ds)
         XCTAssertEqual(lines, [
             "SET Foo (unknown tag, skipped)",
             "SET bad (invalid format, expected TagName=Value)",
@@ -122,7 +131,7 @@ final class TagEditRulesTests: XCTestCase {
 
     func testRefusedSetLeavesTheDataSetUntouched() {
         var ds = DataSet()
-        XCTAssertThrowsError(try DICOMTags.applySets(["PatientName=DOE", "StudyDate=2020-01-01"], to: &ds, dryRun: false))
+        XCTAssertThrowsError(try checked(deletes: ["PatientID"], sets: ["PatientName=DOE", "StudyDate=2020-01-01"], into: &ds))
         XCTAssertNil(ds[Tag(group: 0x0010, element: 0x0010)])
     }
 
