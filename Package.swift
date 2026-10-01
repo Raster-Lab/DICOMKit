@@ -413,11 +413,6 @@ let package = Package(
             dependencies: ["dicom-diff", "DICOMCore"],
             path: "Tests/dicom-diffTests"
         ),
-        .testTarget(
-            name: "dicom-splitTests",
-            dependencies: ["dicom-split", "DICOMKit", "DICOMCore"],
-            path: "Tests/dicom-splitTests"
-        ),
         // dicom-gateway: the DICOM side of the HL7 v2 / FHIR mappings (PN, DA, TM, Patient's
         // Sex, UIDs) pinned to PS3.3 / PS3.5 2026a (DICOMCLI_STANDARD_IMPLEMENTATION.md).
         .testTarget(
@@ -487,6 +482,16 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Tests/dicom-printscpTests"
+        ),
+        // dicom-dump / dicom-info / dicom-tags: tag arguments (PS3.6 keywords), --set VR value
+        // limits (PS3.5 Table 6.2-1) and group 0002 (PS3.10 7.1) pinned to 2026a.
+        .testTarget(
+            name: "dicom-dumpTests",
+            dependencies: [
+                "dicom-dump", "DICOMCore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Tests/dicom-dumpTests"
         ),
         .testTarget(
             name: "DICOMKitTests",

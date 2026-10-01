@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — dicom-dump, dicom-info, dicom-tags verified against DICOM 2026a (2026-10-01)
+
+- **dicom-dump** `--tag` / `--highlight` accept a PS3.6 keyword; a negative `--length` (trap)
+  and `--bytes-per-line 0` (endless loop) are rejected. README: `--annotate` is off by default.
+  New `dicom-dumpTests`.
+
 ### Fixed — dicom-diff, dicom-split, dicom-merge verified against DICOM 2026a (2026-10-01)
 
 - **dicom-diff** `--ignore-tag` also accepts the `(gggg,eeee)` Tag notation the report itself prints (PS3.6
@@ -15,13 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sample value, that `--ignore-private` (odd groups, PS3.5 7.1) filters top-level elements only, that the File
   Meta Information (group 0002) is not compared, and that exit 1 also means an unreadable file. New test target
   `dicom-diffTests`.
-- **dicom-split** help and README: `--frames` and `{number}` are documented as 0-based indices (index 0 is
-  Frame number 1, PS3.3 2026a C.7.6.16.1.2); the README called 0-based numbering "the DICOM convention". The
-  discussion names the SOP Classes as in PS3.6 Table A-1 (e.g. Positron Emission Tomography Image Storage,
-  X-Ray Radiofluoroscopic Image Storage) and the Shared / Per-Frame Functional Groups Sequences; `--split-by`,
-  `--instance-number`, `--pattern`, `--new-series` name Stack ID, Temporal Position Index, In-Stack Position
-  Number, Instance Number and Series Instance UID with their tags. README lists all 18 options and the real exit
-  codes (64 for usage errors). Behaviour unchanged. New test target `dicom-splitTests`.
 
 ### Fixed — dicom-dcmdir, dicom-uid, dicom-validate verified against DICOM 2026a (2026-10-01)
 
