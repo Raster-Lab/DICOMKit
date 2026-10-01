@@ -115,10 +115,10 @@ final class ViewerContractTests: XCTestCase {
         let renderer = TerminalRenderer(dicomFile: Self.file(values: [0, 10, 20, 30], frames: 2))
         let grid = try renderer.renderThumbnailGrid(frames: [0, 1], mode: .ascii,
                                                     terminalSize: TerminalSize(width: 80, height: 24))
-        XCTAssertTrue(grid.contains("Frame 1"))
-        XCTAssertTrue(grid.contains("Frame 2"))
-        XCTAssertFalse(grid.contains("Frame 0"))
-        XCTAssertEqual(ViewerError.frameNotAvailable(4).description, "Frame 5 (0-based index 4) is not available")
+        XCTAssertTrue(grid.contains("Frame number 1"), grid)
+        XCTAssertTrue(grid.contains("Frame number 2"), grid)
+        XCTAssertFalse(grid.contains("Frame 0") || grid.contains("Frame number 0"))
+        XCTAssertEqual(ViewerError.frameNotAvailable(4).description, "Frame number 5 is not available")
     }
 
     func testInfoLabelsArePS36Names() {
@@ -153,9 +153,18 @@ final class ViewerContractTests: XCTestCase {
                                                     "--voi-lut-function", "SIGMOID"]))
         XCTAssertThrowsError(try DICOMViewer.parse([path, "--voi-lut-function", "LOG"]))
         XCTAssertThrowsError(try DICOMViewer.parse([path, "--frame-number", "0"]))
-        XCTAssertThrowsError(try DICOMViewer.parse([path, "--frame", "1", "--frame-number", "2"]))
+        // Both given: refused in run() with exit 1 (P-VIEWER-FRAME)
+        var both = try DICOMViewer.parse([path, "--frame", "1", "--frame-number", "2"])
+        XCTAssertThrowsError(try both.run()) { error in
+            XCTAssertEqual(DICOMViewer.exitCode(for: error).rawValue, 1)
+        }
         let viewer = try DICOMViewer.parse([path, "--frame-number", "3"])
         XCTAssertEqual(viewer.frameIndex, 2)
-        XCTAssertEqual(try DICOMViewer.parse([path, "--frame", "3"]).frameIndex, 3)
+        XCTAssertNil(viewer.frameDeprecationNote)
+        XCTAssertEqual(try DICOMViewer.parse([path]).frameIndex, 0)
+        let old = try DICOMViewer.parse([path, "--frame", "3"])
+        XCTAssertEqual(old.frameIndex, 3)
+        XCTAssertEqual(old.frameDeprecationNote, "Note: --frame is deprecated (0-based index); use --frame-number 4")
+        XCTAssertThrowsError(try DICOMViewer.parse([path, "--frame", "-1"]))
     }
 }

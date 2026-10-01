@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — 22 options (20 + new --voi-lut-function, --frame-number): window per PS3.3 2026a C.11.2.1.2.1 (LINEAR width >= 1; LINEAR_EXACT / SIGMOID width > 0, C.11.2.1.3.1/.2), VOI LUT Function values = the 3 Defined Terms of Table C.11-2b, frame numbering (Frame Number = 0-based --frame + 1; "The first Frame shall be denoted as Frame number 1", Table 10-3), --show-overlay draws 60xx overlay planes (C.9.2); display modes, sizes, ROI, JPIP are plumbing
+// NEMA-verified: 2026a, checked 2026-10-01 — 22 options (20 + new --voi-lut-function, --frame-number): window per PS3.3 2026a C.11.2.1.2.1 (LINEAR width >= 1; LINEAR_EXACT / SIGMOID width > 0, C.11.2.1.3.1/.2), VOI LUT Function values = the 3 Defined Terms of Table C.11-2b, frame numbering (--frame-number is 1-based, "The first Frame shall be denoted as Frame number 1", Table 10-3; --frame 0-based index deprecated with a stderr note, both given = exit 1, labels "Frame number N"; P-VIEWER-FRAME), --show-overlay draws 60xx overlay planes (C.9.2); display modes, sizes, ROI, JPIP are plumbing
 import Foundation
 import ArgumentParser
 import DICOMKit
@@ -50,10 +50,10 @@ struct DICOMViewer: ParsableCommand {
     @Option(name: .long, help: "VOI LUT Function (0028,1056) to apply the window with: LINEAR, LINEAR_EXACT, SIGMOID (default: the file's value, else LINEAR)")
     var voiLutFunction: String?
 
-    @Option(name: .long, help: "Frame index to display (0-based, default: 0); DICOM Frame Number = index + 1")
-    var frame: Int = 0
+    @Option(name: .long, help: "Deprecated: 0-based index; use --frame-number (index 0 is Frame number 1)")
+    var frame: Int?
 
-    @Option(name: .long, help: "DICOM Frame Number to display (1-based, PS3.3: the first Frame is Frame number 1); alternative to --frame")
+    @Option(name: .long, help: "Frame number to display, 1-based (PS3.3 Table 10-3: the first Frame is Frame number 1); default 1")
     var frameNumber: Int?
 
     @Option(name: .long, help: "Output width in characters")
@@ -121,17 +121,12 @@ struct DICOMViewer: ParsableCommand {
             throw ValidationError("--window-center must be provided when --window-width is set")
         }
 
-        if frame < 0 {
-            throw ValidationError("Frame number must be non-negative")
+        if let frame, frame < 0 {
+            throw ValidationError("--frame (deprecated 0-based index) must be non-negative")
         }
 
-        if let number = frameNumber {
-            guard number >= 1 else {
-                throw ValidationError("--frame-number must be >= 1 (the first Frame is Frame number 1)")
-            }
-            guard frame == 0 else {
-                throw ValidationError("--frame and --frame-number are mutually exclusive")
-            }
+        if let number = frameNumber, number < 1 {
+            throw ValidationError("--frame-number must be >= 1 (the first Frame is Frame number 1)")
         }
 
         let function = try parsedVOIFunction()
@@ -190,10 +185,23 @@ struct DICOMViewer: ParsableCommand {
         return function
     }
 
-    /// 0-based frame index selected by --frame or --frame-number.
-    var frameIndex: Int { frameNumber.map { $0 - 1 } ?? frame }
+    /// 0-based frame index selected by --frame-number (1-based) or the deprecated --frame (0-based).
+    var frameIndex: Int { frameNumber.map { $0 - 1 } ?? frame ?? 0 }
+
+    /// Stderr note when the deprecated --frame is used.
+    var frameDeprecationNote: String? {
+        frame.map { "Note: --frame is deprecated (0-based index); use --frame-number \($0 + 1)" }
+    }
 
     mutating func run() throws {
+        if frame != nil && frameNumber != nil {
+            FileHandle.standardError.write(Data(
+                "Error: --frame (deprecated 0-based index) and --frame-number both given; use --frame-number only\n".utf8))
+            throw ExitCode.failure
+        }
+        if let note = frameDeprecationNote {
+            FileHandle.standardError.write(Data((note + "\n").utf8))
+        }
         // JPIP remote mode: no local file required
         if let jpipURLStr = jpip {
             try renderJPIP(urlString: jpipURLStr)
@@ -307,7 +315,7 @@ struct DICOMViewer: ParsableCommand {
         // Show overlay info at bottom
         if showOverlay {
             print("\u{1B}[0m") // Reset colors
-            print("[\(path)] Frame \(frameIndex + 1)/\(totalFrames) | \(image.originalColumns)x\(image.originalRows)")
+            print("[\(path)] Frame number \(frameIndex + 1) of \(totalFrames) | \(image.originalColumns)x\(image.originalRows)")
         }
     }
 

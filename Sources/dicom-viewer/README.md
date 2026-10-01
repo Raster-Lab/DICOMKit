@@ -78,8 +78,7 @@ dicom-viewer ct.dcm --window-center 40 --window-width 80
 ### Multi-frame Images
 
 ```bash
-# View specific frame (0-based index 5 = DICOM Frame Number 6)
-dicom-viewer multiframe.dcm --frame 5
+# View Frame number 6 (frames are numbered from 1, PS3.3 Table 10-3)
 dicom-viewer multiframe.dcm --frame-number 6
 
 # View all frames as thumbnails
@@ -205,8 +204,8 @@ dicom-viewer --jpip "jpip://server/image" --mode ansi --roi 0,0,512,512
 | `--window-center` | Window Center (level), Modality LUT output units | file, else auto |
 | `--window-width` | Window Width (>= 1 for LINEAR, > 0 for LINEAR_EXACT / SIGMOID) | file, else auto |
 | `--voi-lut-function` | VOI LUT Function: LINEAR, LINEAR_EXACT, SIGMOID (PS3.3 C.11.2.1.3) | file, else LINEAR |
-| `--frame` | Frame index (0-based); Frame Number = index + 1 | 0 |
-| `--frame-number` | DICOM Frame Number (1-based) | — |
+| `--frame-number` | Frame number to display, 1-based (PS3.3 Table 10-3: the first Frame is Frame number 1); labels read "Frame number N" | 1 |
+| `--frame` | **Deprecated**: 0-based index (0 = Frame number 1); prints a note; giving it with `--frame-number` is refused (exit 1) | — |
 | `--width` | Output width in characters | Auto |
 | `--height` | Output height in characters | Auto |
 | `--invert` | Invert pixel values | false |

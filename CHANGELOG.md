@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — CLI P-items, derived batch (approved 2026-10-01, DICOM 2026a)
 
+- **`dicom-viewer --frame`** (0-based index) is **deprecated**: it still works with a stderr note; use
+  `--frame-number` (1-based, PS3.3 2026a Table 10-3). Giving both is now refused with exit 1 (was a
+  usage error only when `--frame` was non-zero). Status line, thumbnails and errors say
+  "Frame number N" (P-VIEWER-FRAME).
 - **`dicom-3d mpr --planes oblique --oblique-normal x,y,z [--oblique-point x,y,z]`** (LPS mm; point
   defaults to the volume centre) now generates the oblique plane (it was skipped with a warning): one
   image sampled with PS3.3 2026a Equation C.7.6.2.1-1, nearest or trilinear, `--thickness` averages

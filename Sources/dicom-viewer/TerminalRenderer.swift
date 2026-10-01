@@ -1,4 +1,4 @@
-// NEMA-verified: 2026a, checked 2026-10-01 — grayscale pipeline against PS3.3 2026a C.11.1.1.2 (Rescale per frame), Table C.11-2b / C.11.2.1.2.1 / C.11.2.1.3 (3 VOI LUT Function Defined Terms LINEAR, LINEAR_EXACT, SIGMOID; LINEAR when absent; via DICOMCore WindowSettings), C.7.6.3.1.2 (MONOCHROME1 minimum shown white), Table C.9-2 (Overlay Origin 1\1 = upper left pixel, row\column; Overlay Data left to right, top to bottom) and Image Frame Origin "Frames are numbered from 1"; 10 info labels are PS3.6 2026a Table 6-1 names; frame labels are 1-based Frame Numbers
+// NEMA-verified: 2026a, checked 2026-10-01 — grayscale pipeline against PS3.3 2026a C.11.1.1.2 (Rescale per frame), Table C.11-2b / C.11.2.1.2.1 / C.11.2.1.3 (3 VOI LUT Function Defined Terms LINEAR, LINEAR_EXACT, SIGMOID; LINEAR when absent; via DICOMCore WindowSettings), C.7.6.3.1.2 (MONOCHROME1 minimum shown white), Table C.9-2 (Overlay Origin 1\1 = upper left pixel, row\column; Overlay Data left to right, top to bottom) and Image Frame Origin "Frames are numbered from 1"; 10 info labels are PS3.6 2026a Table 6-1 names; frame labels say "Frame number N" (1-based, PS3.3 2026a Table 10-3; P-VIEWER-FRAME)
 /// Terminal rendering engine for DICOM images
 ///
 /// Provides ASCII art, ANSI color, and terminal graphics protocol
@@ -654,7 +654,9 @@ struct TerminalRenderer {
                 let idx = row * gridCols + i
                 if idx < totalFrames {
                     // Frame Numbers start at 1 (PS3.3 C.9.2 Image Frame Origin, Referenced Frame Number).
-                    let label = "Frame \(frames[idx] + 1)"
+                    // "Frame number N" (PS3.3 Table 10-3); the bare number when the thumbnail is narrower.
+                    let full = "Frame number \(frames[idx] + 1)"
+                    let label = full.count <= thumbWidth ? full : "\(frames[idx] + 1)"
                     let padding = max(0, thumbWidth - label.count)
                     if i > 0 { output += "|" }
                     output += String(repeating: " ", count: padding / 2) + label
@@ -691,7 +693,7 @@ enum ViewerError: Error, CustomStringConvertible {
         case .invalidDimensions(let rows, let cols):
             return "Invalid image dimensions: \(cols)x\(rows)"
         case .frameNotAvailable(let frame):
-            return "Frame \(frame + 1) (0-based index \(frame)) is not available"
+            return "Frame number \(frame + 1) is not available"
         case .fileNotFound(let path):
             return "File not found: \(path)"
         case .unsupportedMode(let mode):
